@@ -1,32 +1,43 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import pty, { type IPty } from "node-pty";
 import { EventEmitter } from "node:events";
+import { execSync, execFileSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import stripAnsi from "strip-ansi";
 import type { DaemonConfig } from "./types.js";
 import type { Logger } from "./logger.js";
 
+const SESSION_FILE = join(homedir(), ".claude-channel-daemon", "session-id");
+
 export class ProcessManager extends EventEmitter {
-  private child: ChildProcess | null = null;
+  private term: IPty | null = null;
+  private running = false;
   private retryCount = 0;
   private shuttingDown = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private uptimeTimer: ReturnType<typeof setTimeout> | null = null;
+  private sessionId: string | null = null;
 
   constructor(
     private config: DaemonConfig,
     private logger: Logger,
   ) {
     super();
+    this.loadSessionId();
   }
 
   isRunning(): boolean {
-    return this.child !== null && this.child.exitCode === null;
+    return this.running;
   }
 
   async start(): Promise<void> {
-    if (this.isRunning()) {
+    if (this.running) {
       this.logger.warn("Process already running");
       return;
     }
     this.shuttingDown = false;
+    this.ensureSpawnHelper();
     this.spawnChild();
   }
 
@@ -40,69 +51,111 @@ export class ProcessManager extends EventEmitter {
       clearTimeout(this.uptimeTimer);
       this.uptimeTimer = null;
     }
-    if (!this.child) return;
+    if (!this.term) return;
+
+    // Send /exit to claude for graceful shutdown
+    this.term.write("/exit\r");
 
     return new Promise((resolve) => {
       const forceKillTimer = setTimeout(() => {
-        this.child?.kill("SIGKILL");
+        try { this.term?.kill(); } catch {}
       }, 5000);
 
-      this.child!.once("exit", () => {
+      this.term!.onExit(() => {
         clearTimeout(forceKillTimer);
-        this.child = null;
+        this.term = null;
+        this.running = false;
         resolve();
       });
-
-      this.child!.kill("SIGTERM");
     });
   }
 
   sendInput(text: string): void {
-    if (!this.child?.stdin?.writable) {
-      this.logger.warn("Cannot send input: process not running or stdin closed");
+    if (!this.term || !this.running) {
+      this.logger.warn("Cannot send input: process not running");
       return;
     }
-    this.child.stdin.write(text + "\n");
+    this.term.write(text + "\r");
+  }
+
+  private ensureSpawnHelper(): void {
+    // node-pty's spawn-helper loses +x after npm install on macOS
+    try {
+      const helperPath = join(
+        process.cwd(),
+        "node_modules/node-pty/prebuilds",
+        `${process.platform}-${process.arch}`,
+        "spawn-helper",
+      );
+      if (existsSync(helperPath)) {
+        execFileSync("chmod", ["+x", helperPath]);
+      }
+    } catch {
+      // Best effort — may not be needed on all platforms
+    }
+  }
+
+  private resolveClaudeBin(): string {
+    try {
+      return execSync("which claude", { encoding: "utf8" }).trim();
+    } catch {
+      return "claude";
+    }
   }
 
   private spawnChild(): void {
-    const args = ["--channels", this.config.channel_plugin, "--yes"];
-    this.logger.info({ args }, "Spawning claude process");
+    const claudeBin = this.resolveClaudeBin();
+    const args: string[] = [];
 
-    this.child = spawn("claude", args, {
+    // Resume previous session if available
+    if (this.sessionId) {
+      args.push("--resume", this.sessionId);
+      this.logger.info({ sessionId: this.sessionId }, "Resuming previous session");
+    }
+
+    this.logger.info({ claudeBin, args, cwd: this.config.working_directory }, "Spawning claude via PTY");
+
+    this.term = pty.spawn(claudeBin, args, {
+      name: "xterm-256color",
+      cols: 220,
+      rows: 50,
       cwd: this.config.working_directory,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env },
+      env: {
+        ...process.env,
+        TERM: "xterm-256color",
+      },
     });
 
-    this.child.stdout?.on("data", (data: Buffer) => {
-      const text = data.toString();
-      this.emit("stdout", text);
-      this.logger.debug({ stdout: text.trim() }, "claude stdout");
+    this.running = true;
+
+    this.term.onData((data) => {
+      const clean = stripAnsi(data);
+      if (clean.trim()) {
+        this.emit("stdout", clean);
+        this.logger.debug({ stdout: clean.trim().slice(0, 200) }, "claude stdout");
+      }
+
+      // Capture session ID from output (claude prints: claude --resume <uuid>)
+      const resumeMatch = clean.match(/--resume\s+([0-9a-f-]{36})/);
+      if (resumeMatch) {
+        this.sessionId = resumeMatch[1];
+        this.saveSessionId();
+        this.logger.info({ sessionId: this.sessionId }, "Captured session ID for resume");
+      }
     });
 
-    this.child.stderr?.on("data", (data: Buffer) => {
-      const text = data.toString();
-      this.emit("stderr", text);
-      this.logger.debug({ stderr: text.trim() }, "claude stderr");
-    });
-
-    this.child.on("error", (err) => {
-      this.logger.error({ err }, "Failed to spawn claude process");
-      this.emit("error", err);
-      this.scheduleRestart();
-    });
-
-    this.child.on("exit", (code, signal) => {
-      this.logger.info({ code, signal }, "claude process exited");
-      this.child = null;
-      this.emit("exited", { code, signal });
+    this.term.onExit(({ exitCode, signal }) => {
+      this.logger.info({ exitCode, signal }, "claude process exited");
+      this.term = null;
+      this.running = false;
+      this.emit("exited", { code: exitCode, signal });
 
       if (!this.shuttingDown) {
         this.scheduleRestart();
       }
     });
 
+    // Reset retry counter after stable uptime
     this.uptimeTimer = setTimeout(() => {
       this.retryCount = 0;
       this.logger.info("Uptime threshold reached, retry counter reset");
@@ -135,5 +188,22 @@ export class ProcessManager extends EventEmitter {
       return Math.min(base * Math.pow(2, attempt), max);
     }
     return Math.min(base * (attempt + 1), max);
+  }
+
+  private loadSessionId(): void {
+    try {
+      if (existsSync(SESSION_FILE)) {
+        this.sessionId = readFileSync(SESSION_FILE, "utf-8").trim();
+        if (this.sessionId) {
+          this.logger.info({ sessionId: this.sessionId }, "Loaded previous session ID");
+        }
+      }
+    } catch {}
+  }
+
+  private saveSessionId(): void {
+    try {
+      writeFileSync(SESSION_FILE, this.sessionId ?? "");
+    } catch {}
   }
 }
