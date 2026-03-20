@@ -23,26 +23,30 @@ export const DEFAULT_CONFIG: DaemonConfig = {
   log_level: "info",
 };
 
-function deepMerge<T extends Record<string, unknown>>(target: T, source: Partial<T>): T {
-  const result = { ...target };
-  for (const key of Object.keys(source) as (keyof T)[]) {
-    const sourceVal = source[key];
+function deepMerge(target: DaemonConfig, source: Partial<DaemonConfig>): DaemonConfig {
+  const result = { ...target } as Record<string, unknown>;
+  const sourceRecord = source as Record<string, unknown>;
+
+  for (const key of Object.keys(sourceRecord)) {
+    const sourceVal = sourceRecord[key];
+    const targetVal = result[key];
     if (
       sourceVal !== null &&
       typeof sourceVal === "object" &&
       !Array.isArray(sourceVal) &&
-      typeof result[key] === "object" &&
-      result[key] !== null
+      typeof targetVal === "object" &&
+      targetVal !== null &&
+      !Array.isArray(targetVal)
     ) {
       result[key] = deepMerge(
-        result[key] as Record<string, unknown>,
-        sourceVal as Record<string, unknown>,
-      ) as T[keyof T];
+        targetVal as DaemonConfig,
+        sourceVal as Partial<DaemonConfig>,
+      );
     } else if (sourceVal !== undefined) {
-      result[key] = sourceVal as T[keyof T];
+      result[key] = sourceVal;
     }
   }
-  return result;
+  return result as unknown as DaemonConfig;
 }
 
 export function loadConfig(configPath: string): DaemonConfig {
