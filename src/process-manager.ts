@@ -109,12 +109,34 @@ fi
     // other --settings injected by tools like cmux
     const settingsFile = join(DATA_DIR, "claude-settings.json");
     const settings = {
+      hooks: {
+        PreToolUse: [
+          {
+            matcher: "*",
+            hooks: [
+              {
+                type: "command",
+                command: "curl -s -X POST http://127.0.0.1:18321/approve -H 'Content-Type: application/json' -d @- --max-time 130 --connect-timeout 1",
+                timeout: 135000,
+              },
+            ],
+          },
+        ],
+      },
       permissions: {
         allow: [
           "Read", "Edit", "Write", "Glob", "Grep",
           "Bash(*)", "WebFetch", "WebSearch", "Agent",
           "mcp__plugin_telegram_telegram__reply",
         ],
+        deny: [
+          "Bash(rm -rf /)", "Bash(rm -rf /*)",
+          "Bash(rm -rf ~)", "Bash(rm -rf ~/*)",
+          "Bash(git push * --force *)", "Bash(git push --force *)",
+          "Bash(git reset --hard *)", "Bash(git clean -fd *)",
+          "Bash(git clean -f *)", "Bash(dd *)", "Bash(mkfs *)",
+        ],
+        defaultMode: "default",
       },
       statusLine: {
         type: "command",
@@ -156,21 +178,7 @@ fi
     // Channel mode: route Telegram messages as user prompts
     args.push("--channels", `plugin:${this.config.channel_plugin}`);
 
-    // Permission relay: tell Claude to use inline buttons for confirmations
-    args.push("--append-system-prompt", [
-      "You are running as a headless daemon via Telegram.",
-      "IMPORTANT: For any file edit, bash command, or potentially destructive action,",
-      "FIRST use the reply tool with inline buttons to ask the user for confirmation.",
-      'Example: reply with text "I want to edit server.ts to add X. Allow?" and buttons:',
-      '[[{"text":"✅ Allow","callback_data":"allow"},{"text":"❌ Deny","callback_data":"deny"}]]',
-      "Wait for the user's button press before executing. If they press Deny, skip the action.",
-      "For simple read-only operations (Read, Glob, Grep) and Telegram replies, proceed without asking.",
-    ].join(" "));
-
-    // Permissions are set in the settings file (claude-settings.json)
-    // Note: --permission-mode bypassPermissions prevents plugin loading
-
-    // Load settings from file (permissions + statusLine)
+    // Settings file has: permissions, PreToolUse hook (→ Telegram approval), statusLine
     const settingsFile = join(DATA_DIR, "claude-settings.json");
     args.push("--settings", settingsFile);
 
