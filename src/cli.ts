@@ -72,7 +72,7 @@ program
     }
 
     // Tail-follow the transcript file for real-time activity logging
-    let transcriptOffset = 0;
+    let transcriptOffset = -1; // -1 = not initialized, skip existing content on first read
     let transcriptPath: string | null = null;
 
     function pollTranscript() {
@@ -85,6 +85,14 @@ program
         }
         if (!existsSync(transcriptPath)) return;
         const content = readFileSync(transcriptPath, "utf-8");
+
+        // On first read, skip to end (don't replay history)
+        if (transcriptOffset === -1) {
+          transcriptOffset = content.length;
+          logger.info("Transcript found, tailing for new activity");
+          return;
+        }
+
         if (content.length <= transcriptOffset) return;
 
         const newContent = content.slice(transcriptOffset);
