@@ -4,10 +4,12 @@
   "description": "Reliable daemon wrapper for Claude Code Channels",
   "type": "module",
   "bin": {
+    "ccd": "./dist/cli.js",
     "claude-channel-daemon": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
+    "start": "tsx src/cli.ts start",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest"
