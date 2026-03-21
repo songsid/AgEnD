@@ -4,7 +4,7 @@ A reliable daemon wrapper for [Claude Code](https://docs.anthropic.com/en/docs/c
 
 [中文版 README](README.zh-TW.md)
 
-> **⚠️ Security Notice:** This daemon runs Claude Code with `bypassPermissions` mode. All permission decisions are delegated to a PreToolUse hook backed by a remote approval server (Telegram inline buttons). If the approval server is unreachable, **all tool calls are denied** until it recovers. The built-in deny list blocks known destructive commands (`rm -rf /`, `git push --force`, etc.), but this setup fundamentally trusts the approval server for access control. **Use at your own risk.** Review the [Permissions](#permissions) section before deploying.
+> **⚠️ Security Notice:** This daemon runs Claude Code with `acceptEdits` permission mode and a PreToolUse hook backed by a remote approval server (Telegram inline buttons). Dangerous operations (rm, git push --force, etc.) require your explicit approval via Telegram. If the approval server is unreachable, **all tool calls are denied**. Review the [Permission Architecture](#permission-architecture) section before deploying.
 
 ## Why
 
@@ -125,24 +125,81 @@ All state is stored in `~/.claude-channel-daemon/`:
 | `memory.db` | SQLite memory backup |
 | `.env` | Telegram bot token |
 
-## Permissions
+## Permission Architecture
 
-**This daemon uses `bypassPermissions` mode.** Claude Code's built-in permission prompts are completely disabled. All access control is handled by a three-layer system:
+Claude Code has two separate permission layers. The daemon handles both to prevent hanging in headless mode:
 
-1. **PreToolUse hook** — Every tool call is POSTed to the Telegram plugin's approval server (`127.0.0.1:18321`). The server decides allow/deny based on danger detection.
+### Layer 1: Tool-Level Permissions
 
-2. **Danger detection** — The approval server uses regex patterns to classify operations:
-   - **Safe** (auto-approved): read-only operations, safe bash commands, web searches
-   - **Dangerous** (requires Telegram approval): `rm`, `sudo`, `git push`, `chmod`, sensitive file paths (`.env`, `.claude/settings.json`)
-   - **Hardcoded deny list**: `rm -rf /`, `git push --force`, `git reset --hard`, `dd`, `mkfs`
+Claude Code prompts when a tool (Edit, Bash, MCP tool, etc.) is used for the first time in a session.
 
-3. **Health check + fail-safe** — The daemon pings the approval server every 30 seconds. If it's unreachable:
-   - All tool calls are **denied** (not allowed)
-   - Warning logged every 60 seconds until recovery
+**Our solution: `permissions.allow` in settings file**
 
-**Why `bypassPermissions`?** Claude Code has internal protected paths (e.g., `~/.claude/skills/`) that trigger terminal permission prompts even when the PreToolUse hook returns "allow". In a headless daemon, these prompts block indefinitely with no way to respond. `bypassPermissions` prevents this by delegating all decisions to the hook layer.
+All standard tools and Telegram MCP tools are pre-approved. Claude Code never prompts for tool-level permissions.
 
-**Risk:** If someone gains access to `127.0.0.1:18321`, they can approve arbitrary operations. The server only listens on localhost and validates against the Telegram access allowlist.
+```
+Read, Edit, Write, Glob, Grep, Bash(*), WebFetch, WebSearch, Agent, Skill,
+mcp__plugin_telegram_telegram__reply, react, edit_message
+```
+
+### Layer 2: Dangerous Operation Detection (PreToolUse Hook)
+
+Every tool call is POSTed to the Telegram plugin's approval server (`127.0.0.1:18321/approve`).
+
+| Operation | Behavior |
+|-----------|----------|
+| Safe (ls, grep, read, etc.) | Auto-approved |
+| Dangerous (rm, sudo, git push, chmod, etc.) | Telegram inline button (✅ Approve / ❌ Deny) |
+| Sensitive paths (.env, .claude/settings.json) | Telegram inline button |
+| Hardcoded deny (rm -rf /, dd, mkfs) | Denied in settings |
+| Server unreachable | Denied for safety |
+
+The approval server runs inside the Telegram plugin (Bun HTTP on localhost:18321). It uses regex patterns to classify operations:
+
+```typescript
+const DANGEROUS_BASH = [
+  /(?:rm|rmdir)\s/i,
+  /(?:sudo|kill|killall|pkill)\s/i,
+  /git\s+push/i,
+  /git\s+reset\s+--hard/i,
+  // ... more patterns
+]
+```
+
+### Layer 3: Hard-Coded Path Protection (PTY Fallback)
+
+Claude Code has **hard-coded protection** for writes to `.git/`, `.claude/`, `.vscode/`, and `.idea/` directories. This protection **cannot be overridden** by `permissions.allow` or `acceptEdits` mode — it always prompts in the terminal.
+
+In headless mode, these prompts would block the session forever. The daemon detects them from the PTY output and forwards to Telegram:
+
+```
+PTY prompt detected ("1.Yes  2.Yes,andallow...  3.No")
+  → Send Telegram message with ✅批准 / ❌拒絕 buttons
+  → Wait for user response (2 min timeout → auto-deny)
+  → Type "1" or "3" into PTY
+```
+
+### Why not `bypassPermissions`?
+
+`bypassPermissions` would solve Layer 3 (it skips path protection), but it **prevents plugin loading** — including the Telegram plugin itself. This is a Claude Code bug/limitation. We use `acceptEdits` mode instead, which auto-approves standard edits while keeping plugins loaded.
+
+### Permission Flow Summary
+
+```
+Claude wants to use a tool
+    │
+    ├─ permissions.allow list → tool allowed?
+    │   YES → continue
+    │   NO → Claude Code prompts (would hang) → solved by allow list
+    │
+    ├─ PreToolUse hook → POST to approval server
+    │   Safe → auto-allow
+    │   Dangerous → Telegram inline button → user decides
+    │   Server down → deny
+    │
+    └─ Hard-coded path protection (.git/, .claude/, etc.)
+        PTY prompt appears → forwarded to Telegram → user decides
+```
 
 ## Requirements
 
