@@ -136,9 +136,6 @@ fi
     const claudeBin = this.resolveClaudeBin();
     const args: string[] = [];
 
-    // Bare mode: skip hooks, LSP, auto-memory etc. — daemon manages its own lifecycle
-    args.push("--bare");
-
     // Channel mode: route Telegram messages as user prompts
     args.push("--channels", `plugin:${this.config.channel_plugin}`);
 
