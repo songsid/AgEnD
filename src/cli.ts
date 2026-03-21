@@ -18,6 +18,8 @@ import {
   readFileSync,
   writeFileSync,
   unlinkSync,
+  readdirSync,
+  statSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { createReadStream } from "node:fs";
@@ -78,9 +80,30 @@ program
     function pollTranscript() {
       try {
         if (!transcriptPath) {
-          if (!existsSync(STATUSLINE_FILE)) return;
-          const statusData = JSON.parse(readFileSync(STATUSLINE_FILE, "utf-8"));
-          transcriptPath = statusData.transcript_path ?? null;
+          // Try statusline first
+          try {
+            const statusData = JSON.parse(readFileSync(STATUSLINE_FILE, "utf-8"));
+            transcriptPath = statusData.transcript_path ?? null;
+          } catch {}
+          // Fallback: find most recent jsonl in the project directory
+          if (!transcriptPath) {
+            const projectDir = join(
+              homedir(),
+              ".claude/projects",
+              config.working_directory.replace(/\//g, "-").replace(/^-/, ""),
+            );
+            if (existsSync(projectDir)) {
+              try {
+                const files = readdirSync(projectDir)
+                  .filter(f => f.endsWith(".jsonl"))
+                  .map(f => ({ name: f, mtime: statSync(join(projectDir, f)).mtimeMs }))
+                  .sort((a, b) => b.mtime - a.mtime);
+                if (files.length > 0) {
+                  transcriptPath = join(projectDir, files[0].name);
+                }
+              } catch {}
+            }
+          }
           if (!transcriptPath) return;
         }
         if (!existsSync(transcriptPath)) return;

@@ -139,8 +139,9 @@ fi
     // Channel mode: route Telegram messages as user prompts
     args.push("--channels", `plugin:${this.config.channel_plugin}`);
 
-    // Auto-accept all tool use — daemon runs headless, no one to approve
-    args.push("--permission-mode", "bypassPermissions");
+    // Auto-accept edits — dontAsk skips all permission prompts while keeping plugins loaded
+    // Note: bypassPermissions prevents plugin loading (including Telegram)
+    args.push("--permission-mode", "dontAsk");
 
     // Load statusLine + any other settings from our own file (no conflict with cmux)
     const settingsFile = join(DATA_DIR, "claude-settings.json");
