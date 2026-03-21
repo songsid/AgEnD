@@ -1,46 +1,49 @@
 # claude-channel-daemon
 
-將 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) Channels 包裝成可靠的背景服務。透過 `node-pty` 執行 Claude Code CLI，提供自動 session 管理、context window 輪替與記憶備份。
+讓你的 Claude Code Telegram bot 不用顧著終端機也能一直跑。這個 daemon 把 `claude --channels` 包成背景服務，掛了自動重啟，context 快滿就換新 session，記憶自動備份到 SQLite。
 
 [English README](README.md)
 
-> **⚠️ 安全提醒：** 這個 daemon 以 `bypassPermissions` 模式執行 Claude Code。所有權限決策都交給 PreToolUse hook 和 Telegram 遠端批准系統處理。如果批准 server 無法連線，**所有工具調用會被拒絕**，直到 server 恢復為止。內建的 deny list 會擋掉已知的破壞性指令，但這套架構本質上依賴批准 server 做存取控制。**使用風險自負。** 部署前請詳閱[權限控制](#權限控制)段落。
+> **⚠️ 注意：** daemon 會預先放行大部分工具，危險操作（rm、git push --force 之類的）會透過 Telegram 按鈕讓你確認。批准 server 連不上的話，所有工具呼叫都會被擋。跑之前先看[權限機制](#權限機制)。
 
-## 為什麼需要這個
+## 為什麼要做這個
 
-Claude Code 的 Telegram plugin 需要一個活著的 CLI session — 關掉終端機 bot 就斷了。這個 daemon 解決了以下問題：
+Claude Code 的 Telegram plugin 需要一個活著的 CLI session。終端機關掉，bot 就斷了。測試可以這樣搞，正式用不行。
 
-- 透過 `node-pty` 讓 Claude Code 在背景持續運行
-- 掛掉時自動重啟（指數退避策略）
-- Context 使用量過高時自動輪替 session
-- 將記憶備份到 SQLite
-- 可安裝為系統服務（macOS launchd / Linux systemd）
+這個 daemon 處理的事：
 
-## 快速開始
+- 用 `node-pty` 開 pseudo-terminal 在背景跑 Claude Code
+- 掛了就自動重啟，間隔越來越長（1 秒、2 秒、4 秒... 最多 60 秒）
+- 監控 context window 用量，快滿就砍掉重開
+- 記憶檔案有變動就自動備份到 SQLite
+- 可以裝成 launchd（macOS）或 systemd（Linux）服務
+
+## 開始用
 
 ```bash
-# Clone 並安裝
 git clone https://github.com/suzuke/claude-channel-daemon.git
 cd claude-channel-daemon
-npm install
+npm install && npm link
 
-# 互動式設定
-npx tsx src/cli.ts init
+# 互動式設定（bot token、工作目錄、要不要裝服務）
+ccd init
 
-# 啟動 daemon
-npx tsx src/cli.ts start
+# 開跑
+ccd start
 ```
 
-## CLI 指令
+`npm link` 之後就有 `ccd` 指令可以用。
+
+## 指令
 
 ```
-claude-channel-daemon start      啟動 daemon
-claude-channel-daemon stop       停止 daemon
-claude-channel-daemon status     查看運行狀態
-claude-channel-daemon logs       查看日誌 (-n 行數, -f 即時追蹤)
-claude-channel-daemon install    安裝為系統服務
-claude-channel-daemon uninstall  移除系統服務
-claude-channel-daemon init       互動式設定精靈
+ccd start       啟動
+ccd stop        停止
+ccd status      看有沒有在跑
+ccd logs        看 log（-n 50 看幾行、-f 即時追蹤）
+ccd install     裝成系統服務
+ccd uninstall   移除服務
+ccd init        互動式設定
 ```
 
 ## 架構
@@ -51,7 +54,7 @@ claude-channel-daemon init       互動式設定精靈
 │                                             │
 │  ┌─────────────────┐  ┌──────────────────┐  │
 │  │ Process Manager  │  │ Context Guardian │  │
-│  │ (node-pty)       │  │ (自動輪替)       │  │
+│  │ (node-pty)       │  │ (自動換 session) │  │
 │  └────────┬─────────┘  └────────┬─────────┘  │
 │           │                      │            │
 │  ┌────────┴─────────┐  ┌────────┴─────────┐  │
@@ -69,25 +72,17 @@ claude-channel-daemon init       互動式設定精靈
 └─────────────────────────────────────────────┘
 ```
 
-### Process Manager
+**Process Manager** — 開 PTY 跑 `claude --channels plugin:telegram@...`。掛了就等一下重啟。會記住 session UUID，crash 後可以 `--resume` 接回去。關閉時送 `/exit` 讓 Claude 正常結束。
 
-透過 `node-pty` 起 Claude Code，啟用 channel 模式。處理 session 持久化（UUID resume）、優雅關閉（`/exit`），以及可設定退避策略的自動重啟。
+**Context Guardian** — 讀 Claude Code 的 status line JSON（daemon 啟動時自動注入一個 statusline script）。`context_window.used_percentage` 超過門檻（預設 40%）就砍掉重開新 session。順便拿到 `rate_limits` 跟 `cost`，不花任何 API 額度。
 
-### Context Guardian
+**Memory Layer** — 用 chokidar 盯著 `~/.claude/projects/.../memory/`。記憶檔一有變動就複製到 SQLite 存起來。Session 重啟後 Claude Code 會自己去讀 memory 目錄，不用額外處理。
 
-透過 Claude Code 的 status line JSON 監控 context window 使用量。當使用量超過設定的閾值或 session 超過最大年齡時觸發輪替。支援三種策略：`status_line`、`timer` 或 `hybrid`。
-
-### Memory Layer
-
-使用 chokidar 監控 Claude 的記憶目錄，將檔案備份到 SQLite，確保 session 輪替後記憶不會遺失。
-
-### Service Installer
-
-產生並安裝系統服務檔案 — macOS 用 launchd plist，Linux 用 systemd unit。開機自動啟動。
+**Service Installer** — 幫你產生 launchd plist 或 systemd unit 檔，跟你說怎麼啟用。
 
 ## 設定
 
-設定檔路徑：`~/.claude-channel-daemon/config.yaml`
+設定檔在 `~/.claude-channel-daemon/config.yaml`：
 
 ```yaml
 channel_plugin: telegram@claude-plugins-official
@@ -96,11 +91,11 @@ working_directory: /path/to/your/project
 restart_policy:
   max_retries: 10
   backoff: exponential  # 或 linear
-  reset_after: 300      # 穩定運行幾秒後重設重試計數器
+  reset_after: 300      # 穩定跑 5 分鐘後歸零重試計數
 
 context_guardian:
-  threshold_percentage: 80  # context 達到此 % 時輪替
-  max_age_hours: 4          # session 最大存活時間
+  threshold_percentage: 40  # 到這個 % 就換 session
+  max_age_hours: 4          # 最久跑幾小時就強制換
   strategy: hybrid          # status_line | timer | hybrid
 
 memory:
@@ -108,47 +103,104 @@ memory:
   watch_memory_dir: true
   backup_to_sqlite: true
 
-log_level: info  # debug | info | warn | error
+log_level: info
 ```
 
 ## 資料目錄
 
-所有狀態儲存在 `~/.claude-channel-daemon/`：
+都放在 `~/.claude-channel-daemon/`：
 
-| 檔案 | 用途 |
+| 檔案 | 幹嘛的 |
+|------|--------|
+| `config.yaml` | 主設定 |
+| `daemon.pid` | PID 檔（跑的時候才有） |
+| `daemon.log` | log 輸出（也會印到 stdout） |
+| `session-id` | 存的 UUID，給 `--resume` 用 |
+| `statusline.json` | Claude Code 最新的狀態資料 |
+| `claude-settings.json` | 注入給 Claude session 的設定 |
+| `statusline.sh` | 接 status line JSON 的 shell script |
+| `memory.db` | 記憶檔的 SQLite 備份 |
+
+## 權限機制
+
+Claude Code 有兩套獨立的權限系統。headless daemon 兩個都要處理，不然 session 會卡住。踩了不少坑才搞清楚。
+
+### 工具層級的權限
+
+Claude Code 在 session 裡第一次用到 Edit、Bash 或 MCP tool 的時候會問你要不要放行。在終端機你可以按 allow，daemon 裡沒人按。
+
+我們在 `claude-settings.json` 裡預先放行所有工具：
+
+```
+Read, Edit, Write, Glob, Grep, Bash(*), WebFetch, WebSearch, Agent, Skill,
+mcp__plugin_telegram_telegram__reply, react, edit_message
+```
+
+這樣工具層級的提示就不會出現了。
+
+### 危險操作攔截（PreToolUse hook）
+
+每個工具呼叫都會先 POST 到 Telegram plugin 內建的 HTTP server（`127.0.0.1:18321/approve`）。
+
+Server 會判斷這個操作危不危險：
+
+| 操作 | 結果 |
 |------|------|
-| `config.yaml` | 主設定檔 |
-| `daemon.pid` | Process ID（運行中） |
-| `session-id` | 儲存的 UUID，用於 session resume |
-| `statusline.json` | 目前 context/費用狀態 |
-| `claude-settings.json` | 注入的 Claude Code 設定 |
-| `memory.db` | SQLite 記憶備份 |
-| `.env` | Telegram bot token |
+| `ls`、`grep`、讀檔 | 自動放行 |
+| `rm`、`sudo`、`git push`、`chmod` | 發 Telegram 訊息，有 ✅/❌ 按鈕讓你選 |
+| 改 `.env`、`.claude/settings.json` | 一樣，按鈕 |
+| `rm -rf /`、`dd`、`mkfs` | 設定檔直接擋，不會到 server |
+| Server 連不上 | 擋掉（fail-closed） |
 
-## 權限控制
+判斷用的是 regex：
 
-**這個 daemon 使用 `bypassPermissions` 模式。** Claude Code 內建的權限提示完全關閉，所有存取控制由三層機制處理：
+```typescript
+const DANGEROUS_BASH = [
+  /(?:rm|rmdir)\s/i,
+  /(?:sudo|kill|killall|pkill)\s/i,
+  /git\s+push/i,
+  /git\s+reset\s+--hard/i,
+  // ...
+]
+```
 
-1. **PreToolUse hook** — 每次工具調用都會 POST 到 Telegram plugin 的批准 server（`127.0.0.1:18321`），由 server 決定放行或拒絕。
+### 硬編碼路徑保護（最麻煩的部分）
 
-2. **危險偵測** — 批准 server 用 regex 分類操作：
-   - **安全**（自動放行）：唯讀操作、安全的 bash 指令、網頁搜尋
-   - **危險**（需要 Telegram 批准）：`rm`、`sudo`、`git push`、`chmod`、敏感路徑（`.env`、`.claude/settings.json`）
-   - **硬性拒絕**：`rm -rf /`、`git push --force`、`git reset --hard`、`dd`、`mkfs`
+Claude Code 對 `.git/`、`.claude/`、`.vscode/`、`.idea/` 的寫入有內建保護。就算用 `acceptEdits` 模式、就算 hook 回 allow，它還是會在終端機跳確認。
 
-3. **Health check + 故障安全** — daemon 每 30 秒 ping 批准 server。如果連不上：
-   - 所有工具調用會被**拒絕**（不是放行）
-   - 每 60 秒記錄警告，直到恢復
+Daemon 裡這個確認會永遠卡住。所以我們從 PTY 輸出偵測到提示（會出現 "1.Yes 2.Yes,andallow... 3.No"），然後轉發到 Telegram 讓你按按鈕。按了之後 daemon 在 PTY 裡打 "1" 或 "3"。兩分鐘沒按就自動拒絕。
 
-**為什麼用 `bypassPermissions`？** Claude Code 有內部保護路徑（例如 `~/.claude/skills/`），即使 hook 回傳 allow，仍會跳終端機權限提示。在無人值守的 daemon 環境下，這些提示會永遠卡住。`bypassPermissions` 把所有決策交給 hook 層，避免這個問題。
+### 為什麼不用 `bypassPermissions`？
 
-**風險：** 如果有人能存取 `127.0.0.1:18321`，就能批准任意操作。server 只在 localhost 監聽，並且會驗證 Telegram access allowlist。
+試過了。它會連 plugin 都不載入，Telegram plugin 直接不啟動，bot 完全收不到訊息。文件上說 bypass 只是跳過提示，但實際上它也擋了 MCP server 的啟動。看起來是 Claude Code 的 bug。所以改用 `acceptEdits` 模式，剩下的 edge case 用 PTY 偵測處理。
+
+### 整體流程
+
+```
+Claude 要用一個工具
+    │
+    ├─ permissions.allow → 工具在清單裡？→ 是 → 繼續
+    │
+    ├─ PreToolUse hook → POST 到 approval server
+    │   安全操作 → 放行
+    │   危險操作 → Telegram 按鈕 → 你決定
+    │   server 掛了 → 擋掉
+    │
+    └─ 硬編碼路徑保護
+        PTY 出現確認提示 → 轉發到 Telegram → 你決定
+```
 
 ## 系統需求
 
 - Node.js >= 20
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI 已安裝
-- Telegram bot token（透過 [@BotFather](https://t.me/BotFather) 建立）
+- Claude Code CLI
+- Telegram bot token（[@BotFather](https://t.me/BotFather)）
+
+## 已知問題
+
+- 不要在 cmux 裡面跑（它的 `--settings` 注入會跟我們的衝突）
+- `bypassPermissions` 模式會讓 plugin 不載入（Claude Code bug）
+- 目前只在 macOS 測過
 
 ## 授權
 

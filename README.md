@@ -1,46 +1,49 @@
 # claude-channel-daemon
 
-A reliable daemon wrapper for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) Channels. Runs Claude Code CLI as a long-lived background service with automatic session management, context window rotation, and memory backup.
+Keep your Claude Code Telegram bot alive without babysitting a terminal. This daemon wraps `claude --channels` as a background service, restarts it when it crashes, rotates sessions before context fills up, and backs up memory to SQLite.
 
 [中文版 README](README.zh-TW.md)
 
-> **⚠️ Security Notice:** This daemon runs Claude Code with `acceptEdits` permission mode and a PreToolUse hook backed by a remote approval server (Telegram inline buttons). Dangerous operations (rm, git push --force, etc.) require your explicit approval via Telegram. If the approval server is unreachable, **all tool calls are denied**. Review the [Permission Architecture](#permission-architecture) section before deploying.
+> **⚠️ Heads up:** The daemon pre-approves most tools and uses a PreToolUse hook to gate dangerous operations through Telegram inline buttons. If the approval server is unreachable, all tool calls are denied. Read the [permission architecture](#permission-architecture) section before running this in production.
 
-## Why
+## Why this exists
 
-Claude Code's Telegram plugin requires an active CLI session — close the terminal and the bot dies. This daemon solves that by:
+Claude Code's Telegram plugin needs a running CLI session. Close the terminal and the bot goes offline. That's fine for testing, not for anything you'd rely on.
 
-- Running Claude Code in the background via `node-pty`
-- Automatically restarting on crashes with exponential backoff
-- Rotating sessions when context usage gets too high
-- Backing up memory to SQLite
-- Installing as a system service (launchd / systemd)
+This daemon fixes that:
 
-## Quick Start
+- Runs Claude Code in a pseudo-terminal (`node-pty`) in the background
+- Restarts on crashes with exponential backoff (1s, 2s, 4s... up to 60s)
+- Watches context window usage and kills/respawns the session before quality degrades
+- Backs up memory files to SQLite so nothing is lost across restarts
+- Can install as a launchd (macOS) or systemd (Linux) service
+
+## Quick start
 
 ```bash
-# Clone and install
 git clone https://github.com/suzuke/claude-channel-daemon.git
 cd claude-channel-daemon
-npm install
+npm install && npm link
 
-# Interactive setup
-npx tsx src/cli.ts init
+# Interactive setup (bot token, working directory, system service)
+ccd init
 
-# Start the daemon
-npx tsx src/cli.ts start
+# Start
+ccd start
 ```
 
-## CLI Commands
+After `npm link`, you get the `ccd` command globally.
+
+## Commands
 
 ```
-claude-channel-daemon start    Start the daemon
-claude-channel-daemon stop     Stop the daemon
-claude-channel-daemon status   Show running status
-claude-channel-daemon logs     Show daemon logs (-n lines, -f follow)
-claude-channel-daemon install  Install as system service
-claude-channel-daemon uninstall Remove system service
-claude-channel-daemon init     Interactive setup wizard
+ccd start       Start the daemon
+ccd stop        Stop it
+ccd status      Check if it's running
+ccd logs        Show logs (-n 50, -f to follow)
+ccd install     Install as system service
+ccd uninstall   Remove the service
+ccd init        Interactive setup
 ```
 
 ## Architecture
@@ -69,25 +72,17 @@ claude-channel-daemon init     Interactive setup wizard
 └─────────────────────────────────────────────┘
 ```
 
-### Process Manager
+**Process Manager** — Opens a PTY, runs `claude --channels plugin:telegram@...`. If it dies, waits and restarts. Captures the session UUID so it can `--resume` after a crash. Sends `/exit` for clean shutdowns.
 
-Spawns Claude Code via `node-pty` with channel mode enabled. Handles session persistence (resume via UUID), graceful shutdown (`/exit`), and automatic restarts with configurable backoff.
+**Context Guardian** — Reads Claude Code's status line JSON (which the daemon injects via a custom statusline script). When `context_window.used_percentage` crosses the threshold (default 40%), it kills and respawns the session. Also gets `rate_limits` and `cost` for free. No API calls spent on monitoring.
 
-### Context Guardian
+**Memory Layer** — Uses chokidar to watch `~/.claude/projects/.../memory/`. When a memory file changes, it copies the content to SQLite with a timestamp. After a session restart, Claude Code reads the memory directory on its own.
 
-Monitors context window usage via Claude Code's status line JSON. Triggers session rotation when usage exceeds the configured threshold or max session age. Supports three strategies: `status_line`, `timer`, or `hybrid`.
-
-### Memory Layer
-
-Watches Claude's memory directory with chokidar and backs up files to SQLite for persistence across session rotations.
-
-### Service Installer
-
-Generates and installs system service files — launchd plist for macOS, systemd unit for Linux. Starts automatically on boot.
+**Service Installer** — Writes a launchd plist or systemd unit file and tells you how to enable it.
 
 ## Configuration
 
-Config file: `~/.claude-channel-daemon/config.yaml`
+Config lives at `~/.claude-channel-daemon/config.yaml`:
 
 ```yaml
 channel_plugin: telegram@claude-plugins-official
@@ -96,11 +91,11 @@ working_directory: /path/to/your/project
 restart_policy:
   max_retries: 10
   backoff: exponential  # or linear
-  reset_after: 300      # seconds of stability before resetting retry counter
+  reset_after: 300      # reset retry counter after 5 min of uptime
 
 context_guardian:
-  threshold_percentage: 80  # rotate when context reaches this %
-  max_age_hours: 4          # max session age before rotation
+  threshold_percentage: 40  # kill and respawn at this %
+  max_age_hours: 4          # force rotation after this long
   strategy: hybrid          # status_line | timer | hybrid
 
 memory:
@@ -108,53 +103,56 @@ memory:
   watch_memory_dir: true
   backup_to_sqlite: true
 
-log_level: info  # debug | info | warn | error
+log_level: info
 ```
 
-## Data Directory
+## Data directory
 
-All state is stored in `~/.claude-channel-daemon/`:
+Everything lives in `~/.claude-channel-daemon/`:
 
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Main configuration |
-| `daemon.pid` | Process ID (while running) |
-| `session-id` | Saved UUID for session resume |
-| `statusline.json` | Current context/cost status |
-| `claude-settings.json` | Injected Claude Code settings |
-| `memory.db` | SQLite memory backup |
-| `.env` | Telegram bot token |
+| File | What it does |
+|------|-------------|
+| `config.yaml` | Main config |
+| `daemon.pid` | PID file (exists while running) |
+| `daemon.log` | Log output (also goes to stdout) |
+| `session-id` | Saved UUID for `--resume` |
+| `statusline.json` | Latest status line data from Claude Code |
+| `claude-settings.json` | Settings injected into the Claude session |
+| `statusline.sh` | Shell script that tees status line JSON |
+| `memory.db` | SQLite backup of memory files |
 
-## Permission Architecture
+## Permission architecture
 
-Claude Code has two separate permission layers. The daemon handles both to prevent hanging in headless mode:
+Claude Code has two independent permission systems. If a headless daemon doesn't handle both, it hangs. Here's what we learned the hard way.
 
-### Layer 1: Tool-Level Permissions
+### Tool-level permissions
 
-Claude Code prompts when a tool (Edit, Bash, MCP tool, etc.) is used for the first time in a session.
+Claude Code prompts the first time you use Edit, Bash, or any MCP tool in a session. In a terminal you'd click "allow." In a daemon, nobody's clicking.
 
-**Our solution: `permissions.allow` in settings file**
-
-All standard tools and Telegram MCP tools are pre-approved. Claude Code never prompts for tool-level permissions.
+We pre-approve everything in `claude-settings.json`:
 
 ```
 Read, Edit, Write, Glob, Grep, Bash(*), WebFetch, WebSearch, Agent, Skill,
 mcp__plugin_telegram_telegram__reply, react, edit_message
 ```
 
-### Layer 2: Dangerous Operation Detection (PreToolUse Hook)
+This eliminates all tool-level prompts.
 
-Every tool call is POSTed to the Telegram plugin's approval server (`127.0.0.1:18321/approve`).
+### Dangerous operation gating (PreToolUse hook)
 
-| Operation | Behavior |
-|-----------|----------|
-| Safe (ls, grep, read, etc.) | Auto-approved |
-| Dangerous (rm, sudo, git push, chmod, etc.) | Telegram inline button (✅ Approve / ❌ Deny) |
-| Sensitive paths (.env, .claude/settings.json) | Telegram inline button |
-| Hardcoded deny (rm -rf /, dd, mkfs) | Denied in settings |
-| Server unreachable | Denied for safety |
+Every tool call goes through a PreToolUse hook that POSTs to the Telegram plugin's built-in HTTP server (`127.0.0.1:18321/approve`).
 
-The approval server runs inside the Telegram plugin (Bun HTTP on localhost:18321). It uses regex patterns to classify operations:
+The server checks if the operation looks dangerous:
+
+| What | Result |
+|------|--------|
+| `ls`, `grep`, file reads | Auto-approved, no prompt |
+| `rm`, `sudo`, `git push`, `chmod` | Sends you a Telegram message with ✅/❌ buttons |
+| Edits to `.env`, `.claude/settings.json` | Same, buttons |
+| `rm -rf /`, `dd`, `mkfs` | Hard-denied in config, never reaches the server |
+| Server unreachable | Denied (fail-closed) |
+
+The danger patterns are regex-based:
 
 ```typescript
 const DANGEROUS_BASH = [
@@ -162,50 +160,47 @@ const DANGEROUS_BASH = [
   /(?:sudo|kill|killall|pkill)\s/i,
   /git\s+push/i,
   /git\s+reset\s+--hard/i,
-  // ... more patterns
+  // ...
 ]
 ```
 
-### Layer 3: Hard-Coded Path Protection (PTY Fallback)
+### Hard-coded path protection (the annoying one)
 
-Claude Code has **hard-coded protection** for writes to `.git/`, `.claude/`, `.vscode/`, and `.idea/` directories. This protection **cannot be overridden** by `permissions.allow` or `acceptEdits` mode — it always prompts in the terminal.
+Claude Code has built-in protection for writes to `.git/`, `.claude/`, `.vscode/`, and `.idea/`. Even with `acceptEdits` mode and a hook returning "allow," it still pops a confirmation prompt in the terminal.
 
-In headless mode, these prompts would block the session forever. The daemon detects them from the PTY output and forwards to Telegram:
+In a daemon, that prompt blocks forever. So we detect it from the PTY output (it shows "1.Yes 2.Yes,andallow... 3.No") and forward it to Telegram as an inline button message. You tap approve or deny, the daemon types "1" or "3" into the PTY. Two-minute timeout, auto-denies if you don't respond.
 
-```
-PTY prompt detected ("1.Yes  2.Yes,andallow...  3.No")
-  → Send Telegram message with ✅批准 / ❌拒絕 buttons
-  → Wait for user response (2 min timeout → auto-deny)
-  → Type "1" or "3" into PTY
-```
+### Why not just use `bypassPermissions`?
 
-### Why not `bypassPermissions`?
+We tried. It prevents plugin loading entirely, including the Telegram plugin. The bot can't receive messages at all. This appears to be a Claude Code bug — the docs say bypass only skips prompts, but in practice it also blocks MCP server startup. So we use `acceptEdits` mode instead and handle the remaining edge cases with PTY detection.
 
-`bypassPermissions` would solve Layer 3 (it skips path protection), but it **prevents plugin loading** — including the Telegram plugin itself. This is a Claude Code bug/limitation. We use `acceptEdits` mode instead, which auto-approves standard edits while keeping plugins loaded.
-
-### Permission Flow Summary
+### How it all fits together
 
 ```
 Claude wants to use a tool
     │
-    ├─ permissions.allow list → tool allowed?
-    │   YES → continue
-    │   NO → Claude Code prompts (would hang) → solved by allow list
+    ├─ permissions.allow → tool in the list? → yes → proceed
     │
     ├─ PreToolUse hook → POST to approval server
-    │   Safe → auto-allow
-    │   Dangerous → Telegram inline button → user decides
-    │   Server down → deny
+    │   safe op → auto-allow
+    │   dangerous op → Telegram button → you decide
+    │   server down → deny
     │
-    └─ Hard-coded path protection (.git/, .claude/, etc.)
-        PTY prompt appears → forwarded to Telegram → user decides
+    └─ hard-coded path protection
+        PTY prompt detected → forwarded to Telegram → you decide
 ```
 
 ## Requirements
 
 - Node.js >= 20
-- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI installed
-- Telegram bot token (created via [@BotFather](https://t.me/BotFather))
+- Claude Code CLI
+- Telegram bot token ([@BotFather](https://t.me/BotFather))
+
+## Known issues
+
+- Don't run inside cmux (its `--settings` injection conflicts with ours)
+- `bypassPermissions` mode breaks plugin loading (Claude Code bug)
+- Only tested on macOS
 
 ## License
 
