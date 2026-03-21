@@ -140,7 +140,7 @@ fi
     args.push("--channels", `plugin:${this.config.channel_plugin}`);
 
     // Auto-accept all tool use — daemon runs headless, no one to approve
-    args.push("--dangerously-skip-permissions");
+    args.push("--permission-mode", "bypassPermissions");
 
     // Load statusLine + any other settings from our own file (no conflict with cmux)
     const settingsFile = join(DATA_DIR, "claude-settings.json");
