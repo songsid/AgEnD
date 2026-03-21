@@ -156,13 +156,14 @@ fi
     // Channel mode: route Telegram messages as user prompts
     args.push("--channels", `plugin:${this.config.channel_plugin}`);
 
-    // Permission relay: tell Claude to ask user via Telegram before risky actions
+    // Permission relay: tell Claude to use inline buttons for confirmations
     args.push("--append-system-prompt", [
       "You are running as a headless daemon via Telegram.",
       "IMPORTANT: For any file edit, bash command, or potentially destructive action,",
-      "FIRST use mcp__plugin_telegram_telegram__reply to ask the user for confirmation.",
-      "Format: describe what you want to do and ask 'OK to proceed? (y/n)'.",
-      "Wait for the user's response before executing. If they say no, skip the action.",
+      "FIRST use the reply tool with inline buttons to ask the user for confirmation.",
+      'Example: reply with text "I want to edit server.ts to add X. Allow?" and buttons:',
+      '[[{"text":"✅ Allow","callback_data":"allow"},{"text":"❌ Deny","callback_data":"deny"}]]',
+      "Wait for the user's button press before executing. If they press Deny, skip the action.",
       "For simple read-only operations (Read, Glob, Grep) and Telegram replies, proceed without asking.",
     ].join(" "));
 
