@@ -123,9 +123,28 @@ export class FleetManager {
     }
   }
 
+  /** Load .env file from data dir into process.env */
+  private loadEnvFile(): void {
+    const envPath = join(this.dataDir, ".env");
+    if (!existsSync(envPath)) return;
+    const content = readFileSync(envPath, "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx < 0) continue;
+      const key = trimmed.slice(0, eqIdx);
+      const value = trimmed.slice(eqIdx + 1);
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  }
+
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
     this.configPath = configPath;
+    this.loadEnvFile();
     const fleet = this.loadConfig(configPath);
     const topicMode = fleet.channel?.mode === "topic";
     const ports = this.allocatePorts(fleet.instances);
@@ -232,6 +251,10 @@ export class FleetManager {
     });
 
     await this.adapter.start();
+    // Set the group chatId for approval messages
+    if (fleet.channel?.group_id) {
+      (this.adapter as TelegramAdapter).setLastChatId(String(fleet.channel.group_id));
+    }
     this.logger.info("Shared Telegram adapter started");
 
     // Periodically check for deleted topics (Telegram may not always send events)
@@ -252,10 +275,12 @@ export class FleetManager {
         await ipc.connect();
         this.instanceIpcClients.set(name, ipc);
 
-        // Handle outbound tool calls from daemon → route to shared adapter
+        // Handle outbound tool calls and approval requests from daemon
         ipc.on("message", (msg: Record<string, unknown>) => {
           if (msg.type === "fleet_outbound") {
             this.handleOutboundFromInstance(name, msg);
+          } else if (msg.type === "fleet_approval_request") {
+            this.handleApprovalFromInstance(name, msg);
           }
         });
 
@@ -309,6 +334,36 @@ export class FleetManager {
       default:
         respond(null, `Unknown tool: ${tool}`);
     }
+  }
+
+  /** Handle approval request from a daemon instance — forward to shared adapter */
+  private handleApprovalFromInstance(instanceName: string, msg: Record<string, unknown>): void {
+    this.logger.info({ instanceName, approvalId: msg.approvalId }, "Received approval request from instance");
+    if (!this.adapter) {
+      this.logger.warn({ instanceName }, "No adapter — denying approval");
+      this.sendApprovalResponse(instanceName, msg.approvalId as string, "deny");
+      return;
+    }
+
+    const prompt = `[${instanceName}] ${msg.prompt as string}`;
+    const approvalId = msg.approvalId as string;
+    const instanceConfig = this.fleetConfig?.instances[instanceName];
+    const threadId = instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined;
+    this.logger.info({ instanceName, threadId, approvalId }, "Sending approval to Telegram");
+
+    this.adapter.sendApproval(prompt, (decision) => {
+      this.logger.info({ instanceName, approvalId, decision }, "Approval callback received");
+      this.sendApprovalResponse(instanceName, approvalId, decision);
+    }, undefined, threadId).catch((err) => {
+      this.logger.warn({ instanceName, err: (err as Error).message }, "Failed to send approval to Telegram");
+      this.sendApprovalResponse(instanceName, approvalId, "deny");
+    });
+  }
+
+  private sendApprovalResponse(instanceName: string, approvalId: string, decision: "approve" | "deny"): void {
+    this.logger.info({ instanceName, approvalId, decision }, "Sending approval response to daemon");
+    const ipc = this.instanceIpcClients.get(instanceName);
+    ipc?.send({ type: "fleet_approval_response", approvalId, decision });
   }
 
   // ===================== Auto-create topics =====================
