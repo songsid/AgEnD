@@ -1,20 +1,6 @@
 import { createServer, type Server } from "node:http";
 import type { MessageBus } from "../channel/message-bus.js";
-
-const SAFE_TOOLS = new Set([
-  "Read", "Edit", "Write", "Glob", "Grep",
-  "Bash(*)", "WebFetch", "WebSearch", "Agent", "Skill",
-  "ToolSearch", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
-  "NotebookEdit", "TodoRead", "TodoWrite",
-  "mcp__ccd-channel__reply",
-  "mcp__ccd-channel__react",
-  "mcp__ccd-channel__edit_message",
-  "mcp__ccd-channel__download_attachment",
-]);
-
-const SAFE_PREFIXES = [
-  "mcp__ccd-channel__",
-];
+import type { IpcServer } from "../channel/ipc-bridge.js";
 
 const DANGER_PATTERNS = [
   /^rm\s+-rf\s+[\/~]/,
@@ -27,7 +13,6 @@ const DANGER_PATTERNS = [
 ];
 
 function isSafeTool(toolName: string): boolean {
-  // Bash commands need danger pattern checking — everything else is safe
   if (toolName === "Bash" || toolName.startsWith("Bash(")) return false;
   return true;
 }
@@ -36,10 +21,33 @@ function isDangerousCommand(command: string): boolean {
   return DANGER_PATTERNS.some(pattern => pattern.test(command));
 }
 
+interface ApprovalOptions {
+  messageBus: MessageBus;
+  port: number;
+  /** In topic mode, approval is forwarded via IPC to fleet manager */
+  ipcServer?: IpcServer | null;
+  topicMode?: boolean;
+  /** Instance name — so fleet manager knows which topic to send approval to */
+  instanceName?: string;
+}
+
+const APPROVAL_TIMEOUT_MS = 120_000;
+
 export class ApprovalServer {
   private server: Server | null = null;
+  private messageBus: MessageBus;
+  private port: number;
+  private ipcServer: IpcServer | null;
+  private topicMode: boolean;
+  private instanceName: string;
 
-  constructor(private messageBus: MessageBus, private port: number) {}
+  constructor(opts: ApprovalOptions) {
+    this.messageBus = opts.messageBus;
+    this.port = opts.port;
+    this.ipcServer = opts.ipcServer ?? null;
+    this.topicMode = opts.topicMode ?? false;
+    this.instanceName = opts.instanceName ?? "";
+  }
 
   async start(): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -66,9 +74,10 @@ export class ApprovalServer {
             } else if (tool_name === "Bash" && typeof tool_input?.command === "string" && isDangerousCommand(tool_input.command)) {
               permissionDecision = "deny";
             } else {
-              const prompt = `Tool: ${tool_name}\nInput: ${JSON.stringify(tool_input, null, 2)}`;
-              const approval = await this.messageBus.requestApproval(prompt);
-              permissionDecision = approval.decision === "approve" ? "allow" : "deny";
+              // Non-dangerous Bash — needs human approval
+              const prompt = `🔧 ${tool_name}\n\`\`\`\n${typeof tool_input?.command === "string" ? tool_input.command : JSON.stringify(tool_input, null, 2)}\n\`\`\``;
+              const decision = await this.requestApproval(prompt);
+              permissionDecision = decision;
             }
 
             res.writeHead(200, { "Content-Type": "application/json" });
@@ -90,6 +99,51 @@ export class ApprovalServer {
         const address = this.server!.address();
         const actualPort = typeof address === "object" && address !== null ? address.port : this.port;
         resolve(actualPort);
+      });
+    });
+  }
+
+  private requestApproval(prompt: string): Promise<"allow" | "deny"> {
+    if (this.topicMode && this.ipcServer) {
+      return this.requestApprovalViaIpc(prompt);
+    }
+    return this.requestApprovalViaBus(prompt);
+  }
+
+  /** DM mode: use messageBus directly (adapter is registered on this daemon) */
+  private async requestApprovalViaBus(prompt: string): Promise<"allow" | "deny"> {
+    const result = await this.messageBus.requestApproval(prompt);
+    return result.decision === "approve" ? "allow" : "deny";
+  }
+
+  /** Topic mode: forward approval request to fleet manager via IPC */
+  private requestApprovalViaIpc(prompt: string): Promise<"allow" | "deny"> {
+    return new Promise((resolve) => {
+      const approvalId = `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        resolve("deny");
+      }, APPROVAL_TIMEOUT_MS);
+
+      const onMessage = (msg: Record<string, unknown>) => {
+        if (msg.type === "fleet_approval_response" && msg.approvalId === approvalId) {
+          cleanup();
+          resolve(msg.decision === "approve" ? "allow" : "deny");
+        }
+      };
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        this.ipcServer?.removeListener("message", onMessage as (...a: unknown[]) => void);
+      };
+
+      this.ipcServer?.on("message", onMessage as (...a: unknown[]) => void);
+      this.ipcServer?.broadcast({
+        type: "fleet_approval_request",
+        approvalId,
+        instanceName: this.instanceName,
+        prompt,
       });
     });
   }

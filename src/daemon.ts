@@ -216,7 +216,13 @@ export class Daemon {
 
     // 6. Approval server
     const port = this.config.approval_port ?? 18321;
-    this.approvalServer = new ApprovalServer(this.messageBus, port);
+    this.approvalServer = new ApprovalServer({
+      messageBus: this.messageBus,
+      port,
+      ipcServer: this.ipcServer,
+      topicMode: this.topicMode,
+      instanceName: this.name,
+    });
     await this.approvalServer.start();
 
     // 7. Prompt detector
@@ -455,7 +461,7 @@ export class Daemon {
     const settings: Record<string, unknown> = {
       // Disable the official telegram plugin to avoid bot token polling conflict
       // Our daemon manages Telegram via its own adapter
-      disabledPlugins: ["telegram@claude-plugins-official"],
+      enabledPlugins: { "telegram@claude-plugins-official": false },
       hooks: {
         PreToolUse: [
           {

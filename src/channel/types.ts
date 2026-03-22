@@ -16,6 +16,7 @@ export interface ChannelAdapter extends EventEmitter {
     prompt: string,
     callback: (decision: "approve" | "deny") => void,
     signal?: AbortSignal,
+    threadId?: string,
   ): Promise<ApprovalHandle>;
 
   downloadAttachment(fileId: string): Promise<string>;

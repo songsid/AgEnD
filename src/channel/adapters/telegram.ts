@@ -323,6 +323,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     prompt: string,
     callback: (decision: "approve" | "deny") => void,
     signal?: AbortSignal,
+    threadId?: string,
   ): Promise<ApprovalHandle> {
     const nonce = Math.random().toString(36).slice(2, 10);
     const approveData = `approval:approve:${nonce}`;
@@ -332,25 +333,26 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       .text("✅ Approve", approveData)
       .text("❌ Deny", denyData);
 
-    // We need a chat to send to — use the first allowed user's chat as a fallback
-    // The caller should ideally pass a chatId but for now we broadcast to all
-    // allowed users (or the adapter emits to registered listeners).
-    // Since ChannelAdapter.sendApproval doesn't include a chatId, we store the
-    // pending approval and fire it through the callback_query handler.
-
     const cleanup = () => {
       this.off("callback_query", handler);
     };
 
-    const handler = (query: { data?: string; from?: { id?: number } }) => {
-      if (!query.data) return;
-      if (query.data === approveData) {
-        cleanup();
-        callback("approve");
-      } else if (query.data === denyData) {
-        cleanup();
-        callback("deny");
+    const handler = (query: { callbackData?: string; chatId?: string; messageId?: string }) => {
+      if (!query.callbackData) return;
+      const isApprove = query.callbackData === approveData;
+      const isDeny = query.callbackData === denyData;
+      if (!isApprove && !isDeny) return;
+
+      cleanup();
+      // Update the message to show the decision (remove buttons)
+      if (query.chatId && query.messageId) {
+        const label = isApprove ? "✅ Approved" : "❌ Denied";
+        this.bot.api.editMessageText(
+          Number(query.chatId), Number(query.messageId),
+          `${label}\n${prompt}`,
+        ).catch(() => {});
       }
+      callback(isApprove ? "approve" : "deny");
     };
 
     this.on("callback_query", handler);
@@ -361,17 +363,37 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       });
     }
 
-    // Emit an event so the host can forward the approval message to the right chat
-    this.emit("approval_request", {
-      prompt,
-      keyboard,
-      nonce,
-    });
+    // Send the approval message directly if we have a chatId (topic mode via fleet)
+    // Otherwise emit event for DM mode host to handle
+    if (threadId) {
+      // Topic mode: send directly to the group chat + thread
+      const chatId = this.getLastChatId();
+      if (chatId) {
+        await this.bot.api.sendMessage(Number(chatId), prompt, {
+          message_thread_id: Number(threadId),
+          reply_markup: keyboard,
+          parse_mode: "Markdown",
+        }).catch(() => {
+          // Fallback: try without markdown
+          return this.bot.api.sendMessage(Number(chatId), prompt, {
+            message_thread_id: Number(threadId),
+            reply_markup: keyboard,
+          });
+        });
+      }
+    } else {
+      this.emit("approval_request", { prompt, keyboard, nonce });
+    }
 
     return {
       cancel: cleanup,
     };
   }
+
+  /** Get the last known chatId (group ID for topic mode) */
+  private lastChatId: string | null = null;
+  getLastChatId(): string | null { return this.lastChatId; }
+  setLastChatId(chatId: string): void { this.lastChatId = chatId; }
 
   // ── File download ─────────────────────────────────────────────────────────
 
