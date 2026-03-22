@@ -512,20 +512,20 @@ export class FleetManager {
 
       for (const [threadId, instanceName] of this.routingTable) {
         try {
-          // Try to get the topic info by sending a dummy request
-          // If topic is deleted, Telegram returns 400 "Bad Request: message thread not found"
-          // We use getForumTopicIconStickers as a lightweight check — but it doesn't work per-topic
-          // Instead, try sending a chat action to the thread
+          // editForumTopic with no changes — returns TOPIC_ID_INVALID if deleted
+          // sendChatAction returns ok:true even for deleted topics (unreliable)
           const bot = tgAdapter.getBot();
-          await bot.api.sendChatAction(groupId, "typing", {
+          await bot.api.raw.editForumTopic({
+            chat_id: groupId,
             message_thread_id: threadId,
           });
         } catch (err: unknown) {
           const errMsg = String(err);
-          if (errMsg.includes("thread not found") || errMsg.includes("TOPIC_DELETED") || errMsg.includes("TOPIC_CLOSED")) {
+          if (errMsg.includes("TOPIC_ID_INVALID") || errMsg.includes("thread not found")) {
             this.logger.info({ threadId, instanceName }, "Topic deleted — auto-unbinding");
             await this.handleTopicDeleted(threadId);
           }
+          // Other errors (network etc.) — ignore, try again next cycle
         }
       }
     }, 60_000); // Check every 60 seconds
