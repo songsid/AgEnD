@@ -50,12 +50,25 @@ export class FleetManager {
     return table;
   }
 
-  /** Allocate approval ports — use explicit port if set, otherwise auto-increment */
+  /** Allocate approval ports — use explicit port if set, otherwise auto-increment (skip collisions) */
   allocatePorts(instances: Record<string, Partial<InstanceConfig>>): Record<string, number> {
     const ports: Record<string, number> = {};
+    // First pass: collect explicit ports
+    const usedPorts = new Set<number>();
+    for (const config of Object.values(instances)) {
+      if (config.approval_port) usedPorts.add(config.approval_port);
+    }
+    // Second pass: assign
     let auto = BASE_PORT;
     for (const [name, config] of Object.entries(instances)) {
-      ports[name] = config.approval_port ?? auto++;
+      if (config.approval_port) {
+        ports[name] = config.approval_port;
+      } else {
+        while (usedPorts.has(auto)) auto++;
+        ports[name] = auto;
+        usedPorts.add(auto);
+        auto++;
+      }
     }
     return ports;
   }
