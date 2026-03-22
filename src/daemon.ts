@@ -192,23 +192,20 @@ export class Daemon {
     );
     this.promptDetector.startPolling();
 
-    // 8. Capture session ID from statusline for resume
-    const sessionIdFile = join(this.instanceDir, "session-id");
-    this.guardian?.on("status_update", (status: Record<string, unknown>) => {
-      const raw = readFileSync(join(this.instanceDir, "statusline.json"), "utf-8");
-      try {
-        const data = JSON.parse(raw);
-        if (data.session_id) {
-          writeFileSync(sessionIdFile, data.session_id);
-        }
-      } catch {}
-    });
-
-    // 9. Context guardian
+    // 8. Context guardian
     const statusFile = join(this.instanceDir, "statusline.json");
     this.guardian = new ContextGuardian(this.config.context_guardian, this.logger, statusFile);
     this.guardian.startWatching();
     this.guardian.startTimer();
+
+    // Capture session ID from statusline for resume
+    const sessionIdFile = join(this.instanceDir, "session-id");
+    this.guardian.on("status_update", () => {
+      try {
+        const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+        if (data.session_id) writeFileSync(sessionIdFile, data.session_id);
+      } catch {}
+    });
     this.guardian.on("rotate", async (reason: string) => {
       this.logger.info({ reason }, "Context rotation triggered — sending /compact");
 
@@ -221,18 +218,17 @@ export class Daemon {
         // Wait for compact to finish (poll statusline for reduced context %)
         const compactTimeout = 60_000;
         const start = Date.now();
+        const { readFile } = await import("node:fs/promises");
         while (Date.now() - start < compactTimeout) {
           await new Promise(r => setTimeout(r, 5000));
           try {
             const sf = join(this.instanceDir, "statusline.json");
-            if (existsSync(sf)) {
-              const data = JSON.parse(readFileSync(sf, "utf-8"));
-              const pct = data.context_window?.used_percentage;
-              if (pct != null && pct < this.config.context_guardian.threshold_percentage) {
-                this.logger.info({ newUsage: pct }, "Compact succeeded — context below threshold");
-                this.guardian?.markRotationComplete();
-                return;
-              }
+            const data = JSON.parse(await readFile(sf, "utf-8"));
+            const pct = data.context_window?.used_percentage;
+            if (pct != null && pct < this.config.context_guardian.threshold_percentage) {
+              this.logger.info({ newUsage: pct }, "Compact succeeded — context below threshold");
+              this.guardian?.markRotationComplete();
+              return;
             }
           } catch {}
         }
@@ -242,12 +238,11 @@ export class Daemon {
 
       // Step 2: If compact wasn't enough, kill and start fresh (no --resume)
       try {
+        const { readFile } = await import("node:fs/promises");
         const sf = join(this.instanceDir, "statusline.json");
-        if (existsSync(sf)) {
-          const data = JSON.parse(readFileSync(sf, "utf-8"));
-          if (data.session_id) {
-            writeFileSync(join(this.instanceDir, "session-id"), data.session_id);
-          }
+        const data = JSON.parse(await readFile(sf, "utf-8"));
+        if (data.session_id) {
+          writeFileSync(join(this.instanceDir, "session-id"), data.session_id);
         }
       } catch {}
 
@@ -462,13 +457,20 @@ export class Daemon {
       // Topic mode: forward to fleet manager via IPC (fleet manager connected as IPC client)
       // The fleet manager's IPC client receives this and routes to shared adapter
       this.ipcServer?.broadcast({ type: "fleet_outbound", tool, args, requestId });
-      // Response will come back as fleet_outbound_response — relay to MCP server
+      const cleanup = () => {
+        this.ipcServer?.removeListener("message", onResponse as (...a: unknown[]) => void);
+        clearTimeout(timeout);
+      };
       const onResponse = (respMsg: Record<string, unknown>) => {
         if (respMsg.type === "fleet_outbound_response" && respMsg.requestId === requestId) {
+          cleanup();
           respond(respMsg.result, respMsg.error as string | undefined);
-          this.ipcServer?.removeListener("message", onResponse as (...a: unknown[]) => void);
         }
       };
+      const timeout = setTimeout(() => {
+        cleanup();
+        respond(null, "Fleet outbound timed out after 30s");
+      }, 30_000);
       this.ipcServer?.on("message", onResponse as (...a: unknown[]) => void);
       return;
     }
