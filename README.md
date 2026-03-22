@@ -1,22 +1,22 @@
 # claude-channel-daemon
 
-Keep your Claude Code Telegram bot alive without babysitting a terminal. This daemon wraps `claude --channels` as a background service, restarts it when it crashes, rotates sessions before context fills up, and backs up memory to SQLite.
+Fleet manager for Claude Code — run multiple Claude sessions behind a single Telegram bot, each mapped to a Forum Topic. Built-in approval system, voice transcription, auto context rotation, and crash recovery.
 
-[中文版 README](README.zh-TW.md)
-
-> **⚠️ Heads up:** The daemon pre-approves most tools and uses a PreToolUse hook to gate dangerous operations through Telegram inline buttons. If the approval server is unreachable, all tool calls are denied. Read the [permission architecture](#permission-architecture) section before running this in production.
+> **⚠️** The daemon pre-approves most tools. Dangerous Bash commands (rm, sudo, git push...) are forwarded to Telegram for manual approval via inline buttons. If the approval server is unreachable, dangerous commands are denied. See [Permission Architecture](#permission-architecture).
 
 ## Why this exists
 
-Claude Code's Telegram plugin needs a running CLI session. Close the terminal and the bot goes offline. That's fine for testing, not for anything you'd rely on.
+Claude Code's official Telegram plugin gives you 1 bot = 1 session. Close the terminal and it goes offline.
 
 This daemon fixes that:
 
-- Runs Claude Code in a pseudo-terminal (`node-pty`) in the background
-- Restarts on crashes with exponential backoff (1s, 2s, 4s... up to 60s)
-- Watches context window usage and kills/respawns the session before quality degrades
-- Backs up memory files to SQLite so nothing is lost across restarts
-- Can install as a launchd (macOS) or systemd (Linux) service
+- **Fleet mode** — 1 Telegram bot, N Forum Topics = N independent Claude sessions
+- **tmux-based** — Claude runs in tmux windows, survives daemon crashes
+- **Auto context rotation** — sends `/compact` at 40%, restarts fresh if needed
+- **Voice messages** — Telegram voice → Groq Whisper → text to Claude
+- **Approval system** — dangerous Bash commands get Telegram inline buttons
+- **Auto topic binding** — create a Telegram topic, pick a project directory, done
+- **System service** — install as launchd (macOS) or systemd (Linux)
 
 ## Quick start
 
@@ -25,181 +25,165 @@ git clone https://github.com/suzuke/claude-channel-daemon.git
 cd claude-channel-daemon
 npm install && npm link
 
-# Interactive setup (bot token, working directory, system service)
+# Prerequisites: claude CLI + tmux
+brew install tmux  # macOS
+
+# Interactive setup
 ccd init
 
-# Start
-ccd start
+# Start the fleet
+ccd fleet start
 ```
-
-After `npm link`, you get the `ccd` command globally.
 
 ## Commands
 
 ```
-ccd start       Start the daemon
-ccd stop        Stop it
-ccd status      Check if it's running
-ccd logs        Show logs (-n 50, -f to follow)
-ccd install     Install as system service
-ccd uninstall   Remove the service
-ccd init        Interactive setup
+ccd init                  Interactive setup wizard
+ccd fleet start           Start all instances
+ccd fleet stop            Stop all instances
+ccd fleet status          Show instance status
+ccd fleet logs <name>     Show instance logs
+ccd fleet start <name>    Start specific instance
+ccd fleet stop <name>     Stop specific instance
+ccd topic list            List topic bindings
+ccd topic bind <n> <tid>  Bind instance to topic
+ccd topic unbind <n>      Unbind instance from topic
+ccd access lock <n>       Lock instance access
+ccd access unlock <n>     Unlock instance access
+ccd access pair <n> <uid> Generate pairing code
+ccd install               Install as system service
+ccd uninstall             Remove system service
 ```
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│              claude-channel-daemon           │
-│                                             │
-│  ┌─────────────────┐  ┌──────────────────┐  │
-│  │ Process Manager  │  │ Context Guardian │  │
-│  │ (node-pty)       │  │ (rotation)       │  │
-│  └────────┬─────────┘  └────────┬─────────┘  │
-│           │                      │            │
-│  ┌────────┴─────────┐  ┌────────┴─────────┐  │
-│  │  Memory Layer     │  │   Service        │  │
-│  │  (SQLite backup)  │  │   (launchd/      │  │
-│  │                   │  │    systemd)      │  │
-│  └───────────────────┘  └──────────────────┘  │
-│                                             │
-│           ┌──────────────┐                  │
-│           │  Claude Code  │                  │
-│           │  CLI (PTY)    │                  │
-│           │  + Telegram   │                  │
-│           │    Plugin     │                  │
-│           └──────────────┘                  │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                    Fleet Manager                         │
+│                                                          │
+│  Shared TelegramAdapter (1 bot, Grammy long-polling)     │
+│         │                                                │
+│    threadId routing table: #277→proj-a, #672→proj-b     │
+│         │                                                │
+│  ┌──────┴──────┐  ┌──────┴──────┐  ┌──────┴──────┐     │
+│  │  Daemon A    │  │  Daemon B    │  │  Daemon C    │     │
+│  │  IPC Server  │  │  IPC Server  │  │  IPC Server  │     │
+│  │  Approval    │  │  Approval    │  │  Approval    │     │
+│  │  Context     │  │  Context     │  │  Context     │     │
+│  │  Guardian    │  │  Guardian    │  │  Guardian    │     │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
+│         │                  │                  │            │
+│  ┌──────┴───────┐  ┌──────┴───────┐  ┌──────┴───────┐     │
+│  │ tmux window   │  │ tmux window   │  │ tmux window   │     │
+│  │ claude        │  │ claude        │  │ claude        │     │
+│  │ + MCP server  │  │ + MCP server  │  │ + MCP server  │     │
+│  └───────────────┘  └───────────────┘  └───────────────┘     │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Process Manager** — Opens a PTY, runs `claude --channels plugin:telegram@...`. If it dies, waits and restarts. Captures the session UUID so it can `--resume` after a crash. Sends `/exit` for clean shutdowns.
+**Fleet Manager** — Owns the shared Telegram adapter. Routes inbound messages by `message_thread_id` to the correct daemon instance via IPC. Handles topic auto-create, auto-bind (directory browser), and auto-unbind (topic deletion detection).
 
-**Context Guardian** — Reads Claude Code's status line JSON (which the daemon injects via a custom statusline script). When `context_window.used_percentage` crosses the threshold (default 40%), it kills and respawns the session. Also gets `rate_limits` and `cost` for free. No API calls spent on monitoring.
+**Daemon** — Per-instance orchestrator. Manages a tmux window running Claude Code with `--dangerously-load-development-channels server:ccd-channel`. Runs an approval server, context guardian, and transcript monitor.
 
-**Memory Layer** — Uses chokidar to watch `~/.claude/projects/.../memory/`. When a memory file changes, it copies the content to SQLite with a timestamp. After a session restart, Claude Code reads the memory directory on its own.
+**MCP Channel Server** — Runs as Claude's child process. Communicates with the daemon via Unix socket IPC. Declares `claude/channel` capability and pushes inbound messages via `notifications/claude/channel`. Auto-reconnects on IPC disconnect.
 
-**Service Installer** — Writes a launchd plist or systemd unit file and tells you how to enable it.
+**Context Guardian** — Watches Claude's status line JSON. At 40% context usage, sends `/compact`. If compact doesn't bring it below threshold, kills the window and starts a fresh session.
 
 ## Configuration
 
-Config lives at `~/.claude-channel-daemon/config.yaml`:
+Fleet config at `~/.claude-channel-daemon/fleet.yaml`:
 
 ```yaml
-channel_plugin: telegram@claude-plugins-official
-working_directory: /path/to/your/project
+project_roots:
+  - ~/Projects
 
-restart_policy:
-  max_retries: 10
-  backoff: exponential  # or linear
-  reset_after: 300      # reset retry counter after 5 min of uptime
+channel:
+  type: telegram
+  mode: topic           # topic (recommended) or dm
+  bot_token_env: CCD_BOT_TOKEN
+  group_id: -100xxxxxxxxxx
+  access:
+    mode: locked         # locked or pairing
+    allowed_users:
+      - 123456789        # your Telegram user ID
 
-context_guardian:
-  threshold_percentage: 40  # kill and respawn at this %
-  max_age_hours: 4          # force rotation after this long
-  strategy: hybrid          # status_line | timer | hybrid
+defaults:
+  context_guardian:
+    threshold_percentage: 40
+    max_age_hours: 4
+  log_level: info
 
-memory:
-  auto_summarize: true
-  watch_memory_dir: true
-  backup_to_sqlite: true
+instances:
+  my-project:
+    working_directory: /path/to/project
+    topic_id: 277
+```
 
-log_level: info
+Bot token in `~/.claude-channel-daemon/.env`:
+```
+CCD_BOT_TOKEN=123456789:AAH...
+GROQ_API_KEY=gsk_...          # optional, for voice transcription
+```
+
+## Permission architecture
+
+### Tool permissions
+
+All tools are pre-approved in per-instance `claude-settings.json`:
+```
+Read, Edit, Write, Glob, Grep, Bash(*), WebFetch, WebSearch, Agent, Skill,
+mcp__ccd-channel__reply, react, edit_message, download_attachment
+```
+
+### Dangerous operation gating
+
+A PreToolUse hook (matcher: `"Bash"`) forwards Bash commands to the approval server. The server checks against danger patterns:
+
+| Command | Result |
+|---------|--------|
+| `ls`, `cat`, `npm install` | Auto-approved |
+| `rm`, `mv`, `sudo`, `kill`, `git push/reset/clean` | Telegram approval buttons |
+| `rm -rf /`, `dd`, `mkfs` | Hard-denied in settings |
+| Approval server unreachable | Denied (fail-closed) |
+
+### Flow
+
+```
+Claude calls Bash tool
+  → PreToolUse hook fires
+  → curl POST to approval server (127.0.0.1:PORT)
+  → safe? → allow
+  → dangerous? → IPC → fleet manager → Telegram inline buttons → you decide
+  → server down? → deny
 ```
 
 ## Data directory
 
-Everything lives in `~/.claude-channel-daemon/`:
+`~/.claude-channel-daemon/`:
 
-| File | What it does |
-|------|-------------|
-| `config.yaml` | Main config |
-| `daemon.pid` | PID file (exists while running) |
-| `daemon.log` | Log output (also goes to stdout) |
-| `session-id` | Saved UUID for `--resume` |
-| `statusline.json` | Latest status line data from Claude Code |
-| `claude-settings.json` | Settings injected into the Claude session |
-| `statusline.sh` | Shell script that tees status line JSON |
-| `memory.db` | SQLite backup of memory files |
-
-## Permission architecture
-
-Claude Code has two independent permission systems. If a headless daemon doesn't handle both, it hangs. Here's what we learned the hard way.
-
-### Tool-level permissions
-
-Claude Code prompts the first time you use Edit, Bash, or any MCP tool in a session. In a terminal you'd click "allow." In a daemon, nobody's clicking.
-
-We pre-approve everything in `claude-settings.json`:
-
-```
-Read, Edit, Write, Glob, Grep, Bash(*), WebFetch, WebSearch, Agent, Skill,
-mcp__plugin_telegram_telegram__reply, react, edit_message
-```
-
-This eliminates all tool-level prompts.
-
-### Dangerous operation gating (PreToolUse hook)
-
-Every tool call goes through a PreToolUse hook that POSTs to the Telegram plugin's built-in HTTP server (`127.0.0.1:18321/approve`).
-
-The server checks if the operation looks dangerous:
-
-| What | Result |
-|------|--------|
-| `ls`, `grep`, file reads | Auto-approved, no prompt |
-| `rm`, `sudo`, `git push`, `chmod` | Sends you a Telegram message with ✅/❌ buttons |
-| Edits to `.env`, `.claude/settings.json` | Same, buttons |
-| `rm -rf /`, `dd`, `mkfs` | Hard-denied in config, never reaches the server |
-| Server unreachable | Denied (fail-closed) |
-
-The danger patterns are regex-based:
-
-```typescript
-const DANGEROUS_BASH = [
-  /(?:rm|rmdir)\s/i,
-  /(?:sudo|kill|killall|pkill)\s/i,
-  /git\s+push/i,
-  /git\s+reset\s+--hard/i,
-  // ...
-]
-```
-
-### Hard-coded path protection (the annoying one)
-
-Claude Code has built-in protection for writes to `.git/`, `.claude/`, `.vscode/`, and `.idea/`. Even with `acceptEdits` mode and a hook returning "allow," it still pops a confirmation prompt in the terminal.
-
-In a daemon, that prompt blocks forever. So we detect it from the PTY output (it shows "1.Yes 2.Yes,andallow... 3.No") and forward it to Telegram as an inline button message. You tap approve or deny, the daemon types "1" or "3" into the PTY. Two-minute timeout, auto-denies if you don't respond.
-
-### Why not just use `bypassPermissions`?
-
-We tried. It prevents plugin loading entirely, including the Telegram plugin. The bot can't receive messages at all. This appears to be a Claude Code bug — the docs say bypass only skips prompts, but in practice it also blocks MCP server startup. So we use `acceptEdits` mode instead and handle the remaining edge cases with PTY detection.
-
-### How it all fits together
-
-```
-Claude wants to use a tool
-    │
-    ├─ permissions.allow → tool in the list? → yes → proceed
-    │
-    ├─ PreToolUse hook → POST to approval server
-    │   safe op → auto-allow
-    │   dangerous op → Telegram button → you decide
-    │   server down → deny
-    │
-    └─ hard-coded path protection
-        PTY prompt detected → forwarded to Telegram → you decide
-```
+| Path | Purpose |
+|------|---------|
+| `fleet.yaml` | Fleet configuration |
+| `.env` | Bot token + API keys |
+| `daemon.log` | Fleet log (JSON) |
+| `instances/<name>/` | Per-instance data |
+| `instances/<name>/session-id` | Saved session UUID for `--resume` |
+| `instances/<name>/statusline.json` | Latest status line from Claude |
+| `instances/<name>/channel.sock` | IPC Unix socket |
+| `instances/<name>/transcript-offset` | Byte offset for transcript monitor |
 
 ## Requirements
 
 - Node.js >= 20
+- tmux
 - Claude Code CLI
 - Telegram bot token ([@BotFather](https://t.me/BotFather))
+- Groq API key (optional, for voice transcription)
 
 ## Known issues
 
-- Don't run inside cmux (its `--settings` injection conflicts with ours)
-- `bypassPermissions` mode breaks plugin loading (Claude Code bug)
+- Official telegram plugin in global `enabledPlugins` causes 409 polling conflicts (daemon retries with backoff)
+- `--settings` override of `enabledPlugins` may not work — investigating
 - Only tested on macOS
 
 ## License
