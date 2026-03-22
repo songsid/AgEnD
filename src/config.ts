@@ -11,7 +11,7 @@ export const DEFAULT_CONFIG: DaemonConfig = {
     reset_after: 300,
   },
   context_guardian: {
-    threshold_percentage: 80,
+    threshold_percentage: 40,
     max_age_hours: 4,
     strategy: "hybrid",
   },
