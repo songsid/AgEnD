@@ -45,10 +45,22 @@ export class Daemon {
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info({ name: this.name, pid: process.pid }, "Starting daemon instance");
 
-    // 1. IPC server
+    // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath);
     await this.ipcServer.listen();
+
+    // IPC message relay: when daemon wants to push a channel message to Claude,
+    // it broadcasts to all IPC clients (the MCP server is one of them).
+    // When MCP server sends a tool_call, daemon handles it via the messageBus.
+    this.ipcServer.on("message", (msg: Record<string, unknown>, socket: import("node:net").Socket) => {
+      if (msg.type === "tool_call") {
+        // MCP server forwarding a Claude tool call (reply, react, edit, download)
+        this.handleToolCall(msg, socket);
+      } else if (msg.type === "mcp_ready") {
+        this.logger.info("MCP channel server connected and ready");
+      }
+    });
 
     // 2. Tmux — ensure session, create window if not alive
     const sessionName = "ccd";
@@ -216,6 +228,79 @@ export class Daemon {
 
   getMessageBus(): MessageBus {
     return this.messageBus;
+  }
+
+  /**
+   * Push an inbound channel message to Claude via the MCP server.
+   * This broadcasts to all IPC clients — the MCP server picks it up
+   * and forwards to Claude via notifications/claude/channel.
+   */
+  pushChannelMessage(content: string, meta: Record<string, string>): void {
+    if (!this.ipcServer) {
+      this.logger.warn("Cannot push channel message: IPC server not running");
+      return;
+    }
+    this.ipcServer.broadcast({
+      type: "channel_message",
+      content,
+      meta,
+    });
+    this.logger.info({ user: meta.user, text: content.slice(0, 100) }, "Pushed channel message to Claude");
+  }
+
+  /**
+   * Handle a tool call from the MCP server (forwarded by Claude).
+   * Routes to the channel adapter via MessageBus.
+   */
+  private handleToolCall(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
+    const tool = msg.tool as string;
+    const args = (msg.args ?? {}) as Record<string, unknown>;
+    const requestId = msg.requestId as number;
+
+    this.logger.info({ tool, requestId }, "Tool call from MCP server");
+
+    // For now, log and respond. Full adapter routing will be wired in fleet manager.
+    const respond = (result: unknown, error?: string) => {
+      this.ipcServer?.send(socket, { requestId, result, error });
+    };
+
+    // Route to adapter via MessageBus
+    const adapters = this.messageBus.getAllAdapters();
+    if (adapters.length === 0) {
+      // In topic mode, daemon doesn't own the adapter — respond with info
+      respond(null, "No adapter connected (topic mode — route via fleet manager)");
+      return;
+    }
+
+    const adapter = adapters[0];
+    const chatId = args.chat_id as string ?? "";
+
+    switch (tool) {
+      case "reply":
+        adapter.sendText(chatId, args.text as string ?? "", {
+          threadId: args.thread_id as string,
+          replyTo: args.reply_to as string,
+        }).then(sent => respond(sent))
+          .catch(e => respond(null, e.message));
+        break;
+      case "react":
+        adapter.react(chatId, args.message_id as string ?? "", args.emoji as string ?? "")
+          .then(() => respond("ok"))
+          .catch(e => respond(null, e.message));
+        break;
+      case "edit_message":
+        adapter.editMessage(chatId, args.message_id as string ?? "", args.text as string ?? "")
+          .then(() => respond("ok"))
+          .catch(e => respond(null, e.message));
+        break;
+      case "download_attachment":
+        adapter.downloadAttachment(args.file_id as string ?? "")
+          .then(path => respond(path))
+          .catch(e => respond(null, e.message));
+        break;
+      default:
+        respond(null, `Unknown tool: ${tool}`);
+    }
   }
 
   private writeSettings(): void {
