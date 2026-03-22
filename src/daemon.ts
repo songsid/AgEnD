@@ -274,9 +274,25 @@ export class Daemon {
     if (this.adapter) await this.adapter.stop();
     await this.approvalServer?.stop();
     await this.ipcServer?.close();
-    // Keep tmux window alive for resume — Claude continues running
-    // window-id is preserved so next daemon start reattaches
-    // Only context rotation kills the window (see guardian.on("rotate"))
+    // Strategy A: kill window on stop, resume via --resume on next start
+    // MCP server has no reconnection → keeping window alive would leave
+    // Claude without channel/approval connectivity
+    if (this.tmux) {
+      // Capture session-id before killing (for --resume on next start)
+      try {
+        const statusFile = join(this.instanceDir, "statusline.json");
+        if (existsSync(statusFile)) {
+          const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+          if (data.session_id) {
+            writeFileSync(join(this.instanceDir, "session-id"), data.session_id);
+            this.logger.info({ sessionId: data.session_id }, "Saved session ID for resume");
+          }
+        }
+      } catch {}
+      await this.tmux.killWindow();
+      const windowIdFile = join(this.instanceDir, "window-id");
+      try { unlinkSync(windowIdFile); } catch {}
+    }
     const pidPath = join(this.instanceDir, "daemon.pid");
     try {
       unlinkSync(pidPath);
