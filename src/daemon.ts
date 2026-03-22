@@ -160,17 +160,15 @@ export class Daemon {
     // 4. Transcript monitor
     this.transcriptMonitor = new TranscriptMonitor(this.instanceDir, this.logger);
 
-    // 5. Wire transcript events → tool status in Telegram
-    this.transcriptMonitor.on("tool_use", (name: string, input: unknown) => {
+    // 5. Wire transcript events (tool status in Telegram disabled for now)
+    this.transcriptMonitor.on("tool_use", (name: string, _input: unknown) => {
       this.logger.info({ tool: name }, "Tool use");
-      this.addToolStatus(name, input, "running");
     });
-    this.transcriptMonitor.on("tool_result", (name: string, _output: unknown) => {
-      this.addToolStatus(name, null, "done");
+    this.transcriptMonitor.on("tool_result", (_name: string, _output: unknown) => {
+      // no-op
     });
     this.transcriptMonitor.on("assistant_text", (text: string) => {
       this.logger.info({ text: text.slice(0, 200) }, "Claude response");
-      this.resetToolStatus();
     });
     this.transcriptMonitor.startPolling();
 
