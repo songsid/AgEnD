@@ -569,7 +569,7 @@ export class FleetManager {
         working_directory: dirPath,
         topic_id: threadId,
         restart_policy: this.fleetConfig.defaults.restart_policy ?? { max_retries: 10, backoff: "exponential", reset_after: 300 },
-        context_guardian: this.fleetConfig.defaults.context_guardian ?? { threshold_percentage: 80, max_age_hours: 4, strategy: "hybrid" },
+        context_guardian: this.fleetConfig.defaults.context_guardian ?? { threshold_percentage: 40, max_age_hours: 4, strategy: "hybrid" },
         memory: this.fleetConfig.defaults.memory ?? { auto_summarize: false, watch_memory_dir: true, backup_to_sqlite: true },
         log_level: (this.fleetConfig.defaults.log_level as "info") ?? "info",
       };
@@ -679,7 +679,7 @@ export class FleetManager {
         working_directory: projectDir,
         topic_id: threadId,
         restart_policy: this.fleetConfig.defaults.restart_policy ?? { max_retries: 10, backoff: "exponential", reset_after: 300 },
-        context_guardian: this.fleetConfig.defaults.context_guardian ?? { threshold_percentage: 80, max_age_hours: 4, strategy: "hybrid" },
+        context_guardian: this.fleetConfig.defaults.context_guardian ?? { threshold_percentage: 40, max_age_hours: 4, strategy: "hybrid" },
         memory: this.fleetConfig.defaults.memory ?? { auto_summarize: false, watch_memory_dir: true, backup_to_sqlite: true },
         log_level: (this.fleetConfig.defaults.log_level as "info") ?? "info",
       };
