@@ -81,9 +81,8 @@ export class Daemon {
         this.logger.info({ pluginDir, exists: existsSync(join(pluginDir, "ccd-channel", "server.js")) }, "Plugin dir fallback");
       }
       // Write MCP server config BEFORE starting Claude (so it finds the server)
-      const mcpDir = join(this.config.working_directory, ".claude");
-      mkdirSync(mcpDir, { recursive: true });
-      const mcpConfigPath = join(mcpDir, ".mcp.json");
+      // Claude Code reads <cwd>/.mcp.json (NOT .claude/.mcp.json) for project scope
+      const mcpConfigPath = join(this.config.working_directory, ".mcp.json");
       let mcpConfig: { mcpServers?: Record<string, unknown> } = {};
       if (existsSync(mcpConfigPath)) {
         try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch {}
@@ -105,7 +104,7 @@ export class Daemon {
       // Now start Claude
       const settingsPath = join(this.instanceDir, "claude-settings.json");
       const sessionIdFile = join(this.instanceDir, "session-id");
-      let claudeCmd = `claude --settings ${settingsPath} --channels server:ccd-channel --dangerously-load-development-channels server:ccd-channel`;
+      let claudeCmd = `claude --settings ${settingsPath} --dangerously-load-development-channels server:ccd-channel`;
       if (existsSync(sessionIdFile)) {
         const sid = readFileSync(sessionIdFile, "utf-8").trim();
         if (sid) claudeCmd += ` --resume ${sid}`;
@@ -114,7 +113,8 @@ export class Daemon {
       writeFileSync(windowIdFile, windowId);
 
       // Auto-confirm the development channels safety prompt
-      await new Promise(r => setTimeout(r, 3000));
+      // Wait for Claude to show the prompt, then press Enter
+      await new Promise(r => setTimeout(r, 5000));
       await this.tmux.sendSpecialKey("Enter");
       this.logger.info("Auto-confirmed development channels prompt");
     }
