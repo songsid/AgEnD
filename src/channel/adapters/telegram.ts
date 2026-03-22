@@ -217,12 +217,41 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   async start(): Promise<void> {
     this.queue.start();
-    // Start polling in the background (grammy handles the promise internally)
-    this.bot.start({ drop_pending_updates: true }).catch((err: unknown) => {
-      this.emit("error", err);
-    });
-    // Wait a tick so the bot initialises
-    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    // Steal the polling connection from any existing poller (e.g., official telegram plugin)
+    // by making a short getUpdates call first, then start normal polling with retry on 409
+    await this.startPollingWithRetry();
+  }
+
+  private async startPollingWithRetry(maxRetries = 5): Promise<void> {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        // Short getUpdates to cancel any competing poller
+        await this.bot.api.getUpdates({ limit: 1, timeout: 0, offset: -1 });
+      } catch {
+        // Ignore — we just want to interrupt the other poller
+      }
+
+      try {
+        this.bot.start({
+          drop_pending_updates: attempt === 0,
+          onStart: () => {},
+        }).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes("409")) {
+            // Another poller appeared — restart after delay
+            setTimeout(() => this.startPollingWithRetry(maxRetries - attempt - 1), 3000);
+          } else {
+            this.emit("error", err);
+          }
+        });
+        // Wait a moment to see if 409 fires immediately
+        await new Promise<void>(r => setTimeout(r, 1000));
+        return; // started successfully
+      } catch {
+        // Failed to start, retry after delay
+        await new Promise<void>(r => setTimeout(r, 2000));
+      }
+    }
   }
 
   async stop(): Promise<void> {

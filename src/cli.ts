@@ -164,6 +164,12 @@ fleet
       process.exit(1);
     });
     process.on("unhandledRejection", async (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 409 = another bot poller exists — adapter handles retry, don't crash
+      if (msg.includes("409") && msg.includes("getUpdates")) {
+        console.error("Bot polling conflict (409) — retrying...");
+        return;
+      }
       console.error("Unhandled rejection:", err);
       await fm.stopAll().catch(() => {});
       process.exit(1);
