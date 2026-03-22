@@ -788,7 +788,7 @@ export class FleetManager {
         try {
           // sendMessage is the only reliable way to check if a topic still exists
           // sendChatAction and editForumTopic both return ok:true for deleted topics
-          const msg = await bot.api.sendMessage(groupId, ".", {
+          const msg = await bot.api.sendMessage(groupId, "\u200B", { // zero-width space — invisible probe
             message_thread_id: threadId,
           });
           // Topic exists — delete the probe message
