@@ -69,15 +69,14 @@ export class ApprovalServer {
 
             let permissionDecision: "allow" | "deny";
 
-            if (isSafeTool(tool_name)) {
-              permissionDecision = "allow";
-            } else if (tool_name === "Bash" && typeof tool_input?.command === "string" && isDangerousCommand(tool_input.command)) {
-              permissionDecision = "deny";
-            } else {
-              // Non-dangerous Bash — needs human approval
-              const prompt = `🔧 ${tool_name}\n\`\`\`\n${typeof tool_input?.command === "string" ? tool_input.command : JSON.stringify(tool_input, null, 2)}\n\`\`\``;
+            if (tool_name === "Bash" && typeof tool_input?.command === "string" && isDangerousCommand(tool_input.command)) {
+              // Dangerous Bash commands → require human approval
+              const prompt = `⚠️ ${tool_name}\n\`\`\`\n${tool_input.command}\n\`\`\``;
               const decision = await this.requestApproval(prompt);
               permissionDecision = decision;
+            } else {
+              // Everything else (all tools + normal Bash) → auto-allow
+              permissionDecision = "allow";
             }
 
             res.writeHead(200, { "Content-Type": "application/json" });
