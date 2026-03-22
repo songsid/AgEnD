@@ -87,6 +87,7 @@ export interface InstanceConfig {
 
 export interface FleetConfig {
   channel?: ChannelConfig;
+  project_roots?: string[];
   defaults: Partial<InstanceConfig>;
   instances: Record<string, InstanceConfig>;
 }

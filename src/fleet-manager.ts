@@ -186,6 +186,11 @@ export class FleetManager {
 
       const instanceName = this.routingTable.get(threadId);
       if (!instanceName) {
+        // Check if awaiting project name input
+        if (this.pendingBindings.get(threadId) === "awaiting_name") {
+          this.handleNewProjectName(msg, threadId);
+          return;
+        }
         // Check if auto-bind is already in progress for this topic
         if (this.pendingBindings.has(threadId)) return;
         // Auto-bind: show directory browser
@@ -308,39 +313,55 @@ export class FleetManager {
   // ===================== Auto-bind =====================
 
   /** Show directory browser when message arrives in unbound topic */
-  private async handleUnboundTopic(msg: InboundMessage, threadId: number): Promise<void> {
+  private async handleUnboundTopic(msg: InboundMessage, threadId: number, page = 0): Promise<void> {
     if (!this.adapter) return;
     this.pendingBindings.set(threadId, "browsing");
 
-    // List directories in common locations
     const dirs = this.listProjectDirectories();
-    if (dirs.length === 0) {
-      await this.adapter.sendText(msg.chatId, "No project directories found. Add instances to fleet.yaml manually.", {
-        threadId: String(threadId),
-      });
-      return;
-    }
+    const recentDirs = this.getRecentlyBoundDirs();
+    const PAGE_SIZE = 5;
 
-    // Build inline keyboard with directory options
     const { InlineKeyboard } = await import("grammy");
     const keyboard = new InlineKeyboard();
-    for (const dir of dirs.slice(0, 8)) { // Max 8 options
-      const label = basename(dir);
-      keyboard.text(label, `bind:${threadId}:${dir}`).row();
+
+    // Recently bound projects (only on first page)
+    if (page === 0 && recentDirs.length > 0) {
+      for (const dir of recentDirs.slice(0, 3)) {
+        const label = `⭐ ${basename(dir)}`;
+        keyboard.text(label, `bind:${threadId}:${dir}`).row();
+      }
     }
+
+    // Paginated project list (exclude recent to avoid duplicates)
+    const recentSet = new Set(recentDirs);
+    const filteredDirs = dirs.filter(d => !recentSet.has(d));
+    const pageStart = page * PAGE_SIZE;
+    const pageDirs = filteredDirs.slice(pageStart, pageStart + PAGE_SIZE);
+
+    for (const dir of pageDirs) {
+      keyboard.text(`📁 ${basename(dir)}`, `bind:${threadId}:${dir}`).row();
+    }
+
+    // Pagination buttons
+    const hasMore = pageStart + PAGE_SIZE < filteredDirs.length;
+    if (page > 0 || hasMore) {
+      if (page > 0) keyboard.text("⬅️ Prev", `page:${threadId}:${page - 1}`);
+      if (hasMore) keyboard.text("➡️ Next", `page:${threadId}:${page + 1}`);
+      keyboard.row();
+    }
+
+    // New project + cancel
+    keyboard.text("➕ New project", `newproj:${threadId}`).row();
     keyboard.text("❌ Cancel", `bind:${threadId}:cancel`).row();
 
-    await this.adapter.sendText(
-      msg.chatId,
-      `📂 This topic is not bound to any project.\nSelect a working directory:`,
-      { threadId: String(threadId) },
-    );
-    // Send keyboard as a separate message (adapter.sendText doesn't support inline keyboard directly)
-    // Use the bot API directly via the adapter
     const tgAdapter = this.adapter as TelegramAdapter;
+    const headerText = page === 0
+      ? "📂 Select a project for this topic:"
+      : `📂 Projects (page ${page + 1}):`;
+
     await tgAdapter.sendTextWithKeyboard(
       msg.chatId,
-      "Choose a project directory:",
+      headerText,
       keyboard,
       String(threadId),
     );
@@ -349,6 +370,29 @@ export class FleetManager {
   /** Handle directory selection from inline keyboard */
   private async handleDirectorySelection(data: { callbackData: string; chatId: string; threadId?: string; messageId: string }): Promise<void> {
     const { callbackData, chatId } = data;
+
+    // Pagination
+    if (callbackData.startsWith("page:")) {
+      const parts = callbackData.split(":");
+      const threadId = parseInt(parts[1], 10);
+      const page = parseInt(parts[2], 10);
+      await this.adapter?.editMessage(chatId, data.messageId, "Loading...");
+      await this.handleUnboundTopic(
+        { chatId, threadId: String(threadId), text: "", source: "", adapterId: "", messageId: "", userId: "", username: "", timestamp: new Date() },
+        threadId,
+        page,
+      );
+      return;
+    }
+
+    // New project
+    if (callbackData.startsWith("newproj:")) {
+      const threadId = parseInt(callbackData.split(":")[1], 10);
+      await this.adapter?.editMessage(chatId, data.messageId, "📝 Send the new project name (will create folder in project root):");
+      this.pendingBindings.set(threadId, "awaiting_name");
+      return;
+    }
+
     if (!callbackData.startsWith("bind:")) return;
 
     const parts = callbackData.split(":");
@@ -448,39 +492,85 @@ export class FleetManager {
 
   // ===================== Helpers =====================
 
-  /** List project directories from common locations */
+  /** Handle new project name input */
+  private async handleNewProjectName(msg: InboundMessage, threadId: number): Promise<void> {
+    const projectName = msg.text.trim();
+    if (!projectName || projectName.includes("/") || projectName.includes("..")) {
+      await this.adapter?.sendText(msg.chatId, "Invalid project name. Try again:", { threadId: String(threadId) });
+      return;
+    }
+
+    // Find first project root to create in
+    const roots = this.getProjectRoots();
+    if (roots.length === 0) {
+      await this.adapter?.sendText(msg.chatId, "No project_roots configured in fleet.yaml.", { threadId: String(threadId) });
+      this.pendingBindings.delete(threadId);
+      return;
+    }
+
+    const projectDir = join(roots[0], projectName);
+    if (existsSync(projectDir)) {
+      // Directory already exists — just bind it
+      await this.adapter?.sendText(msg.chatId, `📁 Directory already exists. Binding to: ${projectDir}`, { threadId: String(threadId) });
+    } else {
+      // Create directory + git init
+      mkdirSync(projectDir, { recursive: true });
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const exec = promisify(execFile);
+        await exec("git", ["init"], { cwd: projectDir });
+      } catch {}
+      await this.adapter?.sendText(msg.chatId, `✅ Created: ${projectDir}`, { threadId: String(threadId) });
+    }
+
+    // Bind it
+    this.pendingBindings.delete(threadId);
+    await this.handleDirectorySelection({
+      callbackData: `bind:${threadId}:${projectDir}`,
+      chatId: msg.chatId,
+      threadId: String(threadId),
+      messageId: "",
+    });
+  }
+
+  /** Get configured project roots, with fallback */
+  private getProjectRoots(): string[] {
+    const roots = this.fleetConfig?.project_roots;
+    if (roots && roots.length > 0) {
+      return roots.map(r => r.startsWith("~") ? join(homedir(), r.slice(1)) : r)
+        .filter(r => existsSync(r));
+    }
+    // Fallback: common locations
+    return [
+      join(homedir(), "Documents/Hack"),
+      join(homedir(), "Projects"),
+      join(homedir(), "src"),
+    ].filter(r => existsSync(r));
+  }
+
+  /** List project directories from project_roots */
   private listProjectDirectories(): string[] {
     const dirs: string[] = [];
-    const searchPaths = [
-      join(homedir(), "Documents"),
-      join(homedir(), "Projects"),
-      join(homedir(), "Documents/Hack"),
-      join(homedir(), "src"),
-      join(homedir(), "work"),
-    ];
-
-    for (const searchPath of searchPaths) {
-      if (!existsSync(searchPath)) continue;
+    for (const root of this.getProjectRoots()) {
       try {
-        const entries = readdirSync(searchPath, { withFileTypes: true });
+        const entries = readdirSync(root, { withFileTypes: true });
         for (const entry of entries) {
           if (entry.isDirectory() && !entry.name.startsWith(".")) {
-            const fullPath = join(searchPath, entry.name);
-            // Check if it looks like a project (has .git, package.json, etc.)
-            if (
-              existsSync(join(fullPath, ".git")) ||
-              existsSync(join(fullPath, "package.json")) ||
-              existsSync(join(fullPath, "Cargo.toml")) ||
-              existsSync(join(fullPath, "go.mod")) ||
-              existsSync(join(fullPath, "pyproject.toml"))
-            ) {
-              dirs.push(fullPath);
-            }
+            dirs.push(join(root, entry.name));
           }
         }
       } catch {}
     }
-    return dirs;
+    return dirs.sort((a, b) => basename(a).localeCompare(basename(b)));
+  }
+
+  /** Get directories of recently bound instances (for "recent" section) */
+  private getRecentlyBoundDirs(): string[] {
+    if (!this.fleetConfig) return [];
+    return Object.values(this.fleetConfig.instances)
+      .map(inst => inst.working_directory)
+      .filter(d => existsSync(d));
   }
 
   /** Save fleet config back to fleet.yaml */
