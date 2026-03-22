@@ -150,55 +150,8 @@ export class Daemon {
       }
     }
 
-    {
-      // Generate settings file
-      this.writeSettings();
-      // Build claude command — find plugin dir (dist/plugin or src/plugin depending on how we're run)
-      // When run via tsx (dev), __dirname is src/; when run compiled, __dirname is dist/
-      // Either way, the built plugin is in the project root's dist/plugin/
-      let pluginDir = join(__dirname, "plugin");
-      this.logger.info({ pluginDir, exists: existsSync(join(pluginDir, "ccd-channel", "server.js")) }, "Plugin dir check");
-      if (!existsSync(join(pluginDir, "ccd-channel", "server.js"))) {
-        // Fallback: look for dist/plugin relative to project root
-        const projectRoot = join(__dirname, "..");
-        pluginDir = join(projectRoot, "dist", "plugin");
-        this.logger.info({ pluginDir, exists: existsSync(join(pluginDir, "ccd-channel", "server.js")) }, "Plugin dir fallback");
-      }
-      // Write MCP server config BEFORE starting Claude (so it finds the server)
-      // Claude Code reads <cwd>/.mcp.json (NOT .claude/.mcp.json) for project scope
-      const mcpConfigPath = join(this.config.working_directory, ".mcp.json");
-      let mcpConfig: { mcpServers?: Record<string, unknown> } = {};
-      if (existsSync(mcpConfigPath)) {
-        try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch {}
-      }
-      if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
-      const sockPath = join(this.instanceDir, "channel.sock");
-      let serverJs = join(__dirname, "channel", "mcp-server.js");
-      if (!existsSync(serverJs)) {
-        serverJs = join(__dirname, "..", "dist", "channel", "mcp-server.js");
-      }
-      mcpConfig.mcpServers["ccd-channel"] = {
-        command: "node",
-        args: [serverJs],
-        env: { CCD_SOCKET_PATH: sockPath },
-      };
-      writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-      this.logger.info({ mcpConfigPath }, "Wrote MCP server config");
-
-      // Now start Claude
-      const settingsPath = join(this.instanceDir, "claude-settings.json");
-      const sessionIdFile = join(this.instanceDir, "session-id");
-      let claudeCmd = `claude --settings ${settingsPath} --dangerously-load-development-channels server:ccd-channel`;
-      if (existsSync(sessionIdFile)) {
-        const sid = readFileSync(sessionIdFile, "utf-8").trim();
-        if (sid) claudeCmd += ` --resume ${sid}`;
-      }
-      const windowId = await this.tmux.createWindow(claudeCmd, this.config.working_directory);
-      writeFileSync(windowIdFile, windowId);
-
-      // Auto-confirm the development channels safety prompt (non-blocking)
-      this.autoConfirmDevChannels();
-    }
+    await this.spawnClaudeWindow();
+    this.autoConfirmDevChannels();
 
     // 3. Pipe-pane for prompt detection
     const outputLog = join(this.instanceDir, "output.log");
@@ -260,16 +213,26 @@ export class Daemon {
     this.guardian.startTimer();
     this.guardian.on("rotate", async (reason: string) => {
       this.logger.info({ reason }, "Context rotation triggered");
-      this.transcriptMonitor?.resetOffset();
-      // Clear session, restart tmux window
-      const sessionIdFile = join(this.instanceDir, "session-id");
+      // Save session-id before killing
       try {
-        unlinkSync(sessionIdFile);
-      } catch {
-        // Ignore if not found
-      }
+        const sf = join(this.instanceDir, "statusline.json");
+        if (existsSync(sf)) {
+          const data = JSON.parse(readFileSync(sf, "utf-8"));
+          if (data.session_id) {
+            writeFileSync(join(this.instanceDir, "session-id"), data.session_id);
+          }
+        }
+      } catch {}
+
+      // Kill current Claude window
       await this.tmux?.killWindow();
-      // Respawn (simplified — full implementation restarts window)
+      this.transcriptMonitor?.resetOffset();
+
+      // Restart Claude with --resume (compact will happen via /compact in new session)
+      await this.spawnClaudeWindow();
+      this.autoConfirmDevChannels();
+      this.guardian?.markRotationComplete();
+      this.logger.info({ reason }, "Context rotation complete — Claude restarted");
     });
 
     // 9. Memory layer
@@ -540,6 +503,52 @@ export class Daemon {
       } catch {}
     }
     this.logger.warn(`Auto-confirm timed out — manually run: tmux send-keys -t ccd:${this.tmux.getWindowId()} Enter`);
+  }
+
+  /** Spawn (or respawn) a Claude window in tmux */
+  private async spawnClaudeWindow(): Promise<void> {
+    this.writeSettings();
+
+    // Find MCP server JS
+    let serverJs = join(__dirname, "channel", "mcp-server.js");
+    if (!existsSync(serverJs)) {
+      serverJs = join(__dirname, "..", "dist", "channel", "mcp-server.js");
+    }
+    let pluginDir = join(__dirname, "plugin");
+    this.logger.info({ pluginDir, exists: existsSync(join(pluginDir, "ccd-channel", "server.js")) }, "Plugin dir check");
+    if (!existsSync(join(pluginDir, "ccd-channel", "server.js"))) {
+      pluginDir = join(__dirname, "..", "dist", "plugin");
+      this.logger.info({ pluginDir, exists: existsSync(join(pluginDir, "ccd-channel", "server.js")) }, "Plugin dir fallback");
+    }
+
+    // Write .mcp.json
+    const mcpConfigPath = join(this.config.working_directory, ".mcp.json");
+    let mcpConfig: { mcpServers?: Record<string, unknown> } = {};
+    if (existsSync(mcpConfigPath)) {
+      try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch {}
+    }
+    if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
+    const sockPath = join(this.instanceDir, "channel.sock");
+    mcpConfig.mcpServers["ccd-channel"] = {
+      command: "node",
+      args: [serverJs],
+      env: { CCD_SOCKET_PATH: sockPath },
+    };
+    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+    this.logger.info({ mcpConfigPath }, "Wrote MCP server config");
+
+    // Build claude command
+    const settingsPath = join(this.instanceDir, "claude-settings.json");
+    const sessionIdFile = join(this.instanceDir, "session-id");
+    let claudeCmd = `claude --settings ${settingsPath} --dangerously-load-development-channels server:ccd-channel`;
+    if (existsSync(sessionIdFile)) {
+      const sid = readFileSync(sessionIdFile, "utf-8").trim();
+      if (sid) claudeCmd += ` --resume ${sid}`;
+    }
+
+    const windowId = await this.tmux!.createWindow(claudeCmd, this.config.working_directory);
+    const windowIdFile = join(this.instanceDir, "window-id");
+    writeFileSync(windowIdFile, windowId);
   }
 
   private writeSettings(): void {
