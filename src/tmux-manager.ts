@@ -74,7 +74,7 @@ export class TmuxManager {
   async pipeOutput(logPath: string): Promise<void> {
     await exec("tmux", [
       "pipe-pane", "-t", `${this.sessionName}:${this.windowId}`,
-      `cat >> ${logPath}`,
+      `cat >> "${logPath}"`,
     ]);
   }
 
