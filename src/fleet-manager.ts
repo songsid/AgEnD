@@ -397,14 +397,20 @@ export class FleetManager {
     const threadId = args.thread_id as string ?? (instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined);
 
     switch (tool) {
-      case "reply":
+      case "reply": {
         this.logger.info(`→ ${instanceName} claude: ${(args.text as string ?? "").slice(0, 100)}`);
+        const files = Array.isArray(args.files) ? args.files as string[] : [];
         this.adapter.sendText(chatId, args.text as string ?? "", {
           threadId,
           replyTo: args.reply_to as string,
-        }).then(sent => respond(sent))
-          .catch(e => respond(null, e.message));
+        }).then(async (sent) => {
+          for (const filePath of files) {
+            await this.adapter!.sendFile(chatId, filePath, { threadId });
+          }
+          respond(sent);
+        }).catch(e => respond(null, e.message));
         break;
+      }
       case "react":
         this.adapter.react(chatId, args.message_id as string ?? "", args.emoji as string ?? "")
           .then(() => respond("ok"))
