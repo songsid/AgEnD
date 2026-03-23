@@ -18,6 +18,7 @@ import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { AccessManager } from "./channel/access-manager.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import type { ContainerManager } from "./container-manager.js";
+import { transcribe } from "./stt.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -111,17 +112,38 @@ export class Daemon {
         });
         this.messageBus.register(this.adapter);
 
-        // Wire inbound messages → push to Claude via IPC
-        this.messageBus.on("message", (msg: InboundMessage) => {
+        // Wire inbound messages → transcribe voice if present, then push to Claude via IPC
+        this.messageBus.on("message", async (msg: InboundMessage) => {
           if (msg.chatId) this.lastChatId = msg.chatId;
           if (msg.threadId) this.lastThreadId = msg.threadId;
-          this.pushChannelMessage(msg.text, {
+
+          let text = msg.text;
+          const voiceAttachment = msg.attachments?.find(a => a.kind === "voice" || a.kind === "audio");
+          if (voiceAttachment && this.adapter) {
+            const groqKey = process.env.GROQ_API_KEY;
+            if (groqKey) {
+              try {
+                const localPath = await (this.adapter as TelegramAdapter).downloadAttachment(voiceAttachment.fileId);
+                const result = await transcribe(localPath, groqKey);
+                text = text ? `${text}\n\n[語音訊息] ${result.text}` : `[語音訊息] ${result.text}`;
+                this.logger.info({ transcription: result.text.slice(0, 80) }, "Voice transcribed");
+              } catch (err) {
+                this.logger.warn({ err: (err as Error).message }, "Voice transcription failed");
+                text = text || "[語音訊息 — 轉錄失敗]";
+              }
+            } else {
+              text = text || "[語音訊息 — 未設定 STT API key]";
+            }
+          }
+
+          this.pushChannelMessage(text, {
             chat_id: msg.chatId,
             message_id: msg.messageId,
             user: msg.username,
             user_id: msg.userId,
             ts: msg.timestamp.toISOString(),
             ...(msg.threadId ? { thread_id: msg.threadId } : {}),
+            ...(voiceAttachment ? { attachment_file_id: voiceAttachment.fileId } : {}),
           });
         });
 
