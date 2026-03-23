@@ -510,13 +510,20 @@ export class Daemon {
     const chatId = args.chat_id as string ?? "";
 
     switch (tool) {
-      case "reply":
+      case "reply": {
+        const files = Array.isArray(args.files) ? args.files as string[] : [];
+        const threadId = args.thread_id as string ?? this.lastThreadId;
         adapter.sendText(chatId, args.text as string ?? "", {
-          threadId: args.thread_id as string ?? this.lastThreadId,
+          threadId,
           replyTo: args.reply_to as string,
-        }).then(sent => respond(sent))
-          .catch(e => respond(null, e.message));
+        }).then(async (sent) => {
+          for (const filePath of files) {
+            await adapter.sendFile(chatId, filePath, { threadId });
+          }
+          respond(sent);
+        }).catch(e => respond(null, e.message));
         break;
+      }
       case "react":
         adapter.react(chatId, args.message_id as string ?? "", args.emoji as string ?? "")
           .then(() => respond("ok"))
