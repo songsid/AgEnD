@@ -117,11 +117,12 @@ export class FleetManager {
 
     // Import Daemon dynamically to avoid circular deps
     const { Daemon } = await import("./daemon.js");
-    const { ClaudeCodeBackend } = await import("./backend/claude-code.js");
+    const { createBackend } = await import("./backend/factory.js");
     const { HookBasedApproval } = await import("./backend/hook-based-approval.js");
     const { MessageBus } = await import("./channel/message-bus.js");
 
-    const backend = new ClaudeCodeBackend(instanceDir);
+    const backendName = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+    const backend = createBackend(backendName, instanceDir);
     const approval = new HookBasedApproval({
       messageBus: new MessageBus(),
       port,
