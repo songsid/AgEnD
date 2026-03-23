@@ -256,7 +256,7 @@ export class FleetManager {
 
     // Handle callback queries (directory browser selections)
     this.adapter.on("callback_query", (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
-      this.handleDirectorySelection(data);
+      this.handleCallbackQuery(data);
     });
 
     // Handle topic deletion (auto-unbind)
@@ -922,6 +922,62 @@ export class FleetManager {
       keyboard,
       String(threadId),
     );
+  }
+
+  /** Dispatch callback queries by prefix */
+  private async handleCallbackQuery(data: { callbackData: string; chatId: string; threadId?: string; messageId: string }): Promise<void> {
+    const { callbackData, chatId, messageId } = data;
+
+    if (callbackData.startsWith("cmd_open:")) {
+      await this.handleOpenCallback(callbackData, chatId, messageId);
+      return;
+    }
+
+    // Legacy prefixes from old directory browser — no longer handled
+  }
+
+  /** Handle callback from /open inline keyboard */
+  private async handleOpenCallback(callbackData: string, chatId: string, messageId: string): Promise<void> {
+    if (!this.adapter) return;
+
+    // Format: cmd_open:<sessionId>:<action>
+    const parts = callbackData.split(":");
+    const sessionId = parts[1];
+
+    // Validate session
+    if (!this.currentOpenSession || this.currentOpenSession.id !== sessionId) {
+      await this.adapter.editMessage(chatId, messageId, "This menu has expired. Use /open again.");
+      return;
+    }
+
+    const action = parts[2];
+
+    // Cancel
+    if (action === "cancel") {
+      this.currentOpenSession = null;
+      await this.adapter.editMessage(chatId, messageId, "Cancelled.");
+      return;
+    }
+
+    // Pagination: cmd_open:<sessionId>:page:<pageNum>
+    if (action === "page") {
+      const page = parseInt(parts[3], 10);
+      await this.adapter.editMessage(chatId, messageId, "Loading...");
+      await this.sendOpenKeyboard(chatId, this.currentOpenSession.paths, page);
+      return;
+    }
+
+    // Directory selection: cmd_open:<sessionId>:<index>
+    const index = parseInt(action, 10);
+    if (isNaN(index) || index < 0 || index >= this.currentOpenSession.paths.length) {
+      await this.adapter.editMessage(chatId, messageId, "Invalid selection.");
+      return;
+    }
+
+    const dirPath = this.currentOpenSession.paths[index];
+    this.currentOpenSession = null;
+    await this.adapter.editMessage(chatId, messageId, `Binding to ${basename(dirPath)}...`);
+    await this.openBindProject(chatId, dirPath);
   }
 
   /** Handle directory selection from inline keyboard */
