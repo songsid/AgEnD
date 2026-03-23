@@ -191,8 +191,7 @@ Claude calls Bash tool
 
 ## Known issues
 
-- Official telegram plugin in global `enabledPlugins` causes 409 polling conflicts (daemon retries with backoff)
-- `--settings` override of `enabledPlugins` may not work — investigating
+- Official telegram plugin in global `enabledPlugins` causes 409 polling conflicts (daemon retries with backoff). `--settings` cannot override `enabledPlugins` — plugins load before `--settings` is merged. Workaround: disable `telegram@claude-plugins-official` in global settings, or let the daemon's retry handle it.
 - Only tested on macOS
 
 ## License
