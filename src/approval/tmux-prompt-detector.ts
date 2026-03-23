@@ -1,5 +1,5 @@
 import { readFileSync, statSync, writeFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import type { TmuxManager } from "../tmux-manager.js";
 import type { ApprovalResponse } from "../channel/types.js";
 
@@ -13,28 +13,77 @@ function stripAnsi(text: string): string {
              .replace(/[\x00-\x08\x0e-\x1f]/g, "");   // misc control chars
 }
 
+// ── Prompt classification ────────────────────────────────────────────────────
+
+export type PromptType =
+  | "permission"       // Tool use permission — forward to user
+  | "settings_error"   // Settings file error — auto-continue
+  | "dev_channels"     // Development channels warning — auto-confirm
+  | "mcp_trust"        // New MCP server trust — auto-confirm
+  | "file_creation"    // SKILL.md, AGENTS.md etc. — auto-deny
+  | "unknown";         // Unrecognized — forward to user
+
+/** Detect whether text contains a Claude Code interactive prompt */
+export function detectInteractivePrompt(text: string): boolean {
+  const clean = stripAnsi(text);
+  // All Claude Code interactive prompts have numbered options like "1." or "❯ 1."
+  // combined with "Esc to cancel" or "Enter to confirm"
+  const hasNumberedOption = /[❯>]?\s*1\.\s/.test(clean);
+  const hasPromptChrome = /Esc to cancel|Enter to confirm/.test(clean);
+  return hasNumberedOption && hasPromptChrome;
+}
+
+/** Classify a detected prompt to determine handling strategy */
+export function classifyPrompt(text: string): PromptType {
+  const clean = stripAnsi(text);
+
+  // Permission / tool use: "Do you want to proceed?" with Yes/No
+  if (/Do you want to proceed/i.test(clean) && /\bYes\b/.test(clean) && /\bNo\b/.test(clean)) {
+    return "permission";
+  }
+
+  // Settings error: has "Settings Error" or "Continue without these settings"
+  if (/Settings Error/i.test(clean) || /Continue without these settings/i.test(clean)) {
+    return "settings_error";
+  }
+
+  // Dev channels: "I am using this for local development"
+  if (/I am using this for local development/i.test(clean)) {
+    return "dev_channels";
+  }
+
+  // MCP trust: "New MCP server found" or "Use this and all future"
+  if (/New MCP server found/i.test(clean) || /Use this and all future/i.test(clean)) {
+    return "mcp_trust";
+  }
+
+  // File creation: "Do you want to create"
+  if (/Do you want to create/i.test(clean)) {
+    return "file_creation";
+  }
+
+  return "unknown";
+}
+
+// ── Kept for backwards compat with tests ─────────────────────────────────────
+
 export function detectPermissionPrompt(text: string): boolean {
   const clean = stripAnsi(text);
-  // Claude Code permission prompt: "1. Yes" + "3. No" (with flexible spacing)
   return /1\.\s*Yes\b/.test(clean) && /3\.\s*No\b/.test(clean);
 }
 
 /**
  * Extract tool name from Claude Code permission prompt text.
- * Pattern: "don't ask again for <tool> commands in"
- * Returns the permission-format tool name (e.g. "mcp__puppeteer__puppeteer_navigate(*)").
+ * Returns the permission-format tool name (e.g. "mcp__puppeteer__puppeteer_navigate").
  */
 export function extractToolPattern(text: string): string | null {
   const clean = stripAnsi(text);
-  // Match: "don't ask again for <tool_display_name> commands in"
-  // Tool display: "server - tool_name" for MCP, or just "ToolName" for built-in
   // "don't" may appear as don't, don.t, or dont (apostrophe stripped by terminal)
   const m = clean.match(/don.?t ask again for\s+(.+?)\s+commands?\s+in\b/i);
   if (!m) return null;
 
   const display = m[1].trim();
   // MCP tool: "server - tool_name" → "mcp__server__tool_name"
-  // (Claude Code MCP rules don't support parenthesized patterns)
   const mcpMatch = display.match(/^(\S+)\s*-\s*(\S+)$/);
   if (mcpMatch) {
     return `mcp__${mcpMatch[1]}__${mcpMatch[2]}`;
@@ -43,18 +92,14 @@ export function extractToolPattern(text: string): string | null {
   return `${display}(*)`;
 }
 
-/**
- * Build a clean, human-readable prompt from raw terminal output.
- * Extracts tool name and description for display in Telegram.
- */
+/** Build a clean prompt message for Telegram display */
 export function formatPromptForDisplay(text: string): string {
   const clean = stripAnsi(text)
     .replace(/\r/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
-  // Try to extract structured info
-  // Pattern: "puppeteer - puppeteer_navigate(url: "...")" or "Bash(command)"
+  // Tool use prompt: extract tool name and args
   const toolMatch = clean.match(/(\S+\s*-\s*\S+)\s*\(([^)]*)\)\s*\(MCP\)/i)
                  ?? clean.match(/(\S+)\s*\(([^)]*)\)/);
   if (toolMatch) {
@@ -64,9 +109,9 @@ export function formatPromptForDisplay(text: string): string {
     return `⚠️ ${tool}\n\`\`\`\n${truncatedArgs}\n\`\`\``;
   }
 
-  // Fallback: just return cleaned text, truncated
+  // Fallback: cleaned text, truncated
   const truncated = clean.length > 500 ? clean.slice(0, 500) + "…" : clean;
-  return `⚠️ Permission prompt\n${truncated}`;
+  return `⚠️ Prompt\n${truncated}`;
 }
 
 // ── Persistent tool allowlist ────────────────────────────────────────────────
@@ -90,12 +135,31 @@ export function saveToolToAllowlist(instanceDir: string, pattern: string): void 
   }
 }
 
-// ── Prompt detector ──────────────────────────────────────────────────────────
+// ── Prompt handler helpers ───────────────────────────────────────────────────
+
+/**
+ * Select option N in a Claude Code interactive menu.
+ * Option 1 is pre-selected (❯), so:
+ *   option 1 → Enter
+ *   option 2 → Down + Enter
+ *   option 3 → Down + Down + Enter
+ */
+async function selectOption(tmux: TmuxManager, option: number): Promise<void> {
+  for (let i = 1; i < option; i++) {
+    await tmux.sendSpecialKey("Down");
+  }
+  await tmux.sendSpecialKey("Enter");
+}
+
+async function pressEscape(tmux: TmuxManager): Promise<void> {
+  await tmux.sendSpecialKey("Escape");
+}
+
+// ── Main detector ────────────────────────────────────────────────────────────
 
 export class TmuxPromptDetector {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private byteOffset = 0;
-  /** True while an approval request is in-flight — suppresses duplicate detections */
   private pendingApproval = false;
 
   constructor(
@@ -109,7 +173,7 @@ export class TmuxPromptDetector {
   startPolling(intervalMs = 2000): void {
     if (this.pollTimer !== null) return;
 
-    // Skip existing content — only detect prompts written after we start polling
+    // Skip existing content — only detect prompts written after we start
     try {
       this.byteOffset = statSync(this.outputLogPath).size;
     } catch { /* file may not exist yet */ }
@@ -118,7 +182,6 @@ export class TmuxPromptDetector {
       try {
         const stat = statSync(this.outputLogPath);
         const fileSize = stat.size;
-
         if (fileSize <= this.byteOffset) return;
 
         const buf = Buffer.alloc(fileSize - this.byteOffset);
@@ -126,48 +189,85 @@ export class TmuxPromptDetector {
         const { readSync, closeSync } = await import("node:fs");
         const bytesRead = readSync(fd, buf, 0, buf.length, this.byteOffset);
         closeSync(fd);
-
         if (bytesRead <= 0) return;
 
         const newContent = buf.subarray(0, bytesRead).toString("utf8");
         this.byteOffset += bytesRead;
 
-        if (detectPermissionPrompt(newContent) && !this.pendingApproval) {
-          this.logger.info("TmuxPromptDetector: permission prompt detected");
-          this.pendingApproval = true;
-          const toolPattern = extractToolPattern(newContent);
-          const cleanPrompt = formatPromptForDisplay(newContent);
-          try {
-            const result = await this.approvalFn(cleanPrompt);
-            this.logger.info({ decision: result.decision }, "TmuxPromptDetector: approval response received");
-            if (result.decision === "always_allow") {
-              // Navigate to option 2 and confirm
-              await this.tmux.sendSpecialKey("Down");
-              await this.tmux.sendSpecialKey("Enter");
-              this.logger.info("TmuxPromptDetector: sent Down+Enter for always_allow");
-              // Persist the tool pattern so writeSettings includes it next time
-              if (toolPattern && this.instanceDir) {
-                saveToolToAllowlist(this.instanceDir, toolPattern);
-                this.logger.info(`TmuxPromptDetector: added ${toolPattern} to allowlist`);
+        if (!detectInteractivePrompt(newContent) || this.pendingApproval) return;
+
+        const promptType = classifyPrompt(newContent);
+        this.logger.info({ promptType }, "TmuxPromptDetector: interactive prompt detected");
+
+        switch (promptType) {
+          case "dev_channels":
+          case "mcp_trust":
+            // Auto-confirm: option 1 is already selected
+            await selectOption(this.tmux, 1);
+            this.logger.info({ promptType }, "TmuxPromptDetector: auto-confirmed");
+            break;
+
+          case "settings_error":
+            // "Continue without these settings" is option 2
+            await selectOption(this.tmux, 2);
+            this.logger.info("TmuxPromptDetector: auto-continued past settings error");
+            break;
+
+          case "file_creation":
+            // Auto-deny file creation prompts (SKILL.md etc.)
+            await pressEscape(this.tmux);
+            this.logger.info("TmuxPromptDetector: auto-denied file creation");
+            break;
+
+          case "permission":
+            // Forward to user via Telegram
+            this.pendingApproval = true;
+            try {
+              const toolPattern = extractToolPattern(newContent);
+              const cleanPrompt = formatPromptForDisplay(newContent);
+              const result = await this.approvalFn(cleanPrompt);
+              this.logger.info({ decision: result.decision }, "TmuxPromptDetector: user responded");
+
+              if (result.decision === "always_allow") {
+                await selectOption(this.tmux, 2); // "Yes, and don't ask again"
+                if (toolPattern && this.instanceDir) {
+                  saveToolToAllowlist(this.instanceDir, toolPattern);
+                  this.logger.info({ toolPattern }, "TmuxPromptDetector: added to allowlist");
+                }
+              } else if (result.decision === "approve") {
+                await selectOption(this.tmux, 1); // "Yes"
+              } else {
+                await selectOption(this.tmux, 3); // "No"
               }
-            } else if (result.decision === "approve") {
-              // Option 1 is already selected by default
-              await this.tmux.sendSpecialKey("Enter");
-              this.logger.info("TmuxPromptDetector: sent Enter for approve");
-            } else {
-              // Navigate to option 3 (No) and confirm
-              await this.tmux.sendSpecialKey("Down");
-              await this.tmux.sendSpecialKey("Down");
-              await this.tmux.sendSpecialKey("Enter");
+            } catch (err) {
+              this.logger.warn("TmuxPromptDetector: approval error, denying", err);
+              await pressEscape(this.tmux);
+            } finally {
+              this.pendingApproval = false;
             }
-          } catch (err) {
-            this.logger.warn("TmuxPromptDetector: approvalFn error", err);
-            await this.tmux.sendKeys("3");
-          } finally {
-            this.pendingApproval = false;
-          }
+            break;
+
+          case "unknown":
+          default:
+            // Forward unknown prompts to user too
+            this.pendingApproval = true;
+            try {
+              const cleanPrompt = formatPromptForDisplay(newContent);
+              const result = await this.approvalFn(cleanPrompt);
+              this.logger.info({ decision: result.decision }, "TmuxPromptDetector: user responded to unknown prompt");
+              if (result.decision === "deny") {
+                await pressEscape(this.tmux);
+              } else {
+                await selectOption(this.tmux, 1);
+              }
+            } catch {
+              await pressEscape(this.tmux);
+            } finally {
+              this.pendingApproval = false;
+            }
+            break;
         }
-      } catch (err) {
+      } catch {
         // File may not exist yet; ignore
       }
     }, intervalMs);
