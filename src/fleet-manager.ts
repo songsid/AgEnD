@@ -763,41 +763,12 @@ export class FleetManager {
       return;
     }
 
-    // Create instance name from directory name
-    const instanceName = `${sanitizeInstanceName(basename(dirPath))}-t${threadId}`;
+    this.logger.info({ threadId, dirPath }, "Auto-binding topic to project");
 
-    this.logger.info({ instanceName, threadId, dirPath }, "Auto-binding topic to project");
-
-    // Update fleet config
-    if (this.fleetConfig) {
-      this.fleetConfig.instances[instanceName] = {
-        working_directory: dirPath,
-        topic_id: threadId,
-        restart_policy: this.fleetConfig.defaults.restart_policy ?? DEFAULT_INSTANCE_CONFIG.restart_policy,
-        context_guardian: this.fleetConfig.defaults.context_guardian ?? DEFAULT_INSTANCE_CONFIG.context_guardian,
-        memory: this.fleetConfig.defaults.memory ?? DEFAULT_INSTANCE_CONFIG.memory,
-        log_level: this.fleetConfig.defaults.log_level ?? DEFAULT_INSTANCE_CONFIG.log_level,
-      };
-
-      // Save to fleet.yaml
-      this.saveFleetConfig();
-
-      // Update routing table
-      this.routingTable.set(threadId, instanceName);
-
-      // Start the new instance
-      const ports = this.allocatePorts(this.fleetConfig.instances);
-      await this.startInstance(instanceName, this.fleetConfig.instances[instanceName], ports[instanceName], true);
-
-      // Wait for IPC ready then connect
-      await new Promise(r => setTimeout(r, 5000));
-      await this.connectIpcToInstance(instanceName);
-
-      this.pendingBindings.delete(threadId);
-      await this.adapter?.editMessage(chatId, data.messageId,
-        `✅ Bound to: ${dirPath}\nInstance: ${instanceName}`);
-      this.logger.info({ instanceName, threadId }, "Topic auto-bound successfully");
-    }
+    const instanceName = await this.bindAndStart(dirPath, threadId);
+    this.pendingBindings.delete(threadId);
+    await this.adapter?.editMessage(chatId, data.messageId,
+      `✅ Bound to: ${dirPath}\nInstance: ${instanceName}`);
   }
 
   // ===================== Auto-unbind =====================
@@ -843,6 +814,37 @@ export class FleetManager {
 
   // ===================== Helpers =====================
 
+  /**
+   * Create instance config, save fleet.yaml, start daemon, connect IPC.
+   * Returns the generated instance name.
+   */
+  private async bindAndStart(dirPath: string, topicId: number): Promise<string> {
+    if (!this.fleetConfig) throw new Error("Fleet config not loaded");
+
+    const instanceName = `${sanitizeInstanceName(basename(dirPath))}-t${topicId}`;
+
+    this.fleetConfig.instances[instanceName] = {
+      working_directory: dirPath,
+      topic_id: topicId,
+      restart_policy: this.fleetConfig.defaults.restart_policy ?? DEFAULT_INSTANCE_CONFIG.restart_policy,
+      context_guardian: this.fleetConfig.defaults.context_guardian ?? DEFAULT_INSTANCE_CONFIG.context_guardian,
+      memory: this.fleetConfig.defaults.memory ?? DEFAULT_INSTANCE_CONFIG.memory,
+      log_level: this.fleetConfig.defaults.log_level ?? DEFAULT_INSTANCE_CONFIG.log_level,
+    };
+
+    this.saveFleetConfig();
+    this.routingTable.set(topicId, instanceName);
+
+    const ports = this.allocatePorts(this.fleetConfig.instances);
+    await this.startInstance(instanceName, this.fleetConfig.instances[instanceName], ports[instanceName], true);
+
+    await new Promise(r => setTimeout(r, 5000));
+    await this.connectIpcToInstance(instanceName);
+
+    this.logger.info({ instanceName, topicId }, "Topic bound and started");
+    return instanceName;
+  }
+
   /** Handle new project name input */
   private async handleNewProjectName(msg: InboundMessage, threadId: number): Promise<void> {
     const projectName = msg.text.trim();
@@ -877,29 +879,9 @@ export class FleetManager {
 
     // Bind it directly (not via handleDirectorySelection — no message to edit)
     this.pendingBindings.delete(threadId);
-    const instanceName = `${sanitizeInstanceName(basename(projectDir))}-t${threadId}`;
-
-    if (this.fleetConfig) {
-      this.fleetConfig.instances[instanceName] = {
-        working_directory: projectDir,
-        topic_id: threadId,
-        restart_policy: this.fleetConfig.defaults.restart_policy ?? DEFAULT_INSTANCE_CONFIG.restart_policy,
-        context_guardian: this.fleetConfig.defaults.context_guardian ?? DEFAULT_INSTANCE_CONFIG.context_guardian,
-        memory: this.fleetConfig.defaults.memory ?? DEFAULT_INSTANCE_CONFIG.memory,
-        log_level: this.fleetConfig.defaults.log_level ?? DEFAULT_INSTANCE_CONFIG.log_level,
-      };
-      this.saveFleetConfig();
-      this.routingTable.set(threadId, instanceName);
-
-      const ports = this.allocatePorts(this.fleetConfig.instances);
-      await this.startInstance(instanceName, this.fleetConfig.instances[instanceName], ports[instanceName], true);
-
-      await new Promise(r => setTimeout(r, 5000));
-      await this.connectIpcToInstance(instanceName);
-
-      await this.adapter?.sendText(msg.chatId, `✅ Created & bound: ${projectDir}`, { threadId: String(threadId) });
-      this.logger.info({ instanceName, threadId }, "New project created and bound");
-    }
+    const instanceName = await this.bindAndStart(projectDir, threadId);
+    await this.adapter?.sendText(msg.chatId, `✅ Created & bound: ${projectDir}`, { threadId: String(threadId) });
+    this.logger.info({ instanceName, threadId }, "New project created and bound");
   }
 
   /** Get configured project roots, with fallback */
