@@ -38,7 +38,7 @@ export class FleetManager {
   private adapter: ChannelAdapter | null = null;
   private routingTable: Map<number, string> = new Map();
   private instanceIpcClients: Map<string, IpcClient> = new Map();
-private currentOpenSession: { id: string; paths: string[] } | null = null;
+  private currentOpenSession: { id: string; paths: string[] } | null = null;
   private scheduler: Scheduler | null = null;
   private containerManager: ContainerManager | null = null;
   private configPath: string = "";
@@ -347,10 +347,6 @@ private currentOpenSession: { id: string; paths: string[] } | null = null;
     }
   }
 
-  /** Detect if threadId represents the General topic (undefined = General in our adapter) */
-  private isGeneralTopic(threadId: number | undefined): boolean {
-    return threadId == null;
-  }
 
   /** Parse and dispatch commands from the General topic */
   private async handleGeneralCommand(msg: InboundMessage): Promise<void> {
@@ -555,7 +551,7 @@ private currentOpenSession: { id: string; paths: string[] } | null = null;
   /** Handle inbound message — transcribe voice if present, then route */
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId ? parseInt(msg.threadId, 10) : undefined;
-    if (this.isGeneralTopic(threadId)) {
+    if (threadId == null) {
       await this.handleGeneralCommand(msg);
       return;
     }
