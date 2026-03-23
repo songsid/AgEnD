@@ -17,7 +17,7 @@ const DANGER_PATTERNS = [
   /\bchown\b/,
   /\bkill\b/,
   /\bpkill\b/,
-  />\s*\//,                    // redirect overwrite to absolute path
+  /(?<!\d)>\s*\//,             // redirect overwrite to absolute path (but not 2>/dev/null)
 ];
 
 function isSafeTool(toolName: string): boolean {
