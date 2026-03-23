@@ -92,6 +92,7 @@ export class ApprovalServer {
               hookSpecificOutput: {
                 hookEventName: "PreToolUse",
                 permissionDecision,
+                ...(permissionDecision === "deny" ? { permissionDecisionReason: "denied by user via Telegram" } : {}),
               },
             }));
           } catch (err) {
