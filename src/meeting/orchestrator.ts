@@ -32,8 +32,9 @@ export class MeetingOrchestrator {
   async start(participantConfigs: ParticipantConfig[]): Promise<void> {
     this.state = "booting";
 
-    const spawnResults = await Promise.allSettled(
-      participantConfigs.map(async (p) => {
+    // Spawn instances sequentially to avoid port/IPC race conditions
+    for (const p of participantConfigs) {
+      try {
         const instanceName = await this.fm.spawnEphemeralInstance(
           {
             systemPrompt: buildSystemPrompt(p.role, this.config.topic),
@@ -43,15 +44,9 @@ export class MeetingOrchestrator {
           },
           this.abortController.signal,
         );
-        return { ...p, instanceName };
-      }),
-    );
-
-    for (const result of spawnResults) {
-      if (result.status === "fulfilled") {
-        this.participants.push(result.value);
-      } else {
-        await this.output.postMessage(`⚠️ Instance 啟動失敗: ${result.reason}`);
+        this.participants.push({ ...p, instanceName });
+      } catch (err) {
+        await this.output.postMessage(`⚠️ Instance 啟動失敗: ${err}`);
       }
     }
 
