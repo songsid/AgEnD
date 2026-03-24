@@ -726,4 +726,24 @@ sandbox
     console.log("Sandbox container removed. Will recreate on next daemon start.");
   });
 
+// === Export / Import ===
+program
+  .command("export")
+  .description("Export configuration for migration to another device")
+  .argument("[output]", "Output file path")
+  .option("--full", "Include all instance data (not just config)")
+  .action(async (output?: string, opts?: { full?: boolean }) => {
+    const { exportConfig } = await import("./export-import.js");
+    await exportConfig(DATA_DIR, output, opts?.full ?? false);
+  });
+
+program
+  .command("import")
+  .description("Import configuration from an export file")
+  .argument("<file>", "Path to export tarball")
+  .action(async (file: string) => {
+    const { importConfig } = await import("./export-import.js");
+    await importConfig(DATA_DIR, file);
+  });
+
 program.parse();
