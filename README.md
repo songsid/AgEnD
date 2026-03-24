@@ -1,24 +1,56 @@
 # claude-channel-daemon
 
-Fleet manager for Claude Code — run multiple Claude sessions behind a single Telegram bot, each mapped to a Forum Topic. Built-in Docker sandbox, command approval, scheduled tasks, voice transcription, auto context rotation, and crash recovery.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg)](https://nodejs.org)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
-> **⚠️** The daemon pre-approves most tools. Dangerous Bash commands (rm, sudo, git push...) are forwarded to Telegram for manual approval. If the approval server is unreachable, dangerous commands are denied. See [Permission Architecture](#permission-architecture).
+**Run a fleet of Claude Code agents from your phone.** One Telegram bot, unlimited projects — each Forum Topic is an independent Claude session with Docker sandbox, crash recovery, and zero babysitting.
+
+[繁體中文](README.zh-TW.md)
+
+> **⚠️** The daemon pre-approves most tools. Dangerous Bash commands (rm, sudo, git push...) are forwarded to Telegram for manual approval. If the approval server is unreachable, dangerous commands are denied. See [Permission Architecture](#approval-system).
 
 ## Why this exists
 
-Claude Code's official Telegram plugin gives you 1 bot = 1 session. Close the terminal and it goes offline.
+Claude Code's official Telegram plugin gives you **1 bot = 1 session**. Close the terminal and it goes offline. No sandbox. No scheduling. No multi-project support.
 
-This daemon fixes that:
+**claude-channel-daemon** turns Claude Code into an always-on, multi-project AI engineering team you control from Telegram:
 
-- **Fleet mode** — 1 Telegram bot, N Forum Topics = N independent Claude sessions
-- **Docker sandbox** — Bash commands run inside a shared Docker container; host filesystem isolated
-- **Scheduled tasks** — cron-based scheduling: tell Claude "every morning at 9am, check the deploy"
-- **tmux persistence** — Claude runs in tmux windows, survives daemon crashes
-- **Auto context rotation** — at 60% context, waits for idle, asks Claude to save state, then restarts fresh
-- **Voice messages** — Telegram voice → Groq Whisper → text to Claude
-- **Approval system** — dangerous Bash commands get Telegram inline buttons
-- **Auto topic binding** — create a Telegram topic, pick a project directory, done
-- **System service** — install as launchd (macOS) or systemd (Linux)
+| Feature | Official Plugin | claude-channel-daemon |
+|---------|:-:|:-:|
+| Multiple projects simultaneously | — | **N sessions, 1 bot** |
+| Survives terminal close / SSH disconnect | — | **tmux persistence** |
+| Docker-sandboxed Bash execution | — | **Built-in** |
+| Cron-based scheduled tasks | — | **Built-in** |
+| Auto context rotation (prevent stale sessions) | — | **Built-in** |
+| Dangerous command approval via Telegram | — | **Inline buttons** |
+| Voice messages → Claude | — | **Groq Whisper** |
+| Create topic = auto-bind project | — | **Built-in** |
+| Install as system service (launchd/systemd) | — | **One command** |
+| Crash recovery | — | **Auto-restart** |
+
+## Who is this for
+
+- **Solo developers** who want Claude working on multiple repos around the clock
+- **Small teams** sharing a single bot — each team member gets their own Forum Topic
+- **CI/CD power users** who want cron-scheduled Claude tasks (daily PR reviews, deploy checks)
+- **Security-conscious users** who need sandboxed execution and explicit approval for dangerous commands
+- Anyone who's tired of keeping a terminal window open just to talk to Claude
+
+## How it compares
+
+| | claude-channel-daemon | Claude Code Telegram Plugin | Cursor / Windsurf | Cline (VS Code) |
+|---|:-:|:-:|:-:|:-:|
+| Runs headless (no IDE/terminal) | **Yes** | Needs terminal | No | No |
+| Multi-project fleet | **Yes** | 1 session | 1 window | 1 window |
+| Docker sandbox | **Yes** | No | No | No |
+| Scheduled tasks | **Yes** | No | No | No |
+| Context auto-rotation | **Yes** | No | N/A | No |
+| Command approval flow | **Yes** | No | N/A | Limited |
+| Mobile-first (Telegram) | **Yes** | Yes | No | No |
+| Voice input | **Yes** | No | No | No |
+| System service | **Yes** | No | N/A | N/A |
+| Crash recovery | **Yes** | No | N/A | N/A |
 
 ## Architecture
 
@@ -50,7 +82,7 @@ Telegram ◄──long-poll──► │  TelegramAdapter (Grammy)     Scheduler
                           │         Docker Container (ccd-shared)   │
                           │                                         │
                           │  All Bash commands execute here          │
-                          │  /Users/suzuke/projects/ (bind mount)   │
+                          │  ~/projects/ (bind mount)               │
                           │  ~/.claude/ (bind mount)                │
                           │                                         │
                           │  Isolated from: ~/Desktop, ~/Downloads  │
@@ -59,6 +91,10 @@ Telegram ◄──long-poll──► │  TelegramAdapter (Grammy)     Scheduler
 ```
 
 ## Key features
+
+### Fleet mode — one bot, many projects
+
+Each Telegram Forum Topic maps to an independent Claude Code session. Create a topic, pick a project directory, and Claude starts working. Delete the topic, instance stops. Scale to as many projects as your machine can handle.
 
 ### Docker sandbox
 
