@@ -14,7 +14,7 @@ const DANGER_PATTERNS = [
   /\bmv\b/,                    // move/rename files
   /\bdd\b/,
   /\bmkfs\b/,
-  /\bsudo\b(?!\s+apt(?:-get)?\s+install)/,  // sudo is dangerous, except sudo apt install (safe in sandbox)
+  /\bsudo\b(?!\s+apt(?:-get)?\s+(?:install|update|upgrade))/,  // sudo is dangerous, except sudo apt install/update/upgrade (safe in sandbox)
   /\bchmod\b/,
   /\bchown\b/,
   /\bkill\b/,
