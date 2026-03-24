@@ -1229,7 +1229,7 @@ export class FleetManager {
   // ===================== /meets Command =====================
 
   private parseMeetsArgs(text: string): { topic: string; mode: "debate" | "collab"; count: number; names?: string[]; repo?: string } | null {
-    const args = text.slice("/meets".length).trim();
+    const args = text.replace(/^\/meets(@\S+)?\s*/, "").trim();
     if (!args) return null;
 
     let mode: "debate" | "collab" = "debate";
