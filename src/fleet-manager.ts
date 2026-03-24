@@ -1462,7 +1462,7 @@ export class FleetManager {
     await this.startInstance(name, instanceConfig, port, true);
 
     // Wait for socket file, then connect IPC (same pattern as bindAndStart)
-    const deadline = Date.now() + 30_000;
+    const deadline = Date.now() + 60_000;
     const sockPath = join(this.getInstanceDir(name), "channel.sock");
     while (!existsSync(sockPath)) {
       if (Date.now() > deadline) throw new Error(`IPC timeout for ${name}`);
@@ -1470,6 +1470,30 @@ export class FleetManager {
       await new Promise(r => setTimeout(r, 500));
     }
     await this.connectIpcToInstance(name);
+
+    // Wait for MCP server to connect (Daemon receives mcp_ready from MCP server)
+    // Without this, sendAndWaitReply messages are lost because MCP isn't connected yet
+    const ipc = this.instanceIpcClients.get(name);
+    if (ipc) {
+      const mcpDeadline = Date.now() + 60_000;
+      await new Promise<void>((resolve, reject) => {
+        const onMessage = (msg: Record<string, unknown>) => {
+          if (msg.type === "mcp_ready") {
+            resolve();
+          }
+        };
+        ipc.on("message", onMessage);
+        const check = () => {
+          if (Date.now() > mcpDeadline) {
+            ipc.removeListener("message", onMessage);
+            reject(new Error(`MCP ready timeout for ${name}`));
+          } else {
+            setTimeout(check, 500);
+          }
+        };
+        check();
+      });
+    }
 
     return name;
   }
