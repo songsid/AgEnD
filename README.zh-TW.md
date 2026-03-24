@@ -1,26 +1,56 @@
 # claude-channel-daemon
 
-用一個 Telegram bot 跑多個 Claude Code session，每個 Forum Topic 對應一個獨立的專案。內建 Docker 沙盒、指令批准、排程任務、語音轉文字、自動 context 輪替、crash 自動恢復。
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js >= 20](https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg)](https://nodejs.org)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-compatible-blueviolet.svg)](https://docs.anthropic.com/en/docs/claude-code)
 
-[English README](README.md)
+**用手機管理一整個 Claude Code agent 團隊。** 一個 Telegram bot、無限專案——每個 Forum Topic 就是一個獨立的 Claude session，自帶 Docker 沙盒、crash 自動恢復，不用顧。
 
-> **⚠️ 注意：** daemon 會預先放行大部分工具，危險的 Bash 指令（rm、sudo、git push...）會透過 Telegram 按鈕讓你確認。批准 server 連不上的話，危險操作會被擋。詳見[權限機制](#權限機制)。
+[English](README.md)
+
+> **⚠️ 注意：** daemon 會預先放行大部分工具，危險的 Bash 指令（rm、sudo、git push...）會透過 Telegram 按鈕讓你確認。批准 server 連不上的話，危險操作會被擋。詳見[權限機制](#批准系統)。
 
 ## 為什麼要做這個
 
-Claude Code 的官方 Telegram plugin 是 1 bot = 1 session。終端機關掉，bot 就斷了。
+Claude Code 的官方 Telegram plugin 是 **1 bot = 1 session**。終端機關掉，bot 就斷了。沒有沙盒、沒有排程、不支援多專案。
 
-這個 daemon 解決的問題：
+**claude-channel-daemon** 把 Claude Code 變成一個 always-on 的多專案 AI 工程團隊，全從 Telegram 操控：
 
-- **Fleet 模式** — 1 個 Telegram bot、N 個 Forum Topics = N 個獨立 Claude session
-- **Docker 沙盒** — Bash 指令跑在共用的 Docker 容器裡，host 檔案系統被隔離
-- **排程任務** — cron 排程：叫 Claude「每天早上 9 點，檢查 deploy 狀態」
-- **tmux 架構** — Claude 跑在 tmux window 裡，daemon crash 也不影響
-- **自動 context 輪替** — 到 60% context 就等 Claude 空閒，讓它存狀態後換新 session
-- **語音訊息** — Telegram 語音 → Groq Whisper → 文字送 Claude
-- **批准系統** — 危險 Bash 指令會送 Telegram inline 按鈕讓你決定
-- **自動 Topic 綁定** — 在 Telegram 開個 topic，選專案目錄，搞定
-- **系統服務** — 裝成 launchd（macOS）或 systemd（Linux）
+| 功能 | 官方 Plugin | claude-channel-daemon |
+|------|:-:|:-:|
+| 同時跑多個專案 | — | **N 個 session，1 個 bot** |
+| 關掉終端機 / SSH 斷線也不怕 | — | **tmux 持久化** |
+| Docker 沙盒執行 Bash | — | **內建** |
+| Cron 排程任務 | — | **內建** |
+| 自動 context 輪替（避免 session 老化）| — | **內建** |
+| 危險指令 Telegram 確認 | — | **Inline 按鈕** |
+| 語音訊息 → Claude | — | **Groq Whisper** |
+| 建 Topic = 自動綁定專案 | — | **內建** |
+| 裝成系統服務（launchd/systemd）| — | **一行指令** |
+| Crash 自動恢復 | — | **自動重啟** |
+
+## 適合誰
+
+- **獨立開發者**——讓 Claude 全天候同時處理多個 repo
+- **小型團隊**——共用一個 bot，每個人各自的 Forum Topic
+- **CI/CD 重度使用者**——用 cron 排程讓 Claude 做每日 PR review、deploy 檢查
+- **安全意識強的人**——需要沙盒執行和危險指令明確審批
+- 受夠了為了跟 Claude 說話得一直開著終端機的人
+
+## 跟其他方案比較
+
+| | claude-channel-daemon | Claude Code Telegram Plugin | Cursor / Windsurf | Cline (VS Code) |
+|---|:-:|:-:|:-:|:-:|
+| 無頭執行（不需要 IDE/終端機）| **有** | 需要終端機 | 沒有 | 沒有 |
+| 多專案 Fleet | **有** | 1 個 session | 1 個視窗 | 1 個視窗 |
+| Docker 沙盒 | **有** | 沒有 | 沒有 | 沒有 |
+| 排程任務 | **有** | 沒有 | 沒有 | 沒有 |
+| Context 自動輪替 | **有** | 沒有 | N/A | 沒有 |
+| 指令審批流程 | **有** | 沒有 | N/A | 有限 |
+| 手機優先（Telegram）| **有** | 有 | 沒有 | 沒有 |
+| 語音輸入 | **有** | 沒有 | 沒有 | 沒有 |
+| 系統服務 | **有** | 沒有 | N/A | N/A |
+| Crash 自動恢復 | **有** | 沒有 | N/A | N/A |
 
 ## 架構
 
@@ -61,6 +91,10 @@ Telegram ◄──long-poll──► │  TelegramAdapter (Grammy)     Scheduler
 ```
 
 ## 核心功能
+
+### Fleet 模式——一個 bot，多個專案
+
+每個 Telegram Forum Topic 對應一個獨立的 Claude Code session。開個 topic、選專案目錄，Claude 就開始工作。刪除 topic，instance 自動停止。你的機器能撐多少個專案就開多少個。
 
 ### Docker 沙盒
 
