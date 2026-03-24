@@ -1190,7 +1190,7 @@ export class FleetManager {
       const groupId = this.fleetConfig.channel.group_id;
 
       const bot = tgAdapter.getBot();
-      for (const [threadId, instanceName] of this.routingTable) {
+      for (const [threadId, target] of this.routingTable) {
         try {
           // sendMessage is the only reliable way to check if a topic still exists
           // sendChatAction and editForumTopic both return ok:true for deleted topics
@@ -1202,7 +1202,8 @@ export class FleetManager {
         } catch (err: unknown) {
           const errMsg = String(err);
           if (errMsg.includes("thread not found") || errMsg.includes("TOPIC_ID_INVALID")) {
-            this.logger.info({ threadId, instanceName }, "Topic deleted — auto-unbinding");
+            const targetName = target.kind === "instance" ? target.name : "meeting";
+            this.logger.info({ threadId, target: targetName }, "Topic deleted — auto-unbinding");
             await this.handleTopicDeleted(threadId);
           }
         }
