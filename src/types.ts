@@ -107,18 +107,9 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   meetings?: MeetingDefaults;
 }
 
-export interface SandboxConfig {
-  enabled: boolean;
-  extra_mounts?: string[];
-  memory?: string;
-  cpus?: string;
-  network?: string;
-}
-
 export interface FleetConfig {
   channel?: ChannelConfig;
   project_roots?: string[];
   defaults: FleetDefaults;
   instances: Record<string, InstanceConfig>;
-  sandbox?: SandboxConfig;
 }
