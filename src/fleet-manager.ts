@@ -8,7 +8,7 @@ import yaml from "js-yaml";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import type { FleetConfig, InstanceConfig } from "./types.js";
-import type { RouteTarget, EphemeralInstanceConfig } from "./meeting/types.js";
+import type { RouteTarget, EphemeralInstanceConfig, MeetingConfig, MeetingChannelOutput, FleetManagerMeetingAPI } from "./meeting/types.js";
 import { loadFleetConfig, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
@@ -380,6 +380,11 @@ export class FleetManager {
     if (text === "/new" || text === "/new@" || text.startsWith("/new ") || text.startsWith("/new@")) {
       const name = text.replace(/^\/new(@\S+)?\s*/, "").trim();
       await this.handleNewCommand(msg, name || undefined);
+      return;
+    }
+
+    if (text === "/meets" || text === "/meets@" || text.startsWith("/meets ") || text.startsWith("/meets@")) {
+      await this.handleMeetsCommand(msg);
       return;
     }
 
@@ -1234,6 +1239,143 @@ export class FleetManager {
     // 5. Remove PID file
     const pidPath = join(this.dataDir, "fleet.pid");
     try { unlinkSync(pidPath); } catch (e) { this.logger.debug({ err: e }, "Failed to remove fleet PID file"); }
+  }
+
+  // ===================== /meets Command =====================
+
+  private parseMeetsArgs(text: string): { topic: string; mode: "debate" | "collab"; count: number; names?: string[]; repo?: string } | null {
+    const args = text.slice("/meets".length).trim();
+    if (!args) return null;
+
+    let mode: "debate" | "collab" = "debate";
+    let count = 2;
+    let names: string[] | undefined;
+    let repo: string | undefined;
+    let topic = args;
+
+    if (topic.includes("--collab")) {
+      mode = "collab";
+      topic = topic.replace("--collab", "").trim();
+    }
+
+    const repoMatch = topic.match(/--repo\s+(\S+)/);
+    if (repoMatch) {
+      repo = repoMatch[1];
+      topic = topic.replace(repoMatch[0], "").trim();
+    }
+
+    const nMatch = topic.match(/-n\s+(\d+)/);
+    if (nMatch) {
+      count = parseInt(nMatch[1], 10);
+      topic = topic.replace(nMatch[0], "").trim();
+    }
+
+    const namesMatch = topic.match(/--names\s+"([^"]+)"/);
+    if (namesMatch) {
+      names = namesMatch[1].split(",").map(n => n.trim());
+      topic = topic.replace(namesMatch[0], "").trim();
+    }
+
+    topic = topic.replace(/^["']|["']$/g, "").trim();
+    if (!topic) return null;
+
+    return { topic, mode, count, names, repo };
+  }
+
+  private async handleMeetsCommand(msg: InboundMessage): Promise<void> {
+    if (!this.adapter) return;
+
+    // Check resource limits
+    const activeMeetings = [...this.routingTable.values()].filter(t => t.kind === "meeting").length;
+    const maxConcurrent = this.fleetConfig?.defaults?.meetings?.maxConcurrent ?? 1;
+    if (activeMeetings >= maxConcurrent) {
+      await this.adapter.sendText(msg.chatId, "⚠️ 已達同時會議上限，請先結束現有會議。");
+      return;
+    }
+
+    const parsed = this.parseMeetsArgs(msg.text);
+    if (!parsed) {
+      await this.adapter.sendText(msg.chatId, '用法：/meets "議題"\n例如：/meets -n 3 "要不要拆 monorepo？"');
+      return;
+    }
+
+    const maxParticipants = this.fleetConfig?.defaults?.meetings?.maxParticipants ?? 6;
+    if (parsed.count > maxParticipants) {
+      await this.adapter.sendText(msg.chatId, `⚠️ 超過參與者上限 (${maxParticipants})`);
+      return;
+    }
+
+    if (parsed.count < 2) {
+      await this.adapter.sendText(msg.chatId, "⚠️ 至少需要 2 位參與者");
+      return;
+    }
+
+    await this.startMeeting(msg.chatId, parsed.topic, parsed.mode, parsed.count, parsed.names, parsed.repo);
+  }
+
+  private async startMeeting(
+    chatId: string,
+    topic: string,
+    mode: "debate" | "collab",
+    count: number,
+    customNames?: string[],
+    repo?: string,
+  ): Promise<void> {
+    const { MeetingOrchestrator } = await import("./meeting/orchestrator.js");
+    const { assignRoles } = await import("./meeting/role-assigner.js");
+
+    const participants = assignRoles(count, customNames);
+    const meetingId = `meet-${Date.now()}`;
+
+    // Create meeting topic
+    let channelId: number;
+    try {
+      const result = await this.createMeetingChannel(`📋 ${topic}`);
+      channelId = result.channelId;
+    } catch (err) {
+      await this.adapter!.sendText(chatId, `⚠️ 無法建立會議 topic: ${(err as Error).message}`);
+      return;
+    }
+
+    // Create channel output bound to this topic
+    const groupId = String(this.fleetConfig?.channel?.group_id ?? "");
+    const threadId = String(channelId);
+    const adapter = this.adapter!;
+    const output: MeetingChannelOutput = {
+      postMessage: async (text: string) => {
+        const sent = await adapter.sendText(groupId, text, { threadId });
+        return sent.messageId;
+      },
+      editMessage: async (messageId: string, text: string) => {
+        await adapter.editMessage(groupId, messageId, text);
+      },
+    };
+
+    const config: MeetingConfig = { meetingId, topic, mode, maxRounds: this.fleetConfig?.defaults?.meetings?.defaultRounds ?? 3, repo };
+    const fmApi: FleetManagerMeetingAPI = {
+      spawnEphemeralInstance: this.spawnEphemeralInstance.bind(this),
+      destroyEphemeralInstance: this.destroyEphemeralInstance.bind(this),
+      sendAndWaitReply: this.sendAndWaitReply.bind(this),
+      createMeetingChannel: this.createMeetingChannel.bind(this),
+      closeMeetingChannel: this.closeMeetingChannel.bind(this),
+    };
+
+    const orchestrator = new MeetingOrchestrator(config, fmApi, output);
+
+    // Register in routing table
+    this.routingTable.set(channelId, { kind: "meeting", orchestrator });
+
+    // Notify user
+    await adapter.sendText(chatId, `✅ 會議已建立，請到新的 topic 查看`);
+
+    // Start (fire and forget)
+    orchestrator.start(participants).then(() => {
+      this.routingTable.delete(channelId);
+      this.closeMeetingChannel(channelId).catch(() => {});
+    }).catch(err => {
+      this.logger.error({ err }, "Meeting failed");
+      this.routingTable.delete(channelId);
+    });
   }
 
   // ===================== Meeting API =====================

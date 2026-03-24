@@ -53,4 +53,4 @@ export interface RoundEntry {
 
 export type RouteTarget =
   | { kind: "instance"; name: string }
-  | { kind: "meeting"; orchestrator: unknown }; // Will be MeetingOrchestrator once implemented
+  | { kind: "meeting"; orchestrator: unknown }; // Typed as unknown to avoid circular import; cast to MeetingOrchestrator in fleet-manager
