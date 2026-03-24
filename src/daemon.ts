@@ -18,7 +18,6 @@ import type { ApprovalStrategy } from "./backend/approval-strategy.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { AccessManager } from "./channel/access-manager.js";
 import type { ChannelAdapter, InboundMessage, ApprovalResponse } from "./channel/types.js";
-import type { ContainerManager } from "./container-manager.js";
 import { transcribe } from "./stt.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -49,7 +48,6 @@ export class Daemon {
     private config: InstanceConfig,
     private instanceDir: string,
     private topicMode = false,
-    private containerManager?: ContainerManager,
     private backend?: CliBackend,
     private approvalStrategyInstance?: ApprovalStrategy,
   ) {
@@ -312,32 +310,6 @@ export class Daemon {
       this.guardian.on("rotate", async () => {
         this.logger.info("Context rotation — killing and respawning Claude");
         this.saveSessionId();
-
-        // Auto-bake: check if Claude installed new packages in the container
-        if (this.containerManager) {
-          const recordPath = join(this.instanceDir, "installed-packages.txt");
-          if (this.containerManager.shouldAutoBake(recordPath)) {
-            this.logger.info("Auto-baking new packages into sandbox image...");
-            try {
-              if (this.lastChatId) {
-                const meta: Record<string, string> = { chat_id: this.lastChatId };
-                if (this.lastThreadId) meta.thread_id = this.lastThreadId;
-                this.pushChannelMessage("📦 正在將新安裝的套件寫入 Dockerfile 並重建 sandbox image...", meta);
-              }
-              const dockerfilePath = join(__dirname, "..", "Dockerfile.sandbox");
-              const { packages } = await this.containerManager.autoBake(recordPath, dockerfilePath);
-              const summary = [
-                packages.apt.length > 0 ? `apt: ${packages.apt.join(", ")}` : "",
-                packages.pip.length > 0 ? `pip: ${packages.pip.join(", ")}` : "",
-                packages.cargo.length > 0 ? `cargo: ${packages.cargo.join(", ")}` : "",
-                packages.npm.length > 0 ? `npm: ${packages.npm.join(", ")}` : "",
-              ].filter(Boolean).join("; ");
-              this.logger.info({ summary }, "Auto-bake complete");
-            } catch (err) {
-              this.logger.warn({ err }, "Auto-bake failed — continuing rotation");
-            }
-          }
-        }
 
         await this.tmux?.killWindow();
         this.transcriptMonitor?.resetOffset();
@@ -657,7 +629,6 @@ export class Daemon {
         },
       },
       approvalStrategy: this.approvalStrategyInstance!,
-      containerManager: this.containerManager,
     };
   }
 
@@ -669,12 +640,6 @@ export class Daemon {
     const backendConfig = this.buildBackendConfig();
     this.backend.writeConfig(backendConfig);
     let claudeCmd = this.backend.buildCommand(backendConfig);
-
-    // Sandbox shell is shared across backends — daemon handles it
-    if (this.containerManager) {
-      const shellPath = this.writeSandboxShell();
-      claudeCmd = `CLAUDE_CODE_SHELL=${shellPath} ${claudeCmd}`;
-    }
 
     const windowId = await this.tmux!.createWindow(claudeCmd, this.config.working_directory);
     const windowIdFile = join(this.instanceDir, "window-id");
@@ -728,18 +693,6 @@ export class Daemon {
     await this.waitForTranscriptIdle(15000);
     this.logger.info("Transcript settled — handover complete");
     this.guardian?.signalHandoverComplete();
-  }
-
-  /** Generate sandbox-bash wrapper script that forwards Bash commands to Docker */
-  private writeSandboxShell(): string {
-    const scriptPath = join(this.instanceDir, "sandbox-bash");
-    const script = `#!/bin/bash
-# Sandbox shell: forwards Bash tool commands to the shared Docker container.
-# Claude Code runs on host; only Bash execution is sandboxed.
-exec docker exec -i -w "$(pwd)" ccd-shared /bin/bash "$@"
-`;
-    writeFileSync(scriptPath, script, { mode: 0o755 });
-    return scriptPath;
   }
 
 }

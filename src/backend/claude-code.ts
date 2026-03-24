@@ -27,9 +27,6 @@ export class ClaudeCodeBackend implements CliBackend {
       cmd += ` --system-prompt "${promptPath}"`;
     }
 
-    // NOTE: sandbox shell (CLAUDE_CODE_SHELL) is handled by the daemon,
-    // not the backend — it's shared across backends.
-
     return cmd;
   }
 
@@ -176,8 +173,6 @@ export class ClaudeCodeBackend implements CliBackend {
       // Best-effort cleanup — don't fail shutdown if .mcp.json is inaccessible
     }
   }
-
-  // NOTE: writeSandboxShell() stays in daemon.ts (shared across backends)
 
   private writeStatusLineScript(): string {
     const statusFile = join(this.instanceDir, "statusline.json");

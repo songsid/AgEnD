@@ -126,15 +126,6 @@ export async function importConfig(
       }
     }
 
-    // Check sandbox extra_mounts (left side of colon)
-    if (Array.isArray(config?.sandbox?.extra_mounts)) {
-      for (const mount of config.sandbox.extra_mounts) {
-        const hostPath = mount.split(":")[0];
-        const expanded = expandHome(hostPath);
-        if (!existsSync(expanded)) missing.push(expanded);
-      }
-    }
-
     if (missing.length > 0) {
       console.warn(`\n⚠️  The following paths in fleet.yaml do not exist on this device:`);
       for (const p of missing) {

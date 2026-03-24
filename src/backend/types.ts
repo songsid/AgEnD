@@ -1,5 +1,4 @@
 import type { TmuxManager } from "../tmux-manager.js";
-import type { ContainerManager } from "../container-manager.js";
 import type { ApprovalStrategy } from "./approval-strategy.js";
 
 export interface McpServerEntry {
@@ -15,7 +14,6 @@ export interface CliBackendConfig {
   approvalPort: number;
   mcpServers: Record<string, McpServerEntry>;
   approvalStrategy: ApprovalStrategy;
-  containerManager?: ContainerManager;
   systemPrompt?: string;
   skipPermissions?: boolean;
 }
