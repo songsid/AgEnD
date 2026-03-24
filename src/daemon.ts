@@ -97,6 +97,8 @@ export class Daemon {
         this.handleToolCall(msg, socket);
       } else if (msg.type === "mcp_ready") {
         this.logger.debug("MCP channel server connected and ready");
+        // Notify FleetManager's IPC client that MCP is ready
+        this.ipcServer?.broadcast({ type: "mcp_ready" });
       } else if (msg.type === "fleet_inbound") {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
