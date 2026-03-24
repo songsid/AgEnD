@@ -16,7 +16,7 @@ describe("Daemon", () => {
     };
     const backend = new ClaudeCodeBackend("/tmp/ccd-test-instance");
     const approval = new HookBasedApproval({ messageBus: new MessageBus(), port: 18321 });
-    const daemon = new Daemon("test", config, "/tmp/ccd-test-instance", false, undefined, backend, approval);
+    const daemon = new Daemon("test", config, "/tmp/ccd-test-instance", false, backend, approval);
     expect(daemon).toBeDefined();
   });
 
@@ -30,7 +30,7 @@ describe("Daemon", () => {
     };
     const backend = new ClaudeCodeBackend("/tmp/ccd-test-instance");
     const approval = new HookBasedApproval({ messageBus: new MessageBus(), port: 18321 });
-    const daemon = new Daemon("test", config, "/tmp/ccd-test-instance", true, undefined, backend, approval);
+    const daemon = new Daemon("test", config, "/tmp/ccd-test-instance", true, backend, approval);
     expect(daemon).toBeDefined();
   });
 });
