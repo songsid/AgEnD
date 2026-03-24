@@ -42,6 +42,7 @@ export class FleetManager {
   private scheduler: Scheduler | null = null;
   private configPath: string = "";
   private logger = createLogger("info");
+  private static ephemeralPortCounter = 0;
 
   constructor(private dataDir: string) {}
 
@@ -1417,7 +1418,7 @@ export class FleetManager {
       backend: config.backend,
     };
 
-    const port = 18321 + this.daemons.size + 100;
+    const port = 18421 + (FleetManager.ephemeralPortCounter++);
     instanceConfig.approval_port = port;
 
     await this.startInstance(name, instanceConfig, port, true);
