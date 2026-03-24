@@ -275,9 +275,10 @@ interface FleetManagerMeetingAPI {
 interface EphemeralInstanceConfig {
   meetingId: string
   label: string               // "A", "B", or custom name
-  systemPrompt: string        // role instructions, set via --system-prompt flag
+  systemPrompt: string        // role instructions (see Backend Prerequisites below)
   workingDirectory: string    // debate: /tmp, collab: worktree path
-  backend?: string            // defaults to fleet backend, overridable
+  skipPermissions?: boolean   // debate mode: true (see Backend Prerequisites below)
+  backend?: string            // defaults to fleet config defaults.backend or "claude-code"
 }
 ```
 
@@ -360,6 +361,16 @@ handleInboundMessage(msg) {
 - User sends /end during instance boot → AbortSignal cancels remaining spawns, cleanup started instances
 - Collab mode: validate `--repo` path is a git repository before spawning
 - Collab cleanup: `git worktree remove --force` + `git branch -D meet/{id}-*`
+
+## Backend Prerequisites
+
+The following extensions to existing interfaces are required before meeting functionality can work:
+
+1. **`CliBackendConfig` needs `systemPrompt?: string`** — `buildCommand()` must append `--system-prompt "..."` to the CLI command when present. This is a supported Claude Code CLI flag.
+2. **`CliBackendConfig` needs `skipPermissions?: boolean`** — `buildCommand()` must append `--dangerously-skip-permissions` when true. Used only for debate-mode ephemeral instances (working in /tmp, no risk).
+3. **`TelegramAdapter` needs `closeForumTopic(threadId)`** — wraps the Telegram Bot API `closeForumTopic` method.
+
+These are small, isolated changes to existing code and do not affect the Orchestrator design.
 
 ## Scope Boundaries (not in v1)
 
