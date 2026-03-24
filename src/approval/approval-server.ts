@@ -2,7 +2,6 @@ import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import type { MessageBus } from "../channel/message-bus.js";
 import type { IpcServer } from "../channel/ipc-bridge.js";
-import { parseInstallCommand, recordInstall } from "../install-recorder.js";
 
 const DANGER_PATTERNS = [
   /\brm\b/,                    // any file deletion
@@ -14,7 +13,7 @@ const DANGER_PATTERNS = [
   /\bmv\b/,                    // move/rename files
   /\bdd\b/,
   /\bmkfs\b/,
-  /\bsudo\b(?!\s+apt(?:-get)?\s+(?:install|update|upgrade))/,  // sudo is dangerous, except sudo apt install/update/upgrade (safe in sandbox)
+  /\bsudo\b/,
   /\bchmod\b/,
   /\bchown\b/,
   /\bkill\b/,
@@ -42,8 +41,6 @@ interface ApprovalOptions {
   topicMode?: boolean;
   /** Instance name — so fleet manager knows which topic to send approval to */
   instanceName?: string;
-  /** Path to install record file for sandbox bake tracking */
-  installRecordPath?: string;
 }
 
 const APPROVAL_TIMEOUT_MS = 120_000;
@@ -56,7 +53,6 @@ export class ApprovalServer {
   private topicMode: boolean;
   private instanceName: string;
   private token: string;
-  private installRecordPath: string | undefined;
 
   constructor(opts: ApprovalOptions) {
     this.messageBus = opts.messageBus;
@@ -65,7 +61,6 @@ export class ApprovalServer {
     this.topicMode = opts.topicMode ?? false;
     this.instanceName = opts.instanceName ?? "";
     this.token = randomBytes(32).toString("hex");
-    this.installRecordPath = opts.installRecordPath;
   }
 
   getToken(): string {
@@ -110,14 +105,6 @@ export class ApprovalServer {
             } else {
               // Everything else (all tools + normal Bash) → auto-allow
               permissionDecision = "allow";
-            }
-
-            // Record install commands when approved
-            if (permissionDecision === "allow" && tool_name === "Bash" && typeof tool_input?.command === "string") {
-              const install = parseInstallCommand(tool_input.command);
-              if (install && this.installRecordPath) {
-                recordInstall(this.installRecordPath, install);
-              }
             }
 
             res.writeHead(200, { "Content-Type": "application/json" });
