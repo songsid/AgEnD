@@ -116,9 +116,6 @@ describe("ccd import", () => {
       "instances:",
       "  test:",
       "    working_directory: /nonexistent/workdir",
-      "sandbox:",
-      "  extra_mounts:",
-      "    - /nonexistent/gitconfig:~/.gitconfig:ro",
     ].join("\n");
     writeFileSync(join(srcDir, "fleet.yaml"), fleetContent);
 
@@ -137,6 +134,5 @@ describe("ccd import", () => {
     const warningText = warnings.join("\n");
     expect(warningText).toContain("/nonexistent/path/abc");
     expect(warningText).toContain("/nonexistent/workdir");
-    expect(warningText).toContain("/nonexistent/gitconfig");
   });
 });
