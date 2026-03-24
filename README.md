@@ -230,6 +230,9 @@ ccd access unlock <n>     Unlock instance access
 ccd access list <n>       List allowed users
 ccd access remove <n> <uid> Remove user
 ccd access pair <n> <uid> Generate pairing code
+ccd export [path]         Export config for device migration
+ccd export --full [path]  Export config + all instance data
+ccd import <file>         Import config from export file
 ccd install               Install as system service
 ccd uninstall             Remove system service
 ```
