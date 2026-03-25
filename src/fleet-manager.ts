@@ -1332,6 +1332,8 @@ export class FleetManager {
       const { execFileSync } = await import("child_process");
       mkdirSync(parsed.repo, { recursive: true });
       execFileSync("git", ["init"], { cwd: parsed.repo, stdio: "pipe" });
+      // Worktree requires at least one commit
+      execFileSync("git", ["commit", "--allow-empty", "-m", "init"], { cwd: parsed.repo, stdio: "pipe" });
       this.logger.info({ repo: parsed.repo }, "Auto-initialized git repo for collab");
     }
 
