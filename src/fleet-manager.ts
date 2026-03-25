@@ -1338,23 +1338,26 @@ export class FleetManager {
       return;
     }
 
-    // Build system prompt based on mode
-    let systemPrompt: string;
+    // Simple system prompt — just define the role
+    const systemPrompt = `你是一個 AI 會議主持人。你的工作是協調多角度討論並用 reply 工具將每個角色的回應分批發送到 channel。每個角色的回應要分開發送，不要合併成一則訊息。`;
+
+    // Build the kickoff message based on mode
+    let kickoffMessage: string;
     if (mode === "debate") {
-      systemPrompt = `你是一場辯論的主持人。議題：「${topic}」\n\n請使用 agent team 功能建立一個辯論團隊：\n- 一個正方 teammate（支持提案）\n- 一個反方 teammate（反對提案）\n${count > 2 ? `- 一個仲裁 teammate（客觀分析雙方）\n` : ""}\n讓他們辯論 ${rounds ?? 3} 輪，每輪每個 teammate 發言一次。\n辯論結束後，綜合所有觀點產出結論。\n\n用 reply 工具把每個 teammate 的發言和最終結論發到 channel。每次有 teammate 完成發言就立即用 reply 回報。`;
+      kickoffMessage = `使用 Agent Team 來辯論這個議題：「${topic}」\n\n要求：\n- ${count} 位參與者（正方、反方${count > 2 ? "、仲裁" : ""}）\n- 進行 ${rounds ?? 3} 輪辯論\n- 每個角色的發言要分開用 reply 發送，標明角色`;
     } else if (mode === "collab") {
-      systemPrompt = `你是一個協作任務的協調者。任務：「${topic}」\n${repo ? `\n專案目錄：${repo}\n` : ""}\n請使用 agent team 功能建立一個開發團隊：\n- ${count} 個 teammate，各自在獨立的 git worktree 中工作\n\n流程：\n1. 先讓 teammates 討論分工\n2. 確認分工後讓他們各自開發\n3. 完成後綜合成果\n\n用 reply 工具回報每個階段的進度。`;
+      kickoffMessage = `使用 Agent Team 來協作完成這個任務：「${topic}」\n${repo ? `\n專案目錄：${repo}\n` : ""}\n要求：\n- ${count} 位參與者\n- 每個人用 isolation: "worktree" 在獨立 git worktree 工作\n- 先討論分工，再各自開發\n- 每個階段進展都分開用 reply 發送`;
     } else {
-      // discussion mode (default)
+      // discussion mode
       if (!angles) {
         const defaultAngles = ["技術面", "成本效益", "使用者體驗", "風險與挑戰", "組織影響", "長期策略"];
         angles = defaultAngles.slice(0, count);
       }
-      const angleList = angles.map((a, i) => `- Teammate ${i + 1}：從「${a}」角度分析`).join("\n");
-      systemPrompt = `你是一場多角度討論的主持人。議題：「${topic}」\n\n請使用 agent team 功能建立一個討論團隊：\n${angleList}\n\n流程：\n1. 先讓每個 teammate 獨立分析（不看其他人的觀點）\n2. 分享所有分析後，進行 ${rounds ?? 2} 輪交叉討論\n3. 最後收斂出共識結論\n\n用 reply 工具把每個 teammate 的分析和最終共識發到 channel。每次有進展就立即回報。`;
+      const angleList = angles.join("、");
+      kickoffMessage = `使用 Agent Team 來從多個角度討論這個議題：「${topic}」\n\n分析角度：${angleList}\n\n要求：\n- 每個角度派一個 Agent 獨立分析\n- 分析完成後進行 ${rounds ?? 2} 輪交叉討論\n- 最後收斂出共識結論\n- 每個角色的回應要分開用 reply 發送，標明角度`;
     }
 
-    // Spawn single orchestrator instance with agent teams enabled
+    // Spawn single orchestrator instance
     const instanceName = await this.spawnEphemeralInstance({
       systemPrompt,
       workingDirectory: repo ?? "/tmp",
@@ -1369,12 +1372,12 @@ export class FleetManager {
     // Notify user
     await this.adapter!.sendText(chatId, `✅ 會議已建立，請到新的 topic 查看`);
 
-    // Send the topic as the first message to kick off the discussion
+    // Send the kickoff message
     const ipc = this.instanceIpcClients.get(instanceName);
     if (ipc) {
       ipc.send({
         type: "fleet_inbound",
-        content: `開始：${topic}`,
+        content: kickoffMessage,
         meta: {
           chat_id: String(this.fleetConfig?.channel?.group_id ?? ""),
           message_id: `meet-${Date.now()}`,
