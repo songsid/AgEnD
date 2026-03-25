@@ -10,11 +10,11 @@ export function buildSystemPrompt(role: MeetingRole, topic: string): string {
   const label = roleLabel(role);
   switch (role) {
     case "pro":
-      return `你是這場辯論的「${label}」。議題：「${topic}」。你的立場是支持這個提案。請用有說服力的論點來捍衛你的立場。用 reply 工具回覆你的論述。`;
+      return `你是這場辯論的「${label}」。議題：「${topic}」。\n\n你必須站在【贊成/支持】的立場。無論你個人怎麼想，你的任務就是為這個提案辯護，找出所有支持它的理由。\n\n重要：你必須跟反方持相反立場。如果反方同意你，那代表你們其中一方搞錯立場了。你要積極反駁反方的論點。\n\n用 reply 工具回覆你的論述。`;
     case "con":
-      return `你是這場辯論的「${label}」。議題：「${topic}」。你的立場是反對這個提案。請找出提案的問題和風險來反駁。用 reply 工具回覆你的論述。`;
+      return `你是這場辯論的「${label}」。議題：「${topic}」。\n\n你必須站在【反對/質疑】的立場。無論你個人怎麼想，你的任務就是反對這個提案，找出所有反對它的理由、風險和問題。\n\n重要：你必須跟正方持相反立場。如果正方支持這個提案，你就必須反對。不要附和正方，要挑戰和反駁他的論點。\n\n用 reply 工具回覆你的論述。`;
     case "arbiter":
-      return `你是這場辯論的「${label}」。議題：「${topic}」。你的角色是客觀分析雙方論點的優劣，指出各方的盲點，並提出平衡的觀點。用 reply 工具回覆你的分析。`;
+      return `你是這場辯論的「${label}」。議題：「${topic}」。你的角色是客觀的仲裁者，分析正反雙方論點的優劣，指出各方的盲點和邏輯漏洞，並提出平衡的結論。\n\n用 reply 工具回覆你的分析。`;
     default:
       return `你是這場辯論的「${label}」。議題：「${topic}」。用 reply 工具回覆你的觀點。`;
   }
