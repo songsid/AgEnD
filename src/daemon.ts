@@ -309,10 +309,9 @@ export class Daemon {
         if (this.tmux) {
           const reason = this.guardian?.rotationReason ?? "context_full";
           const pct = this.readContextPercentage();
-          const reasonMsg = reason === "max_age"
-            ? `Scheduled rotation — session age limit reached (context usage: ${pct}%, NOT full).`
-            : `Context rotation — usage at ${pct}%, approaching threshold.`;
-          const prompt = `${reasonMsg} Use the reply tool to tell the user: quote the EXACT percentage ${pct}% and the reason (${reason === "max_age" ? "scheduled maintenance" : "context approaching limit"}). Do NOT change or invent numbers. Then save state to memory/handover.md`;
+          const prompt = reason === "max_age"
+            ? `Scheduled rotation — session age limit reached (context usage: ${pct}%, NOT full). Save state to memory/handover.md silently — do NOT notify the user.`
+            : `Context rotation — usage at ${pct}%, approaching threshold. Use the reply tool to tell the user: quote the EXACT percentage ${pct}% and the reason (context approaching limit). Do NOT change or invent numbers. Then save state to memory/handover.md`;
           await this.tmux.sendKeys(prompt);
           await new Promise(r => setTimeout(r, 500));
           await this.tmux.sendSpecialKey("Enter");
