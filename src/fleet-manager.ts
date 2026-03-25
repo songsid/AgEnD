@@ -1237,23 +1237,29 @@ export class FleetManager {
 
   // ===================== /meets Command =====================
 
-  private parseMeetsArgs(text: string): { topic: string; mode: "debate" | "collab"; count: number; names?: string[]; repo?: string } | null {
+  private parseMeetsArgs(text: string): { topic: string; mode: "debate" | "collab"; count: number; rounds?: number; names?: string[]; repo?: string } | null {
     const args = text.replace(/^\/(meets|collab)(@\S+)?\s*/, "").trim();
     if (!args) return null;
 
     let mode: "debate" | "collab" = "debate";
     let count = 2;
+    let rounds: number | undefined;
     let names: string[] | undefined;
     let repo: string | undefined;
     let topic = args;
 
     const repoMatch = topic.match(/--repo\s+(\S+)/);
     if (repoMatch) {
-      // Expand ~ to homedir since Node.js doesn't do shell expansion
       repo = repoMatch[1].startsWith("~")
         ? join(homedir(), repoMatch[1].slice(1))
         : resolve(repoMatch[1]);
       topic = topic.replace(repoMatch[0], "").trim();
+    }
+
+    const rMatch = topic.match(/-r\s+(\d+)/);
+    if (rMatch) {
+      rounds = parseInt(rMatch[1], 10);
+      topic = topic.replace(rMatch[0], "").trim();
     }
 
     const nMatch = topic.match(/-n\s+(\d+)/);
@@ -1271,7 +1277,7 @@ export class FleetManager {
     topic = topic.replace(/^["']|["']$/g, "").trim();
     if (!topic) return null;
 
-    return { topic, mode, count, names, repo };
+    return { topic, mode, count, rounds, names, repo };
   }
 
   private async handleMeetsCommand(msg: InboundMessage, forceMode?: "debate" | "collab"): Promise<void> {
@@ -1318,7 +1324,7 @@ export class FleetManager {
       return;
     }
 
-    await this.startMeeting(msg.chatId, parsed.topic, parsed.mode, parsed.count, parsed.names, parsed.repo);
+    await this.startMeeting(msg.chatId, parsed.topic, parsed.mode, parsed.count, parsed.names, parsed.repo, parsed.rounds);
   }
 
   private async startMeeting(
@@ -1328,6 +1334,7 @@ export class FleetManager {
     count: number,
     customNames?: string[],
     repo?: string,
+    rounds?: number,
   ): Promise<void> {
     const { MeetingOrchestrator } = await import("./meeting/orchestrator.js");
     const { assignRoles } = await import("./meeting/role-assigner.js");
@@ -1359,7 +1366,7 @@ export class FleetManager {
       },
     };
 
-    const config: MeetingConfig = { meetingId, topic, mode, maxRounds: this.fleetConfig?.defaults?.meetings?.defaultRounds ?? 3, repo };
+    const config: MeetingConfig = { meetingId, topic, mode, maxRounds: rounds ?? this.fleetConfig?.defaults?.meetings?.defaultRounds ?? 3, repo };
     const fmApi: FleetManagerMeetingAPI = {
       spawnEphemeralInstance: this.spawnEphemeralInstance.bind(this),
       destroyEphemeralInstance: this.destroyEphemeralInstance.bind(this),
