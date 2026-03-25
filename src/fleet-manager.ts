@@ -1368,7 +1368,8 @@ export class FleetManager {
     // Create meeting topic
     let channelId: number;
     try {
-      const result = await this.createMeetingChannel(`📋 ${topic}`);
+      const topicLabel = topic.length > 30 ? topic.slice(0, 30) + "…" : topic;
+      const result = await this.createMeetingChannel(`📋 ${topicLabel}`);
       channelId = result.channelId;
     } catch (err) {
       await this.adapter!.sendText(chatId, `⚠️ 無法建立會議 topic: ${(err as Error).message}`);
