@@ -1490,11 +1490,11 @@ export class FleetManager {
 
     const instanceConfig: InstanceConfig = {
       working_directory: workDir,
-      lightweight: config.lightweight,
+      lightweight: true,  // All ephemeral instances skip context guardian, memory layer, etc.
       systemPrompt: config.systemPrompt,
       skipPermissions: config.skipPermissions,
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
-      context_guardian: { threshold_percentage: 100, max_idle_wait_ms: 0, completion_timeout_ms: 0, grace_period_ms: 0, max_age_hours: 999 },
+      context_guardian: { threshold_percentage: 100, max_idle_wait_ms: 0, completion_timeout_ms: 0, grace_period_ms: 0, max_age_hours: 24 },
       memory: { auto_summarize: false, watch_memory_dir: false, backup_to_sqlite: false },
       log_level: "info",
       backend: config.backend,
