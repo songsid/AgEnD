@@ -186,13 +186,14 @@ export class FleetManager {
       this.scheduler?.reload();
     });
 
-    // SIGUSR2: graceful restart
-    process.on("SIGUSR2", () => {
+    // SIGUSR2: graceful restart (use once + re-register pattern to avoid duplicate handlers)
+    const onRestart = () => {
       this.logger.info("Received SIGUSR2, initiating graceful restart...");
-      this.restartInstances().catch(err => {
-        this.logger.error({ err }, "Graceful restart failed");
-      });
-    });
+      this.restartInstances()
+        .catch(err => this.logger.error({ err }, "Graceful restart failed"))
+        .finally(() => process.once("SIGUSR2", onRestart));
+    };
+    process.once("SIGUSR2", onRestart);
   }
 
   /** Start the shared Telegram adapter for topic mode */
@@ -737,7 +738,12 @@ export class FleetManager {
       }
 
       case "list_instances": {
-        const instances = [...this.daemons.keys()].filter(name => name !== instanceName);
+        const instances = [...this.daemons.keys()]
+          .filter(name => name !== instanceName)
+          .map(name => {
+            const config = this.fleetConfig?.instances[name];
+            return { name, topic_id: config?.topic_id ?? null };
+          });
         respond({ instances });
         break;
       }
@@ -1257,20 +1263,37 @@ export class FleetManager {
     // Notify all instances about pending restart
     const groupId = this.fleetConfig?.channel?.group_id;
     if (groupId && this.adapter) {
-      await this.adapter.sendText(String(groupId), `🔄 Graceful restart initiated — waiting for all instances to idle...`).catch(() => {});
+      await this.adapter.sendText(String(groupId), `🔄 Graceful restart initiated — waiting for all instances to idle...`)
+        .catch(e => this.logger.debug({ err: e }, "Failed to post restart notification"));
     }
 
-    // Wait for all instances to be idle (no transcript activity for 10s)
-    await Promise.all(
-      instanceNames.map(async (name) => {
-        const daemon = this.daemons.get(name);
-        if (daemon) {
-          this.logger.info(`Waiting for ${name} to idle...`);
-          await daemon.waitForIdle(10_000);
-          this.logger.info(`${name} is idle`);
-        }
-      })
-    );
+    // Wait for all instances to be idle (no transcript activity for 10s),
+    // with a 5-minute overall timeout to avoid hanging on stuck instances.
+    const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+    let timeoutHandle: ReturnType<typeof setTimeout>;
+    const idleDeadline = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("Idle wait timed out after 5 minutes")), IDLE_TIMEOUT_MS);
+    });
+
+    try {
+      await Promise.race([
+        Promise.all(
+          instanceNames.map(async (name) => {
+            const daemon = this.daemons.get(name);
+            if (daemon) {
+              this.logger.info(`Waiting for ${name} to idle...`);
+              await daemon.waitForIdle(10_000);
+              this.logger.info(`${name} is idle`);
+            }
+          })
+        ),
+        idleDeadline,
+      ]);
+    } catch (err) {
+      this.logger.warn({ err }, "Idle wait timed out — force restarting");
+    } finally {
+      clearTimeout(timeoutHandle!);
+    }
 
     this.logger.info("All instances idle — restarting...");
 
@@ -1304,7 +1327,8 @@ export class FleetManager {
 
     this.logger.info("Graceful restart complete");
     if (groupId && this.adapter) {
-      await this.adapter.sendText(String(groupId), `✅ Graceful restart complete — ${this.daemons.size} instances running`).catch(() => {});
+      await this.adapter.sendText(String(groupId), `✅ Graceful restart complete — ${this.daemons.size} instances running`)
+        .catch(e => this.logger.debug({ err: e }, "Failed to post restart completion notification"));
     }
   }
 
