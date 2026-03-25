@@ -29,7 +29,7 @@ User taps button → Adapter callback → Daemon → IPC (permission_response) �
 MCP Server → permission notification (allow/deny) → Claude Code
 ```
 
-Topic mode variant: Daemon → IPC → Fleet Manager → Adapter → User → reverse path.
+Topic mode variant: Daemon → IPC (`fleet_approval_request` with `PermissionPrompt` payload) → Fleet Manager → Adapter → User → reverse path (`fleet_approval_response`).
 
 ## Changes
 
@@ -46,12 +46,16 @@ Topic mode variant: Daemon → IPC → Fleet Manager → Adapter → User → re
    }
    ```
 
-2. Listen for `notifications/claude/channel/permission_request` from Claude Code:
+2. Register a notification handler via `mcp.setNotificationHandler()` (new pattern — existing code only sends notifications, never receives them):
    ```typescript
-   // Notification params: { request_id, tool_name, description, input_preview? }
+   mcp.setNotificationHandler(PermissionRequestSchema, async (notification) => {
+     // notification.params: { request_id, tool_name, description, input_preview? }
+   });
    ```
 
-3. On receive: send IPC message to daemon, await response, send back permission notification.
+3. On receive: send IPC message to daemon, await response, send back permission notification via `mcp.notification()`.
+
+4. **Timeout**: permission IPC requests need a 120s timeout (not the default 30s used for tool calls), since they require human interaction. Use a separate timeout constant `PERMISSION_TIMEOUT_MS = 120_000`.
 
 ### IPC Protocol (new message types)
 
@@ -104,6 +108,17 @@ sendApproval(
 
 Note: `always_allow` removed from decision type — no longer self-managed.
 
+Also update `ApprovalResponse` to match:
+```typescript
+interface ApprovalResponse {
+  decision: "approve" | "deny";  // was "approve" | "always_allow" | "deny"
+  respondedBy?: { channelType: string; userId: string };
+  reason?: string;
+}
+```
+
+**Vocabulary mapping**: adapter uses `"approve"` / `"deny"`, MCP protocol uses `"allow"` / `"deny"`. The MCP server translates: `"approve"` → `"allow"` when sending the permission notification back to Claude Code.
+
 ### MessageBus (`src/channel/message-bus.ts`)
 
 Update `requestApproval` to accept `PermissionPrompt` instead of `string`.
@@ -130,7 +145,7 @@ Tool: Bash
 
 - Remove `hooks` from settings generation (no more PreToolUse hook)
 - Remove `loadToolAllowlist` import and usage
-- Remove `--dangerously-skip-permissions` flag (permission relay handles everything)
+- Remove `--dangerously-skip-permissions` flag — the `permissions.allow` / `permissions.deny` lists in claude-settings.json now serve as the sole permission configuration. Tools in the `allow` list (Read, Edit, etc.) never trigger permission prompts; tools not in the list trigger the permission relay flow.
 - Keep permission `allow` list for tools that should never prompt (Read, Edit, etc.)
 - Keep permission `deny` list for catastrophic commands
 
@@ -150,6 +165,8 @@ Tool: Bash
 - `src/daemon.ts` — handle permission_request IPC, remove promptDetector/approvalStrategy
 - `src/backend/claude-code.ts` — remove hooks, allowlist
 - `src/daemon-entry.ts` — remove ApprovalStrategy instantiation (if present)
+- `src/backend/types.ts` — remove `approvalStrategy` and `approvalPort` from `CliBackendConfig`
+- `src/fleet-manager.ts` — update `fleet_approval_request` IPC to carry `PermissionPrompt` instead of string prompt
 
 ## Non-Goals
 
