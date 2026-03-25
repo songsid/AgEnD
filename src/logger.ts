@@ -17,7 +17,7 @@ export function createLogger(level: string = "info") {
           options: {
             destination: 1,
             colorize: true,
-            translateTime: "HH:MM:ss",
+            translateTime: "SYS:HH:MM:ss",
             ignore: "pid,hostname",
           },
           level,
@@ -27,7 +27,7 @@ export function createLogger(level: string = "info") {
           options: {
             destination: LOG_FILE,
             colorize: false,
-            translateTime: "HH:MM:ss",
+            translateTime: "SYS:HH:MM:ss",
             ignore: "pid,hostname",
           },
           level,
