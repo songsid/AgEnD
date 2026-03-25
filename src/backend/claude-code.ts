@@ -16,6 +16,10 @@ export class ClaudeCodeBackend implements CliBackend {
       if (sid) cmd += ` --resume ${sid}`;
     }
 
+    if (config.skipPermissions) {
+      cmd += ` --dangerously-skip-permissions`;
+    }
+
     if (config.systemPrompt) {
       const promptPath = join(this.instanceDir, "system-prompt.md");
       writeFileSync(promptPath, config.systemPrompt);
@@ -53,6 +57,15 @@ export class ClaudeCodeBackend implements CliBackend {
     const statusLineCommand = this.writeStatusLineScript();
 
     // 3. Write claude-settings.json
+    if (config.skipPermissions) {
+      const settings: Record<string, unknown> = {
+        permissions: { allow: ["*"], deny: [], defaultMode: "bypassPermissions" },
+        statusLine: { type: "command", command: statusLineCommand },
+      };
+      writeFileSync(join(this.instanceDir, "claude-settings.json"), JSON.stringify(settings));
+      return;
+    }
+
     const settings: Record<string, unknown> = {
       permissions: {
         allow: [
