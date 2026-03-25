@@ -73,6 +73,12 @@ describe("ClaudeCodeBackend", () => {
       expect(cmd).not.toContain("--dangerously-skip-permissions");
     });
 
+    it("includes --dangerously-skip-permissions when skipPermissions is true", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig({ skipPermissions: true }));
+      expect(cmd).toContain("--dangerously-skip-permissions");
+    });
+
     it("does not include --system-prompt by default", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
@@ -145,6 +151,15 @@ describe("ClaudeCodeBackend", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       backend.writeConfig(makeConfig());
       expect(existsSync(join(TEST_DIR, "statusline.sh"))).toBe(true);
+    });
+
+    it("writes bypass settings when skipPermissions is true", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.writeConfig(makeConfig({ skipPermissions: true }));
+      const settings = JSON.parse(readFileSync(join(TEST_DIR, "claude-settings.json"), "utf-8"));
+      expect(settings.permissions.allow).toEqual(["*"]);
+      expect(settings.permissions.defaultMode).toBe("bypassPermissions");
+      expect(settings).not.toHaveProperty("hooks");
     });
   });
 
