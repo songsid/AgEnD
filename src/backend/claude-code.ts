@@ -2,7 +2,6 @@ import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import type { CliBackend, CliBackendConfig } from "./types.js";
 import type { TmuxManager } from "../tmux-manager.js";
-import { loadToolAllowlist } from "../approval/tmux-prompt-detector.js";
 
 export class ClaudeCodeBackend implements CliBackend {
   constructor(private instanceDir: string) {}
@@ -57,7 +56,7 @@ export class ClaudeCodeBackend implements CliBackend {
     // 2. Write statusline script
     const statusLineCommand = this.writeStatusLineScript();
 
-    // 3. If skipPermissions, write simplified settings (no hooks, no approval)
+    // 3. Write claude-settings.json
     if (config.skipPermissions) {
       const settings: Record<string, unknown> = {
         permissions: { allow: ["*"], deny: [], defaultMode: "bypassPermissions" },
@@ -67,12 +66,7 @@ export class ClaudeCodeBackend implements CliBackend {
       return;
     }
 
-    // 4. Get hooks from approval strategy
-    const approvalResult = config.approvalStrategy.setup(config.approvalPort);
-
-    // 5. Write claude-settings.json
     const settings: Record<string, unknown> = {
-      hooks: approvalResult.hooks ?? {},
       permissions: {
         allow: [
           "Read", "Edit", "Write", "Glob", "Grep", "Bash(*)",
@@ -81,8 +75,6 @@ export class ClaudeCodeBackend implements CliBackend {
           "mcp__ccd-channel__edit_message", "mcp__ccd-channel__download_attachment",
           "mcp__ccd-channel__create_schedule", "mcp__ccd-channel__list_schedules",
           "mcp__ccd-channel__update_schedule", "mcp__ccd-channel__delete_schedule",
-          // Merge user-approved "always allow" tools from persistent allowlist
-          ...loadToolAllowlist(this.instanceDir),
         ],
         deny: [
           "Bash(rm -rf /)", "Bash(rm -rf /*)",
