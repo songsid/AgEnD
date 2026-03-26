@@ -2,6 +2,7 @@ import { join, dirname } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { EventEmitter } from "node:events";
 import type { InstanceConfig } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { TmuxManager } from "./tmux-manager.js";
@@ -18,11 +19,12 @@ import { AccessManager } from "./channel/access-manager.js";
 import type { ChannelAdapter, InboundMessage, ApprovalResponse, PermissionPrompt } from "./channel/types.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { HangDetector } from "./hang-detector.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export class Daemon {
+export class Daemon extends EventEmitter {
   private logger: Logger;
   private tmux: TmuxManager | null = null;
   private ipcServer: IpcServer | null = null;
@@ -48,6 +50,10 @@ export class Daemon {
   private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
   private crashCount = 0;
   private lastCrashAt = 0;
+  // Context rotation quality tracking
+  private rotationStartedAt = 0;
+  private preRotationContextPct = 0;
+  private hangDetector: HangDetector | null = null;
 
   constructor(
     private name: string,
@@ -56,6 +62,7 @@ export class Daemon {
     private topicMode = false,
     private backend?: CliBackend,
   ) {
+    super();
     this.logger = createLogger(config.log_level);
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
@@ -232,15 +239,21 @@ export class Daemon {
       this.transcriptMonitor.on("tool_use", (name: string, _input: unknown) => {
         this.logger.debug({ tool: name }, "Tool use");
         ackIfPending();
+        this.hangDetector?.recordActivity();
       });
       this.transcriptMonitor.on("tool_result", (_name: string, _output: unknown) => {
-        // no-op
+        this.hangDetector?.recordActivity();
       });
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.logger.debug({ text: text.slice(0, 200) }, "Claude response");
         ackIfPending();
+        this.hangDetector?.recordActivity();
       });
       this.transcriptMonitor.startPolling();
+
+      // Hang detector
+      this.hangDetector = new HangDetector(15);
+      this.hangDetector.start();
 
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
@@ -248,7 +261,10 @@ export class Daemon {
       this.guardian.startWatching();
       this.guardian.startTimer();
 
-      this.guardian.on("status_update", () => this.saveSessionId());
+      this.guardian.on("status_update", () => {
+        this.saveSessionId();
+        this.hangDetector?.recordStatuslineUpdate();
+      });
       this.guardian.on("pending", async () => {
         this.logger.info("Context rotation pending — waiting for transcript to settle");
         await this.waitForTranscriptIdle(15000);
@@ -257,6 +273,8 @@ export class Daemon {
       });
 
       this.guardian.on("request_handover", async () => {
+        this.rotationStartedAt = Date.now();
+        this.preRotationContextPct = this.readContextPercentage();
         this.logger.info("Sending handover prompt to Claude");
         if (this.tmux) {
           const reason = this.guardian?.rotationReason ?? "context_full";
@@ -275,6 +293,28 @@ export class Daemon {
       this.guardian.on("rotate", async () => {
         this.logger.info("Context rotation — killing and respawning Claude");
         this.saveSessionId();
+
+        // Track rotation quality
+        const durationMs = Date.now() - this.rotationStartedAt;
+        const memDir = this.config.memory_directory ?? join(
+          homedir(),
+          ".claude/projects",
+          this.config.working_directory.replace(/\//g, "-").replace(/^-/, ""),
+          "memory",
+        );
+        let handoverStatus: "complete" | "timeout" | "empty" = "empty";
+        try {
+          const content = readFileSync(join(memDir, "handover.md"), "utf-8").trim();
+          handoverStatus = content.length > 0 ? "complete" : "empty";
+        } catch {
+          handoverStatus = "empty";
+        }
+        this.emit("rotation_quality", {
+          instance: this.name,
+          handover_status: handoverStatus,
+          duration_ms: durationMs,
+          previous_context_pct: this.preRotationContextPct,
+        });
 
         await this.tmux?.killWindow();
         this.transcriptMonitor?.resetOffset();
@@ -361,6 +401,7 @@ export class Daemon {
     if (this.healthCheckTimer) { clearInterval(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.toolStatusDebounce) { clearTimeout(this.toolStatusDebounce); this.toolStatusDebounce = null; }
     this.pendingIpcRequests.clear();
+    this.hangDetector?.stop();
     this.transcriptMonitor?.stop();
     this.guardian?.stop();
     if (this.memoryLayer) await this.memoryLayer.stop();
@@ -386,6 +427,10 @@ export class Daemon {
     } catch (e) {
       this.logger.debug({ err: e }, "Failed to remove PID file");
     }
+  }
+
+  getHangDetector(): HangDetector | null {
+    return this.hangDetector;
   }
 
   getMessageBus(): MessageBus {
