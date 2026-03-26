@@ -634,9 +634,10 @@ export class FleetManager implements FleetContext {
           break;
         }
 
-        // Check if already bound
+        // Check if already bound (normalize ~ in config paths for comparison)
+        const expandHome = (p: string) => p.replace(/^~/, process.env.HOME || "~");
         const existingInstance = Object.entries(this.fleetConfig?.instances ?? {})
-          .find(([_, config]) => config.working_directory === directory);
+          .find(([_, config]) => expandHome(config.working_directory) === directory);
         if (existingInstance) {
           const [eName, eConfig] = existingInstance;
           respond({
