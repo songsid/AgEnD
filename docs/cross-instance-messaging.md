@@ -1,26 +1,59 @@
-# Cross-Instance Messaging
+# Cross-Instance Messaging & Peer-to-Peer Collaboration
 
-Instance 之間以及外部 Claude Code session 與 daemon instance 之間的通訊機制。
+Instance 之間以及外部 Claude Code session 與 daemon instance 之間的通訊機制。每個 instance 都是對等 peer，可以發現、喚醒、建立和傳訊給其他 instance。
 
 ## MCP Tools
 
 ### `list_instances`
 
-列出所有可用的 instance（不含自己）。
+列出所有已設定的 instance（不含自己），包含狀態和工作目錄。回傳所有 fleet config 中的 instance（不只是執行中的）。
 
 ```
 → list_instances()
-← { instances: ["ccplugin", "blog-t1385", "codereview-t1415"] }
+← { instances: [
+    { name: "blog", status: "running", working_directory: "~/Documents/Hack/blog" },
+    { name: "ccd", status: "stopped", working_directory: "~/Documents/Hack/claude-channel-daemon" },
+    { name: "external-myproject", type: "session", host: "myproject" }
+  ] }
 ```
 
 ### `send_to_instance`
 
 發送訊息給指定 instance。訊息以 `fleet_inbound` 形式到達對方的 channel，對方自行決定是否回覆。
 
+如果目標 instance 已停止，會回傳錯誤並提示使用 `start_instance()`：
+
+```
+→ send_to_instance({ instance_name: "blog", message: "幫我 review 這個 diff" })
+← { error: "Instance 'blog' is stopped. Use start_instance('blog') to start it first." }
+```
+
+正常情況：
+
 ```
 → send_to_instance({ instance_name: "ccplugin", message: "幫我 review 這個 diff" })
 ← { sent: true, target: "ccplugin" }
 ```
+
+### `start_instance`
+
+喚醒已停止的 instance。如果已在執行中，直接回傳成功。
+
+```
+→ start_instance({ name: "blog" })
+← { success: true }
+```
+
+### `create_instance`
+
+從專案目錄建立新 instance，自動建立 Telegram topic、寫入 fleet config、啟動 instance。
+
+```
+→ create_instance({ directory: "~/Documents/Hack/blog" })
+← { success: true, name: "blog", topic_id: 1385 }
+```
+
+失敗時會按反向順序 rollback（刪 topic、移除 config 等）。
 
 ## 訊息流程
 
@@ -96,12 +129,13 @@ fleet_inbound { targetSession: "dev" }       → 只送給 sessionName="dev" 的
 
 Fleet manager 維護 `sessionRegistry: Map<sessionName, instanceName>`。當 MCP server 的 `mcp_ready` 帶著一個不等於 instance name 的 sessionName 時，註冊為外部 session。
 
-`list_instances` 同時回傳 instances 和 external sessions：
+`list_instances` 回傳所有已設定的 instances（含狀態和工作目錄）和 external sessions：
 
 ```json
 {
   "instances": [
-    { "name": "ccplugin", "type": "instance", "topic_id": 672 },
+    { "name": "ccplugin", "status": "running", "working_directory": "~/Documents/Hack/ccplugin" },
+    { "name": "blog", "status": "stopped", "working_directory": "~/Documents/Hack/blog" },
     { "name": "external-myproject", "type": "session", "host": "myproject" }
   ]
 }

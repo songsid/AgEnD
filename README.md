@@ -31,6 +31,7 @@ Claude Code's official Telegram plugin gives you **1 bot = 1 session**. Close th
 | Fleet status from Telegram | — | **/status command** |
 | Daily fleet summary | — | **Scheduled report** |
 | Hang detection | — | **Auto-detect + notify** |
+| Peer-to-peer agent collaboration | — | **Built-in** |
 
 ## Who is this for
 
@@ -99,6 +100,8 @@ Claude: → create_schedule(cron: "0 9 * * *", message: "Check open PRs needing 
 
 Available MCP tools: `create_schedule`, `list_schedules`, `update_schedule`, `delete_schedule`
 
+Collaboration MCP tools: `list_instances`, `send_to_instance`, `start_instance`, `create_instance`
+
 Schedules can target a specific instance or the same instance that created them. When a schedule triggers, the daemon pushes the message to Claude as if a user sent it.
 
 ### Context rotation
@@ -116,14 +119,30 @@ NORMAL → PENDING → HANDING_OVER → ROTATING → GRACE
 
 Also rotates after `max_age_hours` (default 8h) regardless of context usage.
 
-### Cross-instance messaging
+### Peer-to-peer agent collaboration
 
-Instances can communicate with each other via MCP tools:
+Every instance is an equal peer that can discover, wake, create, and message other instances. No dispatcher needed — collaboration emerges from the tools available to each agent.
 
-- `send_to_instance` — send a message to another running instance or external session
-- `list_instances` — discover all running instances and external sessions
+MCP tools for collaboration:
+
+- `list_instances` — discover all configured instances (running or stopped) with status and working directory
+- `send_to_instance` — send a message to another instance or external session
+- `start_instance` — wake a stopped instance so you can message it
+- `create_instance` — create a new instance with a Telegram topic from a project directory
 
 Messages are posted to the recipient's Telegram topic for visibility. Sender topic notifications are only posted for instance-to-instance messages (not from external sessions).
+
+If you `send_to_instance` a stopped instance, the error tells you to use `start_instance()` first — agents self-correct without human intervention.
+
+### General Topic instance
+
+A regular instance bound to the Telegram General Topic. Auto-created on fleet startup, it serves as a natural language entry point for tasks that don't belong to a specific project. Its behavior is defined entirely by its project's `CLAUDE.md`:
+
+- Simple tasks (web search, translation, general questions) — handles directly
+- Project-specific tasks — uses `list_instances()` to find the right agent, `start_instance()` if needed, then `send_to_instance()` to delegate
+- New project requests — uses `create_instance()` to set up a new agent
+
+Existing slash commands (`/open`, `/new`, `/meets`, `/status`, etc.) continue to work alongside the General instance.
 
 ### External session support
 
