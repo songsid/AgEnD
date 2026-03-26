@@ -680,7 +680,7 @@ export class Daemon {
         "ccd-channel": {
           command: "node",
           args: [serverJs],
-          env: { CCD_SOCKET_PATH: sockPath, CCD_SESSION_NAME: this.name },
+          env: { CCD_SOCKET_PATH: sockPath },
         },
       },
       systemPrompt: this.config.systemPrompt,
@@ -695,7 +695,9 @@ export class Daemon {
     }
     const backendConfig = this.buildBackendConfig();
     this.backend.writeConfig(backendConfig);
-    let claudeCmd = this.backend.buildCommand(backendConfig);
+    // Inject CCD_INSTANCE_NAME via shell env (not .mcp.json) so internal sessions
+    // are distinguishable from external sessions sharing the same .mcp.json
+    let claudeCmd = `CCD_INSTANCE_NAME=${this.name} ` + this.backend.buildCommand(backendConfig);
 
     const windowId = await this.tmux!.createWindow(claudeCmd, this.config.working_directory);
     const windowIdFile = join(this.instanceDir, "window-id");
