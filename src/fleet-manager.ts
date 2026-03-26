@@ -6,9 +6,9 @@ import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { FleetConfig, InstanceConfig, CostGuardConfig } from "./types.js";
+import type { FleetConfig, InstanceConfig, CostGuardConfig, DailySummaryConfig } from "./types.js";
 import type { RouteTarget } from "./meeting/types.js";
-import { loadFleetConfig, DEFAULT_COST_GUARD } from "./config.js";
+import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
@@ -25,6 +25,8 @@ import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
 import { TopicCommands } from "./topic-commands.js";
 import { MeetingManager } from "./meeting-manager.js";
+import type { HangDetector } from "./hang-detector.js";
+import { DailySummary } from "./daily-summary.js";
 
 const TMUX_SESSION = "ccd";
 
@@ -45,6 +47,8 @@ export class FleetManager implements FleetContext {
   eventLog: EventLog | null = null;
   costGuard: CostGuard | null = null;
   private statuslineWatchers = new Map<string, ReturnType<typeof setInterval>>();
+  private instanceRateLimits = new Map<string, { five_hour_pct: number; seven_day_pct: number }>();
+  private dailySummary: DailySummary | null = null;
 
   constructor(public dataDir: string) {
     this.topicCommands = new TopicCommands(this);
@@ -102,6 +106,20 @@ export class FleetManager implements FleetContext {
     const daemon = new Daemon(name, config, instanceDir, topicMode, backend);
     await daemon.start();
     this.daemons.set(name, daemon);
+
+    daemon.on("rotation_quality", (data: Record<string, unknown>) => {
+      this.eventLog?.insert(name, "context_rotation", data);
+      this.logger.info({ name, ...data }, "Context rotation completed");
+    });
+
+    const hangDetector = daemon.getHangDetector();
+    if (hangDetector) {
+      hangDetector.on("hang", () => {
+        this.eventLog?.insert(name, "hang_detected", {});
+        this.logger.warn({ name }, "Instance appears hung");
+        this.sendHangNotification(name);
+      });
+    }
   }
 
   async stopInstance(name: string): Promise<void> {
@@ -169,6 +187,29 @@ export class FleetManager implements FleetContext {
       this.eventLog?.insert(instance, "instance_paused", { reason: "cost_limit", cost_cents: totalCents });
       this.stopInstance(instance).catch(err => this.logger.error({ err, instance }, "Failed to pause instance on cost limit"));
     });
+
+    const summaryConfig: DailySummaryConfig = {
+      ...DEFAULT_DAILY_SUMMARY,
+      ...(fleet.defaults as Record<string, unknown>)?.daily_summary as Partial<DailySummaryConfig> ?? {},
+    };
+    this.dailySummary = new DailySummary(summaryConfig, costGuardConfig.timezone, (text) => {
+      if (!this.adapter || !this.fleetConfig?.channel?.group_id) return;
+      this.adapter.sendText(String(this.fleetConfig.channel.group_id), text)
+        .catch(e => this.logger.debug({ err: e }, "Failed to send daily summary"));
+    }, () => {
+      const instances = Object.keys(this.fleetConfig?.instances ?? {});
+      const costMap = new Map<string, number>();
+      for (const name of instances) {
+        costMap.set(name, this.costGuard?.getDailyCostCents(name) ?? 0);
+      }
+      return DailySummary.generateText(
+        this.eventLog!,
+        instances,
+        costMap,
+        this.costGuard?.getFleetTotalCents() ?? 0,
+      );
+    });
+    this.dailySummary.start();
 
     for (const [name, config] of Object.entries(fleet.instances)) {
       await this.startInstance(name, config, topicMode && !config.channel);
@@ -250,7 +291,26 @@ export class FleetManager implements FleetContext {
       this.handleInboundMessage(msg);
     });
 
-    this.adapter.on("callback_query", (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
+    this.adapter.on("callback_query", async (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
+      if (data.callbackData.startsWith("hang:")) {
+        const parts = data.callbackData.split(":");
+        const action = parts[1];
+        const instanceName = parts[2];
+        if (action === "restart") {
+          await this.stopInstance(instanceName);
+          const config = this.fleetConfig?.instances[instanceName];
+          if (config) {
+            const topicMode = this.fleetConfig?.channel?.mode === "topic" && !config.channel;
+            await this.startInstance(instanceName, config, topicMode);
+            await new Promise(r => setTimeout(r, 3000));
+            await this.connectIpcToInstance(instanceName);
+          }
+          this.adapter?.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`).catch(() => {});
+        } else {
+          this.adapter?.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`).catch(() => {});
+        }
+        return;
+      }
       this.topicCommands.handleCallbackQuery(data);
     });
 
@@ -545,6 +605,21 @@ export class FleetManager implements FleetContext {
 
   private async handleScheduleTrigger(schedule: Schedule): Promise<void> {
     const { target, reply_chat_id, reply_thread_id, message, label, id, source } = schedule;
+
+    const RATE_LIMIT_DEFER_THRESHOLD = 85;
+    const rl = this.instanceRateLimits.get(target);
+    if (rl && rl.five_hour_pct > RATE_LIMIT_DEFER_THRESHOLD) {
+      this.scheduler!.recordRun(id, "deferred", `5hr rate limit at ${rl.five_hour_pct}%`);
+      this.eventLog?.insert(target, "schedule_deferred", {
+        schedule_id: id,
+        label,
+        five_hour_pct: rl.five_hour_pct,
+      });
+      this.notifyInstanceTopic(target, `⏳ Schedule "${label ?? id}" deferred — rate limit at ${rl.five_hour_pct}%`);
+      this.logger.info({ target, scheduleId: id, rateLimitPct: rl.five_hour_pct }, "Schedule deferred due to rate limit");
+      return;
+    }
+
     const defaults = this.fleetConfig?.defaults as Record<string, unknown> | undefined;
     const schedulerDefaults = defaults?.scheduler as Record<string, unknown> | undefined;
 
@@ -718,6 +793,13 @@ export class FleetManager implements FleetContext {
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
         this.costGuard?.updateCost(name, data.cost?.total_cost_usd ?? 0);
+        const rl = data.rate_limits;
+        if (rl) {
+          this.instanceRateLimits.set(name, {
+            five_hour_pct: rl.five_hour?.used_percentage ?? 0,
+            seven_day_pct: rl.seven_day?.used_percentage ?? 0,
+          });
+        }
       } catch { /* file may not exist yet or be mid-write */ }
     }, 10_000);
     this.statuslineWatchers.set(name, timer);
@@ -733,14 +815,36 @@ export class FleetManager implements FleetContext {
     }).catch(e => this.logger.debug({ err: e }, "Failed to send notification"));
   }
 
+  private async sendHangNotification(instanceName: string): Promise<void> {
+    if (!this.adapter) return;
+    const groupId = this.fleetConfig?.channel?.group_id;
+    if (!groupId) return;
+    const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+
+    const tgAdapter = this.adapter as TelegramAdapter;
+    const { InlineKeyboard } = await import("grammy");
+    const keyboard = new InlineKeyboard()
+      .text("🔄 Force restart", `hang:restart:${instanceName}`)
+      .text("⏳ Keep waiting", `hang:wait:${instanceName}`);
+
+    await tgAdapter.sendTextWithKeyboard(
+      String(groupId),
+      `⚠️ ${instanceName} appears hung (no activity for 15+ minutes)`,
+      keyboard,
+      threadId != null ? String(threadId) : undefined,
+    ).catch(e => this.logger.debug({ err: e }, "Failed to send hang notification"));
+  }
+
   private clearStatuslineWatchers(): void {
     for (const [, timer] of this.statuslineWatchers) clearInterval(timer);
     this.statuslineWatchers.clear();
+    this.instanceRateLimits.clear();
   }
 
   async stopAll(): Promise<void> {
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
+    this.dailySummary?.stop();
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);
