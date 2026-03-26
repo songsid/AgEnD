@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { FleetContext } from "./fleet-context.js";
 import type { InstanceConfig } from "./types.js";
@@ -264,26 +264,6 @@ export class MeetingManager {
     }
 
     return name;
-  }
-
-  async destroyEphemeralInstance(name: string): Promise<void> {
-    await this.ctx.stopInstance(name);
-
-    const worktreePath = join("/tmp", `ccd-collab-${name}`);
-    if (existsSync(worktreePath)) {
-      try {
-        const { execFileSync } = await import("child_process");
-        const mainRepo = execFileSync("git", ["rev-parse", "--git-common-dir"], { cwd: worktreePath, stdio: "pipe" }).toString().trim();
-        const mainRepoDir = dirname(mainRepo);
-        execFileSync("git", ["worktree", "remove", "--force", worktreePath], { cwd: mainRepoDir, stdio: "pipe" });
-        try {
-          execFileSync("git", ["branch", "-D", `meet/${name}`], { cwd: mainRepoDir, stdio: "pipe" });
-        } catch { /* branch may not exist */ }
-        this.ctx.logger.info({ name }, "Cleaned up git worktree");
-      } catch (err) {
-        this.ctx.logger.warn({ name, err }, "Failed to clean up worktree");
-      }
-    }
   }
 
   async createMeetingChannel(title: string): Promise<{ channelId: number }> {
