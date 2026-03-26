@@ -1,10 +1,11 @@
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
 import type { FleetContext } from "./fleet-context.js";
 import type { InboundMessage } from "./channel/types.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { formatCents } from "./cost-guard.js";
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
 function sanitizeInstanceName(name: string): string {
@@ -34,8 +35,54 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/status" || text === "/status@" || text.startsWith("/status@")) {
+      await this.handleStatusCommand(msg);
+      return true;
+    }
+
     // Return false for commands we don't handle (e.g. /meets, /debate, /collab)
     return false;
+  }
+
+  private async handleStatusCommand(msg: InboundMessage): Promise<void> {
+    if (!this.ctx.adapter || !this.ctx.fleetConfig) return;
+
+    const lines: string[] = [];
+    for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
+      const status = this.ctx.getInstanceStatus(name);
+      const paused = this.ctx.costGuard?.isLimited(name);
+
+      let contextStr = "-";
+      try {
+        const data = JSON.parse(readFileSync(join(this.ctx.dataDir, "instances", name, "statusline.json"), "utf-8"));
+        if (data.context_window?.used_percentage != null) {
+          contextStr = `${Math.round(data.context_window.used_percentage)}%`;
+        }
+      } catch { /* file may not exist yet */ }
+
+      const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
+
+      let icon: string;
+      if (paused) icon = "⏸";
+      else if (status === "running") icon = "🟢";
+      else if (status === "crashed") icon = "🔴";
+      else icon = "⚪";
+
+      lines.push(`${icon} ${name} — ctx ${contextStr}, ${formatCents(costCents)} today`);
+    }
+
+    if (lines.length === 0) {
+      lines.push("No instances configured.");
+    }
+
+    const limitCents = this.ctx.costGuard?.getLimitCents() ?? 0;
+    const totalCents = this.ctx.costGuard?.getFleetTotalCents() ?? 0;
+    if (limitCents > 0) {
+      lines.push("");
+      lines.push(`Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
+    }
+
+    await this.ctx.adapter.sendText(msg.chatId, lines.join("\n"));
   }
 
   /** Handle /open command — list or search unbound directories */
@@ -379,6 +426,7 @@ export class TopicCommands {
             commands: [
               { command: "open", description: "Open an existing project" },
               { command: "new", description: "Create a new project" },
+              { command: "status", description: "Show fleet status and costs" },
               { command: "meets", description: "Start a multi-angle discussion" },
               { command: "debate", description: "Start a pro/con debate" },
               { command: "collab", description: "Start collaborative coding with worktrees" },
@@ -387,7 +435,7 @@ export class TopicCommands {
           }),
         },
       );
-      this.ctx.logger.info("Registered bot commands: /open, /new, /meets, /debate, /collab");
+      this.ctx.logger.info("Registered bot commands: /open, /new, /status, /meets, /debate, /collab");
     } catch (err) {
       this.ctx.logger.warn({ err }, "Failed to register bot commands (non-fatal)");
     }

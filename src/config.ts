@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import yaml from "js-yaml";
-import type { DaemonConfig, FleetConfig, InstanceConfig } from "./types.js";
+import type { CostGuardConfig, DaemonConfig, FleetConfig, InstanceConfig } from "./types.js";
 
 export const DEFAULT_CONFIG: DaemonConfig = {
   channel_plugin: "telegram@claude-plugins-official",
@@ -54,6 +54,12 @@ function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
 function deepMerge(target: DaemonConfig, source: Partial<DaemonConfig>): DaemonConfig {
   return deepMergeGeneric(target, source);
 }
+
+export const DEFAULT_COST_GUARD: CostGuardConfig = {
+  daily_limit_usd: 0, // 0 = disabled
+  warn_at_percentage: 80,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+};
 
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   restart_policy: DEFAULT_CONFIG.restart_policy,
