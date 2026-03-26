@@ -21,6 +21,7 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
+import { basename } from "node:path";
 import { IpcClient } from "./ipc-bridge.js";
 
 // ---------------------------------------------------------------------------
@@ -101,7 +102,13 @@ async function connectIpc(): Promise<void> {
     ipcConnected = true;
     reconnecting = false;
     setupIpcListeners(client);
-    client.send({ type: "mcp_ready", sessionName: process.env.CCD_SESSION_NAME });
+    // CCD_INSTANCE_NAME: set by daemon via tmux env (internal sessions)
+    // CCD_SESSION_NAME: set in .mcp.json env (external sessions, optional custom name)
+    // Fallback: stable name derived from working directory
+    const sessionName = process.env.CCD_INSTANCE_NAME
+      ?? process.env.CCD_SESSION_NAME
+      ?? `external-${basename(process.cwd())}`;
+    client.send({ type: "mcp_ready", sessionName });
     process.stderr.write("ccd-channel: connected to daemon IPC\n");
   } catch (err) {
     process.stderr.write(`ccd-channel: failed to connect to daemon IPC: ${err}\n`);
