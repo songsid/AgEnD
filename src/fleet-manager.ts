@@ -483,7 +483,13 @@ export class FleetManager implements FleetContext {
         }
 
         if (!targetIpc) {
-          respond(null, `Instance or session not found: ${targetName}`);
+          // Check if instance exists in config but is stopped
+          const existsInConfig = targetName in this.fleetConfig.instances;
+          if (existsInConfig) {
+            respond(null, `Instance '${targetName}' is stopped. Use start_instance('${targetName}') to start it first.`);
+          } else {
+            respond(null, `Instance or session not found: ${targetName}`);
+          }
           break;
         }
 
@@ -532,19 +538,22 @@ export class FleetManager implements FleetContext {
 
       case "list_instances": {
         const senderLabel = senderSessionName ?? instanceName;
-        const instances = [...this.daemons.keys()]
-          .filter(name => name !== instanceName && name !== senderLabel)
-          .map(name => {
-            const config = this.fleetConfig?.instances[name];
-            return { name, type: "instance" as const, topic_id: config?.topic_id ?? null };
-          });
-        // Include external sessions (excluding self)
-        const sessions = [...this.sessionRegistry.entries()]
-          .filter(([sessionName]) => sessionName !== senderLabel)
-          .map(([sessionName, hostInstance]) => ({
-            name: sessionName, type: "session" as const, host: hostInstance,
+        const allInstances = Object.entries(this.fleetConfig?.instances ?? {})
+          .filter(([name]) => name !== instanceName && name !== senderLabel)
+          .map(([name, config]) => ({
+            name,
+            type: "instance" as const,
+            status: this.daemons.has(name) ? "running" : "stopped",
+            working_directory: config.working_directory,
+            topic_id: config.topic_id ?? null,
           }));
-        respond({ instances: [...instances, ...sessions] });
+        // Include external sessions (excluding self)
+        const externalSessions = [...this.sessionRegistry.entries()]
+          .filter(([sessName]) => sessName !== senderLabel)
+          .map(([sessName, hostInstance]) => ({
+            name: sessName, type: "session" as const, host: hostInstance,
+          }));
+        respond({ instances: allInstances, external_sessions: externalSessions });
         break;
       }
 
