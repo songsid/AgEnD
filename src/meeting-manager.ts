@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { FleetContext } from "./fleet-context.js";
 import type { InstanceConfig } from "./types.js";
@@ -247,16 +247,24 @@ export class MeetingManager {
     if (ipc) {
       const mcpDeadline = Date.now() + 60_000;
       await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let timer: ReturnType<typeof setTimeout>;
+        const cleanup = () => {
+          settled = true;
+          ipc.removeListener("message", onMessage);
+          clearTimeout(timer);
+        };
         const onMessage = (msg: Record<string, unknown>) => {
-          if (msg.type === "mcp_ready") { resolve(); }
+          if (msg.type === "mcp_ready") { cleanup(); resolve(); }
         };
         ipc.on("message", onMessage);
         const check = () => {
+          if (settled) return;
           if (Date.now() > mcpDeadline) {
-            ipc.removeListener("message", onMessage);
+            cleanup();
             reject(new Error(`MCP ready timeout for ${name}`));
           } else {
-            setTimeout(check, 500);
+            timer = setTimeout(check, 500);
           }
         };
         check();
@@ -264,6 +272,27 @@ export class MeetingManager {
     }
 
     return name;
+  }
+
+  /** Clean up ephemeral instance resources (worktree, topic map). Called on topic deletion. */
+  async cleanupEphemeral(name: string): Promise<void> {
+    this.ephemeralTopicMap.delete(name);
+
+    const worktreePath = join("/tmp", `ccd-collab-${name}`);
+    if (!existsSync(worktreePath)) return;
+
+    try {
+      const { execFileSync } = await import("child_process");
+      const mainRepo = execFileSync("git", ["rev-parse", "--git-common-dir"], { cwd: worktreePath, stdio: "pipe" }).toString().trim();
+      const mainRepoDir = dirname(mainRepo);
+      execFileSync("git", ["worktree", "remove", "--force", worktreePath], { cwd: mainRepoDir, stdio: "pipe" });
+      try {
+        execFileSync("git", ["branch", "-D", `meet/${name}`], { cwd: mainRepoDir, stdio: "pipe" });
+      } catch { /* branch may not exist */ }
+      this.ctx.logger.info({ name }, "Cleaned up ephemeral worktree");
+    } catch (err) {
+      this.ctx.logger.warn({ name, err }, "Failed to clean up ephemeral worktree");
+    }
   }
 
   async createMeetingChannel(title: string): Promise<{ channelId: number }> {
