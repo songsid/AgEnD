@@ -64,6 +64,12 @@ export interface AccessConfig {
   code_expiry_minutes: number;
 }
 
+export interface CostGuardConfig {
+  daily_limit_usd: number;
+  warn_at_percentage: number;
+  timezone: string;
+}
+
 export interface ChannelConfig {
   type: "telegram";
   mode: "topic" | "dm";
@@ -108,6 +114,7 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
     retry_interval_ms?: number;
   };
   meetings?: MeetingDefaults;
+  cost_guard?: CostGuardConfig;
 }
 
 export interface FleetConfig {
