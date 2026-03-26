@@ -257,12 +257,11 @@ Total: $10.30
 ## 開始用
 
 ```bash
-git clone https://github.com/suzuke/claude-channel-daemon.git
-cd claude-channel-daemon
-npm install && npm link
-
-# 需要
+# 前置需求
 brew install tmux        # macOS
+
+# 安裝
+npm install -g claude-channel-daemon
 
 # 互動式設定
 ccd init
