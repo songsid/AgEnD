@@ -5,6 +5,7 @@ import type { FleetContext } from "./fleet-context.js";
 import type { InboundMessage } from "./channel/types.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { formatCents } from "./cost-guard.js";
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
 function sanitizeInstanceName(name: string): string {
@@ -43,7 +44,6 @@ export class TopicCommands {
     return false;
   }
 
-  /** Handle /status command — show per-instance status and cost */
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
     if (!this.ctx.adapter || !this.ctx.fleetConfig) return;
 
@@ -52,20 +52,15 @@ export class TopicCommands {
       const status = this.ctx.getInstanceStatus(name);
       const paused = this.ctx.costGuard?.isLimited(name);
 
-      // Read statusline for context usage
       let contextStr = "-";
-      const statusFile = join(this.ctx.dataDir, "instances", name, "statusline.json");
       try {
-        if (existsSync(statusFile)) {
-          const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-          if (data.context_window?.used_percentage != null) {
-            contextStr = `${Math.round(data.context_window.used_percentage)}%`;
-          }
+        const data = JSON.parse(readFileSync(join(this.ctx.dataDir, "instances", name, "statusline.json"), "utf-8"));
+        if (data.context_window?.used_percentage != null) {
+          contextStr = `${Math.round(data.context_window.used_percentage)}%`;
         }
-      } catch { /* ignore */ }
+      } catch { /* file may not exist yet */ }
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
-      const costStr = `$${(costCents / 100).toFixed(2)}`;
 
       let icon: string;
       if (paused) icon = "⏸";
@@ -73,7 +68,7 @@ export class TopicCommands {
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
 
-      lines.push(`${icon} ${name} — ctx ${contextStr}, ${costStr} today`);
+      lines.push(`${icon} ${name} — ctx ${contextStr}, ${formatCents(costCents)} today`);
     }
 
     if (lines.length === 0) {
@@ -84,7 +79,7 @@ export class TopicCommands {
     const totalCents = this.ctx.costGuard?.getFleetTotalCents() ?? 0;
     if (limitCents > 0) {
       lines.push("");
-      lines.push(`Fleet: $${(totalCents / 100).toFixed(2)} / $${(limitCents / 100).toFixed(2)} daily`);
+      lines.push(`Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
     }
 
     await this.ctx.adapter.sendText(msg.chatId, lines.join("\n"));
