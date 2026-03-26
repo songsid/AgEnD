@@ -484,12 +484,6 @@ export class Daemon extends EventEmitter {
     this.debouncedSendToolStatus();
   }
 
-  private resetToolStatus(): void {
-    if (this.toolStatusDebounce) clearTimeout(this.toolStatusDebounce);
-    this.toolStatusMessageId = null;
-    this.toolStatusLines = [];
-  }
-
   /** Debounce tool status updates to avoid Telegram rate limits */
   private debouncedSendToolStatus(): void {
     if (this.toolStatusDebounce) clearTimeout(this.toolStatusDebounce);
@@ -787,6 +781,9 @@ export class Daemon extends EventEmitter {
 
   /** Spawn (or respawn) a Claude window in tmux */
   private async spawnClaudeWindow(): Promise<void> {
+    // Clear tool status from previous session
+    this.toolStatusLines = [];
+    this.toolStatusMessageId = null;
     if (!this.backend) {
       throw new Error("No backend configured — cannot spawn Claude window");
     }
