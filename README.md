@@ -257,12 +257,11 @@ When the 5-hour API rate limit exceeds 85%, scheduled triggers are automatically
 ## Quick start
 
 ```bash
-git clone https://github.com/suzuke/claude-channel-daemon.git
-cd claude-channel-daemon
-npm install && npm link
-
 # Prerequisites
 brew install tmux        # macOS
+
+# Install
+npm install -g claude-channel-daemon
 
 # Interactive setup
 ccd init
