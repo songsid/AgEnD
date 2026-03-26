@@ -104,13 +104,15 @@ export class FleetManager implements FleetContext {
     if (daemon) {
       await daemon.stop();
       this.daemons.delete(name);
-      return;
+    } else {
+      const pidPath = join(this.getInstanceDir(name), "daemon.pid");
+      if (existsSync(pidPath)) {
+        const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+        try { process.kill(pid, "SIGTERM"); } catch (e) { this.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
+      }
     }
-    const pidPath = join(this.getInstanceDir(name), "daemon.pid");
-    if (existsSync(pidPath)) {
-      const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-      try { process.kill(pid, "SIGTERM"); } catch (e) { this.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
-    }
+    // Clean up ephemeral instance resources (worktree, topic map)
+    await this.meetingManager.cleanupEphemeral(name);
   }
 
   /** Load .env file from data dir into process.env */
