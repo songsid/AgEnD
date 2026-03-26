@@ -25,6 +25,7 @@ export interface QueryOpts {
 
 export class EventLog {
   private db: Database.Database;
+  private insertStmt: Database.Statement;
 
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
@@ -40,12 +41,11 @@ export class EventLog {
       CREATE INDEX IF NOT EXISTS idx_events_instance ON events(instance_name, created_at);
       CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type, created_at);
     `);
+    this.insertStmt = this.db.prepare("INSERT INTO events (instance_name, event_type, payload) VALUES (?, ?, ?)");
   }
 
   insert(instance: string, type: string, payload?: Record<string, unknown>): void {
-    this.db
-      .prepare("INSERT INTO events (instance_name, event_type, payload) VALUES (?, ?, ?)")
-      .run(instance, type, payload != null ? JSON.stringify(payload) : null);
+    this.insertStmt.run(instance, type, payload != null ? JSON.stringify(payload) : null);
   }
 
   query(opts: QueryOpts = {}): EventRow[] {
