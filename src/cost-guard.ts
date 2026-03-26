@@ -9,6 +9,10 @@ interface InstanceTracker {
   limitEmitted: boolean;
 }
 
+export function formatCents(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 function msUntilMidnight(timezone: string): number {
   const now = new Date();
   const tzNow = new Date(now.toLocaleString("en-US", { timeZone: timezone }));
@@ -46,6 +50,12 @@ export class CostGuard extends EventEmitter {
 
   updateCost(instance: string, costUsd: number): void {
     const tracker = this.getTracker(instance);
+
+    // Detect rotation: cost dropped = new session started
+    if (costUsd < tracker.lastReportedUsd && tracker.lastReportedUsd > 0) {
+      this.snapshotAndReset(instance);
+    }
+
     tracker.lastReportedUsd = costUsd;
 
     if (this.config.daily_limit_usd <= 0) return;

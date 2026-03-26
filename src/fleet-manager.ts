@@ -10,7 +10,7 @@ import type { FleetConfig, InstanceConfig, CostGuardConfig } from "./types.js";
 import type { RouteTarget } from "./meeting/types.js";
 import { loadFleetConfig, DEFAULT_COST_GUARD } from "./config.js";
 import { EventLog } from "./event-log.js";
-import { CostGuard } from "./cost-guard.js";
+import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { AccessManager } from "./channel/access-manager.js";
@@ -45,7 +45,6 @@ export class FleetManager implements FleetContext {
   eventLog: EventLog | null = null;
   costGuard: CostGuard | null = null;
   private statuslineWatchers = new Map<string, ReturnType<typeof setInterval>>();
-  private lastKnownCost = new Map<string, number>();
 
   constructor(public dataDir: string) {
     this.topicCommands = new TopicCommands(this);
@@ -152,10 +151,8 @@ export class FleetManager implements FleetContext {
     const pidPath = join(this.dataDir, "fleet.pid");
     writeFileSync(pidPath, String(process.pid), "utf-8");
 
-    // Initialize event log
     this.eventLog = new EventLog(join(this.dataDir, "events.db"));
 
-    // Initialize cost guard
     const costGuardConfig: CostGuardConfig = {
       ...DEFAULT_COST_GUARD,
       ...(fleet.defaults as Record<string, unknown>)?.cost_guard as Partial<CostGuardConfig> ?? {},
@@ -164,13 +161,11 @@ export class FleetManager implements FleetContext {
     this.costGuard.startMidnightReset();
 
     this.costGuard.on("warn", (instance: string, totalCents: number, limitCents: number) => {
-      const msg = `⚠️ ${instance} cost: $${(totalCents / 100).toFixed(2)} / $${(limitCents / 100).toFixed(2)} (${Math.round(totalCents / limitCents * 100)}%)`;
-      this.notifyInstanceTopic(instance, msg);
+      this.notifyInstanceTopic(instance, `⚠️ ${instance} cost: ${formatCents(totalCents)} / ${formatCents(limitCents)} (${Math.round(totalCents / limitCents * 100)}%)`);
     });
 
     this.costGuard.on("limit", (instance: string, totalCents: number, limitCents: number) => {
-      const msg = `🛑 ${instance} daily limit $${(limitCents / 100).toFixed(2)} reached — pausing instance.`;
-      this.notifyInstanceTopic(instance, msg);
+      this.notifyInstanceTopic(instance, `🛑 ${instance} daily limit ${formatCents(limitCents)} reached — pausing instance.`);
       this.eventLog?.insert(instance, "instance_paused", { reason: "cost_limit", cost_cents: totalCents });
       this.stopInstance(instance).catch(err => this.logger.error({ err, instance }, "Failed to pause instance on cost limit"));
     });
@@ -721,19 +716,9 @@ export class FleetManager implements FleetContext {
     const statusFile = join(this.getInstanceDir(name), "statusline.json");
     const timer = setInterval(() => {
       try {
-        if (!existsSync(statusFile)) return;
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-        const costUsd: number = data.cost?.total_cost_usd ?? 0;
-
-        // Detect rotation: cost dropped = new session started
-        const prevCost = this.lastKnownCost.get(name) ?? 0;
-        if (costUsd < prevCost && prevCost > 0) {
-          this.costGuard?.snapshotAndReset(name);
-          this.logger.info({ name, prevCost, newCost: costUsd }, "Cost dropped — rotation detected, snapshot taken");
-        }
-        this.lastKnownCost.set(name, costUsd);
-        this.costGuard?.updateCost(name, costUsd);
-      } catch { /* ignore read errors */ }
+        this.costGuard?.updateCost(name, data.cost?.total_cost_usd ?? 0);
+      } catch { /* file may not exist yet or be mid-write */ }
     }, 10_000);
     this.statuslineWatchers.set(name, timer);
   }
@@ -748,10 +733,13 @@ export class FleetManager implements FleetContext {
     }).catch(e => this.logger.debug({ err: e }, "Failed to send notification"));
   }
 
-  async stopAll(): Promise<void> {
+  private clearStatuslineWatchers(): void {
     for (const [, timer] of this.statuslineWatchers) clearInterval(timer);
     this.statuslineWatchers.clear();
-    this.lastKnownCost.clear();
+  }
+
+  async stopAll(): Promise<void> {
+    this.clearStatuslineWatchers();
     this.costGuard?.stop();
 
     if (this.topicCleanupTimer) {
@@ -840,9 +828,7 @@ export class FleetManager implements FleetContext {
 
     this.logger.info("All instances idle — restarting...");
 
-    for (const [, timer] of this.statuslineWatchers) clearInterval(timer);
-    this.statuslineWatchers.clear();
-    this.lastKnownCost.clear();
+    this.clearStatuslineWatchers();
 
     for (const [, ipc] of this.instanceIpcClients) {
       await ipc.close();
