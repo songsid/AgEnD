@@ -96,6 +96,11 @@ export class FleetManager implements FleetContext {
       return;
     }
 
+    if (!existsSync(config.working_directory)) {
+      this.logger.error({ name, working_directory: config.working_directory }, "Working directory does not exist — skipping instance");
+      return;
+    }
+
     const instanceDir = this.getInstanceDir(name);
     mkdirSync(instanceDir, { recursive: true });
 
@@ -230,6 +235,7 @@ export class FleetManager implements FleetContext {
 - 屬於特定專案的任務：用 list_instances() 找到對應 agent，需要時用 start_instance() 啟動，再用 send_to_instance() 委派。
 - 需要多個 agent 協作的任務：協調各 agent 並行或串行執行，收集結果後彙整。
 - 使用者想開新的專案 agent：用 create_instance() 建立。
+- 不再需要的 instance（例如功能完成）：用 delete_instance() 清除。
 - 收到其他 instance 委派的任務時，完成後一定要用 send_to_instance() 回報結果。
 
 ## 委派原則
@@ -831,6 +837,26 @@ export class FleetManager implements FleetContext {
         break;
       }
 
+      case "delete_instance": {
+        const instanceName = args.name as string;
+        const deleteTopic = (args.delete_topic as boolean) ?? false;
+
+        const instanceConfig = this.fleetConfig?.instances[instanceName];
+        if (!instanceConfig) {
+          respond(null, `Instance not found: ${instanceName}`);
+          break;
+        }
+
+        // Delete Telegram topic if requested (before removeInstance clears config)
+        if (deleteTopic && instanceConfig.topic_id) {
+          await this.deleteForumTopic(instanceConfig.topic_id);
+        }
+
+        await this.removeInstance(instanceName);
+        respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
+        break;
+      }
+
       default:
         respond(null, `Unknown tool: ${tool}`);
     }
@@ -1073,6 +1099,57 @@ export class FleetManager implements FleetContext {
     }
     writeFileSync(this.configPath, yaml.dump(toSave, { lineWidth: 120 }));
     this.logger.info({ path: this.configPath }, "Saved fleet config");
+  }
+
+  async removeInstance(name: string): Promise<void> {
+    const config = this.fleetConfig?.instances[name];
+    if (!config) return;
+
+    // Clean up schedules
+    if (this.scheduler && config.topic_id) {
+      const count = this.scheduler.deleteByInstanceOrThread(name, String(config.topic_id));
+      if (count > 0) {
+        this.logger.info({ name, count }, "Cleaned up schedules for deleted instance");
+      }
+    }
+
+    // Stop daemon if running
+    if (this.daemons.has(name)) {
+      await this.stopInstance(name);
+    }
+
+    // Clean up git worktree if applicable
+    if (config.worktree_source && config.working_directory) {
+      try {
+        const { execFile: execFileCb } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execFileAsync = promisify(execFileCb);
+        await execFileAsync("git", ["worktree", "remove", "--force", config.working_directory], {
+          cwd: config.worktree_source,
+        });
+        this.logger.info({ worktree: config.working_directory }, "Removed git worktree");
+      } catch (err) {
+        this.logger.warn({ err, worktree: config.working_directory }, "Failed to remove git worktree");
+      }
+    }
+
+    // Clean up IPC
+    const ipc = this.instanceIpcClients.get(name);
+    if (ipc) {
+      await ipc.close();
+      this.instanceIpcClients.delete(name);
+    }
+
+    // Remove from routing table
+    if (config.topic_id) {
+      this.routingTable.delete(config.topic_id);
+    }
+
+    // Remove from fleet config and save
+    delete this.fleetConfig!.instances[name];
+    this.saveFleetConfig();
+
+    this.logger.info({ name }, "Instance removed");
   }
 
   private startStatuslineWatcher(name: string): void {
