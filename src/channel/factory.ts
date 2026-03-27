@@ -9,13 +9,38 @@ export interface AdapterOpts {
   inboxDir: string;
 }
 
+/** Factory function that external adapter packages must default-export. */
+export type AdapterFactory = (config: ChannelConfig, opts: AdapterOpts) => ChannelAdapter;
+
 export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): Promise<ChannelAdapter> {
   switch (config.type) {
     case "telegram": {
       const { TelegramAdapter } = await import("./adapters/telegram.js");
       return new TelegramAdapter(opts);
     }
-    default:
-      throw new Error(`Unknown channel type: ${config.type}`);
+    default: {
+      // External adapter — try canonical name, then bare name
+      const candidates = [`ccd-adapter-${config.type}`, config.type];
+      let factory: AdapterFactory | undefined;
+
+      for (const pkg of candidates) {
+        try {
+          const mod = await import(pkg);
+          factory = mod.default;
+          break;
+        } catch {
+          continue;
+        }
+      }
+
+      if (!factory) {
+        throw new Error(
+          `Channel adapter "${config.type}" not found. ` +
+          `Install it: npm install ccd-adapter-${config.type}`
+        );
+      }
+
+      return factory(config, opts);
+    }
   }
 }
