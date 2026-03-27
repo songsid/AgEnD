@@ -727,6 +727,7 @@ export class FleetManager implements FleetContext {
             working_directory: directory,
             topic_id: createdTopicId,
             ...(description ? { description } : {}),
+            ...(args.model ? { model: args.model as string } : {}),
           } as InstanceConfig;
           this.fleetConfig!.instances[newInstanceName] = instanceConfig;
           this.routingTable.set(createdTopicId, { kind: "instance", name: newInstanceName });
