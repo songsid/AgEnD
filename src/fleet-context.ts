@@ -27,4 +27,5 @@ export interface FleetContext {
   saveFleetConfig(): void;
   getInstanceDir(name: string): string;
   createForumTopic(topicName: string): Promise<number>;
+  removeInstance(name: string): Promise<void>;
 }

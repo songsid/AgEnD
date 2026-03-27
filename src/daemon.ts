@@ -582,7 +582,7 @@ export class Daemon extends EventEmitter {
     };
 
     // Schedule tools → route to fleet manager
-    const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "create_instance"]);
+    const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "create_instance", "delete_instance"]);
     const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 
     if (SCHEDULE_TOOLS.has(tool)) {
