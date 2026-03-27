@@ -116,6 +116,8 @@ export interface InstanceConfig {
   model?: string;
   /** Per-instance cost guard (overrides fleet defaults) */
   cost_guard?: CostGuardConfig;
+  /** Original repo path when this instance uses a git worktree */
+  worktree_source?: string;
 }
 
 export interface MeetingDefaults {
