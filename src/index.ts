@@ -7,4 +7,21 @@ export { MemoryDb } from "./db.js";
 export { loadConfig, DEFAULT_CONFIG } from "./config.js";
 export { createLogger } from "./logger.js";
 export { installService, detectPlatform } from "./service-installer.js";
-export type { DaemonConfig, ContextStatus, StatusLineData, MemoryBackupRow } from "./types.js";
+export type { DaemonConfig, ContextStatus, StatusLineData, MemoryBackupRow, ChannelConfig, AccessConfig } from "./types.js";
+
+// Channel adapter types — for external adapter authors (ccd-adapter-*)
+export type {
+  ChannelAdapter,
+  SendOpts,
+  SentMessage,
+  InboundMessage,
+  Attachment,
+  PermissionPrompt,
+  ApprovalHandle,
+  ApprovalResponse,
+  Choice,
+  AlertData,
+  InstanceStatusData,
+  QueuedMessage,
+} from "./channel/types.js";
+export type { AdapterOpts, AdapterFactory } from "./channel/factory.js";
