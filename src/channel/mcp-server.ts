@@ -423,6 +423,11 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "Human-readable description of what this instance does (e.g., 'Daily secretary for scheduling and reminders').",
           },
+          model: {
+            type: "string",
+            description: "Claude model to use for this instance. Omit to use the default (usually opus).",
+            enum: ["sonnet", "opus", "haiku"],
+          },
         },
         required: ["directory"],
       },
