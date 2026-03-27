@@ -1,6 +1,6 @@
 {
   "name": "claude-channel-daemon",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "Reliable daemon wrapper for Claude Code Channels",
   "type": "module",
   "bin": {
