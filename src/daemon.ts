@@ -782,6 +782,7 @@ export class Daemon extends EventEmitter {
       },
       systemPrompt: this.config.systemPrompt,
       skipPermissions: this.config.skipPermissions,
+      model: this.config.model,
     };
   }
 
