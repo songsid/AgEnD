@@ -85,47 +85,7 @@ export class TopicCommands {
     const instanceName = target.name;
 
     this.ctx.logger.info({ instanceName, threadId }, "Topic deleted — auto-unbinding");
-
-    if (this.ctx.scheduler) {
-      const count = this.ctx.scheduler.deleteByInstanceOrThread(instanceName, String(threadId));
-      if (count > 0) {
-        this.ctx.logger.info({ threadId, instanceName, count }, "Cleaned up schedules for deleted topic");
-        const groupId = this.ctx.fleetConfig?.channel?.group_id;
-        if (groupId && this.ctx.adapter) {
-          this.ctx.adapter.sendText(String(groupId), `⚠️ Topic 已刪除，已清除 ${count} 條相關排程。`).catch(e => this.ctx.logger.debug({ err: e }, "Failed to send schedule cleanup notification"));
-        }
-      }
-    }
-
-    // Clean up git worktree if this instance was created with --branch
-    const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
-    if (instanceConfig?.worktree_source && instanceConfig.working_directory) {
-      try {
-        const { execFile } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const exec = promisify(execFile);
-        await exec("git", ["worktree", "remove", "--force", instanceConfig.working_directory], {
-          cwd: instanceConfig.worktree_source,
-        });
-        this.ctx.logger.info({ worktree: instanceConfig.working_directory }, "Removed git worktree");
-      } catch (err) {
-        this.ctx.logger.warn({ err, worktree: instanceConfig.working_directory }, "Failed to remove git worktree");
-      }
-    }
-
-    await this.ctx.stopInstance(instanceName);
-    this.ctx.routingTable.delete(threadId);
-
-    if (this.ctx.fleetConfig) {
-      delete this.ctx.fleetConfig.instances[instanceName];
-      this.ctx.saveFleetConfig();
-    }
-
-    const ipc = this.ctx.instanceIpcClients.get(instanceName);
-    if (ipc) {
-      await ipc.close();
-      this.ctx.instanceIpcClients.delete(instanceName);
-    }
+    await this.ctx.removeInstance(instanceName);
   }
 
   /** Create instance config, save fleet.yaml, start daemon, connect IPC. */

@@ -39,7 +39,7 @@ const IPC_TIMEOUT_MS = 30_000;
 const SLOW_IPC_TIMEOUT_MS = 60_000;
 const PERMISSION_TIMEOUT_MS = 120_000;
 
-const SLOW_TOOLS = new Set(["start_instance", "create_instance"]);
+const SLOW_TOOLS = new Set(["start_instance", "create_instance", "delete_instance"]);
 
 // ---------------------------------------------------------------------------
 // Safety nets
@@ -450,6 +450,26 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
           },
         },
         required: ["directory"],
+      },
+    },
+    {
+      name: "delete_instance",
+      description:
+        "Delete a CCD instance: stop daemon, remove from fleet config, clean up worktree if applicable, and optionally delete the Telegram topic. " +
+        "Use this when an instance is no longer needed (e.g., feature branch work is done).",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: {
+            type: "string",
+            description: "The instance name to delete (from list_instances)",
+          },
+          delete_topic: {
+            type: "boolean",
+            description: "Whether to also delete the Telegram topic. Defaults to false.",
+          },
+        },
+        required: ["name"],
       },
     },
   ],
