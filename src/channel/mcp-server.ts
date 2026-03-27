@@ -444,6 +444,10 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({
             description: "Claude model to use for this instance. Omit to use the default (usually opus).",
             enum: ["sonnet", "opus", "haiku"],
           },
+          branch: {
+            type: "string",
+            description: "Git branch name. When specified, creates a git worktree from the directory's repo and uses it as the working directory. If the branch doesn't exist, it will be created.",
+          },
         },
         required: ["directory"],
       },

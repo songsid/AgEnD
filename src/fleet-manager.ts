@@ -687,6 +687,7 @@ export class FleetManager implements FleetContext {
         const directory = (args.directory as string).replace(/^~/, process.env.HOME || "~");
         const topicName = (args.topic_name as string) || basename(directory);
         const description = args.description as string | undefined;
+        const branch = args.branch as string | undefined;
 
         // Validate directory exists
         try {
@@ -696,10 +697,47 @@ export class FleetManager implements FleetContext {
           break;
         }
 
+        // If branch specified, create git worktree
+        let workDir = directory;
+        let worktreePath: string | undefined;
+        if (branch) {
+          try {
+            const { execFile: execFileCb } = await import("node:child_process");
+            const { promisify } = await import("node:util");
+            const execFileAsync = promisify(execFileCb);
+
+            // Verify it's a git repo
+            await execFileAsync("git", ["rev-parse", "--git-dir"], { cwd: directory });
+
+            // Determine worktree path: sibling directory named repo-branch
+            const repoName = basename(directory);
+            const safeBranch = branch.replace(/\//g, "-");
+            worktreePath = join(dirname(directory), `${repoName}-${safeBranch}`);
+
+            // Check if branch exists
+            let branchExists = false;
+            try {
+              await execFileAsync("git", ["rev-parse", "--verify", branch], { cwd: directory });
+              branchExists = true;
+            } catch { /* branch doesn't exist */ }
+
+            if (branchExists) {
+              await execFileAsync("git", ["worktree", "add", worktreePath, branch], { cwd: directory });
+            } else {
+              await execFileAsync("git", ["worktree", "add", worktreePath, "-b", branch], { cwd: directory });
+            }
+            this.logger.info({ worktreePath, branch, repo: directory }, "Created git worktree for instance");
+            workDir = worktreePath;
+          } catch (err) {
+            respond(null, `Failed to create worktree: ${(err as Error).message}`);
+            break;
+          }
+        }
+
         // Check if already bound (normalize ~ in config paths for comparison)
         const expandHome = (p: string) => p.replace(/^~/, process.env.HOME || "~");
         const existingInstance = Object.entries(this.fleetConfig?.instances ?? {})
-          .find(([_, config]) => expandHome(config.working_directory) === directory);
+          .find(([_, config]) => expandHome(config.working_directory) === workDir);
         if (existingInstance) {
           const [eName, eConfig] = existingInstance;
           respond({
@@ -721,13 +759,14 @@ export class FleetManager implements FleetContext {
           createdTopicId = await this.createForumTopic(topicName);
 
           // Step b: Register in config
-          newInstanceName = `${sanitizeInstanceName(basename(directory))}-t${createdTopicId}`;
+          newInstanceName = `${sanitizeInstanceName(basename(workDir))}-t${createdTopicId}`;
           const instanceConfig = {
             ...this.fleetConfig!.defaults,
-            working_directory: directory,
+            working_directory: workDir,
             topic_id: createdTopicId,
             ...(description ? { description } : {}),
             ...(args.model ? { model: args.model as string } : {}),
+            ...(worktreePath ? { worktree_source: directory } : {}),
           } as InstanceConfig;
           this.fleetConfig!.instances[newInstanceName] = instanceConfig;
           this.routingTable.set(createdTopicId, { kind: "instance", name: newInstanceName });
@@ -741,6 +780,7 @@ export class FleetManager implements FleetContext {
             success: true,
             name: newInstanceName,
             topic_id: createdTopicId,
+            ...(worktreePath ? { worktree_path: worktreePath, branch } : {}),
           });
         } catch (err) {
           // Rollback in reverse order
@@ -754,6 +794,15 @@ export class FleetManager implements FleetContext {
           }
           if (createdTopicId) {
             await this.deleteForumTopic(createdTopicId);
+          }
+          // Rollback worktree
+          if (worktreePath) {
+            try {
+              const { execFile: execFileCb } = await import("node:child_process");
+              const { promisify } = await import("node:util");
+              const execFileAsync = promisify(execFileCb);
+              await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: directory });
+            } catch { /* best-effort worktree cleanup */ }
           }
           respond(null, `Failed to create instance: ${(err as Error).message}`);
         }

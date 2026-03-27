@@ -97,6 +97,22 @@ export class TopicCommands {
       }
     }
 
+    // Clean up git worktree if this instance was created with --branch
+    const instanceConfig = this.ctx.fleetConfig?.instances[instanceName];
+    if (instanceConfig?.worktree_source && instanceConfig.working_directory) {
+      try {
+        const { execFile } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const exec = promisify(execFile);
+        await exec("git", ["worktree", "remove", "--force", instanceConfig.working_directory], {
+          cwd: instanceConfig.worktree_source,
+        });
+        this.ctx.logger.info({ worktree: instanceConfig.working_directory }, "Removed git worktree");
+      } catch (err) {
+        this.ctx.logger.warn({ err, worktree: instanceConfig.working_directory }, "Failed to remove git worktree");
+      }
+    }
+
     await this.ctx.stopInstance(instanceName);
     this.ctx.routingTable.delete(threadId);
 
