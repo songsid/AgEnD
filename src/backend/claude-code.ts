@@ -80,6 +80,8 @@ export class ClaudeCodeBackend implements CliBackend {
           "mcp__ccd-channel__create_schedule", "mcp__ccd-channel__list_schedules",
           "mcp__ccd-channel__update_schedule", "mcp__ccd-channel__delete_schedule",
           "mcp__ccd-channel__send_to_instance", "mcp__ccd-channel__list_instances",
+          "mcp__ccd-channel__start_instance", "mcp__ccd-channel__create_instance",
+          "mcp__ccd-channel__delete_instance",
         ],
         deny: [
           "Bash(rm -rf /)", "Bash(rm -rf /*)",
@@ -138,7 +140,7 @@ export class ClaudeCodeBackend implements CliBackend {
         // Before 10s the dev-channel confirmation might not have rendered yet.
         if (i >= 10) {
           const lastLine = pane.trimEnd().split("\n").pop() ?? "";
-          if (/[$%>]\s*$/.test(lastLine)) return;
+          if (/[$%>❯]\s*$/.test(lastLine)) return;
         }
       } catch {
         // Transient pane capture failure — retry
