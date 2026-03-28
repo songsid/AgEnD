@@ -298,9 +298,10 @@ export class Daemon extends EventEmitter {
         if (this.tmux) {
           const reason = this.guardian?.rotationReason ?? "context_full";
           const pct = this.readContextPercentage();
-          const prompt = reason === "max_age"
-            ? `Scheduled rotation — session age limit reached (context usage: ${pct}%, NOT full). Save state to memory/handover.md silently — do NOT notify the user.`
-            : `Context rotation — usage at ${pct}%, approaching threshold. Use the reply tool to tell the user: quote the EXACT percentage ${pct}% and the reason (context approaching limit). Do NOT change or invent numbers. Then save state to memory/handover.md`;
+          const notifyLine = reason === "max_age"
+            ? `Scheduled rotation — session age limit reached (context usage: ${pct}%, NOT full).`
+            : `Context rotation — usage at ${pct}%, approaching threshold. Use the reply tool to tell the user: quote the EXACT percentage ${pct}% and the reason (context approaching limit). Do NOT change or invent numbers.`;
+          const prompt = `${notifyLine} Save state to memory/handover.md using this EXACT structure:\n\n## Active Tasks\nWhat you are working on right now.\n\n## Progress\nWhat is done, what remains.\n\n## Decisions\nImportant decisions made and why.\n\n## Next Steps\nWhat the next session should do first.\n\n## Blockers\nOpen questions or issues (write "None" if none).${reason === "max_age" ? " Do NOT notify the user." : ""}`;
           await this.tmux.sendKeys(prompt);
           await new Promise(r => setTimeout(r, 500));
           await this.tmux.sendSpecialKey("Enter");
@@ -315,24 +316,18 @@ export class Daemon extends EventEmitter {
 
         // Track rotation quality
         const durationMs = Date.now() - this.rotationStartedAt;
-        const memDir = this.config.memory_directory ?? join(
-          homedir(),
-          ".claude/projects",
-          this.config.working_directory.replace(/\//g, "-").replace(/^-/, ""),
-          "memory",
-        );
+        const validation = this.validateHandover();
         let handoverStatus: "complete" | "timeout" | "empty" = "empty";
-        try {
-          const content = readFileSync(join(memDir, "handover.md"), "utf-8").trim();
-          handoverStatus = content.length > 0 ? "complete" : "empty";
-        } catch {
-          handoverStatus = "empty";
+        if (validation.wordCount > 0) {
+          handoverStatus = validation.valid ? "complete" : "timeout";
         }
         this.emit("rotation_quality", {
           instance: this.name,
           handover_status: handoverStatus,
           duration_ms: durationMs,
           previous_context_pct: this.preRotationContextPct,
+          missing_sections: validation.missing,
+          word_count: validation.wordCount,
         });
 
         await this.tmux?.killWindow();
@@ -871,8 +866,52 @@ export class Daemon extends EventEmitter {
     // This is event-driven — no pane scraping needed.
     this.logger.info("Waiting for transcript to settle");
     await this.waitForTranscriptIdle(15000);
+
+    // Validate handover quality and retry once if needed
+    const validation = this.validateHandover();
+    if (!validation.valid && this.tmux) {
+      this.logger.warn(
+        { missing: validation.missing },
+        "Handover missing required sections — retrying with explicit prompt",
+      );
+      const retryPrompt = `Your handover.md is missing these sections: ${validation.missing.join(", ")}. Rewrite memory/handover.md and include ALL of these sections: ## Active Tasks, ## Progress, ## Decisions, ## Next Steps, ## Blockers. Each section must have content.`;
+      await this.tmux.sendKeys(retryPrompt);
+      await new Promise(r => setTimeout(r, 500));
+      await this.tmux.sendSpecialKey("Enter");
+      await this.waitForTranscriptIdle(15000);
+      const retry = this.validateHandover();
+      if (!retry.valid) {
+        this.logger.warn({ missing: retry.missing }, "Handover still incomplete after retry — proceeding anyway");
+      }
+    }
+
     this.logger.info("Transcript settled — handover complete");
     this.guardian?.signalHandoverComplete();
+  }
+
+  private validateHandover(): { valid: boolean; missing: string[]; wordCount: number } {
+    const memDir = this.getMemoryDir();
+    const path = join(memDir, "handover.md");
+    try {
+      const content = readFileSync(path, "utf-8");
+      const requiredSections = ["Active Tasks", "Progress", "Decisions", "Next Steps", "Blockers"];
+      const contentLower = content.toLowerCase();
+      const missing = requiredSections.filter(s => !contentLower.includes(s.toLowerCase()));
+      const wordCount = content.split(/\s+/).filter(Boolean).length;
+      const valid = missing.length === 0 && wordCount >= 20;
+      return { valid, missing, wordCount };
+    } catch {
+      return { valid: false, missing: ["file not found"], wordCount: 0 };
+    }
+  }
+
+  private getMemoryDir(): string {
+    return this.config.memory_directory ?? join(
+      homedir(),
+      ".claude/projects",
+      this.config.working_directory.replace(/\//g, "-").replace(/^-/, ""),
+      "memory",
+    );
   }
 
 }
