@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { access } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -60,6 +61,10 @@ export class FleetManager implements FleetContext {
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
+
+  // Health endpoint
+  private healthServer: Server | null = null;
+  private startedAt = 0;
 
   constructor(public dataDir: string) {
     this.topicCommands = new TopicCommands(this);
@@ -311,6 +316,9 @@ export class FleetManager implements FleetContext {
         this.startStatuslineWatcher(name);
       }
     }
+
+    // Health HTTP endpoint
+    this.startHealthServer(fleet.health_port ?? 19280);
 
     // SIGHUP: reload scheduler (use once + re-register to avoid duplicates)
     const onSighup = () => {
@@ -1421,6 +1429,11 @@ export class FleetManager implements FleetContext {
       this.adapter = null;
     }
 
+    if (this.healthServer) {
+      this.healthServer.close();
+      this.healthServer = null;
+    }
+
     this.eventLog?.close();
 
     const pidPath = join(this.dataDir, "fleet.pid");
@@ -1579,5 +1592,56 @@ export class FleetManager implements FleetContext {
         }
       }
     }
+  }
+
+  // ── Health HTTP endpoint ─────────────────────────────────────────────
+
+  private startHealthServer(port: number): void {
+    this.startedAt = Date.now();
+    this.healthServer = createServer((req, res) => {
+      res.setHeader("Content-Type", "application/json");
+
+      if (req.method === "GET" && req.url === "/health") {
+        const instanceCount = this.fleetConfig?.instances
+          ? Object.keys(this.fleetConfig.instances).length
+          : 0;
+        res.writeHead(200);
+        res.end(JSON.stringify({
+          status: "ok",
+          instances: instanceCount,
+          uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+        }));
+        return;
+      }
+
+      if (req.method === "GET" && req.url === "/status") {
+        const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
+          const statusFile = join(this.getInstanceDir(name), "statusline.json");
+          let context_pct = 0;
+          let cost = 0;
+          try {
+            const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+            context_pct = data.context?.used_percentage ?? 0;
+            cost = data.cost?.total_cost_usd ?? 0;
+          } catch { /* statusline not yet available */ }
+          return {
+            name,
+            status: this.getInstanceStatus(name),
+            context_pct,
+            cost,
+          };
+        });
+        res.writeHead(200);
+        res.end(JSON.stringify({ instances }));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    this.healthServer.listen(port, "127.0.0.1", () => {
+      this.logger.info({ port }, "Health endpoint listening");
+    });
   }
 }
