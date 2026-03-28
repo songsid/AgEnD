@@ -146,4 +146,5 @@ export interface FleetConfig {
   project_roots?: string[];
   defaults: FleetDefaults;
   instances: Record<string, InstanceConfig>;
+  health_port?: number;
 }
