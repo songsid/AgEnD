@@ -4,7 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=<%= nodePath %> <%= execPath %> start
+ExecStart=<%= execPath %> fleet start
+Environment=PATH=<%= path %>
 WorkingDirectory=<%= workingDirectory %>
 Restart=no
 StandardOutput=append:<%= logPath %>
