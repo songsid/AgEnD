@@ -493,6 +493,7 @@ program
     const execPath = process.argv[1];
     const path = installService({
       label: "com.ccd.fleet",
+      nodePath: process.execPath,
       execPath,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),

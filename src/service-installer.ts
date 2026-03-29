@@ -11,6 +11,7 @@ const templatesDir = join(__dirname, "..", "templates");
 
 interface ServiceVars {
   label: string;
+  nodePath: string;
   execPath: string;
   workingDirectory: string;
   logPath: string;
