@@ -9,8 +9,6 @@ import { createLogger, type Logger } from "./logger.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { ContextGuardian } from "./context-guardian.js";
-import { MemoryLayer } from "./memory-layer.js";
-import { MemoryDb } from "./db.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
@@ -33,7 +31,6 @@ export class Daemon extends EventEmitter {
   private transcriptMonitor: TranscriptMonitor | null = null;
   private toolTracker: ToolTracker | null = null;
   private guardian: ContextGuardian | null = null;
-  private memoryLayer: MemoryLayer | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
   // Track chatId/threadId from inbound messages for automatic outbound routing
@@ -340,23 +337,6 @@ export class Daemon extends EventEmitter {
         this.logger.info("Context rotation complete — fresh Claude session started");
       });
 
-      // 9. Memory layer
-      if (this.config.memory.watch_memory_dir || this.config.memory.backup_to_sqlite) {
-        const dbPath = join(this.instanceDir, "memory.db");
-        const db = new MemoryDb(dbPath);
-        db.pruneOldBackups();
-        const memDir =
-          this.config.memory_directory ??
-          join(
-            homedir(),
-            ".claude/projects",
-            this.config.working_directory.replace(/\//g, "-").replace(/^-/, ""),
-            "memory",
-          );
-        mkdirSync(memDir, { recursive: true });
-        this.memoryLayer = new MemoryLayer(memDir, db, this.logger);
-        await this.memoryLayer.start();
-      }
     }
 
     // Set CCD_SOCKET_PATH env for MCP server
@@ -421,7 +401,6 @@ export class Daemon extends EventEmitter {
     this.hangDetector?.stop();
     this.transcriptMonitor?.stop();
     this.guardian?.stop();
-    if (this.memoryLayer) await this.memoryLayer.stop();
     if (this.adapter) await this.adapter.stop();
     await this.ipcServer?.close();
     // Strategy A: kill window on stop, resume via --resume on next start

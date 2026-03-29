@@ -49,14 +49,6 @@ export interface StatusLineData {
   };
 }
 
-export interface MemoryBackupRow {
-  id: number;
-  file_path: string;
-  content: string;
-  chat_id: string | null;
-  backed_up_at: string;
-}
-
 export interface AccessConfig {
   mode: "pairing" | "locked";
   allowed_users: number[];
