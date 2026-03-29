@@ -2,12 +2,10 @@
 // export { ProcessManager, STATUSLINE_FILE } from "./process-manager.js";
 export { TmuxManager } from "./tmux-manager.js";
 export { ContextGuardian } from "./context-guardian.js";
-export { MemoryLayer } from "./memory-layer.js";
-export { MemoryDb } from "./db.js";
 export { loadConfig, DEFAULT_CONFIG } from "./config.js";
 export { createLogger } from "./logger.js";
 export { installService, detectPlatform } from "./service-installer.js";
-export type { DaemonConfig, ContextStatus, StatusLineData, MemoryBackupRow, ChannelConfig, AccessConfig } from "./types.js";
+export type { DaemonConfig, ContextStatus, StatusLineData, ChannelConfig, AccessConfig } from "./types.js";
 
 // Channel adapter types — for external adapter authors (ccd-adapter-*)
 export type {
