@@ -491,22 +491,22 @@ program
       "./service-installer.js"
     );
     const execPath = process.argv[1];
-    const path = installService({
+    const svcPath = installService({
       label: "com.ccd.fleet",
-      nodePath: process.execPath,
       execPath,
+      path: process.env.PATH!,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),
     });
-    console.log(`Service installed at: ${path}`);
+    console.log(`Service installed at: ${svcPath}`);
     if (opts.activate) {
       const pidPath = join(DATA_DIR, "fleet.pid");
-      activateService(path, pidPath);
+      activateService(svcPath, pidPath);
       console.log("Service activated.");
     } else {
       const plat = detectPlatform();
       if (plat === "macos") {
-        console.log(`Run: launchctl load ${path}`);
+        console.log(`Run: launchctl load ${svcPath}`);
       } else {
         console.log("Run: systemctl --user enable --now ccd");
       }

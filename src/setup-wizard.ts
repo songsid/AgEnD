@@ -572,8 +572,8 @@ export async function runSetupWizard(): Promise<void> {
     const { installService, detectPlatform } = await import("./service-installer.js");
     const svcPath = installService({
       label: "com.ccd.fleet",
-      nodePath: process.execPath,
       execPath: process.argv[1],
+      path: process.env.PATH!,
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),
     });
