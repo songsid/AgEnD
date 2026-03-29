@@ -286,9 +286,15 @@ export class FleetManager implements FleetContext {
       this.saveFleetConfig();
     }
 
-    for (const [name, config] of Object.entries(fleet.instances)) {
+    const instanceEntries = Object.entries(fleet.instances);
+    for (let i = 0; i < instanceEntries.length; i++) {
+      const [name, config] = instanceEntries[i];
       // @deprecated DM mode: when config.channel is set, instance runs its own adapter
       await this.startInstance(name, config, topicMode && !config.channel);
+      // Stagger launches to avoid resource contention during postLaunch
+      if (i < instanceEntries.length - 1) {
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
 
     if (topicMode && fleet.channel) {
