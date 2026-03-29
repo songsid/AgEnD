@@ -128,12 +128,6 @@ export interface WebhookConfig {
   headers?: Record<string, string>;
 }
 
-export interface MeetingDefaults {
-  maxConcurrent?: number;
-  maxParticipants?: number;
-  defaultRounds?: number;
-}
-
 export interface FleetDefaults extends Partial<InstanceConfig> {
   scheduler?: {
     max_schedules?: number;
@@ -141,7 +135,6 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
     retry_count?: number;
     retry_interval_ms?: number;
   };
-  meetings?: MeetingDefaults;
   cost_guard?: CostGuardConfig;
   hang_detector?: HangDetectorConfig;
   daily_summary?: DailySummaryConfig;
