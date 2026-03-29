@@ -1,13 +1,14 @@
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
-import type { RouteTarget } from "./meeting/types.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { Scheduler } from "./scheduler/index.js";
 import type { Logger } from "./logger.js";
 import type { CostGuard } from "./cost-guard.js";
 
+export type RouteTarget = { kind: "instance"; name: string };
+
 /**
- * Shared context interface for fleet sub-modules (topic commands, meeting manager).
+ * Shared context interface for fleet sub-modules (topic commands).
  * FleetManager implements this and passes `this` to extracted handlers.
  */
 export interface FleetContext {

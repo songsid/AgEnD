@@ -9,7 +9,7 @@ import yaml from "js-yaml";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import type { FleetConfig, InstanceConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig } from "./types.js";
-import type { RouteTarget } from "./meeting/types.js";
+import type { RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
@@ -26,7 +26,6 @@ import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
 import { TopicCommands, sanitizeInstanceName } from "./topic-commands.js";
-import { MeetingManager } from "./meeting-manager.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -44,7 +43,6 @@ export class FleetManager implements FleetContext {
   private configPath: string = "";
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
-  private meetingManager: MeetingManager;
   // sessionName → instanceName mapping for external sessions
   private sessionRegistry: Map<string, string> = new Map();
   eventLog: EventLog | null = null;
@@ -70,7 +68,6 @@ export class FleetManager implements FleetContext {
 
   constructor(public dataDir: string) {
     this.topicCommands = new TopicCommands(this);
-    this.meetingManager = new MeetingManager(this);
   }
 
   /** Load fleet.yaml and build routing table */
@@ -164,8 +161,6 @@ export class FleetManager implements FleetContext {
         try { process.kill(pid, "SIGTERM"); } catch (e) { this.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
       }
     }
-    // Clean up ephemeral instance resources (worktree, topic map)
-    await this.meetingManager.cleanupEphemeral(name);
   }
 
   /** Load .env file from data dir into process.env */
@@ -608,9 +603,8 @@ export class FleetManager implements FleetContext {
     };
 
     // Resolve threadId from instance → topic_id mapping
-    const ephemeralTopicId = this.meetingManager.getEphemeralTopicId(instanceName);
     const instanceConfig = this.fleetConfig?.instances[instanceName];
-    const threadId = args.thread_id as string ?? (ephemeralTopicId ? String(ephemeralTopicId) : (instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined));
+    const threadId = args.thread_id as string ?? (instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined);
 
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(this.adapter, tool, args, threadId, respond)) {
@@ -672,10 +666,8 @@ export class FleetManager implements FleetContext {
         // Post to Telegram topics for visibility
         const groupId = this.fleetConfig?.channel?.group_id;
         if (groupId && this.adapter) {
-          const senderTopicId = this.meetingManager.getEphemeralTopicId(instanceName)
-            ?? this.fleetConfig?.instances[instanceName]?.topic_id;
-          const targetTopicId = this.meetingManager.getEphemeralTopicId(targetInstanceName)
-            ?? this.fleetConfig?.instances[targetInstanceName]?.topic_id;
+          const senderTopicId = this.fleetConfig?.instances[instanceName]?.topic_id;
+          const targetTopicId = this.fleetConfig?.instances[targetInstanceName]?.topic_id;
           // Post full message to topics — adapter handles 4096-char chunking
           // Only post to sender topic if sender is the instance itself (not external)
           if (senderTopicId && !isExternalSender) {
@@ -1432,7 +1424,6 @@ export class FleetManager implements FleetContext {
           await daemon.stop();
         }
         this.daemons.delete(name);
-        await this.meetingManager.cleanupEphemeral(name);
       })
     );
 
