@@ -6,10 +6,15 @@
     <string><%= label %></string>
     <key>ProgramArguments</key>
     <array>
-        <string><%= nodePath %></string>
         <string><%= execPath %></string>
+        <string>fleet</string>
         <string>start</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string><%= path %></string>
+    </dict>
     <key>WorkingDirectory</key>
     <string><%= workingDirectory %></string>
     <key>RunAtLoad</key>
