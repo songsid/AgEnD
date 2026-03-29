@@ -292,11 +292,6 @@ export class FleetManager implements FleetContext {
     }
 
     if (topicMode && fleet.channel) {
-      await this.topicCommands.autoCreateTopics();
-      this.routingTable = this.buildRoutingTable();
-      const routeSummary = [...this.routingTable.entries()].map(([tid, target]) => `#${tid}→${target.name}`).join(", ");
-      this.logger.info(`Routes: ${routeSummary}`);
-
       const schedulerConfig: SchedulerConfig = {
         ...DEFAULT_SCHEDULER_CONFIG,
         ...(this.fleetConfig?.defaults as Record<string, unknown>)?.scheduler as Partial<SchedulerConfig> ?? {},
@@ -312,6 +307,12 @@ export class FleetManager implements FleetContext {
       this.logger.info("Scheduler initialized");
 
       await this.startSharedAdapter(fleet);
+
+      // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
+      await this.topicCommands.autoCreateTopics();
+      this.routingTable = this.buildRoutingTable();
+      const routeSummary = [...this.routingTable.entries()].map(([tid, target]) => `#${tid}→${target.name}`).join(", ");
+      this.logger.info(`Routes: ${routeSummary}`);
 
       // Resolve topic icon emoji IDs and start idle archive poller
       await this.resolveTopicIcons();
