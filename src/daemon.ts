@@ -782,8 +782,11 @@ export class Daemon extends EventEmitter {
     const windowIdFile = join(this.instanceDir, "window-id");
     writeFileSync(windowIdFile, windowId);
 
-    // Brief grace period for Claude Code to initialize MCP server
+    // Grace period for Claude Code to render any confirmation prompts,
+    // then auto-confirm by sending Enter (dismisses "I am using this for
+    // local development" and "New MCP server found" prompts).
     await new Promise(r => setTimeout(r, 10_000));
+    try { await this.tmux!.sendSpecialKey("Enter"); } catch { /* window may have exited */ }
   }
 
   private saveSessionId(): void {
