@@ -69,12 +69,18 @@ export class TmuxManager {
     } catch { return false; }
   }
 
-  async sendKeys(text: string): Promise<void> {
-    await exec("tmux", ["send-keys", "-l", "-t", `${this.sessionName}:${this.windowId}`, text]);
+  async sendKeys(text: string): Promise<boolean> {
+    try {
+      await exec("tmux", ["send-keys", "-l", "-t", `${this.sessionName}:${this.windowId}`, text]);
+      return true;
+    } catch { return false; }
   }
 
-  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down"): Promise<void> {
-    await exec("tmux", ["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]);
+  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down"): Promise<boolean> {
+    try {
+      await exec("tmux", ["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]);
+      return true;
+    } catch { return false; }
   }
 
   async pipeOutput(logPath: string): Promise<void> {
