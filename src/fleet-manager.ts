@@ -1410,9 +1410,15 @@ export class FleetManager implements FleetContext {
         this.costGuard?.updateCost(name, data.cost?.total_cost_usd ?? 0);
         const rl = data.rate_limits;
         if (rl) {
+          const prev = this.instanceRateLimits.get(name);
+          const newSevenDay = rl.seven_day?.used_percentage ?? 0;
+          if (prev?.seven_day_pct === 100 && newSevenDay < 100) {
+            this.notifyInstanceTopic(name, `✅ ${name} weekly usage limit has reset — instance is available again.`);
+            this.logger.info({ name }, "Weekly rate limit recovered");
+          }
           this.instanceRateLimits.set(name, {
             five_hour_pct: rl.five_hour?.used_percentage ?? 0,
-            seven_day_pct: rl.seven_day?.used_percentage ?? 0,
+            seven_day_pct: newSevenDay,
           });
           this.checkModelFailover(name, rl.five_hour?.used_percentage ?? 0);
         }
