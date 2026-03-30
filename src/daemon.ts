@@ -878,19 +878,8 @@ export class Daemon extends EventEmitter {
     return this.waitForTranscriptIdle(quietMs);
   }
 
-  /** Send a save-state prompt to Claude, wait for it to settle, then stop. */
+  /** @deprecated Use stop() directly — daemon-side snapshot handles continuity */
   async gracefulStop(): Promise<void> {
-    if (this.tmux && await this.tmux.isWindowAlive()) {
-      this.logger.info("Sending save-state prompt before shutdown");
-      await this.tmux.sendKeys("The system is shutting down. Please save any important state to memory files now. You have 30 seconds.");
-      await new Promise(r => setTimeout(r, 500));
-      await this.tmux.sendSpecialKey("Enter");
-
-      await Promise.race([
-        this.waitForTranscriptIdle(10_000),
-        new Promise(r => setTimeout(r, 30_000)),
-      ]);
-    }
     await this.stop();
   }
 
