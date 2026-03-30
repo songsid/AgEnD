@@ -18,6 +18,7 @@ import { AccessManager } from "./channel/access-manager.js";
 import type { ChannelAdapter, InboundMessage, ApprovalResponse, PermissionPrompt } from "./channel/types.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import { generateFleetSystemPrompt } from "./fleet-system-prompt.js";
 import { HangDetector } from "./hang-detector.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -560,7 +561,7 @@ export class Daemon extends EventEmitter {
     };
 
     // Schedule tools → route to fleet manager
-    const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "create_instance", "delete_instance"]);
+    const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "create_instance", "delete_instance", "request_information", "delegate_task", "report_result", "describe_instance"]);
     const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 
     if (SCHEDULE_TOOLS.has(tool)) {
@@ -758,10 +759,22 @@ export class Daemon extends EventEmitter {
           env: { CCD_SOCKET_PATH: sockPath },
         },
       },
-      systemPrompt: this.config.systemPrompt,
+      systemPrompt: this.buildSystemPrompt(),
       skipPermissions: this.config.skipPermissions,
       model: this.modelOverride ?? this.config.model,
     };
+  }
+
+  /** Combine fleet context with user-configured system prompt */
+  private buildSystemPrompt(): string {
+    const fleetContext = generateFleetSystemPrompt({
+      instanceName: this.name,
+      workingDirectory: this.config.working_directory,
+    });
+    if (this.config.systemPrompt) {
+      return fleetContext + "\n\n" + this.config.systemPrompt;
+    }
+    return fleetContext;
   }
 
   /** Spawn (or respawn) a Claude window in tmux */
