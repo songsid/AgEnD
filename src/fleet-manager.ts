@@ -158,6 +158,13 @@ export class FleetManager implements FleetContext {
       });
     }
 
+    daemon.on("crash_loop", () => {
+      this.eventLog?.insert(name, "crash_loop", {});
+      this.logger.error({ name }, "Instance in crash loop — respawn paused");
+      this.notifyInstanceTopic(name, `🔴 ${name} keeps crashing shortly after launch — respawn paused. Check rate limits or run \`ccd fleet restart\`.`);
+      this.setTopicIcon(name, "red");
+    });
+
     this.setTopicIcon(name, "green");
     this.touchActivity(name);
   }
