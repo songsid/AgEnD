@@ -1626,10 +1626,9 @@ export class FleetManager implements FleetContext {
     await Promise.allSettled(
       [...this.daemons.entries()].map(async ([name, daemon]) => {
         try {
-          await daemon.gracefulStop();
-        } catch (err) {
-          this.logger.warn({ name, err }, "Graceful stop failed, force stopping");
           await daemon.stop();
+        } catch (err) {
+          this.logger.warn({ name, err }, "Stop failed");
         }
         this.daemons.delete(name);
       })
