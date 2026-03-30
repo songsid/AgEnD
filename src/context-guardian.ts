@@ -69,16 +69,11 @@ export class ContextGuardian extends EventEmitter {
     }
   }
 
-  updateContextStatus(status: ContextStatus): void {
-    if (this.state !== "NORMAL") return;
-    const threshold = this.config.restart_threshold_pct ?? this.config.threshold_percentage ?? 80;
-    if (status.used_percentage > threshold) {
-      this.logger.info(
-        { used: status.used_percentage, threshold },
-        "Context threshold exceeded — requesting restart",
-      );
-      this.requestRestart("context_full");
-    }
+  updateContextStatus(_status: ContextStatus): void {
+    // Threshold-based rotation removed: Claude Code's built-in auto-compact
+    // handles context limits. Threshold rotation caused loops because --resume
+    // restores the same context level, re-triggering rotation after grace period.
+    // Only max_age rotation is retained (opt-in, default disabled).
   }
 
   /** Request a restart — transitions directly to RESTARTING */
@@ -97,6 +92,7 @@ export class ContextGuardian extends EventEmitter {
 
   startTimer(): void {
     if (this.ageTimer) return;
+    if (this.config.max_age_hours <= 0) return; // 0 = disabled
     const ms = this.config.max_age_hours * 60 * 60 * 1000;
     this.ageTimer = setTimeout(() => {
       this.logger.info("Max age reached — requesting restart");

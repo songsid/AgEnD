@@ -32,12 +32,15 @@ export class TmuxManager {
     }
   }
 
-  static async listWindows(sessionName: string): Promise<string[]> {
+  static async listWindows(sessionName: string): Promise<Array<{ id: string; name: string }>> {
     try {
       const { stdout } = await exec("tmux", [
-        "list-windows", "-t", sessionName, "-F", "#{window_id}"
+        "list-windows", "-t", sessionName, "-F", "#{window_id}\t#{window_name}"
       ]);
-      return stdout.trim().split("\n").filter(Boolean);
+      return stdout.trim().split("\n").filter(Boolean).map(line => {
+        const [id, name] = line.split("\t");
+        return { id, name };
+      });
     } catch { return []; }
   }
 
@@ -69,7 +72,7 @@ export class TmuxManager {
     if (!this.windowId) return false;
     try {
       const windows = await TmuxManager.listWindows(this.sessionName);
-      return windows.includes(this.windowId);
+      return windows.some(w => w.id === this.windowId);
     } catch { return false; }
   }
 

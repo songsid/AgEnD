@@ -40,8 +40,10 @@ describe("TmuxManager", () => {
 
   it("lists windows", async () => {
     const tm = new TmuxManager(session, "");
-    await tm.createWindow("sleep 30", "/tmp");
+    await tm.createWindow("sleep 30", "/tmp", "test-win");
     const windows = await TmuxManager.listWindows(session);
     expect(windows.length).toBeGreaterThan(0);
+    expect(windows[0]).toHaveProperty("id");
+    expect(windows[0]).toHaveProperty("name");
   });
 });

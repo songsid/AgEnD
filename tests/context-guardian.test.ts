@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 const makeConfig = (overrides = {}) => ({
-  restart_threshold_pct: 80,
   grace_period_ms: 600_000,
   max_age_hours: 8,
   ...overrides,
@@ -36,20 +35,19 @@ describe("ContextGuardian v3", () => {
     expect(guardian.state).toBe("NORMAL");
   });
 
-  it("transitions to RESTARTING when threshold exceeded", () => {
+  it("does not trigger restart on threshold (threshold rotation removed)", () => {
     const restartSpy = vi.fn();
     guardian.on("restart_requested", restartSpy);
     guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
+      used_percentage: 95,
+      remaining_percentage: 5,
       context_window_size: 1_000_000,
     });
-    expect(guardian.state).toBe("RESTARTING");
-    expect(restartSpy).toHaveBeenCalledTimes(1);
-    expect(restartSpy).toHaveBeenCalledWith("context_full");
+    expect(guardian.state).toBe("NORMAL");
+    expect(restartSpy).not.toHaveBeenCalled();
   });
 
-  it("stays NORMAL below threshold", () => {
+  it("stays NORMAL below any context level", () => {
     guardian.updateContextStatus({
       used_percentage: 75,
       remaining_percentage: 25,
@@ -59,11 +57,7 @@ describe("ContextGuardian v3", () => {
   });
 
   it("enters GRACE after markRestartComplete", () => {
-    guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
-      context_window_size: 1_000_000,
-    });
+    guardian.requestRestart("max_age");
     expect(guardian.state).toBe("RESTARTING");
     guardian.markRestartComplete();
     expect(guardian.state).toBe("GRACE");
@@ -72,37 +66,13 @@ describe("ContextGuardian v3", () => {
   it("emits restart_complete on markRestartComplete", () => {
     const completeSpy = vi.fn();
     guardian.on("restart_complete", completeSpy);
-    guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
-      context_window_size: 1_000_000,
-    });
+    guardian.requestRestart("max_age");
     guardian.markRestartComplete();
     expect(completeSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("ignores threshold during GRACE period", () => {
-    guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
-      context_window_size: 1_000_000,
-    });
-    guardian.markRestartComplete();
-    expect(guardian.state).toBe("GRACE");
-    guardian.updateContextStatus({
-      used_percentage: 90,
-      remaining_percentage: 10,
-      context_window_size: 1_000_000,
-    });
-    expect(guardian.state).toBe("GRACE");
-  });
-
   it("returns to NORMAL after grace period expires", () => {
-    guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
-      context_window_size: 1_000_000,
-    });
+    guardian.requestRestart("max_age");
     guardian.markRestartComplete();
     vi.advanceTimersByTime(600_001);
     expect(guardian.state).toBe("NORMAL");
@@ -118,8 +88,22 @@ describe("ContextGuardian v3", () => {
     expect(restartSpy).toHaveBeenCalledWith("max_age");
   });
 
+  it("does not start timer when max_age_hours is 0 (disabled)", () => {
+    const disabledGuardian = new ContextGuardian(
+      makeConfig({ max_age_hours: 0 }),
+      logger,
+      statusFile,
+    );
+    const restartSpy = vi.fn();
+    disabledGuardian.on("restart_requested", restartSpy);
+    disabledGuardian.startTimer();
+    vi.advanceTimersByTime(24 * 60 * 60 * 1000);
+    expect(restartSpy).not.toHaveBeenCalled();
+    disabledGuardian.stop();
+  });
+
   it("ignores requestRestart when not NORMAL", () => {
-    guardian.requestRestart("context_full");
+    guardian.requestRestart("max_age");
     expect(guardian.state).toBe("RESTARTING");
     // Second request should be ignored
     const restartSpy = vi.fn();
@@ -128,34 +112,14 @@ describe("ContextGuardian v3", () => {
     expect(restartSpy).not.toHaveBeenCalled();
   });
 
-  it("supports legacy threshold_percentage fallback", () => {
-    const legacyGuardian = new ContextGuardian(
-      makeConfig({ restart_threshold_pct: undefined, threshold_percentage: 60 }),
-      logger,
-      statusFile,
-    );
-    const restartSpy = vi.fn();
-    legacyGuardian.on("restart_requested", restartSpy);
-    legacyGuardian.updateContextStatus({
-      used_percentage: 65,
-      remaining_percentage: 35,
-      context_window_size: 1_000_000,
-    });
-    expect(legacyGuardian.state).toBe("RESTARTING");
-    legacyGuardian.stop();
-  });
-
   it("resets age timer after grace period", () => {
     const restartSpy = vi.fn();
     guardian.on("restart_requested", restartSpy);
     guardian.startTimer();
 
-    // Trigger restart via context
-    guardian.updateContextStatus({
-      used_percentage: 85,
-      remaining_percentage: 15,
-      context_window_size: 1_000_000,
-    });
+    // Trigger restart via max_age
+    vi.advanceTimersByTime(8 * 60 * 60 * 1000);
+    expect(restartSpy).toHaveBeenCalledTimes(1);
     guardian.markRestartComplete();
 
     // Grace expires, returns to NORMAL
