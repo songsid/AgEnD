@@ -144,7 +144,7 @@ export class FleetManager implements FleetContext {
     this.daemons.set(name, daemon);
 
     daemon.on("restart_complete", (data: Record<string, unknown>) => {
-      this.eventLog?.insert(name, "context_restart", data);
+      this.eventLog?.insert(name, "context_rotation", data);
       this.logger.info({ name, ...data }, "Context restart completed");
     });
 
@@ -734,7 +734,7 @@ export class FleetManager implements FleetContext {
           }
         }
 
-        this.logger.info(`✉ ${senderLabel} → ${targetName}: ${message.slice(0, 100)}`);
+        this.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)}`);
         respond({ sent: true, target: targetName, correlation_id: correlationId });
         break;
       }
@@ -1275,6 +1275,7 @@ export class FleetManager implements FleetContext {
     const toSave: Record<string, unknown> = {};
     if (this.fleetConfig.project_roots) toSave.project_roots = this.fleetConfig.project_roots;
     if (this.fleetConfig.channel) toSave.channel = this.fleetConfig.channel;
+    if (this.fleetConfig.health_port) toSave.health_port = this.fleetConfig.health_port;
     if (Object.keys(this.fleetConfig.defaults).length > 0) toSave.defaults = this.fleetConfig.defaults;
     toSave.instances = {};
     for (const [name, inst] of Object.entries(this.fleetConfig.instances)) {

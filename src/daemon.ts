@@ -242,6 +242,17 @@ export class Daemon extends EventEmitter {
         }
       }
     }
+    // Also kill any orphaned windows with the same name (e.g. from interrupted restarts)
+    try {
+      const windows = await TmuxManager.listWindows(sessionName);
+      for (const w of windows) {
+        if (w.name === this.name) {
+          const orphan = new TmuxManager(sessionName, w.id);
+          await orphan.killWindow();
+          this.logger.info({ windowId: w.id }, "Killed orphaned tmux window with matching name");
+        }
+      }
+    } catch { /* session may not exist yet */ }
 
     await this.spawnClaudeWindow();
 
@@ -514,6 +525,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn("Cannot push channel message: IPC server not running");
       return;
     }
+    this.hangDetector?.recordInbound();
     // v3: record user messages for rotation snapshot
     this.recordRecentUserMessage(content, meta);
     const msg = { type: "channel_message", content, meta };
