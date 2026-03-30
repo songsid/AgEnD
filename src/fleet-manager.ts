@@ -657,7 +657,9 @@ export class FleetManager implements FleetContext {
     switch (tool) {
       case "send_to_instance": {
         const targetName = args.instance_name as string;
-        const message = args.message as string;
+        const message = args.message as string | undefined;
+        if (!targetName) { respond(null, "send_to_instance: missing required argument 'instance_name'"); break; }
+        if (!message) { respond(null, "send_to_instance: missing required argument 'message'"); break; }
         const senderLabel = senderSessionName ?? instanceName;
         const isExternalSender = senderSessionName != null && senderSessionName !== instanceName;
 
@@ -1280,9 +1282,20 @@ export class FleetManager implements FleetContext {
         working_directory: inst.working_directory,
         topic_id: inst.topic_id,
       };
-      if (inst.general_topic) {
-        serialized.general_topic = true;
-      }
+      // Preserve all optional user-configured fields so saveFleetConfig() never silently drops them
+      if (inst.general_topic) serialized.general_topic = true;
+      if (inst.description) serialized.description = inst.description;
+      if (inst.tags?.length) serialized.tags = inst.tags;
+      if (inst.model) serialized.model = inst.model;
+      if (inst.model_failover?.length) serialized.model_failover = inst.model_failover;
+      if (inst.worktree_source) serialized.worktree_source = inst.worktree_source;
+      if (inst.backend) serialized.backend = inst.backend;
+      if (inst.systemPrompt) serialized.systemPrompt = inst.systemPrompt;
+      if (inst.skipPermissions) serialized.skipPermissions = inst.skipPermissions;
+      if (inst.lightweight) serialized.lightweight = inst.lightweight;
+      if (inst.memory_directory) serialized.memory_directory = inst.memory_directory;
+      if (inst.cost_guard) serialized.cost_guard = inst.cost_guard;
+      if (inst.channel) serialized.channel = inst.channel;
       (toSave.instances as Record<string, unknown>)[name] = serialized;
     }
     writeFileSync(this.configPath, yaml.dump(toSave, { lineWidth: 120 }));
