@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, resolveReplyThreadId } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { join, basename } from "node:path";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import yaml from "js-yaml";
 
 describe("FleetManager", () => {
   let tmpDir: string;
@@ -136,6 +137,52 @@ instances:
       log_level: "info",
     });
     expect(threadId).toBe("42");
+  });
+
+  it("saveFleetConfig preserves all optional user-configured fields", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `
+channel:
+  type: telegram
+  mode: topic
+  bot_token_env: BOT
+  group_id: -100
+  access:
+    mode: locked
+    allowed_users: [1]
+instances:
+  my-proj:
+    working_directory: /tmp/my-proj
+    topic_id: 10
+    description: "A test instance"
+    tags: [code-reviewer, researcher]
+    model: claude-opus-4-6
+    model_failover: [sonnet]
+    worktree_source: /tmp/source-repo
+    backend: claude-code
+    skipPermissions: true
+    lightweight: true
+    memory_directory: /tmp/memory
+`);
+    fm.loadConfig(configPath);
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as Record<string, unknown>;
+    const inst = (saved.instances as Record<string, unknown>)["my-proj"] as Record<string, unknown>;
+
+    expect(inst.description).toBe("A test instance");
+    expect(inst.tags).toEqual(["code-reviewer", "researcher"]);
+    expect(inst.model).toBe("claude-opus-4-6");
+    expect(inst.model_failover).toEqual(["sonnet"]);
+    expect(inst.worktree_source).toBe("/tmp/source-repo");
+    expect(inst.backend).toBe("claude-code");
+    expect(inst.skipPermissions).toBe(true);
+    expect(inst.lightweight).toBe(true);
+    expect(inst.memory_directory).toBe("/tmp/memory");
+    // Core fields still present
+    expect(inst.working_directory).toBe("/tmp/my-proj");
+    expect(inst.topic_id).toBe(10);
   });
 });
 
