@@ -9,6 +9,8 @@ import {
   writeFileSync,
   unlinkSync,
   mkdirSync,
+  readdirSync,
+  rmSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -230,8 +232,11 @@ fleet
     const fm = new FleetManager(DATA_DIR);
     const config = fm.loadConfig(FLEET_CONFIG_PATH);
 
-    console.log("Instance".padEnd(20) + "Status".padEnd(10) + "Context".padEnd(10) + "Cost".padEnd(10) + "Topic");
-    console.log("\u2500".repeat(65));
+    const names = Object.keys(config.instances);
+    const nameWidth = Math.max(20, ...names.map(n => n.length + 2));
+
+    console.log("Instance".padEnd(nameWidth) + "Status".padEnd(10) + "Context".padEnd(10) + "Cost".padEnd(10) + "Topic");
+    console.log("\u2500".repeat(nameWidth + 40));
     for (const [name, inst] of Object.entries(config.instances)) {
       const status = fm.getInstanceStatus(name);
       const topic = inst.topic_id ? `#${inst.topic_id}` : "(DM)";
@@ -253,7 +258,7 @@ fleet
       } catch { /* ignore read errors */ }
 
       console.log(
-        name.padEnd(20) +
+        name.padEnd(nameWidth) +
         status.padEnd(10) +
         contextStr.padEnd(10) +
         costStr.padEnd(10) +
@@ -305,13 +310,14 @@ fleet
         console.log("No events found.");
         return;
       }
-      console.log("Time".padEnd(22) + "Instance".padEnd(20) + "Type".padEnd(25) + "Payload");
-      console.log("\u2500".repeat(90));
+      const instWidth = Math.max(20, ...rows.map(r => r.instance_name.length + 2));
+      console.log("Time".padEnd(22) + "Instance".padEnd(instWidth) + "Type".padEnd(25) + "Payload");
+      console.log("\u2500".repeat(22 + instWidth + 25 + 23));
       for (const r of rows) {
         const payloadStr = r.payload != null ? JSON.stringify(r.payload) : "";
         console.log(
           r.created_at.padEnd(22) +
-          r.instance_name.padEnd(20) +
+          r.instance_name.padEnd(instWidth) +
           r.event_type.padEnd(25) +
           payloadStr,
         );
@@ -319,6 +325,29 @@ fleet
     } finally {
       evLog.close();
     }
+  });
+
+fleet
+  .command("cleanup")
+  .description("Remove orphaned instance directories not in fleet.yaml")
+  .option("--dry-run", "List orphans without deleting")
+  .action(async (opts: { dryRun?: boolean }) => {
+    const { FleetManager } = await import("./fleet-manager.js");
+    const fm = new FleetManager(DATA_DIR);
+    const config = fm.loadConfig(FLEET_CONFIG_PATH);
+    const configuredNames = new Set(Object.keys(config.instances));
+    const instancesDir = join(DATA_DIR, "instances");
+    if (!existsSync(instancesDir)) { console.log("No instances directory."); return; }
+    const dirs = readdirSync(instancesDir).filter(d => !configuredNames.has(d));
+    if (dirs.length === 0) { console.log("No orphaned directories."); return; }
+    console.log(`Found ${dirs.length} orphaned instance directories:`);
+    for (const d of dirs) console.log(`  ${d}`);
+    if (opts.dryRun) return;
+    for (const d of dirs) {
+      rmSync(join(instancesDir, d), { recursive: true, force: true });
+      console.log(`  Removed: ${d}`);
+    }
+    console.log(`Cleaned up ${dirs.length} directories.`);
   });
 
 // === Topic commands ===

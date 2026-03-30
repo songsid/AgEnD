@@ -52,9 +52,8 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
     reset_after: 300,
   },
   context_guardian: {
-    restart_threshold_pct: 80,
     grace_period_ms: 600_000,
-    max_age_hours: 8,
+    max_age_hours: 0, // 0 = disabled; Claude Code auto-compact handles context limits
   },
   memory: {
     auto_summarize: true,
