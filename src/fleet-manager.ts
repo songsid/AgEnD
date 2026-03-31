@@ -526,8 +526,6 @@ export class FleetManager implements FleetContext {
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
           this.handleOutboundFromInstance(name, msg).catch(err => this.logger.error({ err }, "handleOutboundFromInstance error"));
-        } else if (msg.type === "fleet_approval_request") {
-          this.handleApprovalFromInstance(name, msg);
         } else if (msg.type === "fleet_tool_status") {
           this.handleToolStatusFromInstance(name, msg);
         } else if (msg.type === "fleet_schedule_create" || msg.type === "fleet_schedule_list" ||
@@ -1084,33 +1082,6 @@ export class FleetManager implements FleetContext {
       default:
         respond(null, `Unknown tool: ${tool}`);
     }
-  }
-
-  /** Handle approval request from a daemon instance */
-  private handleApprovalFromInstance(instanceName: string, msg: Record<string, unknown>): void {
-    this.logger.debug({ instanceName, approvalId: msg.approvalId }, "Received approval request from instance");
-    if (!this.adapter) {
-      this.logger.warn({ instanceName }, "No adapter — denying approval");
-      this.sendApprovalResponse(instanceName, msg.approvalId as string, "deny");
-      return;
-    }
-
-    const prompt = msg.prompt as { tool_name: string; description: string; input_preview?: string };
-    const approvalId = msg.approvalId as string;
-    const instanceConfig = this.fleetConfig?.instances[instanceName];
-    const threadId = instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined;
-
-    this.adapter.sendApproval(prompt, (decision: "approve" | "approve_always" | "deny") => {
-      this.sendApprovalResponse(instanceName, approvalId, decision);
-    }, undefined, threadId).catch((err) => {
-      this.logger.warn({ instanceName, err: (err as Error).message }, "Failed to send approval to Telegram");
-      this.sendApprovalResponse(instanceName, approvalId, "deny");
-    });
-  }
-
-  private sendApprovalResponse(instanceName: string, approvalId: string, decision: "approve" | "approve_always" | "deny"): void {
-    const ipc = this.instanceIpcClients.get(instanceName);
-    ipc?.send({ type: "fleet_approval_response", approvalId, decision });
   }
 
   /** Handle tool status update from a daemon instance */
