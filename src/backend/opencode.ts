@@ -29,7 +29,7 @@ export class OpenCodeBackend implements CliBackend {
         type: "stdio",
         command: entry.command,
         args: entry.args,
-        env: Object.entries(entry.env || {}).map(([k, v]) => `${k}=${v}`),
+        env: Object.entries({ ...entry.env, AGEND_INSTANCE_NAME: config.instanceName }).map(([k, v]) => `${k}=${v}`),
       };
     }
 
