@@ -35,6 +35,7 @@ import { RoutingEngine } from "./routing-engine.js";
 import { InstanceLifecycle, type LifecycleContext } from "./instance-lifecycle.js";
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
+import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 
 const TMUX_SESSION = "agend";
 
@@ -51,7 +52,7 @@ export function resolveReplyThreadId(
   return instanceConfig?.topic_id != null ? String(instanceConfig.topic_id) : undefined;
 }
 
-export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext {
+export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext {
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
   /** @deprecated Use lifecycle.daemons — kept for backward compat */
@@ -66,7 +67,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
-  private sessionRegistry: Map<string, string> = new Map();
+  sessionRegistry: Map<string, string> = new Map();
   eventLog: EventLog | null = null;
   costGuard: CostGuard | null = null;
   private statuslineWatcher: StatuslineWatcher;
@@ -644,224 +645,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    // Fleet-specific tools
-    switch (tool) {
-      case "send_to_instance": {
-        const targetName = args.instance_name as string;
-        const message = args.message as string | undefined;
-        if (!targetName) { respond(null, "send_to_instance: missing required argument 'instance_name'"); break; }
-        if (!message) { respond(null, "send_to_instance: missing required argument 'message'"); break; }
-        const senderLabel = senderSessionName ?? instanceName;
-        const isExternalSender = senderSessionName != null && senderSessionName !== instanceName;
-
-        // Resolve target: could be an instance name or an external session name
-        let targetIpc = this.instanceIpcClients.get(targetName);
-        let targetSession: string = targetName; // default: target is the instance itself
-        let targetInstanceName = targetName;
-
-        if (!targetIpc) {
-          // Check if target is an external session
-          const hostInstance = this.sessionRegistry.get(targetName);
-          if (hostInstance) {
-            targetIpc = this.instanceIpcClients.get(hostInstance);
-            targetSession = targetName; // deliver to the external session
-            targetInstanceName = hostInstance;
-          }
-        }
-
-        if (!targetIpc) {
-          // Check if instance exists in config but is stopped
-          const existsInConfig = targetName in (this.fleetConfig?.instances ?? {});
-          if (existsInConfig) {
-            respond(null, `Instance '${targetName}' is stopped. Use start_instance('${targetName}') to start it first.`);
-          } else {
-            respond(null, `Instance or session not found: ${targetName}`);
-          }
-          break;
-        }
-
-        // Build structured metadata (Phase 2)
-        const correlationId = (args.correlation_id as string) || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const meta: Record<string, string> = {
-          chat_id: "",
-          message_id: `xmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          user: `instance:${senderLabel}`,
-          user_id: `instance:${senderLabel}`,
-          ts: new Date().toISOString(),
-          thread_id: "",
-          from_instance: senderLabel,
-          correlation_id: correlationId,
-        };
-        if (args.request_kind) meta.request_kind = args.request_kind as string;
-        if (args.requires_reply != null) meta.requires_reply = String(args.requires_reply);
-        if (args.task_summary) meta.task_summary = args.task_summary as string;
-        if (args.working_directory) meta.working_directory = args.working_directory as string;
-        if (args.branch) meta.branch = args.branch as string;
-
-        targetIpc.send({
-          type: "fleet_inbound",
-          targetSession,
-          content: message,
-          meta,
-        });
-
-        // Post to channel topics for visibility
-        const groupId = this.fleetConfig?.channel?.group_id;
-        if (groupId && this.adapter) {
-          const senderTopicId = this.fleetConfig?.instances[instanceName]?.topic_id;
-          const targetTopicId = this.fleetConfig?.instances[targetInstanceName]?.topic_id;
-          // Post full message to topics — adapter handles 4096-char chunking
-          // Only post to sender topic if sender is the instance itself (not external)
-          if (senderTopicId && !isExternalSender) {
-            this.adapter.sendText(String(groupId), `→ ${targetName}:\n${message}`, {
-              threadId: String(senderTopicId),
-            }).catch(e => this.logger.warn({ err: e }, "Failed to post cross-instance notification"));
-          }
-          // Only post to target topic if target is an instance (not external session)
-          if (targetTopicId && !this.sessionRegistry.has(targetName)) {
-            this.adapter.sendText(String(groupId), `← ${senderLabel}:\n${message}`, {
-              threadId: String(targetTopicId),
-            }).catch(e => this.logger.warn({ err: e }, "Failed to post cross-instance notification"));
-          }
-        }
-
-        this.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)}`);
-        respond({ sent: true, target: targetName, correlation_id: correlationId });
-        break;
-      }
-
-      case "list_instances": {
-        const senderLabel = senderSessionName ?? instanceName;
-        const allInstances = Object.entries(this.fleetConfig?.instances ?? {})
-          .filter(([name]) => name !== instanceName && name !== senderLabel)
-          .map(([name, config]) => ({
-            name,
-            type: "instance" as const,
-            status: this.daemons.has(name) ? "running" : "stopped",
-            working_directory: config.working_directory,
-            topic_id: config.topic_id ?? null,
-            description: config.description ?? null,
-            tags: config.tags ?? [],
-            last_activity: this.lastActivity.get(name) ? new Date(this.lastActivity.get(name)!).toISOString() : null,
-          }));
-        // Include external sessions (excluding self)
-        const externalSessions = [...this.sessionRegistry.entries()]
-          .filter(([sessName]) => sessName !== senderLabel)
-          .map(([sessName, hostInstance]) => ({
-            name: sessName, type: "session" as const, host: hostInstance,
-          }));
-        respond({ instances: allInstances, external_sessions: externalSessions });
-        break;
-      }
-
-      // Phase 3: High-level collaboration tools (wrappers around send_to_instance)
-      case "request_information": {
-        const targetName = args.target_instance as string;
-        const question = args.question as string;
-        const context = args.context as string | undefined;
-        const body = context ? `${question}\n\nContext: ${context}` : question;
-        // Re-dispatch as send_to_instance with structured metadata (new object to avoid mutating input)
-        const queryArgs = { ...args, instance_name: targetName, message: body, request_kind: "query", requires_reply: true, task_summary: question.slice(0, 120) };
-        return this.handleOutboundFromInstance(instanceName, { tool: "send_to_instance", args: queryArgs, requestId, fleetRequestId, senderSessionName });
-      }
-
-      case "delegate_task": {
-        const targetName = args.target_instance as string;
-        const task = args.task as string;
-        const criteria = args.success_criteria as string | undefined;
-        const context = args.context as string | undefined;
-        let body = task;
-        if (criteria) body += `\n\nSuccess criteria: ${criteria}`;
-        if (context) body += `\n\nContext: ${context}`;
-        const taskArgs = { ...args, instance_name: targetName, message: body, request_kind: "task", requires_reply: true, task_summary: task.slice(0, 120) };
-        return this.handleOutboundFromInstance(instanceName, { tool: "send_to_instance", args: taskArgs, requestId, fleetRequestId, senderSessionName });
-      }
-
-      case "report_result": {
-        const targetName = args.target_instance as string;
-        const summary = args.summary as string;
-        const artifacts = args.artifacts as string | undefined;
-        if (!args.correlation_id) {
-          this.logger.warn({ instanceName, targetName }, "report_result called without correlation_id — recipient cannot match this to an original request");
-        }
-        let body = summary;
-        if (artifacts) body += `\n\nArtifacts: ${artifacts}`;
-        const reportArgs = { ...args, instance_name: targetName, message: body, request_kind: "report", requires_reply: false, task_summary: summary.slice(0, 120) };
-        return this.handleOutboundFromInstance(instanceName, { tool: "send_to_instance", args: reportArgs, requestId, fleetRequestId, senderSessionName });
-      }
-
-      // Phase 4: Capability discovery
-      case "describe_instance": {
-        const targetName = args.name as string;
-        const config = this.fleetConfig?.instances[targetName];
-        if (config) {
-          respond({
-            name: targetName,
-            type: "instance",
-            description: config.description ?? null,
-            tags: config.tags ?? [],
-            working_directory: config.working_directory,
-            status: this.daemons.has(targetName) ? "running" : "stopped",
-            topic_id: config.topic_id ?? null,
-            model: config.model ?? null,
-            last_activity: this.lastActivity.get(targetName) ? new Date(this.lastActivity.get(targetName)!).toISOString() : null,
-            worktree_source: config.worktree_source ?? null,
-          });
-          break;
-        }
-        // Check if it's a known external session
-        const hostInstance = this.sessionRegistry.get(targetName);
-        if (hostInstance) {
-          respond({
-            name: targetName,
-            type: "session",
-            host: hostInstance,
-            status: "running",
-          });
-          break;
-        }
-        respond(null, `Instance or session '${targetName}' not found`);
-        break;
-      }
-
-      case "start_instance": {
-        const targetName = args.name as string;
-
-        // Already running?
-        if (this.daemons.has(targetName)) {
-          respond({ success: true, status: "already_running" });
-          break;
-        }
-
-        // Exists in config?
-        const targetConfig = this.fleetConfig?.instances[targetName];
-        if (!targetConfig) {
-          respond(null, `Instance '${targetName}' not found in fleet config`);
-          break;
-        }
-
-        try {
-          await this.startInstance(targetName, targetConfig, true);
-          await this.connectIpcToInstance(targetName);
-          respond({ success: true, status: "started" });
-        } catch (err) {
-          respond(null, `Failed to start instance '${targetName}': ${(err as Error).message}`);
-        }
-        break;
-      }
-
-      case "create_instance": {
-        await this.lifecycle.handleCreate(args, respond);
-        break;
-      }
-
-      case "delete_instance": {
-        await this.lifecycle.handleDelete(args, respond);
-        break;
-      }
-
-      default:
-        respond(null, `Unknown tool: ${tool}`);
+    // Dispatch fleet-specific tools via handler map
+    const handler = outboundHandlers.get(tool);
+    if (handler) {
+      await handler(this, args, respond, { instanceName, requestId, fleetRequestId, senderSessionName });
+    } else {
+      respond(null, `Unknown tool: ${tool}`);
     }
   }
 
