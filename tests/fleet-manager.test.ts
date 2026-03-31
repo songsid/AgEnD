@@ -200,7 +200,7 @@ describe("TopicCommands", () => {
     const tc = new TopicCommands({
       logger,
       removeInstance,
-      routingTable: new Map([[1, { kind: "general", name: "general" }]]),
+      routingTable: new Map([["1", { kind: "general", name: "general" }]]),
       fleetConfig: {
         defaults: {},
         instances: {
@@ -223,7 +223,7 @@ describe("TopicCommands", () => {
       },
     } as any);
 
-    await tc.handleTopicDeleted(1);
+    await tc.handleTopicDeleted("1");
 
     expect(removeInstance).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
