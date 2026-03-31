@@ -439,6 +439,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return channel.id;
   }
 
+  async deleteTopic(topicId: number | string): Promise<void> {
+    const channel = await this.client.channels.fetch(String(topicId));
+    // Only delete GuildText channels created by createTopic — never categories or forums
+    if (channel && "type" in channel && (channel as { type: ChannelType }).type === ChannelType.GuildText && "delete" in channel) {
+      await (channel as { delete(): Promise<unknown> }).delete();
+    }
+  }
+
   async topicExists(topicId: number | string): Promise<boolean> {
     try {
       const channel = await this.client.channels.fetch(String(topicId));
