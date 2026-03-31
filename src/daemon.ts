@@ -766,12 +766,12 @@ export class Daemon extends EventEmitter {
         // CLI is ready (pattern defined by each backend)
         if (this.backend!.getReadyPattern().test(pane)) return true;
 
-        // Confirmation dialog: "Yes, I accept" / "Yes, I trust this folder"
+        // Confirmation dialog: Claude "Yes, I accept" / Codex "Yes, continue"
         // Navigate to the "Yes" option and confirm
-        if (/No, exit|I accept|I trust/i.test(pane)) {
+        if (/No, exit|No, quit|I accept|I trust|Yes, continue/i.test(pane)) {
           this.logger.debug("Dismissing confirmation dialog");
-          // If "No" is selected (❯ on No), press Down to select Yes
-          if (/❯\s*\d+\.\s*No/m.test(pane)) {
+          // If "No" is selected (❯/› on No), press Down to select Yes
+          if (/[❯›]\s*\d+\.\s*No/m.test(pane)) {
             await this.tmux!.sendSpecialKey("Down");
             await new Promise(r => setTimeout(r, 200));
           }
