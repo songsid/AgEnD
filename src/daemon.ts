@@ -764,11 +764,11 @@ export class Daemon extends EventEmitter {
         const pane = await this.tmux!.capturePane();
 
         // Confirmation dialog: check BEFORE ready pattern so dialogs aren't mistaken as ready
-        // "Yes, I accept" / "Yes, I trust this folder"
-        if (/No, exit|I accept|I trust/i.test(pane)) {
+        // Claude "Yes, I accept" / Codex "Yes, continue" / Gemini "Trust folder"
+        if (/No, exit|No, quit|Don't trust|I accept|I trust|Yes, continue|Trust folder/i.test(pane)) {
           this.logger.debug("Dismissing confirmation dialog");
-          // If "No" is selected (❯ on No), press Down to select Yes
-          if (/❯\s*\d+\.\s*No/m.test(pane)) {
+          // If "No" is selected (❯/› on No), press Down to select Yes
+          if (/[❯›]\s*\d+\.\s*No/m.test(pane)) {
             await this.tmux!.sendSpecialKey("Down");
             await new Promise(r => setTimeout(r, 200));
           }
