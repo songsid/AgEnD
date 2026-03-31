@@ -93,8 +93,6 @@ export class Daemon extends EventEmitter {
         key = String(msg.fleetRequestId);
       } else if (type === "fleet_outbound_response" && msg.requestId != null) {
         key = `fleet_out_${msg.requestId}`;
-      } else if (type === "fleet_approval_response" && msg.approvalId) {
-        key = String(msg.approvalId);
       }
       if (key && this.pendingIpcRequests.has(key)) {
         const handler = this.pendingIpcRequests.get(key)!;
@@ -703,7 +701,7 @@ export class Daemon extends EventEmitter {
   /** Public wrapper for graceful restart — wait for instance to be idle. */
   waitForIdle(quietMs = 5000): Promise<void> {
     return new Promise((resolve) => {
-      const events = ["tool_use", "tool_result", "assistant_text", "channel_message"];
+      const events = ["tool_use", "tool_result", "assistant_text"];
       let timer: ReturnType<typeof setTimeout>;
 
       const done = () => {
