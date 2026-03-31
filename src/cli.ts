@@ -537,7 +537,7 @@ access
     }
     const statePath = await resolveAccessPath(instance);
     const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
-    am.removeUser(parseInt(userId, 10));
+    am.removeUser(userId);
     console.log(`${instance}: removed user ${userId}`);
   });
 
@@ -555,7 +555,7 @@ access
     }
     const statePath = await resolveAccessPath(instance);
     const am = new AccessManager({ mode: "pairing", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 }, statePath);
-    const code = am.generateCode(parseInt(userId, 10));
+    const code = am.generateCode(userId);
     console.log(`${instance}: pairing code = ${code}`);
     console.log("Share this code with the user. It expires in 10 minutes.");
   });
