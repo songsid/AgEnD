@@ -44,7 +44,7 @@ export class CodexBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    return /›\s*Ask Codex|›/m;
+    return /% left|OpenAI Codex/m;
   }
 
   getContextUsage(): number | null {
