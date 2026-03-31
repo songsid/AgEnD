@@ -56,8 +56,8 @@ instances:
 `);
     fm.loadConfig(configPath);
     const table = fm.buildRoutingTable();
-    expect(table.get(42)).toEqual({ kind: "instance", name: "proj-a" });
-    expect(table.get(87)).toEqual({ kind: "instance", name: "proj-b" });
+    expect(table.get("42")).toEqual({ kind: "instance", name: "proj-a" });
+    expect(table.get("87")).toEqual({ kind: "instance", name: "proj-b" });
     expect(table.size).toBe(2); // proj-c has no topic_id
   });
 
@@ -81,7 +81,7 @@ instances:
 `);
     fm.loadConfig(configPath);
     const table = fm.buildRoutingTable();
-    expect(table.get(1)).toEqual({ kind: "general", name: "general" });
+    expect(table.get("1")).toEqual({ kind: "general", name: "general" });
   });
 
   it("createForumTopic delegates to adapter.createTopic", async () => {

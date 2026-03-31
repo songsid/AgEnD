@@ -427,7 +427,7 @@ topic
       console.error(`Instance "${instance}" not found in fleet config`);
       process.exit(1);
     }
-    config.instances[instance].topic_id = parseInt(topicId, 10);
+    config.instances[instance].topic_id = topicId;
 
     writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config));
     console.log(`Bound ${instance} \u2192 topic #${topicId}`);
