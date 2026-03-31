@@ -40,6 +40,10 @@ export class OpenCodeBackend implements CliBackend {
     writeFileSync(configPath, JSON.stringify(oc, null, 2));
   }
 
+  getReadyPattern(): RegExp {
+    return /⌬\s*OpenCode|^>\s/m;
+  }
+
   getContextUsage(): number | null {
     return null;
   }
