@@ -666,11 +666,28 @@ export class Daemon extends EventEmitter {
     const windowIdFile = join(this.instanceDir, "window-id");
     writeFileSync(windowIdFile, windowId);
 
-    // Grace period for Claude Code to render any confirmation prompts,
-    // then auto-confirm by sending Enter (dismisses "I am using this for
-    // local development" and "New MCP server found" prompts).
-    await new Promise(r => setTimeout(r, 10_000));
-    try { await this.tmux!.sendSpecialKey("Enter"); } catch { /* window may have exited */ }
+    // Smart wait: poll tmux pane for prompt indicators, press Enter when found.
+    // Falls back to max 10s timeout if no prompt detected.
+    const deadline = Date.now() + 10_000;
+    let prompted = false;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 500));
+      try {
+        const pane = await this.tmux!.capturePane();
+        if (/Do you want|Yes.*No|Trust|trust|Enter to confirm|MCP server/i.test(pane)) {
+          prompted = true;
+          break;
+        }
+        // Already at prompt (❯) with no confirmation needed
+        if (/^❯\s*$/m.test(pane)) {
+          prompted = true;
+          break;
+        }
+      } catch { break; }
+    }
+    if (prompted) {
+      try { await this.tmux!.sendSpecialKey("Enter"); } catch { /* window may have exited */ }
+    }
     this.lastSpawnAt = Date.now();
     } finally {
       this.spawning = false;
