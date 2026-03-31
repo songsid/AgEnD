@@ -66,7 +66,7 @@ export interface ApprovalHandle {
 export interface SendOpts {
   threadId?: string;
   replyTo?: string;
-  format?: "text" | "markdown";
+  format?: "text" | "html";
   chunkLimit?: number;
 }
 
@@ -81,7 +81,7 @@ export interface OutboundMessage {
   filePath?: string;
   threadId?: string;
   replyTo?: string;
-  format?: "text" | "markdown";
+  format?: "text" | "html";
 }
 
 export interface InboundMessage {
