@@ -767,9 +767,15 @@ export class Daemon extends EventEmitter {
         // Claude "Yes, I accept" / Codex "Yes, continue" / Gemini "Trust folder"
         if (/No, exit|No, quit|Don't trust|I accept|I trust|Yes, continue|Trust folder/i.test(pane)) {
           this.logger.debug("Dismissing confirmation dialog");
-          // If "No" is selected (❯/› on No), press Down to select Yes
+          // If "No"/"Don't trust" is selected, navigate to the accept option
           if (/[❯›]\s*\d+\.\s*No/m.test(pane)) {
             await this.tmux!.sendSpecialKey("Down");
+            await new Promise(r => setTimeout(r, 200));
+          } else if (/[❯›]\s*Don't trust/m.test(pane)) {
+            // Gemini: "Don't trust" is last of 3 options, go up twice to "Trust folder"
+            await this.tmux!.sendSpecialKey("Up");
+            await new Promise(r => setTimeout(r, 200));
+            await this.tmux!.sendSpecialKey("Up");
             await new Promise(r => setTimeout(r, 200));
           }
           await this.tmux!.sendSpecialKey("Enter");
