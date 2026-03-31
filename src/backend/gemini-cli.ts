@@ -37,7 +37,16 @@ export class GeminiCliBackend implements CliBackend {
       settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
     } catch { /* new file */ }
 
-    settings.mcpServers = config.mcpServers;
+    // Inject AGEND_INSTANCE_NAME into each MCP server's env so the MCP server
+    // identifies as this instance (Gemini spawns MCP servers as separate processes)
+    const mcpWithInstanceName: Record<string, unknown> = {};
+    for (const [name, entry] of Object.entries(config.mcpServers)) {
+      mcpWithInstanceName[name] = {
+        ...entry,
+        env: { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName },
+      };
+    }
+    settings.mcpServers = mcpWithInstanceName;
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 
     // System prompt via GEMINI.md
