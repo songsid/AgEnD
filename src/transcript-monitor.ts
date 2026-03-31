@@ -113,12 +113,7 @@ export class TranscriptMonitor extends EventEmitter {
       } else if (block.type === "tool_result") {
         this.emit("tool_result", block.tool_use_id ?? "unknown", block.content);
       } else if (block.type === "text" && msg.role === "assistant" && block.text?.trim()) {
-        const channelMatch = block.text.match(/<channel[^>]*user="([^"]*)"[^>]*>([\s\S]*?)<\/channel>/);
-        if (channelMatch) {
-          this.emit("channel_message", channelMatch[1], channelMatch[2]);
-        } else {
-          this.emit("assistant_text", block.text);
-        }
+        this.emit("assistant_text", block.text);
       }
     }
   }
