@@ -36,7 +36,7 @@ export class Daemon extends EventEmitter {
   private lastThreadId: string | undefined;
   // Pending ack: react 🫡 on first transcript activity after receiving a message
   private pendingAckMessage: { chatId: string; messageId: string } | null = null;
-  // Tool status tracking for Telegram
+  // Tool status tracking for channel adapter
   private toolStatusMessageId: string | null = null;
   private toolStatusLines: string[] = [];
   private toolStatusDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -143,7 +143,7 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
-        // Only update lastChatId/lastThreadId from real Telegram messages (non-empty chat_id).
+        // Only update lastChatId/lastThreadId from real channel messages (non-empty chat_id).
         // Cross-instance messages have empty chat_id and must not overwrite these.
         if (meta.chat_id) this.lastChatId = meta.chat_id;
         if (meta.chat_id && meta.thread_id) this.lastThreadId = meta.thread_id;
@@ -443,7 +443,7 @@ export class Daemon extends EventEmitter {
     this.debouncedSendToolStatus();
   }
 
-  /** Debounce tool status updates to avoid Telegram rate limits */
+  /** Debounce tool status updates to avoid channel rate limits */
   private debouncedSendToolStatus(): void {
     if (this.toolStatusDebounce) clearTimeout(this.toolStatusDebounce);
     this.toolStatusDebounce = setTimeout(() => this.sendToolStatus(), 500);
