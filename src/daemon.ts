@@ -339,6 +339,9 @@ export class Daemon extends EventEmitter {
         try {
           this.saveSessionId();
           this.transcriptMonitor?.resetOffset();
+          // Clear stale session-id so respawn doesn't --resume a dead session
+          const sidFile = join(this.instanceDir, "session-id");
+          try { unlinkSync(sidFile); } catch { /* may not exist */ }
           // Kill any same-name windows before respawn to prevent orphans
           const windows = await TmuxManager.listWindows("agend");
           for (const w of windows) {
