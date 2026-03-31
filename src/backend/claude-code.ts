@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import type { CliBackend, CliBackendConfig } from "./types.js";
 
 
@@ -55,6 +56,9 @@ export class ClaudeCodeBackend implements CliBackend {
       join(this.instanceDir, "claude-settings.json"),
       JSON.stringify(settings),
     );
+
+    // 4. Pre-approve API key to skip interactive prompt on startup
+    this.preApproveApiKey(config);
   }
 
   getContextUsage(): number | null {
@@ -80,6 +84,30 @@ export class ClaudeCodeBackend implements CliBackend {
 
   cleanup(_config: CliBackendConfig): void {
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
+  }
+
+  /** Pre-approve ANTHROPIC_API_KEY in ~/.claude.json to skip the interactive prompt */
+  private preApproveApiKey(_config: CliBackendConfig): void {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) return;
+
+    const fingerprint = apiKey.length > 20 ? apiKey.slice(-20) : apiKey;
+    const claudeJsonPath = join(homedir(), ".claude.json");
+
+    let claudeCfg: Record<string, unknown> = {};
+    try {
+      claudeCfg = JSON.parse(readFileSync(claudeJsonPath, "utf-8"));
+    } catch { /* new file or parse error */ }
+
+    const existing = claudeCfg.customApiKeyResponses as { approved?: string[]; rejected?: string[] } | undefined;
+    const approved = existing?.approved ?? [];
+    if (!approved.includes(fingerprint)) {
+      claudeCfg.customApiKeyResponses = {
+        approved: [...approved, fingerprint],
+        rejected: existing?.rejected ?? [],
+      };
+      writeFileSync(claudeJsonPath, JSON.stringify(claudeCfg, null, 2));
+    }
   }
 
   private writeStatusLineScript(): string {
