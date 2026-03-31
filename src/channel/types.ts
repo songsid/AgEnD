@@ -51,11 +51,11 @@ export interface ChannelAdapter extends EventEmitter {
   promptUser(chatId: string, text: string, choices: Choice[], opts?: SendOpts): Promise<string>;
   notifyAlert(chatId: string, alert: AlertData, opts?: SendOpts): Promise<SentMessage>;
 
-  createTopic?(name: string): Promise<number>;
-  topicExists?(topicId: number): Promise<boolean>;
-  closeForumTopic?(threadId: number): Promise<void>;
-  reopenForumTopic?(threadId: number): Promise<void>;
-  editForumTopic?(threadId: number, opts: { name?: string; iconCustomEmojiId?: string }): Promise<void>;
+  createTopic?(name: string): Promise<number | string>;
+  topicExists?(topicId: number | string): Promise<boolean>;
+  closeForumTopic?(threadId: number | string): Promise<void>;
+  reopenForumTopic?(threadId: number | string): Promise<void>;
+  editForumTopic?(threadId: number | string, opts: { name?: string; iconCustomEmojiId?: string }): Promise<void>;
   getTopicIconStickers?(): Promise<{ customEmojiId: string; emoji: string }[]>;
 }
 
