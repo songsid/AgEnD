@@ -1,17 +1,11 @@
 #!/usr/bin/env node
 /**
- * MCP Channel Server for claude-channel-daemon.
+ * MCP Tool Server for claude-channel-daemon.
  *
- * Runs as a SEPARATE process (Claude Code's child via the ccd-channel plugin).
- * Communicates with the daemon ONLY through a Unix socket IPC connection.
- *
- * Key mechanisms discovered from the official Telegram plugin:
- * - Uses `Server` from `@modelcontextprotocol/sdk/server/index.js`
- * - Uses `StdioServerTransport` for Claude <-> MCP communication
- * - Declares `capabilities: { tools: {}, experimental: { 'claude/channel': {} } }`
- * - Pushes inbound messages via `mcp.notification()` with:
- *     method: 'notifications/claude/channel'
- *     params: { content: string, meta: Record<string, string> }
+ * Runs as a SEPARATE process (CLI's child via --mcp-config).
+ * Communicates with the daemon through a Unix socket IPC connection.
+ * Provides standard MCP tools (reply, send_to_instance, etc.) — no
+ * CLI-specific channel protocol. Works with any MCP-compatible CLI.
  */
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
