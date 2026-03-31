@@ -402,7 +402,7 @@ export class FleetManager implements FleetContext {
     process.once("SIGUSR1", onFullRestart);
   }
 
-  /** Start the shared Telegram adapter for topic mode */
+  /** Start the shared channel adapter for topic mode */
   private async startSharedAdapter(fleet: FleetConfig): Promise<void> {
     const channelConfig = fleet.channel!;
     const botToken = process.env[channelConfig.bot_token_env];
@@ -625,7 +625,7 @@ export class FleetManager implements FleetContext {
     ipc.send({
       type: "fleet_inbound",
       content: text,
-      targetSession: instanceName, // Telegram messages → instance's own session
+      targetSession: instanceName, // Channel messages → instance's own session
       meta: {
         chat_id: msg.chatId,
         message_id: msg.messageId,
@@ -746,7 +746,7 @@ export class FleetManager implements FleetContext {
           meta,
         });
 
-        // Post to Telegram topics for visibility
+        // Post to channel topics for visibility
         const groupId = this.fleetConfig?.channel?.group_id;
         if (groupId && this.adapter) {
           const senderTopicId = this.fleetConfig?.instances[instanceName]?.topic_id;
@@ -983,7 +983,7 @@ export class FleetManager implements FleetContext {
         let newInstanceName: string | undefined;
 
         try {
-          // Step a: Create Telegram topic
+          // Step a: Create forum topic via adapter
           createdTopicId = await this.createForumTopic(topicName);
 
           // Step b: Register in config
@@ -1056,7 +1056,7 @@ export class FleetManager implements FleetContext {
           break;
         }
 
-        // Delete Telegram topic if requested (before removeInstance clears config)
+        // Delete topic if requested (before removeInstance clears config)
         if (deleteTopic && instanceConfig.topic_id) {
           await this.deleteForumTopic(instanceConfig.topic_id);
         }
@@ -1459,7 +1459,7 @@ export class FleetManager implements FleetContext {
       const stickers = await this.adapter.getTopicIconStickers();
       if (stickers.length === 0) return;
 
-      // Telegram's getForumTopicIconStickers returns a fixed set.
+      // getForumTopicIconStickers returns a fixed set of available icons.
       // Try to match by emoji character, fall back to positional.
       const find = (targets: string[]) =>
         stickers.find((s) => targets.some((t) => s.emoji.includes(t)));
@@ -1786,7 +1786,7 @@ export class FleetManager implements FleetContext {
       for (const [name, config] of instances) {
         const threadId = config.topic_id != null ? String(config.topic_id) : undefined;
 
-        // Send to Telegram topic so the message appears in the chat
+        // Send to topic so the message appears in the instance's channel
         if (threadId) {
           this.adapter.sendText(String(groupId), "Fleet restart complete. Continue from where you left off.", { threadId })
             .catch(e => this.logger.warn({ err: e, name, threadId }, "Failed to post per-instance restart notification"));
