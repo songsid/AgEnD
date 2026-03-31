@@ -37,7 +37,10 @@ export class CodexBackend implements CliBackend {
     // that registers MCP servers on first launch
     const setupScript = Object.entries(config.mcpServers).map(([name, entry]) => {
       const args = entry.args.map(a => `"${a}"`).join(" ");
-      const envFlags = Object.entries(entry.env || {}).map(([k, v]) => `--env ${k}="${v}"`).join(" ");
+      // Include AGEND_INSTANCE_NAME so MCP server identifies as this instance
+      // (Codex spawns MCP servers as separate processes that don't inherit tmux shell env)
+      const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
+      const envFlags = Object.entries(allEnv).map(([k, v]) => `--env ${k}="${v}"`).join(" ");
       return `codex mcp add ${name} ${envFlags} -- ${entry.command} ${args} 2>/dev/null || true`;
     }).join("\n");
     writeFileSync(join(this.instanceDir, "setup-mcp.sh"), setupScript, { mode: 0o755 });
