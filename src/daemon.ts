@@ -61,7 +61,7 @@ export class Daemon extends EventEmitter {
   private recentEvents: RotationSnapshotEvent[] = [];
   private recentToolActivity: string[] = [];
   /** Callback to query active decisions for system prompt injection (set by fleet manager) */
-  getActiveDecisions?: () => Array<{ title: string; content: string; created_by: string }>;
+  getActiveDecisions?: () => Array<{ title: string; content: string; tags: string[] }>;
   private pasteLock: Promise<void> = Promise.resolve();
 
   constructor(
@@ -953,7 +953,8 @@ export class Daemon extends EventEmitter {
       let used = lines[0].length;
 
       for (const d of decisions) {
-        const line = `- **${d.title}** (by ${d.created_by}): ${d.content}`;
+        const tagStr = d.tags.length ? `[${d.tags.join(", ")}] ` : "";
+        const line = `- ${tagStr}**${d.title}**: ${d.content}`;
         if (used + line.length + 1 > BUDGET) {
           lines.push(`\n(${decisions.length - (lines.length - 1)} more — use \`list_decisions\` to see all)`);
           break;
