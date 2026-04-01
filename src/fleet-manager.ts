@@ -365,10 +365,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
 
-    // SIGHUP: reload scheduler (use once + re-register to avoid duplicates)
+    // SIGHUP: hot-reload instance config (add/remove/restart instances)
     const onSighup = () => {
-      this.logger.info("Received SIGHUP, reloading scheduler...");
-      this.scheduler?.reload();
+      this.logger.info("Received SIGHUP, hot-reloading config...");
+      this.reconcileInstances()
+        .catch(err => this.logger.error({ err }, "SIGHUP config reload failed"));
       process.once("SIGHUP", onSighup);
     };
     process.once("SIGHUP", onSighup);
@@ -1347,6 +1348,62 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * Graceful restart: wait for all instances to be idle, then stop and start them.
    */
+  /**
+   * Hot-reload: re-read fleet.yaml and reconcile running instances.
+   * Starts new, stops removed, restarts modified instances.
+   * Fleet-level config (access, cost_guard, etc.) requires /restart to take effect.
+   */
+  private async reconcileInstances(): Promise<void> {
+    if (!this.configPath) return;
+    const oldConfig = this.fleetConfig;
+    this.loadConfig(this.configPath);
+    this.routing.rebuild(this.fleetConfig!);
+    this.scheduler?.reload();
+
+    const newInstances = this.fleetConfig!.instances;
+    const topicMode = this.fleetConfig?.channel?.mode === "topic";
+
+    // Detect fleet-level config changes and warn
+    const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldConfig?.defaults });
+    const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: this.fleetConfig?.defaults });
+    if (oldFleetLevel !== newFleetLevel) {
+      this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
+    }
+
+    // Stop removed instances
+    for (const name of this.daemons.keys()) {
+      if (!(name in newInstances)) {
+        this.logger.info({ name }, "Instance removed from config — stopping");
+        await this.stopInstance(name).catch(err =>
+          this.logger.error({ err, name }, "Failed to stop removed instance"));
+      }
+    }
+
+    // Start new + restart modified instances
+    for (const [name, config] of Object.entries(newInstances)) {
+      if (!this.daemons.has(name)) {
+        // New instance
+        this.logger.info({ name }, "New instance in config — starting");
+        await this.startInstance(name, config, topicMode).then(() =>
+          this.connectIpcToInstance(name)
+        ).catch(err =>
+          this.logger.error({ err, name }, "Failed to start new instance"));
+      } else if (oldConfig?.instances[name]) {
+        // Restart if any config field changed
+        if (JSON.stringify(oldConfig.instances[name]) !== JSON.stringify(config)) {
+          this.logger.info({ name }, "Instance config changed — restarting");
+          await this.stopInstance(name).catch(() => {});
+          await this.startInstance(name, config, topicMode).then(() =>
+            this.connectIpcToInstance(name)
+          ).catch(err =>
+            this.logger.error({ err, name }, "Failed to restart modified instance"));
+        }
+      }
+    }
+
+    this.logger.info({ running: this.daemons.size, configured: Object.keys(newInstances).length }, "Reconcile complete");
+  }
+
   async restartInstances(): Promise<void> {
     if (!this.configPath) {
       this.logger.error("Cannot restart: no config path (was startAll called?)");
