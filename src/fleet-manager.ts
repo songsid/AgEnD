@@ -105,13 +105,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webhookEmitter?.emit(event, name);
   }
 
-  getActiveDecisionsForProject(projectRoot: string): Array<{ title: string; content: string; created_by: string }> {
+  // NOTE: Decisions are currently scoped by project_root (working directory path).
+  // Future versions may need a more abstract scope model (team/fleet/cross-repo).
+  getActiveDecisionsForProject(projectRoot: string): Array<{ title: string; content: string; tags: string[] }> {
     if (!this.scheduler) return [];
     try {
       return this.scheduler.db.listDecisions(projectRoot).map(d => ({
         title: d.title,
         content: d.content,
-        created_by: d.created_by,
+        tags: d.tags,
       }));
     } catch { return []; }
   }
