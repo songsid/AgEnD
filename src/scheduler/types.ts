@@ -79,7 +79,7 @@ export interface CreateDecisionParams {
   title: string;
   content: string;
   tags?: string[];
-  ttl_days?: number; // 0 = permanent, default 7
+  ttl_days?: number; // days until auto-archive. 0 or omitted = permanent
   created_by: string;
   supersedes?: string; // decision id to supersede
 }
