@@ -147,7 +147,7 @@ export const TOOLS = [
           title: { type: "string", description: "Short title for the decision" },
           content: { type: "string", description: "Full decision description" },
           tags: { type: "array", items: { type: "string" }, description: "Optional tags for categorization" },
-          ttl_days: { type: "number", description: "Days until auto-archive. 0 = permanent. Default: 7" },
+          ttl_days: { type: "number", description: "Days until auto-archive. Default: permanent (no expiry). Set e.g. 7 for temporary decisions." },
           supersedes: { type: "string", description: "Decision ID to supersede (marks old one as superseded)" },
         },
         required: ["title", "content"],
