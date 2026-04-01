@@ -861,8 +861,17 @@ export class Daemon extends EventEmitter {
         // CLI is ready (pattern defined by each backend)
         if (this.backend!.getReadyPattern().test(pane)) return true;
 
-        // Resume Session picker or command not found
-        if (/Resume Session|command not found|not found/i.test(pane)) return false;
+        // Resume Session picker: press Escape to start fresh session
+        if (/Resume Session/i.test(pane)) {
+          this.logger.debug("Dismissing resume session picker");
+          await this.tmux!.sendSpecialKey("Escape");
+          await new Promise(r => setTimeout(r, 2_000));
+          if (!await this.tmux!.isWindowAlive()) return false;
+          continue;
+        }
+
+        // Fatal: command not found
+        if (/command not found|not found/i.test(pane)) return false;
       } catch {
         return false;
       }
