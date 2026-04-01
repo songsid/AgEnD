@@ -30,7 +30,7 @@ describe("SchedulerDb — Decisions", () => {
     expect(d.title).toBe("Use TypeScript strict mode");
     expect(d.status).toBe("active");
     expect(d.created_by).toBe("web-agent");
-    expect(d.expires_at).toBeTruthy(); // default TTL = 7 days
+    expect(d.expires_at).toBeNull(); // default = permanent (no expiry)
 
     const retrieved = db.getDecision(d.id);
     expect(retrieved).toEqual(d);
@@ -93,9 +93,9 @@ describe("SchedulerDb — Decisions", () => {
     expect(active[0].title).toBe("V2");
   });
 
-  it("creates permanent decision with ttl_days=0", () => {
-    const d = db.createDecision({ project_root: "/p", title: "Perm", content: "c", created_by: "x", ttl_days: 0 });
-    expect(d.expires_at).toBeNull();
+  it("creates expiring decision with explicit ttl_days", () => {
+    const d = db.createDecision({ project_root: "/p", title: "Temp", content: "c", created_by: "x", ttl_days: 7 });
+    expect(d.expires_at).toBeTruthy();
   });
 
   it("prunes expired decisions", () => {

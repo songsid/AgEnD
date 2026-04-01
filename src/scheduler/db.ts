@@ -162,7 +162,7 @@ export class SchedulerDb {
   createDecision(params: CreateDecisionParams): Decision {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const ttl = params.ttl_days ?? 7;
+    const ttl = params.ttl_days ?? 0; // default: permanent
     const expiresAt = ttl > 0 ? new Date(Date.now() + ttl * 86_400_000).toISOString() : null;
 
     this.db.prepare(`
