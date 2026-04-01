@@ -587,6 +587,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             },
           });
           this.logger.info(`← ${generalInstance} ${msg.username}: ${(text ?? "").slice(0, 100)}`);
+          this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
         }
       }
       return;
@@ -638,6 +639,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
     });
     this.logger.info(`← ${instanceName} ${msg.username}: ${(text ?? "").slice(0, 100)}`);
+    this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
   }
 
   /** Handle outbound tool calls from a daemon instance */
@@ -684,6 +686,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       return;
     }
+
+    // Log tool calls for activity visualization
+    const senderLabel = senderSessionName ?? instanceName;
+    this.eventLog?.logActivity("tool_call", senderLabel, this.summarizeToolCall(tool, args));
 
     // Dispatch fleet-specific tools via handler map
     const handler = outboundHandlers.get(tool);
@@ -889,6 +895,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private summarizeToolCall(tool: string, args: Record<string, unknown>): string {
+    switch (tool) {
+      case "send_to_instance": return `send_to_instance(${args.instance_name})`;
+      case "request_information": return `request_information(${args.target_instance}, "${(args.question as string ?? "").slice(0, 60)}")`;
+      case "delegate_task": return `delegate_task(${args.target_instance}, "${(args.task as string ?? "").slice(0, 60)}")`;
+      case "report_result": return `report_result(${args.target_instance})`;
+      case "task": return `task(${args.action}${args.title ? `, "${(args.title as string).slice(0, 40)}"` : args.id ? `, ${(args.id as string).slice(0, 8)}` : ""})`;
+      case "post_decision": return `post_decision("${(args.title as string ?? "").slice(0, 40)}")`;
+      case "list_decisions": return "list_decisions()";
+      case "list_instances": return "list_instances()";
+      case "describe_instance": return `describe_instance(${args.name})`;
+      case "start_instance": return `start_instance(${args.name})`;
+      case "create_instance": return `create_instance(${args.directory})`;
+      case "delete_instance": return `delete_instance(${args.name})`;
+      default: return `${tool}()`;
+    }
+  }
+
   private handleTaskCrud(instanceName: string, msg: Record<string, unknown>): void {
     const fleetRequestId = msg.fleetRequestId as string;
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
@@ -936,6 +960,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           throw new Error(`Unknown task action: ${action}`);
       }
       ipc.send({ type: "fleet_task_response", fleetRequestId, result });
+
+      // Activity log for task lifecycle events
+      if (action === "create") {
+        const t = result as { title: string; assignee?: string };
+        this.eventLog?.logActivity("task_update", instanceName, `created task: ${t.title}`, t.assignee ?? undefined);
+      } else if (action === "claim") {
+        const t = result as { title: string };
+        this.eventLog?.logActivity("task_update", instanceName, `claimed: ${t.title}`);
+      } else if (action === "done") {
+        const t = result as { title: string; result?: string };
+        this.eventLog?.logActivity("task_update", instanceName, `completed: ${t.title}`, undefined, t.result ?? undefined);
+      }
     } catch (err) {
       ipc.send({ type: "fleet_task_response", fleetRequestId, error: (err as Error).message });
     }

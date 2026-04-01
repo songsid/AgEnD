@@ -4,6 +4,7 @@ import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { Logger } from "./logger.js";
 import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle } from "./instance-lifecycle.js";
+import type { EventLog } from "./event-log.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -14,6 +15,7 @@ export interface OutboundContext {
   readonly instanceIpcClients: Map<string, IpcClient>;
   readonly lifecycle: InstanceLifecycle;
   readonly sessionRegistry: Map<string, string>;
+  readonly eventLog: EventLog | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
@@ -100,6 +102,8 @@ const sendToInstance: Handler = (ctx, args, respond, meta) => {
   }
 
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)}`);
+  const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
+  ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
   respond({ sent: true, target: targetName, correlation_id: correlationId });
 };
 
