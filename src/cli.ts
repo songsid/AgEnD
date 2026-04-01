@@ -44,9 +44,9 @@ function signalFleetReload(): void {
   try {
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
     process.kill(pid, "SIGHUP");
-    console.log("Fleet manager notified to reload schedules.");
+    console.log("Fleet manager notified to reload config.");
   } catch {
-    console.log("Fleet manager not running. Schedules will be loaded on next start.");
+    console.log("Fleet manager not running. Config will be loaded on next start.");
   }
 }
 
@@ -769,6 +769,82 @@ access
     const code = am.generateCode(userId);
     console.log(`${instance}: pairing code = ${code}`);
     console.log("Share this code with the user. It expires in 10 minutes.");
+  });
+
+// === Update + Reload ===
+program
+  .command("update")
+  .description("Update AgEnD to latest version and restart service")
+  .option("--skip-install", "Skip npm install, only restart service")
+  .action(async (opts: { skipInstall?: boolean }) => {
+    const { detectPlatform } = await import("./service-installer.js");
+
+    if (!opts.skipInstall) {
+      console.log("  Updating AgEnD...");
+      try {
+        execSync("npm update -g @suzuke/agend", { stdio: "inherit" });
+      } catch (err) {
+        console.error("  Failed to update. Try: sudo npm update -g @suzuke/agend");
+        process.exit(1);
+      }
+    }
+
+    const plat = detectPlatform();
+    const label = "com.agend.fleet";
+
+    if (plat === "macos") {
+      const plistPath = join(homedir(), "Library/LaunchAgents", `${label}.plist`);
+      if (existsSync(plistPath)) {
+        const uid = process.getuid?.() ?? 501;
+        console.log("  Restarting launchd service...");
+        try {
+          execSync(`launchctl kickstart -k gui/${uid}/${label}`, { stdio: "inherit" });
+          console.log("  ✓ Service restarted with new version");
+        } catch {
+          console.log("  Failed to restart service. Try: launchctl kickstart -k gui/" + uid + "/" + label);
+        }
+        return;
+      }
+    } else {
+      try {
+        execSync(`systemctl --user restart ${label}`, { stdio: "inherit" });
+        console.log("  ✓ Service restarted with new version");
+        return;
+      } catch { /* no systemd service */ }
+    }
+
+    // Fallback: signal running daemon
+    const pidPath = join(DATA_DIR, "fleet.pid");
+    if (existsSync(pidPath)) {
+      const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+      try {
+        process.kill(pid, "SIGUSR1");
+        console.log("  ✓ Sent restart signal to running fleet (PID " + pid + ")");
+      } catch {
+        console.log("  Fleet not running. Start with: agend fleet start");
+      }
+    } else {
+      console.log("  No service or running fleet found. Start with: agend fleet start");
+    }
+  });
+
+program
+  .command("reload")
+  .description("Hot-reload fleet config (re-read fleet.yaml, start new instances)")
+  .action(async () => {
+    const pidPath = join(DATA_DIR, "fleet.pid");
+    if (!existsSync(pidPath)) {
+      console.error("Fleet is not running. Start with: agend fleet start");
+      process.exit(1);
+    }
+    const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+    try {
+      process.kill(pid, "SIGHUP");
+      console.log("✓ Sent SIGHUP to fleet (PID " + pid + ") — config will be reloaded");
+    } catch {
+      console.error("Fleet process not found (PID " + pid + "). It may have crashed.");
+      process.exit(1);
+    }
   });
 
 // === Install/Uninstall ===
