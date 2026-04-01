@@ -23,6 +23,16 @@ export interface QueryOpts {
   limit?: number;
 }
 
+export interface ActivityRow {
+  id: number;
+  timestamp: string;
+  event: string;
+  sender: string;
+  receiver: string | null;
+  summary: string;
+  detail: string | null;
+}
+
 function safeParseJson(s: string): Record<string, unknown> | null {
   try { return JSON.parse(s) as Record<string, unknown>; } catch { return null; }
 }
@@ -46,6 +56,20 @@ export class EventLog {
       CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type, created_at);
     `);
     this.insertStmt = this.db.prepare("INSERT INTO events (instance_name, event_type, payload) VALUES (?, ?, ?)");
+
+    // Activity log for visualization
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS activity (
+        id        INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        event     TEXT NOT NULL,
+        sender    TEXT NOT NULL,
+        receiver  TEXT,
+        summary   TEXT NOT NULL,
+        detail    TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity(timestamp);
+    `);
   }
 
   insert(instance: string, type: string, payload?: Record<string, unknown>): void {
@@ -81,9 +105,32 @@ export class EventLog {
     }));
   }
 
+  // ── Activity Log ──────────────────────────────────────────────
+
+  logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void {
+    this.db.prepare(
+      "INSERT INTO activity (event, sender, receiver, summary, detail) VALUES (?, ?, ?, ?, ?)"
+    ).run(event, sender, receiver ?? null, summary, detail ?? null);
+  }
+
+  listActivity(opts?: { since?: string; limit?: number }): ActivityRow[] {
+    let sql = "SELECT * FROM activity";
+    const params: unknown[] = [];
+    if (opts?.since) {
+      sql += " WHERE timestamp >= ?";
+      params.push(opts.since);
+    }
+    sql += " ORDER BY timestamp ASC";
+    if (opts?.limit) { sql += " LIMIT ?"; params.push(opts.limit); }
+    return this.db.prepare(sql).all(...params) as ActivityRow[];
+  }
+
   prune(days: number): void {
     this.db
       .prepare("DELETE FROM events WHERE created_at < datetime('now', ?)")
+      .run(`-${days} days`);
+    this.db
+      .prepare("DELETE FROM activity WHERE timestamp < datetime('now', ?)")
       .run(`-${days} days`);
   }
 

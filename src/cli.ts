@@ -355,6 +355,82 @@ fleet
   });
 
 fleet
+  .command("activity")
+  .description("Show fleet activity log — who talked to whom, tool calls, task updates")
+  .option("--since <duration>", "Time window, e.g. '2h', '30m', '1d'", "2h")
+  .option("--limit <n>", "Max entries", "200")
+  .option("--format <fmt>", "Output format: text or mermaid", "text")
+  .action(async (opts: { since: string; limit: string; format: string }) => {
+    const { EventLog } = await import("./event-log.js");
+    const evLog = new EventLog(join(DATA_DIR, "events.db"));
+    try {
+      // Parse --since duration to ISO timestamp
+      const match = opts.since.match(/^(\d+)(m|h|d)$/);
+      let sinceIso: string | undefined;
+      if (match) {
+        const val = parseInt(match[1], 10);
+        const unit = match[2] === "d" ? 86400000 : match[2] === "h" ? 3600000 : 60000;
+        sinceIso = new Date(Date.now() - val * unit).toISOString();
+      }
+
+      const rows = evLog.listActivity({ since: sinceIso, limit: parseInt(opts.limit, 10) });
+      if (rows.length === 0) {
+        console.log("No activity found.");
+        return;
+      }
+
+      if (opts.format === "mermaid") {
+        console.log(generateMermaid(rows));
+      } else {
+        for (const r of rows) {
+          const time = r.timestamp.replace("T", " ").slice(0, 19);
+          const arrow = r.receiver ? `${r.sender} → ${r.receiver}` : r.sender;
+          const icon = r.event === "message" ? "💬" : r.event === "tool_call" ? "🔧" : "📋";
+          console.log(`${time}  ${icon} ${arrow}: ${r.summary}`);
+        }
+      }
+    } finally {
+      evLog.close();
+    }
+  });
+
+function generateMermaid(rows: import("./event-log.js").ActivityRow[]): string {
+  // Collect unique participants
+  const participants = new Set<string>();
+  for (const r of rows) {
+    participants.add(r.sender);
+    if (r.receiver) participants.add(r.receiver);
+  }
+
+  const lines: string[] = ["sequenceDiagram"];
+
+  // Declare participants (shorter aliases)
+  const aliases = new Map<string, string>();
+  let idx = 0;
+  for (const p of participants) {
+    const alias = p.length > 10 ? String.fromCharCode(65 + idx++) : p;
+    aliases.set(p, alias);
+    lines.push(`    participant ${alias} as ${p}`);
+  }
+
+  // Generate events
+  for (const r of rows) {
+    const s = aliases.get(r.sender) ?? r.sender;
+    const summary = r.summary.replace(/"/g, "'").slice(0, 80);
+    if (r.event === "tool_call") {
+      lines.push(`    Note over ${s}: 🔧 ${summary}`);
+    } else if (r.receiver) {
+      const recv = aliases.get(r.receiver) ?? r.receiver;
+      lines.push(`    ${s}->>${recv}: ${summary}`);
+    } else {
+      lines.push(`    Note over ${s}: ${summary}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+fleet
   .command("cleanup")
   .description("Remove orphaned instance directories not in fleet.yaml")
   .option("--dry-run", "List orphans without deleting")
