@@ -1,54 +1,156 @@
-# Roadmap
+# AgEnD Roadmap
 
-## 1. Channel Abstraction — 能力模型決策
+> Last updated: 2026-04-01 (v1.3.0)
+> Produced by multi-agent consensus: Claude Code, Codex, Gemini CLI, OpenCode
 
-目前 CCD 只支援 Telegram，fleet 架構依賴 Telegram 的 forum topic 做 instance 路由。其他平台（Discord 用 channel、有些平台沒有類似概念）接入時需要決定如何處理差異。
+## Completed (v1.0–v1.3)
 
-**待決定：**
+- [x] Multi-backend support (Claude Code, Codex, Gemini CLI, OpenCode)
+- [x] Multi-channel support (Telegram, Discord)
+- [x] Fleet orchestration (persistent project instances)
+- [x] Cross-instance delegation (send_to_instance, delegate_task, report_result)
+- [x] Cron scheduling
+- [x] Cost guard with daily limits
+- [x] Context rotation (auto-refresh stale sessions)
+- [x] `/sysinfo` fleet diagnostics
+- [x] `safeHandler` async error boundaries
+- [x] FleetManager modularization (RoutingEngine, InstanceLifecycle, TopicArchiver, StatuslineWatcher, OutboundHandlers)
+- [x] IPC socket hardening (umask TOCTOU fix)
+- [x] Platform-agnostic core (all Telegram/Discord specifics in adapters)
 
-- **Topic-required** — 只支援有 topic/channel 概念的平台
-- **Capability-based** — adapter 宣告能力，有 topic 就用，沒有就 fallback
-- **Lowest common denominator** — 全部退化成 1 對 1 訊息模型
+---
 
-決策影響 ChannelAdapter interface 設計和 fleet-manager routing 邏輯。
+## Phase 1: Observability & Dashboard
 
-**前置工作已完成：** Phase A 移除了 business logic 對 TelegramAdapter 的直接耦合，ChannelAdapter interface 已清理乾淨。
+**Goal:** Make fleet operations visible without leaving the browser.
 
-## 2. Discord Adapter
+### 1.1 REST API expansion
+Extend the existing health server into a full fleet API:
+- `GET /api/fleet` — getSysInfo() JSON
+- `GET /api/instances/:name` — instance details, logs, cost
+- `GET /api/events` — EventLog query (cost snapshots, rotations, hangs)
+- `GET /api/cost/timeline` — cost trend data for charting
+- `POST /api/instances/:name/restart` — trigger restart
 
-能力模型決策後，實作 `DiscordAdapter implements ChannelAdapter`：
+**Effort:** ~200 lines. Data already exists in EventLog (SQLite) and getSysInfo().
 
-- Discord bot 連線、收發訊息
-- Discord channel 對應到 CCD instance（類似 Telegram topic → instance 路由）
-- 處理 Discord 特有功能（embed、reaction、thread）
+### 1.2 Cost analytics dashboard (MVP)
+Lightweight web UI served from the daemon:
+- Cost trend chart per instance (data from EventLog cost_snapshot)
+- Fleet status board (instance list with status/IPC/cost/rate limits)
+- Real-time updates via SSE or WebSocket
 
-這是驗證 channel abstraction 設計的第一個實際案例。
+**Tech stack:** Static HTML + Chart.js, served by health server. No framework needed for MVP.
 
-## 3. Message Queue Stress Test
+### 1.3 Task timeline & error viewer
+- Task dispatch/completion timeline
+- Error log viewer with safeHandler context labels
+- Schedule execution history
 
-`message-queue.ts` 負責合併、限速、排隊所有送出的訊息。現有 unit test 只測邏輯正確性，缺乏：
+---
 
-- 短時間灌入大量訊息時的記憶體和延遲表現
-- 多 queue 同時高併發
-- 429 backoff 連續觸發下的穩定性
+## Phase 2: Engineering Workflow Integration
 
-需要寫專門的 load test 確認生產環境下的穩定性。
+**Goal:** Make AgEnD part of real engineering workflows, not just a chat tool.
 
-## 4. Context Rotation E2E Test
+### 2.1 GitHub / GitLab integration
+- Trigger agent tasks from issues, PRs, or webhooks
+- Report results back as PR comments or issue updates
+- Scheduled repo maintenance (nightly triage, dependency updates)
 
-Claude 對話超過 context window 時，CCD 自動做 context rotation（handover summary → 重啟 session）。`context-guardian.ts` 狀態機有完整 unit test，但缺乏：
+### 2.2 CI/CD hooks
+- Fleet as Code — manage instance config via git
+- Deploy/update instances via PR merge
+- Pre-commit hooks for agent-assisted review
 
-- 實際 daemon 運行中觸發 rotation 的 integration test
-- Rotation 過程中訊息不丟失的驗證
-- Summary 正確傳遞給新 session
-- 多 instance 同時 rotate 的互不干擾
+### 2.3 Conversation history & persistence
+- Log all inbound/outbound messages to SQLite
+- Searchable conversation history per instance
+- Cross-session context carry-over
 
-## 5. Container-Claude（長期）
+---
 
-目前每個 instance 直接在 host 上跑 `claude` CLI。長期目標是把 Claude 跑在獨立容器裡：
+## Phase 3: Plugin & Skills System
 
-- 隔離 instance 之間的檔案系統存取
-- 用 `setup-token` 免互動式登入
-- 提升安全性（instance 不能碰其他 instance 的檔案）
+**Goal:** Let the community extend AgEnD without forking.
 
-先前的 Docker sandbox 方案因複雜度過高已廢棄，需要重新設計。
+### 3.1 Plugin architecture
+- Scan `~/.agend/plugins/` for npm packages
+- Dynamic `import()` for backend, channel, and tool plugins
+- Standard interfaces already exist: `CliBackend`, `ChannelAdapter`, `outboundHandlers` Map
+
+### 3.2 Skills / task templates
+- Reusable runbooks (e.g., "security scan", "dependency update", "code review")
+- Parameterized task templates with approval flows
+- Shareable via npm packages
+
+### 3.3 Policy & permissions
+- Per-instance environment/sandbox controls
+- Human approval flows for high-risk actions
+- Team role-based access control
+
+---
+
+## Phase 4: Ecosystem Expansion
+
+**Goal:** Broaden reach across channels, backends, and use cases.
+
+### 4.1 More channels
+- **Slack** (~300-400 lines via Bolt SDK) — enterprise adoption
+- **Web Chat** (WebSocket server) — self-hosted control panel
+- ChannelAdapter abstraction is proven; new adapters don't touch core code
+
+### 4.2 More backends
+- **Aider** (~50-80 lines) — most popular open-source coding agent
+- **Cursor Agent** (when CLI mode available)
+- **Custom CLI** — document how to implement CliBackend for any tool
+
+### 4.3 Smart backend routing
+- Auto-select backend by task type (quick fix → fast model, architecture → strong model)
+- Compare cost/latency/success rate across backends
+- Routing recommendations based on historical performance
+
+---
+
+## Phase 5: Advanced Operations (Long-term)
+
+### 5.1 Agent swarm coordination
+- Automatic task decomposition and delegation
+- Agent-to-agent recruitment (code agent → security scan agent → review agent)
+- Parallel execution with result aggregation
+
+### 5.2 Fleet-wide knowledge hub
+- Shared context across instances (architecture decisions, tech debt, preferences)
+- RAG-based retrieval from project documentation
+- Learning from past task outcomes
+
+### 5.3 Self-healing fleet
+- Auto-restart with model failover on repeated failures
+- Rate limit prediction and preemptive backend switching
+- Anomaly detection on cost/latency patterns
+
+### 5.4 Control Plane / Data Plane separation
+- Data Plane (local): daemon runs near code and secrets
+- Control Plane (optional cloud): cross-machine discovery, global scheduling, unified monitoring
+
+---
+
+## Explicitly Deferred
+
+| Direction | Reason |
+|-----------|--------|
+| Agent marketplace | Ecosystem not mature enough; needs plugin system first |
+| Multi-machine distributed fleet | Architecture change too large; focus on single-machine excellence first |
+| LINE channel | Complex API, limited global market |
+| Native desktop app | High dev cost; web UI covers the need |
+
+---
+
+## Product Positioning
+
+> **AgEnD is not another coding agent. It's the operations layer that makes coding agents work as a team.**
+
+- Backend-agnostic: works with any coding CLI
+- Channel-native: Telegram/Discord as human-in-the-loop control plane
+- Persistent instances: one instance per project/repo, not throwaway chat threads
+- Fleet coordination: delegate, schedule, monitor, and control across projects and backends
