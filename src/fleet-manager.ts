@@ -365,10 +365,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
 
-    // SIGHUP: reload scheduler (use once + re-register to avoid duplicates)
+    // SIGHUP: hot-reload config + scheduler + start new instances
     const onSighup = () => {
-      this.logger.info("Received SIGHUP, reloading scheduler...");
-      this.scheduler?.reload();
+      this.logger.info("Received SIGHUP, hot-reloading config...");
+      try {
+        if (this.configPath) {
+          this.loadConfig(this.configPath);
+          this.routing.rebuild(this.fleetConfig!);
+          this.logger.info("Config reloaded, routing table rebuilt");
+        }
+        this.scheduler?.reload();
+        // Start any newly added instances
+        const topicMode = this.fleetConfig?.channel?.mode === "topic";
+        for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+          if (!this.daemons.has(name)) {
+            this.startInstance(name, config, topicMode).then(() =>
+              this.connectIpcToInstance(name)
+            ).catch(err =>
+              this.logger.error({ err, name }, "Failed to start new instance on SIGHUP")
+            );
+          }
+        }
+      } catch (err) {
+        this.logger.error({ err }, "SIGHUP config reload failed");
+      }
       process.once("SIGHUP", onSighup);
     };
     process.once("SIGHUP", onSighup);
