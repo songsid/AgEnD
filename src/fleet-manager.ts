@@ -1364,10 +1364,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
 
     // Detect fleet-level config changes and warn
-    const oldChannel = JSON.stringify(oldConfig?.channel?.access);
-    const newChannel = JSON.stringify(this.fleetConfig?.channel?.access);
-    if (oldChannel !== newChannel) {
-      this.logger.warn("Fleet-level config changes (access, cost_guard, etc.) require /restart to take effect");
+    const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldConfig?.defaults });
+    const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: this.fleetConfig?.defaults });
+    if (oldFleetLevel !== newFleetLevel) {
+      this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
     }
 
     // Stop removed instances
@@ -1389,11 +1389,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ).catch(err =>
           this.logger.error({ err, name }, "Failed to start new instance"));
       } else if (oldConfig?.instances[name]) {
-        // Check if config changed (working_directory, backend, model)
-        const oldInst = oldConfig.instances[name];
-        if (oldInst.working_directory !== config.working_directory ||
-            oldInst.backend !== config.backend ||
-            oldInst.model !== config.model) {
+        // Restart if any config field changed
+        if (JSON.stringify(oldConfig.instances[name]) !== JSON.stringify(config)) {
           this.logger.info({ name }, "Instance config changed — restarting");
           await this.stopInstance(name).catch(() => {});
           await this.startInstance(name, config, topicMode).then(() =>
