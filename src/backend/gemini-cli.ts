@@ -12,13 +12,9 @@ export class GeminiCliBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
-    let cmd = `${this.binaryPath} --yolo`;
-
-    const sessionIdFile = join(this.instanceDir, "session-id");
-    if (existsSync(sessionIdFile)) {
-      const sid = readFileSync(sessionIdFile, "utf-8").trim();
-      if (sid) cmd += ` --resume ${sid}`;
-    }
+    // --resume latest lets Gemini auto-resume without showing a session picker.
+    // Using specific session IDs causes a picker dialog that daemon can't handle.
+    let cmd = `${this.binaryPath} --yolo --resume latest`;
 
     if (config.model) {
       cmd += ` --model ${config.model}`;
@@ -60,8 +56,13 @@ export class GeminiCliBackend implements CliBackend {
     const trustFile = join(homedir(), ".gemini", "trustedFolders.json");
     let trusted: Record<string, string> = {};
     try { trusted = JSON.parse(readFileSync(trustFile, "utf-8")); } catch {}
-    if (!trusted[workDir]) {
-      trusted[workDir] = "TRUST_FOLDER";
+    let changed = false;
+    // Trust the exact working directory
+    if (!trusted[workDir]) { trusted[workDir] = "TRUST_FOLDER"; changed = true; }
+    // Also trust parent directory (Gemini may resolve cwd differently under launchd)
+    const parent = dirname(workDir);
+    if (parent !== workDir && !trusted[parent]) { trusted[parent] = "TRUST_PARENT_FOLDER"; changed = true; }
+    if (changed) {
       mkdirSync(dirname(trustFile), { recursive: true });
       writeFileSync(trustFile, JSON.stringify(trusted, null, 2));
     }

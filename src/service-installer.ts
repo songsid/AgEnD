@@ -95,7 +95,13 @@ export function activateService(plistPath: string, pidPath: string): void {
 
   const plat = detectPlatform();
   if (plat === "macos") {
-    execSync(`launchctl load ${plistPath}`, { stdio: "inherit" });
+    const uid = process.getuid?.() ?? 501;
+    const domain = `gui/${uid}`;
+    const label = plistPath.replace(/.*\//, "").replace(/\.plist$/, "");
+    // Unload if previously loaded (ignore errors)
+    try { execSync(`launchctl bootout ${domain}/${label}`, { stdio: "ignore" }); } catch {}
+    execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
+    execSync(`launchctl enable ${domain}/${label}`, { stdio: "inherit" });
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
     execSync(`systemctl --user enable --now ${serviceName}`, { stdio: "inherit" });
