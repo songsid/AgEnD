@@ -70,7 +70,7 @@ health_port: 19280
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | `"locked"` | `"locked"` | Access mode. `locked` = whitelist only |
+| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = whitelist only. `pairing` = users can request access via `/pair` command (requires manual code confirmation) |
 | `allowed_users` | (number\|string)[] | `[]` | Whitelisted user IDs. Supports both number and string (cross-platform) |
 | `max_pending_codes` | number | `3` | Max simultaneous pairing codes (if pairing mode used) |
 | `code_expiry_minutes` | number | `10` | Pairing code expiry time |
