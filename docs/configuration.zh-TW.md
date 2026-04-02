@@ -67,7 +67,7 @@ health_port: 19280
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
-| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者 可透過 `/pair` 指令申請存取（需手動確認 code） |
+| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者可透過 `/pair` 指令申請存取（需手動確認 code） |
 | `allowed_users` | (number\|string)[] | `[]` | 白名單使用者 ID。支援 number 和 string（跨平台） |
 | `max_pending_codes` | number | `3` | 同時可有的配對碼數量上限（pairing 模式） |
 | `code_expiry_minutes` | number | `10` | 配對碼過期時間 |
