@@ -893,6 +893,65 @@ program
   });
 
 program
+  .command("stop")
+  .description("Stop the AgEnD service")
+  .action(async () => {
+    const { getServicePath, stopService } = await import("./service-installer.js");
+    if (!getServicePath()) {
+      // No service — try killing by PID
+      const pidPath = join(DATA_DIR, "fleet.pid");
+      if (existsSync(pidPath)) {
+        const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+        try { process.kill(pid, "SIGTERM"); console.log(`Stopped fleet (PID ${pid})`); } catch { console.log("Fleet not running."); }
+      } else {
+        console.log("No service installed and no running fleet found.");
+      }
+      return;
+    }
+    if (stopService()) {
+      console.log("Service stopped.");
+    } else {
+      console.log("Service is not running or already stopped.");
+    }
+  });
+
+program
+  .command("start")
+  .description("Start the AgEnD service (must be installed first)")
+  .action(async () => {
+    const { getServicePath, startService } = await import("./service-installer.js");
+    if (!getServicePath()) {
+      console.log("No service installed. Run: agend install");
+      console.log("Or start manually: agend fleet start");
+      return;
+    }
+    if (startService()) {
+      console.log("Service started.");
+    } else {
+      console.log("Failed to start service. Check: agend backend doctor");
+    }
+  });
+
+program
+  .command("restart")
+  .description("Restart the AgEnD service")
+  .action(async () => {
+    const { getServicePath, stopService, startService } = await import("./service-installer.js");
+    if (!getServicePath()) {
+      console.log("No service installed. Run: agend install");
+      return;
+    }
+    stopService();
+    // Brief pause for clean shutdown
+    await new Promise(r => setTimeout(r, 1000));
+    if (startService()) {
+      console.log("Service restarted.");
+    } else {
+      console.log("Failed to restart service.");
+    }
+  });
+
+program
   .command("init")
   .description("Interactive setup wizard")
   .action(async () => {
