@@ -30,6 +30,16 @@ export interface ErrorPattern {
   message: string;
 }
 
+/** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
+export interface RuntimeDialog {
+  /** Pattern to detect the dialog in PTY output. */
+  pattern: RegExp;
+  /** Key sequence to dismiss: strings are literal text, "Up"/"Down"/"Enter"/"Escape" are special keys. */
+  keys: string[];
+  /** Human-readable description for logging. */
+  description: string;
+}
+
 export interface CliBackend {
   /** The CLI binary name (e.g. "claude", "gemini", "codex") */
   readonly binaryName: string;
@@ -51,6 +61,12 @@ export interface CliBackend {
 
   /** Error patterns to detect in PTY output during operation. */
   getErrorPatterns?(): ErrorPattern[];
+
+  /**
+   * Interactive dialogs that can appear during operation (not just startup).
+   * The daemon's error monitor auto-dismisses these by sending the specified keys.
+   */
+  getRuntimeDialogs?(): RuntimeDialog[];
 
   /** Pre-approve a working directory to skip trust dialogs on startup. */
   preTrust?(workingDirectory: string): void;
