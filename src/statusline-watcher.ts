@@ -76,6 +76,13 @@ export class StatuslineWatcher {
     return this.watchers.has(name);
   }
 
+  /** Stop watcher for a specific instance. */
+  unwatch(name: string): void {
+    const timer = this.watchers.get(name);
+    if (timer) { clearInterval(timer); this.watchers.delete(name); }
+    this.rateLimits.delete(name);
+  }
+
   /** Stop all watchers and clear data. */
   stopAll(): void {
     for (const [, timer] of this.watchers) clearInterval(timer);
