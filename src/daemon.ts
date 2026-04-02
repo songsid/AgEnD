@@ -385,8 +385,10 @@ export class Daemon extends EventEmitter {
    * (ready pattern visible), it goes back to monitoring for new errors.
    */
   private startErrorMonitor(): void {
-    const patterns = this.backend?.getErrorPatterns?.();
-    if (!patterns?.length || !this.tmux) return;
+    const patterns = this.backend?.getErrorPatterns?.() ?? [];
+    const dialogs = this.backend?.getRuntimeDialogs?.() ?? [];
+    if (!patterns.length && !dialogs.length) return;
+    if (!this.tmux) return;
     const readyPattern = this.backend!.getReadyPattern();
 
     this.errorMonitorTimer = setInterval(async () => {
@@ -396,6 +398,22 @@ export class Daemon extends EventEmitter {
         if (!alive) return;
 
         const pane = await this.tmux.capturePane();
+
+        // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
+        for (const dialog of dialogs) {
+          if (!dialog.pattern.test(pane)) continue;
+          this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
+          const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape"]);
+          for (const key of dialog.keys) {
+            if (SPECIAL_KEYS.has(key)) {
+              await this.tmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down");
+            } else {
+              await this.tmux.pasteText(key);
+            }
+            await new Promise(r => setTimeout(r, 200));
+          }
+          return; // Dialog dismissed, skip error checks this cycle
+        }
 
         // State: waiting for recovery — check if agent is back to ready
         if (this.errorWaitingForRecovery) {
