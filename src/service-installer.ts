@@ -76,6 +76,53 @@ export function installService(vars: ServiceVars): string {
   }
 }
 
+const SERVICE_LABEL = "com.agend.fleet";
+
+export function getServicePath(): string | null {
+  const plat = detectPlatform();
+  if (plat === "macos") {
+    const p = join(process.env.HOME!, "Library/LaunchAgents", `${SERVICE_LABEL}.plist`);
+    return existsSync(p) ? p : null;
+  } else {
+    const p = join(process.env.HOME!, ".config/systemd/user", `${SERVICE_LABEL}.service`);
+    return existsSync(p) ? p : null;
+  }
+}
+
+export function stopService(): boolean {
+  const plat = detectPlatform();
+  try {
+    if (plat === "macos") {
+      const uid = process.getuid?.() ?? 501;
+      execSync(`launchctl bootout gui/${uid}/${SERVICE_LABEL}`, { stdio: "inherit" });
+    } else {
+      execSync(`systemctl --user stop ${SERVICE_LABEL}`, { stdio: "inherit" });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function startService(): boolean {
+  const plat = detectPlatform();
+  try {
+    if (plat === "macos") {
+      const plistPath = join(process.env.HOME!, "Library/LaunchAgents", `${SERVICE_LABEL}.plist`);
+      if (!existsSync(plistPath)) return false;
+      const uid = process.getuid?.() ?? 501;
+      const domain = `gui/${uid}`;
+      execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
+      execSync(`launchctl enable ${domain}/${SERVICE_LABEL}`, { stdio: "inherit" });
+    } else {
+      execSync(`systemctl --user start ${SERVICE_LABEL}`, { stdio: "inherit" });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function activateService(plistPath: string, pidPath: string): void {
   // Kill manually-running fleet if present
   if (existsSync(pidPath)) {
