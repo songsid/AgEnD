@@ -407,6 +407,10 @@ export const TOOLS = [
             type: "boolean",
             description: "Use detached HEAD (read-only). Useful for review instances that shouldn't commit to the branch.",
           },
+          worktree_path: {
+            type: "string",
+            description: "Custom path for the git worktree. Defaults to sibling directory of the repo.",
+          },
         },
         required: ["directory"],
       },

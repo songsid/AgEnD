@@ -220,9 +220,14 @@ export class InstanceLifecycle {
 
         await execFileAsync("git", ["rev-parse", "--git-dir"], { cwd: directory });
 
-        const repoName = basename(directory);
-        const safeBranch = branch.replace(/\//g, "-");
-        worktreePath = join(dirname(directory), `${repoName}-${safeBranch}`);
+        const customPath = args.worktree_path as string | undefined;
+        if (customPath) {
+          worktreePath = customPath.replace(/^~/, process.env.HOME || "~");
+        } else {
+          const repoName = basename(directory);
+          const safeBranch = branch.replace(/\//g, "-");
+          worktreePath = join(dirname(directory), `${repoName}-${safeBranch}`);
+        }
 
         let branchExists = false;
         try {
