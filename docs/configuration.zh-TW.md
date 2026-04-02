@@ -67,8 +67,10 @@ health_port: 19280
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
-| `mode` | `"locked"` | `"locked"` | 存取模式。`locked` = 僅白名單 |
+| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者可透過 `/pair` 指令申請存取（需手動確認 code） |
 | `allowed_users` | (number\|string)[] | `[]` | 白名單使用者 ID。支援 number 和 string（跨平台） |
+| `max_pending_codes` | number | `3` | 同時可有的配對碼數量上限（pairing 模式） |
+| `code_expiry_minutes` | number | `10` | 配對碼過期時間 |
 
 ---
 
@@ -106,6 +108,23 @@ health_port: 19280
 | `enabled` | boolean | `true` | 啟用每日花費摘要 |
 | `hour` | number | `21` | 發送時間（0-23） |
 | `minute` | number | `0` | 分鐘 |
+
+### defaults.scheduler
+
+| 欄位 | 型別 | 預設 | 說明 |
+|------|------|------|------|
+| `max_schedules` | number | `100` | 排程數量上限 |
+| `default_timezone` | string | `Asia/Taipei` | Cron 排程的預設時區 |
+| `retry_count` | number | `3` | 排程投遞失敗時的重試次數 |
+| `retry_interval_ms` | number | `30000` | 重試間隔（毫秒） |
+
+### defaults.webhooks[]
+
+| 欄位 | 型別 | 說明 |
+|------|------|------|
+| `url` | string | Webhook endpoint URL |
+| `events` | string[] | 通知事件：`rotation`、`hang`、`cost_warn`、`cost_limit`、`crash_loop` |
+| `headers` | object | 選用的 HTTP headers |
 
 ---
 
