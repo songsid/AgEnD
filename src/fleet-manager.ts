@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -1064,7 +1064,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ name, count }, "Cleaned up schedules for deleted instance");
       }
     }
-    return this.lifecycle.remove(name);
+    await this.lifecycle.remove(name);
+
+    // Clean up statusline watcher + instance directory
+    this.statuslineWatcher.unwatch(name);
+    try { rmSync(this.getInstanceDir(name), { recursive: true, force: true }); } catch {}
   }
 
   startStatuslineWatcher(name: string): void {
