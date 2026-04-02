@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, resolveBinary } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, resolveBinary } from "./types.js";
 
 export class CodexBackend implements CliBackend {
   readonly binaryName = "codex";
@@ -61,6 +61,18 @@ export class CodexBackend implements CliBackend {
       { pattern: /rate limit|429 Too Many Requests/i, type: "rate_limit", action: "failover", message: "OpenAI rate limit reached" },
       { pattern: /authentication|401 Unauthorized/i, type: "auth_error", action: "pause", message: "OpenAI authentication error" },
       { pattern: /insufficient_quota|billing/i, type: "quota", action: "pause", message: "OpenAI quota exceeded" },
+    ];
+  }
+
+  getRuntimeDialogs(): RuntimeDialog[] {
+    return [
+      {
+        // Codex shows a model switch dialog when approaching rate limits.
+        // Auto-select "Keep current model (never show again)" — option 3.
+        pattern: /Approaching rate limits[\s\S]*Switch to.*for lower credit/m,
+        keys: ["Down", "Down", "Enter"],
+        description: "Codex rate limit model switch dialog",
+      },
     ];
   }
 
