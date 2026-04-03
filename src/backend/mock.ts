@@ -29,16 +29,17 @@ export class MockBackend implements CliBackend {
     const srcScript = join(__dirname, "..", "..", "e2e", "mock-servers", "mock-claude.mjs");
     const script = existsSync(distScript) ? distScript : srcScript;
 
+    const q = (v: string) => `'${v.replace(/'/g, "'\\''")}'`;
     const envPrefix = [
-      `AGEND_SOCKET_PATH=${join(this.instanceDir, "channel.sock")}`,
-      `AGEND_INSTANCE_NAME=${config.instanceName}`,
-      `MOCK_INSTANCE_DIR=${this.instanceDir}`,
+      `AGEND_SOCKET_PATH=${q(join(this.instanceDir, "channel.sock"))}`,
+      `AGEND_INSTANCE_NAME=${q(config.instanceName)}`,
+      `MOCK_INSTANCE_DIR=${q(this.instanceDir)}`,
     ];
 
-    if (process.env.MOCK_RESPONSE) envPrefix.push(`MOCK_RESPONSE=${process.env.MOCK_RESPONSE}`);
-    if (process.env.MOCK_DELAY) envPrefix.push(`MOCK_DELAY=${process.env.MOCK_DELAY}`);
+    if (process.env.MOCK_RESPONSE) envPrefix.push(`MOCK_RESPONSE=${q(process.env.MOCK_RESPONSE)}`);
+    if (process.env.MOCK_DELAY) envPrefix.push(`MOCK_DELAY=${q(process.env.MOCK_DELAY)}`);
 
-    return `${envPrefix.join(" ")} node ${script}`;
+    return `${envPrefix.join(" ")} node ${q(script)}`;
   }
 
   writeConfig(config: CliBackendConfig): void {

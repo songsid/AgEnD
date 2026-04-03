@@ -30,8 +30,8 @@ const SOCKET_PATH = process.env.AGEND_SOCKET_PATH;
 const INSTANCE_NAME = process.env.AGEND_INSTANCE_NAME;
 const INSTANCE_DIR = process.env.MOCK_INSTANCE_DIR;
 const MOCK_RESPONSE = process.env.MOCK_RESPONSE ?? "Mock response from mock-claude";
-const MOCK_DELAY = parseInt(process.env.MOCK_DELAY ?? "100", 10);
-const MOCK_CONTEXT_PCT = parseInt(process.env.MOCK_CONTEXT_PCT ?? "10", 10);
+const MOCK_DELAY = parseInt(process.env.MOCK_DELAY ?? "100", 10) || 100;
+const MOCK_CONTEXT_PCT = parseInt(process.env.MOCK_CONTEXT_PCT ?? "10", 10) || 10;
 
 if (!SOCKET_PATH || !INSTANCE_NAME || !INSTANCE_DIR) {
   process.stderr.write("mock-claude: missing required env vars (AGEND_SOCKET_PATH, AGEND_INSTANCE_NAME, MOCK_INSTANCE_DIR)\n");
@@ -168,6 +168,7 @@ const socketCheckInterval = setInterval(() => {
 function cleanup() {
   clearInterval(statusTimer);
   clearInterval(socketCheckInterval);
+  clearInterval(controlTimer);
   clearTimeout(readyTimeout);
   mcpChild.kill("SIGTERM");
 }
@@ -187,7 +188,7 @@ process.on("SIGINT", () => gracefulExit(0));
 // ---------------------------------------------------------------------------
 
 const controlFile = join(INSTANCE_DIR, "mock-control.json");
-setInterval(() => {
+const controlTimer = setInterval(() => {
   try {
     if (existsSync(controlFile)) {
       const ctrl = JSON.parse(readFileSync(controlFile, "utf-8"));
