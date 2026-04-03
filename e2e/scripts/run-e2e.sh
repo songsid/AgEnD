@@ -11,12 +11,16 @@
 #   6. Cleanup VM
 #
 # Mock-only mode (--no-vm):
-#   Runs tests directly on host (no VM). Useful for fast iteration.
+#   Runs tests directly on host (no VM). For LOCAL DEV iteration only.
+#   Requires AGEND_ALLOW_HOST_E2E=1 to explicitly opt in.
 #
 # Usage:
-#   ./e2e/scripts/run-e2e.sh              # Full E2E inside VM
-#   ./e2e/scripts/run-e2e.sh --no-vm      # Mock-only on host (no isolation)
+#   ./e2e/scripts/run-e2e.sh              # Full E2E inside VM (default)
+#   ./e2e/scripts/run-e2e.sh --no-vm      # Mock-only on host (requires opt-in)
 #   ./e2e/scripts/run-e2e.sh --keep-vm    # Don't delete VM after tests
+#
+# Environment:
+#   AGEND_ALLOW_HOST_E2E=1  — Allow --no-vm flag. Without this, --no-vm is blocked.
 
 set -euo pipefail
 
@@ -86,8 +90,20 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# --- Guard: --no-vm requires explicit opt-in ---
+if [[ "$NO_VM" == "true" && "${AGEND_ALLOW_HOST_E2E:-0}" != "1" ]]; then
+  echo "❌ --no-vm requires AGEND_ALLOW_HOST_E2E=1 (explicit opt-in)."
+  echo "   Default is VM mode to prevent host daemon impact."
+  echo "   Run: AGEND_ALLOW_HOST_E2E=1 $0 --no-vm"
+  exit 1
+fi
+
 # --- No-VM mode: run tests directly on host ---
 if [[ "$NO_VM" == "true" ]]; then
+  echo ""
+  echo "⚠️  WARNING: Running E2E tests directly on host WITHOUT VM isolation."
+  echo "   This may affect the main daemon and other fleet instances."
+  echo ""
   echo "🧪 Running E2E tests on host (--no-vm mode)..."
   cd "$PROJECT_ROOT"
   set +e
