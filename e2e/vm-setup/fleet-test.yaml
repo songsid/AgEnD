@@ -1,13 +1,13 @@
 # Fleet configuration for E2E testing.
-# This template is injected into the VM before each test run.
-# ${HOST_IP} is replaced with the actual host IP at runtime.
+# Tests and mock servers run inside the same VM, so localhost is used.
+# ${MOCK_PORT} is replaced at runtime by the test setup (dynamic port allocation).
 
 channel:
   type: telegram
   mode: topic
   bot_token_env: AGEND_BOT_TOKEN
   group_id: -1001234567890
-  telegram_api_root: "http://${HOST_IP}:8443"
+  telegram_api_root: "http://localhost:${MOCK_PORT}"
   access:
     mode: locked
     allowed_users:

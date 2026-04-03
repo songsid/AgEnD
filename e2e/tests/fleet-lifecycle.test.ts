@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import yaml from "js-yaml";
@@ -50,7 +50,10 @@ describe("Fleet Lifecycle E2E (B Layer)", () => {
     telegramMock = createTelegramMock({ port: telegramMockPort });
     await telegramMock.start();
 
-    testDir = join(tmpdir(), `agend-e2e-fleet-${Date.now()}`);
+    // Use /tmp/ directly (not tmpdir()) to keep socket paths under macOS 104-byte limit.
+    // tmpdir() on macOS returns /var/folders/.../T/ (~50 chars), which makes
+    // .../instances/<name>/channel.sock exceed the sun_path limit.
+    testDir = `/tmp/ae2e-${Date.now().toString(36)}`;
     mkdirSync(testDir, { recursive: true });
     mkdirSync(join(testDir, "instances"), { recursive: true });
     mkdirSync(join(testDir, "access"), { recursive: true });
