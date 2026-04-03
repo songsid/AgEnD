@@ -1,0 +1,55 @@
+# Fleet configuration for E2E testing.
+# Tests and mock servers run inside the same VM, so localhost is used.
+# ${MOCK_PORT} is replaced at runtime by the test setup (dynamic port allocation).
+
+channel:
+  type: telegram
+  mode: topic
+  bot_token_env: AGEND_BOT_TOKEN
+  group_id: -1001234567890
+  telegram_api_root: "http://localhost:${MOCK_PORT}"
+  access:
+    mode: locked
+    allowed_users:
+      - 111222333
+
+defaults:
+  backend: mock
+  model: mock-model
+  tool_set: standard
+  cost_guard:
+    daily_limit_usd: 999
+    warn_at_percentage: 90
+    timezone: UTC
+  hang_detector:
+    enabled: false
+  context_guardian:
+    grace_period_ms: 5000
+    max_age_hours: 0
+
+instances:
+  alpha:
+    working_directory: /tmp/agend-test/alpha
+    display_name: Alpha
+    description: "Test instance A"
+    tags: [test, team-a]
+
+  beta:
+    working_directory: /tmp/agend-test/beta
+    display_name: Beta
+    description: "Test instance B"
+    tags: [test, team-a]
+
+  gamma:
+    working_directory: /tmp/agend-test/gamma
+    display_name: Gamma
+    description: "Test instance C"
+    tags: [test, team-b]
+
+teams:
+  team-a:
+    members: [alpha, beta]
+    description: "Test team A"
+  team-b:
+    members: [gamma]
+    description: "Test team B"
