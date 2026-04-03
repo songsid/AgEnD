@@ -10,6 +10,8 @@ export default defineConfig({
     pool: "forks",
     maxConcurrency: 1,
     sequence: { shuffle: false },
+    reporters: ["verbose", "junit"],
+    outputFile: { junit: "e2e/results/junit.xml" },
     env: {
       PATH: process.env.PATH ?? "",
     },
