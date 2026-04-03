@@ -19,6 +19,7 @@ export interface OutboundContext {
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
+  saveFleetConfig(): void;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -246,10 +247,16 @@ const broadcast: Handler = (ctx, args, respond, meta) => {
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const targets = args.targets as string[] | undefined;
 
-  // Resolve target list: explicit targets, tag filter, or all running
+  // Resolve target list: team, explicit targets, tag filter, or all running
   let targetNames: string[];
+  const teamName = args.team as string | undefined;
   const filterTags = args.tags as string[] | undefined;
-  if (targets?.length) {
+  if (teamName) {
+    const teamDef = ctx.fleetConfig?.teams?.[teamName];
+    if (!teamDef) { respond(null, `Team not found: ${teamName}`); return; }
+    // Silently skip members that are not currently running
+    targetNames = teamDef.members.filter(n => n !== meta.instanceName && n !== senderLabel && ctx.instanceIpcClients.has(n));
+  } else if (targets?.length) {
     targetNames = targets;
   } else if (filterTags?.length) {
     // Filter by tags from fleet config
@@ -289,6 +296,62 @@ const broadcast: Handler = (ctx, args, respond, meta) => {
   respond({ sent_to: sentTo, failed, count: sentTo.length });
 };
 
+// ── Teams ────────────────────────────────────────────────────────────────
+
+const createTeam: Handler = (ctx, args, respond) => {
+  const name = args.name as string;
+  const members = args.members as string[];
+  const description = args.description as string | undefined;
+  if (!name || !Array.isArray(members)) { respond(null, "create_team: name and members are required"); return; }
+  if (!ctx.fleetConfig) { respond(null, "Fleet config not available"); return; }
+  const invalid = members.filter(m => !ctx.fleetConfig!.instances[m]);
+  if (invalid.length) { respond(null, `Invalid instance names: ${invalid.join(", ")}`); return; }
+  ctx.fleetConfig.teams ??= {};
+  if (ctx.fleetConfig.teams[name]) { respond(null, `Team already exists: ${name}`); return; }
+  ctx.fleetConfig.teams[name] = { members, ...(description ? { description } : {}) };
+  ctx.saveFleetConfig();
+  respond({ created: name, members });
+};
+
+const deleteTeam: Handler = (ctx, args, respond) => {
+  const name = args.name as string;
+  if (!ctx.fleetConfig?.teams?.[name]) { respond(null, `Team not found: ${name}`); return; }
+  delete ctx.fleetConfig.teams[name];
+  ctx.saveFleetConfig();
+  respond({ deleted: name });
+};
+
+const listTeams: Handler = (ctx, _args, respond) => {
+  const teams = ctx.fleetConfig?.teams ?? {};
+  const result = Object.entries(teams).map(([name, def]) => ({
+    name,
+    description: def.description ?? null,
+    members: def.members.map(m => ({
+      name: m,
+      running: ctx.lifecycle.daemons.has(m),
+    })),
+  }));
+  respond(result);
+};
+
+const updateTeam: Handler = (ctx, args, respond) => {
+  const name = args.name as string;
+  if (!ctx.fleetConfig?.teams?.[name]) { respond(null, `Team not found: ${name}`); return; }
+  const team = ctx.fleetConfig.teams[name];
+  const add = args.add as string[] | undefined;
+  const remove = args.remove as string[] | undefined;
+  if (add?.length) {
+    const invalid = add.filter(m => !ctx.fleetConfig!.instances[m]);
+    if (invalid.length) { respond(null, `Invalid instance names: ${invalid.join(", ")}`); return; }
+    team.members = [...new Set([...team.members, ...add])];
+  }
+  if (remove?.length) {
+    team.members = team.members.filter(m => !remove.includes(m));
+  }
+  ctx.saveFleetConfig();
+  respond({ name, members: team.members });
+};
+
 // ── Registry ────────────────────────────────────────────────────────────
 
 export const outboundHandlers = new Map<string, Handler>([
@@ -302,4 +365,8 @@ export const outboundHandlers = new Map<string, Handler>([
   ["start_instance", startInstance],
   ["create_instance", createInstance],
   ["delete_instance", deleteInstance],
+  ["create_team", createTeam],
+  ["delete_team", deleteTeam],
+  ["list_teams", listTeams],
+  ["update_team", updateTeam],
 ]);
