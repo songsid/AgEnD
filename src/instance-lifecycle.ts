@@ -100,7 +100,7 @@ export class InstanceLifecycle {
       this.ctx.notifyInstanceTopic(name, `⚠️ ${name} crashed and respawned.`);
       const generalName = this.findGeneralInstance();
       if (generalName && generalName !== name) {
-        this.ctx.notifyInstanceTopic(generalName, `⚠️ ${name} crashed and respawned. Check ~/.agend/instances/${name}/daemon.log for details.`);
+        this.ctx.notifyInstanceTopic(generalName, `⚠️ ${name} crashed and respawned. Check ~/.agend/daemon.log for details.`);
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
 
