@@ -13,6 +13,7 @@ import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
+import { TMUX_SESSION } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
 import type { TmuxControlClient } from "./tmux-control.js";
@@ -22,6 +23,7 @@ const __dirname = dirname(__filename);
 
 export class Daemon extends EventEmitter {
   private logger: Logger;
+  private tmuxSessionName: string;
   private tmux: TmuxManager | null = null;
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
@@ -77,6 +79,7 @@ export class Daemon extends EventEmitter {
   ) {
     super();
     this.logger = createLogger(config.log_level);
+    this.tmuxSessionName = TMUX_SESSION;
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
   }
@@ -89,7 +92,16 @@ export class Daemon extends EventEmitter {
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
+    // Forward IPC server errors as daemon events (prevents unhandled 'error' crash).
+    // Guard: only forward post-listen errors — startup errors are handled by listen() rejection.
+    let ipcListening = false;
+    this.ipcServer.on("error", (err: Error) => {
+      if (!ipcListening) return; // startup errors handled by listen() rejection
+      this.logger.error({ err, name: this.name }, "IPC server error");
+      this.emit("error", err);
+    });
     await this.ipcServer.listen();
+    ipcListening = true;
 
     // Permanent IPC dispatcher: routes responses to pending requests by type+id key
     this.ipcServer.on("message", (msg: Record<string, unknown>) => {
@@ -166,9 +178,8 @@ export class Daemon extends EventEmitter {
     });
 
     // 2. Tmux — ensure session, create window if not alive
-    const sessionName = "agend";
-    await TmuxManager.ensureSession(sessionName);
-    this.tmux = new TmuxManager(sessionName, "");
+    await TmuxManager.ensureSession(this.tmuxSessionName);
+    this.tmux = new TmuxManager(this.tmuxSessionName, "");
 
     // Strategy A: always start fresh Claude window (MCP server has no reconnection)
     // Kill any existing window from previous run
@@ -176,7 +187,7 @@ export class Daemon extends EventEmitter {
     if (existsSync(windowIdFile)) {
       const savedId = readFileSync(windowIdFile, "utf-8").trim();
       if (savedId) {
-        const oldTmux = new TmuxManager(sessionName, savedId);
+        const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
           this.saveSessionId();
           await oldTmux.killWindow();
@@ -356,10 +367,10 @@ export class Daemon extends EventEmitter {
           const sidFile = join(this.instanceDir, "session-id");
           try { unlinkSync(sidFile); } catch { /* may not exist */ }
           // Kill any same-name windows before respawn to prevent orphans
-          const windows = await TmuxManager.listWindows("agend");
+          const windows = await TmuxManager.listWindows(this.tmuxSessionName);
           for (const w of windows) {
             if (w.name === this.name) {
-              const tm = new TmuxManager("agend", w.id);
+              const tm = new TmuxManager(this.tmuxSessionName, w.id);
               await tm.killWindow();
             }
           }
@@ -591,10 +602,10 @@ export class Daemon extends EventEmitter {
       // Window ID may be stale after crash/respawn — try to find by name
       this.logger.warn("pasteText failed, looking up window by name");
       try {
-        const windows = await TmuxManager.listWindows("agend");
+        const windows = await TmuxManager.listWindows(this.tmuxSessionName);
         const match = windows.find(w => w.name === this.name);
         if (match) {
-          this.tmux = new TmuxManager("agend", match.id);
+          this.tmux = new TmuxManager(this.tmuxSessionName, match.id);
           writeFileSync(join(this.instanceDir, "window-id"), match.id);
           await this.controlClient?.registerWindow(match.id);
           await this.tmux.pasteText(formatted);
