@@ -145,7 +145,7 @@ All fields from `instances.<name>` can be set here as defaults. Additionally:
 | `model` | string | — | Model alias. Claude: `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]`. Codex: `gpt-4o`, `o3`. Gemini: `gemini-2.5-pro` |
 | `model_failover` | string[] | — | Fallback models when rate-limited (e.g. `["opus", "sonnet"]`) |
 | `tool_set` | string | `"full"` | MCP tool profile: `full` (all), `standard` (10), `minimal` (4) |
-| `systemPrompt` | string | — | Custom system prompt. Supports `file:./path.md` for external files |
+| `systemPrompt` | string | — | Custom system prompt. Inline string or `file:./path.md` to load from an external file (path relative to `working_directory`). Example: `systemPrompt: "file:./prompts/role.md"` |
 | `skipPermissions` | boolean | `true` | Skip CLI permission checks (`--dangerously-skip-permissions`). Set `false` to enable |
 | `lightweight` | boolean | `false` | Skip transcript monitor, context guardian, approval server |
 | `log_level` | string | `"info"` | `debug`, `info`, `warn`, `error` |

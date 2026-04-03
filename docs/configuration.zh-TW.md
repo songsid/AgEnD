@@ -142,7 +142,7 @@ health_port: 19280
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`） |
 | `tool_set` | string | `"full"` | MCP tool 設定：`full`（全部）、`standard`（10 個）、`minimal`（4 個） |
-| `systemPrompt` | string | — | 自訂 system prompt。支援 `file:./path.md` 引用外部檔案 |
+| `systemPrompt` | string | — | 自訂 system prompt。內嵌字串或 `file:./path.md` 從外部檔案載入（路徑相對於 `working_directory`）。範例：`systemPrompt: "file:./prompts/role.md"` |
 | `skipPermissions` | boolean | `true` | 跳過 CLI 權限檢查。設 `false` 啟用 |
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |
 | `log_level` | string | `"info"` | `debug`、`info`、`warn`、`error` |
