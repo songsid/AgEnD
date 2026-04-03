@@ -141,10 +141,16 @@ export interface RotationSnapshot {
   };
 }
 
+export interface TeamConfig {
+  members: string[];
+  description?: string;
+}
+
 export interface FleetConfig {
   channel?: ChannelConfig;
   project_roots?: string[];
   defaults: FleetDefaults;
   instances: Record<string, InstanceConfig>;
+  teams?: Record<string, TeamConfig>;
   health_port?: number;
 }
