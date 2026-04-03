@@ -1241,13 +1241,13 @@ program
         }
       } catch { /* ignore */ }
 
-      // Last activity from log file modification time
+      // Last activity: prefer statusline.json mtime (updated on real agent activity)
       let lastActivity: string | null = null;
-      for (const logName of ["daemon.log", "output.log"]) {
-        const logPath = join(DATA_DIR, "instances", name, logName);
+      for (const probe of ["statusline.json", "daemon.log", "output.log"]) {
+        const p = join(DATA_DIR, "instances", name, probe);
         try {
-          if (existsSync(logPath)) {
-            lastActivity = formatTimeSince(statSync(logPath).mtime.toISOString());
+          if (existsSync(p)) {
+            lastActivity = formatTimeSince(statSync(p).mtime.toISOString());
             break;
           }
         } catch { /* ignore */ }
@@ -1333,27 +1333,18 @@ program
       process.exit(1);
     }
 
-    // If we have a window ID, select it first
-    if (windowId) {
-      try {
-        execFileSync("tmux", ["select-window", "-t", `${session}:${windowId}`], { stdio: "pipe" });
-      } catch {
-        // Window ID might be stale — try finding by window name
-        try {
-          execFileSync("tmux", ["select-window", "-t", `${session}:${name}`], { stdio: "pipe" });
-        } catch {
-          console.error(`Cannot find tmux window for "${name}". The instance may need to be restarted.`);
-          process.exit(1);
-        }
-      }
-    } else {
-      // Find by window name
-      try {
-        execFileSync("tmux", ["select-window", "-t", `${session}:${name}`], { stdio: "pipe" });
-      } catch {
-        console.error(`Cannot find tmux window for "${name}".`);
-        process.exit(1);
-      }
+    // Try window-id first (precise), then window name (fallback for stale id)
+    const targets = windowId
+      ? [`${session}:${windowId}`, `${session}:${name}`]
+      : [`${session}:${name}`];
+    let selected = false;
+    for (const t of targets) {
+      try { execFileSync("tmux", ["select-window", "-t", t], { stdio: "pipe" }); selected = true; break; }
+      catch { /* try next */ }
+    }
+    if (!selected) {
+      console.error(`Cannot find tmux window for "${name}". The instance may need to be restarted.`);
+      process.exit(1);
     }
 
     // Attach or switch-client depending on whether we're already in tmux
