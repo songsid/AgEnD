@@ -194,12 +194,13 @@ export const TOOLS = [
     // ── Cross-instance communication ──────────────────────────────
     {
       name: "broadcast",
-      description: "Send a message to multiple instances at once. Omit targets to send to all running instances.",
+      description: "Send a message to multiple instances at once. Priority: team > targets > tags > all running.",
       inputSchema: {
         type: "object" as const,
         properties: {
           message: { type: "string", description: "Message to send" },
           targets: { type: "array", items: { type: "string" }, description: "Instance names. Omit for all running." },
+          team: { type: "string", description: "Team name. Send to all running members of this team. Overrides targets." },
           tags: { type: "array", items: { type: "string" }, description: "Filter targets by tags. Only instances with matching tags receive the message." },
           task_summary: { type: "string", description: "Brief summary shown in logs" },
           request_kind: { type: "string", enum: ["query", "task", "update"], description: "Message intent" },
@@ -323,6 +324,52 @@ export const TOOLS = [
           },
         },
         required: ["target_instance", "summary"],
+      },
+    },
+    // ── Teams ──────────────────────────────────────────────────────
+    {
+      name: "create_team",
+      description: "Create a named group of instances for targeted broadcasting. Teams persist across restarts.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "Team name (e.g. 'sprint-1', 'reviewers')" },
+          members: { type: "array", items: { type: "string" }, description: "Instance names to include" },
+          description: { type: "string", description: "Optional description of the team's purpose" },
+        },
+        required: ["name", "members"],
+      },
+    },
+    {
+      name: "delete_team",
+      description: "Dissolve a team. Does not affect the member instances.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "Team name to delete" },
+        },
+        required: ["name"],
+      },
+    },
+    {
+      name: "list_teams",
+      description: "List all teams with their members and running status.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {},
+      },
+    },
+    {
+      name: "update_team",
+      description: "Add or remove members from an existing team. Duplicates are ignored.",
+      inputSchema: {
+        type: "object" as const,
+        properties: {
+          name: { type: "string", description: "Team name" },
+          add: { type: "array", items: { type: "string" }, description: "Instance names to add (duplicates ignored)" },
+          remove: { type: "array", items: { type: "string" }, description: "Instance names to remove" },
+        },
+        required: ["name"],
       },
     },
     {
