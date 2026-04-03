@@ -13,6 +13,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { createServer } from "node:net";
 import yaml from "js-yaml";
 import { createTelegramMock, type TelegramMock } from "../mock-servers/telegram-mock.js";
 import { waitFor, sleep } from "../mock-servers/shared.js";
@@ -24,13 +25,27 @@ const TEST_GROUP_ID = -1001234567890;
 const TEST_USER_ID = 111222333;
 const TMUX_SESSION = `agend-e2e-${process.pid}`;
 
+/** Find a free port by binding to 0 and releasing. */
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.listen(0, () => {
+      const port = (srv.address() as { port: number }).port;
+      srv.close(() => resolve(port));
+    });
+    srv.on("error", reject);
+  });
+}
+
 let telegramMock: TelegramMock;
 let testDir: string;
 let fm: FleetManager | null = null;
+let healthPort: number;
 
 describe("Fleet Lifecycle E2E (B Layer)", () => {
   beforeAll(async () => {
     process.env.AGEND_TMUX_SESSION = TMUX_SESSION;
+    healthPort = await getFreePort();
 
     telegramMock = createTelegramMock({ port: TELEGRAM_MOCK_PORT });
     await telegramMock.start();
@@ -88,7 +103,7 @@ describe("Fleet Lifecycle E2E (B Layer)", () => {
           description: "Test team",
         },
       },
-      health_port: 19380 + (process.pid % 100),
+      health_port: healthPort,
     };
 
     writeFileSync(join(testDir, "fleet.yaml"), yaml.dump(fleetConfig));
@@ -173,7 +188,6 @@ describe("Fleet Lifecycle E2E (B Layer)", () => {
   }, 30_000);
 
   it("T1: health endpoint responds", async () => {
-    const healthPort = 19380 + (process.pid % 100);
     await waitFor(
       async () => {
         const res = await fetch(`http://localhost:${healthPort}/health`);
@@ -198,7 +212,6 @@ describe("Fleet Lifecycle E2E (B Layer)", () => {
     expect(callsAfter - callsBefore).toBeLessThanOrEqual(1);
 
     // Verify health endpoint is gone
-    const healthPort = 19380 + (process.pid % 100);
     try {
       await fetch(`http://localhost:${healthPort}/health`);
       // If we get here, server is still running — not great but not fatal

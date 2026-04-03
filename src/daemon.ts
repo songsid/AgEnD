@@ -13,6 +13,7 @@ import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
+import { TMUX_SESSION } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
 import type { TmuxControlClient } from "./tmux-control.js";
@@ -78,7 +79,7 @@ export class Daemon extends EventEmitter {
   ) {
     super();
     this.logger = createLogger(config.log_level);
-    this.tmuxSessionName = process.env.AGEND_TMUX_SESSION ?? "agend";
+    this.tmuxSessionName = TMUX_SESSION;
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
   }
@@ -177,7 +178,7 @@ export class Daemon extends EventEmitter {
     if (existsSync(windowIdFile)) {
       const savedId = readFileSync(windowIdFile, "utf-8").trim();
       if (savedId) {
-        const oldTmux = new TmuxManager(sessionName, savedId);
+        const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
           this.saveSessionId();
           await oldTmux.killWindow();
