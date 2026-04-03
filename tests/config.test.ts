@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { loadFleetConfig } from "../src/config.js";
-import { writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, homedir } from "node:os";
 
 describe("loadFleetConfig", () => {
   let tmpDir: string;
@@ -76,7 +76,10 @@ instances:
     log_level: info
 `
     );
-    expect(() => loadFleetConfig(fleetPath)).toThrow(/working_directory/);
+    const fleet = loadFleetConfig(fleetPath);
+    const expectedDir = join(homedir(), ".agend", "workspaces", "badbot");
+    expect(fleet.instances["badbot"].working_directory).toBe(expectedDir);
+    expect(existsSync(expectedDir)).toBe(true);
   });
 
   it("returns empty instances when no fleet.yaml exists", () => {
