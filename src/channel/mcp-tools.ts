@@ -4,13 +4,13 @@ export const TOOLS = [
     {
       name: "reply",
       description:
-        "Reply on the channel. chat_id and thread_id are optional — the daemon auto-fills them from the current conversation context. If provided, they may be overridden.",
+        "Reply on the channel. Pass chat_id and thread_id from the inbound <channel> block — never infer from topic_ids.",
       inputSchema: {
         type: "object" as const,
         properties: {
           chat_id: {
             type: "string",
-            description: "Optional. Auto-filled by daemon from current conversation context.",
+            description: "chat_id from the inbound <channel> block. Do NOT use an instance's topic_id here.",
           },
           text: { type: "string" },
           reply_to: {
@@ -21,7 +21,7 @@ export const TOOLS = [
           thread_id: {
             type: "string",
             description:
-              "Optional. Auto-filled by daemon from current conversation context.",
+              "Telegram topic thread ID. Use thread_id from the inbound <channel> block only. Never set this to an instance's topic_id from list_instances.",
           },
           files: {
             type: "array",
@@ -34,30 +34,30 @@ export const TOOLS = [
             description: "Rendering mode. Default: 'text'.",
           },
         },
-        required: ["text"],
+        required: ["chat_id", "text"],
       },
     },
     {
       name: "react",
-      description: "Add an emoji reaction to a channel message. chat_id is optional — auto-filled by daemon.",
+      description: "Add an emoji reaction to a channel message.",
       inputSchema: {
         type: "object" as const,
         properties: {
-          chat_id: { type: "string", description: "Optional. Auto-filled by daemon." },
+          chat_id: { type: "string" },
           message_id: { type: "string" },
           emoji: { type: "string" },
         },
-        required: ["message_id", "emoji"],
+        required: ["chat_id", "message_id", "emoji"],
       },
     },
     {
       name: "edit_message",
       description:
-        "Edit a message the bot previously sent. chat_id is optional — auto-filled by daemon.",
+        "Edit a message the bot previously sent. Useful for interim progress updates.",
       inputSchema: {
         type: "object" as const,
         properties: {
-          chat_id: { type: "string", description: "Optional. Auto-filled by daemon." },
+          chat_id: { type: "string" },
           message_id: { type: "string" },
           text: { type: "string" },
           format: {
@@ -66,7 +66,7 @@ export const TOOLS = [
             description: "Rendering mode. Default: 'text'.",
           },
         },
-        required: ["message_id", "text"],
+        required: ["chat_id", "message_id", "text"],
       },
     },
     {
