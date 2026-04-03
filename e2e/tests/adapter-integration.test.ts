@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { createTelegramMock, type TelegramMock } from "../mock-servers/telegram-mock.js";
 import { waitFor } from "../mock-servers/shared.js";
 import { TelegramAdapter } from "../../src/channel/adapters/telegram.js";
@@ -29,6 +29,8 @@ const TEST_USER_ID = 111222333;
 let telegramMock: TelegramMock;
 let testDir: string;
 
+let activeAdapter: TelegramAdapter | null = null;
+
 /** Create a TelegramAdapter wired to the mock server. */
 function createTestAdapter(allowedUsers: number[] = [TEST_USER_ID]): TelegramAdapter {
   const accessDir = join(testDir, "access");
@@ -37,13 +39,15 @@ function createTestAdapter(allowedUsers: number[] = [TEST_USER_ID]): TelegramAda
     { mode: "locked", allowed_users: allowedUsers },
     join(accessDir, "access.json"),
   );
-  return new TelegramAdapter({
+  const adapter = new TelegramAdapter({
     id: "test",
     botToken: "123456:FAKE_TOKEN",
     accessManager,
     inboxDir: join(testDir, "inbox"),
     apiRoot: `http://localhost:${TELEGRAM_MOCK_PORT}`,
   });
+  activeAdapter = adapter;
+  return adapter;
 }
 
 /** Start adapter and wait for grammy to complete its first poll cycle. */
@@ -71,7 +75,11 @@ describe("TelegramAdapter ↔ Mock Server", () => {
     mkdirSync(testDir, { recursive: true });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    if (activeAdapter) {
+      await activeAdapter.stop().catch(() => {});
+      activeAdapter = null;
+    }
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -241,8 +249,8 @@ describe("TelegramAdapter ↔ Mock Server", () => {
     const getFileCalls = telegramMock.getCallsFor("getFile");
     expect(getFileCalls.length).toBeGreaterThan(0);
     expect(existsSync(localPath)).toBe(true);
-
-    await adapter.stop();
+    const content = readFileSync(localPath);
+    expect(content.length).toBeGreaterThan(0);
   });
 
   it("T6: adapter.editMessage() calls editMessageText on mock", async () => {
