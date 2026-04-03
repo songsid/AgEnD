@@ -80,6 +80,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     project_roots?: string[];
     defaults?: Partial<InstanceConfig>;
     instances?: Record<string, Partial<InstanceConfig>>;
+    teams?: FleetConfig["teams"];
     health_port?: number;
   } | null;
 
@@ -111,6 +112,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     project_roots: parsed.project_roots,
     defaults: fleetDefaults,
     instances,
+    teams: parsed.teams ?? {},
     health_port: parsed.health_port,
   };
 }
