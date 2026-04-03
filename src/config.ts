@@ -30,6 +30,8 @@ function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
   return result as unknown as T;
 }
 
+export const TMUX_SESSION = process.env.AGEND_TMUX_SESSION ?? "agend";
+
 export const DEFAULT_COST_GUARD: CostGuardConfig = {
   daily_limit_usd: 0, // 0 = disabled
   warn_at_percentage: 80,

@@ -45,7 +45,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     this.id = opts.id;
     this.accessManager = opts.accessManager;
     this.inboxDir = opts.inboxDir;
-    this.apiRoot = opts.apiRoot ?? "https://api.telegram.org";
+    this.apiRoot = (opts.apiRoot ?? "https://api.telegram.org").replace(/\/+$/, "");
 
     mkdirSync(this.inboxDir, { recursive: true });
 
