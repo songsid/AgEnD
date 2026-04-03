@@ -1079,6 +1079,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.fleetConfig.channel) toSave.channel = this.fleetConfig.channel;
     if (this.fleetConfig.health_port) toSave.health_port = this.fleetConfig.health_port;
     if (Object.keys(this.fleetConfig.defaults).length > 0) toSave.defaults = this.fleetConfig.defaults;
+    if (this.fleetConfig.teams && Object.keys(this.fleetConfig.teams).length > 0) {
+      toSave.teams = this.fleetConfig.teams;
+    }
     toSave.instances = {};
     for (const [name, inst] of Object.entries(this.fleetConfig.instances)) {
       const serialized: Record<string, unknown> = {
