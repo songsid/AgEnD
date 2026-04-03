@@ -774,6 +774,18 @@ export class Daemon extends EventEmitter {
       return;
     }
 
+    // Context-bound routing: reply/react/edit_message always use the daemon's last known context.
+    // chat_id and thread_id are not exposed in the tool schema — daemon is solely responsible for routing.
+    // Must run before IPC forwarding so topic-mode (fleet manager) also receives the correct chat_id.
+    if (["reply", "react", "edit_message"].includes(tool)) {
+      if (!this.lastChatId) {
+        respond(null, "No active chat context — awaiting inbound message");
+        return;
+      }
+      args.chat_id = this.lastChatId;
+      if (tool === "reply") args.thread_id = this.lastThreadId;
+    }
+
     // Route to adapter via MessageBus
     const adapters = this.messageBus.getAllAdapters();
     if (adapters.length === 0) {
@@ -796,17 +808,6 @@ export class Daemon extends EventEmitter {
     }
 
     const adapter = adapters[0];
-
-    // Context-bound routing: reply/react/edit_message always use the daemon's last known context.
-    // chat_id and thread_id are not exposed in the tool schema — daemon is solely responsible for routing.
-    if (["reply", "react", "edit_message"].includes(tool)) {
-      if (!this.lastChatId) {
-        respond(null, "No active chat context — awaiting inbound message");
-        return;
-      }
-      args.chat_id = this.lastChatId;
-      if (tool === "reply") args.thread_id = this.lastThreadId;
-    }
 
     if (!routeToolCall(adapter, tool, args, this.lastThreadId, respond)) {
       respond(null, `Unknown tool: ${tool}`);
