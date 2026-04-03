@@ -12,15 +12,15 @@
 #
 # Mock-only mode (--no-vm):
 #   Runs tests directly on host (no VM). For LOCAL DEV iteration only.
-#   ⚠️  Blocked when AGEND_FORCE_VM=1 (set by QA/CI trigger paths).
+#   Requires AGEND_ALLOW_HOST_E2E=1 to explicitly opt in.
 #
 # Usage:
 #   ./e2e/scripts/run-e2e.sh              # Full E2E inside VM (default)
-#   ./e2e/scripts/run-e2e.sh --no-vm      # Mock-only on host (dev only, no isolation)
+#   ./e2e/scripts/run-e2e.sh --no-vm      # Mock-only on host (requires opt-in)
 #   ./e2e/scripts/run-e2e.sh --keep-vm    # Don't delete VM after tests
 #
 # Environment:
-#   AGEND_FORCE_VM=1  — Reject --no-vm flag. Set this in QA/CI trigger paths.
+#   AGEND_ALLOW_HOST_E2E=1  — Allow --no-vm flag. Without this, --no-vm is blocked.
 
 set -euo pipefail
 
@@ -90,10 +90,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# --- Guard: AGEND_FORCE_VM blocks --no-vm ---
-if [[ "$NO_VM" == "true" && "${AGEND_FORCE_VM:-0}" == "1" ]]; then
-  echo "❌ --no-vm is blocked because AGEND_FORCE_VM=1 is set."
-  echo "   QA and CI paths must run inside a VM for host isolation."
+# --- Guard: --no-vm requires explicit opt-in ---
+if [[ "$NO_VM" == "true" && "${AGEND_ALLOW_HOST_E2E:-0}" != "1" ]]; then
+  echo "❌ --no-vm requires AGEND_ALLOW_HOST_E2E=1 (explicit opt-in)."
+  echo "   Default is VM mode to prevent host daemon impact."
+  echo "   Run: AGEND_ALLOW_HOST_E2E=1 $0 --no-vm"
   exit 1
 fi
 
@@ -102,8 +103,6 @@ if [[ "$NO_VM" == "true" ]]; then
   echo ""
   echo "⚠️  WARNING: Running E2E tests directly on host WITHOUT VM isolation."
   echo "   This may affect the main daemon and other fleet instances."
-  echo "   Use this only for local development iteration."
-  echo "   To enforce VM mode, set AGEND_FORCE_VM=1."
   echo ""
   echo "🧪 Running E2E tests on host (--no-vm mode)..."
   cd "$PROJECT_ROOT"
