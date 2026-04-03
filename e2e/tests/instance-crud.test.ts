@@ -9,7 +9,6 @@
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import yaml from "js-yaml";
 import { createTelegramMock, type TelegramMock } from "../mock-servers/telegram-mock.js";
@@ -33,7 +32,8 @@ describe("Instance CRUD E2E", () => {
 
   beforeEach(() => {
     telegramMock.reset();
-    testDir = join(tmpdir(), `agend-e2e-crud-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    // Use /tmp/ directly to keep socket paths under macOS 104-byte sun_path limit
+    testDir = `/tmp/ae2e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
     mkdirSync(testDir, { recursive: true });
   });
 
