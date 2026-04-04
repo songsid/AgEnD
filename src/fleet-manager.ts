@@ -106,21 +106,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.webhookEmitter?.emit(event, name, data);
   }
 
-  // NOTE: Decisions support project scope (by working directory) and fleet scope (all instances).
-  // Future versions may add team or cross-repo scopes.
-  getActiveDecisionsForProject(projectRoot: string): Array<{ title: string; content: string; tags: string[]; scope: string }> {
-    if (!this.scheduler) return [];
-    try {
-      // listDecisions returns fleet-scoped + project-scoped decisions, fleet first
-      return this.scheduler.db.listDecisions(projectRoot).map(d => ({
-        title: d.title,
-        content: d.content,
-        tags: d.tags,
-        scope: d.scope,
-      }));
-    } catch { return []; }
-  }
-
   // ── SysInfo ────────────────────────────────────────────────────────────
   getSysInfo(): import("./fleet-context.js").SysInfo {
     const mem = process.memoryUsage();
