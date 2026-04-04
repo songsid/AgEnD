@@ -1,5 +1,5 @@
 import { join, dirname } from "node:path";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, resolveBinary } from "./types.js";
 
@@ -84,6 +84,8 @@ export class OpenCodeBackend implements CliBackend {
     sections.push(`# AgEnD Fleet Context\nYou are **${name}**, an instance in an AgEnD fleet.\nYour working directory is \`${workDir}\`.`);
     if (displayName) {
       sections.push(`Your display name is "${displayName}". Use this when introducing yourself.`);
+    } else {
+      sections.push("You don't have a display name yet. Use set_display_name to choose one that reflects your personality.");
     }
     if (description) {
       sections.push(`## Role\n${description}`);
@@ -94,6 +96,14 @@ export class OpenCodeBackend implements CliBackend {
       "- `[from:instance-name]` — from another fleet instance → reply with `send_to_instance`, NOT the reply tool.",
       "",
       "**Always use the `reply` tool for ALL responses to users.** Do not respond directly in the terminal.",
+      "",
+      "## Tool Usage",
+      "- reply: respond to users. react: emoji reactions. edit_message: update a sent message. download_attachment: fetch files.",
+      "- If the inbound message has image_path, Read that file — it is a photo.",
+      "- If the inbound message has attachment_file_id, call download_attachment then Read the returned path.",
+      "- If the inbound message has reply_to_text, the user is quoting a previous message.",
+      "- Use list_instances to discover fleet members. Use describe_instance for details.",
+      "- High-level collaboration: request_information (ask), delegate_task (assign), report_result (return results with correlation_id).",
       "",
       "## Collaboration Rules",
       "1. Use fleet tools for cross-instance communication. Never assume direct file access to another instance's repo.",
@@ -116,6 +126,12 @@ export class OpenCodeBackend implements CliBackend {
       if (workflowContent) {
         sections.push(`## Development Workflow\n\n${workflowContent}`);
       }
+    }
+
+    // Custom user prompt (from fleet.yaml systemPrompt field)
+    const customPrompt = env.AGEND_CUSTOM_PROMPT;
+    if (customPrompt) {
+      sections.push(customPrompt);
     }
 
     return sections.join("\n\n");
@@ -155,12 +171,13 @@ export class OpenCodeBackend implements CliBackend {
             delete oc.mcp[name]; // also clean old non-namespaced key
           }
         }
-        // Remove fleet instructions reference
+        // Remove fleet instructions reference and file
         const instructionsPath = join(this.instanceDir, "fleet-instructions.md");
         if (Array.isArray(oc.instructions)) {
           oc.instructions = oc.instructions.filter((p: string) => p !== instructionsPath);
           if (oc.instructions.length === 0) delete oc.instructions;
         }
+        try { unlinkSync(instructionsPath); } catch { /* may not exist */ }
         writeFileSync(configPath, JSON.stringify(oc, null, 2));
       }
     } catch { /* best effort */ }
