@@ -614,6 +614,9 @@ export class Daemon extends EventEmitter {
     } else {
       formatted = `[user:${user}] ${content}\n(Reply using the reply tool — do NOT respond with direct text)`;
     }
+    if (meta.reply_to_text) {
+      formatted += `\n(reply_to: "${meta.reply_to_text}")`;
+    }
 
     // Serialize deliveries: each message waits for the previous to complete,
     // and each waits for the CLI to be idle before pasting.
