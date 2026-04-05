@@ -20,13 +20,23 @@
   .instance-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .instance-dot.running { background: #3fb950; }
   .instance-dot.stopped { background: #f85149; }
-  .instance-dot.idle { background: #d29922; }
+  .instance-dot.idle, .instance-dot.crashed { background: #d29922; }
   .instance-info { flex: 1; min-width: 0; }
   .instance-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .instance-meta { font-size: 11px; color: #8b949e; }
 
+  /* Main area */
+  .main { flex: 1; display: flex; flex-direction: column; }
+  .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; color: #8b949e; font-size: 14px; }
+
+  /* Tabs */
+  .tabs { display: flex; border-bottom: 1px solid #21262d; }
+  .tab { padding: 8px 16px; cursor: pointer; font-size: 13px; color: #8b949e; border-bottom: 2px solid transparent; }
+  .tab:hover { color: #c9d1d9; }
+  .tab.active { color: #58a6ff; border-bottom-color: #58a6ff; }
+
   /* Chat area */
-  .chat { flex: 1; display: flex; flex-direction: column; }
+  .chat-view { flex: 1; display: flex; flex-direction: column; }
   .chat-header { padding: 12px 16px; border-bottom: 1px solid #21262d; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
   .chat-header .model { font-size: 11px; color: #8b949e; font-weight: 400; }
   .messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -38,22 +48,37 @@
   .msg .sender.agent { color: #3fb950; }
   .msg .time { font-size: 10px; color: #8b949e; float: right; margin-left: 12px; margin-top: 2px; }
   .msg-empty { color: #8b949e; text-align: center; margin-top: 40px; font-size: 13px; }
-
-  /* Input */
   .input-bar { padding: 12px 16px; border-top: 1px solid #21262d; display: flex; gap: 8px; }
   .input-bar input { flex: 1; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; outline: none; }
   .input-bar input:focus { border-color: #58a6ff; }
-  .input-bar button { background: #1f6feb; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
-  .input-bar button:hover { background: #388bfd; }
-  .input-bar button:disabled { opacity: 0.5; cursor: default; }
 
-  /* No instance selected */
-  .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; color: #8b949e; font-size: 14px; }
+  /* Detail view */
+  .detail-view { flex: 1; overflow-y: auto; padding: 16px; display: none; }
+  .detail-section { margin-bottom: 16px; }
+  .detail-section h3 { font-size: 13px; color: #58a6ff; margin-bottom: 8px; }
+  .detail-row { display: flex; gap: 8px; font-size: 13px; padding: 4px 0; }
+  .detail-label { color: #8b949e; min-width: 120px; }
+  .detail-value { color: #c9d1d9; }
 
-  /* Responsive */
-  @media (max-width: 700px) {
-    .sidebar { width: 200px; }
-  }
+  /* Action buttons */
+  .actions { display: flex; gap: 6px; padding: 12px 16px; border-bottom: 1px solid #21262d; flex-wrap: wrap; }
+  .btn { padding: 5px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; border: 1px solid #30363d; font-family: inherit; }
+  .btn-green { background: #238636; color: #fff; border-color: #238636; }
+  .btn-green:hover { background: #2ea043; }
+  .btn-yellow { background: #9e6a03; color: #fff; border-color: #9e6a03; }
+  .btn-yellow:hover { background: #bb8009; }
+  .btn-red { background: #da3633; color: #fff; border-color: #da3633; }
+  .btn-red:hover { background: #f85149; }
+  .btn-blue { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+  .btn-blue:hover { background: #388bfd; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+
+  /* Activity list in detail */
+  .activity-item { font-size: 12px; padding: 4px 0; border-bottom: 1px solid #161b22; }
+  .activity-item .act-time { color: #8b949e; margin-right: 8px; }
+  .activity-item .act-event { color: #d29922; margin-right: 4px; }
+
+  @media (max-width: 700px) { .sidebar { width: 200px; } }
 </style>
 </head>
 <body>
@@ -66,16 +91,37 @@
   <div class="instance-list" id="instanceList"></div>
 </div>
 
-<div class="chat" id="chatArea">
-  <div class="no-selection" id="noSelection">Select an instance to start chatting</div>
+<div class="main" id="mainArea">
+  <div class="no-selection" id="noSelection">Select an instance</div>
 </div>
 
 <script>
 const token = new URLSearchParams(location.search).get("token") || "";
 let currentInstance = null;
+let currentTab = "chat";
 let instances = [];
-// messages keyed by instance name
 const messagesByInstance = {};
+
+// ── API helpers ──────────────────────────────────────────
+
+async function api(method, path, body) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`${path}${path.includes("?") ? "&" : "?"}token=${token}`, opts);
+  return res.json();
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s || "";
+  return d.innerHTML;
+}
+
+function formatUptime(s) {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
 
 // ── SSE ──────────────────────────────────────────────────
 
@@ -92,54 +138,125 @@ evtSource.addEventListener("message", (e) => {
   const msg = JSON.parse(e.data);
   if (!messagesByInstance[msg.instance]) messagesByInstance[msg.instance] = [];
   messagesByInstance[msg.instance].push(msg);
-  // Keep max 500 per instance
   if (messagesByInstance[msg.instance].length > 500) messagesByInstance[msg.instance].shift();
-  if (msg.instance === currentInstance) renderMessages();
+  if (msg.instance === currentInstance && currentTab === "chat") renderMessages();
 });
 
 evtSource.onerror = () => {
   document.getElementById("uptime").textContent = "disconnected";
 };
 
-// ── Render ───────────────────────────────────────────────
+// ── Instance list ────────────────────────────────────────
 
 function renderInstanceList() {
   const el = document.getElementById("instanceList");
   el.innerHTML = instances.map(inst => {
-    const dotClass = inst.status === "running" ? "running" : inst.status === "stopped" ? "stopped" : "idle";
     const active = inst.name === currentInstance ? " active" : "";
     const cost = inst.cost > 0 ? `$${inst.cost.toFixed(2)}` : "";
     const ctx = inst.context_pct > 0 ? `ctx:${Math.round(inst.context_pct)}%` : "";
     const meta = [cost, ctx].filter(Boolean).join(" | ");
-    return `<div class="instance-item${active}" onclick="selectInstance('${inst.name}')">
-      <div class="instance-dot ${dotClass}"></div>
+    return `<div class="instance-item${active}" data-name="${esc(inst.name)}">
+      <div class="instance-dot ${inst.status}"></div>
       <div class="instance-info">
         <div class="instance-name">${esc(inst.name)}</div>
         <div class="instance-meta">${esc(meta)}</div>
       </div>
     </div>`;
   }).join("");
+  el.querySelectorAll(".instance-item").forEach(item => {
+    item.addEventListener("click", () => selectInstance(item.dataset.name));
+  });
 }
+
+// ── Instance selection ───────────────────────────────────
 
 function selectInstance(name) {
   currentInstance = name;
   renderInstanceList();
-  const chat = document.getElementById("chatArea");
-  const inst = instances.find(i => i.name === name);
-  const model = inst?.model || "";
-  chat.innerHTML = `
-    <div class="chat-header">${esc(name)} <span class="model">${esc(model)}</span></div>
-    <div class="messages" id="messages"></div>
-    <div class="input-bar">
-      <input type="text" id="msgInput" placeholder="Send a message..." autocomplete="off">
-      <button onclick="sendMessage()" id="sendBtn">Send</button>
-    </div>`;
-  document.getElementById("msgInput").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
-  renderMessages();
-  document.getElementById("msgInput").focus();
+  renderMain();
 }
+
+function renderMain() {
+  if (!currentInstance) return;
+  const inst = instances.find(i => i.name === currentInstance);
+  const main = document.getElementById("mainArea");
+
+  main.innerHTML = `
+    <div class="tabs">
+      <div class="tab ${currentTab === "chat" ? "active" : ""}" data-tab="chat">Chat</div>
+      <div class="tab ${currentTab === "detail" ? "active" : ""}" data-tab="detail">Detail</div>
+    </div>
+    <div class="actions" id="actions"></div>
+    <div class="chat-view" id="chatView" style="display:${currentTab === "chat" ? "flex" : "none"}">
+      <div class="messages" id="messages"></div>
+      <div class="input-bar">
+        <input type="text" id="msgInput" placeholder="Send a message..." autocomplete="off">
+        <button class="btn btn-blue" onclick="sendMessage()">Send</button>
+      </div>
+    </div>
+    <div class="detail-view" id="detailView" style="display:${currentTab === "detail" ? "block" : "none"}">
+      <div style="color:#8b949e;text-align:center;padding:24px;">Loading...</div>
+    </div>`;
+
+  // Tab switching
+  main.querySelectorAll(".tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      currentTab = tab.dataset.tab;
+      renderMain();
+    });
+  });
+
+  // Actions
+  renderActions(inst);
+
+  // Content
+  if (currentTab === "chat") {
+    renderMessages();
+    const input = document.getElementById("msgInput");
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+    input.focus();
+  } else {
+    loadDetail();
+  }
+}
+
+// ── Action buttons ───────────────────────────────────────
+
+function renderActions(inst) {
+  const el = document.getElementById("actions");
+  if (!inst) return;
+  const isRunning = inst.status === "running";
+  el.innerHTML = `
+    ${isRunning
+      ? `<button class="btn btn-yellow" onclick="instanceAction('stop')">Stop</button>
+         <button class="btn btn-yellow" onclick="instanceAction('restart')">Restart</button>`
+      : `<button class="btn btn-green" onclick="instanceAction('start')">Start</button>`}
+    <button class="btn btn-red" onclick="instanceAction('delete')">Delete</button>`;
+}
+
+async function instanceAction(action) {
+  const name = currentInstance;
+  if (!name) return;
+
+  if (action === "delete") {
+    const confirmed = prompt(`Type "delete ${name}" to confirm:`);
+    if (confirmed !== `delete ${name}`) return;
+    await api("POST", `/ui/instances/${encodeURIComponent(name)}/delete`, { confirm: `delete ${name}` });
+    currentInstance = null;
+    document.getElementById("mainArea").innerHTML = '<div class="no-selection">Instance deleted</div>';
+    return;
+  }
+
+  if (action === "restart") {
+    await api("POST", `/restart/${encodeURIComponent(name)}`);
+  } else {
+    await api("POST", `/ui/${action}/${encodeURIComponent(name)}`);
+  }
+}
+
+// ── Chat ─────────────────────────────────────────────────
 
 function renderMessages() {
   const el = document.getElementById("messages");
@@ -162,36 +279,58 @@ function renderMessages() {
   el.scrollTop = el.scrollHeight;
 }
 
-// ── Send ─────────────────────────────────────────────────
-
 async function sendMessage() {
   const input = document.getElementById("msgInput");
   const text = input.value.trim();
   if (!text || !currentInstance) return;
   input.value = "";
+  await api("POST", "/ui/send", { instance: currentInstance, message: text });
+}
+
+// ── Detail ───────────────────────────────────────────────
+
+async function loadDetail() {
+  const el = document.getElementById("detailView");
+  if (!el || !currentInstance) return;
   try {
-    await fetch(`/ui/send?token=${token}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ instance: currentInstance, message: text }),
-    });
+    const data = await api("GET", `/ui/instance/${encodeURIComponent(currentInstance)}`);
+    const sl = data.statusline || {};
+    const cost = sl.cost?.total_cost_usd ?? 0;
+    const ctx = sl.context_window?.used_percentage ?? 0;
+    const model = sl.model?.display_name ?? "—";
+    const rl5h = sl.rate_limits?.five_hour?.used_percentage ?? 0;
+    const rl7d = sl.rate_limits?.seven_day?.used_percentage ?? 0;
+
+    let html = `
+      <div class="detail-section">
+        <h3>Instance</h3>
+        <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${esc(data.name)}</span></div>
+        <div class="detail-row"><span class="detail-label">Status</span><span class="detail-value">${esc(data.status)}</span></div>
+        <div class="detail-row"><span class="detail-label">Display Name</span><span class="detail-value">${esc(data.display_name || "—")}</span></div>
+        <div class="detail-row"><span class="detail-label">Description</span><span class="detail-value">${esc(data.description || "—")}</span></div>
+        <div class="detail-row"><span class="detail-label">Directory</span><span class="detail-value">${esc(data.working_directory)}</span></div>
+      </div>
+      <div class="detail-section">
+        <h3>Runtime</h3>
+        <div class="detail-row"><span class="detail-label">Model</span><span class="detail-value">${esc(model)}</span></div>
+        <div class="detail-row"><span class="detail-label">Cost</span><span class="detail-value">$${cost.toFixed(2)}</span></div>
+        <div class="detail-row"><span class="detail-label">Context</span><span class="detail-value">${Math.round(ctx)}%</span></div>
+        <div class="detail-row"><span class="detail-label">Rate Limit (5h)</span><span class="detail-value">${Math.round(rl5h)}%</span></div>
+        <div class="detail-row"><span class="detail-label">Rate Limit (7d)</span><span class="detail-value">${Math.round(rl7d)}%</span></div>
+      </div>`;
+
+    if (data.recent_activity?.length) {
+      html += `<div class="detail-section"><h3>Recent Activity (1h)</h3>`;
+      for (const a of data.recent_activity) {
+        const t = a.timestamp ? a.timestamp.slice(11, 16) : "";
+        html += `<div class="activity-item"><span class="act-time">${t}</span><span class="act-event">${esc(a.event)}</span>${esc(a.summary || "")}</div>`;
+      }
+      html += `</div>`;
+    }
+    el.innerHTML = html;
   } catch (err) {
-    console.error("Send failed:", err);
+    el.innerHTML = `<div style="color:#f85149;padding:24px;">Failed to load detail</div>`;
   }
-}
-
-// ── Helpers ──────────────────────────────────────────────
-
-function esc(s) {
-  const d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-function formatUptime(s) {
-  if (s < 60) return `${s}s`;
-  if (s < 3600) return `${Math.floor(s / 60)}m`;
-  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 </script>
 </body>
