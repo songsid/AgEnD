@@ -1099,6 +1099,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.info({ name, count }, "Cleaned up schedules for deleted instance");
       }
     }
+    // Clean up team memberships
+    if (this.fleetConfig?.teams) {
+      for (const [teamName, team] of Object.entries(this.fleetConfig.teams)) {
+        const idx = team.members.indexOf(name);
+        if (idx !== -1) {
+          team.members.splice(idx, 1);
+          this.logger.info({ team: teamName, instance: name }, "Removed deleted instance from team");
+        }
+        if (team.members.length === 0) {
+          delete this.fleetConfig.teams[teamName];
+          this.logger.info({ team: teamName }, "Deleted empty team");
+        }
+      }
+    }
+
     await this.lifecycle.remove(name);
 
     // Clean up statusline watcher + instance directory
