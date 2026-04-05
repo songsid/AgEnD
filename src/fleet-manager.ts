@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -92,6 +93,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Mirror topic: buffer cross-instance messages, flush every 3s
   private mirrorBuffer: string[] = [];
   private mirrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Web UI: SSE clients + auth token
+  private sseClients = new Set<import("node:http").ServerResponse>();
+  private webToken: string | null = null;
 
   constructor(public dataDir: string) {
     this.lifecycle = new InstanceLifecycle(this);
@@ -663,6 +668,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
+    this.emitSseEvent("message", {
+      instance: instanceName, sender: msg.username,
+      text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
+    });
   }
 
   /** Handle outbound tool calls from a daemon instance */
@@ -707,6 +716,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (tool === "reply") {
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
         this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
+        this.emitSseEvent("message", {
+          instance: instanceName, sender: instanceName,
+          text: (args.text as string ?? "").slice(0, 2000),
+          ts: new Date().toISOString(),
+        });
       }
       return;
     }
@@ -1232,6 +1246,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }).catch(e => this.logger.debug({ err: e }, "Mirror topic send failed"));
         }
       }, 3000);
+    }
+  }
+
+  /** Push an SSE event to all connected Web UI clients. */
+  emitSseEvent(event: string, data: unknown): void {
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const client of this.sseClients) {
+      client.write(payload);
     }
   }
 
@@ -1916,6 +1938,89 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
         return;
       }
 
+      // ── Web UI endpoints ─────────────────────────────────
+
+      const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      const token = url.searchParams.get("token");
+      const isUiRoute = url.pathname.startsWith("/ui");
+
+      if (isUiRoute && token !== this.webToken) {
+        res.writeHead(401);
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+
+      // Serve dashboard HTML
+      if (req.method === "GET" && url.pathname === "/ui") {
+        try {
+          const htmlPath = join(__dirname, "ui", "dashboard.html");
+          const html = readFileSync(htmlPath, "utf-8");
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.writeHead(200);
+          res.end(html);
+        } catch {
+          res.writeHead(500);
+          res.end(JSON.stringify({ error: "dashboard.html not found" }));
+        }
+        return;
+      }
+
+      // SSE event stream
+      if (req.method === "GET" && url.pathname === "/ui/events") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        // Send initial status
+        res.write(`event: status\ndata: ${JSON.stringify(this.getUiStatus())}\n\n`);
+        this.sseClients.add(res);
+        req.on("close", () => this.sseClients.delete(res));
+        // Push status updates every 10s
+        const statusInterval = setInterval(() => {
+          res.write(`event: status\ndata: ${JSON.stringify(this.getUiStatus())}\n\n`);
+        }, 10_000);
+        req.on("close", () => clearInterval(statusInterval));
+        return;
+      }
+
+      // Send message to instance
+      if (req.method === "POST" && url.pathname === "/ui/send") {
+        let body = "";
+        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+        req.on("end", () => {
+          try {
+            const { instance, message } = JSON.parse(body) as { instance: string; message: string };
+            const ipc = this.instanceIpcClients.get(instance);
+            if (!ipc) {
+              res.writeHead(404);
+              res.end(JSON.stringify({ error: `Instance not found: ${instance}` }));
+              return;
+            }
+            const ts = new Date().toISOString();
+            ipc.send({
+              type: "fleet_inbound",
+              content: message,
+              targetSession: instance,
+              meta: {
+                chat_id: "web", message_id: `web-${Date.now()}`,
+                user: "web-user", user_id: "web-user",
+                ts, thread_id: "",
+              },
+            });
+            this.lastInboundUser.set(instance, "web-user");
+            this.eventLog?.logActivity("message", "web-user", message.slice(0, 200), instance);
+            this.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });
+            res.writeHead(200);
+            res.end(JSON.stringify({ sent: true }));
+          } catch {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "Invalid JSON" }));
+          }
+        });
+        return;
+      }
+
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));
     });
@@ -1923,6 +2028,32 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.healthServer.listen(port, "127.0.0.1", () => {
       this.logger.info({ port }, "Health endpoint listening");
     });
+
+    // Generate and save web token
+    this.webToken = randomBytes(24).toString("hex");
+    const tokenPath = join(this.dataDir, "web.token");
+    writeFileSync(tokenPath, this.webToken);
+    this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
+  }
+
+  private getUiStatus(): unknown {
+    const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
+      const statusFile = join(this.getInstanceDir(name), "statusline.json");
+      let context_pct = 0;
+      let cost = 0;
+      let model = "";
+      try {
+        const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+        context_pct = data.context_window?.used_percentage ?? 0;
+        cost = data.cost?.total_cost_usd ?? 0;
+        model = data.model?.display_name ?? "";
+      } catch { /* not yet available */ }
+      return { name, status: this.getInstanceStatus(name), context_pct, cost, model };
+    });
+    return {
+      instances,
+      uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+    };
   }
 }
 
