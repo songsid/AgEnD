@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>AgEnD Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 260px; border-right: 1px solid #21262d; display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-header { padding: 16px; border-bottom: 1px solid #21262d; font-size: 16px; font-weight: 600; color: #58a6ff; }
+  .sidebar-header .uptime { font-size: 11px; color: #8b949e; font-weight: 400; margin-top: 4px; }
+  .instance-list { flex: 1; overflow-y: auto; }
+  .instance-item { padding: 10px 16px; cursor: pointer; border-bottom: 1px solid #161b22; display: flex; align-items: center; gap: 10px; }
+  .instance-item:hover { background: #161b22; }
+  .instance-item.active { background: #1f6feb22; border-left: 3px solid #1f6feb; }
+  .instance-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .instance-dot.running { background: #3fb950; }
+  .instance-dot.stopped { background: #f85149; }
+  .instance-dot.idle { background: #d29922; }
+  .instance-info { flex: 1; min-width: 0; }
+  .instance-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .instance-meta { font-size: 11px; color: #8b949e; }
+
+  /* Chat area */
+  .chat { flex: 1; display: flex; flex-direction: column; }
+  .chat-header { padding: 12px 16px; border-bottom: 1px solid #21262d; font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .chat-header .model { font-size: 11px; color: #8b949e; font-weight: 400; }
+  .messages { flex: 1; overflow-y: auto; padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .msg { max-width: 85%; padding: 8px 12px; border-radius: 8px; font-size: 13px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .msg.inbound { background: #1f6feb33; align-self: flex-end; border-bottom-right-radius: 2px; }
+  .msg.outbound { background: #161b22; align-self: flex-start; border-bottom-left-radius: 2px; border-left: 3px solid #3fb950; }
+  .msg .sender { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+  .msg .sender.user { color: #58a6ff; }
+  .msg .sender.agent { color: #3fb950; }
+  .msg .time { font-size: 10px; color: #8b949e; float: right; margin-left: 12px; margin-top: 2px; }
+  .msg-empty { color: #8b949e; text-align: center; margin-top: 40px; font-size: 13px; }
+
+  /* Input */
+  .input-bar { padding: 12px 16px; border-top: 1px solid #21262d; display: flex; gap: 8px; }
+  .input-bar input { flex: 1; background: #161b22; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; font-size: 13px; font-family: inherit; outline: none; }
+  .input-bar input:focus { border-color: #58a6ff; }
+  .input-bar button { background: #1f6feb; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; cursor: pointer; }
+  .input-bar button:hover { background: #388bfd; }
+  .input-bar button:disabled { opacity: 0.5; cursor: default; }
+
+  /* No instance selected */
+  .no-selection { flex: 1; display: flex; align-items: center; justify-content: center; color: #8b949e; font-size: 14px; }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .sidebar { width: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="sidebar-header">
+    AgEnD
+    <div class="uptime" id="uptime">--</div>
+  </div>
+  <div class="instance-list" id="instanceList"></div>
+</div>
+
+<div class="chat" id="chatArea">
+  <div class="no-selection" id="noSelection">Select an instance to start chatting</div>
+</div>
+
+<script>
+const token = new URLSearchParams(location.search).get("token") || "";
+let currentInstance = null;
+let instances = [];
+// messages keyed by instance name
+const messagesByInstance = {};
+
+// ── SSE ──────────────────────────────────────────────────
+
+const evtSource = new EventSource(`/ui/events?token=${token}`);
+
+evtSource.addEventListener("status", (e) => {
+  const data = JSON.parse(e.data);
+  instances = data.instances;
+  document.getElementById("uptime").textContent = `uptime: ${formatUptime(data.uptime)}`;
+  renderInstanceList();
+});
+
+evtSource.addEventListener("message", (e) => {
+  const msg = JSON.parse(e.data);
+  if (!messagesByInstance[msg.instance]) messagesByInstance[msg.instance] = [];
+  messagesByInstance[msg.instance].push(msg);
+  // Keep max 500 per instance
+  if (messagesByInstance[msg.instance].length > 500) messagesByInstance[msg.instance].shift();
+  if (msg.instance === currentInstance) renderMessages();
+});
+
+evtSource.onerror = () => {
+  document.getElementById("uptime").textContent = "disconnected";
+};
+
+// ── Render ───────────────────────────────────────────────
+
+function renderInstanceList() {
+  const el = document.getElementById("instanceList");
+  el.innerHTML = instances.map(inst => {
+    const dotClass = inst.status === "running" ? "running" : inst.status === "stopped" ? "stopped" : "idle";
+    const active = inst.name === currentInstance ? " active" : "";
+    const cost = inst.cost > 0 ? `$${inst.cost.toFixed(2)}` : "";
+    const ctx = inst.context_pct > 0 ? `ctx:${Math.round(inst.context_pct)}%` : "";
+    const meta = [cost, ctx].filter(Boolean).join(" | ");
+    return `<div class="instance-item${active}" onclick="selectInstance('${inst.name}')">
+      <div class="instance-dot ${dotClass}"></div>
+      <div class="instance-info">
+        <div class="instance-name">${esc(inst.name)}</div>
+        <div class="instance-meta">${esc(meta)}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function selectInstance(name) {
+  currentInstance = name;
+  renderInstanceList();
+  const chat = document.getElementById("chatArea");
+  const inst = instances.find(i => i.name === name);
+  const model = inst?.model || "";
+  chat.innerHTML = `
+    <div class="chat-header">${esc(name)} <span class="model">${esc(model)}</span></div>
+    <div class="messages" id="messages"></div>
+    <div class="input-bar">
+      <input type="text" id="msgInput" placeholder="Send a message..." autocomplete="off">
+      <button onclick="sendMessage()" id="sendBtn">Send</button>
+    </div>`;
+  document.getElementById("msgInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  });
+  renderMessages();
+  document.getElementById("msgInput").focus();
+}
+
+function renderMessages() {
+  const el = document.getElementById("messages");
+  if (!el) return;
+  const msgs = messagesByInstance[currentInstance] || [];
+  if (msgs.length === 0) {
+    el.innerHTML = '<div class="msg-empty">No messages yet</div>';
+    return;
+  }
+  el.innerHTML = msgs.map(m => {
+    const isUser = m.sender === "web-user" || (!m.sender.startsWith("agend") && m.sender !== currentInstance && m.sender !== "general");
+    const cls = isUser ? "inbound" : "outbound";
+    const senderCls = isUser ? "user" : "agent";
+    const time = m.ts ? new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    return `<div class="msg ${cls}">
+      <div class="sender ${senderCls}">${esc(m.sender)}<span class="time">${time}</span></div>
+      ${esc(m.text)}
+    </div>`;
+  }).join("");
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Send ─────────────────────────────────────────────────
+
+async function sendMessage() {
+  const input = document.getElementById("msgInput");
+  const text = input.value.trim();
+  if (!text || !currentInstance) return;
+  input.value = "";
+  try {
+    await fetch(`/ui/send?token=${token}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instance: currentInstance, message: text }),
+    });
+  } catch (err) {
+    console.error("Send failed:", err);
+  }
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function formatUptime(s) {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
+}
+</script>
+</body>
+</html>
