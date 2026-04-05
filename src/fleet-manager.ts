@@ -1928,6 +1928,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
             const topicMode = this.fleetConfig?.channel?.mode === "topic";
             await this.startInstance(name, config, topicMode ?? false);
             this.logger.info({ name }, "Instance restarted");
+            this.emitSseEvent("status", this.getUiStatus());
             res.writeHead(200);
             res.end(JSON.stringify({ restarted: name }));
           } catch (err) {

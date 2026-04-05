@@ -249,14 +249,22 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return;
       }
       const ts = new Date().toISOString();
+      // Use real Telegram context so daemon's lastChatId/lastThreadId are set,
+      // enabling reply tool even when first message comes from Web UI.
+      // Pure Web UI mode (no channel config) leaves these empty — TODO: needs
+      // a separate reply path for that case.
+      const groupId = ctx.fleetConfig?.channel?.group_id;
+      const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
       ipc.send({
         type: "fleet_inbound",
         content: message,
         targetSession: instance,
         meta: {
-          chat_id: "", message_id: `web-${Date.now()}`,
+          chat_id: groupId ? String(groupId) : "",
+          message_id: `web-${Date.now()}`,
           user: "web-user", user_id: "web-user",
-          ts, thread_id: "",
+          ts,
+          thread_id: topicId != null ? String(topicId) : "",
           source: "web",
         },
       });
