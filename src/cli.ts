@@ -1182,7 +1182,7 @@ program
     const resolveTime = (t?: string) => {
       if (!t) return undefined;
       if (/^\d{2}:\d{2}$/.test(t)) {
-        return new Date().toISOString().slice(0, 11) + t + ":00";
+        return new Date().toISOString().slice(0, 10) + " " + t + ":00";
       }
       return t;
     };
