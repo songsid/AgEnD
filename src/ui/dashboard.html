@@ -132,6 +132,12 @@ evtSource.addEventListener("status", (e) => {
   instances = data.instances;
   document.getElementById("uptime").textContent = `uptime: ${formatUptime(data.uptime)}`;
   renderInstanceList();
+  // Refresh action buttons if current instance status changed
+  if (currentInstance) {
+    const inst = instances.find(i => i.name === currentInstance);
+    const actionsEl = document.getElementById("actions");
+    if (inst && actionsEl) renderActions(inst);
+  }
 });
 
 evtSource.addEventListener("message", (e) => {
