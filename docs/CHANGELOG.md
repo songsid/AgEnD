@@ -17,6 +17,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Minimal `claude-settings.json` — only CCD MCP tools in allow list, no longer overrides user's global permission settings
 
+## [1.11.0] - 2026-04-05
+
+### Added
+- **Kiro CLI backend** — new backend for AWS Kiro CLI (`backend: kiro-cli`). Session resume, MCP config, error patterns, models: auto, claude-sonnet-4.5, claude-haiku-4.5, deepseek-3.2, and more
+- **Built-in workflow template** — fleet collaboration workflow auto-injected via MCP instructions. Configurable via `workflow` field in fleet.yaml (`"builtin"`, `"file:path"`, or `false`)
+- **Workflow split: coordinator vs executor** — General instance gets full coordinator playbook (Choosing Collaborators, Task Sizing, Delegation Principles, Goal & Decision Management). Other instances get slimmed executor workflow (Communication Rules, Progress Tracking, Context Protection)
+- **`create_instance` systemPrompt parameter** — agents can pass custom system prompts when creating instances (inline text only)
+- **Fleet ready Telegram notifications** — `startAll` and `restartInstances` send "Fleet ready. N/M instances running." to General topic with failed instance reporting
+- **E2E test framework** — 79+ tests running exclusively in Tart VMs. Mock backend with `pty_output` directive for error simulation. T15 workflow template tests, T16 failover cooldown tests
+- **Token overhead measurement** — test script (`scripts/measure-token-overhead.sh`) and report. Full profile: +887 tokens (0.44% of 200K context, $0.003/msg)
+- **Codex usage limit detection** — "You've hit your usage limit" error pattern (action: pause)
+- **MockBackend error patterns** — `MOCK_RATE_LIMIT` and `MOCK_AUTH_ERROR` for E2E testing
+
+### Fixed
+- **Crash recovery snapshot restore** — write snapshot on crash detection (not just context rotation); replace single-consume file deletion with in-memory `snapshotConsumed` flag so file persists for daemon restart recovery (#11 related)
+- **Codex session resume** — `CodexBackend.buildCommand()` now uses `codex resume <session-id>` when session-id file exists (#11)
+- **Rate limit failover loop** — 5-minute cooldown on failover-type PTY errors prevents repeated triggering when error text persists in terminal buffer (#10)
+- **PTY error monitor hash dedup** — record pane hash at recovery time; suppress same error on same screen to prevent stale re-detection loops
+- **CLI restart wait** — replace fixed 1s delay between bootout/bootstrap with dynamic polling (up to 30s) for process exit. Fixes "Bootstrap failed: Input/output error" with many instances
+- **CLI attach interactive selection** — fuzzy match ambiguity now shows numbered menu instead of error
+- **CLI logs ANSI cleanup** — enhanced `stripAnsi()` handles cursor movement, DEC private modes, carriage returns, and remaining control characters
+- **`reply_to_text` in agent messages** — user reply-to context now included in formatted messages pasted to agent
+- **General instructions per-backend** — auto-create writes correct file based on `fleet.defaults.backend` (CLAUDE.md, AGENTS.md, GEMINI.md, .kiro/steering/project.md)
+- **General instructions on every start** — `ensureGeneralInstructions()` called on every `startInstance` for general_topic instances, not just auto-create
+- **Builtin text English-only** — all system-generated text translated from Chinese to English (schedule notifications, voice message labels, general instructions)
+- **General delegation principles** — rewritten for coordinator role: delegate proactively with specific conditions instead of "do it yourself"
+
+### Changed
+- Fleet start/restart notifications unified to "Fleet ready. N/M instances running." format, sent to General topic
+- `buildDecisionsPrompt()` dead code removed (intentionally disconnected in v1.9.0)
+- `getActiveDecisionsForProject()` removed from fleet-manager (dead code)
+
+### Documented
+- OpenCode MCP instructions limitation (v1.3.10 doesn't read MCP instructions field)
+- Kiro CLI MCP instructions limitation (unverified)
+- Token overhead report (EN + zh-TW) with reproducible test script
+
+## [1.10.0] - 2026-04-05
+
+_Intermediate release, changes included in 1.11.0 above._
+
 ## [1.9.1] - 2026-04-03
 
 ### Fixed
