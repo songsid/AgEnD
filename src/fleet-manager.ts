@@ -37,6 +37,7 @@ import { InstanceLifecycle, type LifecycleContext } from "./instance-lifecycle.j
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
+import { handleWebRequest } from "./web-api.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -1938,99 +1939,10 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
         return;
       }
 
-      // ── Web UI endpoints ─────────────────────────────────
+      // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
-      const token = url.searchParams.get("token");
-      const isUiRoute = url.pathname.startsWith("/ui");
-
-      if (isUiRoute && token !== this.webToken) {
-        res.writeHead(401);
-        res.end(JSON.stringify({ error: "Unauthorized" }));
-        return;
-      }
-
-      // Serve dashboard HTML
-      if (req.method === "GET" && url.pathname === "/ui") {
-        try {
-          const htmlPath = join(__dirname, "ui", "dashboard.html");
-          const html = readFileSync(htmlPath, "utf-8");
-          res.setHeader("Content-Type", "text/html; charset=utf-8");
-          res.writeHead(200);
-          res.end(html);
-        } catch {
-          res.writeHead(500);
-          res.end(JSON.stringify({ error: "dashboard.html not found" }));
-        }
-        return;
-      }
-
-      // SSE event stream
-      if (req.method === "GET" && url.pathname === "/ui/events") {
-        res.writeHead(200, {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        });
-        // Send initial status
-        res.write(`event: status\ndata: ${JSON.stringify(this.getUiStatus())}\n\n`);
-        this.sseClients.add(res);
-        req.on("close", () => this.sseClients.delete(res));
-        // Push status updates every 10s
-        const statusInterval = setInterval(() => {
-          res.write(`event: status\ndata: ${JSON.stringify(this.getUiStatus())}\n\n`);
-        }, 10_000);
-        req.on("close", () => clearInterval(statusInterval));
-        return;
-      }
-
-      // Send message to instance
-      if (req.method === "POST" && url.pathname === "/ui/send") {
-        let body = "";
-        req.on("data", (chunk: Buffer) => { body += chunk.toString(); });
-        req.on("end", () => {
-          try {
-            const { instance, message } = JSON.parse(body) as { instance: string; message: string };
-            const ipc = this.instanceIpcClients.get(instance);
-            if (!ipc) {
-              res.writeHead(404);
-              res.end(JSON.stringify({ error: `Instance not found: ${instance}` }));
-              return;
-            }
-            const ts = new Date().toISOString();
-            ipc.send({
-              type: "fleet_inbound",
-              content: message,
-              targetSession: instance,
-              meta: {
-                chat_id: "", message_id: `web-${Date.now()}`,
-                user: "web-user", user_id: "web-user",
-                ts, thread_id: "",
-                source: "web",
-              },
-            });
-            this.lastInboundUser.set(instance, "web-user");
-            this.eventLog?.logActivity("message", "web-user", message.slice(0, 200), instance);
-            this.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });
-            // Sync web message to Telegram topic
-            if (this.adapter && this.fleetConfig?.channel?.group_id) {
-              const topicId = this.fleetConfig.instances[instance]?.topic_id;
-              const preview = message.length > 500 ? message.slice(0, 500) + " [...]" : message;
-              this.adapter.sendText(
-                String(this.fleetConfig.channel.group_id),
-                `🌐 web-user: ${preview}`,
-                { threadId: topicId != null ? String(topicId) : undefined },
-              ).catch(e => this.logger.debug({ err: e }, "Web→Telegram sync failed"));
-            }
-            res.writeHead(200);
-            res.end(JSON.stringify({ sent: true }));
-          } catch {
-            res.writeHead(400);
-            res.end(JSON.stringify({ error: "Invalid JSON" }));
-          }
-        });
-        return;
-      }
+      if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
 
       res.writeHead(404);
       res.end(JSON.stringify({ error: "not found" }));
@@ -2047,7 +1959,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
   }
 
-  private getUiStatus(): unknown {
+  getUiStatus(): unknown {
     const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
       let context_pct = 0;
