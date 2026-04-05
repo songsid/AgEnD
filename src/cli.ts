@@ -1011,6 +1011,26 @@ program
     await runSetupWizard();
   });
 
+program
+  .command("web")
+  .description("Open the Web UI dashboard in your browser")
+  .action(async () => {
+    const tokenPath = join(DATA_DIR, "web.token");
+    if (!existsSync(tokenPath)) {
+      console.error("Web token not found. Is the fleet running?");
+      process.exit(1);
+    }
+    const token = readFileSync(tokenPath, "utf-8").trim();
+    const { loadFleetConfig } = await import("./config.js");
+    const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
+    const port = fleet.health_port ?? 19280;
+    const url = `http://localhost:${port}/ui?token=${token}`;
+    console.log(`Opening ${url}`);
+    const { exec: execCb } = await import("node:child_process");
+    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    execCb(`${cmd} "${url}"`);
+  });
+
 // === Schedule commands ===
 const schedule = program.command("schedule").description("Manage scheduled tasks");
 
