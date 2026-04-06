@@ -1,5 +1,5 @@
 {
-  "name": "agend-plugin-discord",
+  "name": "@suzuke/agend-plugin-discord",
   "version": "1.0.0",
   "description": "Discord channel adapter plugin for AgEnD",
   "type": "module",
