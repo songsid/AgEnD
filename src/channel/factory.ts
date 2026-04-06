@@ -1,6 +1,9 @@
 import type { ChannelAdapter } from "./types.js";
 import type { ChannelConfig } from "../types.js";
 import type { AccessManager } from "./access-manager.js";
+import { execSync } from "node:child_process";
+import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 
 export interface AdapterOpts {
   id: string;
@@ -11,6 +14,32 @@ export interface AdapterOpts {
 
 /** Factory function that external adapter packages must default-export. */
 export type AdapterFactory = (config: ChannelConfig, opts: AdapterOpts) => ChannelAdapter;
+
+/** Resolve the entry point for a global npm package. */
+function resolveGlobalPackage(pkg: string): string | null {
+  try {
+    const globalRoot = execSync("npm root -g", { stdio: "pipe" }).toString().trim();
+    const pkgDir = join(globalRoot, pkg);
+    if (!existsSync(pkgDir)) return null;
+    // Read main from package.json, fallback to dist/index.js
+    try {
+      const pkgJson = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf-8"));
+      return join(pkgDir, pkgJson.main ?? "dist/index.js");
+    } catch {
+      return join(pkgDir, "dist/index.js");
+    }
+  } catch { return null; }
+}
+
+/** Try to import a plugin by name — local node_modules first, then global. */
+async function tryImportPlugin(pkg: string): Promise<{ default: unknown } | null> {
+  try { return await import(pkg); } catch { /* not in local node_modules */ }
+  const globalPath = resolveGlobalPackage(pkg);
+  if (globalPath) {
+    try { return await import(globalPath); } catch { /* global import failed */ }
+  }
+  return null;
+}
 
 export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): Promise<ChannelAdapter> {
   // Built-in adapters
@@ -28,19 +57,18 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
   ];
 
   for (const pkg of candidates) {
-    try {
-      const mod = await import(pkg);
-      const factory = mod.default;
-      // Support both: factory function and object with createAdapter method
-      if (typeof factory === "function") return factory(config, opts);
-      if (factory?.createAdapter) return factory.createAdapter(config, opts);
-    } catch {
-      continue;
+    const mod = await tryImportPlugin(pkg);
+    if (!mod) continue;
+    const factory = mod.default;
+    // Support both: factory function and object with createAdapter method
+    if (typeof factory === "function") return factory(config, opts) as ChannelAdapter;
+    if (factory && typeof (factory as Record<string, unknown>).createAdapter === "function") {
+      return (factory as { createAdapter: AdapterFactory }).createAdapter(config, opts);
     }
   }
 
   throw new Error(
     `Channel adapter "${config.type}" not found. ` +
-    `Install the plugin: npm install agend-plugin-${config.type}`
+    `Install the plugin: npm install -g @suzuke/agend-plugin-${config.type}`
   );
 }
