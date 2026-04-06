@@ -313,19 +313,26 @@ async function taskAct(id, action) {
 function showCreateInstance() {
   const ov = document.createElement("div"); ov.className = "form-overlay";
   ov.innerHTML = `<div class="form-card"><h2>Create Instance</h2>
-    <div class="form-field"><label>Directory *</label><input id="ci-dir" placeholder="/path/to/project"></div>
-    <div class="form-field"><label>Topic Name</label><input id="ci-topic" placeholder="Auto from directory name"></div>
+    <div class="form-field"><label>Directory</label><input id="ci-dir" placeholder="Optional — auto-creates workspace if empty"></div>
+    <div class="form-field"><label id="ci-topic-label">Topic Name</label><input id="ci-topic" placeholder="Auto from directory name"></div>
     <div class="form-field"><label>Description</label><input id="ci-desc" placeholder="What this instance does"></div>
     <div class="form-field"><label>Branch (git worktree)</label><input id="ci-branch" placeholder="e.g. feature-x"></div>
     <div class="form-actions"><button class="btn btn-ghost" onclick="this.closest('.form-overlay').remove()">Cancel</button>
     <button class="btn btn-accent" id="ci-go">Create</button></div></div>`;
   document.body.appendChild(ov);
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
+  // Dynamic required: topic_name required when directory is empty
+  ov.querySelector("#ci-dir").addEventListener("input", () => {
+    const hasDir = ov.querySelector("#ci-dir").value.trim();
+    ov.querySelector("#ci-topic-label").textContent = hasDir ? "Topic Name" : "Topic Name *";
+  });
   ov.querySelector("#ci-go").addEventListener("click", async () => {
     const dir = document.getElementById("ci-dir").value.trim();
-    if (!dir) { toast("Directory required", false); return; }
+    const topic = document.getElementById("ci-topic").value.trim();
+    if (!dir && !topic) { toast("Topic Name is required when Directory is empty", false); return; }
     const btn = ov.querySelector("#ci-go"); btn.disabled = true; btn.textContent = "Creating...";
-    const body = { directory: dir };
+    const body = {};
+    if (dir) body.directory = dir;
     const v = id => document.getElementById(id).value.trim();
     if (v("ci-topic")) body.topic_name = v("ci-topic");
     if (v("ci-desc")) body.description = v("ci-desc");
