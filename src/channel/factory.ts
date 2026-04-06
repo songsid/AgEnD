@@ -21,9 +21,10 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
 
   // Plugin adapters — try multiple package name conventions
   const candidates = [
-    `agend-plugin-${config.type}`,   // new convention: agend-plugin-discord
-    `agend-adapter-${config.type}`,  // legacy convention: agend-adapter-discord
-    config.type,                      // bare name: discord (if someone names their package that)
+    `@suzuke/agend-plugin-${config.type}`, // scoped official plugin
+    `agend-plugin-${config.type}`,          // community plugin
+    `agend-adapter-${config.type}`,         // legacy convention
+    config.type,                             // bare name
   ];
 
   for (const pkg of candidates) {
