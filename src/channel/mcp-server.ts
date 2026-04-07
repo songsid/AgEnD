@@ -171,7 +171,9 @@ function ipcRequest(
 // so we never need to touch the CLI's own system prompt.
 // ---------------------------------------------------------------------------
 
-function buildMcpInstructions(): string {
+interface Decision { title: string; content: string; }
+
+function buildMcpInstructions(decisions?: Decision[]): string {
   const name = process.env.AGEND_INSTANCE_NAME ?? "unknown";
   const workDir = process.env.AGEND_WORKING_DIR ?? process.cwd();
   const displayName = process.env.AGEND_DISPLAY_NAME;
@@ -233,6 +235,17 @@ function buildMcpInstructions(): string {
     }
   }
 
+  // ── Active decisions ──
+  if (decisions?.length) {
+    const capped = decisions.slice(0, 15);
+    const lines = capped.map(d => {
+      const firstLine = (d.content ?? "").split(/[.\n]/)[0].trim().slice(0, 120);
+      return `- **${d.title}**: ${firstLine}`;
+    });
+    if (decisions.length > 15) lines.push(`_(${decisions.length - 15} more — use list_decisions to see all)_`);
+    sections.push(`## Active Decisions\n\n${lines.join("\n")}`);
+  }
+
   // ── Custom user prompt ──
   if (customPrompt) {
     sections.push(customPrompt);
@@ -241,15 +254,8 @@ function buildMcpInstructions(): string {
   return sections.join("\n\n");
 }
 
-const mcp = new Server(
-  { name: "agend", version: "0.3.0" },
-  {
-    capabilities: {
-      tools: {},
-    },
-    instructions: buildMcpInstructions(),
-  },
-);
+// Server instance — created in main() after IPC connects and decisions are fetched
+let mcp: Server;
 
 // --- Tool definitions (see mcp-tools.ts) ---
 
@@ -267,26 +273,7 @@ if (!toolSet || toolSet === "full") {
   activeTools = TOOLS;
 }
 
-mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools }));
-
-// --- Tool call handler ---
-
-mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const args = (req.params.arguments ?? {}) as Record<string, unknown>;
-
-  try {
-    const result = await ipcRequest(req.params.name, args);
-    const text =
-      typeof result === "string" ? result : JSON.stringify(result ?? "ok");
-    return { content: [{ type: "text", text }] };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return {
-      content: [{ type: "text", text: `Error: ${message}` }],
-      isError: true,
-    };
-  }
-});
+// Tool handlers registered in main() after mcp creation
 
 // ---------------------------------------------------------------------------
 // Main
@@ -299,6 +286,41 @@ async function main(): Promise<void> {
   }
   // Connect to daemon IPC first (will auto-reconnect on disconnect)
   await connectIpc();
+
+  // Fetch active decisions to inject into instructions (graceful degradation)
+  let decisions: Decision[] | undefined;
+  try {
+    const result = await ipcRequest("list_decisions", {}) as Decision[] | undefined;
+    if (Array.isArray(result) && result.length > 0) {
+      decisions = result;
+      process.stderr.write(`agend: injecting ${result.length} active decisions into instructions\n`);
+    }
+  } catch {
+    // IPC error — proceed without decisions
+  }
+
+  // Create MCP server with enriched instructions
+  mcp = new Server(
+    { name: "agend", version: "0.3.0" },
+    {
+      capabilities: { tools: {} },
+      instructions: buildMcpInstructions(decisions),
+    },
+  );
+
+  // Register tool handlers (must be after mcp creation)
+  mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools }));
+  mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
+    const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+    try {
+      const result = await ipcRequest(req.params.name, args);
+      const text = typeof result === "string" ? result : JSON.stringify(result ?? "ok");
+      return { content: [{ type: "text", text }] };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { content: [{ type: "text", text: `Error: ${message}` }], isError: true };
+    }
+  });
 
   // Start MCP stdio transport (Claude <-> this process)
   const transport = new StdioServerTransport();
