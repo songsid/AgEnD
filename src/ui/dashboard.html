@@ -359,7 +359,7 @@ function renderInstanceMain(main) {
     <div class="detail-view" id="detailView" style="display:${curTab==="detail"?"block":"none"}"><div style="color:var(--text-muted);text-align:center;padding:24px">Loading...</div></div>`;
   main.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => { curTab = t.dataset.t; renderMain(); }));
   const i = instances.find(x => x.name === cur); renderActions(i);
-  if (curTab === "chat") { renderMsgs(); const inp = document.getElementById("msgIn"); inp.addEventListener("keydown", e => { if (e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();} }); inp.focus(); }
+  if (curTab === "chat") { renderMsgs(); const inp = document.getElementById("msgIn"); inp.addEventListener("keydown", e => { if (e.key==="Enter"&&!e.shiftKey&&!e.isComposing){e.preventDefault();sendMsg();} }); inp.focus(); }
   else if (curTab === "detail") loadDetail();
 }
 
