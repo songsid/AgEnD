@@ -69,6 +69,8 @@ export class Daemon extends EventEmitter {
   private errorDetectedAt = 0; // timestamp when error was first detected
   private lastFailoverAt = 0; // cooldown: prevent repeated failover triggers
   private static FAILOVER_COOLDOWN_MS = 5 * 60_000; // 5 minutes
+  private lastErrorNotifiedAt = new Map<string, number>(); // per-type cooldown for all actions
+  private static ERROR_COOLDOWN_MS = 5 * 60_000;
 
   /** Cheap hash for pane content dedup — not cryptographic, just identity check */
   private static cheapPaneHash(pane: string): string {
@@ -470,7 +472,12 @@ export class Daemon extends EventEmitter {
             this.lastRecoveredErrorType = null;
           }
 
-          // Cooldown: skip failover-type errors if recently triggered
+          // Cooldown: skip if same error type was recently notified
+          const lastNotified = this.lastErrorNotifiedAt.get(ep.type) ?? 0;
+          if (Date.now() - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
+            this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
+            break;
+          }
           if (ep.action === "failover" && Date.now() - this.lastFailoverAt < Daemon.FAILOVER_COOLDOWN_MS) {
             this.logger.debug({ errorType: ep.type }, "PTY error suppressed (failover cooldown active)");
             break;
@@ -479,6 +486,7 @@ export class Daemon extends EventEmitter {
           this.errorWaitingForRecovery = true;
           this.errorDetectedAt = Date.now();
           this.lastDetectedErrorType = ep.type;
+          this.lastErrorNotifiedAt.set(ep.type, Date.now());
           if (ep.action === "failover") this.lastFailoverAt = Date.now();
           this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
           this.emit("pty_error", { name: this.name, ...ep });
