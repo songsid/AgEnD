@@ -76,7 +76,7 @@ export class GeminiCliBackend implements CliBackend {
     return [
       { pattern: /RESOURCE_EXHAUSTED|quota exceeded/i, type: "rate_limit", action: "notify", message: "Gemini quota exhausted" },
       { pattern: /PERMISSION_DENIED|API key not valid/i, type: "auth_error", action: "pause", message: "Gemini authentication error" },
-      { pattern: /UNAVAILABLE|503/i, type: "network", action: "notify", message: "Gemini service unavailable" },
+      { pattern: /(?:google|googleapis|grpc).*UNAVAILABLE|503 Service/i, type: "network", action: "notify", message: "Gemini service unavailable" },
     ];
   }
 
