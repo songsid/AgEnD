@@ -63,14 +63,20 @@ describe("KiroBackend", () => {
   });
 
   describe("writeConfig", () => {
-    it("writes mcp.json to .kiro/settings/ in working directory", () => {
+    it("writes mcp.json with wrapper script to .kiro/settings/ in working directory", () => {
       const backend = new KiroBackend(TEST_DIR);
       backend.writeConfig(makeConfig());
       const mcpConfigPath = join(WORK_DIR, ".kiro", "settings", "mcp.json");
       expect(existsSync(mcpConfigPath)).toBe(true);
       const config = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
       expect(config.mcpServers["agend-test-kiro"]).toBeDefined();
-      expect(config.mcpServers["agend-test-kiro"].command).toBe("node");
+      // kiro-cli ignores env block in mcp.json, so we use a wrapper script
+      const wrapperPath = config.mcpServers["agend-test-kiro"].command;
+      expect(wrapperPath).toContain("mcp-wrapper-agend.sh");
+      expect(existsSync(wrapperPath)).toBe(true);
+      const wrapperContent = readFileSync(wrapperPath, "utf-8");
+      expect(wrapperContent).toContain("AGEND_SOCKET_PATH");
+      expect(wrapperContent).toContain("exec node");
     });
 
     it("uses instance-namespaced key to avoid conflicts", () => {
