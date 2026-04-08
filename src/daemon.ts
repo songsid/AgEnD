@@ -357,10 +357,20 @@ export class Daemon extends EventEmitter {
           return;
         }
 
-        const alive = await this.tmux.isWindowAlive();
-        if (alive) {
+        const paneStatus = await this.tmux.getPaneStatus();
+        if (paneStatus?.alive) {
           scheduleNext();
           return;
+        }
+
+        // paneStatus === null → window gone entirely (e.g. tmux server crash)
+        // paneStatus.alive === false → pane dead, exit code available
+        const exitCode = paneStatus?.exitCode;
+        this.logger.warn({ exitCode }, "Claude process exited");
+
+        // Kill the dead window (remain-on-exit keeps it around) before respawn
+        if (paneStatus) {
+          await this.tmux.killWindow();
         }
 
         // Detect rapid crash: window died within 60s of spawn
@@ -1054,6 +1064,11 @@ export class Daemon extends EventEmitter {
     const windowId = await this.tmux!.createWindow(cmd, this.config.working_directory, this.name);
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
+    // Enable remain-on-exit to capture exit codes on crash
+    await this.tmux!.setRemainOnExit().catch(err => {
+      this.logger.warn({ err }, "Failed to set remain-on-exit — exit codes will not be captured");
+    });
+
     // Register with control client and wait for output + idle
     await this.controlClient?.registerWindow(windowId);
     if (this.controlClient) {
@@ -1064,7 +1079,9 @@ export class Daemon extends EventEmitter {
       await new Promise(r => setTimeout(r, 10_000));
     }
 
-    // Dismiss confirmation dialogs and verify CLI reached prompt
+    // Dismiss confirmation dialogs and verify CLI reached prompt.
+    // With remain-on-exit, isWindowAlive() returns true even for dead panes,
+    // but a startup crash would already be caught by waitForOutput/waitForIdle above.
     if (!await this.tmux!.isWindowAlive()) return false;
     return this.dismissDialogsUntilReady(3);
   }
