@@ -184,5 +184,14 @@ export class TmuxManager {
     return stdout;
   }
 
+  /** Capture pane content including scrollback history (last N lines). */
+  async capturePaneWithHistory(lines: number = 50): Promise<string> {
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
+      "-p", "-S", `-${lines}`,
+    ]));
+    return stdout;
+  }
+
   getWindowId(): string { return this.windowId; }
 }
