@@ -1,5 +1,5 @@
 import { join, dirname, basename } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { EventEmitter } from "node:events";
@@ -366,12 +366,40 @@ export class Daemon extends EventEmitter {
         // paneStatus === null → window gone entirely (e.g. tmux server crash)
         // paneStatus.alive === false → pane dead, exit code available
         const exitCode = paneStatus?.exitCode;
-        this.logger.warn({ exitCode }, "Claude process exited");
+
+        // Distinguish tmux server crash from single window crash
+        let crashType: "server" | "window" = "window";
+        if (!paneStatus) {
+          const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+          if (!serverAlive) {
+            crashType = "server";
+            this.logger.error("tmux server died — all windows lost");
+            await new Promise(r => setTimeout(r, 2_000)); // let session stabilize
+          } else {
+            this.logger.warn({ exitCode }, "Claude window died (tmux server alive)");
+          }
+        } else {
+          this.logger.warn({ exitCode }, "Claude process exited");
+        }
+
+        // Capture last output from dead pane before killing
+        let lastOutput: string | undefined;
+        if (paneStatus) {
+          try {
+            const raw = await this.tmux.capturePaneWithHistory(50);
+            // Strip ANSI escape codes for readability
+            const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+            lastOutput = cleaned.trimEnd() || undefined;
+          } catch { /* best effort */ }
+        }
 
         // Kill the dead window (remain-on-exit keeps it around) before respawn
         if (paneStatus) {
           await this.tmux.killWindow();
         }
+
+        // Append to crash history
+        this.appendCrashHistory({ exitCode, lastOutput, crashType });
 
         // Detect rapid crash: window died within 60s of spawn
         if (this.lastSpawnAt > 0 && Date.now() - this.lastSpawnAt < 60_000) {
@@ -1238,6 +1266,32 @@ export class Daemon extends EventEmitter {
       event_count: snapshot.recent_events?.length ?? 0,
     }, "Snapshot written");
     return snapshot;
+  }
+
+  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window" }): void {
+    try {
+      const historyPath = join(this.instanceDir, "crash-history.jsonl");
+      const entry = {
+        timestamp: new Date().toISOString(),
+        instance: this.name,
+        crashType: data.crashType,
+        exitCode: data.exitCode,
+        lastOutput: data.lastOutput,
+        crashCount: this.crashCount + 1,
+        rapidCrashCount: this.rapidCrashCount,
+      };
+      appendFileSync(historyPath, JSON.stringify(entry) + "\n");
+
+      // Rotate based on file size (cheaper than parsing every time)
+      try {
+        const stat = statSync(historyPath);
+        if (stat.size > 512_000) {
+          const content = readFileSync(historyPath, "utf-8");
+          const lines = content.trim().split("\n").filter(Boolean);
+          writeFileSync(historyPath, lines.slice(-50).join("\n") + "\n");
+        }
+      } catch { /* best effort */ }
+    } catch { /* best effort */ }
   }
 
   private readStatuslineData(): import("./types.js").StatusLineData | null {
