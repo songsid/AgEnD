@@ -750,9 +750,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     };
 
-    // Resolve threadId from instance → topic_id mapping
-    const instanceConfig = this.fleetConfig?.instances[instanceName];
-    const threadId = resolveReplyThreadId(args.thread_id, instanceConfig);
+    // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
+    // fall back to general topic if sender is unknown, or IPC owner if no sender.
+    const senderInstanceName = senderSessionName && this.fleetConfig?.instances[senderSessionName]
+      ? senderSessionName
+      : null;
+    const routingConfig = senderInstanceName
+      ? this.fleetConfig?.instances[senderInstanceName]
+      : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
+    const threadId = resolveReplyThreadId(args.thread_id, routingConfig);
 
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(this.adapter, tool, args, threadId, respond)) {
@@ -760,7 +766,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
         this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
         this.emitSseEvent("message", {
-          instance: instanceName, sender: instanceName,
+          instance: instanceName, sender: senderSessionName ?? instanceName,
           text: (args.text as string ?? "").slice(0, 2000),
           ts: new Date().toISOString(),
         });
@@ -787,8 +793,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const text = msg.text as string;
     const editMessageId = msg.editMessageId as string | null;
-    const instanceConfig = this.fleetConfig?.instances[instanceName];
-    const threadId = instanceConfig?.topic_id ? String(instanceConfig.topic_id) : undefined;
+    const senderSessionName = msg.senderSessionName as string | undefined;
+    const senderInstanceName = senderSessionName && this.fleetConfig?.instances[senderSessionName]
+      ? senderSessionName
+      : null;
+    const routingConfig = senderInstanceName
+      ? this.fleetConfig?.instances[senderInstanceName]
+      : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
+    const threadId = routingConfig?.topic_id ? String(routingConfig.topic_id) : undefined;
     const chatId = this.adapter.getChatId();
     if (!chatId) return;
 
