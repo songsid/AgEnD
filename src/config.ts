@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import yaml from "js-yaml";
+import { getAgendHome, getTmuxSessionName } from "./paths.js";
 import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, InstanceConfig } from "./types.js";
 
 function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
@@ -31,7 +31,7 @@ function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
 }
 
 export function getTmuxSession(): string {
-  return process.env.AGEND_TMUX_SESSION ?? "agend";
+  return process.env.AGEND_TMUX_SESSION ?? getTmuxSessionName();
 }
 
 export const DEFAULT_COST_GUARD: CostGuardConfig = {
@@ -107,7 +107,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     ) as Partial<InstanceConfig>;
 
     if (!merged.working_directory) {
-      const defaultDir = join(homedir(), ".agend", "workspaces", name);
+      const defaultDir = join(getAgendHome(), "workspaces", name);
       mkdirSync(defaultDir, { recursive: true });
       merged.working_directory = defaultDir;
     }
