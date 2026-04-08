@@ -96,12 +96,51 @@ export class TmuxManager {
     }
   }
 
+  /**
+   * Check if the tmux window still exists in the session.
+   * Note: with remain-on-exit enabled, a window with a dead pane still
+   * returns true. Use getPaneStatus() to distinguish alive vs dead pane.
+   */
   async isWindowAlive(): Promise<boolean> {
     if (!this.windowId) return false;
     try {
       const windows = await TmuxManager.listWindows(this.sessionName);
       return windows.some(w => w.id === this.windowId);
     } catch { return false; }
+  }
+
+  /** Enable remain-on-exit so dead panes are preserved for exit code capture. */
+  async setRemainOnExit(): Promise<void> {
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "set-option", "-t", `${this.sessionName}:${this.windowId}`,
+      "remain-on-exit", "on",
+    ]));
+  }
+
+  /**
+   * Get pane status. Returns null if the window doesn't exist.
+   * When remain-on-exit is enabled, a dead pane has alive=false with exitCode.
+   * exitCode is undefined if tmux version doesn't support pane_dead_status (< 3.1).
+   */
+  async getPaneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> {
+    if (!this.windowId) return null;
+    try {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+        "list-panes", "-t", `${this.sessionName}:${this.windowId}`,
+        "-F", "#{pane_dead} #{pane_dead_status}",
+      ]));
+      const line = stdout.trim().split("\n")[0];
+      if (!line) return null;
+      const parts = line.split(" ");
+      const dead = parts[0];
+      if (dead === "1") {
+        const code = parseInt(parts[1], 10);
+        return { alive: false, exitCode: Number.isNaN(code) ? undefined : code };
+      }
+      return { alive: true };
+    } catch {
+      return null;
+    }
   }
 
   async sendKeys(text: string): Promise<boolean> {
