@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join, basename, dirname, resolve } from "node:path";
-import { homedir } from "node:os";
 import { access } from "node:fs/promises";
+import { getAgendHome } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
@@ -369,7 +369,7 @@ export class InstanceLifecycle {
 
       // If no directory was provided, auto-create default workspace
       if (!directory) {
-        workDir = join(homedir(), ".agend", "workspaces", newInstanceName);
+        workDir = join(getAgendHome(), "workspaces", newInstanceName);
         mkdirSync(workDir, { recursive: true });
       }
 

@@ -16,11 +16,12 @@ import {
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync, execFileSync } from "node:child_process";
+import { getAgendHome } from "./paths.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DATA_DIR = join(homedir(), ".agend");
+const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
 const program = new Command();
@@ -71,6 +72,9 @@ fleet
       const topicMode = config.channel?.mode === "topic";
       await fm.startInstance(instance, inst, topicMode);
     } else {
+      if (process.env.AGEND_HOME) {
+        console.log(`  Using AGEND_HOME: ${process.env.AGEND_HOME}`);
+      }
       await fm.startAll(FLEET_CONFIG_PATH);
     }
     console.log("Fleet started");
