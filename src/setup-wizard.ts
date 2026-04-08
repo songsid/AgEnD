@@ -4,8 +4,9 @@ import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { stdin, stdout } from "node:process";
 import { execSync } from "node:child_process";
+import { getAgendHome } from "./paths.js";
 
-const DATA_DIR = join(homedir(), ".agend");
+const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 const ENV_PATH = join(DATA_DIR, ".env");
 
