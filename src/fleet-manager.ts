@@ -3,8 +3,8 @@ import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
-import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { getAgendHome } from "./paths.js";
 import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -288,7 +288,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const hasGeneralTopic = Object.values(fleet.instances).some(inst => inst.general_topic === true);
     if (!hasGeneralTopic) {
       this.logger.info("Auto-creating general instance for General Topic");
-      const generalDir = join(homedir(), ".agend", "general");
+      const generalDir = join(getAgendHome(), "general");
       mkdirSync(generalDir, { recursive: true });
       const backendName = fleet.defaults.backend ?? "claude-code";
       this.ensureGeneralInstructions(generalDir, backendName);
