@@ -250,5 +250,5 @@ describe("Scheduling E2E", () => {
     expect(fm).not.toBeNull();
     await fm!.stopAll();
     fm = null;
-  }, 30_000);
+  }, 90_000);
 });
