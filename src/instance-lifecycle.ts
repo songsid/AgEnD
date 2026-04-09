@@ -152,10 +152,23 @@ export class InstanceLifecycle {
       await daemon.stop();
       this.daemons.delete(name);
     } else {
-      const pidPath = join(this.ctx.getInstanceDir(name), "daemon.pid");
+      const instanceDir = this.ctx.getInstanceDir(name);
+      const pidPath = join(instanceDir, "daemon.pid");
       if (existsSync(pidPath)) {
         const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
         try { process.kill(pid, "SIGTERM"); } catch (e) { this.ctx.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
+      }
+      // Kill orphaned tmux window (daemon not in memory but window may persist)
+      const windowIdPath = join(instanceDir, "window-id");
+      if (existsSync(windowIdPath)) {
+        const windowId = readFileSync(windowIdPath, "utf-8").trim();
+        if (windowId) {
+          const { TmuxManager } = await import("./tmux-manager.js");
+          const { getTmuxSession } = await import("./config.js");
+          const tmux = new TmuxManager(getTmuxSession(), windowId);
+          await tmux.killWindow();
+        }
+        try { const { unlinkSync } = await import("node:fs"); unlinkSync(windowIdPath); } catch {}
       }
     }
 
@@ -185,10 +198,8 @@ export class InstanceLifecycle {
     // Access scheduler through fleetConfig — scheduler is managed by FleetManager
     // We just clean up instance-related data here
 
-    // Stop daemon if running
-    if (this.daemons.has(name)) {
-      await this.stop(name);
-    }
+    // Stop daemon and clean up tmux window (handles both in-memory and orphaned cases)
+    await this.stop(name);
 
     // Clean up git worktree if applicable
     if (config.worktree_source && config.working_directory) {
