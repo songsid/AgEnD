@@ -634,7 +634,9 @@ export class Daemon extends EventEmitter {
           if (!status || !status.alive) { killed = true; break; }
         }
       }
-      if (!killed) await this.tmux.killWindow();
+      if (!killed) this.logger.warn("CLI did not exit gracefully within 10s, force killing window");
+      // Always kill window — remain-on-exit keeps dead panes around after CLI exits
+      await this.tmux.killWindow();
       const windowIdFile = join(this.instanceDir, "window-id");
       try { unlinkSync(windowIdFile); } catch (e) { this.logger.debug({ err: e }, "Failed to remove window-id file"); }
     }
