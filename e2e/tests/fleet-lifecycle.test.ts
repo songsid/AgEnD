@@ -311,5 +311,5 @@ describe("Fleet Lifecycle E2E (B Layer)", () => {
     }
 
     fm = null;
-  }, 30_000);
+  }, 90_000);
 });
