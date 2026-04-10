@@ -130,14 +130,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
 
   return {
     channel: parsed.channel
-      ? (() => {
-          if (!parsed.channel.mode) {
-            throw new Error(
-              `fleet.yaml: channel.mode is required. Valid values: "topic" | "classic"`
-            );
-          }
-          return parsed.channel;
-        })()
+      ? { ...parsed.channel, mode: parsed.channel.mode ?? "topic" }
       : parsed.channel,
     project_roots: parsed.project_roots,
     defaults: fleetDefaults,
