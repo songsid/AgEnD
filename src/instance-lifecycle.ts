@@ -80,11 +80,6 @@ export class InstanceLifecycle {
     await daemon.start();
     this.daemons.set(name, daemon);
 
-    daemon.on("restart_complete", safeHandler((data: Record<string, unknown>) => {
-      this.ctx.eventLog?.insert(name, "context_rotation", data);
-      this.ctx.logger.info({ name, ...data }, "Context restart completed");
-    }, this.ctx.logger, `daemon.restart_complete[${name}]`));
-
     const hangDetector = daemon.getHangDetector();
     if (hangDetector) {
       hangDetector.on("hang", safeHandler(async () => {
@@ -509,6 +504,91 @@ export class InstanceLifecycle {
 
   has(name: string): boolean {
     return this.daemons.has(name);
+  }
+
+  /** Handle replace_instance tool call: handover → stop → create new → delete old config. */
+  async handleReplace(
+    args: Record<string, unknown>,
+    respond: (result: unknown, error?: string) => void,
+  ): Promise<void> {
+    const instanceName = args.name as string;
+    const reason = (args.reason as string) || "replaced";
+
+    const oldConfig = this.ctx.fleetConfig?.instances[instanceName];
+    if (!oldConfig) { respond(null, `Instance not found: ${instanceName}`); return; }
+    if (oldConfig.general_topic) { respond(null, "Cannot replace the General instance"); return; }
+
+    // 1. Collect handover context from daemon ring buffer (before stopping)
+    let handoverContext = "";
+    const daemon = this.daemons.get(instanceName);
+    if (daemon) {
+      handoverContext = daemon.collectHandoverContext();
+    }
+
+    // 2. Remember config for recreation
+    const savedConfig = { ...oldConfig };
+    const topicId = savedConfig.topic_id;
+
+    // 3. Stop old instance (reversible — config still in fleet.yaml)
+    await this.stop(instanceName);
+    const oldIpc = this.ctx.instanceIpcClients.get(instanceName);
+    if (oldIpc) { await oldIpc.close(); this.ctx.instanceIpcClients.delete(instanceName); }
+
+    // 4. Remove old config + routing (so new instance can reuse the name/topic)
+    if (topicId != null) this.ctx.routing.unregister(topicId);
+    delete this.ctx.fleetConfig!.instances[instanceName];
+    this.ctx.saveFleetConfig();
+
+    // 5. Clean instanceDir to avoid stale rotation-state.json / crash-history
+    const instanceDir = this.ctx.getInstanceDir(instanceName);
+    try {
+      const { rm } = await import("node:fs/promises");
+      await rm(instanceDir, { recursive: true, force: true });
+    } catch { /* best effort */ }
+
+    // 6. Create new instance with same config, reusing topic
+    const newName = `${instanceName.replace(/-t\d+$/, "")}-t${topicId}`;
+    const instanceConfig = { ...savedConfig } as InstanceConfig;
+    try {
+      this.ctx.fleetConfig!.instances[newName] = instanceConfig;
+      if (topicId != null) this.ctx.routing.register(topicId, { kind: "instance", name: newName });
+      this.ctx.saveFleetConfig();
+
+      await this.start(newName, instanceConfig, true);
+      await this.ctx.connectIpcToInstance(newName);
+
+      // 7. Send handover context via fleet_inbound (standard message delivery path)
+      if (handoverContext) {
+        await new Promise(r => setTimeout(r, 3_000));
+        const newIpc = this.ctx.instanceIpcClients.get(newName);
+        if (newIpc) {
+          const handoverMsg = `[system:handover]\nYou are replacing instance "${instanceName}" (reason: ${reason}).\n\n${handoverContext}\n\nResume work based on this context. Do NOT reply to this message — wait for the next user message.`;
+          newIpc.send({
+            type: "fleet_inbound",
+            content: handoverMsg,
+            meta: { from_instance: "system", source: "handover", user: "system", ts: new Date().toISOString(), chat_id: "", thread_id: "" },
+          });
+        }
+      }
+
+      respond({
+        success: true,
+        old_name: instanceName,
+        new_name: newName,
+        topic_id: topicId,
+        reason,
+        handover_chars: handoverContext.length,
+      });
+    } catch (err) {
+      // Rollback: restore old instance config (new instance failed to start)
+      if (this.daemons.has(newName)) await this.stop(newName).catch(() => {});
+      delete this.ctx.fleetConfig!.instances[newName];
+      // Restore old config so user doesn't lose both instances
+      this.ctx.fleetConfig!.instances[instanceName] = savedConfig;
+      if (topicId != null) this.ctx.routing.register(topicId, { kind: "instance", name: instanceName });
+      this.ctx.saveFleetConfig();
+      respond(null, `Failed to replace instance: ${(err as Error).message}. Old instance config restored (stopped).`);
+    }
   }
 
   private findGeneralInstance(): string | undefined {
