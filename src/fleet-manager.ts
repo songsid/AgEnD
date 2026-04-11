@@ -341,6 +341,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
     }
 
+    // Poll classicBot.yaml for external changes every 30s
+    this.classicReloadTimer = setInterval(() => {
+      if (this.classicChannels?.checkReload()) this.reregisterClassicChannels();
+    }, 30_000);
+
     const costGuardConfig: CostGuardConfig = {
       ...DEFAULT_COST_GUARD,
       ...fleet.defaults.cost_guard,
@@ -462,8 +467,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       // Start classic channel instances
       if (this.classicChannels) {
+        const fleetBackend = this.fleetConfig?.defaults?.backend;
         for (const ch of this.classicChannels.getAll()) {
-          await this.startClassicInstance(ch.instanceName).catch(err =>
+          await this.startClassicInstance(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend)).catch(err =>
             this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"));
         }
       }
@@ -1387,6 +1393,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private topicCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private sessionPruneTimer: ReturnType<typeof setInterval> | null = null;
+  private classicReloadTimer: ReturnType<typeof setInterval> | null = null;
 
   /** Periodically check if bound topics still exist */
   private startTopicCleanupPoller(): void {
@@ -1890,13 +1897,14 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   }
 
   /** Start a classic channel instance with lightweight config */
-  private async startClassicInstance(instanceName: string): Promise<void> {
+  private async startClassicInstance(instanceName: string, backend?: string): Promise<void> {
     if (this.daemons.has(instanceName)) return;
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
       ...this.fleetConfig?.defaults,
       working_directory: join(getAgendHome(), "workspaces", instanceName),
       lightweight: true,
+      ...(backend ? { backend } : {}),
     };
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
     await this.startInstance(instanceName, config, topicMode);
@@ -1912,7 +1920,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.classicChannels.register(channelId, instanceName, userId);
     this.routing.register(channelId, { kind: "classic", name: instanceName });
 
-    await this.startClassicInstance(instanceName);
+    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend));
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
     return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
   }
@@ -1947,6 +1955,10 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
       clearTimeout(this.mirrorTimer);
       this.mirrorTimer = null;
       this.mirrorBuffer = [];
+    }
+    if (this.classicReloadTimer) {
+      clearInterval(this.classicReloadTimer);
+      this.classicReloadTimer = null;
     }
     this.topicArchiver.stop();
 
