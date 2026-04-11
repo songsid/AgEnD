@@ -318,7 +318,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Also kill orphaned windows: any window with a topic ID suffix (name-tNNNNN)
         // that isn't in the current config — these are leftovers from deleted instances
         const isKnownInstance = agendNames.has(w.name);
-        const isOrphanedInstance = !isKnownInstance && /-t\d+$/.test(w.name);
+        const isOrphanedInstance = !isKnownInstance && (/-t\d+$/.test(w.name) || /^classic-/.test(w.name));
         if (isKnownInstance || isOrphanedInstance) {
           if (isOrphanedInstance) this.logger.info({ window: w.name }, "Cleaning up orphaned tmux window");
           const tm = new TmuxManager(getTmuxSession(), w.id);
@@ -339,8 +339,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Poll classicBot.yaml for external changes every 30s
-    this.classicReloadTimer = setInterval(() => {
-      if (this.classicChannels?.checkReload()) this.reregisterClassicChannels();
+    this.classicReloadTimer = setInterval(async () => {
+      if (!this.classicChannels) return;
+      // Snapshot current backends before reload
+      const fleetBackend = this.fleetConfig?.defaults?.backend;
+      const oldBackends = new Map<string, string>();
+      for (const ch of this.classicChannels.getAll()) {
+        oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
+      }
+      if (!this.classicChannels.checkReload()) return;
+      this.reregisterClassicChannels();
+      // Auto-restart instances whose backend changed
+      for (const ch of this.classicChannels.getAll()) {
+        const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
+        if (this.daemons.has(ch.instanceName) && oldBackends.get(ch.instanceName) !== newBackend) {
+          this.logger.info({ instanceName: ch.instanceName, backend: newBackend }, "Backend changed — restarting classic instance");
+          await this.stopInstance(ch.instanceName).catch(() => {});
+          await this.startClassicInstance(ch.instanceName, newBackend).catch(err =>
+            this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to restart classic instance"));
+        }
+      }
     }, 30_000);
 
     const costGuardConfig: CostGuardConfig = {
