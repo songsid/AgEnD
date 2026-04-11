@@ -1,0 +1,454 @@
+import { EventEmitter } from "node:events";
+import { randomBytes } from "node:crypto";
+import { mkdirSync } from "node:fs";
+import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { createWriteStream } from "node:fs";
+import {
+  Client,
+  GatewayIntentBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType,
+  type TextChannel,
+  type Message,
+  type Interaction,
+  type GuildChannelCreateOptions,
+} from "discord.js";
+import type {
+  ChannelAdapter,
+  ApprovalHandle,
+  SendOpts,
+  SentMessage,
+  PermissionPrompt,
+  Choice,
+  AlertData,
+} from "../types.js";
+import type { AccessManager } from "../access-manager.js";
+import { MessageQueue } from "../message-queue.js";
+
+const DISCORD_MAX_LENGTH = 2000;
+
+export interface DiscordAdapterOptions {
+  id: string;
+  botToken: string;
+  accessManager: AccessManager;
+  inboxDir: string;
+  guildId: string;
+  categoryName?: string;
+  generalChannelId?: string;
+}
+
+export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
+  readonly type = "discord";
+  readonly topology = "channels" as const;
+  readonly id: string;
+
+  private client: Client;
+  private botToken: string;
+  private accessManager: AccessManager;
+  private inboxDir: string;
+  private guildId: string;
+  private categoryName: string;
+  private generalChannelId?: string;
+  private queue: MessageQueue;
+  private lastChatId: string | null = null;
+
+  constructor(opts: DiscordAdapterOptions) {
+    super();
+    this.id = opts.id;
+    this.botToken = opts.botToken;
+    this.accessManager = opts.accessManager;
+    this.inboxDir = opts.inboxDir;
+    this.guildId = opts.guildId;
+    this.categoryName = opts.categoryName ?? "AgEnD Agents";
+    this.generalChannelId = opts.generalChannelId;
+
+    mkdirSync(this.inboxDir, { recursive: true });
+
+    this.client = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+      ],
+    });
+
+    this.queue = new MessageQueue({
+      send: async (chatId, threadId, text) => {
+        const channel = await this._fetchTextChannel(threadId ?? chatId);
+        const msg = await channel.send(text);
+        return { messageId: msg.id };
+      },
+      edit: async (chatId, messageId, text) => {
+        const channel = await this._fetchTextChannel(chatId);
+        const msg = await channel.messages.fetch(messageId);
+        await msg.edit(text);
+      },
+      sendFile: async (chatId, threadId, filePath) => {
+        const channel = await this._fetchTextChannel(threadId ?? chatId);
+        const msg = await channel.send({ files: [filePath] });
+        return { messageId: msg.id };
+      },
+    });
+
+    this._registerHandlers();
+  }
+
+  private async _fetchTextChannel(channelId: string): Promise<TextChannel> {
+    const channel = await this.client.channels.fetch(channelId);
+    if (!channel?.isTextBased()) {
+      throw new Error(`Channel ${channelId} is not a text channel`);
+    }
+    return channel as TextChannel;
+  }
+
+  private _registerHandlers(): void {
+    this.client.on("messageCreate", async (msg: Message) => {
+      if (msg.author.bot) return;
+      if (msg.guildId !== this.guildId) return;
+
+      const userId = msg.author.id;
+      if (!this.accessManager.isAllowed(userId)) return;
+
+      const chatId = this.guildId;
+      const threadId = msg.channelId;
+      const messageId = msg.id;
+      const username = msg.author.username;
+      const text = msg.content;
+
+      const attachments = msg.attachments.map((att) => ({
+        kind: "document" as const,
+        fileId: att.id,
+        mime: att.contentType ?? undefined,
+        size: att.size,
+        filename: att.name ?? undefined,
+      }));
+
+      this.emit("message", {
+        source: "discord",
+        adapterId: this.id,
+        chatId,
+        threadId,
+        messageId,
+        userId,
+        username,
+        text,
+        timestamp: msg.createdAt,
+        attachments: attachments.length > 0 ? attachments : undefined,
+        replyTo: msg.reference?.messageId ?? undefined,
+      });
+    });
+
+    this.client.on("interactionCreate", async (interaction: Interaction) => {
+      if (interaction.isButton()) {
+        await interaction.deferUpdate();
+        this.emit("callback_query", {
+          callbackData: interaction.customId,
+          chatId: this.guildId,
+          threadId: interaction.channelId,
+          messageId: interaction.message.id,
+        });
+        return;
+      }
+
+      if (interaction.isChatInputCommand()) {
+        const channelName = interaction.channel && "name" in interaction.channel ? (interaction.channel.name ?? "") : "";
+        const username = interaction.user.username;
+        if (interaction.commandName === "chat") {
+          const text = interaction.options.getString("message") ?? "";
+          await interaction.deferReply();
+          this.emit("slash_command", {
+            command: "chat",
+            channelId: interaction.channelId,
+            channelName,
+            userId: interaction.user.id,
+            username,
+            text,
+            respond: async (reply: string) => { await interaction.editReply(reply); },
+          });
+        } else {
+          await interaction.deferReply({ ephemeral: true });
+          this.emit("slash_command", {
+            command: interaction.commandName,
+            channelId: interaction.channelId,
+            channelName,
+            userId: interaction.user.id,
+            username,
+            respond: async (reply: string) => { await interaction.editReply(reply); },
+          });
+        }
+      }
+    });
+
+    this.client.on("channelDelete", (channel) => {
+      if (!("guildId" in channel)) return;
+      if (channel.guildId !== this.guildId) return;
+      this.emit("topic_closed", {
+        chatId: this.guildId,
+        threadId: channel.id,
+      });
+    });
+  }
+
+  // ── Lifecycle ──────────────────────────────────────────────────────────
+
+  async start(): Promise<void> {
+    this.queue.start();
+
+    this.client.once("ready", async () => {
+      try {
+        const cmds = [
+          { name: "start", description: "Start an agent in this channel" },
+          { name: "stop", description: "Stop the agent in this channel" },
+          {
+            name: "chat", description: "Send a message to the agent",
+            options: [{ name: "message", description: "Your message", type: 3, required: true }],
+          },
+        ];
+        // Guild-scoped commands propagate instantly; global commands take up to 1h
+        if (this.guildId) {
+          const guild = await this.client.guilds.fetch(this.guildId);
+          await guild.commands.set(cmds);
+        } else {
+          await this.client.application?.commands.set(cmds);
+        }
+      } catch {
+        // Non-fatal — slash commands may fail on network issues
+      }
+      this.emit("started", this.client.user?.username ?? "discord-bot");
+    });
+
+    await this.client.login(this.botToken);
+  }
+
+  async stop(): Promise<void> {
+    this.queue.stop();
+    this.client.destroy();
+  }
+
+  // ── Text / file sending ────────────────────────────────────────────────
+
+  async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    const channelId = opts?.threadId ?? chatId;
+    const channel = await this._fetchTextChannel(channelId);
+    const chunkLimit = opts?.chunkLimit ?? DISCORD_MAX_LENGTH;
+
+    const chunks = splitText(text, chunkLimit);
+    if (chunks.length === 0) throw new Error("Empty text");
+
+    const first = await channel.send(chunks[0]);
+
+    for (let i = 1; i < chunks.length; i++) {
+      this.queue.enqueue(chatId, opts?.threadId, { type: "content", text: chunks[i] });
+    }
+
+    return { messageId: first.id, chatId, threadId: opts?.threadId };
+  }
+
+  async sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage> {
+    const channelId = opts?.threadId ?? chatId;
+    const channel = await this._fetchTextChannel(channelId);
+    const msg = await channel.send({ files: [filePath] });
+    return { messageId: msg.id, chatId, threadId: opts?.threadId };
+  }
+
+  async editMessage(chatId: string, messageId: string, text: string): Promise<void> {
+    try {
+      const guild = await this.client.guilds.fetch(this.guildId);
+      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+      for (const [, ch] of channels) {
+        try {
+          const textCh = ch as TextChannel;
+          const msg = await textCh.messages.fetch(messageId);
+          await msg.edit(text.slice(0, DISCORD_MAX_LENGTH));
+          return;
+        } catch { continue; }
+      }
+      throw new Error(`Message ${messageId} not found in any channel`);
+    } catch {
+      if (this.generalChannelId) {
+        const channel = await this._fetchTextChannel(this.generalChannelId);
+        await channel.send(text.slice(0, DISCORD_MAX_LENGTH));
+      }
+    }
+  }
+
+  async react(chatId: string, messageId: string, emoji: string): Promise<void> {
+    try {
+      const guild = await this.client.guilds.fetch(this.guildId);
+      const channels = guild.channels.cache.filter((c: { type: ChannelType }) => c.type === ChannelType.GuildText);
+      for (const [, ch] of channels) {
+        try {
+          const textCh = ch as TextChannel;
+          const msg = await textCh.messages.fetch(messageId);
+          await msg.react(emoji);
+          return;
+        } catch { continue; }
+      }
+    } catch { /* No-op */ }
+  }
+
+  // ── Approval ───────────────────────────────────────────────────────────
+
+  async sendApproval(
+    prompt: PermissionPrompt,
+    callback: (decision: "approve" | "approve_always" | "deny") => void,
+    signal?: AbortSignal,
+    threadId?: string,
+  ): Promise<ApprovalHandle> {
+    const nonce = randomBytes(5).toString("hex");
+    const approveData = `approval:approve:${nonce}`;
+    const alwaysData = `approval:approve_always:${nonce}`;
+    const denyData = `approval:deny:${nonce}`;
+
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(approveData).setLabel("Allow").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(alwaysData).setLabel("Always").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(denyData).setLabel("Deny").setStyle(ButtonStyle.Danger),
+    );
+
+    let text = `⚠️ **Permission Request**\nTool: \`${prompt.tool_name}\``;
+    if (prompt.input_preview) {
+      const preview = prompt.input_preview.length > 200 ? prompt.input_preview.slice(0, 200) + "…" : prompt.input_preview;
+      text += `\n\`\`\`\n${preview}\n\`\`\``;
+    } else if (prompt.description) {
+      text += `\n${prompt.description}`;
+    }
+
+    const cleanup = () => { this.off("callback_query", handler); };
+
+    const handler = (query: { callbackData?: string; threadId?: string; messageId?: string }) => {
+      if (!query.callbackData) return;
+      const isApprove = query.callbackData === approveData;
+      const isAlways = query.callbackData === alwaysData;
+      const isDeny = query.callbackData === denyData;
+      if (!isApprove && !isAlways && !isDeny) return;
+
+      cleanup();
+
+      if (query.threadId && query.messageId) {
+        this._fetchTextChannel(query.threadId).then((ch) => {
+          ch.messages.fetch(query.messageId!).then((msg: Message) => {
+            const label = isDeny ? "❌ Denied" : isAlways ? "✅ Always Allowed" : "✅ Allowed";
+            msg.edit({ content: `${label}\nTool: \`${prompt.tool_name}\``, components: [] }).catch(() => {});
+          }).catch(() => {});
+        }).catch(() => {});
+      }
+
+      callback(isDeny ? "deny" : isAlways ? "approve_always" : "approve");
+    };
+
+    this.on("callback_query", handler);
+    if (signal) signal.addEventListener("abort", () => cleanup());
+
+    const channelId = threadId ?? this.generalChannelId;
+    if (channelId) {
+      const channel = await this._fetchTextChannel(channelId);
+      await channel.send({ content: text, components: [row] });
+    } else {
+      this.emit("approval_request", { prompt: text, components: [row], nonce });
+    }
+
+    return { cancel: cleanup };
+  }
+
+  // ── Chat ID management ──────────────────────────────────────────────────
+
+  getChatId(): string | null { return this.lastChatId; }
+  setChatId(chatId: string): void { this.lastChatId = chatId; }
+
+  // ── File download ──────────────────────────────────────────────────────
+
+  async downloadAttachment(fileId: string): Promise<string> {
+    throw new Error("downloadAttachment not yet implemented for Discord — use attachment URL directly");
+  }
+
+  // ── Intent-oriented methods ──────────────────────────────────────────
+
+  async promptUser(chatId: string, text: string, choices: Choice[], opts?: SendOpts): Promise<string> {
+    const channelId = opts?.threadId ?? chatId;
+    const channel = await this._fetchTextChannel(channelId);
+
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    for (const choice of choices) {
+      row.addComponents(
+        new ButtonBuilder().setCustomId(choice.id).setLabel(choice.label.slice(0, 80)).setStyle(ButtonStyle.Primary),
+      );
+    }
+
+    const msg = await channel.send({ content: text, components: [row] });
+    return msg.id;
+  }
+
+  async notifyAlert(chatId: string, alert: AlertData, opts?: SendOpts): Promise<SentMessage> {
+    if (alert.choices && alert.choices.length > 0) {
+      const channelId = opts?.threadId ?? chatId;
+      const channel = await this._fetchTextChannel(channelId);
+
+      const row = new ActionRowBuilder<ButtonBuilder>();
+      for (const choice of alert.choices) {
+        row.addComponents(
+          new ButtonBuilder().setCustomId(choice.id).setLabel(choice.label.slice(0, 80)).setStyle(ButtonStyle.Secondary),
+        );
+      }
+
+      const msg = await channel.send({ content: alert.message, components: [row] });
+      return { messageId: msg.id, chatId, threadId: opts?.threadId };
+    }
+    return this.sendText(chatId, alert.message, opts);
+  }
+
+  // ── Topology: create channel ────────────────────────────────────────────
+
+  async createTopic(name: string): Promise<string> {
+    const guild = await this.client.guilds.fetch(this.guildId);
+
+    let category = guild.channels.cache.find(
+      (c: { type: ChannelType; name: string }) => c.type === ChannelType.GuildCategory && c.name === this.categoryName,
+    );
+
+    if (!category) {
+      category = await guild.channels.create({ name: this.categoryName, type: ChannelType.GuildCategory });
+    }
+
+    const channelOpts: GuildChannelCreateOptions = { name, type: ChannelType.GuildText, parent: category.id };
+    const channel = await guild.channels.create(channelOpts);
+    return channel.id;
+  }
+
+  async deleteTopic(topicId: number | string): Promise<void> {
+    const channel = await this.client.channels.fetch(String(topicId));
+    if (channel && "type" in channel && (channel as { type: ChannelType }).type === ChannelType.GuildText && "delete" in channel) {
+      await (channel as { delete(): Promise<unknown> }).delete();
+    }
+  }
+
+  async topicExists(topicId: number | string): Promise<boolean> {
+    try {
+      const channel = await this.client.channels.fetch(String(topicId));
+      return channel != null;
+    } catch { return false; }
+  }
+
+  // ── Pairing ────────────────────────────────────────────────────────────
+
+  async handlePairing(chatId: string, userId: string): Promise<string> {
+    return this.accessManager.generateCode(userId);
+  }
+
+  async confirmPairing(code: string): Promise<boolean> {
+    return this.accessManager.confirmCode(code);
+  }
+}
+
+function splitText(text: string, limit: number): string[] {
+  const chunks: string[] = [];
+  let offset = 0;
+  while (offset < text.length) {
+    chunks.push(text.slice(offset, offset + limit));
+    offset += limit;
+  }
+  return chunks;
+}
