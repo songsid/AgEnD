@@ -147,18 +147,46 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       });
     });
 
-    // Handle button interactions
+    // Handle button interactions and slash commands
     this.client.on("interactionCreate", async (interaction: Interaction) => {
-      if (!interaction.isButton()) return;
+      if (interaction.isButton()) {
+        await interaction.deferUpdate();
+        this.emit("callback_query", {
+          callbackData: interaction.customId,
+          chatId: this.guildId,
+          threadId: interaction.channelId,
+          messageId: interaction.message.id,
+        });
+        return;
+      }
 
-      await interaction.deferUpdate();
-
-      this.emit("callback_query", {
-        callbackData: interaction.customId,
-        chatId: this.guildId,
-        threadId: interaction.channelId,
-        messageId: interaction.message.id,
-      });
+      if (interaction.isChatInputCommand()) {
+        const channelName = interaction.channel && "name" in interaction.channel ? (interaction.channel.name ?? "") : "";
+        const username = interaction.user.username;
+        if (interaction.commandName === "chat") {
+          const text = interaction.options.getString("message") ?? "";
+          await interaction.deferReply();
+          this.emit("slash_command", {
+            command: "chat",
+            channelId: interaction.channelId,
+            channelName,
+            userId: interaction.user.id,
+            username,
+            text,
+            respond: async (reply: string) => { await interaction.editReply(reply); },
+          });
+        } else {
+          await interaction.deferReply({ ephemeral: true });
+          this.emit("slash_command", {
+            command: interaction.commandName,
+            channelId: interaction.channelId,
+            channelName,
+            userId: interaction.user.id,
+            username,
+            respond: async (reply: string) => { await interaction.editReply(reply); },
+          });
+        }
+      }
     });
 
     // Handle channel deletion (equivalent to topic_closed)
@@ -177,7 +205,20 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   async start(): Promise<void> {
     this.queue.start();
 
-    this.client.once("ready", () => {
+    this.client.once("ready", async () => {
+      // Register classic bot slash commands
+      try {
+        await this.client.application?.commands.set([
+          { name: "start", description: "Start an agent in this channel" },
+          { name: "stop", description: "Stop the agent in this channel" },
+          {
+            name: "chat", description: "Send a message to the agent",
+            options: [{ name: "message", description: "Your message", type: 3, required: true }],
+          },
+        ]);
+      } catch (err) {
+        // Non-fatal — slash commands may fail on network issues
+      }
       this.emit("started", this.client.user?.username ?? "discord-bot");
     });
 
