@@ -1270,6 +1270,20 @@ async function fuzzyMatch(query: string, names: string[]): Promise<string | null
 
 async function resolveInstance(query: string, config: import("./types.js").FleetConfig): Promise<string> {
   const names = Object.keys(config.instances);
+  // Include classic instances from classicBot.yaml
+  try {
+    const classicPath = join(DATA_DIR, "classicBot.yaml");
+    if (existsSync(classicPath)) {
+      const yamlMod = (await import("js-yaml")).default;
+      const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string }> } | null;
+      if (classic?.channels) {
+        for (const [channelId, val] of Object.entries(classic.channels)) {
+          const chName = val.name ?? channelId;
+          names.push(`classic-${chName}-${channelId.slice(-4)}`);
+        }
+      }
+    }
+  } catch { /* ignore */ }
   const match = await fuzzyMatch(query, names);
   if (!match) {
     console.error(`No instance matching "${query}". Available: ${names.join(", ")}`);
