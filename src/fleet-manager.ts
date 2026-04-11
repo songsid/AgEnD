@@ -38,6 +38,7 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest } from "./web-api.js";
+import { ClassicChannelManager } from "./classic-channel-manager.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -83,6 +84,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicArchiver: TopicArchiver;
 
   controlClient: TmuxControlClient | null = null;
+  classicChannels: ClassicChannelManager | null = null;
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -146,8 +148,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   buildRoutingTable(): Map<string, RouteTarget> {
     if (this.fleetConfig) {
       this.routing.rebuild(this.fleetConfig);
+      this.reregisterClassicChannels();
     }
     return this.routing.map;
+  }
+
+  /** Re-register classic channels after routing rebuild (rebuild clears the table) */
+  private reregisterClassicChannels(): void {
+    if (!this.classicChannels) return;
+    for (const ch of this.classicChannels.getAll()) {
+      this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
+    }
   }
 
   getInstanceDir(name: string): string {
@@ -244,6 +255,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);
+      this.reregisterClassicChannels();
     }
     const config = this.fleetConfig?.instances[name];
     if (!config) throw new Error(`Instance not found: ${name}`);
@@ -320,6 +332,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.eventLog = new EventLog(join(this.dataDir, "events.db"));
 
+    // Initialize classic channel manager and register existing channels in routing
+    this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
+    for (const ch of this.classicChannels.getAll()) {
+      this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
+    }
+
     const costGuardConfig: CostGuardConfig = {
       ...DEFAULT_COST_GUARD,
       ...fleet.defaults.cost_guard,
@@ -353,6 +371,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.adapter || !this.fleetConfig?.channel?.group_id) return;
       this.adapter.sendText(String(this.fleetConfig.channel.group_id), text)
         .catch(e => this.logger.debug({ err: e }, "Failed to send daily summary"));
+      // Rotate classic channel chat logs daily
+      this.classicChannels?.rotateLogs();
     }, () => {
       const instances = Object.keys(this.fleetConfig?.instances ?? {});
       const costMap = new Map<string, number>();
@@ -367,6 +387,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       );
     });
     this.dailySummary.start();
+
+    // Rotate classic channel chat logs daily (piggyback on daily summary timer)
+    this.classicChannels?.rotateLogs();
 
     // Auto-create general instance if none configured
     const hasGeneralTopic = Object.values(fleet.instances).some(inst => inst.general_topic === true);
@@ -422,6 +445,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
       await this.topicCommands.autoCreateTopics();
       const routeSummary = this.routing.rebuild(this.fleetConfig!);
+      this.reregisterClassicChannels();
       this.logger.info(`Routes: ${routeSummary}`);
 
       // Resolve topic icon emoji IDs and start idle archive poller
@@ -430,6 +454,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       await new Promise(r => setTimeout(r, 3000));
       await this.connectToInstances(fleet);
+
+      // Start classic channel instances
+      if (this.classicChannels) {
+        for (const ch of this.classicChannels.getAll()) {
+          await this.startClassicInstance(ch.instanceName).catch(err =>
+            this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"));
+        }
+      }
 
       for (const name of Object.keys(fleet.instances)) {
         this.startStatuslineWatcher(name);
@@ -542,6 +574,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.topicArchiver.isArchived(data.threadId)) return;
       await this.topicCommands.handleTopicDeleted(data.threadId);
     }, this.logger, "adapter.topic_closed"));
+
+    // Handle classic bot slash commands (/start, /stop, /chat)
+    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; userId: string; username?: string; text?: string; respond: (text: string) => Promise<void> }) => {
+      if (data.command === "start") {
+        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId);
+        await data.respond(reply);
+      } else if (data.command === "stop") {
+        const reply = await this.handleClassicStop(data.channelId);
+        await data.respond(reply);
+      } else if (data.command === "chat") {
+        const text = data.text ?? "";
+        if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
+        const target = this.routing.resolve(data.channelId);
+        if (!target || target.kind !== "classic") {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        await data.respond("👀");
+        const username = data.username ?? data.userId;
+        ClassicChannelManager.logMessage(target.name, username, `/chat ${text}`, new Date());
+        await this.forwardToClassicInstance(target.name, text, {
+          chatId: this.fleetConfig?.channel?.group_id ? String(this.fleetConfig.channel.group_id) : "",
+          threadId: data.channelId,
+          messageId: "",
+          userId: data.userId,
+          username,
+          source: "discord",
+          timestamp: new Date(),
+        });
+      }
+    }, this.logger, "adapter.slash_command"));
 
     await this.topicCommands.registerBotCommands();
     await this.adapter.start();
@@ -701,9 +764,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const target = this.routing.resolve(threadId);
     if (!target) {
-      this.topicCommands.handleUnboundTopic(msg);
+      // Suppress unbound topic message for Discord — regular text channels are expected
+      // to be unbound (classic mode or user-created). Only show for Telegram forum topics.
+      if (this.adapter?.type !== "discord") {
+        this.topicCommands.handleUnboundTopic(msg);
+      }
       return;
     }
+
+    // Classic channel: log all messages, only forward /chat to agent
+    if (target.kind === "classic") {
+      await this.handleClassicChannelMessage(target.name, msg);
+      return;
+    }
+
     const instanceName = target.name;
 
     // Reopen archived topic before routing
@@ -1590,6 +1664,117 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.failoverActive.clear();
   }
 
+  // ── Classic Channel Methods ──────────────────────────────────────────
+
+  /** Handle a message in a classic channel: log it, forward only /chat messages */
+  private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
+    const text = msg.text ?? "";
+
+    // Log every message to the daily chat log
+    ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp);
+
+    // Only forward /chat messages to the agent
+    if (!text.startsWith("/chat ") && text !== "/chat") return;
+
+    const chatText = text.slice(6).trim();
+    if (!chatText) return;
+
+    if (this.adapter && msg.chatId && msg.messageId) {
+      this.adapter.react(msg.chatId, msg.messageId, "👀")
+        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+    }
+
+    await this.forwardToClassicInstance(instanceName, chatText, msg);
+  }
+
+  /** Forward a message to a classic channel instance with chat log context */
+  private async forwardToClassicInstance(
+    instanceName: string,
+    text: string,
+    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date },
+  ): Promise<void> {
+    const logContext = this.getRecentChatLog(instanceName);
+    const fullText = logContext
+      ? `[Chat log for context]\n${logContext}\n\n[User message]\n${text}`
+      : text;
+
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc) {
+      this.logger.warn({ instanceName }, "Classic channel instance IPC not connected");
+      return;
+    }
+
+    ipc.send({
+      type: "fleet_inbound",
+      content: fullText,
+      targetSession: instanceName,
+      meta: {
+        chat_id: msg.chatId,
+        message_id: msg.messageId,
+        user: msg.username,
+        user_id: msg.userId,
+        ts: msg.timestamp.toISOString(),
+        thread_id: msg.threadId ?? "",
+        source: msg.source,
+      },
+    });
+    this.lastInboundUser.set(instanceName, msg.username);
+    this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
+  }
+
+  /** Read recent chat log (last ~50 lines) for agent context */
+  private getRecentChatLog(instanceName: string): string | undefined {
+    const logDir = ClassicChannelManager.chatLogDir(instanceName);
+    const today = new Date().toISOString().slice(0, 10);
+    const logFile = join(logDir, `${today}.log`);
+    try {
+      if (!existsSync(logFile)) return undefined;
+      const lines = readFileSync(logFile, "utf-8").trim().split("\n");
+      return lines.slice(-50).join("\n");
+    } catch { return undefined; }
+  }
+
+  /** Start a classic channel instance with lightweight config */
+  private async startClassicInstance(instanceName: string): Promise<void> {
+    if (this.daemons.has(instanceName)) return;
+    const config: InstanceConfig = {
+      ...DEFAULT_INSTANCE_CONFIG,
+      ...this.fleetConfig?.defaults,
+      working_directory: join(getAgendHome(), "workspaces", instanceName),
+      lightweight: true,
+    };
+    const topicMode = this.fleetConfig?.channel?.mode === "topic";
+    await this.startInstance(instanceName, config, topicMode);
+  }
+
+  /** Handle /start slash command — register classic channel */
+  async handleClassicStart(channelId: string, channelName: string, userId: string): Promise<string> {
+    if (!this.classicChannels) return "Classic channel manager not initialized.";
+    if (this.classicChannels.isClassicChannel(channelId)) return "This channel already has an active agent. Use /chat to talk.";
+    if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
+
+    const instanceName = `classic-${sanitizeInstanceName(channelName || channelId)}`;
+    this.classicChannels.register(channelId, instanceName, userId);
+    this.routing.register(channelId, { kind: "classic", name: instanceName });
+
+    await this.startClassicInstance(instanceName);
+    this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
+    return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
+  }
+
+  /** Handle /stop slash command — unregister classic channel */
+  async handleClassicStop(channelId: string): Promise<string> {
+    if (!this.classicChannels) return "Classic channel manager not initialized.";
+    const ch = this.classicChannels.unregister(channelId);
+    if (!ch) return "No active agent in this channel.";
+
+    this.routing.unregister(channelId);
+    await this.stopInstance(ch.instanceName).catch(err =>
+      this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to stop classic instance"));
+    this.logger.info({ channelId, instanceName: ch.instanceName }, "Classic channel stopped");
+    return `🛑 Agent stopped in this channel.`;
+  }
+
   async stopAll(): Promise<void> {
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
@@ -1759,6 +1944,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     const oldConfig = this.fleetConfig;
     this.loadConfig(this.configPath);
     this.routing.rebuild(this.fleetConfig!);
+    this.reregisterClassicChannels();
     this.scheduler?.reload();
 
     const newInstances = this.fleetConfig!.instances;
@@ -1883,6 +2069,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
 
     if (topicMode) {
       this.routing.rebuild(this.fleetConfig!);
+      this.reregisterClassicChannels();
       // startInstance already calls connectIpcToInstance, no need for connectToInstances here
 
       for (const name of Object.keys(fleet.instances)) {
