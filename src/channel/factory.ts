@@ -48,6 +48,16 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
     return new TelegramAdapter({ ...opts, apiRoot: config.telegram_api_root });
   }
 
+  if (config.type === "discord") {
+    const { DiscordAdapter } = await import("./adapters/discord.js");
+    return new DiscordAdapter({
+      ...opts,
+      guildId: config.group_id != null ? String(config.group_id) : "",
+      categoryName: (config.options?.category_name as string) ?? undefined,
+      generalChannelId: (config.options?.general_channel_id as string) ?? undefined,
+    });
+  }
+
   // Plugin adapters — try multiple package name conventions
   const candidates = [
     `@suzuke/agend-plugin-${config.type}`, // scoped official plugin
