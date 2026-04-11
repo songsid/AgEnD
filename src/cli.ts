@@ -1436,7 +1436,18 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const statusIcon = (s: string) =>
       s === "running" ? "\x1b[32m●\x1b[0m" : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
 
-    const nameW = Math.max(20, ...rows.map(r => r.name.length + 2));
+    /** Get display width accounting for fullwidth (CJK) characters */
+    const displayWidth = (s: string): number => {
+      let w = 0;
+      for (const ch of s) {
+        const cp = ch.codePointAt(0)!;
+        w += (cp > 0x7f && cp !== 0x200b) ? 2 : 1;
+      }
+      return w;
+    };
+    const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
+
+    const nameW = Math.max(20, ...rows.map(r => displayWidth(r.name) + 2));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -1461,10 +1472,10 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       const actStr = r.lastActivity ?? "-";
 
       console.log(
-        r.name.padEnd(nameW) +
+        padDisplay(r.name, nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status) + " " + r.status.padEnd(statusW - 2) +
-        teamStr.padEnd(teamW) +
+        padDisplay(teamStr, teamW) +
         ctxStr.padEnd(ctxW) +
         memStr.padEnd(memW) +
         actStr
