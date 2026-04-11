@@ -7,7 +7,8 @@ import type { CostGuard } from "./cost-guard.js";
 
 export type RouteTarget =
   | { kind: "instance"; name: string }
-  | { kind: "general"; name: string };
+  | { kind: "general"; name: string }
+  | { kind: "classic"; name: string };
 
 export interface SysInfo {
   uptime_seconds: number;
