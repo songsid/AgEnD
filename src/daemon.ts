@@ -1245,8 +1245,14 @@ export class Daemon extends EventEmitter {
       const outputTimeout = Math.round(total * 0.6);
       const idleTimeout = total - outputTimeout;
       const hasOutput = await this.controlClient.waitForOutput(windowId, outputTimeout);
-      if (!hasOutput) return false;
-      await this.controlClient.waitForIdle(windowId, idleTimeout);
+      if (!hasOutput) {
+        // Fallback: some TUI backends (e.g. opencode) don't trigger tmux %output events.
+        // Check pane content directly for ready pattern before giving up.
+        const pane = await this.tmux!.capturePane();
+        if (!this.backend!.getReadyPattern().test(pane)) return false;
+      } else {
+        await this.controlClient.waitForIdle(windowId, idleTimeout);
+      }
     } else {
       await new Promise(r => setTimeout(r, 10_000));
     }
