@@ -38,7 +38,7 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest } from "./web-api.js";
-import { ClassicChannelManager } from "./classic-channel-manager.js";
+import { ClassicChannelManager, classicInstanceName } from "./classic-channel-manager.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -1761,8 +1761,8 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     if (this.classicChannels.isClassicChannel(channelId)) return "This channel already has an active agent. Use /chat to talk.";
     if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
 
-    const instanceName = `classic-${sanitizeInstanceName(channelName || channelId)}`;
-    this.classicChannels.register(channelId, instanceName, userId);
+    const instanceName = classicInstanceName(sanitizeInstanceName(channelName || channelId), channelId);
+    this.classicChannels.register(channelId, instanceName, channelName || channelId, userId);
     this.routing.register(channelId, { kind: "classic", name: instanceName });
 
     await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend));
