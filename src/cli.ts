@@ -1364,9 +1364,9 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
 
-    // Load classic channels from classicBot.yaml
+    // Load classic channels from classicBot.yaml (keyed by channelId)
     const classicPath = join(DATA_DIR, "classicBot.yaml");
-    interface ClassicEntry { channelId: string; backend?: string; createdBy?: string; createdAt?: string }
+    interface ClassicEntry { name?: string; backend?: string; createdBy?: string; createdAt?: string }
     interface ClassicBotConfig { defaults?: { backend?: string }; channels?: Record<string, ClassicEntry> }
     let classicConfig: ClassicBotConfig | null = null;
     try {
@@ -1378,8 +1378,10 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const classicBackends = new Map<string, string>();
     if (classicConfig?.channels) {
       const classicDefault = classicConfig.defaults?.backend || config.defaults?.backend || "claude-code";
-      for (const [key, val] of Object.entries(classicConfig.channels)) {
-        const iName = `classic-${key}`;
+      for (const [channelId, val] of Object.entries(classicConfig.channels)) {
+        const chName = val.name ?? channelId;
+        const suffix = channelId.slice(-4);
+        const iName = `classic-${chName}-${suffix}`;
         if (!allNames.includes(iName)) {
           allNames.push(iName);
           classicNames.add(iName);
