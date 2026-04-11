@@ -6,6 +6,7 @@ import type { Logger } from "./logger.js";
 
 export interface ClassicChannel {
   channelId: string;
+  name: string;
   instanceName: string;
   backend?: string;
   createdAt: string;
@@ -15,7 +16,7 @@ export interface ClassicChannel {
 interface ClassicBotYaml {
   defaults?: { backend?: string };
   channels?: Record<string, {
-    channelId: string;
+    name?: string;
     backend?: string;
     createdBy?: string;
     createdAt?: string;
@@ -26,9 +27,16 @@ const YAML_HEADER = `# ClassicBot Configuration
 # Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli
 `;
 
+/** Derive instance name from channel name + last 4 digits of channelId */
+export function classicInstanceName(sanitizedName: string, channelId: string): string {
+  const suffix = channelId.slice(-4);
+  return `classic-${sanitizedName}-${suffix}`;
+}
+
 /**
  * Manages classic bot channel lifecycle — register/unregister/persist.
  * Persists to ~/.agend/classicBot.yaml with per-channel backend override.
+ * YAML keys are channelId to avoid duplicate name collisions.
  */
 export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
@@ -49,10 +57,12 @@ export class ClassicChannelManager {
       this.defaults = raw.defaults ?? {};
       this.channels.clear();
       if (raw.channels) {
-        for (const [key, val] of Object.entries(raw.channels)) {
-          this.channels.set(val.channelId, {
-            channelId: val.channelId,
-            instanceName: `classic-${key}`,
+        for (const [channelId, val] of Object.entries(raw.channels)) {
+          const name = val.name ?? channelId;
+          this.channels.set(channelId, {
+            channelId,
+            name,
+            instanceName: classicInstanceName(name, channelId),
             backend: val.backend,
             createdAt: val.createdAt ?? "",
             createdBy: val.createdBy ?? "",
@@ -70,10 +80,9 @@ export class ClassicChannelManager {
     mkdirSync(this.dataDir, { recursive: true });
     const obj: ClassicBotYaml = { defaults: this.defaults, channels: {} };
     for (const ch of this.channels.values()) {
-      const key = ch.instanceName.replace(/^classic-/, "");
-      const entry: Record<string, unknown> = { channelId: ch.channelId, createdBy: ch.createdBy, createdAt: ch.createdAt };
+      const entry: Record<string, unknown> = { name: ch.name, createdBy: ch.createdBy, createdAt: ch.createdAt };
       if (ch.backend) entry.backend = ch.backend;
-      obj.channels![key] = entry as any;
+      obj.channels![ch.channelId] = entry as any;
     }
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
@@ -109,8 +118,8 @@ export class ClassicChannelManager {
   get(channelId: string): ClassicChannel | undefined { return this.channels.get(channelId); }
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }
 
-  register(channelId: string, instanceName: string, userId: string): ClassicChannel {
-    const ch: ClassicChannel = { channelId, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
+  register(channelId: string, instanceName: string, channelName: string, userId: string): ClassicChannel {
+    const ch: ClassicChannel = { channelId, name: channelName, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
     this.channels.set(channelId, ch);
     this.save();
     this.logger.info({ channelId, instanceName }, "Registered classic channel");
