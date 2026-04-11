@@ -720,6 +720,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
     if (threadId == null) {
+      if ((msg as unknown as Record<string, unknown>).allowed === false) return;
       // General topic: check for /status command
       if (await this.topicCommands.handleGeneralCommand(msg)) return;
 
@@ -777,6 +778,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleClassicChannelMessage(target.name, msg);
       return;
     }
+
+    // Non-classic targets require access control
+    if ((msg as unknown as Record<string, unknown>).allowed === false) return;
 
     const instanceName = target.name;
 
@@ -889,6 +893,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text: (args.text as string ?? "").slice(0, 2000),
           ts: new Date().toISOString(),
         });
+        // Log agent replies for classic channels
+        if (this.classicChannels && instanceName.startsWith("classic-")) {
+          ClassicChannelManager.logMessage(instanceName, `[agent:${instanceName}]`, args.text as string ?? "", new Date());
+        }
       }
       return;
     }
@@ -1673,8 +1681,9 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     // Log every message to the daily chat log
     ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp);
 
-    // Only forward /chat messages to the agent
+    // Only forward /chat messages to the agent (with access check)
     if (!text.startsWith("/chat ") && text !== "/chat") return;
+    if ((msg as unknown as Record<string, unknown>).allowed === false) return;
 
     const chatText = text.slice(6).trim();
     if (!chatText) return;

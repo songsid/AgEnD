@@ -107,16 +107,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private _registerHandlers(): void {
     this.client.on("messageCreate", async (msg: Message) => {
       if (msg.author.bot) return;
-      if (msg.guildId !== this.guildId) return;
+      if (!msg.guildId) return;
 
       const userId = msg.author.id;
-      if (!this.accessManager.isAllowed(userId)) return;
-
-      const chatId = this.guildId;
+      const chatId = msg.guildId;
       const threadId = msg.channelId;
       const messageId = msg.id;
       const username = msg.author.username;
       const text = msg.content;
+      const allowed = msg.guildId === this.guildId
+        ? this.accessManager.isAllowed(userId)
+        : true; // Other guilds: allow all (classic channels handle their own access)
 
       const attachments = msg.attachments.map((att) => ({
         kind: "document" as const,
@@ -138,6 +139,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         timestamp: msg.createdAt,
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reference?.messageId ?? undefined,
+        allowed,
       });
     });
 
