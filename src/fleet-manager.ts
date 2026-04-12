@@ -769,6 +769,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Access control — classic channels are open to all, others require allowed user
     if (this.accessManager && !this.accessManager.isAllowed(msg.userId)) {
       const target = threadId ? this.routing.resolve(threadId) : undefined;
+      this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access check for non-allowed user");
       if (!target || target.kind !== "classic") return;
     }
     if (threadId == null) {
@@ -1723,6 +1724,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   /** Handle a message in a classic channel: log it, forward only /chat messages */
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
+    this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: text.startsWith("/chat") }, "classic channel message received");
 
     // Log every message to the daily chat log
     ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp);

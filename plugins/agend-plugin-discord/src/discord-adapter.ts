@@ -110,7 +110,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private _registerHandlers(): void {
     this.client.on("messageCreate", async (msg: Message) => {
       if (msg.author.bot) return;
-      if (msg.guildId !== this.guildId) return;
+      if (!msg.guildId) return;
 
       const userId = msg.author.id;
 
