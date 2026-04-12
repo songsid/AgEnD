@@ -1886,7 +1886,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date },
+    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
     const logContext = this.getRecentChatLog(instanceName);
@@ -1913,6 +1913,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
         thread_id: msg.threadId ?? "",
         source: msg.source,
         ...extraMeta,
+        ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
       },
     });
     this.lastInboundUser.set(instanceName, msg.username);
