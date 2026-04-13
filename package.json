@@ -4,7 +4,8 @@
   "description": "Multi-agent fleet daemon — run any coding CLI (Claude, Gemini, Codex, OpenCode) from Telegram",
   "type": "module",
   "bin": {
-    "agend": "./dist/cli.js"
+    "agend": "./dist/cli.js",
+    "agend-agent": "./dist/agent-cli.js"
   },
   "exports": {
     ".": "./dist/cli.js",
