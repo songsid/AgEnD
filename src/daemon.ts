@@ -77,6 +77,7 @@ export class Daemon extends EventEmitter {
   private snapshotConsumed = false;
   private pasteLock: Promise<void> = Promise.resolve();
   private pendingInstructionsUpdate: string | undefined;
+  private pasteQueueDepth = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
@@ -759,7 +760,24 @@ export class Daemon extends EventEmitter {
 
     // Serialize deliveries: each message waits for the previous to complete,
     // and each waits for the CLI to be idle before pasting.
-    this.pasteLock = this.pasteLock.then(() => this.deliverMessage(formatted)).catch(err => {
+    const enqueuedAt = Date.now();
+    const isFromInstance = !!meta.from_instance;
+    this.pasteQueueDepth++;
+    if (this.pasteQueueDepth > 3) {
+      this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
+    }
+    this.pasteLock = this.pasteLock.then(async () => {
+      try {
+        // Drop stale user messages (>60s in queue), but never drop cross-instance messages
+        if (!isFromInstance && Date.now() - enqueuedAt > 60_000) {
+          this.logger.warn({ age: Date.now() - enqueuedAt, user: meta.user }, "Dropping stale message");
+          return;
+        }
+        await this.deliverMessage(formatted);
+      } finally {
+        this.pasteQueueDepth--;
+      }
+    }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "pasteLock delivery error — chain continues");
     });
     this.logger.debug({ user: meta.user, text: content.slice(0, 100) }, "Queued channel message for delivery");
@@ -769,7 +787,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(formatted: string): Promise<void> {
     const windowId = this.getWindowId();
     if (windowId && this.controlClient) {
-      const idle = await this.controlClient.waitForIdle(windowId);
+      const idle = await this.controlClient.waitForIdle(windowId, this.config.lightweight ? 10_000 : undefined);
       if (!idle) {
         this.logger.warn("Delivering message after idle timeout (CLI may be busy)");
       }
