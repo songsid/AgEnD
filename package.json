@@ -1,10 +1,11 @@
 {
   "name": "@suzuke/agend",
-  "version": "1.20.4",
+  "version": "1.21.0",
   "description": "Multi-agent fleet daemon — run any coding CLI (Claude, Gemini, Codex, OpenCode) from Telegram",
   "type": "module",
   "bin": {
-    "agend": "./dist/cli.js"
+    "agend": "./dist/cli.js",
+    "agend-agent": "./dist/agent-cli.js"
   },
   "exports": {
     ".": "./dist/cli.js",
@@ -15,7 +16,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "postbuild": "cp -r src/plugin dist/ && cp -r src/workflow-templates dist/ && cp -r src/ui dist/ && cd dist/plugin/agend && ln -sf ../../channel/mcp-server.js server.js",
+    "postbuild": "cp -r src/plugin dist/ && cp -r src/workflow-templates dist/ && cp src/agent-cli-instructions.md dist/ && cp -r src/ui dist/ && cd dist/plugin/agend && ln -sf ../../channel/mcp-server.js server.js",
     "start": "tsx src/cli.ts start",
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
