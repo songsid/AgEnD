@@ -63,7 +63,12 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       } catch { /* template not found — skip */ }
     }
     if (workflowContent) {
-      sections.push(`## Development Workflow\n\n${workflowContent}`);
+      const trimmed = workflowContent.trim();
+      if (trimmed.startsWith("#")) {
+        sections.push(trimmed);
+      } else {
+        sections.push(`## Development Workflow\n\n${trimmed}`);
+      }
     }
   }
 
