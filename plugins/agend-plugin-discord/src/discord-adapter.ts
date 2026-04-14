@@ -214,7 +214,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       } catch (err) {
         console.warn(`[discord] interactionCreate error (${(err as Error).message})`);
       }
-      }
     });
 
     // Handle channel deletion (equivalent to topic_closed)

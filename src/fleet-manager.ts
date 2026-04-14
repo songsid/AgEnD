@@ -1947,7 +1947,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     try {
       if (!existsSync(logFile)) return undefined;
       const lines = readFileSync(logFile, "utf-8").trim().split("\n");
-      return lines.slice(-50).join("\n");
+      return lines.slice(-10).join("\n");
     } catch { return undefined; }
   }
 
