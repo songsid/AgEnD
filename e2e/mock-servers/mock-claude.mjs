@@ -294,7 +294,7 @@ const controlTimer = setInterval(async () => {
           process.stderr.write(`mock-claude: tool ${name} failed: ${err.message}\n`);
         }
       }
-      if (ctrl.exit) gracefulExit(0);
+      if (ctrl.exit) gracefulExit(ctrl.exit_code ?? 1);
     }
   } catch { /* ignore */ }
 }, 1000);
