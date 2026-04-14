@@ -194,7 +194,7 @@ describe("Workflow Template E2E", () => {
       join(testDir, "instances", "default-wf", "mcp-instructions.txt"),
       "utf-8",
     );
-    expect(instructions).toContain("Development Workflow");
+    // default.md starts with "# Fleet Collaboration" — added directly (no wrapper heading)
     expect(instructions).toContain("Fleet Collaboration");
     expect(instructions).toContain("Communication Protocol");
     expect(instructions).toContain("Context Protection");
@@ -205,7 +205,6 @@ describe("Workflow Template E2E", () => {
       join(testDir, "instances", "no-wf", "mcp-instructions.txt"),
       "utf-8",
     );
-    expect(instructions).not.toContain("Development Workflow");
     expect(instructions).not.toContain("Fleet Collaboration");
     // Should still have base fleet context
     expect(instructions).toContain("Collaboration Rules");
@@ -216,7 +215,7 @@ describe("Workflow Template E2E", () => {
       join(testDir, "instances", "custom-wf", "mcp-instructions.txt"),
       "utf-8",
     );
-    expect(instructions).toContain("Development Workflow");
+    // Custom workflow starts with "# Custom Workflow" — added directly (no wrapper heading)
     expect(instructions).toContain("Custom Workflow");
     expect(instructions).toContain("custom workflow for testing");
     // Should NOT contain builtin template
