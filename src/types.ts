@@ -106,6 +106,8 @@ export interface InstanceConfig {
   workflow?: string | false;
   /** Total startup timeout in ms for CLI backend (split 60/40 between output detection and idle wait). Default: 25000 */
   startup_timeout_ms?: number;
+  /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint, no MCP server). */
+  agent_mode?: "mcp" | "cli";
 }
 
 export interface WebhookConfig {
@@ -171,6 +173,16 @@ export interface TemplateInstanceDef {
   lightweight?: boolean;
   workflow?: string | false;
   tags?: string[];
+  /** Reference to a profile in fleet.yaml profiles section */
+  profile?: string;
+}
+
+export interface ProfileConfig {
+  backend?: string;
+  model?: string;
+  model_failover?: string[];
+  tool_set?: string;
+  lightweight?: boolean;
 }
 
 export interface FleetTemplate {
@@ -187,5 +199,6 @@ export interface FleetConfig {
   instances: Record<string, InstanceConfig>;
   teams?: Record<string, TeamConfig>;
   templates?: Record<string, FleetTemplate>;
+  profiles?: Record<string, ProfileConfig>;
   health_port?: number;
 }
