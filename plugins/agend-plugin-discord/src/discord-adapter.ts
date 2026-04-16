@@ -170,43 +170,48 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
     // Handle button interactions and slash commands
     this.client.on("interactionCreate", async (interaction: Interaction) => {
-      if (interaction.isButton()) {
-        await interaction.deferUpdate();
-        this.emit("callback_query", {
-          callbackData: interaction.customId,
-          chatId: this.guildId,
-          threadId: interaction.channelId,
-          messageId: interaction.message.id,
-        });
-        return;
-      }
-
-      if (interaction.isChatInputCommand()) {
-        const channelName = interaction.channel && "name" in interaction.channel ? (interaction.channel.name ?? "") : "";
-        const username = interaction.user.username;
-        if (interaction.commandName === "chat") {
-          const text = interaction.options.getString("message") ?? "";
-          await interaction.deferReply();
-          this.emit("slash_command", {
-            command: "chat",
-            channelId: interaction.channelId,
-            channelName,
-            userId: interaction.user.id,
-            username,
-            text,
-            respond: async (reply: string) => { await interaction.editReply(reply); },
+      try {
+        if (interaction.isButton()) {
+          await interaction.deferUpdate();
+          this.emit("callback_query", {
+            callbackData: interaction.customId,
+            chatId: this.guildId,
+            threadId: interaction.channelId,
+            messageId: interaction.message.id,
           });
-        } else {
-          await interaction.deferReply({ ephemeral: true });
-          this.emit("slash_command", {
-            command: interaction.commandName,
-            channelId: interaction.channelId,
-            channelName,
-            userId: interaction.user.id,
-            username,
-            respond: async (reply: string) => { await interaction.editReply(reply); },
-          });
+          return;
         }
+
+        if (interaction.isChatInputCommand()) {
+          const channelName = interaction.channel && "name" in interaction.channel ? (interaction.channel.name ?? "") : "";
+          const username = interaction.user.username;
+          if (interaction.commandName === "chat") {
+            const text = interaction.options.getString("message") ?? "";
+            await interaction.deferReply();
+            this.emit("slash_command", {
+              command: "chat",
+              channelId: interaction.channelId,
+              channelName,
+              userId: interaction.user.id,
+              username,
+              text,
+              respond: async (reply: string) => { try { await interaction.editReply(reply); } catch { /* expired */ } },
+            });
+          } else {
+            await interaction.deferReply({ ephemeral: true });
+            this.emit("slash_command", {
+              command: interaction.commandName,
+              channelId: interaction.channelId,
+              channelName,
+              userId: interaction.user.id,
+              username,
+              respond: async (reply: string) => { try { await interaction.editReply(reply); } catch { /* expired */ } },
+            });
+          }
+        }
+      } catch (err) {
+        // Interaction expired (>3s) or unknown — log and swallow to prevent daemon crash
+        console.warn(`[discord] Interaction handler error: ${(err as Error).message}`);
       }
     });
 
