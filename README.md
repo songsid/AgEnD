@@ -70,6 +70,10 @@ curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
 Or install manually:
 
 ```bash
+# Option A: One-line install (Linux / macOS / WSL)
+curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
+
+# Option B: Manual install
 npm install -g @suzuke/agend    # 1. Install
 agend quickstart                # 2. Setup — bot token, backend, done
 agend fleet start               # 3. Launch your fleet 🎉
@@ -121,6 +125,13 @@ graph LR
 - Groq API key (optional, for voice)
 
 > **⚠️** All CLI backends run with `--dangerously-skip-permissions` (or equivalent). See [Security](SECURITY.md).
+
+> **WSL (Windows Subsystem for Linux):** Fully supported. The install script auto-detects WSL and avoids using Windows `node.exe` from PATH. If you encounter PATH issues, add to `/etc/wsl.conf`:
+> ```ini
+> [interop]
+> appendWindowsPath=false
+> ```
+> Then restart WSL (`wsl --shutdown`). Install with: `curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash`
 
 ## Documentation
 
