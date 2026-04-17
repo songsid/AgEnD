@@ -8,6 +8,13 @@ import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle } from "./instance-lifecycle.js";
 import type { EventLog } from "./event-log.js";
 import {
+  CreateInstanceArgs,
+  DeleteInstanceArgs,
+  DescribeInstanceArgs,
+  ListInstancesArgs,
+  ListTeamsArgs,
+  ReplaceInstanceArgs,
+  StartInstanceArgs,
   TeardownDeploymentArgs,
   validateArgs,
 } from "./outbound-schemas.js";
@@ -156,9 +163,11 @@ const sendToInstance: Handler = (ctx, args, respond, meta) => {
   });
 };
 
-const listInstances: Handler = (ctx, args, respond, meta) => {
+const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(ListInstancesArgs, rawArgs, "list_instances");
+  if (!v.ok) { respond(null, v.error); return; }
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
-  const filterTags = args.tags as string[] | undefined;
+  const filterTags = v.data.tags;
   let allInstances = Object.entries(ctx.fleetConfig?.instances ?? {})
     .filter(([name]) => name !== meta.instanceName && name !== senderLabel)
     .map(([name, config]) => ({
@@ -182,8 +191,10 @@ const listInstances: Handler = (ctx, args, respond, meta) => {
   respond({ instances: allInstances, external_sessions: externalSessions });
 };
 
-const describeInstance: Handler = (ctx, args, respond) => {
-  const targetName = args.name as string;
+const describeInstance: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(DescribeInstanceArgs, rawArgs, "describe_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const targetName = v.data.name;
   const config = ctx.fleetConfig?.instances[targetName];
   if (config) {
     respond({
@@ -209,8 +220,10 @@ const describeInstance: Handler = (ctx, args, respond) => {
   respond(null, `Instance or session '${targetName}' not found`);
 };
 
-const startInstance: Handler = async (ctx, args, respond) => {
-  const targetName = args.name as string;
+const startInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(StartInstanceArgs, rawArgs, "start_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const targetName = v.data.name;
   if (ctx.lifecycle.daemons.has(targetName)) {
     respond({ success: true, status: "already_running" });
     return;
@@ -282,13 +295,16 @@ const reportResult = wrapAsSend(
   },
 );
 
-const createInstance: Handler = async (ctx, args, respond) => {
-  await ctx.lifecycle.handleCreate(args, respond);
+const createInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  await ctx.lifecycle.handleCreate(v.data, respond);
 };
 
-const deleteInstance: Handler = async (ctx, args, respond, meta) => {
-  const targetName = args.name as string | undefined;
-  if (!targetName) { respond(null, "delete_instance: missing required argument 'name'"); return; }
+const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(DeleteInstanceArgs, rawArgs, "delete_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const targetName = v.data.name;
   const caller = meta.instanceName;
   const callerConfig = ctx.fleetConfig?.instances[caller];
   const isSelf = targetName === caller;
@@ -297,11 +313,13 @@ const deleteInstance: Handler = async (ctx, args, respond, meta) => {
     respond(null, `delete_instance denied: '${caller}' may only delete itself (coordinator instances may delete any)`);
     return;
   }
-  await ctx.lifecycle.handleDelete(args, respond);
+  await ctx.lifecycle.handleDelete(v.data, respond);
 };
 
-const replaceInstance: Handler = async (ctx, args, respond) => {
-  await ctx.lifecycle.handleReplace(args, respond);
+const replaceInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(ReplaceInstanceArgs, rawArgs, "replace_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  await ctx.lifecycle.handleReplace(v.data, respond);
 };
 
 const broadcast: Handler = (ctx, args, respond, meta) => {
@@ -386,7 +404,9 @@ const deleteTeam: Handler = (ctx, args, respond) => {
   respond({ deleted: name });
 };
 
-const listTeams: Handler = (ctx, _args, respond) => {
+const listTeams: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(ListTeamsArgs, rawArgs, "list_teams");
+  if (!v.ok) { respond(null, v.error); return; }
   const teams = ctx.fleetConfig?.teams ?? {};
   const result = Object.entries(teams).map(([name, def]) => ({
     name,
