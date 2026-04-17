@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -139,7 +139,7 @@ export function handleWebRequest(
     const backends = BACKENDS.map(b => {
       let installed = false;
       let binPath = "";
-      try { binPath = execSync(`which ${b.binary}`, { stdio: "pipe" }).toString().trim(); installed = true; } catch { /* */ }
+      try { binPath = execFileSync("which", [b.binary], { stdio: "pipe" }).toString().trim(); installed = true; } catch { /* */ }
       return { name: b.name, binary: b.binary, installed, path: binPath };
     });
     json(res, 200, { backends });
@@ -156,11 +156,13 @@ export function handleWebRequest(
     });
     res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
     ctx.sseClients.add(res);
-    req.on("close", () => ctx.sseClients.delete(res));
     const interval = setInterval(() => {
       res.write(`event: status\ndata: ${JSON.stringify(ctx.getUiStatus())}\n\n`);
     }, 10_000);
-    req.on("close", () => clearInterval(interval));
+    req.on("close", () => {
+      ctx.sseClients.delete(res);
+      clearInterval(interval);
+    });
     return true;
   }
 
