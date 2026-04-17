@@ -15,12 +15,15 @@ import {
   DelegateTaskArgs,
   DeleteInstanceArgs,
   DeleteTeamArgs,
+  DeployTemplateArgs,
   DescribeInstanceArgs,
+  ListDeploymentsArgs,
   ListInstancesArgs,
   ListTeamsArgs,
   ReplaceInstanceArgs,
   ReportResultArgs,
   RequestInformationArgs,
+  SendToInstanceArgs,
   StartInstanceArgs,
   TeardownDeploymentArgs,
   UpdateTeamArgs,
@@ -74,11 +77,10 @@ function sanitizeError(err: unknown, ctx: OutboundContext, operation: string): s
 
 // ── Handler implementations ─────────────────────────────────────────────
 
-const sendToInstance: Handler = (ctx, args, respond, meta) => {
-  const targetName = args.instance_name as string;
-  const message = args.message as string | undefined;
-  if (!targetName) { respond(null, "send_to_instance: missing required argument 'instance_name'"); return; }
-  if (!message) { respond(null, "send_to_instance: missing required argument 'message'"); return; }
+const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(SendToInstanceArgs, rawArgs, "send_to_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const { instance_name: targetName, message, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const isExternalSender = meta.senderSessionName != null && meta.senderSessionName !== meta.instanceName;
 
@@ -105,7 +107,7 @@ const sendToInstance: Handler = (ctx, args, respond, meta) => {
     return;
   }
 
-  const correlationId = (args.correlation_id as string) || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const correlationId = parsedCorrelationId || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const ipcMeta: Record<string, string> = {
     chat_id: "",
     message_id: `xmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -116,11 +118,11 @@ const sendToInstance: Handler = (ctx, args, respond, meta) => {
     from_instance: senderLabel,
     correlation_id: correlationId,
   };
-  if (args.request_kind) ipcMeta.request_kind = args.request_kind as string;
-  if (args.requires_reply != null) ipcMeta.requires_reply = String(args.requires_reply);
-  if (args.task_summary) ipcMeta.task_summary = args.task_summary as string;
-  if (args.working_directory) ipcMeta.working_directory = args.working_directory as string;
-  if (args.branch) ipcMeta.branch = args.branch as string;
+  if (reqKind) ipcMeta.request_kind = reqKind;
+  if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
+  if (task_summary) ipcMeta.task_summary = task_summary;
+  if (working_directory) ipcMeta.working_directory = working_directory;
+  if (branch) ipcMeta.branch = branch;
 
   targetIpc.send({ type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
 
@@ -459,14 +461,11 @@ const updateTeam: Handler = (ctx, rawArgs, respond) => {
 
 // ── Fleet Templates ────────────────────────────────────────────────────
 
-const deployTemplate: Handler = async (ctx, args, respond) => {
-  const templateName = args.template as string;
-  const rawDirectory = args.directory as string | undefined;
-  const deploymentName = (args.name as string) || templateName;
-  const branch = args.branch as string | undefined;
-
-  if (!templateName) { respond(null, "deploy_template: missing required argument 'template'"); return; }
-  if (!rawDirectory) { respond(null, "deploy_template: missing required argument 'directory'"); return; }
+const deployTemplate: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(DeployTemplateArgs, rawArgs, "deploy_template");
+  if (!v.ok) { respond(null, v.error); return; }
+  const { template: templateName, directory: rawDirectory, name: deploymentNameArg, branch } = v.data;
+  const deploymentName = deploymentNameArg || templateName;
 
   // Reject relative paths; require absolute or ~-prefixed. Resolve and normalize (collapses `..`).
   const expanded = rawDirectory.replace(/^~/, process.env.HOME || "~");
@@ -670,7 +669,9 @@ const teardownDeployment: Handler = async (ctx, rawArgs, respond) => {
   });
 };
 
-const listDeployments: Handler = (ctx, _args, respond) => {
+const listDeployments: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(ListDeploymentsArgs, rawArgs, "list_deployments");
+  if (!v.ok) { respond(null, v.error); return; }
   if (!ctx.fleetConfig) { respond(null, "Fleet config not available"); return; }
 
   // Aggregate instances by deployment tag
