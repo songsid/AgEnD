@@ -75,6 +75,26 @@ export const CreateInstanceArgs = z.object({
 
 // ── Cross-instance communication ────────────────────────────────────────
 
+export const SendToInstanceArgs = z.object({
+  instance_name: NonEmptyString.describe(
+    "Name of the target instance (e.g., 'ccplugin', 'blog-t1385'). Use list_instances to see available instances.",
+  ),
+  message: NonEmptyString.describe("The message to send to the target instance."),
+  request_kind: z.enum(["query", "task", "report", "update"]).optional().describe(
+    "Categorizes the message intent. 'query' = asking a question, 'task' = delegating work, 'report' = returning results, 'update' = status notification.",
+  ),
+  requires_reply: z.boolean().optional()
+    .describe("Whether you expect the recipient to respond. Default: false."),
+  correlation_id: z.string().optional()
+    .describe("Echo this from a previous message to link request-response pairs."),
+  task_summary: z.string().optional()
+    .describe("Brief summary of the task or request (shown in logs and Telegram visibility posts)."),
+  working_directory: z.string().optional()
+    .describe("Working directory context to pass along (e.g. the repo path you are working in)."),
+  branch: z.string().optional().describe("Git branch context to pass along."),
+});
+
+
 // request_kind: send_to_instance accepts the full 4-value enum; broadcast
 // excludes "report" (broadcasts don't reply to a specific correlation).
 const SendRequestKind = z.enum(["query", "task", "report", "update"]);
@@ -140,9 +160,24 @@ export const ListTeamsArgs = z.object({});
 
 // ── Fleet Templates ─────────────────────────────────────────────────────
 
+export const DeployTemplateArgs = z.object({
+  template: NonEmptyString.describe("Template name from fleet.yaml templates section."),
+  directory: NonEmptyString.describe(
+    "Working directory (shared by all instances, or base repo for worktrees).",
+  ),
+  name: z.string().optional().describe(
+    "Deployment name (used as team name and instance name prefix). Defaults to template name.",
+  ),
+  branch: z.string().optional().describe(
+    "Git branch — each instance gets its own worktree branched from this.",
+  ),
+});
+
 export const TeardownDeploymentArgs = z.object({
   name: NonEmptyString.describe("Deployment name (as used in deploy_template)."),
 });
+
+export const ListDeploymentsArgs = z.object({});
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
