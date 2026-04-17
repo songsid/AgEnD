@@ -55,8 +55,17 @@ export class KiroBackend implements CliBackend {
       const envExports = Object.entries(allEnv)
         .map(([k, v]) => `export ${k}='${String(v).replace(/'/g, "'\\''")}'`)
         .join("\n");
-      writeFileSync(wrapperPath, `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`);
-      chmodSync(wrapperPath, 0o755);
+      // 0o700 (owner-only rwx): wrapper inlines sensitive env (tokens, socket paths).
+      // Other users on the host must not be able to read it. Set mode at creation
+      // to avoid a world-readable window between writeFileSync and chmodSync.
+      writeFileSync(
+        wrapperPath,
+        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`,
+        { mode: 0o700 },
+      );
+      // Re-chmod in case the file already existed with looser permissions (writeFileSync's
+      // mode only applies on create).
+      chmodSync(wrapperPath, 0o700);
 
       servers[instanceKey] = {
         command: wrapperPath,
