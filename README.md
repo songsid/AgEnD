@@ -63,7 +63,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 ```bash
 # Option A: One-line install (Linux / macOS / WSL)
-curl -fsSL https://raw.githubusercontent.com/suzuke/AgEnD/main/website/public/install.sh | bash
+curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
 
 # Option B: Manual install
 npm install -g @suzuke/agend    # 1. Install
@@ -123,7 +123,7 @@ graph LR
 > [interop]
 > appendWindowsPath=false
 > ```
-> Then restart WSL (`wsl --shutdown`). Install with: `curl -fsSL https://raw.githubusercontent.com/suzuke/AgEnD/main/website/public/install.sh | bash`
+> Then restart WSL (`wsl --shutdown`). Install with: `curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash`
 
 ## Documentation
 
