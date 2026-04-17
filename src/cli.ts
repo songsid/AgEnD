@@ -215,12 +215,16 @@ fleet
       process.exit(1);
     }
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      console.error(`Fleet PID file at ${pidPath} is corrupted`);
+      process.exit(1);
+    }
 
     if (opts?.reload) {
       // Check if managed by launchd — if so, just signal and let launchd restart
       let managedByLaunchd = false;
       try {
-        const ppid = parseInt(execSync(`ps -o ppid= -p ${pid}`).toString().trim(), 10);
+        const ppid = parseInt(execFileSync("ps", ["-o", "ppid=", "-p", String(pid)]).toString().trim(), 10);
         managedByLaunchd = ppid === 1;
       } catch { /* ignore */ }
 
@@ -1016,11 +1020,21 @@ program
     const { loadFleetConfig } = await import("./config.js");
     const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
     const port = fleet.health_port ?? 19280;
-    const url = `http://localhost:${port}/ui?token=${token}`;
+    const url = `http://localhost:${port}/ui?token=${encodeURIComponent(token)}`;
     console.log(`Opening ${url}`);
-    const { exec: execCb } = await import("node:child_process");
-    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-    execCb(`${cmd} "${url}"`);
+    // The token is sensitive: passing it on argv would expose it via `ps`,
+    // and exec(`${cmd} "${url}"`) additionally goes through a shell. Instead,
+    // write a 0600-mode HTML redirect into a per-user temp dir and open that
+    // file path — the token only ever lives on disk under user-only perms.
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const tmpDir = mkdtempSync(join(tmpdir(), "agend-web-"));
+    const htmlPath = join(tmpDir, "open.html");
+    const htmlUrl = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    writeFileSync(htmlPath, `<!doctype html><meta http-equiv="refresh" content="0; url=${htmlUrl}">`, { mode: 0o600 });
+    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    const child = spawn(cmd, [htmlPath], { detached: true, stdio: "ignore" });
+    child.unref();
   });
 
 // === Schedule commands ===
@@ -1281,13 +1295,14 @@ async function resolveInstance(query: string, config: import("./types.js").Fleet
 /** Get total RSS (KB) for a process and all its descendants. */
 function getTreeRssKb(pid: number, depth = 0): number {
   if (depth > 10) return 0;
+  if (!Number.isInteger(pid) || pid <= 0) return 0;
   let total = 0;
   try {
-    const rss = parseInt(execSync(`ps -o rss= -p ${pid}`, { stdio: "pipe" }).toString().trim(), 10);
+    const rss = parseInt(execFileSync("ps", ["-o", "rss=", "-p", String(pid)], { stdio: "pipe" }).toString().trim(), 10);
     if (!isNaN(rss)) total += rss;
   } catch { return 0; }
   try {
-    const children = execSync(`pgrep -P ${pid}`, { stdio: "pipe" }).toString().trim();
+    const children = execFileSync("pgrep", ["-P", String(pid)], { stdio: "pipe" }).toString().trim();
     for (const line of children.split("\n")) {
       const childPid = parseInt(line, 10);
       if (!isNaN(childPid)) total += getTreeRssKb(childPid, depth + 1);
