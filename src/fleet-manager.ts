@@ -1098,10 +1098,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
     const projectRoot = this.fleetConfig?.instances[instance]?.working_directory ?? "";
+    const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
+    const asNum = (v: unknown): number | undefined => typeof v === "number" ? v : undefined;
+    const asStrArr = (v: unknown): string[] | undefined =>
+      Array.isArray(v) && v.every(x => typeof x === "string") ? v as string[] : undefined;
     switch (op) {
-      case "post": return db.createDecision({ ...args, created_by: instance } as any);
-      case "list": return db.listDecisions(projectRoot, args as any);
-      case "update": return db.updateDecision(args.id as string, args as any);
+      case "post": {
+        const title = asStr(args.title);
+        const content = asStr(args.content);
+        if (!title || !content) return { error: "title and content are required" };
+        const scope = args.scope === "fleet" ? "fleet" : "project";
+        return db.createDecision({
+          project_root: projectRoot,
+          scope,
+          title,
+          content,
+          tags: asStrArr(args.tags),
+          ttl_days: asNum(args.ttl_days),
+          supersedes: asStr(args.supersedes),
+          created_by: instance,
+        });
+      }
+      case "list": return db.listDecisions(projectRoot, {
+        includeArchived: args.includeArchived === true,
+        tags: asStrArr(args.tags),
+      });
+      case "update": {
+        const id = asStr(args.id);
+        if (!id) return { error: "id is required" };
+        return db.updateDecision(id, {
+          content: asStr(args.content),
+          tags: asStrArr(args.tags),
+          ttl_days: asNum(args.ttl_days),
+        });
+      }
       default: return { error: `Unknown decision op: ${op}` };
     }
   }
@@ -1110,12 +1140,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.scheduler) return { error: "Scheduler not available" };
     const db = this.scheduler.db;
     const action = args.action as string;
+    const asStr = (v: unknown): string | undefined => typeof v === "string" ? v : undefined;
+    const asStrArr = (v: unknown): string[] | undefined =>
+      Array.isArray(v) && v.every(x => typeof x === "string") ? v as string[] : undefined;
+    const asPriority = (v: unknown): "low" | "normal" | "high" | "urgent" | undefined => {
+      return (v === "low" || v === "normal" || v === "high" || v === "urgent") ? v : undefined;
+    };
+    const asStatus = (v: unknown): "open" | "claimed" | "done" | "blocked" | "cancelled" | undefined => {
+      return (v === "open" || v === "claimed" || v === "done" || v === "blocked" || v === "cancelled") ? v : undefined;
+    };
     switch (action) {
-      case "create": return db.createTask({ ...args, created_by: instance } as any);
-      case "list": return db.listTasks({ assignee: args.filter_assignee as string, status: args.filter_status as string });
-      case "claim": return db.claimTask(args.id as string, instance);
-      case "done": return db.completeTask(args.id as string, args.result as string | undefined);
-      case "update": return db.updateTask(args.id as string, args as any);
+      case "create": {
+        const title = asStr(args.title);
+        if (!title) return { error: "title is required" };
+        return db.createTask({
+          title,
+          description: asStr(args.description),
+          priority: asPriority(args.priority),
+          assignee: asStr(args.assignee),
+          depends_on: asStrArr(args.depends_on),
+          created_by: instance,
+        });
+      }
+      case "list": return db.listTasks({ assignee: asStr(args.filter_assignee), status: asStr(args.filter_status) });
+      case "claim": {
+        const id = asStr(args.id);
+        if (!id) return { error: "id is required" };
+        return db.claimTask(id, instance);
+      }
+      case "done": {
+        const id = asStr(args.id);
+        if (!id) return { error: "id is required" };
+        return db.completeTask(id, asStr(args.result));
+      }
+      case "update": {
+        const id = asStr(args.id);
+        if (!id) return { error: "id is required" };
+        return db.updateTask(id, {
+          status: asStatus(args.status),
+          assignee: asStr(args.assignee),
+          result: asStr(args.result),
+          priority: asPriority(args.priority),
+        });
+      }
       default: return { error: `Unknown task action: ${action}` };
     }
   }
@@ -2013,8 +2080,31 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
 
   private startHealthServer(port: number): void {
     this.startedAt = Date.now();
+
+    // Generate web token before server starts so auth is enforced from the first request.
+    this.webToken = randomBytes(24).toString("hex");
+    const tokenPath = join(this.dataDir, "web.token");
+    writeFileSync(tokenPath, this.webToken);
+
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
+
+      // Public health probe — no auth required.
+      if (req.method === "GET" && req.url === "/health") {
+        // fallthrough to existing handler below
+      } else {
+        // All other endpoints require a valid token (query ?token= or X-Agend-Token header).
+        // /ui/* will also re-check in web-api.ts, which is harmless.
+        const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
+        const headerToken = req.headers["x-agend-token"];
+        const providedToken = parsedUrl.searchParams.get("token")
+          ?? (typeof headerToken === "string" ? headerToken : null);
+        if (!this.webToken || providedToken !== this.webToken) {
+          res.writeHead(401);
+          res.end(JSON.stringify({ error: "Unauthorized" }));
+          return;
+        }
+      }
 
       if (req.method === "GET" && req.url === "/health") {
         const instanceCount = this.fleetConfig?.instances
@@ -2200,10 +2290,6 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
       this.logger.info({ port }, "Health endpoint listening");
     });
 
-    // Generate and save web token
-    this.webToken = randomBytes(24).toString("hex");
-    const tokenPath = join(this.dataDir, "web.token");
-    writeFileSync(tokenPath, this.webToken);
     this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
   }
 
