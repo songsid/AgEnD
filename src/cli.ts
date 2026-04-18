@@ -1448,7 +1448,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
           try {
             const pane = execFileSync("tmux", tmuxArgs([
               "capture-pane", "-t", `${sessionName}:${name}`, "-p"
-            ]), { encoding: "utf-8", timeout: 2000 });
+            ]), { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
             context = parser(pane);
           } catch { /* tmux capture failed */ }
         }
