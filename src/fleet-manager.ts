@@ -1880,11 +1880,15 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     const text = msg.text ?? "";
     this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: text.startsWith("/chat") }, "classic channel message received");
 
-    // Log every message to the daily chat log
-    ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp, msg.replyToText);
+    // Log every message to the daily chat log (include attachment info)
+    const attachmentTag = msg.attachments?.length
+      ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
+      : "";
+    ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText);
 
-    // Only forward /chat messages to the agent
-    if (!text.startsWith("/chat ") && text !== "/chat") return;
+    // Forward /chat messages and bare attachments (e.g. images without /chat prefix)
+    const hasAttachments = !!msg.attachments?.length;
+    if (!text.startsWith("/chat ") && text !== "/chat" && !hasAttachments) return;
 
     // Strip /chat prefix before processAttachments (which may prepend image tags)
     const chatText = text.replace(/^\/chat\s*/, "").trim();
