@@ -2313,6 +2313,22 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
       this.reregisterClassicChannels();
       // startInstance already calls connectIpcToInstance, no need for connectToInstances here
 
+      // Restart classic channel instances (killed during orphan cleanup)
+      if (this.classicChannels) {
+        const fleetBackend = this.fleetConfig?.defaults?.backend;
+        const channels = this.classicChannels.getAll();
+        const concurrency = 3;
+        let idx = 0;
+        while (idx < channels.length) {
+          const batch = channels.slice(idx, idx + concurrency);
+          await Promise.allSettled(batch.map(ch =>
+            this.startClassicInstance(ch.instanceName, this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend)).catch(err =>
+              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
+          ));
+          idx += concurrency;
+        }
+      }
+
       for (const name of Object.keys(fleet.instances)) {
         this.startStatuslineWatcher(name);
       }
