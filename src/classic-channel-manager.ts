@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, rea
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
+import { sanitizeInstanceName } from "./topic-commands.js";
 import type { Logger } from "./logger.js";
 
 export interface ClassicChannel {
@@ -62,7 +63,7 @@ export class ClassicChannelManager {
           this.channels.set(channelId, {
             channelId,
             name,
-            instanceName: classicInstanceName(name, channelId),
+            instanceName: classicInstanceName(sanitizeInstanceName(name), channelId),
             backend: val.backend,
             createdAt: val.createdAt ?? "",
             createdBy: val.createdBy ?? "",
