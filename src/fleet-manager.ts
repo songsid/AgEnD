@@ -1903,10 +1903,12 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     const chatText = text.replace(/^\/chat\s*/, "").trim();
     if (!chatText && !msg.attachments?.length) return;
 
-    const patchedMsg = { ...msg, text: chatText };
+    // Strip photo from attachments if already saved to workspace inbox (avoid double download)
+    const patchedAttachments = savedPath ? msg.attachments?.filter(a => a.kind !== "photo") : msg.attachments;
+    const patchedMsg = { ...msg, text: chatText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
     const { text: processedText, extraMeta } = await processAttachments(patchedMsg, this.adapter!, this.logger, instanceName);
 
-    // Override image_path with workspace inbox path if we saved one
+    // Use workspace inbox path for image
     let finalText = processedText || chatText;
     if (savedPath) {
       extraMeta.image_path = savedPath;
