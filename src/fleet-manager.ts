@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -1878,31 +1878,65 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   /** Handle a message in a classic channel: log it, forward only /chat messages */
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
-    this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: text.startsWith("/chat") }, "classic channel message received");
+    const isChat = text.startsWith("/chat ") || text === "/chat";
+    this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: isChat }, "classic channel message received");
 
-    // Log every message to the daily chat log (include attachment info)
-    const attachmentTag = msg.attachments?.length
-      ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
+    // Save photos to workspace inbox so agent can read them later
+    const savedPath = await this.saveClassicAttachment(instanceName, msg);
+
+    // Log every message to the daily chat log (include saved path)
+    const attachmentTag = savedPath ? ` [📷 saved: ${savedPath}]`
+      : msg.attachments?.length ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
       : "";
     ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText);
 
-    // Forward /chat messages and bare attachments (e.g. images without /chat prefix)
-    const hasAttachments = !!msg.attachments?.length;
-    if (!text.startsWith("/chat ") && text !== "/chat" && !hasAttachments) return;
+    // Bare attachment without /chat: save + log only, don't trigger agent
+    if (!isChat) {
+      if (savedPath && this.adapter && msg.chatId && msg.messageId) {
+        this.adapter.react(msg.chatId, msg.messageId, "📸")
+          .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      }
+      return;
+    }
 
-    // Strip /chat prefix before processAttachments (which may prepend image tags)
+    // /chat message: forward to agent
     const chatText = text.replace(/^\/chat\s*/, "").trim();
     if (!chatText && !msg.attachments?.length) return;
 
     const patchedMsg = { ...msg, text: chatText };
     const { text: processedText, extraMeta } = await processAttachments(patchedMsg, this.adapter!, this.logger, instanceName);
 
+    // Override image_path with workspace inbox path if we saved one
+    let finalText = processedText || chatText;
+    if (savedPath) {
+      extraMeta.image_path = savedPath;
+      finalText = `[📷 Image: ${savedPath}]\n${chatText}`;
+    }
+
     if (this.adapter && msg.chatId && msg.messageId) {
       this.adapter.react(msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
-    await this.forwardToClassicInstance(instanceName, processedText || chatText, msg, extraMeta);
+    await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
+  }
+
+  /** Download photo attachment to classic instance workspace inbox. Returns saved path or undefined. */
+  private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<string | undefined> {
+    const photo = msg.attachments?.find(a => a.kind === "photo");
+    if (!photo || !this.adapter) return undefined;
+    try {
+      const tmpPath = await this.adapter.downloadAttachment(photo.fileId);
+      const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
+      mkdirSync(inboxDir, { recursive: true });
+      const dest = join(inboxDir, basename(tmpPath));
+      try { renameSync(tmpPath, dest); } catch { copyFileSync(tmpPath, dest); unlinkSync(tmpPath); }
+      this.logger.info({ instanceName, path: dest }, "Classic attachment saved to workspace inbox");
+      return dest;
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, instanceName }, "Classic attachment save failed");
+      return undefined;
+    }
   }
 
   /** Forward a message to a classic channel instance with chat log context */
