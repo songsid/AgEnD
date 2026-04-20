@@ -190,6 +190,7 @@ export async function runQuickstart(): Promise<void> {
     let groupId = "";
     let userId = "";
     let tokenEnvName = "";
+    let generalChannelId = "";
 
     if (channel === "telegram") {
       // ── Telegram flow ──────────────────────────────────
@@ -273,6 +274,15 @@ export async function runQuickstart(): Promise<void> {
       console.log(`  Discord Settings → Advanced → ${bold("Developer Mode")} ON → Right-click yourself → Copy User ID\n`);
       userId = (await rl.question("  Paste your User ID: ")).trim();
       console.log(`  ${green("✓")} User: ${userId}\n`);
+
+      console.log(`  To get a Channel ID for the General channel:`);
+      console.log(`  Right-click the text channel → ${bold("Copy Channel ID")}\n`);
+      generalChannelId = (await rl.question("  Paste General Channel ID (optional, Enter to skip): ")).trim();
+      if (generalChannelId) {
+        console.log(`  ${green("✓")} General Channel: ${generalChannelId}\n`);
+      } else {
+        console.log(`  ${dim("Skipped")}\n`);
+      }
     }
 
     // ── Project roots ────────────────────────────────────
@@ -327,6 +337,10 @@ export async function runQuickstart(): Promise<void> {
       "    mode: locked",
       "    allowed_users:",
       `      - ${qUid}`,
+      ...(generalChannelId ? [
+        "  options:",
+        `    general_channel_id: "${generalChannelId}"`,
+      ] : []),
       "",
       ...(projectRoots.length > 0
         ? ["project_roots:", ...projectRoots.map(p => `  - ${p}`), ""]
