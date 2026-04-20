@@ -31,6 +31,27 @@ export async function verifyBotToken(
   }
 }
 
+async function verifyDiscordToken(token: string): Promise<{ valid: boolean; username: string | null }> {
+  try {
+    const res = await fetch("https://discord.com/api/v10/users/@me", {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!res.ok) return { valid: false, username: null };
+    const data = (await res.json()) as { username?: string };
+    return { valid: true, username: data.username ?? null };
+  } catch { return { valid: false, username: null }; }
+}
+
+async function listDiscordGuilds(token: string): Promise<{ id: string; name: string }[]> {
+  try {
+    const res = await fetch("https://discord.com/api/v10/users/@me/guilds", {
+      headers: { Authorization: `Bot ${token}` },
+    });
+    if (!res.ok) return [];
+    return (await res.json()) as { id: string; name: string }[];
+  } catch { return []; }
+}
+
 function bold(s: string): string {
   return `\x1b[1m${s}\x1b[0m`;
 }
@@ -123,9 +144,11 @@ function expandHome(p: string): string {
 // ── Config builder (pure, testable) ─────────────────────
 
 export interface WizardAnswers {
+  channelType: "telegram" | "discord";
   backend: string;
   botTokenEnv: string;
   groupId?: number;
+  guildId?: string;
   channelMode: string;
   accessMode: "locked" | "pairing";
   allowedUsers: (number | string)[];
@@ -142,16 +165,29 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
     fleetData.project_roots = answers.projectRoots;
   }
 
-  fleetData.channel = {
-    type: "telegram",
-    mode: answers.channelMode,
-    bot_token_env: answers.botTokenEnv,
-    ...(answers.groupId != null ? { group_id: answers.groupId } : {}),
-    access: {
-      mode: answers.accessMode,
-      ...(answers.allowedUsers.length > 0 ? { allowed_users: answers.allowedUsers } : {}),
-    },
-  };
+  if (answers.channelType === "discord") {
+    fleetData.channel = {
+      type: "discord",
+      mode: answers.channelMode,
+      bot_token_env: answers.botTokenEnv,
+      ...(answers.guildId ? { guild_id: answers.guildId } : {}),
+      access: {
+        mode: answers.accessMode,
+        ...(answers.allowedUsers.length > 0 ? { allowed_users: answers.allowedUsers } : {}),
+      },
+    };
+  } else {
+    fleetData.channel = {
+      type: "telegram",
+      mode: answers.channelMode,
+      bot_token_env: answers.botTokenEnv,
+      ...(answers.groupId != null ? { group_id: answers.groupId } : {}),
+      access: {
+        mode: answers.accessMode,
+        ...(answers.allowedUsers.length > 0 ? { allowed_users: answers.allowedUsers } : {}),
+      },
+    };
+  }
 
   fleetData.defaults = {
     ...(answers.backend !== "claude-code" ? { backend: answers.backend } : {}),
@@ -298,71 +334,74 @@ export async function runSetupWizard(): Promise<void> {
     }
   }
 
-  // ── Step 2: Bot token ──
-  step(2, TOTAL_STEPS, "Telegram Bot Token");
-  console.log(`  ${dim("Get one from @BotFather on Telegram")}`);
+  // ── Step 2: Channel type ──
+  step(2, TOTAL_STEPS, "Channel Type");
+  const channelTypeIdx = await choose(rl, "Which chat platform?", [
+    { label: "Telegram", hint: "Forum Topics" },
+    { label: "Discord", hint: "Server channels" },
+  ], 0);
+  const channelType: "telegram" | "discord" = channelTypeIdx === 0 ? "telegram" : "discord";
 
-  // Check if env var already set
-  let tokenEnvName = "AGEND_BOT_TOKEN";
+  let tokenEnvName = "";
   let token = "";
   let botUsername = "";
+  let groupId: number | undefined;
+  let guildId: string | undefined;
+  const allowedUsers: (number | string)[] = [];
+  const accessMode = "locked";
 
-  // Check existing .env for token
-  if (existsSync(ENV_PATH)) {
-    const envContent = readFileSync(ENV_PATH, "utf-8");
-    const match = envContent.match(/^([A-Z_]+)=(\d+:[A-Za-z0-9_-]{30,})/m);
-    if (match) {
-      const maskedToken = match[2].slice(0, 10) + "...";
-      console.log(`  ${dim(`Found existing token in .env: ${match[1]}=${maskedToken}`)}`);
-      const reuse = await confirm(rl, "Use existing token?");
-      if (reuse) {
-        tokenEnvName = match[1];
-        token = match[2];
+  if (channelType === "telegram") {
+    // ── Step 3: Telegram Bot Token ──
+    step(3, TOTAL_STEPS, "Telegram Bot Token");
+    console.log(`  ${dim("Get one from @BotFather on Telegram")}`);
+
+    tokenEnvName = "AGEND_BOT_TOKEN";
+
+    // Check existing .env for token
+    if (existsSync(ENV_PATH)) {
+      const envContent = readFileSync(ENV_PATH, "utf-8");
+      const match = envContent.match(/^([A-Z_]+)=(\d+:[A-Za-z0-9_-]{30,})/m);
+      if (match) {
+        const maskedToken = match[2].slice(0, 10) + "...";
+        console.log(`  ${dim(`Found existing token in .env: ${match[1]}=${maskedToken}`)}`);
+        const reuse = await confirm(rl, "Use existing token?");
+        if (reuse) { tokenEnvName = match[1]; token = match[2]; }
       }
     }
-  }
 
-  if (!token) {
-    token = await ask(rl, "Bot Token", {
-      validate: (v) => validateBotToken(v) ? null : "Invalid format. Expected: 123456789:ABC...",
+    if (!token) {
+      token = await ask(rl, "Bot Token", {
+        validate: (v) => validateBotToken(v) ? null : "Invalid format. Expected: 123456789:ABC...",
+      });
+    }
+
+    console.log(`  Verifying with Telegram API...`);
+    const verification = await verifyBotToken(token);
+    if (!verification.valid) {
+      console.log(`  ${red("✗")} Token rejected by Telegram. Check your token.`);
+      rl.close();
+      process.exit(1);
+    }
+    botUsername = verification.username!;
+    console.log(`  ${green("✓")} @${botUsername}`);
+
+    tokenEnvName = await ask(rl, "Env variable name for token", {
+      default: tokenEnvName,
+      validate: (v) => /^[A-Z_][A-Z0-9_]*$/.test(v) ? null : "Must be uppercase with underscores",
     });
-  }
 
-  console.log(`  Verifying with Telegram API...`);
-  const verification = await verifyBotToken(token);
-  if (!verification.valid) {
-    console.log(`  ${red("✗")} Token rejected by Telegram. Check your token.`);
-    rl.close();
-    process.exit(1);
-  }
-  botUsername = verification.username!;
-  console.log(`  ${green("✓")} @${botUsername}`);
+    console.log();
+    console.log(`  ${yellow("⚠")}  Only one service can poll a bot token at a time.`);
+    console.log(`     ${dim("If this bot is also used by another polling service, stop it first.")}`);
 
-  tokenEnvName = await ask(rl, "Env variable name for token", {
-    default: tokenEnvName,
-    validate: (v) => /^[A-Z_][A-Z0-9_]*$/.test(v) ? null : "Must be uppercase with underscores (e.g., AGEND_BOT_TOKEN)",
-  });
-
-  console.log();
-  console.log(`  ${yellow("⚠")}  Only one service can poll a bot token at a time.`);
-  console.log(`     ${dim("If this bot is also used by Claude Code's --channels telegram")}`);
-  console.log(`     ${dim("plugin or any other polling service, stop it first.")}`);
-  console.log(`     ${dim("Otherwise AgEnD will not receive messages.")}`);
-
-  // ── Step 3: Mode ──
-  step(3, TOTAL_STEPS, "Channel Mode");
-  const mode = "topic";
-
-  let groupId: number | undefined;
-  {
+    // ── Step 3b: Telegram Group ID ──
+    step(3, TOTAL_STEPS, "Telegram Group");
     console.log();
     console.log(`  ${dim("To get the group ID:")}`);
     console.log(`  ${dim("1. Add the bot to a Telegram group with Forum Topics enabled")}`);
     console.log(`  ${dim("2. Send a message in the group")}`);
     console.log(`  ${dim("3. Open https://api.telegram.org/bot<TOKEN>/getUpdates")}`);
-    console.log(`  ${dim("   Find \"chat\":{\"id\":-100...} in the response")}`);
     console.log(`  ${dim("   Or: add @getidsbot to the group")}`);
-    console.log(`  ${dim("   Group IDs are negative numbers, e.g., -1001234567890")}`);
     console.log();
 
     const gidStr = await ask(rl, "Group ID", {
@@ -374,37 +413,109 @@ export async function runSetupWizard(): Promise<void> {
       },
     });
     groupId = parseInt(gidStr, 10);
-  }
 
-  // ── Step 4: Access control ──
-  step(4, TOTAL_STEPS, "Access Control");
-  const accessMode = "locked";
+    // ── Step 4: Telegram Access Control ──
+    step(4, TOTAL_STEPS, "Access Control");
+    console.log(`  ${dim("Only whitelisted Telegram user IDs can interact with the bot.")}`);
+    console.log(`  ${dim("Your Telegram user ID — send /start to @userinfobot or @getidsbot")}`);
 
-  console.log(`  ${dim("Only whitelisted Telegram user IDs can interact with the bot.")}`);
-  console.log(`  ${dim("You can add more users later with: agend access add <user-id>")}`);
-  console.log();
-  console.log(`  ${dim("Your Telegram user ID — send /start to @userinfobot or @getidsbot")}`);
-
-  const allowedUsers: (number | string)[] = [];
-  const uidStr = await ask(rl, "Your Telegram user ID", {
-    validate: (v) => {
-      const n = parseInt(v, 10);
-      return isNaN(n) || n <= 0 ? "Must be a positive number" : null;
-    },
-  });
-  allowedUsers.push(uidStr);
-
-  let addMore = await confirm(rl, "Add another user?", false);
-  while (addMore) {
-    const uid = await ask(rl, "User ID", {
+    const uidStr = await ask(rl, "Your Telegram user ID", {
       validate: (v) => {
         const n = parseInt(v, 10);
         return isNaN(n) || n <= 0 ? "Must be a positive number" : null;
       },
     });
-    allowedUsers.push(uid);
-    addMore = await confirm(rl, "Add another user?", false);
+    allowedUsers.push(uidStr);
+
+    let addMore = await confirm(rl, "Add another user?", false);
+    while (addMore) {
+      const uid = await ask(rl, "User ID", {
+        validate: (v) => {
+          const n = parseInt(v, 10);
+          return isNaN(n) || n <= 0 ? "Must be a positive number" : null;
+        },
+      });
+      allowedUsers.push(uid);
+      addMore = await confirm(rl, "Add another user?", false);
+    }
+  } else {
+    // ── Step 3: Discord Bot Token ──
+    step(3, TOTAL_STEPS, "Discord Bot Token");
+    console.log(`  ${dim("Create a bot at https://discord.com/developers/applications")}`);
+
+    tokenEnvName = "AGEND_DISCORD_TOKEN";
+
+    // Check existing .env for Discord token
+    if (existsSync(ENV_PATH)) {
+      const envContent = readFileSync(ENV_PATH, "utf-8");
+      const match = envContent.match(/^(AGEND_DISCORD_TOKEN)=(\S+)/m);
+      if (match) {
+        const masked = match[2].slice(0, 10) + "...";
+        console.log(`  ${dim(`Found existing token in .env: ${match[1]}=${masked}`)}`);
+        const reuse = await confirm(rl, "Use existing token?");
+        if (reuse) { tokenEnvName = match[1]; token = match[2]; }
+      }
+    }
+
+    if (!token) {
+      token = await ask(rl, "Bot Token", {
+        validate: (v) => v.length > 20 ? null : "Token too short",
+      });
+    }
+
+    console.log(`  Verifying with Discord API...`);
+    const verification = await verifyDiscordToken(token);
+    if (!verification.valid) {
+      console.log(`  ${red("✗")} Token rejected by Discord. Check your token.`);
+      rl.close();
+      process.exit(1);
+    }
+    botUsername = verification.username!;
+    console.log(`  ${green("✓")} ${botUsername}`);
+
+    tokenEnvName = await ask(rl, "Env variable name for token", {
+      default: tokenEnvName,
+      validate: (v) => /^[A-Z_][A-Z0-9_]*$/.test(v) ? null : "Must be uppercase with underscores",
+    });
+
+    // ── Step 3b: Discord Guild Selection ──
+    step(3, TOTAL_STEPS, "Discord Server");
+    console.log(`  Fetching servers...`);
+    const guilds = await listDiscordGuilds(token);
+    if (guilds.length === 0) {
+      console.log(`  ${red("✗")} Bot is not in any server. Invite it first.`);
+      rl.close();
+      process.exit(1);
+    }
+    if (guilds.length === 1) {
+      guildId = guilds[0].id;
+      console.log(`  ${green("✓")} ${guilds[0].name} (${guildId})`);
+    } else {
+      const guildIdx = await choose(rl, "Which server?", guilds.map(g => ({ label: g.name, hint: g.id })), 0);
+      guildId = guilds[guildIdx].id;
+    }
+
+    // ── Step 4: Discord Access Control ──
+    step(4, TOTAL_STEPS, "Access Control");
+    console.log(`  ${dim("Only whitelisted Discord user IDs can interact with the bot.")}`);
+    console.log(`  ${dim("Enable Developer Mode in Discord settings to copy user IDs.")}`);
+
+    const uidStr = await ask(rl, "Your Discord user ID", {
+      validate: (v) => /^\d{17,20}$/.test(v) ? null : "Must be a Discord snowflake ID (17-20 digits)",
+    });
+    allowedUsers.push(uidStr);
+
+    let addMore = await confirm(rl, "Add another user?", false);
+    while (addMore) {
+      const uid = await ask(rl, "User ID", {
+        validate: (v) => /^\d{17,20}$/.test(v) ? null : "Must be a Discord snowflake ID",
+      });
+      allowedUsers.push(uid);
+      addMore = await confirm(rl, "Add another user?", false);
+    }
   }
+
+  const mode = "topic";
 
   // ── Step 5: Project roots ──
   step(5, TOTAL_STEPS, "Project Roots");
@@ -553,10 +664,11 @@ export async function runSetupWizard(): Promise<void> {
   // ── Step 9: Summary ──
   step(9, TOTAL_STEPS, "Summary");
   console.log();
+  console.log(`  ${bold("Channel:")}    ${channelType}`);
   console.log(`  ${bold("Backend:")}    ${selectedBackend.label}`);
-  console.log(`  ${bold("Bot:")}        @${botUsername}`);
+  console.log(`  ${bold("Bot:")}        ${channelType === "telegram" ? "@" : ""}${botUsername}`);
   console.log(`  ${bold("Token env:")}  ${tokenEnvName}`);
-  console.log(`  ${bold("Mode:")}       ${mode}${groupId ? ` (group: ${groupId})` : ""}`);
+  console.log(`  ${bold("Mode:")}       ${mode}${groupId ? ` (group: ${groupId})` : ""}${guildId ? ` (guild: ${guildId})` : ""}`);
   console.log(`  ${bold("Access:")}     ${accessMode}${allowedUsers.length > 0 ? ` — users: ${allowedUsers.join(", ")}` : ""}`);
   console.log(`  ${bold("Roots:")}      ${projectRoots.join(", ") || dim("(none)")}`);
   if (instances.length > 0) {
@@ -605,9 +717,11 @@ export async function runSetupWizard(): Promise<void> {
   // fleet.yaml
   const yaml = await import("js-yaml");
   const fleetData = buildFleetConfig({
+    channelType,
     backend: selectedBackend.id,
     botTokenEnv: tokenEnvName,
     groupId,
+    guildId,
     channelMode: mode,
     accessMode,
     allowedUsers,
@@ -643,12 +757,15 @@ export async function runSetupWizard(): Promise<void> {
 
   // ── Done ──
   console.log(`\n${green("✓")} ${bold("Setup complete!")}`);
-  console.log(`  Bot: @${botUsername}`);
+  console.log(`  Bot: ${channelType === "telegram" ? "@" : ""}${botUsername}`);
   console.log(`  Config: ${FLEET_CONFIG_PATH}`);
+  if (channelType === "discord") {
+    console.log(`  ${dim("Install Discord plugin: npm install -g @suzuke/agend-plugin-discord")}`);
+  }
   console.log();
   console.log(`  Start the fleet:`);
   console.log(`    ${dim("agend fleet start")}`);
-  if (mode === "topic") {
+  if (mode === "topic" && channelType === "telegram") {
     console.log();
     console.log(`  ${dim("Create a new topic in the group — the bot will auto-detect it")}`);
     console.log(`  ${dim("and let you bind it to a project.")}`);
