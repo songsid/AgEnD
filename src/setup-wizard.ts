@@ -170,7 +170,7 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
       type: "discord",
       mode: answers.channelMode,
       bot_token_env: answers.botTokenEnv,
-      ...(answers.guildId ? { guild_id: answers.guildId } : {}),
+      ...(answers.guildId ? { group_id: answers.guildId } : {}),
       access: {
         mode: answers.accessMode,
         ...(answers.allowedUsers.length > 0 ? { allowed_users: answers.allowedUsers } : {}),
