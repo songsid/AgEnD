@@ -63,6 +63,7 @@ function mockIpc() {
 }
 
 const defaultAnswers: WizardAnswers = {
+  channelType: "telegram",
   backend: "claude-code",
   botTokenEnv: "TEST_BOT_TOKEN",
   groupId: -1001234567890,

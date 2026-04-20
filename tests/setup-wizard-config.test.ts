@@ -7,6 +7,7 @@ import { buildFleetConfig, type WizardAnswers } from "../src/setup-wizard.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 
 const defaults: WizardAnswers = {
+  channelType: "telegram",
   backend: "claude-code",
   botTokenEnv: "AGEND_BOT_TOKEN",
   groupId: -1001234567890,
