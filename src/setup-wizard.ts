@@ -765,6 +765,10 @@ export async function runSetupWizard(): Promise<void> {
   console.log();
   console.log(`  Start the fleet:`);
   console.log(`    ${dim("agend fleet start")}`);
+  if (channelType === "discord") {
+    console.log();
+    console.log(`  ${dim("Classic Bot Mode: Use /start in any Discord channel to start an agent. Use /chat to talk.")}`);
+  }
   if (mode === "topic" && channelType === "telegram") {
     console.log();
     console.log(`  ${dim("Create a new topic in the group — the bot will auto-detect it")}`);
