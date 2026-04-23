@@ -40,6 +40,7 @@ export interface OutboundContext {
   readonly lifecycle: InstanceLifecycle;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
+  readonly classicChannels: { getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[] } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
@@ -194,6 +195,25 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     }));
   if (filterTags?.length) {
     allInstances = allInstances.filter(i => i.tags.some(t => filterTags.includes(t)));
+  }
+  // Append classic bot instances
+  if (ctx.classicChannels && !filterTags?.length) {
+    const fleetNames = new Set(Object.keys(ctx.fleetConfig?.instances ?? {}));
+    for (const ch of ctx.classicChannels.getAll()) {
+      if (ch.instanceName === meta.instanceName || fleetNames.has(ch.instanceName)) continue;
+      allInstances.push({
+        name: ch.instanceName,
+        type: "instance" as const,
+        status: ctx.lifecycle.daemons.has(ch.instanceName) ? "running" : "stopped",
+        working_directory: "",
+        topic_id: ch.channelId as any,
+        display_name: `classic: ${ch.name}`,
+        description: `ClassicBot channel (${ch.name})`,
+        backend: ch.backend ?? "claude-code",
+        tags: ["classic"],
+        last_activity: ctx.lastActivityMs(ch.instanceName) ? new Date(ctx.lastActivityMs(ch.instanceName)).toISOString() : null,
+      });
+    }
   }
   const externalSessions = [...ctx.sessionRegistry.entries()]
     .filter(([sessName]) => sessName !== senderLabel)
