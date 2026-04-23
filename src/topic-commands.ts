@@ -251,11 +251,12 @@ export class TopicCommands {
     for (const [name, config] of Object.entries(this.ctx.fleetConfig.instances)) {
       if (config.topic_id != null) continue;
 
-      // Telegram's native General topic always has thread_id = 1
+      // General topic: use Discord general_channel_id if available, else Telegram thread_id = 1
       if (config.general_topic) {
-        config.topic_id = 1;
+        const discordGeneralId = this.ctx.fleetConfig?.channel?.options?.general_channel_id as string | undefined;
+        config.topic_id = discordGeneralId || 1;
         configChanged = true;
-        this.ctx.logger.info({ name, topicId: 1 }, "Bound to native General topic");
+        this.ctx.logger.info({ name, topicId: config.topic_id }, "Bound to General topic");
         continue;
       }
 
