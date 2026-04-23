@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
 import { execSync } from "node:child_process";
+import yaml from "js-yaml";
 import { BACKENDS, validateBotToken, verifyBotToken } from "./setup-wizard.js";
 import { getAgendHome } from "./paths.js";
 
@@ -355,6 +356,37 @@ export async function runQuickstart(): Promise<void> {
 
     writeFileSync(ENV_PATH, `${tokenEnvName}=${token}\n`);
     console.log(`  ${green("✓")} ${ENV_PATH}`);
+
+    // ── ClassicBot setup (Discord only) ──────────────────
+
+    if (channel === "discord") {
+      const setupClassic = await rl.question(`\n  Set up ClassicBot? (allows /start in any channel) [Y/n] `);
+      if (setupClassic.toLowerCase() !== "n") {
+        // Allowed guilds — primary guild pre-filled
+        const allowedGuilds: string[] = [groupId];
+        console.log(`  ${green("✓")} Primary guild added: ${groupId}`);
+        while (true) {
+          const more = (await rl.question(`  Add another guild ID? (Enter to skip): `)).trim();
+          if (!more) break;
+          allowedGuilds.push(more);
+          console.log(`  ${green("✓")} Added: ${more}`);
+        }
+
+        // Default backend
+        const cbBackend = (await rl.question(`  Default backend [${backend}]: `)).trim() || backend;
+
+        const classicConfig = {
+          defaults: {
+            backend: cbBackend,
+            allowed_guilds: allowedGuilds,
+          },
+        };
+
+        const classicPath = join(DATA_DIR, "classicBot.yaml");
+        writeFileSync(classicPath, `# ClassicBot Configuration\n${yaml.dump(classicConfig, { quotingType: '"', forceQuotes: false })}`);
+        console.log(`  ${green("✓")} ${classicPath}`);
+      }
+    }
 
     // ── Next steps ───────────────────────────────────────
 
