@@ -15,7 +15,7 @@ export interface ClassicChannel {
 }
 
 interface ClassicBotYaml {
-  defaults?: { backend?: string };
+  defaults?: { backend?: string; allowed_guilds?: string[] };
   channels?: Record<string, {
     name?: string;
     backend?: string;
@@ -41,7 +41,7 @@ export function classicInstanceName(sanitizedName: string, channelId: string): s
  */
 export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
-  private defaults: { backend?: string } = {};
+  private defaults: { backend?: string; allowed_guilds?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
 
@@ -100,6 +100,12 @@ export class ClassicChannelManager {
   }
 
   getDefaults(): { backend?: string } { return this.defaults; }
+
+  /** Check if a guild is allowed. Empty/unset allowed_guilds = allow all (backward compat). */
+  isGuildAllowed(guildId: string): boolean {
+    const list = this.defaults.allowed_guilds;
+    return !list || list.length === 0 || list.includes(guildId);
+  }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */
   getBackend(channelId: string, fleetDefault?: string): string {

@@ -627,9 +627,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.topic_closed"));
 
     // Handle classic bot slash commands (/start, /stop, /chat)
-    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; userId: string; username?: string; text?: string; respond: (text: string) => Promise<void> }) => {
+    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; respond: (text: string) => Promise<void> }) => {
       if (data.command === "start") {
-        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId);
+        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
         await data.respond(reply);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId);
@@ -2006,8 +2006,9 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   }
 
   /** Handle /start slash command — register classic channel */
-  async handleClassicStart(channelId: string, channelName: string, userId: string): Promise<string> {
+  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string): Promise<string> {
     if (!this.classicChannels) return "Classic channel manager not initialized.";
+    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) return "⛔ This server is not in the allowed guilds list.";
     if (this.classicChannels.isClassicChannel(channelId)) return "This channel already has an active agent. Use /chat to talk.";
     if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
 
