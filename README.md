@@ -140,6 +140,65 @@ graph LR
 - [Configuration](docs/configuration.md) — fleet.yaml complete reference
 - [Security](SECURITY.md) — trust model and hardening
 
+## Discord ClassicBot
+
+ClassicBot lets users start AI agents in any Discord text channel using slash commands — no forum topics required.
+
+### Setup
+
+```bash
+# 1. Install Discord plugin
+npm install -g @suzuke/agend-plugin-discord
+
+# 2. Run quickstart (select Discord)
+agend quickstart
+
+# 3. Start the fleet
+agend fleet start
+```
+
+The quickstart will set up both `fleet.yaml` and `classicBot.yaml`. Run `agend quickstart` again to add users or guilds to existing config.
+
+### Usage
+
+| Command | Description |
+|---------|-------------|
+| `/start` | Start an agent in the current channel |
+| `/chat <message>` | Send a message to the agent |
+| `/stop` | Stop the agent in the current channel |
+
+### Server Whitelist
+
+Control which Discord servers can use ClassicBot via `~/.agend/classicBot.yaml`:
+
+```yaml
+defaults:
+  backend: claude-code
+  allowed_guilds:              # Only these servers can /start
+    - "1496855124440780912"
+    - "9876543210123456789"
+```
+
+- **Empty or omitted** `allowed_guilds` → all servers allowed (default)
+- **Primary guild** (fleet.yaml `group_id`) → full access (topic mode + ClassicBot)
+- **Whitelisted guilds** → ClassicBot only (`/start`, `/chat`, `/stop`)
+- **Hot reload** — changes detected every 30 seconds, no restart needed
+
+### Per-Channel Backend
+
+Override the backend for specific channels:
+
+```yaml
+defaults:
+  backend: claude-code
+channels:
+  "1234567890":               # Discord channel ID
+    name: dev-help
+    backend: gemini-cli       # Override for this channel
+```
+
+Backend fallback: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
+
 ## Known Limitations
 
 - macOS (launchd) and Linux (systemd) supported; Windows is not
