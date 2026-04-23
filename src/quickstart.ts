@@ -132,15 +132,55 @@ async function maybeAddClassicBotGuilds(rl: import("node:readline/promises").Int
   const config = yaml.load(readFileSync(CLASSIC_BOT_PATH, "utf-8")) as Record<string, any>;
   const guilds: string[] = (config as any)?.defaults?.allowed_guilds ?? [];
   console.log(`  Current allowed guilds: ${guilds.join(", ") || "(none)"}`);
+
+  // Try to list guilds from Discord API using bot token from .env
+  const token = readDiscordToken();
+  if (token) {
+    const available = await listDiscordGuilds(token);
+    if (available.length > 0) {
+      const unregistered = available.filter(g => !guilds.includes(g.id));
+      if (unregistered.length > 0) {
+        console.log(`\n  Bot is in these servers:`);
+        for (let i = 0; i < unregistered.length; i++) {
+          console.log(`    ${i + 1}. ${unregistered[i].name} ${dim(`(${unregistered[i].id})`)}`);
+        }
+        console.log(`    0. Skip`);
+        while (true) {
+          const choice = (await rl.question("  Add server [0]: ")).trim();
+          if (!choice || choice === "0") break;
+          const idx = parseInt(choice, 10) - 1;
+          if (idx >= 0 && idx < unregistered.length) {
+            guilds.push(unregistered[idx].id);
+            console.log(`  ${green("✓")} Added: ${unregistered[idx].name} (${unregistered[idx].id})`);
+            unregistered.splice(idx, 1);
+            if (unregistered.length === 0) break;
+          }
+        }
+      } else {
+        console.log(`  All servers already in allowed list.`);
+      }
+    }
+  }
+
+  // Manual entry fallback
   while (true) {
-    const gid = (await rl.question("  Add guild ID (Enter to finish): ")).trim();
+    const gid = (await rl.question("  Add guild ID manually (Enter to finish): ")).trim();
     if (!gid) break;
+    if (guilds.includes(gid)) { console.log(`  Already in list.`); continue; }
     guilds.push(gid);
     console.log(`  ${green("✓")} Added: ${gid}`);
   }
   ((config as any).defaults ??= {}).allowed_guilds = guilds;
   writeFileSync(CLASSIC_BOT_PATH, `# ClassicBot Configuration\n${yaml.dump(config, { quotingType: '"', forceQuotes: false })}`);
   console.log(`  ${green("✓")} Updated ${CLASSIC_BOT_PATH}`);
+}
+
+/** Read Discord bot token from .env */
+function readDiscordToken(): string | null {
+  if (!existsSync(ENV_PATH)) return null;
+  const content = readFileSync(ENV_PATH, "utf-8");
+  const match = content.match(/^(?:AGEND_DISCORD_TOKEN|DISCORD_TOKEN)=(\S+)/m);
+  return match?.[1] ?? null;
 }
 
 // ── Main ─────────────────────────────────────────────────
