@@ -178,8 +178,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.client.on("interactionCreate", async (interaction: Interaction) => {
       try {
         if (interaction.guildId !== this.guildId) {
-          if (!this.openChannels.has(interaction.channelId ?? "")) return;
-          console.log(`[discord] classic channel interaction from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+          // Allow slash commands through — guild whitelist is checked by fleet-manager.
+          // Only block non-slash interactions (buttons) from unknown channels.
+          if (!interaction.isChatInputCommand() && !this.openChannels.has(interaction.channelId ?? "")) return;
+          if (!interaction.isChatInputCommand()) {
+            console.log(`[discord] classic channel interaction from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+          }
         }
 
         if (interaction.isButton()) {
