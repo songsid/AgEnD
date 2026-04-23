@@ -130,7 +130,7 @@ async function maybeAddClassicBotGuilds(rl: import("node:readline/promises").Int
   if (ans.toLowerCase() !== "y") return;
 
   const config = yaml.load(readFileSync(CLASSIC_BOT_PATH, "utf-8")) as Record<string, any>;
-  const guilds: string[] = (config as any)?.defaults?.allowed_guilds ?? [];
+  const guilds: string[] = ((config as any)?.defaults?.allowed_guilds ?? []).map(String);
   console.log(`  Current allowed guilds: ${guilds.join(", ") || "(none)"}`);
 
   // Try to list guilds from Discord API using bot token from .env
@@ -175,10 +175,22 @@ async function maybeAddClassicBotGuilds(rl: import("node:readline/promises").Int
   console.log(`  ${green("✓")} Updated ${CLASSIC_BOT_PATH}`);
 }
 
-/** Read Discord bot token from .env */
+/** Read Discord bot token from .env (uses bot_token_env from fleet.yaml) */
 function readDiscordToken(): string | null {
   if (!existsSync(ENV_PATH)) return null;
   const content = readFileSync(ENV_PATH, "utf-8");
+  // Try bot_token_env from fleet.yaml first
+  if (existsSync(FLEET_CONFIG_PATH)) {
+    try {
+      const fleet = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as Record<string, any>;
+      const envName = fleet?.channel?.bot_token_env;
+      if (envName) {
+        const m = content.match(new RegExp(`^${envName}=(\\S+)`, "m"));
+        if (m) return m[1];
+      }
+    } catch { /* ignore */ }
+  }
+  // Fallback: common Discord token env var names
   const match = content.match(/^(?:AGEND_DISCORD_TOKEN|DISCORD_TOKEN)=(\S+)/m);
   return match?.[1] ?? null;
 }
