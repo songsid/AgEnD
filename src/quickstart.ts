@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
@@ -120,6 +120,29 @@ function detectProjectRoots(): { path: string; gitCount: number }[] {
   return results;
 }
 
+// ── ClassicBot guild append helper ───────────────────────
+
+const CLASSIC_BOT_PATH = join(DATA_DIR, "classicBot.yaml");
+
+async function maybeAddClassicBotGuilds(rl: import("node:readline/promises").Interface): Promise<void> {
+  if (!existsSync(CLASSIC_BOT_PATH)) return;
+  const ans = await rl.question(`\n  classicBot.yaml found. Add allowed guilds? [y/N] `);
+  if (ans.toLowerCase() !== "y") return;
+
+  const config = yaml.load(readFileSync(CLASSIC_BOT_PATH, "utf-8")) as Record<string, any>;
+  const guilds: string[] = (config as any)?.defaults?.allowed_guilds ?? [];
+  console.log(`  Current allowed guilds: ${guilds.join(", ") || "(none)"}`);
+  while (true) {
+    const gid = (await rl.question("  Add guild ID (Enter to finish): ")).trim();
+    if (!gid) break;
+    guilds.push(gid);
+    console.log(`  ${green("✓")} Added: ${gid}`);
+  }
+  ((config as any).defaults ??= {}).allowed_guilds = guilds;
+  writeFileSync(CLASSIC_BOT_PATH, `# ClassicBot Configuration\n${yaml.dump(config, { quotingType: '"', forceQuotes: false })}`);
+  console.log(`  ${green("✓")} Updated ${CLASSIC_BOT_PATH}`);
+}
+
 // ── Main ─────────────────────────────────────────────────
 
 export async function runQuickstart(): Promise<void> {
@@ -136,13 +159,41 @@ export async function runQuickstart(): Promise<void> {
 
     // Check existing config
     if (existsSync(FLEET_CONFIG_PATH)) {
-      const overwrite = await rl.question(
-        `  ${yellow("fleet.yaml already exists.")} Overwrite? [y/N] `,
-      );
-      if (overwrite.toLowerCase() !== "y") {
-        console.log("  Aborted.");
+      console.log(`  ${yellow("fleet.yaml already exists.")} What would you like to do?`);
+      console.log("    1. Add allowed users");
+      console.log("    2. Overwrite (start fresh)");
+      console.log("    3. Skip");
+      const action = (await rl.question("  Choose [3]: ")).trim();
+
+      if (action === "1") {
+        // ── Add allowed users to existing fleet.yaml ──
+        const raw = readFileSync(FLEET_CONFIG_PATH, "utf-8");
+        const config = yaml.load(raw) as Record<string, any>;
+        const currentUsers: string[] = (config as any)?.channel?.access?.allowed_users ?? [];
+        console.log(`\n  Current allowed users: ${currentUsers.join(", ") || "(none)"}`);
+        while (true) {
+          const uid = (await rl.question("  Add user ID (Enter to finish): ")).trim();
+          if (!uid) break;
+          currentUsers.push(uid);
+          console.log(`  ${green("✓")} Added: ${uid}`);
+        }
+        ((config as any).channel ??= {}).access ??= { mode: "locked" };
+        (config as any).channel.access.allowed_users = currentUsers;
+        writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
+        console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+
+        await maybeAddClassicBotGuilds(rl);
+        console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
+
+      if (action !== "2") {
+        // Skip (default)
+        await maybeAddClassicBotGuilds(rl);
+        console.log(`\n${bold("═══ Done ═══")}\n`);
+        return;
+      }
+      // action === "2" → fall through to full setup
     }
 
     // Check tmux
@@ -359,7 +410,10 @@ export async function runQuickstart(): Promise<void> {
 
     // ── ClassicBot setup (Discord only) ──────────────────
 
-    if (channel === "discord") {
+    const classicPath = join(DATA_DIR, "classicBot.yaml");
+    if (channel === "discord" && existsSync(classicPath)) {
+      await maybeAddClassicBotGuilds(rl);
+    } else if (channel === "discord") {
       const setupClassic = await rl.question(`\n  Set up ClassicBot? (allows /start in any channel) [Y/n] `);
       if (setupClassic.toLowerCase() !== "n") {
         // Allowed guilds — primary guild pre-filled
@@ -382,7 +436,6 @@ export async function runQuickstart(): Promise<void> {
           },
         };
 
-        const classicPath = join(DATA_DIR, "classicBot.yaml");
         writeFileSync(classicPath, `# ClassicBot Configuration\n${yaml.dump(classicConfig, { quotingType: '"', forceQuotes: false })}`);
         console.log(`  ${green("✓")} ${classicPath}`);
       }
