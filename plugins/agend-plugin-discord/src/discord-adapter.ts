@@ -111,7 +111,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.client.on("messageCreate", async (msg: Message) => {
       if (msg.author.bot) return;
       if (!msg.guildId) return;
-      if (msg.guildId !== this.guildId) return;
+      if (msg.guildId !== this.guildId) {
+        if (!this.openChannels.has(msg.channelId)) return;
+        console.log(`[discord] classic channel message from non-primary guild ${msg.guildId} channel ${msg.channelId}`);
+      }
 
       const userId = msg.author.id;
 
@@ -174,7 +177,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // interaction expires (>3s). Catch to prevent crashing the entire daemon.
     this.client.on("interactionCreate", async (interaction: Interaction) => {
       try {
-        if (interaction.guildId !== this.guildId) return;
+        if (interaction.guildId !== this.guildId) {
+          if (!this.openChannels.has(interaction.channelId ?? "")) return;
+          console.log(`[discord] classic channel interaction from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+        }
 
         if (interaction.isButton()) {
           await interaction.deferUpdate();
@@ -222,7 +228,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // Handle channel deletion (equivalent to topic_closed)
     this.client.on("channelDelete", (channel) => {
       if (!("guildId" in channel)) return;
-      if (channel.guildId !== this.guildId) return;
+      if (channel.guildId !== this.guildId) {
+        if (!this.openChannels.has(channel.id)) return;
+        console.log(`[discord] classic channel deleted from non-primary guild ${channel.guildId} channel ${channel.id}`);
+      }
       this.emit("topic_closed", {
         chatId: this.guildId,
         threadId: channel.id,
