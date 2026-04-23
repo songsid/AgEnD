@@ -364,7 +364,8 @@ export async function runQuickstart(): Promise<void> {
       console.log(`    1. ${bold("npm install -g @suzuke/agend-plugin-discord")}`);
       console.log(`    2. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
       console.log(`    3. ${bold("agend fleet start")}`);
-      console.log(`    4. Talk to ${botUsername} in your Discord server\n`);
+      console.log(`    4. Talk to ${botUsername} in your Discord server`);
+      console.log(`\n  ${dim("Classic Bot Mode: Use /start in any Discord channel to start an agent. Use /chat to talk.")}\n`);
     } else {
       console.log("  Next steps:");
       console.log(`    1. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
