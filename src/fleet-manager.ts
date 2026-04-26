@@ -1874,19 +1874,20 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     const isChat = text.startsWith("/chat ") || text === "/chat";
     this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: isChat }, "classic channel message received");
 
-    // Save photos to workspace inbox so agent can read them later
-    const savedPath = await this.saveClassicAttachment(instanceName, msg);
+    // Save photos/documents to workspace inbox so agent can read them later
+    const saved = await this.saveClassicAttachment(instanceName, msg);
+    const savedPath = saved?.path;
 
     // Log every message to the daily chat log (include saved path)
-    const attachmentTag = savedPath ? ` [📷 saved: ${savedPath}]`
+    const attachmentTag = saved ? ` [${saved.kind === "photo" ? "📷" : "📎"} saved: ${savedPath}]`
       : msg.attachments?.length ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
       : "";
     ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText);
 
     // Bare attachment without /chat: save + log only, don't trigger agent
     if (!isChat) {
-      if (savedPath && this.adapter && msg.chatId && msg.messageId) {
-        this.adapter.react(msg.chatId, msg.messageId, "📸")
+      if (saved && this.adapter && msg.chatId && msg.messageId) {
+        this.adapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       return;
@@ -1896,16 +1897,23 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     const chatText = text.replace(/^\/chat\s*/, "").trim();
     if (!chatText && !msg.attachments?.length) return;
 
-    // Strip photo from attachments if already saved to workspace inbox (avoid double download)
-    const patchedAttachments = savedPath ? msg.attachments?.filter(a => a.kind !== "photo") : msg.attachments;
+    // Strip saved attachment from attachments to avoid double download
+    const savedKind = saved?.kind;
+    const patchedAttachments = savedKind ? msg.attachments?.filter(a => a.kind !== savedKind) : msg.attachments;
     const patchedMsg = { ...msg, text: chatText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
     const { text: processedText, extraMeta } = await processAttachments(patchedMsg, this.adapter!, this.logger, instanceName);
 
-    // Use workspace inbox path for image
+    // Use workspace inbox path for saved attachment
     let finalText = processedText || chatText;
-    if (savedPath) {
-      extraMeta.image_path = savedPath;
-      finalText = `[📷 Image: ${savedPath}]\n${chatText}`;
+    if (saved) {
+      if (saved.kind === "photo") {
+        extraMeta.image_path = savedPath!;
+        finalText = `[📷 Image: ${savedPath}]\n${chatText}`;
+      } else {
+        extraMeta.attachment_path = savedPath!;
+        const filename = msg.attachments?.find(a => a.kind === "document")?.filename ?? "file";
+        finalText = `[📎 File: ${filename} → ${savedPath}]\n${chatText}`;
+      }
     }
 
     if (this.adapter && msg.chatId && msg.messageId) {
@@ -1916,18 +1924,18 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
   }
 
-  /** Download photo attachment to classic instance workspace inbox. Returns saved path or undefined. */
-  private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<string | undefined> {
-    const photo = msg.attachments?.find(a => a.kind === "photo");
-    if (!photo || !this.adapter) return undefined;
+  /** Download photo or document attachment to classic instance workspace inbox. Returns { path, kind } or undefined. */
+  private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<{ path: string; kind: "photo" | "document" } | undefined> {
+    const att = msg.attachments?.find(a => a.kind === "photo" || a.kind === "document");
+    if (!att || !this.adapter) return undefined;
     try {
-      const tmpPath = await this.adapter.downloadAttachment(photo.fileId);
+      const tmpPath = await this.adapter.downloadAttachment(att.fileId);
       const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
       mkdirSync(inboxDir, { recursive: true });
       const dest = join(inboxDir, basename(tmpPath));
       try { renameSync(tmpPath, dest); } catch { copyFileSync(tmpPath, dest); unlinkSync(tmpPath); }
-      this.logger.info({ instanceName, path: dest }, "Classic attachment saved to workspace inbox");
-      return dest;
+      this.logger.info({ instanceName, path: dest, kind: att.kind }, "Classic attachment saved to workspace inbox");
+      return { path: dest, kind: att.kind as "photo" | "document" };
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic attachment save failed");
       return undefined;
