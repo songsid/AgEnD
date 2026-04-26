@@ -55,9 +55,23 @@ export async function processAttachments(
     extraMeta.attachment_file_id = voiceAttachment.fileId;
   }
 
-  // Pass other attachment types as file_id for manual download
+  // Auto-download document attachments so agents can Read them directly
+  const docAttachment = msg.attachments?.find(a => a.kind === "document");
+  if (docAttachment) {
+    try {
+      const localPath = await adapter.downloadAttachment(docAttachment.fileId);
+      extraMeta.attachment_path = localPath;
+      const filename = docAttachment.filename ?? "file";
+      text = `[📎 File: ${filename} → ${localPath}]\n${text}`;
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, "Document download failed");
+      extraMeta.attachment_file_id = docAttachment.fileId;
+    }
+  }
+
+  // Pass remaining attachment types as file_id for manual download
   const otherAttachment = msg.attachments?.find(a =>
-    a.kind !== "photo" && a.kind !== "voice" && a.kind !== "audio",
+    a.kind !== "photo" && a.kind !== "voice" && a.kind !== "audio" && a.kind !== "document",
   );
   if (otherAttachment) {
     extraMeta.attachment_file_id = otherAttachment.fileId;
