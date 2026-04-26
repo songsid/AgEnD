@@ -15,7 +15,6 @@ import {
   type TextChannel,
   type Message,
   type Interaction,
-  type GuildChannelCreateOptions,
 } from "discord.js";
 import type {
   ChannelAdapter,
@@ -57,6 +56,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private queue: MessageQueue;
   private lastChatId: string | null = null;
   private attachmentUrls = new Map<string, string>();
+  private categoryIdPromise?: Promise<string>;
 
   constructor(opts: DiscordAdapterOptions) {
     super();
@@ -511,29 +511,55 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   // ── Topology: create channel ────────────────────────────────────────────
 
-  async createTopic(name: string): Promise<string> {
+  private async _resolveCategory(): Promise<string> {
     const guild = await this.client.guilds.fetch(this.guildId);
-
-    // Find or create the category
-    let category = guild.channels.cache.find(
+    await guild.channels.fetch();
+    const existing = guild.channels.cache.find(
       (c: { type: ChannelType; name: string }) => c.type === ChannelType.GuildCategory && c.name === this.categoryName,
     );
+    if (existing) return existing.id;
+    const cat = await guild.channels.create({
+      name: this.categoryName,
+      type: ChannelType.GuildCategory,
+    });
+    return cat.id;
+  }
 
-    if (!category) {
-      category = await guild.channels.create({
-        name: this.categoryName,
-        type: ChannelType.GuildCategory,
+  private async ensureCategoryId(): Promise<string> {
+    if (!this.categoryIdPromise) {
+      this.categoryIdPromise = this._resolveCategory().catch((err) => {
+        this.categoryIdPromise = undefined;
+        throw err;
       });
     }
+    return this.categoryIdPromise;
+  }
 
-    const channelOpts: GuildChannelCreateOptions = {
-      name,
-      type: ChannelType.GuildText,
-      parent: category.id,
-    };
+  async createTopic(name: string): Promise<string> {
+    const guild = await this.client.guilds.fetch(this.guildId);
+    const categoryId = await this.ensureCategoryId();
 
-    const channel = await guild.channels.create(channelOpts);
-    return channel.id;
+    try {
+      const channel = await guild.channels.create({
+        name,
+        type: ChannelType.GuildText,
+        parent: categoryId,
+      });
+      return channel.id;
+    } catch (err: unknown) {
+      // 10003 = Unknown Channel — category was deleted externally
+      if ((err as { code?: number }).code === 10003) {
+        this.categoryIdPromise = undefined;
+        const freshId = await this.ensureCategoryId();
+        const channel = await guild.channels.create({
+          name,
+          type: ChannelType.GuildText,
+          parent: freshId,
+        });
+        return channel.id;
+      }
+      throw err;
+    }
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
