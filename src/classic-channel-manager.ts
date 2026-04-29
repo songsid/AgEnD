@@ -15,7 +15,7 @@ export interface ClassicChannel {
 }
 
 interface ClassicBotYaml {
-  defaults?: { backend?: string; allowed_guilds?: string[] };
+  defaults?: { backend?: string; allowed_guilds?: string[]; admin_users?: string[] };
   channels?: Record<string, {
     name?: string;
     backend?: string;
@@ -41,7 +41,7 @@ export function classicInstanceName(sanitizedName: string, channelId: string): s
  */
 export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
-  private defaults: { backend?: string; allowed_guilds?: string[] } = {};
+  private defaults: { backend?: string; allowed_guilds?: string[]; admin_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
 
@@ -105,6 +105,12 @@ export class ClassicChannelManager {
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
     return !list || list.length === 0 || list.includes(guildId);
+  }
+
+  /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
+  isAdmin(userId: string): boolean {
+    const list = this.defaults.admin_users;
+    return !!list && list.length > 0 && list.includes(userId);
   }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */
