@@ -670,9 +670,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           rawCmd = "/compact";
         } else if (data.command === "save") {
           const filename = data.options?.filename as string;
+          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
           rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
         } else {
-          rawCmd = `/chat load ${data.options?.filename as string}`;
+          const filename = data.options?.filename as string;
+          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+          rawCmd = `/chat load ${filename}`;
         }
         this.pasteRawToClassicInstance(target.name, rawCmd);
         await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
