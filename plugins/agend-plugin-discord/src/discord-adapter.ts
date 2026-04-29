@@ -215,6 +215,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             });
           } else {
             await interaction.deferReply({ ephemeral: true });
+            // Extract options as key-value pairs for fleet-manager
+            const options: Record<string, string | boolean> = {};
+            for (const opt of interaction.options.data) {
+              options[opt.name] = opt.value as string | boolean;
+            }
             this.emit("slash_command", {
               command: interaction.commandName,
               channelId: interaction.channelId,
@@ -222,6 +227,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               guildId: interaction.guildId ?? undefined,
               userId: interaction.user.id,
               username,
+              options,
               respond: async (reply: string) => { try { await interaction.editReply(reply); } catch { /* expired */ } },
             });
           }
@@ -265,6 +271,18 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           {
             name: "chat", description: "Send a message to the agent",
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
+          },
+          { name: "compact", description: "Compact the agent's context window" },
+          {
+            name: "save", description: "Save the agent's conversation",
+            options: [
+              { name: "filename", description: "File name to save as", type: 3, required: true },
+              { name: "force", description: "Overwrite if file exists", type: 5, required: false },
+            ],
+          },
+          {
+            name: "load", description: "Load a saved conversation",
+            options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
         ]);
       } catch (err) {

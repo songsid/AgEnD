@@ -627,8 +627,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.topicCommands.handleTopicDeleted(data.threadId);
     }, this.logger, "adapter.topic_closed"));
 
-    // Handle classic bot slash commands (/start, /stop, /chat)
-    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; respond: (text: string) => Promise<void> }) => {
+    // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
+    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<void> }) => {
       if (data.command === "start") {
         const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
         await data.respond(reply);
@@ -655,6 +655,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: "discord",
           timestamp: new Date(),
         });
+      } else if (data.command === "compact" || data.command === "save" || data.command === "load") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        const target = this.routing.resolve(data.channelId);
+        if (!target || target.kind !== "classic") {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        let rawCmd: string;
+        if (data.command === "compact") {
+          rawCmd = "/compact";
+        } else if (data.command === "save") {
+          const filename = data.options?.filename as string;
+          rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
+        } else {
+          rawCmd = `/chat load ${data.options?.filename as string}`;
+        }
+        this.pasteRawToClassicInstance(target.name, rawCmd);
+        await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -1978,6 +1999,17 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     });
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
+  }
+
+  /** Paste raw text directly to a classic instance's CLI (no [user:] wrapping) */
+  private pasteRawToClassicInstance(instanceName: string, text: string): void {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc) {
+      this.logger.warn({ instanceName }, "Cannot paste raw: IPC not connected");
+      return;
+    }
+    ipc.send({ type: "raw_paste", content: text });
+    this.logger.info({ instanceName, text: text.slice(0, 100) }, "Raw paste sent to classic instance");
   }
 
   /** Read recent chat log (last ~50 lines) for agent context */
