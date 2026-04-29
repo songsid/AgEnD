@@ -124,55 +124,75 @@ function detectProjectRoots(): { path: string; gitCount: number }[] {
 
 const CLASSIC_BOT_PATH = join(DATA_DIR, "classicBot.yaml");
 
-async function maybeAddClassicBotGuilds(rl: import("node:readline/promises").Interface): Promise<void> {
+async function maybeUpdateClassicBot(rl: import("node:readline/promises").Interface): Promise<void> {
   if (!existsSync(CLASSIC_BOT_PATH)) return;
-  const ans = await rl.question(`\n  classicBot.yaml found. Add allowed guilds? [y/N] `);
-  if (ans.toLowerCase() !== "y") return;
-
   const config = yaml.load(readFileSync(CLASSIC_BOT_PATH, "utf-8")) as Record<string, any>;
-  const guilds: string[] = ((config as any)?.defaults?.allowed_guilds ?? []).map(String);
-  console.log(`  Current allowed guilds: ${guilds.join(", ") || "(none)"}`);
+  let changed = false;
 
-  // Try to list guilds from Discord API using bot token from .env
-  const token = readDiscordToken();
-  if (token) {
-    const available = await listDiscordGuilds(token);
-    if (available.length > 0) {
-      const unregistered = available.filter(g => !guilds.includes(g.id));
-      if (unregistered.length > 0) {
-        console.log(`\n  Bot is in these servers:`);
-        for (let i = 0; i < unregistered.length; i++) {
-          console.log(`    ${i + 1}. ${unregistered[i].name} ${dim(`(${unregistered[i].id})`)}`);
-        }
-        console.log(`    0. Skip`);
-        while (true) {
-          const choice = (await rl.question("  Add server [0]: ")).trim();
-          if (!choice || choice === "0") break;
-          const idx = parseInt(choice, 10) - 1;
-          if (idx >= 0 && idx < unregistered.length) {
-            guilds.push(unregistered[idx].id);
-            console.log(`  ${green("✓")} Added: ${unregistered[idx].name} (${unregistered[idx].id})`);
-            unregistered.splice(idx, 1);
-            if (unregistered.length === 0) break;
+  // ── Add allowed guilds ──
+  const addGuilds = await rl.question(`\n  classicBot.yaml found. Add allowed guilds? [y/N] `);
+  if (addGuilds.toLowerCase() === "y") {
+    const guilds: string[] = ((config as any)?.defaults?.allowed_guilds ?? []).map(String);
+    console.log(`  Current allowed guilds: ${guilds.join(", ") || "(none)"}`);
+
+    const token = readDiscordToken();
+    if (token) {
+      const available = await listDiscordGuilds(token);
+      if (available.length > 0) {
+        const unregistered = available.filter(g => !guilds.includes(g.id));
+        if (unregistered.length > 0) {
+          console.log(`\n  Bot is in these servers:`);
+          for (let i = 0; i < unregistered.length; i++) {
+            console.log(`    ${i + 1}. ${unregistered[i].name} ${dim(`(${unregistered[i].id})`)}`);
           }
+          console.log(`    0. Skip`);
+          while (true) {
+            const choice = (await rl.question("  Add server [0]: ")).trim();
+            if (!choice || choice === "0") break;
+            const idx = parseInt(choice, 10) - 1;
+            if (idx >= 0 && idx < unregistered.length) {
+              guilds.push(unregistered[idx].id);
+              console.log(`  ${green("✓")} Added: ${unregistered[idx].name} (${unregistered[idx].id})`);
+              unregistered.splice(idx, 1);
+              if (unregistered.length === 0) break;
+            }
+          }
+        } else {
+          console.log(`  All servers already in allowed list.`);
         }
-      } else {
-        console.log(`  All servers already in allowed list.`);
       }
     }
+    while (true) {
+      const gid = (await rl.question("  Add guild ID manually (Enter to finish): ")).trim();
+      if (!gid) break;
+      if (guilds.includes(gid)) { console.log(`  Already in list.`); continue; }
+      guilds.push(gid);
+      console.log(`  ${green("✓")} Added: ${gid}`);
+    }
+    ((config as any).defaults ??= {}).allowed_guilds = guilds;
+    changed = true;
   }
 
-  // Manual entry fallback
-  while (true) {
-    const gid = (await rl.question("  Add guild ID manually (Enter to finish): ")).trim();
-    if (!gid) break;
-    if (guilds.includes(gid)) { console.log(`  Already in list.`); continue; }
-    guilds.push(gid);
-    console.log(`  ${green("✓")} Added: ${gid}`);
+  // ── Add admin users ──
+  const addAdmins = await rl.question(`  Add admin users? [y/N] `);
+  if (addAdmins.toLowerCase() === "y") {
+    const admins: string[] = ((config as any)?.defaults?.admin_users ?? []).map(String);
+    console.log(`  Current admin users: ${admins.join(", ") || "(none)"}`);
+    while (true) {
+      const uid = (await rl.question("  Add user ID (Enter to finish): ")).trim();
+      if (!uid) break;
+      if (admins.includes(uid)) { console.log(`  Already in list.`); continue; }
+      admins.push(uid);
+      console.log(`  ${green("✓")} Added: ${uid}`);
+    }
+    ((config as any).defaults ??= {}).admin_users = admins;
+    changed = true;
   }
-  ((config as any).defaults ??= {}).allowed_guilds = guilds;
-  writeFileSync(CLASSIC_BOT_PATH, `# ClassicBot Configuration\n${yaml.dump(config, { quotingType: '"', forceQuotes: false })}`);
-  console.log(`  ${green("✓")} Updated ${CLASSIC_BOT_PATH}`);
+
+  if (changed) {
+    writeFileSync(CLASSIC_BOT_PATH, `# ClassicBot Configuration\n${yaml.dump(config, { quotingType: '"', forceQuotes: false })}`);
+    console.log(`  ${green("✓")} Updated ${CLASSIC_BOT_PATH}`);
+  }
 }
 
 /** Read Discord bot token from .env (uses bot_token_env from fleet.yaml) */
@@ -234,14 +254,14 @@ export async function runQuickstart(): Promise<void> {
         writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
         console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
 
-        await maybeAddClassicBotGuilds(rl);
+        await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
 
       if (action !== "2") {
         // Skip (default)
-        await maybeAddClassicBotGuilds(rl);
+        await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
@@ -469,7 +489,7 @@ export async function runQuickstart(): Promise<void> {
 
     const classicPath = join(DATA_DIR, "classicBot.yaml");
     if (channel === "discord" && existsSync(classicPath)) {
-      await maybeAddClassicBotGuilds(rl);
+      await maybeUpdateClassicBot(rl);
     } else if (channel === "discord") {
       const setupClassic = await rl.question(`\n  Set up ClassicBot? (allows /start in any channel) [Y/n] `);
       if (setupClassic.toLowerCase() !== "n") {
@@ -486,10 +506,21 @@ export async function runQuickstart(): Promise<void> {
         // Default backend
         const cbBackend = (await rl.question(`  Default backend [${backend}]: `)).trim() || backend;
 
+        // Admin users — pre-fill with quickstart userId
+        const adminUsers: string[] = [userId];
+        console.log(`  ${green("✓")} Admin user added: ${userId}`);
+        while (true) {
+          const uid = (await rl.question(`  Add another admin user ID? (Enter to skip): `)).trim();
+          if (!uid) break;
+          adminUsers.push(uid);
+          console.log(`  ${green("✓")} Added: ${uid}`);
+        }
+
         const classicConfig = {
           defaults: {
             backend: cbBackend,
             allowed_guilds: allowedGuilds,
+            admin_users: adminUsers,
           },
         };
 
