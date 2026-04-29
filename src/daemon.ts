@@ -13,6 +13,7 @@ import { IpcServer } from "./channel/ipc-bridge.js";
 import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, StartupDialog } from "./backend/types.js";
+import { shellQuote } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -1291,7 +1292,7 @@ export class Daemon extends EventEmitter {
     // AGEND_HOME points the child's agent-cli at the same data dir the daemon
     // is using, so it can locate <instanceDir>/agent.token.
     const agendHome = join(this.instanceDir, "..", "..");
-    let envPrefix = `TERM=xterm-256color AGEND_INSTANCE_NAME=${this.name} AGEND_HOME=${JSON.stringify(agendHome)}`;
+    let envPrefix = `TERM=xterm-256color AGEND_INSTANCE_NAME=${shellQuote(this.name)} AGEND_HOME=${shellQuote(agendHome)}`;
     if (backendConfig.agentMode === "cli" && backendConfig.agentPort) {
       envPrefix += ` AGEND_PORT=${backendConfig.agentPort}`;
     }
