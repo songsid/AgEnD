@@ -136,9 +136,13 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
 
-    // Access control — only allowed users can trigger update
+    // Access control — only allowed users can trigger update; empty = disabled
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
+    if (allowed.length === 0) {
+      await this.ctx.adapter.sendText(chatId, "⛔ /update disabled — no allowed_users configured", { threadId });
+      return;
+    }
+    if (!allowed.some(u => String(u) === String(msg.userId))) {
       await this.ctx.adapter.sendText(chatId, "⛔ Not authorized", { threadId });
       return;
     }
