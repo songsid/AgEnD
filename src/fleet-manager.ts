@@ -1917,6 +1917,8 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     // /chat message: forward to agent
     const chatText = text.replace(/^\/chat\s*/, "").trim();
     if (!chatText && !msg.attachments?.length) return;
+    // Block /raw bypass — admin commands must go through slash command gate
+    if (chatText.startsWith("/raw ")) return;
 
     // Strip saved attachment from attachments to avoid double download
     const savedKind = saved?.kind;

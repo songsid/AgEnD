@@ -212,10 +212,16 @@ export class Daemon extends EventEmitter {
         if (meta.chat_id && meta.thread_id) this.lastThreadId = meta.thread_id;
         this.pushChannelMessage(msg.content as string, meta, targetSession);
       } else if (msg.type === "raw_paste") {
-        // Paste raw text directly to CLI without [user:] wrapping
+        // Paste raw text directly to CLI without [user:] wrapping.
+        // Use pasteLock to serialize with other deliveries and wait for idle.
         if (this.tmux) {
-          this.tmux.pasteText(msg.content as string).catch(() => {});
-          this.logger.debug({ text: (msg.content as string).slice(0, 100) }, "Raw paste delivered");
+          const rawText = msg.content as string;
+          this.pasteLock = this.pasteLock.then(async () => {
+            await this.deliverMessage(rawText);
+            this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
+          }).catch(err => {
+            this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+          });
         }
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
