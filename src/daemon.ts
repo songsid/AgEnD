@@ -211,6 +211,12 @@ export class Daemon extends EventEmitter {
         if (meta.chat_id) this.lastChatId = meta.chat_id;
         if (meta.chat_id && meta.thread_id) this.lastThreadId = meta.thread_id;
         this.pushChannelMessage(msg.content as string, meta, targetSession);
+      } else if (msg.type === "raw_paste") {
+        // Paste raw text directly to CLI without [user:] wrapping
+        if (this.tmux) {
+          this.tmux.pasteText(msg.content as string).catch(() => {});
+          this.logger.debug({ text: (msg.content as string).slice(0, 100) }, "Raw paste delivered");
+        }
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
@@ -758,6 +764,19 @@ export class Daemon extends EventEmitter {
     // Format message with metadata prefix for the agent
     const user = meta.user || "unknown";
     const fromInstance = meta.from_instance;
+
+    // /raw prefix: paste directly without [user:] wrapping (topic mode only, protected by allowed_users upstream)
+    if (!fromInstance && content.startsWith("/raw ")) {
+      const rawText = content.slice(5);
+      this.logger.info({ user }, "Raw paste from topic mode user");
+      this.pasteLock = this.pasteLock.then(async () => {
+        await this.deliverMessage(rawText);
+      }).catch(err => {
+        this.logger.warn({ err: (err as Error).message }, "pasteLock raw delivery error");
+      });
+      return;
+    }
+
     let formatted: string;
     if (fromInstance) {
       formatted = `[from:${fromInstance}] ${content}\n(Reply using send_to_instance tool, NOT direct text)`;
