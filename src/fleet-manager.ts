@@ -1569,6 +1569,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.watch(name);
   }
 
+  reactMessageStatus(chatId: string, messageId: string, emoji: string): void {
+    if (this.adapter?.type !== "discord") return;
+    this.adapter.react(chatId, messageId, emoji)
+      .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
+  }
+
   // ── Model failover ──────────────────────────────────────────────────────
 
   private static FAILOVER_TRIGGER_PCT = 90;
