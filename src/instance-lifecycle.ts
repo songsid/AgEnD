@@ -42,6 +42,7 @@ export interface LifecycleContext {
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void;
   checkModelFailover(name: string, fiveHourPct: number): void;
   startStatuslineWatcher(name: string): void;
+  reactMessageStatus(chatId: string, messageId: string, emoji: string): void;
 }
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
@@ -187,6 +188,13 @@ export class InstanceLifecycle {
       this.ctx.notifyInstanceTopic(name, `✅ ${name}: recovered after ${duration}`);
       this.ctx.webhookEmit("pty_recovered", name, { downtime_s: data.downtime_s });
     }, this.ctx.logger, `daemon.pty_recovered[${name}]`));
+
+    daemon.on("message_queued", (data: { chatId: string; messageId: string }) => {
+      this.ctx.reactMessageStatus(data.chatId, data.messageId, "⏳");
+    });
+    daemon.on("message_delivered", (data: { chatId: string; messageId: string }) => {
+      this.ctx.reactMessageStatus(data.chatId, data.messageId, "✅");
+    });
 
     this.ctx.setTopicIcon(name, "green");
     this.ctx.touchActivity(name);
