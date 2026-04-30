@@ -799,9 +799,15 @@ export class Daemon extends EventEmitter {
     // and each waits for the CLI to be idle before pasting.
     const enqueuedAt = Date.now();
     const isFromInstance = !!meta.from_instance;
+    const chatId = meta.chat_id;
+    const messageId = meta.message_id;
+    const wasQueued = this.pasteQueueDepth > 0;
     this.pasteQueueDepth++;
     if (this.pasteQueueDepth > 3) {
       this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
+    }
+    if (wasQueued && chatId && messageId) {
+      this.emit("message_queued", { chatId, messageId });
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -811,6 +817,9 @@ export class Daemon extends EventEmitter {
           return;
         }
         await this.deliverMessage(formatted);
+        if (chatId && messageId) {
+          this.emit("message_delivered", { chatId, messageId });
+        }
       } finally {
         this.pasteQueueDepth--;
       }
