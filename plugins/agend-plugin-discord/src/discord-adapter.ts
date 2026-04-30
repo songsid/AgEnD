@@ -211,7 +211,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               userId: interaction.user.id,
               username,
               text,
-              respond: async (reply: string) => { try { await interaction.editReply(reply); } catch { /* expired */ } },
+              respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
             });
           } else {
             await interaction.deferReply({ ephemeral: true });
@@ -362,6 +362,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {
     try {
+      // Try chatId as channel ID first (Discord classic bot passes channelId as chatId)
+      try {
+        const ch = await this._fetchTextChannel(chatId);
+        const msg = await ch.messages.fetch(messageId);
+        await msg.react(emoji);
+        return;
+      } catch { /* not found in this channel, search guild */ }
+
       const guild = await this.client.guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter(
         (c: { type: ChannelType }) => c.type === ChannelType.GuildText,
