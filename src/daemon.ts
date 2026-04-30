@@ -833,7 +833,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(formatted: string): Promise<void> {
     const windowId = this.getWindowId();
     if (windowId && this.controlClient) {
-      const idle = await this.controlClient.waitForIdle(windowId, this.config.lightweight ? 10_000 : undefined);
+      const idle = await this.controlClient.waitForIdle(windowId, 120_000);
       if (!idle) {
         this.logger.warn("Delivering message after idle timeout (CLI may be busy)");
       }
