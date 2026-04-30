@@ -628,7 +628,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.topic_closed"));
 
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
-    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<void> }) => {
+    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
       if (data.command === "start") {
         const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
         await data.respond(reply);
@@ -643,13 +643,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
-        await data.respond("👀");
+        const replyMsgId = await data.respond("👀");
         const username = data.username ?? data.userId;
         ClassicChannelManager.logMessage(target.name, username, `/chat ${text}`, new Date());
         await this.forwardToClassicInstance(target.name, text, {
-          chatId: this.fleetConfig?.channel?.group_id ? String(this.fleetConfig.channel.group_id) : "",
+          chatId: data.channelId,
           threadId: data.channelId,
-          messageId: "",
+          messageId: replyMsgId ?? "",
           userId: data.userId,
           username,
           source: "discord",
