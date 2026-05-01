@@ -86,6 +86,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "List all currently running instances that you can send messages to."],
   ["start_instance", schemas.StartInstanceArgs,
     "Start a stopped instance by name."],
+  ["restart_instance", schemas.RestartInstanceArgs,
+    "Restart a running instance. Reloads fleet config and restarts the instance."],
   ["create_instance", schemas.CreateInstanceArgs,
     "Create a new instance bound to a project directory with a channel topic. If directory is omitted, a workspace is auto-created at ~/.agend/workspaces/<instance-name>."],
   ["delete_instance", schemas.DeleteInstanceArgs,
