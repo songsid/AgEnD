@@ -25,7 +25,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Tool routing sets — module-level to avoid re-creation on every handleToolCall
-const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
@@ -833,7 +833,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(formatted: string): Promise<void> {
     const windowId = this.getWindowId();
     if (windowId && this.controlClient) {
-      const idle = await this.controlClient.waitForIdle(windowId, 120_000);
+      const idle = await this.controlClient.waitForIdle(windowId, this.config.lightweight ? 30_000 : 120_000);
       if (!idle) {
         this.logger.warn("Delivering message after idle timeout (CLI may be busy)");
       }
