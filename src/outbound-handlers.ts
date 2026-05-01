@@ -23,6 +23,7 @@ import {
   ReplaceInstanceArgs,
   ReportResultArgs,
   RequestInformationArgs,
+  RestartInstanceArgs,
   SendToInstanceArgs,
   StartInstanceArgs,
   TeardownDeploymentArgs,
@@ -43,6 +44,7 @@ export interface OutboundContext {
   readonly classicChannels: { getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[] } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
+  restartSingleInstance(name: string): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
@@ -269,6 +271,18 @@ const startInstance: Handler = async (ctx, rawArgs, respond) => {
     respond({ success: true, status: "started" });
   } catch (err) {
     respond(null, `Failed to start instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
+  }
+};
+
+const restartInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(RestartInstanceArgs, rawArgs, "restart_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  const targetName = v.data.name;
+  try {
+    await ctx.restartSingleInstance(targetName);
+    respond({ success: true, status: "restarted" });
+  } catch (err) {
+    respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
   }
 };
 
@@ -739,6 +753,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["report_result", reportResult],
   ["describe_instance", describeInstance],
   ["start_instance", startInstance],
+  ["restart_instance", restartInstance],
   ["create_instance", createInstance],
   ["delete_instance", deleteInstance],
   ["replace_instance", replaceInstance],
