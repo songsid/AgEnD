@@ -155,6 +155,10 @@ export const StartInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to start (from list_instances)"),
 });
 
+export const RestartInstanceArgs = z.object({
+  name: NonEmptyString.describe("The instance name to restart"),
+});
+
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
