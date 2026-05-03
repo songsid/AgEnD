@@ -162,13 +162,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const ch of channels) {
       this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
     }
-    // Tell adapter to skip access control for classic channels
+    // Always update adapter openChannels (including empty — clears stale entries on /stop)
+    const hasMethod = typeof (this.adapter as any)?.setOpenChannels === "function";
+    if (hasMethod) {
+      (this.adapter as any).setOpenChannels(channels.map(ch => ch.channelId));
+    }
     if (channels.length > 0) {
-      const hasMethod = typeof (this.adapter as any)?.setOpenChannels === "function";
-      this.logger.info({ count: channels.length, hasAdapter: !!this.adapter, hasMethod }, "Registered classic channel routes");
-      if (hasMethod) {
-        (this.adapter as any).setOpenChannels(channels.map(ch => ch.channelId));
-      }
+      this.logger.info({ count: channels.length }, "Registered classic channel routes");
     }
   }
 
@@ -2075,6 +2075,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.routing.unregister(channelId);
     await this.stopInstance(ch.instanceName).catch(err =>
       this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to stop classic instance"));
+    this.reregisterClassicChannels();
     this.logger.info({ channelId, instanceName: ch.instanceName }, "Classic channel stopped");
     return `🛑 Agent stopped in this channel.`;
   }
