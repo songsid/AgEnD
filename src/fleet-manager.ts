@@ -681,12 +681,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
-        if (!target || target.kind !== "classic") {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+        if (!target) {
+          await data.respond("No active agent in this channel.");
           return;
         }
         const instanceName = target.name;
-        const backend = this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code";
+        const backend = target.kind === "classic"
+          ? (this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code")
+          : (this.fleetConfig?.instances[instanceName]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
         let context: number | null = null;
         // Try statusline.json first
         try {
