@@ -679,6 +679,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         this.pasteRawToClassicInstance(target.name, rawCmd);
         await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+      } else if (data.command === "ctx") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target || target.kind !== "classic") {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        const instanceName = target.name;
+        const backend = this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code";
+        let context: number | null = null;
+        // Try statusline.json first
+        try {
+          const statusFile = join(this.getInstanceDir(instanceName), "statusline.json");
+          if (existsSync(statusFile)) {
+            const d = JSON.parse(readFileSync(statusFile, "utf-8"));
+            context = d.context_window?.used_percentage ?? null;
+          }
+        } catch { /* ignore */ }
+        // Fallback: capture tmux pane
+        if (context == null) {
+          try {
+            const { execFileSync } = await import("node:child_process");
+            const { getTmuxSocketName } = await import("./paths.js");
+            const socketName = getTmuxSocketName();
+            const tmuxArgs = socketName
+              ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSession()}:${instanceName}`, "-p"]
+              : ["capture-pane", "-t", `${getTmuxSession()}:${instanceName}`, "-p"];
+            const pane = execFileSync("tmux", tmuxArgs,
+              { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
+            const m = pane.match(/(\d+)%\s*!>\s*$/m) || pane.match(/◔\s*(\d+)%/);
+            if (m) context = parseInt(m[1], 10);
+          } catch { /* ignore */ }
+        }
+        if (context != null) {
+          await data.respond(`📊 Context: ${context}% used\nBackend: ${backend}\nInstance: ${instanceName}`);
+        } else {
+          await data.respond(`Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`);
+        }
       }
     }, this.logger, "adapter.slash_command"));
 
