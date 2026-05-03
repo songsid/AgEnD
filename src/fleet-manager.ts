@@ -2061,6 +2061,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.routing.register(channelId, { kind: "classic", name: instanceName });
 
     await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend));
+    this.reregisterClassicChannels();
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
     return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
   }
