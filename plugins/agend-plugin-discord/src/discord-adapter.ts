@@ -284,6 +284,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "load", description: "Load a saved conversation",
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
+          { name: "ctx", description: "Show agent context usage" },
         ]);
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
