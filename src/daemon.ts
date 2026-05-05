@@ -623,7 +623,7 @@ export class Daemon extends EventEmitter {
       } catch {
         // capturePane can fail if window is transitioning — ignore
       }
-    }, 30_000); // Check every 30 seconds
+    }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
   }
 
   async stop(): Promise<void> {
