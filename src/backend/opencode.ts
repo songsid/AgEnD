@@ -101,7 +101,7 @@ export class OpenCodeBackend implements CliBackend {
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
-      { pattern: /Permission required/i, keys: ["Enter"], description: "OpenCode permission prompt — Allow once" },
+      { pattern: /Permission required/i, keys: ["Right", "Enter"], description: "OpenCode permission prompt — Allow always" },
       { pattern: /confirm/i, keys: ["Enter"], description: "OpenCode confirm prompt" },
     ];
   }
