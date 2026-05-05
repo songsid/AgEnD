@@ -557,10 +557,10 @@ export class Daemon extends EventEmitter {
         for (const dialog of dialogs) {
           if (!dialog.pattern.test(pane)) continue;
           this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
-          const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape"]);
+          const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
           for (const key of dialog.keys) {
             if (SPECIAL_KEYS.has(key)) {
-              await this.tmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down");
+              await this.tmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
             } else {
               await this.tmux.pasteText(key);
             }
