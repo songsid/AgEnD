@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel } from "./types.js";
 
 export class OpenCodeBackend implements CliBackend {
   readonly binaryName = "opencode";
@@ -98,6 +98,13 @@ export class OpenCodeBackend implements CliBackend {
   }
 
   getQuitCommand(): string { return "/quit"; }
+
+  getRuntimeDialogs(): RuntimeDialog[] {
+    return [
+      { pattern: /Permission required/i, keys: ["Enter"], description: "OpenCode permission prompt — Allow once" },
+      { pattern: /confirm/i, keys: ["Enter"], description: "OpenCode confirm prompt" },
+    ];
+  }
 
   cleanup(config: CliBackendConfig): void {
     // Clean up instance-specific MCP entries from opencode.json.
