@@ -109,7 +109,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   private _registerHandlers(): void {
     this.client.on("messageCreate", async (msg: Message) => {
-      if (msg.author.bot) return;
+      if (msg.author.id === this.client.user?.id) return; // Ignore own messages
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
         if (!this.openChannels.has(msg.channelId)) return;
@@ -125,6 +125,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const messageId = msg.id;
       const username = msg.author.username;
       const text = msg.content;
+      const isBotMessage = msg.author.bot;
 
       // Collect attachments
       const attachments = msg.attachments.map((att) => ({
@@ -166,6 +167,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         username,
         text,
         timestamp: msg.createdAt,
+        isBotMessage,
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reference?.messageId ?? undefined,
         replyToText,
@@ -285,11 +287,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
           { name: "ctx", description: "Show agent context usage" },
+          { name: "collab", description: "Toggle collaboration mode (@mention trigger)" },
         ]);
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
       }
-      this.emit("started", this.client.user?.username ?? "discord-bot");
+      this.emit("started", this.client.user?.username ?? "discord-bot", this.client.user?.id);
     });
 
     await this.client.login(this.botToken);
