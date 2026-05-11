@@ -10,6 +10,7 @@ export interface ClassicChannel {
   name: string;
   instanceName: string;
   backend?: string;
+  collab?: boolean;
   createdAt: string;
   createdBy: string;
 }
@@ -19,6 +20,7 @@ interface ClassicBotYaml {
   channels?: Record<string, {
     name?: string;
     backend?: string;
+    collab?: boolean;
     createdBy?: string;
     createdAt?: string;
   }>;
@@ -65,6 +67,7 @@ export class ClassicChannelManager {
             name,
             instanceName: classicInstanceName(sanitizeInstanceName(name), channelId),
             backend: val.backend,
+            collab: val.collab,
             createdAt: val.createdAt ?? "",
             createdBy: val.createdBy ?? "",
           });
@@ -83,6 +86,7 @@ export class ClassicChannelManager {
     for (const ch of this.channels.values()) {
       const entry: Record<string, unknown> = { name: ch.name, createdBy: ch.createdBy, createdAt: ch.createdAt };
       if (ch.backend) entry.backend = ch.backend;
+      if (ch.collab) entry.collab = ch.collab;
       obj.channels![ch.channelId] = entry as any;
     }
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
@@ -111,6 +115,19 @@ export class ClassicChannelManager {
   isAdmin(userId: string): boolean {
     const list = this.defaults.admin_users;
     return !!list && list.length > 0 && list.includes(userId);
+  }
+
+  /** Toggle collab mode for a channel. Returns new state. */
+  toggleCollab(channelId: string): boolean {
+    const ch = this.channels.get(channelId);
+    if (!ch) return false;
+    ch.collab = !ch.collab;
+    this.save();
+    return ch.collab;
+  }
+
+  isCollab(channelId: string): boolean {
+    return this.channels.get(channelId)?.collab ?? false;
   }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */
