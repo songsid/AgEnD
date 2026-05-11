@@ -718,6 +718,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } else {
           await data.respond(`Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`);
         }
+      } else if (data.command === "collab") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        if (!this.classicChannels.isClassicChannel(data.channelId)) {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        const newState = this.classicChannels.toggleCollab(data.channelId);
+        await data.respond(newState
+          ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
+          : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -727,8 +740,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.adapter.setChatId(String(fleet.channel.group_id));
     }
 
-    this.adapter.on("started", safeHandler((username: string) => {
+    this.adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
+      if (userId) this.botUserId = userId;
     }, this.logger, "adapter.started"));
     this.adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
       this.logger.warn(`409 Conflict (attempt ${attempt}), retry in ${delay / 1000}s`);
@@ -827,6 +841,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
+
+    // Bot messages: only allow in collab channels
+    if (msg.isBotMessage) {
+      if (!threadId) return;
+      const target = this.routing.resolve(threadId);
+      if (!target || target.kind !== "classic") return;
+      if (!this.classicChannels?.isCollab(threadId)) return;
+      // Fall through to classic channel handling
+    }
 
     // Access control — classic channels are open to all, others require allowed user
     if (this.accessManager && !this.accessManager.isAllowed(msg.userId)) {
@@ -1498,6 +1521,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicCleanupTimer: ReturnType<typeof setInterval> | null = null;
   private sessionPruneTimer: ReturnType<typeof setInterval> | null = null;
   private classicReloadTimer: ReturnType<typeof setInterval> | null = null;
+  private botUserId: string | undefined;
 
   /** Periodically check if bound topics still exist */
   private startTopicCleanupPoller(): void {
@@ -1940,6 +1964,33 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   /** Handle a message in a classic channel: log it, forward only /chat messages */
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
+    const channelId = msg.threadId ?? msg.chatId;
+    const isCollabMode = this.classicChannels?.isCollab(channelId) ?? false;
+
+    // Collab mode: trigger on @mention of our bot, log all messages
+    if (isCollabMode) {
+      // Log every message (including other bots) to chat-logs
+      ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp, msg.replyToText);
+
+      // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here
+      const mentionTag = this.botUserId ? `<@${this.botUserId}>` : null;
+      const isMentioned = mentionTag && text.includes(mentionTag);
+      if (!isMentioned) return;
+
+      // Strip the @mention from text
+      const cleanText = text.replace(new RegExp(`<@${this.botUserId}>`, "g"), "").trim();
+      if (!cleanText && !msg.attachments?.length) return;
+
+      if (this.adapter && msg.chatId && msg.messageId) {
+        this.adapter.react(msg.chatId, msg.messageId, "👀")
+          .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      }
+
+      await this.forwardToClassicInstance(instanceName, cleanText, msg);
+      return;
+    }
+
+    // Normal mode: /chat trigger
     const isChat = text.startsWith("/chat ") || text === "/chat";
     this.logger.info({ instanceName, user: msg.username, textLen: text.length, hasChat: isChat }, "classic channel message received");
 

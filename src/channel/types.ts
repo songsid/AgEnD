@@ -95,6 +95,7 @@ export interface InboundMessage {
   username: string;
   text: string;
   timestamp: Date;
+  isBotMessage?: boolean;
   attachments?: Attachment[];
   replyTo?: string;
   replyToText?: string;
