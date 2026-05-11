@@ -1893,6 +1893,16 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
 - Always check existing teams before creating new ones
 - Default to ephemeral teams (created for a specific task, dissolved after completion)
 - Clean up ephemeral teams and instances after task completion
+
+-----
+
+## Instance Configuration Tips
+
+When users create specialized instances, suggest these configurations:
+
+- **Reviewer instances**: Add \`pre_task_command: "/chat load reviewer-base"\` to reset context before each review, preventing influence from previous conversations.
+- **Collab mode**: For multi-bot channels, use \`/collab\` to enable @mention-based triggering.
+- **Cost control**: Set per-instance \`cost_guard\` for expensive backends.
 `;
 
   /** Ensure the general instance has its project instructions file */
@@ -2126,7 +2136,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
   }
 
   /** Start a classic channel instance with lightweight config */
-  private async startClassicInstance(instanceName: string, backend?: string): Promise<void> {
+  private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string): Promise<void> {
     if (this.daemons.has(instanceName)) return;
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
@@ -2134,6 +2144,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
       working_directory: join(getAgendHome(), "workspaces", instanceName),
       lightweight: true,
       ...(backend ? { backend } : {}),
+      ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
     await this.startInstance(instanceName, config, topicMode);
@@ -2150,7 +2161,7 @@ Design Proposed → Design Approved → Implementation → Submit for Review →
     this.classicChannels.register(channelId, instanceName, channelName || channelId, userId);
     this.routing.register(channelId, { kind: "classic", name: instanceName });
 
-    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend));
+    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId));
     this.reregisterClassicChannels();
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
     return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
