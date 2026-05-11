@@ -11,6 +11,7 @@ export interface ClassicChannel {
   instanceName: string;
   backend?: string;
   collab?: boolean;
+  preTaskCommand?: string;
   createdAt: string;
   createdBy: string;
 }
@@ -21,6 +22,7 @@ interface ClassicBotYaml {
     name?: string;
     backend?: string;
     collab?: boolean;
+    pre_task_command?: string;
     createdBy?: string;
     createdAt?: string;
   }>;
@@ -68,6 +70,7 @@ export class ClassicChannelManager {
             instanceName: classicInstanceName(sanitizeInstanceName(name), channelId),
             backend: val.backend,
             collab: val.collab,
+            preTaskCommand: val.pre_task_command,
             createdAt: val.createdAt ?? "",
             createdBy: val.createdBy ?? "",
           });
@@ -87,6 +90,7 @@ export class ClassicChannelManager {
       const entry: Record<string, unknown> = { name: ch.name, createdBy: ch.createdBy, createdAt: ch.createdAt };
       if (ch.backend) entry.backend = ch.backend;
       if (ch.collab) entry.collab = ch.collab;
+      if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![ch.channelId] = entry as any;
     }
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
@@ -128,6 +132,10 @@ export class ClassicChannelManager {
 
   isCollab(channelId: string): boolean {
     return this.channels.get(channelId)?.collab ?? false;
+  }
+
+  getPreTaskCommand(channelId: string): string | undefined {
+    return this.channels.get(channelId)?.preTaskCommand;
   }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */

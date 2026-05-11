@@ -108,6 +108,8 @@ export interface InstanceConfig {
   startup_timeout_ms?: number;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint, no MCP server). */
   agent_mode?: "mcp" | "cli";
+  /** Command to paste raw before each user message (e.g. "/chat load base.json") */
+  pre_task_command?: string;
 }
 
 export interface WebhookConfig {
