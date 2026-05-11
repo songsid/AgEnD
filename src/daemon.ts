@@ -816,6 +816,9 @@ export class Daemon extends EventEmitter {
           this.logger.warn({ age: Date.now() - enqueuedAt, user: meta.user }, "Dropping stale message");
           return;
         }
+        if (this.config.pre_task_command) {
+          await this.deliverMessage(this.config.pre_task_command);
+        }
         await this.deliverMessage(formatted);
         if (chatId && messageId) {
           this.emit("message_delivered", { chatId, messageId });
