@@ -1368,7 +1368,7 @@ function formatTimeSince(isoStr: string): string {
 const contextParsers: Record<string, (output: string) => number | null> = {
   "kiro-cli": (output) => {
     // Classic mode: "8% !>" | TUI mode: "◔ 1%"
-    const m = output.match(/(\d+)%\s*!>\s*$/m) || output.match(/◔\s*(\d+)%/);
+    const m = output.match(/(\d+)%.*!>\s*$/m) || output.match(/◔\s*(\d+)%/);
     return m ? parseInt(m[1], 10) : null;
   },
 };
