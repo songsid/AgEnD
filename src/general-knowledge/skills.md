@@ -40,7 +40,8 @@ Steps:
    - `execute_bash`: `cp ~/.agend/workspaces/<source>/YYYYMMDD.json ~/.agend/workspaces/<target>/`
 
 4. Load session on new instance:
-   - Send `/raw /chat load YYYYMMDD.json` to the new instance
+   - Use tmux directly (IPC may not be ready on fresh instance):
+     `execute_bash`: `tmux send-keys -t agend:<new-instance-name> '/chat load YYYYMMDD.json' Enter`
    - Or configure `pre_task_command: "/chat load YYYYMMDD.json"` for auto-load on restart
 
 Note: The forked instance starts with the same context/knowledge but operates independently after that.
