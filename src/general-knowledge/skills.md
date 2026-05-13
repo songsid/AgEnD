@@ -31,19 +31,20 @@ For reviewer instances using kiro-cli:
 When user wants to fork/clone an instance's session to a new instance:
 
 Steps:
-1. Save current session on source instance:
-   - Send `/raw /chat save YYYYMMDD.json -f` to the source instance
-   - Or use admin command `/save YYYYMMDD` (classic bot)
+1. Wait for source instance to be idle (check with tmux capture-pane, look for "X% !>" prompt)
 
-2. Create new instance:
+2. Save current session on source instance via tmux:
+   - `execute_bash`: `tmux send-keys -t agend:<source-instance> '/chat save YYYYMMDD.json -f' Enter`
+   - Wait a few seconds for save to complete
+
+3. Create new instance:
    - `create_instance` with same backend and working_directory (or new one)
 
-3. Copy session file to new instance workspace:
+4. Copy session file to new instance workspace:
    - `execute_bash`: `cp ~/.agend/workspaces/<source>/YYYYMMDD.json ~/.agend/workspaces/<target>/`
 
-4. Load session on new instance:
-   - Use tmux directly (IPC may not be ready on fresh instance):
-     `execute_bash`: `tmux send-keys -t agend:<new-instance-name> '/chat load YYYYMMDD.json' Enter`
+5. Wait for new instance to be idle, then load session via tmux:
+   - `execute_bash`: `tmux send-keys -t agend:<new-instance-name> '/chat load YYYYMMDD.json' Enter`
    - Or configure `pre_task_command: "/chat load YYYYMMDD.json"` for auto-load on restart
 
 Note: The forked instance starts with the same context/knowledge but operates independently after that.
