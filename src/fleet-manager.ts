@@ -1905,7 +1905,7 @@ When users create specialized instances, suggest these configurations:
 - **Cost control**: Set per-instance \`cost_guard\` for expensive backends.
 `;
 
-  /** Ensure the general instance has its project instructions file */
+  /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string): void {
     const backend = backendName ?? "claude-code";
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
@@ -1915,6 +1915,25 @@ When users create specialized instances, suggest these configurations:
       writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
       this.logger.info({ filePath }, "Created general instance instructions file");
     }
+    // Sync bundled knowledge files to general's steering directory
+    this.syncGeneralKnowledge(workDir, backend);
+  }
+
+  /** Copy src/general-knowledge/*.md to the general instance's steering dir */
+  private syncGeneralKnowledge(workDir: string, backend: string): void {
+    const knowledgeDir = join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
+    if (!existsSync(knowledgeDir)) return;
+    const steeringDir = backend === "kiro-cli"
+      ? join(workDir, ".kiro", "steering")
+      : workDir; // other backends: put in working dir root
+    mkdirSync(steeringDir, { recursive: true });
+    for (const file of readdirSync(knowledgeDir)) {
+      if (!file.endsWith(".md")) continue;
+      const src = join(knowledgeDir, file);
+      const dest = join(steeringDir, file);
+      copyFileSync(src, dest);
+    }
+    this.logger.debug({ knowledgeDir, steeringDir }, "Synced general knowledge files");
   }
 
   /** Fetch forum topic icon stickers and pick emoji IDs for each state */
