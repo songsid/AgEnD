@@ -1,5 +1,7 @@
 # Advanced Skills
 
+> **Note: These skills apply to kiro-cli backend instances only.**
+
 ## 1. Instance Health Check via tmux
 
 When user asks to check an instance's status or what it's doing:
