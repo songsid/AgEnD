@@ -85,6 +85,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
 
   const parsed = yaml.load(safeRaw) as {
     channel?: FleetConfig["channel"];
+    channels?: FleetConfig["channels"];
     project_roots?: string[];
     defaults?: Partial<InstanceConfig>;
     instances?: Record<string, Partial<InstanceConfig>>;
@@ -128,10 +129,17 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     }
   }
 
+  // Normalize channel → channels (backward compat: single channel auto-wraps into array)
+  const channelSingle = parsed.channel
+    ? { ...parsed.channel, id: parsed.channel.id ?? parsed.channel.type, mode: parsed.channel.mode ?? "topic" as const }
+    : undefined;
+  const channels: FleetConfig["channels"] = parsed.channels
+    ? parsed.channels.map(ch => ({ ...ch, id: ch.id ?? ch.type, mode: ch.mode ?? "topic" as const }))
+    : channelSingle ? [channelSingle] : undefined;
+
   return {
-    channel: parsed.channel
-      ? { ...parsed.channel, mode: parsed.channel.mode ?? "topic" }
-      : parsed.channel,
+    channel: channelSingle,
+    channels,
     project_roots: parsed.project_roots,
     defaults: fleetDefaults,
     instances,
