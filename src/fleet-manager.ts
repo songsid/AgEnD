@@ -186,8 +186,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.adapter;
   }
 
-  /** Bind an instance to a specific adapter */
+  /** Bind an instance to a specific adapter (skip general_topic — always uses primary) */
   bindInstanceAdapter(name: string, adapterId: string): void {
+    const config = this.fleetConfig?.instances[name];
+    if (config?.general_topic) return;
     this.instanceAdapterBinding.set(name, adapterId);
   }
 
@@ -1060,11 +1062,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (generalInstance) {
         this.warnIfRateLimited(generalInstance, msg);
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId);
-        const { text, extraMeta } = await processAttachments(msg, this.adapter!, this.logger, generalInstance);
+        const inboundAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+        const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
         if (ipc) {
-          if (this.adapter && msg.chatId && msg.messageId) {
-            this.adapter.react(msg.chatId, msg.messageId, "👀")
+          if (msg.chatId && msg.messageId) {
+            inboundAdapter.react(msg.chatId, msg.messageId, "👀")
               .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
           }
           ipc.send({
@@ -2449,14 +2452,10 @@ When users create specialized instances, suggest these configurations:
     }
     this.instanceIpcClients.clear();
 
-    if (this.adapter) {
-      await this.adapter.stop();
-      this.adapter = null;
+    for (const [, a] of this.adapters) {
+      await a.stop().catch(() => {});
     }
-    // Stop additional adapters
-    for (const [id, a] of this.adapters) {
-      if (a !== this.adapter) await a.stop().catch(() => {});
-    }
+    this.adapter = null;
     this.adapters.clear();
 
     this.controlClient?.stop();
