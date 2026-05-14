@@ -9,7 +9,7 @@ import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { FleetConfig, InstanceConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig } from "./types.js";
+import type { FleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig } from "./types.js";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
@@ -63,6 +63,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   adapter: ChannelAdapter | null = null;
+  private adapters = new Map<string, ChannelAdapter>();
+  /** Track which adapter each instance is bound to (adapterId) */
+  private instanceAdapterBinding = new Map<string, string>();
   private accessManager: AccessManager | null = null;
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
@@ -174,6 +177,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   getInstanceDir(name: string): string {
     return join(this.dataDir, "instances", name);
+  }
+
+  /** Get the adapter bound to an instance, falling back to primary adapter */
+  getAdapterForInstance(name: string): ChannelAdapter | null {
+    const adapterId = this.instanceAdapterBinding.get(name);
+    if (adapterId) return this.adapters.get(adapterId) ?? this.adapter;
+    return this.adapter;
+  }
+
+  /** Bind an instance to a specific adapter */
+  bindInstanceAdapter(name: string, adapterId: string): void {
+    this.instanceAdapterBinding.set(name, adapterId);
   }
 
   getInstanceStatus(name: string): "running" | "stopped" | "crashed" {
@@ -570,9 +585,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     process.once("SIGUSR1", onFullRestart);
   }
 
-  /** Start the shared channel adapter for topic mode */
+  /** Start the shared channel adapter(s) for topic mode */
   private async startSharedAdapter(fleet: FleetConfig): Promise<void> {
-    const channelConfig = fleet.channel!;
+    const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+    if (channelConfigs.length === 0) return;
+
+    // Start primary adapter (first channel) — this.adapter for backward compat
+    await this.startSingleAdapter(fleet, channelConfigs[0]);
+
+    // Start additional adapters
+    for (let i = 1; i < channelConfigs.length; i++) {
+      await this.startAdditionalAdapter(fleet, channelConfigs[i]);
+    }
+  }
+
+  /** Start the primary adapter (backward-compatible, sets this.adapter) */
+  private async startSingleAdapter(fleet: FleetConfig, channelConfig: ChannelConfig): Promise<void> {
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
       this.logger.warn({ env: channelConfig.bot_token_env }, "Bot token env not set, skipping shared adapter");
@@ -590,11 +618,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     mkdirSync(inboxDir, { recursive: true });
 
     this.adapter = await createAdapter(channelConfig, {
-      id: "fleet",
+      id: channelConfig.id ?? channelConfig.type,
       botToken,
       accessManager,
       inboxDir,
     });
+    this.adapters.set(channelConfig.id ?? channelConfig.type, this.adapter);
 
     this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       await this.handleInboundMessage(msg);
@@ -760,6 +789,99 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, 5 * 60 * 1000);
   }
 
+  /** Start an additional (non-primary) adapter */
+  private async startAdditionalAdapter(_fleet: FleetConfig, channelConfig: ChannelConfig): Promise<void> {
+    const adapterId = channelConfig.id ?? channelConfig.type;
+    const botToken = process.env[channelConfig.bot_token_env];
+    if (!botToken) {
+      this.logger.warn({ env: channelConfig.bot_token_env, adapterId }, "Bot token env not set, skipping adapter");
+      return;
+    }
+
+    const accessDir = join(this.dataDir, "access");
+    mkdirSync(accessDir, { recursive: true });
+    const accessManager = new AccessManager(
+      channelConfig.access,
+      join(accessDir, `access-${adapterId}.json`),
+    );
+    const inboxDir = join(this.dataDir, "inbox");
+    mkdirSync(inboxDir, { recursive: true });
+
+    const adapter = await createAdapter(channelConfig, {
+      id: adapterId,
+      botToken,
+      accessManager,
+      inboxDir,
+    });
+    this.adapters.set(adapterId, adapter);
+
+    // Wire up event handlers (same as primary, routes through shared handleInboundMessage)
+    adapter.on("message", safeHandler(async (msg: InboundMessage) => {
+      await this.handleInboundMessage(msg);
+    }, this.logger, `adapter[${adapterId}].message`));
+
+    adapter.on("callback_query", safeHandler(async (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
+      if (data.callbackData.startsWith("hang:")) {
+        const parts = data.callbackData.split(":");
+        const action = parts[1];
+        const instanceName = parts[2];
+        if (action === "restart") {
+          await this.stopInstance(instanceName);
+          const config = this.fleetConfig?.instances[instanceName];
+          if (config) {
+            const topicMode = this.fleetConfig?.channel?.mode === "topic";
+            await this.startInstance(instanceName, config, topicMode);
+          }
+          adapter.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`).catch(() => {});
+        } else {
+          adapter.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`).catch(() => {});
+        }
+      }
+    }, this.logger, `adapter[${adapterId}].callback_query`));
+
+    // Classic bot slash commands (Discord additional adapter)
+    adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
+      if (data.command === "start") {
+        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
+        await data.respond(reply);
+      } else if (data.command === "stop") {
+        const reply = await this.handleClassicStop(data.channelId);
+        await data.respond(reply);
+      } else if (data.command === "chat") {
+        const text = data.text ?? "";
+        if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
+        const target = this.routing.resolve(data.channelId);
+        if (!target || target.kind !== "classic") {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        const replyMsgId = await data.respond("👀");
+        const username = data.username ?? data.userId;
+        ClassicChannelManager.logMessage(target.name, username, `/chat ${text}`, new Date());
+        await this.forwardToClassicInstance(target.name, text, {
+          chatId: data.channelId,
+          threadId: data.channelId,
+          messageId: replyMsgId ?? "",
+          userId: data.userId,
+          username,
+          source: channelConfig.type,
+          timestamp: new Date(),
+        });
+      }
+    }, this.logger, `adapter[${adapterId}].slash_command`));
+
+    await adapter.start();
+    if (channelConfig.group_id) {
+      adapter.setChatId(String(channelConfig.group_id));
+    }
+
+    adapter.on("started", safeHandler((username: string) => {
+      this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
+    }, this.logger, `adapter[${adapterId}].started`));
+
+    this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
+  }
+
   /** Connect IPC to a single instance with all handlers */
   async connectIpcToInstance(name: string): Promise<void> {
     // Close existing client to prevent socket leak on reconnect
@@ -888,6 +1010,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           const channelName = msg.username || chatId;
           const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
+          if (msg.adapterId) this.bindInstanceAdapter(classicInstanceName(sanitizeInstanceName(channelName || chatId), chatId), msg.adapterId);
           await this.adapter?.sendText(chatId, reply);
           return;
         }
@@ -936,6 +1059,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalInstance = this.findGeneralInstance();
       if (generalInstance) {
         this.warnIfRateLimited(generalInstance, msg);
+        if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId);
         const { text, extraMeta } = await processAttachments(msg, this.adapter!, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
         if (ipc) {
@@ -983,11 +1107,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Classic channel: log all messages, only forward /chat to agent
     if (target.kind === "classic") {
+      if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId);
       await this.handleClassicChannelMessage(target.name, msg);
       return;
     }
 
     const instanceName = target.name;
+
+    // Bind instance to the adapter that delivered this message
+    if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId);
 
     // Reopen archived topic before routing
     if (this.topicArchiver.isArchived(threadId)) {
@@ -1088,8 +1216,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
     const threadId = resolveReplyThreadId(args.thread_id, routingConfig);
 
+    // Select adapter: use instance binding, or resolve from chatId in args
+    const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
+
     // Route standard channel tools (reply, react, edit_message, download_attachment)
-    if (routeToolCall(this.adapter, tool, args, threadId, respond)) {
+    if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
       if (tool === "reply") {
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
         this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
@@ -1117,7 +1248,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Handle tool status update from a daemon instance */
   private handleToolStatusFromInstance(instanceName: string, msg: Record<string, unknown>): void {
-    if (!this.adapter) return;
+    const statusAdapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!statusAdapter) return;
 
     const text = msg.text as string;
     const editMessageId = msg.editMessageId as string | null;
@@ -1129,13 +1261,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? this.fleetConfig?.instances[senderInstanceName]
       : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
     const threadId = routingConfig?.topic_id ? String(routingConfig.topic_id) : undefined;
-    const chatId = this.adapter.getChatId();
+    const chatId = statusAdapter.getChatId();
     if (!chatId) return;
 
     if (editMessageId) {
-      this.adapter.editMessage(chatId, editMessageId, text).catch(e => this.logger.debug({ err: e }, "Failed to edit tool status message"));
+      statusAdapter.editMessage(chatId, editMessageId, text).catch(e => this.logger.debug({ err: e }, "Failed to edit tool status message"));
     } else {
-      this.adapter.sendText(chatId, text, { threadId }).then((sent) => {
+      statusAdapter.sendText(chatId, text, { threadId }).then((sent) => {
         const ipc = this.instanceIpcClients.get(instanceName);
         ipc?.send({ type: "fleet_tool_status_ack", messageId: sent.messageId });
       }).catch(e => this.logger.warn({ err: e }, "Failed to send tool status message"));
@@ -2321,6 +2453,11 @@ When users create specialized instances, suggest these configurations:
       await this.adapter.stop();
       this.adapter = null;
     }
+    // Stop additional adapters
+    for (const [id, a] of this.adapters) {
+      if (a !== this.adapter) await a.stop().catch(() => {});
+    }
+    this.adapters.clear();
 
     this.controlClient?.stop();
     this.controlClient = null;
