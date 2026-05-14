@@ -215,6 +215,128 @@ function readDiscordToken(): string | null {
   return match?.[1] ?? null;
 }
 
+// ── Platform flow results ────────────────────────────────
+
+interface PlatformResult {
+  type: "telegram" | "discord";
+  token: string;
+  tokenEnvName: string;
+  botUsername: string;
+  groupId: string;
+  userId: string;
+  generalChannelId?: string;
+}
+
+async function runTelegramFlow(rl: import("node:readline/promises").Interface): Promise<PlatformResult> {
+  console.log(bold("Telegram Bot"));
+  console.log(`  1. Open BotFather: ${dim("https://t.me/BotFather")}`);
+  console.log(`  2. Send /newbot and pick a name`);
+  console.log(`  3. Copy the token\n`);
+
+  let token = "";
+  let botUsername = "";
+  const tokenEnvName = "AGEND_BOT_TOKEN";
+  while (true) {
+    token = (await rl.question("  Paste token: ")).trim();
+    if (!validateBotToken(token)) {
+      console.log(`  ${yellow("Invalid format.")} Should look like: 123456789:ABCdef...`);
+      continue;
+    }
+    const result = await verifyBotToken(token);
+    if (!result.valid) {
+      console.log(`  ${yellow("Token rejected by Telegram.")} Try again.`);
+      continue;
+    }
+    botUsername = result.username ?? "";
+    console.log(`  ${green("✓")} Bot verified: @${botUsername}\n`);
+    break;
+  }
+
+  console.log(`  Add @${botUsername} to a Telegram group, then send /start in the group.\n`);
+  const detected = await detectGroupAndUser(token);
+  const groupId = String(detected.groupId);
+  const userId = String(detected.userId);
+  console.log(`  ${green("✓")} Group: ${groupId} | User: ${userId}\n`);
+
+  return { type: "telegram", token, tokenEnvName, botUsername, groupId, userId };
+}
+
+async function runDiscordFlow(rl: import("node:readline/promises").Interface): Promise<PlatformResult> {
+  console.log(bold("Discord Bot"));
+  console.log(`  1. Go to Discord Developer Portal: ${dim("https://discord.com/developers/applications")}`);
+  console.log(`  2. New Application → Bot → Reset Token → Copy`);
+  console.log(`  3. Enable ${bold("Message Content Intent")} under Bot → Privileged Gateway Intents\n`);
+
+  let token = "";
+  let botUsername = "";
+  const tokenEnvName = "AGEND_DISCORD_TOKEN";
+  while (true) {
+    token = (await rl.question("  Paste bot token: ")).trim();
+    if (!token) continue;
+    const result = await verifyDiscordToken(token);
+    if (!result.valid) {
+      console.log(`  ${yellow("Token rejected by Discord.")} Try again.`);
+      continue;
+    }
+    botUsername = result.username ?? "";
+    console.log(`  ${green("✓")} Bot verified: ${botUsername}\n`);
+    break;
+  }
+
+  let groupId = "";
+  const guilds = await listDiscordGuilds(token);
+  if (guilds.length === 0) {
+    console.log(`  Bot is not in any server. Invite it first:`);
+    console.log(`  ${dim("https://discord.com/developers/applications → OAuth2 → URL Generator")}`);
+    console.log(`  Scopes: bot | Permissions: Send Messages, Read Message History, Manage Channels\n`);
+    groupId = (await rl.question("  Paste Guild ID: ")).trim();
+  } else if (guilds.length === 1) {
+    groupId = guilds[0].id;
+    console.log(`  ${green("✓")} Guild: ${guilds[0].name} (${groupId})`);
+  } else {
+    console.log("  Bot is in multiple servers:");
+    for (let i = 0; i < guilds.length; i++) {
+      console.log(`    ${i + 1}. ${guilds[i].name} ${dim(`(${guilds[i].id})`)}`);
+    }
+    const gChoice = await rl.question(`  Choose [1]: `);
+    const gIdx = Math.max(0, Math.min(guilds.length - 1, parseInt(gChoice || "1", 10) - 1));
+    groupId = guilds[gIdx].id;
+    console.log(`  ${green("✓")} Guild: ${guilds[gIdx].name}`);
+  }
+
+  console.log(`\n  To get your User ID:`);
+  console.log(`  Discord Settings → Advanced → ${bold("Developer Mode")} ON → Right-click yourself → Copy User ID\n`);
+  const userId = (await rl.question("  Paste your User ID: ")).trim();
+  console.log(`  ${green("✓")} User: ${userId}\n`);
+
+  console.log(`  To get a Channel ID for the General channel:`);
+  console.log(`  Right-click the text channel → ${bold("Copy Channel ID")}\n`);
+  const generalChannelId = (await rl.question("  Paste General Channel ID (optional, Enter to skip): ")).trim();
+  if (generalChannelId) {
+    console.log(`  ${green("✓")} General Channel: ${generalChannelId}\n`);
+  } else {
+    console.log(`  ${dim("Skipped")}\n`);
+  }
+
+  return { type: "discord", token, tokenEnvName, botUsername, groupId, userId, generalChannelId: generalChannelId || undefined };
+}
+
+/** Build a channel config object from a PlatformResult */
+function buildChannelConfig(p: PlatformResult): Record<string, any> {
+  const cfg: Record<string, any> = {
+    id: p.type,
+    type: p.type,
+    mode: "topic",
+    bot_token_env: p.tokenEnvName,
+    group_id: p.groupId,
+    access: { mode: "locked", allowed_users: [p.userId] },
+  };
+  if (p.generalChannelId) {
+    cfg.options = { general_channel_id: p.generalChannelId };
+  }
+  return cfg;
+}
+
 // ── Main ─────────────────────────────────────────────────
 
 export async function runQuickstart(): Promise<void> {
@@ -233,9 +355,10 @@ export async function runQuickstart(): Promise<void> {
     if (existsSync(FLEET_CONFIG_PATH)) {
       console.log(`  ${yellow("fleet.yaml already exists.")} What would you like to do?`);
       console.log("    1. Add allowed users");
-      console.log("    2. Overwrite (start fresh)");
-      console.log("    3. Skip");
-      const action = (await rl.question("  Choose [3]: ")).trim();
+      console.log("    2. Add another platform");
+      console.log("    3. Overwrite (start fresh)");
+      console.log("    4. Skip");
+      const action = (await rl.question("  Choose [4]: ")).trim();
 
       if (action === "1") {
         // ── Add allowed users to existing fleet.yaml ──
@@ -259,13 +382,69 @@ export async function runQuickstart(): Promise<void> {
         return;
       }
 
-      if (action !== "2") {
+      if (action === "2") {
+        // ── Add another platform ──
+        const raw = readFileSync(FLEET_CONFIG_PATH, "utf-8");
+        const config = yaml.load(raw) as Record<string, any>;
+
+        // Normalize channel → channels
+        if (config.channel && !config.channels) {
+          config.channels = [{ ...config.channel, id: config.channel.type }];
+          delete config.channel;
+        }
+        const channels: any[] = config.channels ?? [];
+        const existingTypes = channels.map((c: any) => c.type);
+
+        const available = ["telegram", "discord"].filter(t => !existingTypes.includes(t));
+        if (available.length === 0) {
+          console.log(`  Both platforms already configured.`);
+          await maybeUpdateClassicBot(rl);
+          console.log(`\n${bold("═══ Done ═══")}\n`);
+          return;
+        }
+
+        let platformType: string;
+        if (available.length === 1) {
+          platformType = available[0];
+          console.log(`\n  Adding: ${platformType}\n`);
+        } else {
+          console.log(`\n  Available platforms:`);
+          for (let i = 0; i < available.length; i++) {
+            console.log(`    ${i + 1}. ${available[i]}`);
+          }
+          const pChoice = (await rl.question("  Choose [1]: ")).trim();
+          platformType = available[Math.max(0, Math.min(available.length - 1, parseInt(pChoice || "1", 10) - 1))];
+        }
+
+        console.log();
+        const result = platformType === "telegram" ? await runTelegramFlow(rl) : await runDiscordFlow(rl);
+        channels.push(buildChannelConfig(result));
+        config.channels = channels;
+
+        writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
+        console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+
+        // Append token to .env
+        const envLine = `${result.tokenEnvName}=${result.token}\n`;
+        const existingEnv = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
+        if (!existingEnv.includes(result.tokenEnvName)) {
+          writeFileSync(ENV_PATH, existingEnv + envLine, { mode: 0o600 });
+          try { chmodSync(ENV_PATH, 0o600); } catch {}
+          console.log(`  ${green("✓")} ${ENV_PATH}`);
+        }
+
+        await maybeUpdateClassicBot(rl);
+        console.log(`\n${bold("═══ Done ═══")}\n`);
+        return;
+      }
+
+      if (action !== "3") {
         // Skip (default)
         await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
-      // action === "2" → fall through to full setup
+      // action === "3" → fall through to full setup
     }
 
     // Check tmux
@@ -305,109 +484,21 @@ export async function runQuickstart(): Promise<void> {
     console.log(`\n${bold("Step 2/4: Channel")}`);
     console.log("    1. Telegram");
     console.log("    2. Discord");
+    console.log("    3. Both (Telegram + Discord)");
     const chChoice = await rl.question(`  Choose [1]: `);
-    const channel = chChoice.trim() === "2" ? "discord" : "telegram";
-    console.log(`  ${green("✓")} ${channel}\n`);
+    const channelChoice = chChoice.trim() === "3" ? "both" : chChoice.trim() === "2" ? "discord" : "telegram";
+    console.log(`  ${green("✓")} ${channelChoice}\n`);
 
-    let token = "";
-    let botUsername = "";
-    let groupId = "";
-    let userId = "";
-    let tokenEnvName = "";
-    let generalChannelId = "";
-
-    if (channel === "telegram") {
-      // ── Telegram flow ──────────────────────────────────
-
-      console.log(bold("Step 3/4: Telegram Bot"));
-      console.log(`  1. Open BotFather: ${dim("https://t.me/BotFather")}`);
-      console.log(`  2. Send /newbot and pick a name`);
-      console.log(`  3. Copy the token\n`);
-
-      tokenEnvName = "AGEND_BOT_TOKEN";
-      while (true) {
-        token = (await rl.question("  Paste token: ")).trim();
-        if (!validateBotToken(token)) {
-          console.log(`  ${yellow("Invalid format.")} Should look like: 123456789:ABCdef...`);
-          continue;
-        }
-        const result = await verifyBotToken(token);
-        if (!result.valid) {
-          console.log(`  ${yellow("Token rejected by Telegram.")} Try again.`);
-          continue;
-        }
-        botUsername = result.username ?? "";
-        console.log(`  ${green("✓")} Bot verified: @${botUsername}\n`);
-        break;
-      }
-
-      console.log(bold("Step 4/4: Group & User ID"));
-      console.log(`  Add @${botUsername} to a Telegram group, then send /start in the group.\n`);
-
-      const detected = await detectGroupAndUser(token);
-      groupId = String(detected.groupId);
-      userId = String(detected.userId);
-      console.log(`  ${green("✓")} Group: ${groupId} | User: ${userId}\n`);
-
-    } else {
-      // ── Discord flow ───────────────────────────────────
-
-      console.log(bold("Step 3/4: Discord Bot"));
-      console.log(`  1. Go to Discord Developer Portal: ${dim("https://discord.com/developers/applications")}`);
-      console.log(`  2. New Application → Bot → Reset Token → Copy`);
-      console.log(`  3. Enable ${bold("Message Content Intent")} under Bot → Privileged Gateway Intents\n`);
-
-      tokenEnvName = "AGEND_DISCORD_TOKEN";
-      while (true) {
-        token = (await rl.question("  Paste bot token: ")).trim();
-        if (!token) continue;
-        const result = await verifyDiscordToken(token);
-        if (!result.valid) {
-          console.log(`  ${yellow("Token rejected by Discord.")} Try again.`);
-          continue;
-        }
-        botUsername = result.username ?? "";
-        console.log(`  ${green("✓")} Bot verified: ${botUsername}\n`);
-        break;
-      }
-
-      console.log(bold("Step 4/4: Guild & User ID"));
-
-      // Auto-detect guilds
-      const guilds = await listDiscordGuilds(token);
-      if (guilds.length === 0) {
-        console.log(`  Bot is not in any server. Invite it first:`);
-        console.log(`  ${dim("https://discord.com/developers/applications → OAuth2 → URL Generator")}`);
-        console.log(`  Scopes: bot | Permissions: Send Messages, Read Message History, Manage Channels\n`);
-        groupId = (await rl.question("  Paste Guild ID: ")).trim();
-      } else if (guilds.length === 1) {
-        groupId = guilds[0].id;
-        console.log(`  ${green("✓")} Guild: ${guilds[0].name} (${groupId})`);
-      } else {
-        console.log("  Bot is in multiple servers:");
-        for (let i = 0; i < guilds.length; i++) {
-          console.log(`    ${i + 1}. ${guilds[i].name} ${dim(`(${guilds[i].id})`)}`);
-        }
-        const gChoice = await rl.question(`  Choose [1]: `);
-        const gIdx = Math.max(0, Math.min(guilds.length - 1, parseInt(gChoice || "1", 10) - 1));
-        groupId = guilds[gIdx].id;
-        console.log(`  ${green("✓")} Guild: ${guilds[gIdx].name}`);
-      }
-
-      console.log(`\n  To get your User ID:`);
-      console.log(`  Discord Settings → Advanced → ${bold("Developer Mode")} ON → Right-click yourself → Copy User ID\n`);
-      userId = (await rl.question("  Paste your User ID: ")).trim();
-      console.log(`  ${green("✓")} User: ${userId}\n`);
-
-      console.log(`  To get a Channel ID for the General channel:`);
-      console.log(`  Right-click the text channel → ${bold("Copy Channel ID")}\n`);
-      generalChannelId = (await rl.question("  Paste General Channel ID (optional, Enter to skip): ")).trim();
-      if (generalChannelId) {
-        console.log(`  ${green("✓")} General Channel: ${generalChannelId}\n`);
-      } else {
-        console.log(`  ${dim("Skipped")}\n`);
-      }
+    // Collect platform configs
+    const platforms: PlatformResult[] = [];
+    if (channelChoice === "telegram" || channelChoice === "both") {
+      platforms.push(await runTelegramFlow(rl));
     }
+    if (channelChoice === "discord" || channelChoice === "both") {
+      platforms.push(await runDiscordFlow(rl));
+    }
+
+    const primaryPlatform = platforms[0];
 
     // ── Project roots ────────────────────────────────────
 
@@ -447,55 +538,39 @@ export async function runQuickstart(): Promise<void> {
 
     mkdirSync(DATA_DIR, { recursive: true });
 
-    // Quote IDs that may be snowflakes (Discord 64-bit)
-    const qGid = groupId.length >= 16 ? `"${groupId}"` : groupId;
-    const qUid = userId.length >= 16 ? `"${userId}"` : userId;
+    // Build fleet config object
+    const fleetObj: Record<string, any> = {};
+    if (platforms.length === 1) {
+      // Single platform: use channel (singular) for simplicity
+      fleetObj.channel = buildChannelConfig(platforms[0]);
+      delete fleetObj.channel.id; // not needed for single
+    } else {
+      // Multi-platform: use channels array
+      fleetObj.channels = platforms.map(p => buildChannelConfig(p));
+    }
+    if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
+    fleetObj.defaults = { backend };
 
-    const fleetYaml = [
-      "channel:",
-      `  type: ${channel}`,
-      "  mode: topic",
-      `  bot_token_env: ${tokenEnvName}`,
-      `  group_id: ${qGid}`,
-      "  access:",
-      "    mode: locked",
-      "    allowed_users:",
-      `      - ${qUid}`,
-      ...(generalChannelId ? [
-        "  options:",
-        `    general_channel_id: "${generalChannelId}"`,
-      ] : []),
-      "",
-      ...(projectRoots.length > 0
-        ? ["project_roots:", ...projectRoots.map(p => `  - ${p}`), ""]
-        : []),
-      "defaults:",
-      `  backend: ${backend}`,
-      "",
-    ].join("\n");
-
-    writeFileSync(FLEET_CONFIG_PATH, fleetYaml);
+    writeFileSync(FLEET_CONFIG_PATH, yaml.dump(fleetObj, { quotingType: '"', forceQuotes: false }));
     console.log(`\n  ${green("✓")} ${FLEET_CONFIG_PATH}`);
 
-    // .env contains the bot token — restrict to owner-only read/write so a
-    // multi-user system (or a curious sibling process) can't grab it.
-    writeFileSync(ENV_PATH, `${tokenEnvName}=${token}\n`, { mode: 0o600 });
-    // writeFileSync's mode is only honoured when the file did not previously
-    // exist; chmod the realised file to cover the overwrite case as well.
+    // Write .env with all tokens
+    const envLines = platforms.map(p => `${p.tokenEnvName}=${p.token}`).join("\n") + "\n";
+    writeFileSync(ENV_PATH, envLines, { mode: 0o600 });
     try { chmodSync(ENV_PATH, 0o600); } catch { /* best-effort on Windows */ }
     console.log(`  ${green("✓")} ${ENV_PATH}`);
 
     // ── ClassicBot setup (Discord only) ──────────────────
 
+    const discordPlatform = platforms.find(p => p.type === "discord");
     const classicPath = join(DATA_DIR, "classicBot.yaml");
-    if (channel === "discord" && existsSync(classicPath)) {
+    if (discordPlatform && existsSync(classicPath)) {
       await maybeUpdateClassicBot(rl);
-    } else if (channel === "discord") {
+    } else if (discordPlatform) {
       const setupClassic = await rl.question(`\n  Set up ClassicBot? (allows /start in any channel) [Y/n] `);
       if (setupClassic.toLowerCase() !== "n") {
-        // Allowed guilds — primary guild pre-filled
-        const allowedGuilds: string[] = [groupId];
-        console.log(`  ${green("✓")} Primary guild added: ${groupId}`);
+        const allowedGuilds: string[] = [discordPlatform.groupId];
+        console.log(`  ${green("✓")} Primary guild added: ${discordPlatform.groupId}`);
         while (true) {
           const more = (await rl.question(`  Add another guild ID? (Enter to skip): `)).trim();
           if (!more) break;
@@ -503,12 +578,10 @@ export async function runQuickstart(): Promise<void> {
           console.log(`  ${green("✓")} Added: ${more}`);
         }
 
-        // Default backend
         const cbBackend = (await rl.question(`  Default backend [${backend}]: `)).trim() || backend;
 
-        // Admin users — pre-fill with quickstart userId
-        const adminUsers: string[] = [userId];
-        console.log(`  ${green("✓")} Admin user added: ${userId}`);
+        const adminUsers: string[] = [discordPlatform.userId];
+        console.log(`  ${green("✓")} Admin user added: ${discordPlatform.userId}`);
         while (true) {
           const uid = (await rl.question(`  Add another admin user ID? (Enter to skip): `)).trim();
           if (!uid) break;
@@ -516,15 +589,9 @@ export async function runQuickstart(): Promise<void> {
           console.log(`  ${green("✓")} Added: ${uid}`);
         }
 
-        const classicConfig = {
-          defaults: {
-            backend: cbBackend,
-            allowed_guilds: allowedGuilds,
-            admin_users: adminUsers,
-          },
-        };
-
-        writeFileSync(classicPath, `# ClassicBot Configuration\n${yaml.dump(classicConfig, { quotingType: '"', forceQuotes: false })}`);
+        writeFileSync(classicPath, `# ClassicBot Configuration\n${yaml.dump({
+          defaults: { backend: cbBackend, allowed_guilds: allowedGuilds, admin_users: adminUsers },
+        }, { quotingType: '"', forceQuotes: false })}`);
         console.log(`  ${green("✓")} ${classicPath}`);
       }
     }
@@ -532,18 +599,22 @@ export async function runQuickstart(): Promise<void> {
     // ── Next steps ───────────────────────────────────────
 
     console.log(`\n${bold("═══ Setup Complete ═══")}\n`);
-    if (channel === "discord") {
+    const hasDiscord = platforms.some(p => p.type === "discord");
+    if (hasDiscord) {
       console.log("  Next steps:");
       console.log(`    1. ${bold("npm install -g @suzuke/agend-plugin-discord")}`);
       console.log(`    2. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
       console.log(`    3. ${bold("agend fleet start")}`);
-      console.log(`    4. Talk to ${botUsername} in your Discord server`);
+      for (const p of platforms) {
+        if (p.type === "discord") console.log(`    • Talk to ${p.botUsername} in your Discord server`);
+        else console.log(`    • Talk to @${p.botUsername} in your Telegram group`);
+      }
       console.log(`\n  ${dim("Classic Bot Mode: Use /start in any Discord channel to start an agent. Use /chat to talk.")}\n`);
     } else {
       console.log("  Next steps:");
       console.log(`    1. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
       console.log(`    2. ${bold("agend fleet start")}`);
-      console.log(`    3. Talk to @${botUsername} in your Telegram group\n`);
+      console.log(`    3. Talk to @${primaryPlatform.botUsername} in your Telegram group\n`);
     }
   } finally {
     rl.close();
