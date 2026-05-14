@@ -17,7 +17,7 @@ export interface ClassicChannel {
 }
 
 interface ClassicBotYaml {
-  defaults?: { backend?: string; allowed_guilds?: string[]; admin_users?: string[] };
+  defaults?: { backend?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
   channels?: Record<string, {
     name?: string;
     backend?: string;
@@ -45,7 +45,7 @@ export function classicInstanceName(sanitizedName: string, channelId: string): s
  */
 export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
-  private defaults: { backend?: string; allowed_guilds?: string[]; admin_users?: string[] } = {};
+  private defaults: { backend?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
 
@@ -113,6 +113,18 @@ export class ClassicChannelManager {
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
     return !list || list.length === 0 || list.includes(guildId);
+  }
+
+  /** Check if a Telegram group is allowed. Empty/unset = allow all. */
+  isGroupAllowed(groupId: string): boolean {
+    const list = this.defaults.allowed_groups;
+    return !list || list.length === 0 || list.includes(groupId);
+  }
+
+  /** Check if a Telegram user (private chat) is allowed. Empty/unset = allow all. */
+  isUserAllowed(userId: string): boolean {
+    const list = this.defaults.allowed_users;
+    return !list || list.length === 0 || list.includes(userId);
   }
 
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */

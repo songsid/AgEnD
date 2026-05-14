@@ -858,6 +858,73 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!target || target.kind !== "classic") return;
     }
     if (threadId == null) {
+      // ── Telegram Classic Mode ──
+      // Messages from chats other than the primary forum group are classic mode candidates.
+      // Private chats (positive chatId) and regular groups (negative, not group_id) qualify.
+      const primaryGroupId = String(this.fleetConfig?.channel?.group_id ?? "");
+      const isTelegramClassic = msg.source === "telegram" && msg.chatId !== primaryGroupId;
+
+      if (isTelegramClassic && this.classicChannels) {
+        const chatId = msg.chatId;
+        const text = msg.text ?? "";
+        const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
+
+        // Handle /start command
+        if (text === "/start" || text.startsWith("/start ")) {
+          if (isPrivateChat) {
+            if (!this.classicChannels.isUserAllowed(msg.userId)) {
+              await this.adapter?.sendText(chatId, "⛔ You are not in the allowed users list.");
+              return;
+            }
+          } else {
+            if (!this.classicChannels.isGroupAllowed(chatId)) {
+              await this.adapter?.sendText(chatId, "⛔ This group is not in the allowed groups list.");
+              return;
+            }
+          }
+          const channelName = msg.username || chatId;
+          const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
+          await this.adapter?.sendText(chatId, reply);
+          return;
+        }
+
+        // Handle /stop command
+        if (text === "/stop" || text.startsWith("/stop ")) {
+          const reply = await this.handleClassicStop(chatId);
+          await this.adapter?.sendText(chatId, reply);
+          return;
+        }
+
+        // Route to classic channel if registered
+        const target = this.routing.resolve(chatId);
+        if (target?.kind === "classic") {
+          // Private chat: all messages trigger agent (no /chat prefix needed)
+          // Prepend /chat so handleClassicChannelMessage forwards to agent
+          if (isPrivateChat) {
+            if (!text && !msg.attachments?.length) return;
+            const chatText = text.startsWith("/chat ") ? text : `/chat ${text}`;
+            const syntheticMsg = { ...msg, threadId: chatId, text: chatText };
+            await this.handleClassicChannelMessage(target.name, syntheticMsg);
+          } else {
+            // Group: standard /chat prefix required (handled by handleClassicChannelMessage)
+            const syntheticMsg = { ...msg, threadId: chatId };
+            await this.handleClassicChannelMessage(target.name, syntheticMsg);
+          }
+          return;
+        }
+
+        // Handle /chat without active agent
+        if (text.startsWith("/chat ") || text === "/chat") {
+          await this.adapter?.sendText(chatId, "No active agent. Use /start first.");
+          return;
+        }
+
+        // Unregistered private chat: ignore (don't fall through to General)
+        if (isPrivateChat) return;
+        // Unregistered group: ignore
+        return;
+      }
+
       // General topic: check for /status command
       if (await this.topicCommands.handleGeneralCommand(msg)) return;
 
