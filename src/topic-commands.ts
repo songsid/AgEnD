@@ -289,6 +289,7 @@ export class TopicCommands {
     if (!botToken) return;
 
     try {
+      // Register admin commands for the primary forum group
       await fetch(
         `https://api.telegram.org/bot${botToken}/setMyCommands`,
         {
@@ -305,7 +306,25 @@ export class TopicCommands {
           }),
         },
       );
-      this.ctx.logger.info("Registered bot commands: /status");
+
+      // Register classic bot commands for private chats and all groups
+      await fetch(
+        `https://api.telegram.org/bot${botToken}/setMyCommands`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            commands: [
+              { command: "start", description: "Start an agent in this chat" },
+              { command: "stop", description: "Stop the agent" },
+              { command: "chat", description: "Talk to the agent" },
+            ],
+            scope: { type: "default" },
+          }),
+        },
+      );
+
+      this.ctx.logger.info("Registered bot commands: /status (forum), /start /stop /chat (default)");
     } catch (err) {
       this.ctx.logger.warn({ err }, "Failed to register bot commands (non-fatal)");
     }

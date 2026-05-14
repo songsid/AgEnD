@@ -138,8 +138,13 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         // In pairing mode, allow /pair commands through
         if (msg.text?.startsWith("/pair")) {
           await this._handlePairCommand(ctx);
+          return;
         }
-        return;
+        // Allow messages from non-primary chats through for classic mode
+        // (classic mode has its own access control in fleet-manager)
+        const chatId = String(msg.chat.id);
+        if (this.lastChatId && chatId === this.lastChatId) return;
+        // Non-primary chat: let it through to fleet-manager for classic routing
       }
 
       // Skip service messages (topic rename, pin, member join/leave, etc.)
