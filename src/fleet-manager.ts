@@ -853,9 +853,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Access control — classic channels are open to all, others require allowed user
     if (this.accessManager && !this.accessManager.isAllowed(msg.userId)) {
-      const target = threadId ? this.routing.resolve(threadId) : undefined;
-      this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access check for non-allowed user");
-      if (!target || target.kind !== "classic") return;
+      const primaryGroupId = String(this.fleetConfig?.channel?.group_id ?? "");
+      const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== primaryGroupId && !threadId;
+      if (!isTelegramClassicCandidate) {
+        const target = threadId ? this.routing.resolve(threadId) : undefined;
+        this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access check for non-allowed user");
+        if (!target || target.kind !== "classic") return;
+      }
     }
     if (threadId == null) {
       // ── Telegram Classic Mode ──
