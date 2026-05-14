@@ -79,6 +79,7 @@ export class Daemon extends EventEmitter {
   private snapshotConsumed = false;
   private pasteLock: Promise<void> = Promise.resolve();
   private pendingInstructionsUpdate: string | undefined;
+  private pendingInstructionsNotice = false;
   private pasteQueueDepth = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
@@ -819,6 +820,10 @@ export class Daemon extends EventEmitter {
         if (this.config.pre_task_command) {
           await this.deliverMessage(this.config.pre_task_command);
         }
+        if (this.pendingInstructionsNotice) {
+          this.pendingInstructionsNotice = false;
+          await this.deliverMessage("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+        }
         await this.deliverMessage(formatted);
         if (chatId && messageId) {
           this.emit("message_delivered", { chatId, messageId });
@@ -1272,16 +1277,16 @@ export class Daemon extends EventEmitter {
   private async trySpawn(): Promise<boolean> {
     const backendConfig = this.buildBackendConfig();
 
-    // Detect instructions change → force new session for backends that don't
-    // re-read instruction files on --resume (Codex, Gemini, Kiro).
+    // Detect instructions change → notify agent on next message instead of
+    // forcing a new session. Resume is preserved so context isn't lost.
     if (!backendConfig.skipResume && !this.backend!.instructionsReloadedOnResume && backendConfig.instructions) {
       const prevFile = join(this.instanceDir, "prev-instructions");
       let prev = "";
       try { prev = readFileSync(prevFile, "utf-8"); } catch {}
       if (prev !== backendConfig.instructions) {
         if (prev) {
-          this.logger.info("Instructions changed — skipping resume to reload");
-          backendConfig.skipResume = true;
+          this.logger.info("Instructions changed — will notify agent on next message");
+          this.pendingInstructionsNotice = true;
         }
         this.pendingInstructionsUpdate = backendConfig.instructions;
       }
