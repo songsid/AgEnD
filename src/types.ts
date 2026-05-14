@@ -50,6 +50,7 @@ export interface DailySummaryConfig {
 }
 
 export interface ChannelConfig {
+  id?: string;
   type: string;
   mode: "topic";
   bot_token_env: string;
@@ -196,6 +197,7 @@ export interface FleetTemplate {
 
 export interface FleetConfig {
   channel?: ChannelConfig;
+  channels?: ChannelConfig[];
   project_roots?: string[];
   defaults: FleetDefaults;
   instances: Record<string, InstanceConfig>;
