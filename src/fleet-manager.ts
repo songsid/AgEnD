@@ -1931,7 +1931,10 @@ When users create specialized instances, suggest these configurations:
       if (!file.endsWith(".md")) continue;
       const src = join(knowledgeDir, file);
       const dest = join(steeringDir, file);
-      copyFileSync(src, dest);
+      // Only write if content actually changed — avoids triggering instructions hash diff
+      const newContent = readFileSync(src, "utf-8");
+      try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
+      writeFileSync(dest, newContent);
     }
     this.logger.debug({ knowledgeDir, steeringDir }, "Synced general knowledge files");
   }
