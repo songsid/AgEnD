@@ -424,14 +424,16 @@ export async function runQuickstart(): Promise<void> {
         writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
         console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
 
-        // Append token to .env
-        const envLine = `${result.tokenEnvName}=${result.token}\n`;
+        // Append or replace token in .env
+        const envLine = `${result.tokenEnvName}=${result.token}`;
         const existingEnv = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
-        if (!existingEnv.includes(result.tokenEnvName)) {
-          writeFileSync(ENV_PATH, existingEnv + envLine, { mode: 0o600 });
-          try { chmodSync(ENV_PATH, 0o600); } catch {}
-          console.log(`  ${green("✓")} ${ENV_PATH}`);
-        }
+        const lines = existingEnv.split("\n");
+        const idx = lines.findIndex(l => l.startsWith(result.tokenEnvName + "="));
+        if (idx >= 0) lines[idx] = envLine;
+        else lines.push(envLine);
+        writeFileSync(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n", { mode: 0o600 });
+        try { chmodSync(ENV_PATH, 0o600); } catch {}
+        console.log(`  ${green("✓")} ${ENV_PATH}`);
 
         await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
