@@ -597,7 +597,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Start additional adapters
     for (let i = 1; i < channelConfigs.length; i++) {
-      await this.startAdditionalAdapter(fleet, channelConfigs[i]);
+      await this.startAdditionalAdapter(channelConfigs[i]);
     }
   }
 
@@ -792,7 +792,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start an additional (non-primary) adapter */
-  private async startAdditionalAdapter(_fleet: FleetConfig, channelConfig: ChannelConfig): Promise<void> {
+  private async startAdditionalAdapter(channelConfig: ChannelConfig): Promise<void> {
     const adapterId = channelConfig.id ?? channelConfig.type;
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
@@ -841,7 +841,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
 
-    // Classic bot slash commands (Discord additional adapter)
+    adapter.on("topic_closed", safeHandler(async (data: { chatId: string; threadId: string }) => {
+      if (this.topicArchiver.isArchived(data.threadId)) return;
+      await this.topicCommands.handleTopicDeleted(data.threadId);
+    }, this.logger, `adapter[${adapterId}].topic_closed`));
+
+    // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
       if (data.command === "start") {
         const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
@@ -869,6 +874,63 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: channelConfig.type,
           timestamp: new Date(),
         });
+      } else if (data.command === "compact" || data.command === "save" || data.command === "load") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        const target = this.routing.resolve(data.channelId);
+        if (!target || target.kind !== "classic") {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        let rawCmd: string;
+        if (data.command === "compact") {
+          rawCmd = "/compact";
+        } else if (data.command === "save") {
+          const filename = data.options?.filename as string;
+          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+          rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
+        } else {
+          const filename = data.options?.filename as string;
+          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+          rawCmd = `/chat load ${filename}`;
+        }
+        this.pasteRawToClassicInstance(target.name, rawCmd);
+        await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+      } else if (data.command === "ctx") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const instanceName = target.name;
+        const ctxBackend = target.kind === "classic"
+          ? (this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code")
+          : (this.fleetConfig?.instances[instanceName]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+        let context: number | null = null;
+        try {
+          const statusFile = join(this.getInstanceDir(instanceName), "statusline.json");
+          if (existsSync(statusFile)) {
+            const d = JSON.parse(readFileSync(statusFile, "utf-8"));
+            context = d.context_window?.used_percentage ?? null;
+          }
+        } catch { /* ignore */ }
+        if (context != null) {
+          await data.respond(`📊 Context: ${context}% used\nBackend: ${ctxBackend}\nInstance: ${instanceName}`);
+        } else {
+          await data.respond(`Context info not available yet.\nBackend: ${ctxBackend}\nInstance: ${instanceName}`);
+        }
+      } else if (data.command === "collab") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        if (!this.classicChannels.isClassicChannel(data.channelId)) {
+          await data.respond("No active agent in this channel. Use `/start` first.");
+          return;
+        }
+        const newState = this.classicChannels.toggleCollab(data.channelId);
+        await data.respond(newState
+          ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
+          : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
