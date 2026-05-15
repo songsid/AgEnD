@@ -191,7 +191,8 @@ async function dispatch(
         ? String(ctx.fleetConfig.channel.group_id)
         : "";
       const fullArgs = { ...args, chat_id: chatId, thread_id: threadId };
-      const handled = routeToolCall(ctx.adapter!, tool, fullArgs, threadId, (result, error) => {
+      const adapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
+      const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
         resolve(error ? { error } : result);
       });
       if (!handled) resolve({ error: `Unhandled channel tool: ${tool}` });
