@@ -1097,46 +1097,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const chatId = msg.chatId;
         const text = msg.text ?? "";
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
+        const msgAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
 
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
           if (isPrivateChat) {
             if (!this.classicChannels.isUserAllowed(msg.userId)) {
-              await this.adapter?.sendText(chatId, "⛔ You are not in the allowed users list.");
+              await msgAdapter?.sendText(chatId, "⛔ You are not in the allowed users list.");
               return;
             }
           } else {
             if (!this.classicChannels.isGroupAllowed(chatId)) {
-              await this.adapter?.sendText(chatId, "⛔ This group is not in the allowed groups list.");
+              await msgAdapter?.sendText(chatId, "⛔ This group is not in the allowed groups list.");
               return;
             }
           }
           const channelName = msg.username || chatId;
           const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
           if (msg.adapterId) this.bindInstanceAdapter(classicInstanceName(sanitizeInstanceName(channelName || chatId), chatId), msg.adapterId, true);
-          await this.adapter?.sendText(chatId, reply);
+          await msgAdapter?.sendText(chatId, reply);
           return;
         }
 
         // Handle /stop command
         if (text === "/stop" || text.startsWith("/stop ")) {
           const reply = await this.handleClassicStop(chatId);
-          await this.adapter?.sendText(chatId, reply);
+          await msgAdapter?.sendText(chatId, reply);
           return;
         }
 
         // Route to classic channel if registered
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
-          // Private chat: all messages trigger agent (no /chat prefix needed)
-          // Prepend /chat so handleClassicChannelMessage forwards to agent
           if (isPrivateChat) {
             if (!text && !msg.attachments?.length) return;
             const chatText = text.startsWith("/chat ") ? text : `/chat ${text}`;
             const syntheticMsg = { ...msg, threadId: chatId, text: chatText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           } else {
-            // Group: standard /chat prefix required (handled by handleClassicChannelMessage)
             const syntheticMsg = { ...msg, threadId: chatId };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           }
@@ -1145,7 +1143,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /chat without active agent
         if (text.startsWith("/chat ") || text === "/chat") {
-          await this.adapter?.sendText(chatId, "No active agent. Use /start first.");
+          await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
           return;
         }
 
@@ -1231,7 +1229,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.warnIfRateLimited(instanceName, msg);
 
-    const { text, extraMeta } = await processAttachments(msg, this.adapter!, this.logger, instanceName);
+    const inboundAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+    const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
 
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) {
@@ -1239,8 +1238,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    if (this.adapter && msg.chatId && msg.messageId) {
-      this.adapter.react(msg.chatId, msg.messageId, "👀")
+    if (msg.chatId && msg.messageId) {
+      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
@@ -1285,8 +1284,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const lastWarn = this.rateLimitWarnedAt.get(instanceName) ?? 0;
     if (Date.now() - lastWarn < 30 * 60_000) return;
     this.rateLimitWarnedAt.set(instanceName, Date.now());
-    if (this.adapter && msg.chatId) {
-      this.adapter.sendText(msg.chatId, warning, { threadId: msg.threadId ?? undefined }).catch(() => {});
+    const warnAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+    if (warnAdapter && msg.chatId) {
+      warnAdapter.sendText(msg.chatId, warning, { threadId: msg.threadId ?? undefined }).catch(() => {});
     }
   }
 
@@ -1946,9 +1946,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   reactMessageStatus(chatId: string, messageId: string, emoji: string): void {
-    if (this.adapter?.type !== "discord") return;
-    this.adapter.react(chatId, messageId, emoji)
-      .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
+    // Find the adapter that owns this chatId (check all adapters, not just primary)
+    for (const [, a] of this.adapters) {
+      if (a.type === "discord") {
+        a.react(chatId, messageId, emoji)
+          .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
+        return;
+      }
+    }
   }
 
   // ── Model failover ──────────────────────────────────────────────────────
@@ -2044,14 +2049,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendHangNotification(instanceName: string): Promise<void> {
-    if (!this.adapter) return;
-    const groupId = this.fleetConfig?.channel?.group_id;
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return;
+    const channelCfg = this.getChannelConfig(this.instanceAdapterBinding.get(instanceName));
+    const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
 
     this.setTopicIcon(instanceName, "red");
 
-    await this.adapter.notifyAlert(String(groupId), {
+    await adapter.notifyAlert(String(groupId), {
       type: "hang",
       instanceName,
       message: `⚠️ ${instanceName} appears hung (no activity for 15+ minutes)`,
@@ -2284,12 +2291,13 @@ When users create specialized instances, suggest these configurations:
   /** Set topic icon based on instance state */
   setTopicIcon(instanceName: string, state: "green" | "blue" | "red" | "remove"): void {
     const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
-    if (topicId == null || !this.adapter?.editForumTopic) return;
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (topicId == null || !adapter?.editForumTopic) return;
 
     const emojiId = state === "remove" ? "" : this.topicIcons[state];
-    if (emojiId == null && state !== "remove") return; // no icon resolved
+    if (emojiId == null && state !== "remove") return;
 
-    this.adapter.editForumTopic(topicId, { iconCustomEmojiId: emojiId })
+    adapter.editForumTopic(topicId, { iconCustomEmojiId: emojiId })
       .catch((e) => this.logger.debug({ err: e, instanceName, state }, "Topic icon update failed"));
   }
 
@@ -2328,8 +2336,9 @@ When users create specialized instances, suggest these configurations:
       const cleanText = text.replace(new RegExp(`<@${this.botUserId}>`, "g"), "").trim();
       if (!cleanText && !msg.attachments?.length) return;
 
-      if (this.adapter && msg.chatId && msg.messageId) {
-        this.adapter.react(msg.chatId, msg.messageId, "👀")
+      const classicAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+      if (classicAdapter && msg.chatId && msg.messageId) {
+        classicAdapter.react(msg.chatId, msg.messageId, "👀")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -2353,8 +2362,9 @@ When users create specialized instances, suggest these configurations:
 
     // Bare attachment without /chat: save + log only, don't trigger agent
     if (!isChat) {
-      if (saved && this.adapter && msg.chatId && msg.messageId) {
-        this.adapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+      const reactAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+      if (saved && reactAdapter && msg.chatId && msg.messageId) {
+        reactAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       return;
@@ -2370,7 +2380,8 @@ When users create specialized instances, suggest these configurations:
     const savedKind = saved?.kind;
     const patchedAttachments = savedKind ? msg.attachments?.filter(a => a.kind !== savedKind) : msg.attachments;
     const patchedMsg = { ...msg, text: chatText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
-    const { text: processedText, extraMeta } = await processAttachments(patchedMsg, this.adapter!, this.logger, instanceName);
+    const classicMsgAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+    const { text: processedText, extraMeta } = await processAttachments(patchedMsg, classicMsgAdapter, this.logger, instanceName);
 
     // Use workspace inbox path for saved attachment
     let finalText = processedText || chatText;
@@ -2385,8 +2396,8 @@ When users create specialized instances, suggest these configurations:
       }
     }
 
-    if (this.adapter && msg.chatId && msg.messageId) {
-      this.adapter.react(msg.chatId, msg.messageId, "👀")
+    if (msg.chatId && msg.messageId) {
+      classicMsgAdapter.react(msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
@@ -2396,9 +2407,10 @@ When users create specialized instances, suggest these configurations:
   /** Download photo or document attachment to classic instance workspace inbox. Returns { path, kind } or undefined. */
   private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<{ path: string; kind: "photo" | "document" } | undefined> {
     const att = msg.attachments?.find(a => a.kind === "photo" || a.kind === "document");
-    if (!att || !this.adapter) return undefined;
+    const dlAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+    if (!att || !dlAdapter) return undefined;
     try {
-      const tmpPath = await this.adapter.downloadAttachment(att.fileId);
+      const tmpPath = await dlAdapter.downloadAttachment(att.fileId);
       const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
       mkdirSync(inboxDir, { recursive: true });
       const dest = join(inboxDir, basename(tmpPath));
