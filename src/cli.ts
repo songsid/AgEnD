@@ -1422,6 +1422,26 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       }
     } catch { /* tmux not running */ }
 
+    // Determine platform source for each instance
+    const channelTypes = new Set<string>();
+    if (config.channels?.length) {
+      for (const ch of config.channels) channelTypes.add(ch.type);
+    } else if (config.channel?.type) {
+      channelTypes.add(config.channel.type);
+    }
+    const singleSource = channelTypes.size === 1
+      ? (channelTypes.has("telegram") ? "TG" : channelTypes.has("discord") ? "DC" : "—")
+      : null;
+
+    const getSource = (name: string, inst?: Record<string, unknown>): string => {
+      if (singleSource) return singleSource;
+      if (classicNames.has(name)) return "DC";
+      const topicId = String(inst?.topic_id ?? "");
+      if (topicId.length >= 17) return "DC";
+      if (topicId.length > 0 && topicId.length < 17) return "TG";
+      return "—";
+    };
+
     const rows = allNames.map(name => {
       const isClassic = classicNames.has(name);
       const status = getInstanceStatusStandalone(name);
@@ -1430,6 +1450,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       const backend = isClassic
         ? (classicBackends.get(name) ?? "claude-code")
         : ((inst as unknown as Record<string, unknown>)?.backend as string ?? config.defaults?.backend ?? "claude-code");
+      const source = getSource(name, inst as unknown as Record<string, unknown>);
 
       // Read statusline for context
       let context: number | null = null;
@@ -1476,7 +1497,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         } catch { /* ignore */ }
       }
 
-      return { name, backend, status, teams, context, memMb, lastActivity };
+      return { name, backend, status, teams, source, context, memMb, lastActivity };
     });
 
     if (opts.json) {
@@ -1503,6 +1524,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
+    const srcW = 4;
     const ctxW = 8;
     const memW = 8;
 
@@ -1511,11 +1533,12 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       "Backend".padEnd(backendW) +
       "Status".padEnd(statusW) +
       "Team".padEnd(teamW) +
+      "Src".padEnd(srcW) +
       "Ctx".padEnd(ctxW) +
       "Mem".padEnd(memW) +
       "Activity"
     );
-    console.log("\u2500".repeat(nameW + backendW + statusW + teamW + ctxW + memW + 10));
+    console.log("\u2500".repeat(nameW + backendW + statusW + teamW + srcW + ctxW + memW + 10));
 
     for (const r of rows) {
       const teamStr = r.teams.length > 0 ? r.teams.join(",") : "-";
@@ -1528,6 +1551,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         r.backend.padEnd(backendW) +
         statusIcon(r.status) + " " + r.status.padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
+        r.source.padEnd(srcW) +
         ctxStr.padEnd(ctxW) +
         memStr.padEnd(memW) +
         actStr
