@@ -290,51 +290,55 @@ export class TopicCommands {
 
   /** Register bot commands in Telegram command menu */
   async registerBotCommands(): Promise<void> {
-    const groupId = this.ctx.fleetConfig?.channel?.group_id;
-    const botTokenEnv = this.ctx.fleetConfig?.channel?.bot_token_env;
-    if (!groupId || !botTokenEnv) return;
-    const botToken = process.env[botTokenEnv];
-    if (!botToken) return;
+    // Register bot commands for all Telegram adapters (channels[] support)
+    const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
+    const telegramChannels = channels.filter(ch => ch.type === "telegram");
+    if (telegramChannels.length === 0) return;
 
-    try {
-      // Register admin commands for the primary forum group
-      await fetch(
-        `https://api.telegram.org/bot${botToken}/setMyCommands`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            commands: [
-              { command: "status", description: "Show fleet status and costs" },
-              { command: "restart", description: "Graceful restart all instances" },
-              { command: "sysinfo", description: "System diagnostics" },
-              { command: "update", description: "Update AgEnD and restart service" },
-            ],
-            scope: { type: "chat", chat_id: groupId },
-          }),
-        },
-      );
+    for (const ch of telegramChannels) {
+      const botToken = process.env[ch.bot_token_env];
+      if (!botToken || !ch.group_id) continue;
 
-      // Register classic bot commands for private chats and all groups
-      await fetch(
-        `https://api.telegram.org/bot${botToken}/setMyCommands`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            commands: [
-              { command: "start", description: "Start an agent in this chat" },
-              { command: "stop", description: "Stop the agent" },
-              { command: "chat", description: "Talk to the agent" },
-            ],
-            scope: { type: "default" },
-          }),
-        },
-      );
+      try {
+        // Register admin commands for the forum group
+        await fetch(
+          `https://api.telegram.org/bot${botToken}/setMyCommands`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              commands: [
+                { command: "status", description: "Show fleet status and costs" },
+                { command: "restart", description: "Graceful restart all instances" },
+                { command: "sysinfo", description: "System diagnostics" },
+                { command: "update", description: "Update AgEnD and restart service" },
+              ],
+              scope: { type: "chat", chat_id: ch.group_id },
+            }),
+          },
+        );
 
-      this.ctx.logger.info("Registered bot commands: /status (forum), /start /stop /chat (default)");
-    } catch (err) {
-      this.ctx.logger.warn({ err }, "Failed to register bot commands (non-fatal)");
+        // Register classic bot commands for private chats and all groups
+        await fetch(
+          `https://api.telegram.org/bot${botToken}/setMyCommands`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              commands: [
+                { command: "start", description: "Start an agent in this chat" },
+                { command: "stop", description: "Stop the agent" },
+                { command: "chat", description: "Talk to the agent" },
+              ],
+              scope: { type: "default" },
+            }),
+          },
+        );
+
+        this.ctx.logger.info({ adapterId: ch.id ?? ch.type }, "Registered bot commands: /status (forum), /start /stop /chat (default)");
+      } catch (err) {
+        this.ctx.logger.warn({ err, adapterId: ch.id ?? ch.type }, "Failed to register bot commands (non-fatal)");
+      }
     }
   }
 }
