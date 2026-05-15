@@ -137,8 +137,11 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     ? parsed.channels.map(ch => ({ ...ch, id: ch.id ?? ch.type, mode: ch.mode ?? "topic" as const }))
     : channelSingle ? [channelSingle] : undefined;
 
+  // Always set channel to first entry (fallback for code using fleetConfig.channel)
+  const primaryChannel = channelSingle ?? (channels?.[0] ?? undefined);
+
   return {
-    channel: channelSingle,
+    channel: primaryChannel,
     channels,
     project_roots: parsed.project_roots,
     defaults: fleetDefaults,
