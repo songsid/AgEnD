@@ -35,6 +35,7 @@ import {
 export interface OutboundContext {
   readonly fleetConfig: FleetConfig | null;
   readonly adapter: ChannelAdapter | null;
+  readonly adapters?: Map<string, ChannelAdapter>;
   readonly logger: Logger;
   readonly routing: RoutingEngine;
   readonly instanceIpcClients: Map<string, IpcClient>;
@@ -48,6 +49,8 @@ export interface OutboundContext {
   connectIpcToInstance(name: string): Promise<void>;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
+  getAdapterForInstance?(name: string): ChannelAdapter | null;
+  getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -146,11 +149,13 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
       const targetTopicId = targetInstance?.topic_id;
       const targetIsGeneral = targetInstance?.general_topic === true;
       if (targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
+        const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
+        const targetGroupId = ctx.getChannelConfig?.(undefined)?.group_id ?? groupId;
         const showFull = requestKind === "task" || requestKind === "query";
         const text = showFull
           ? `${notificationLabel}:\n${message}`
           : `${notificationLabel}: ${ipcMeta.task_summary ?? `${message.slice(0, 100)}${message.length > 100 ? "…" : ""}`}`;
-        ctx.adapter.sendText(String(groupId), text, { threadId: String(targetTopicId) })
+        targetAdapter!.sendText(String(targetGroupId), text, { threadId: String(targetTopicId) })
           .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
       }
     }
@@ -160,7 +165,8 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
     const senderTopicId = senderInstance?.topic_id;
     const senderIsGeneral = senderInstance?.general_topic === true;
     if (senderTopicId && !senderIsGeneral) {
-      ctx.adapter.sendText(String(groupId), `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
+      const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
+      senderAdapter!.sendText(String(groupId), `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }
