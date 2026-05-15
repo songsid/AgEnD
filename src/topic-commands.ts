@@ -257,8 +257,16 @@ export class TopicCommands {
 
       // General topic: use Discord general_channel_id if available, else Telegram thread_id = 1
       if (config.general_topic) {
-        const discordGeneralId = this.ctx.fleetConfig?.channel?.options?.general_channel_id as string | undefined;
-        config.topic_id = discordGeneralId || 1;
+        const ch = this.ctx.fleetConfig?.channel;
+        if (name.includes("telegram")) {
+          config.topic_id = 1;
+        } else if (name.includes("discord") && ch?.options?.general_channel_id) {
+          config.topic_id = ch.options.general_channel_id as string | number;
+        } else {
+          // Default: use discord general_channel_id if available, else Telegram thread_id 1
+          const discordGeneralId = ch?.options?.general_channel_id as string | undefined;
+          config.topic_id = discordGeneralId || 1;
+        }
         configChanged = true;
         this.ctx.logger.info({ name, topicId: config.topic_id }, "Bound to General topic");
         continue;
