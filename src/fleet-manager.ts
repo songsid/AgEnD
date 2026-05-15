@@ -1426,17 +1426,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private notifySourceTopic(schedule: Schedule): void {
-    if (!this.adapter) return;
+    const adapter = this.getAdapterForInstance(schedule.target) ?? this.adapter;
+    if (!adapter) return;
     const text = `⏰ Schedule "${schedule.label ?? schedule.id}" triggered, target: ${schedule.target}`;
-    this.adapter.sendText(schedule.reply_chat_id, text, {
+    adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
     }).catch((err: unknown) => this.logger.error({ err }, "Failed to send cross-instance notification"));
   }
 
   private notifyScheduleFailure(schedule: Schedule): void {
-    if (!this.adapter) return;
+    const adapter = this.getAdapterForInstance(schedule.target) ?? this.adapter;
+    if (!adapter) return;
     const text = `⏰ Schedule "${schedule.label ?? schedule.id}" trigger failed: instance ${schedule.target} is offline.`;
-    this.adapter.sendText(schedule.reply_chat_id, text, {
+    adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
     }).catch((err: unknown) => this.logger.error({ err }, "Failed to send schedule failure notification"));
   }
@@ -1847,7 +1849,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.fleetConfig || !this.configPath) return;
     const toSave: Record<string, unknown> = {};
     if (this.fleetConfig.project_roots) toSave.project_roots = this.fleetConfig.project_roots;
-    if (this.fleetConfig.channel) toSave.channel = this.fleetConfig.channel;
+    if (this.fleetConfig.channels && this.fleetConfig.channels.length > 0) {
+      toSave.channels = this.fleetConfig.channels;
+    } else if (this.fleetConfig.channel) {
+      toSave.channel = this.fleetConfig.channel;
+    }
     if (this.fleetConfig.health_port) toSave.health_port = this.fleetConfig.health_port;
     if (Object.keys(this.fleetConfig.defaults).length > 0) toSave.defaults = this.fleetConfig.defaults;
     if (this.fleetConfig.teams && Object.keys(this.fleetConfig.teams).length > 0) {
@@ -1984,11 +1990,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   notifyInstanceTopic(instanceName: string, text: string): void {
-    if (!this.adapter) return;
-    const groupId = this.fleetConfig?.channel?.group_id;
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return;
+    const channelCfg = this.getChannelConfig(this.instanceAdapterBinding.get(instanceName));
+    const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
-    this.adapter.sendText(String(groupId), text, {
+    adapter.sendText(String(groupId), text, {
       threadId: threadId != null ? String(threadId) : undefined,
     }).catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
   }
