@@ -124,6 +124,7 @@ export interface WebApiContext {
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
   readonly adapter: { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
   getAdapterForInstance?(name: string): { sendText(chatId: string, text: string, opts?: { threadId?: string }): Promise<unknown> } | null;
+  getGroupIdForInstance?(name: string): string;
   readonly daemons: Map<string, unknown>;
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
@@ -673,11 +674,12 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });
       // Sync to Telegram/Discord
       const syncAdapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter;
-      if (syncAdapter && ctx.fleetConfig?.channel?.group_id) {
-        const topicId = ctx.fleetConfig.instances[instance]?.topic_id;
+      const syncGroupId = ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? "");
+      if (syncAdapter && syncGroupId) {
+        const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
         const preview = message.length > 500 ? message.slice(0, 500) + " [...]" : message;
         syncAdapter.sendText(
-          String(ctx.fleetConfig.channel.group_id),
+          syncGroupId,
           `🌐 web-user: ${preview}`,
           { threadId: topicId != null ? String(topicId) : undefined },
         ).catch(() => ctx.logger.debug({}, "Web→Channel sync failed"));
