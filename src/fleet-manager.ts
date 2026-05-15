@@ -316,7 +316,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.configPath = configPath;
     this.loadEnvFile();
     const fleet = this.loadConfig(configPath);
-    const topicMode = fleet.channel?.mode === "topic";
+    const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
     // Set tmux socket isolation for custom AGEND_HOME
     const { getTmuxSocketName: getSocket } = await import("./paths.js");
@@ -470,7 +470,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.saveFleetConfig();
     }
 
-    if (topicMode && fleet.channel) {
+    if (topicMode && (fleet.channel || fleet.channels?.length)) {
       const schedulerConfig: SchedulerConfig = {
         ...DEFAULT_SCHEDULER_CONFIG,
         ...this.fleetConfig?.defaults.scheduler,
@@ -502,7 +502,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     await this.startInstancesWithConcurrency(Object.entries(fleet.instances), topicMode);
 
-    if (topicMode && fleet.channel) {
+    if (topicMode && (fleet.channel || fleet.channels?.length)) {
 
       try {
         await this.startSharedAdapter(fleet);
@@ -2796,7 +2796,7 @@ When users create specialized instances, suggest these configurations:
 
     const fleet = this.loadConfig(this.configPath);
     this.fleetConfig = fleet;
-    const topicMode = fleet.channel?.mode === "topic";
+    const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
     await this.startInstancesWithConcurrency(Object.entries(fleet.instances), topicMode);
 
