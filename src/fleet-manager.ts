@@ -196,10 +196,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.fleetConfig?.channel;
   }
 
-  /** Bind an instance to a specific adapter (skip general_topic — always uses primary) */
-  bindInstanceAdapter(name: string, adapterId: string): void {
-    const config = this.fleetConfig?.instances[name];
-    if (config?.general_topic) return;
+  /** Bind an instance to a specific adapter. fromInbound=true skips general_topic to prevent overwrite. */
+  bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
+    if (fromInbound && this.fleetConfig?.instances[name]?.general_topic) return;
     this.instanceAdapterBinding.set(name, adapterId);
   }
 
@@ -518,6 +517,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await this.startSharedAdapter(fleet);
       } catch (err) {
         this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
+      }
+
+      // Pre-bind general instances to their corresponding adapter
+      for (const [name, config] of Object.entries(fleet.instances)) {
+        if (!config.general_topic) continue;
+        const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+        for (const ch of channelConfigs) {
+          const id = ch.id ?? ch.type;
+          if (name.includes(id)) { this.bindInstanceAdapter(name, id); break; }
+        }
       }
 
       // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
@@ -1104,7 +1113,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           const channelName = msg.username || chatId;
           const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
-          if (msg.adapterId) this.bindInstanceAdapter(classicInstanceName(sanitizeInstanceName(channelName || chatId), chatId), msg.adapterId);
+          if (msg.adapterId) this.bindInstanceAdapter(classicInstanceName(sanitizeInstanceName(channelName || chatId), chatId), msg.adapterId, true);
           await this.adapter?.sendText(chatId, reply);
           return;
         }
@@ -1153,7 +1162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalInstance = this.findGeneralInstance(msg.adapterId);
       if (generalInstance) {
         this.warnIfRateLimited(generalInstance, msg);
-        if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId);
+        if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
@@ -1202,7 +1211,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Classic channel: log all messages, only forward /chat to agent
     if (target.kind === "classic") {
-      if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId);
+      if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
       await this.handleClassicChannelMessage(target.name, msg);
       return;
     }
@@ -1210,7 +1219,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceName = target.name;
 
     // Bind instance to the adapter that delivered this message
-    if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId);
+    if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
 
     // Reopen archived topic before routing
     if (this.topicArchiver.isArchived(threadId)) {
