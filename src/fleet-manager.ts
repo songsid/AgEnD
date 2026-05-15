@@ -196,6 +196,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.fleetConfig?.channel;
   }
 
+  /** Get the group_id for an instance's bound adapter */
+  getGroupIdForInstance(name: string): string {
+    const adapterId = this.instanceAdapterBinding.get(name);
+    return String(this.getChannelConfig(adapterId)?.group_id ?? this.fleetConfig?.channel?.group_id ?? "");
+  }
+
   /** Bind an instance to a specific adapter. fromInbound=true skips general_topic to prevent overwrite. */
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
     if (fromInbound && this.fleetConfig?.instances[name]?.general_topic) return;
