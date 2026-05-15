@@ -499,7 +499,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (topicMode && fleet.channel) {
 
-      await this.startSharedAdapter(fleet);
+      try {
+        await this.startSharedAdapter(fleet);
+      } catch (err) {
+        this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
+      }
 
       // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
       await this.topicCommands.autoCreateTopics();
@@ -765,7 +769,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, "adapter.slash_command"));
 
-    await this.topicCommands.registerBotCommands();
+    await this.topicCommands.registerBotCommands().catch(e =>
+      this.logger.warn({ err: e }, "registerBotCommands failed (non-fatal)"));
     await this.adapter.start();
     if (fleet.channel?.group_id) {
       this.adapter.setChatId(String(fleet.channel.group_id));
