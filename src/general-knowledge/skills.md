@@ -55,13 +55,19 @@ Save all instances' sessions to a dated backup directory:
 DATE=$(date +%Y%m%d)
 BACKUP_DIR="$HOME/.agend/session-backups/$DATE"
 mkdir -p "$BACKUP_DIR"
+MY_NAME="<your-own-instance-name>"  # skip yourself to avoid paste collision
 for win in $(tmux list-windows -t agend -F '#{window_name}' | grep -v bash); do
+  if [ "$win" = "$MY_NAME" ]; then continue; fi
   tmux send-keys -t "agend:$win" "/chat save $BACKUP_DIR/${win}.json -f" Enter
   sleep 3
 done
 ```
 
-Important: Use `sleep 3` (not less) between saves to avoid paste collision. Do NOT use this while instances are busy — check health first.
+Important:
+- Skip your own instance (the one executing this) to avoid paste collision
+- Use `sleep 3` between saves
+- Run fleet health check first — only backup idle instances
+- Do NOT backup while instances are busy
 
 Restore a single instance:
 - `tmux send-keys -t agend:<instance> '/chat load /path/to/backup.json' Enter`
