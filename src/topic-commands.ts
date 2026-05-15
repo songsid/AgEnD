@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 
 const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
-import type { InboundMessage } from "./channel/types.js";
+import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
@@ -19,6 +19,14 @@ export function sanitizeInstanceName(name: string): string {
 
 export class TopicCommands {
   constructor(private ctx: FleetContext) {}
+
+  /** Get the adapter that should reply to a given inbound message */
+  private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
+    if (msg.adapterId && this.ctx.adapters) {
+      return this.ctx.adapters.get(msg.adapterId) ?? this.ctx.adapter;
+    }
+    return this.ctx.adapter;
+  }
 
   /** Parse and dispatch commands from the General topic */
   async handleGeneralCommand(msg: InboundMessage): Promise<boolean> {
@@ -50,16 +58,17 @@ export class TopicCommands {
   }
 
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
-    if (!this.ctx.adapter) return;
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
     const chatId = msg.chatId;
     const threadId = msg.threadId;
-    await this.ctx.adapter.sendText(chatId, "🔄 Graceful restart — waiting for instances to idle...", { threadId });
-    // SIGUSR2 triggers in-process restart (safe without service manager)
+    await adapter.sendText(chatId, "🔄 Graceful restart — waiting for instances to idle...", { threadId });
     process.kill(process.pid, "SIGUSR2");
   }
 
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
-    if (!this.ctx.adapter || !this.ctx.fleetConfig) return;
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter || !this.ctx.fleetConfig) return;
 
     const lines: string[] = [];
     for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
@@ -96,11 +105,12 @@ export class TopicCommands {
       lines.push(`Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
     }
 
-    await this.ctx.adapter.sendText(msg.chatId, lines.join("\n"));
+    await adapter.sendText(msg.chatId, lines.join("\n"));
   }
 
   private async handleSysInfoCommand(msg: InboundMessage): Promise<void> {
-    if (!this.ctx.adapter) return;
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
     const info = this.ctx.getSysInfo();
 
     const upHours = Math.floor(info.uptime_seconds / 3600);
@@ -128,36 +138,36 @@ export class TopicCommands {
       lines.push(`Fleet cost: ${formatCents(info.fleet_cost_cents)} / ${formatCents(info.fleet_cost_limit_cents)} daily`);
     }
 
-    await this.ctx.adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
+    await adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
   }
 
   private async handleUpdateCommand(msg: InboundMessage): Promise<void> {
-    if (!this.ctx.adapter) return;
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
     const chatId = msg.chatId;
     const threadId = msg.threadId;
 
     // Access control — only allowed users can trigger update; empty = disabled
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
     if (allowed.length === 0) {
-      await this.ctx.adapter.sendText(chatId, "⛔ /update disabled — no allowed_users configured", { threadId });
+      await adapter.sendText(chatId, "⛔ /update disabled — no allowed_users configured", { threadId });
       return;
     }
     if (!allowed.some(u => String(u) === String(msg.userId))) {
-      await this.ctx.adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
       return;
     }
 
-    await this.ctx.adapter.sendText(chatId, "📦 Updating AgEnD...", { threadId });
+    await adapter.sendText(chatId, "📦 Updating AgEnD...", { threadId });
 
     try {
       await execAsync("npm install -g @suzuke/agend@latest", { timeout: 120_000 });
     } catch {
-      await this.ctx.adapter.sendText(chatId, "❌ npm install failed. Try manually: npm install -g @suzuke/agend@latest", { threadId });
+      await adapter.sendText(chatId, "❌ npm install failed. Try manually: npm install -g @suzuke/agend@latest", { threadId });
       return;
     }
 
-    await this.ctx.adapter.sendText(chatId, "✅ Updated. Restarting service...", { threadId });
-    // Brief delay to let sendText complete before process dies
+    await adapter.sendText(chatId, "✅ Updated. Restarting service...", { threadId });
     await new Promise(r => setTimeout(r, 1000));
 
     const label = "com.agend.fleet";
@@ -171,7 +181,7 @@ export class TopicCommands {
           await execAsync(`launchctl kickstart -k gui/${uid}/${label}`, { timeout: 15_000 });
           return;
         } catch {
-          await this.ctx.adapter.sendText(chatId, "⚠️ Failed to restart launchd service", { threadId });
+          await adapter.sendText(chatId, "⚠️ Failed to restart launchd service", { threadId });
           return;
         }
       }
@@ -182,24 +192,24 @@ export class TopicCommands {
       } catch { /* no systemd service */ }
     }
 
-    // Fallback: signal running daemon
     const pidPath = join(this.ctx.dataDir, "fleet.pid");
     if (existsSync(pidPath)) {
       const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
       try {
         process.kill(pid, "SIGUSR1");
       } catch {
-        await this.ctx.adapter.sendText(chatId, "⚠️ Fleet not running", { threadId });
+        await adapter.sendText(chatId, "⚠️ Fleet not running", { threadId });
       }
     } else {
-      await this.ctx.adapter.sendText(chatId, "⚠️ No service or running fleet found", { threadId });
+      await adapter.sendText(chatId, "⚠️ No service or running fleet found", { threadId });
     }
   }
 
   /** Reply with redirect when message arrives in an unbound topic */
   async handleUnboundTopic(msg: InboundMessage): Promise<void> {
-    if (!this.ctx.adapter) return;
-    await this.ctx.adapter.sendText(
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    await adapter.sendText(
       msg.chatId,
       "This topic is not bound to an instance. Ask the General assistant to create one with create_instance.",
       { threadId: msg.threadId },
