@@ -67,6 +67,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Track which adapter each instance is bound to (adapterId) */
   private instanceAdapterBinding = new Map<string, string>();
   private accessManager: AccessManager | null = null;
+  private accessManagers = new Map<string, AccessManager>();
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
   instanceIpcClients: Map<string, IpcClient> = new Map();
@@ -634,6 +635,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       join(accessDir, "access.json"),
     );
     this.accessManager = accessManager;
+    this.accessManagers.set(channelConfig.id ?? channelConfig.type, accessManager);
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
@@ -825,6 +827,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       channelConfig.access,
       join(accessDir, `access-${adapterId}.json`),
     );
+    this.accessManagers.set(adapterId, accessManager);
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
@@ -1064,7 +1067,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Access control — classic channels are open to all, others require allowed user
-    if (this.accessManager && !this.accessManager.isAllowed(msg.userId)) {
+    const am = this.accessManagers.get(msg.adapterId ?? "") ?? this.accessManager;
+    if (am && !am.isAllowed(msg.userId)) {
       const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
       const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
       if (!isTelegramClassicCandidate) {
