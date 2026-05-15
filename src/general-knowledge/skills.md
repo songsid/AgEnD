@@ -47,4 +47,46 @@ Steps:
    - `execute_bash`: `tmux send-keys -t agend:<new-instance-name> '/chat load YYYYMMDD.json' Enter`
    - Or configure `pre_task_command: "/chat load YYYYMMDD.json"` for auto-load on restart
 
-Note: The forked instance starts with the same context/knowledge but operates independently after that.
+## 4. Batch Session Backup
+
+Save all instances' sessions to a dated backup directory:
+
+```bash
+DATE=$(date +%Y%m%d)
+BACKUP_DIR="$HOME/.agend/session-backups/$DATE"
+mkdir -p "$BACKUP_DIR"
+for win in $(tmux list-windows -t agend -F '#{window_name}' | grep -v bash); do
+  tmux send-keys -t "agend:$win" "/chat save $BACKUP_DIR/${win}.json -f" Enter
+  sleep 3
+done
+```
+
+Important: Use `sleep 3` (not less) between saves to avoid paste collision. Do NOT use this while instances are busy — check health first.
+
+Restore a single instance:
+- `tmux send-keys -t agend:<instance> '/chat load /path/to/backup.json' Enter`
+
+## 5. Fleet Health Check
+
+Check all instances for stuck/error state:
+
+```bash
+for win in $(tmux list-windows -t agend -F '#{window_name}' | grep -v bash); do
+  last=$(tmux capture-pane -t "agend:$win" -p | tail -3 | tr '\n' ' ')
+  if echo "$last" | grep -q "!>"; then
+    echo "✅ $win — idle"
+  elif echo "$last" | grep -q "error:"; then
+    echo "❌ $win — ERROR"
+  else
+    echo "⏳ $win — busy"
+  fi
+done
+```
+
+States:
+- ✅ idle — prompt visible (X% !>), ready for input
+- ⏳ busy — processing a task, wait for it to finish
+- ❌ error — check tmux pane for details, may need restart
+
+If an instance is stuck (busy for >10 minutes with no output), restart it:
+- `restart_instance("<instance-name>")`
