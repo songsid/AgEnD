@@ -186,6 +186,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.adapter;
   }
 
+  /** Get channel config for a specific adapter (by id), falling back to primary */
+  getChannelConfig(adapterId?: string): import("./types.js").ChannelConfig | undefined {
+    if (adapterId && this.fleetConfig?.channels) {
+      const found = this.fleetConfig.channels.find(ch => (ch.id ?? ch.type) === adapterId);
+      if (found) return found;
+    }
+    return this.fleetConfig?.channel;
+  }
+
   /** Bind an instance to a specific adapter (skip general_topic — always uses primary) */
   bindInstanceAdapter(name: string, adapterId: string): void {
     const config = this.fleetConfig?.instances[name];
@@ -1056,8 +1065,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Access control — classic channels are open to all, others require allowed user
     if (this.accessManager && !this.accessManager.isAllowed(msg.userId)) {
-      const primaryGroupId = String(this.fleetConfig?.channel?.group_id ?? "");
-      const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== primaryGroupId && !threadId;
+      const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
+      const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
       if (!isTelegramClassicCandidate) {
         const target = threadId ? this.routing.resolve(threadId) : undefined;
         this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access check for non-allowed user");
@@ -1068,8 +1077,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // ── Telegram Classic Mode ──
       // Messages from chats other than the primary forum group are classic mode candidates.
       // Private chats (positive chatId) and regular groups (negative, not group_id) qualify.
-      const primaryGroupId = String(this.fleetConfig?.channel?.group_id ?? "");
-      const isTelegramClassic = msg.source === "telegram" && msg.chatId !== primaryGroupId;
+      const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
+      const isTelegramClassic = msg.source === "telegram" && msg.chatId !== adapterGroupId;
 
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
