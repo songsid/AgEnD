@@ -448,20 +448,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
 
-    // Auto-create general instance if none configured
+    // Auto-create general instance(s) — one per adapter when multi-channel
     const hasGeneralTopic = Object.values(fleet.instances).some(inst => inst.general_topic === true);
     if (!hasGeneralTopic) {
-      this.logger.info("Auto-creating general instance for General Topic");
-      const generalDir = join(getAgendHome(), "general");
-      mkdirSync(generalDir, { recursive: true });
-      const backendName = fleet.defaults.backend ?? "claude-code";
-      this.ensureGeneralInstructions(generalDir, backendName);
-      const generalConfig: InstanceConfig = {
-        ...DEFAULT_INSTANCE_CONFIG,
-        working_directory: generalDir,
-        general_topic: true,
-      };
-      fleet.instances["general"] = generalConfig;
+      const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+      const needsSuffix = channelConfigs.length > 1;
+      for (const ch of channelConfigs) {
+        const name = needsSuffix ? `general-${ch.id ?? ch.type}` : "general";
+        if (fleet.instances[name]) continue;
+        this.logger.info({ name }, "Auto-creating general instance");
+        const generalDir = join(getAgendHome(), name);
+        mkdirSync(generalDir, { recursive: true });
+        const backendName = fleet.defaults.backend ?? "claude-code";
+        this.ensureGeneralInstructions(generalDir, backendName);
+        fleet.instances[name] = {
+          ...DEFAULT_INSTANCE_CONFIG,
+          working_directory: generalDir,
+          general_topic: true,
+        };
+      }
       this.saveFleetConfig();
     }
 
