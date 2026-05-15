@@ -187,9 +187,9 @@ async function dispatch(
       const threadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
         ? String(ctx.fleetConfig.instances[instance].topic_id)
         : undefined;
-      const chatId = ctx.fleetConfig?.channel?.group_id
+      const chatId = ctx.getGroupIdForInstance?.(instance) ?? (ctx.fleetConfig?.channel?.group_id
         ? String(ctx.fleetConfig.channel.group_id)
-        : "";
+        : "");
       const fullArgs = { ...args, chat_id: chatId, thread_id: threadId };
       const adapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
       const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
