@@ -63,7 +63,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   adapter: ChannelAdapter | null = null;
-  private adapters = new Map<string, ChannelAdapter>();
+  readonly adapters = new Map<string, ChannelAdapter>();
   /** Track which adapter each instance is bound to (adapterId) */
   private instanceAdapterBinding = new Map<string, string>();
   private accessManager: AccessManager | null = null;
