@@ -28,6 +28,7 @@ export function isProbeableRouteTarget(target: RouteTarget): boolean {
  */
 export interface FleetContext {
   readonly adapter: ChannelAdapter | null;
+  readonly adapters?: Map<string, ChannelAdapter>;
   readonly fleetConfig: FleetConfig | null;
   readonly routingTable: Map<string, RouteTarget>;
   readonly instanceIpcClients: Map<string, IpcClient>;
