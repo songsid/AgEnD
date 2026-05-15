@@ -51,6 +51,7 @@ export interface OutboundContext {
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
   getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
+  getGroupIdForInstance?(name: string): string;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -150,7 +151,7 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
       const targetIsGeneral = targetInstance?.general_topic === true;
       if (targetTopicId && !targetIsGeneral && !ctx.sessionRegistry.has(targetName)) {
         const targetAdapter = ctx.getAdapterForInstance?.(targetInstanceName) ?? ctx.adapter;
-        const targetGroupId = ctx.getChannelConfig?.(undefined)?.group_id ?? groupId;
+        const targetGroupId = ctx.getGroupIdForInstance?.(targetInstanceName) ?? String(groupId);
         const showFull = requestKind === "task" || requestKind === "query";
         const text = showFull
           ? `${notificationLabel}:\n${message}`
@@ -166,7 +167,8 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
     const senderIsGeneral = senderInstance?.general_topic === true;
     if (senderTopicId && !senderIsGeneral) {
       const senderAdapter = ctx.getAdapterForInstance?.(meta.instanceName) ?? ctx.adapter;
-      senderAdapter!.sendText(String(groupId), `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
+      const senderGroupId = ctx.getGroupIdForInstance?.(meta.instanceName) ?? String(groupId);
+      senderAdapter!.sendText(senderGroupId, `${notificationLabel}:\n${message}`, { threadId: String(senderTopicId) })
         .catch(e => ctx.logger.warn({ err: e }, "Failed to post sender topic notification"));
     }
   }
