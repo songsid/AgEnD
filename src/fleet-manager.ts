@@ -1025,14 +1025,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Handle inbound message — transcribe voice if present, then route */
-  private findGeneralInstance(): string | undefined {
+  private findGeneralInstance(adapterId?: string): string | undefined {
     if (!this.fleetConfig) return undefined;
+    const generals: string[] = [];
     for (const [name, config] of Object.entries(this.fleetConfig.instances)) {
-      if (config.general_topic === true) {
-        return this.daemons.has(name) ? name : undefined;
+      if (config.general_topic === true && this.daemons.has(name)) {
+        generals.push(name);
       }
     }
-    return undefined;
+    if (generals.length === 0) return undefined;
+    if (generals.length === 1) return generals[0];
+    if (adapterId) {
+      const match = generals.find(n => n.includes(adapterId));
+      if (match) return match;
+    }
+    return generals[0];
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
@@ -1130,7 +1137,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.topicCommands.handleGeneralCommand(msg)) return;
 
       // Forward to General Topic instance if configured
-      const generalInstance = this.findGeneralInstance();
+      const generalInstance = this.findGeneralInstance(msg.adapterId);
       if (generalInstance) {
         this.warnIfRateLimited(generalInstance, msg);
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId);
