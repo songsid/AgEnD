@@ -1292,7 +1292,7 @@ async function resolveInstance(query: string, config: import("./types.js").Fleet
       const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string }> } | null;
       if (classic?.channels) {
         for (const [channelId, val] of Object.entries(classic.channels)) {
-          const chName = val.name ?? channelId;
+          const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
           names.push(`classic-${chName}-${channelId.slice(-4)}`);
         }
       }
@@ -1393,7 +1393,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     if (classicConfig?.channels) {
       const classicDefault = classicConfig.defaults?.backend || config.defaults?.backend || "claude-code";
       for (const [channelId, val] of Object.entries(classicConfig.channels)) {
-        const chName = val.name ?? channelId;
+        const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
         const suffix = channelId.slice(-4);
         const iName = `classic-${chName}-${suffix}`;
         if (!allNames.includes(iName)) {
