@@ -1835,11 +1835,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // ===================== Topic management =====================
 
   /** Create a forum topic via the adapter. Returns the message_thread_id. */
-  async createForumTopic(topicName: string): Promise<number | string> {
-    if (!this.adapter?.createTopic) {
+  async createForumTopic(topicName: string, adapterId?: string): Promise<number | string> {
+    const adapter = (adapterId ? this.worlds.get(adapterId)?.adapter : undefined) ?? this.adapter;
+    if (!adapter?.createTopic) {
       throw new Error("Adapter does not support topic creation");
     }
-    return this.adapter.createTopic(topicName);
+    return adapter.createTopic(topicName);
   }
 
   async deleteForumTopic(topicId: number | string): Promise<void> {
