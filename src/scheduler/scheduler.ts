@@ -51,7 +51,8 @@ export class Scheduler {
       if (!schedule.enabled) continue;
 
       const refIso = schedule.last_triggered_at ?? schedule.created_at;
-      const refMs = Date.parse(refIso);
+      // SQLite datetime('now') stores UTC without 'Z' suffix — append it for correct parsing
+      const refMs = Date.parse(refIso.endsWith("Z") ? refIso : refIso + "Z");
       if (Number.isNaN(refMs)) continue;
 
       try {
