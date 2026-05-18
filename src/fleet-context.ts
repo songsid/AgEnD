@@ -44,6 +44,6 @@ export interface FleetContext {
   connectIpcToInstance(name: string): Promise<void>;
   saveFleetConfig(): void;
   getInstanceDir(name: string): string;
-  createForumTopic(topicName: string): Promise<number | string>;
+  createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   removeInstance(name: string): Promise<void>;
 }
