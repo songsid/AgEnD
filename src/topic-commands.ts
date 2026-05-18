@@ -52,6 +52,45 @@ export class TopicCommands {
     return false;
   }
 
+  /** Handle /ctx in any instance topic — returns true if handled */
+  async handleInstanceCommand(msg: InboundMessage, instanceName: string): Promise<boolean> {
+    const text = msg.text?.trim();
+    if (!text) return false;
+    if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
+
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return false;
+
+    const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+      ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+    let context: number | null = null;
+    try {
+      const statusFile = join(this.ctx.dataDir, "instances", instanceName, "statusline.json");
+      if (existsSync(statusFile)) {
+        const d = JSON.parse(readFileSync(statusFile, "utf-8"));
+        context = d.context_window?.used_percentage ?? null;
+      }
+    } catch { /* ignore */ }
+    if (context == null) {
+      try {
+        const { execFileSync } = await import("node:child_process");
+        const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
+        const socketName = getTmuxSocketName();
+        const tmuxArgs = socketName
+          ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"]
+          : ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"];
+        const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
+        const m = pane.match(/(\d+)%.*!>/m) || pane.match(/◔\s*(\d+)%/);
+        if (m) context = parseInt(m[1], 10);
+      } catch { /* ignore */ }
+    }
+    const reply = context != null
+      ? `📊 Context: ${context}% used\nBackend: ${backend}\nInstance: ${instanceName}`
+      : `Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`;
+    await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+    return true;
+  }
+
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
