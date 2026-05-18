@@ -52,6 +52,7 @@ export interface OutboundContext {
   getAdapterForInstance?(name: string): ChannelAdapter | null;
   getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
   getGroupIdForInstance?(name: string): string;
+  getWorldForInstance?(name: string): { id: string; adapter: ChannelAdapter } | undefined;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -360,10 +361,11 @@ const reportResult = wrapAsSend(
   },
 );
 
-const createInstance: Handler = async (ctx, rawArgs, respond) => {
+const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
   if (!v.ok) { respond(null, v.error); return; }
-  await ctx.lifecycle.handleCreate(v.data, respond);
+  const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
+  await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
 
 const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {
