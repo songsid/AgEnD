@@ -13,6 +13,7 @@ import type { FleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, Daily
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
+import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
@@ -63,11 +64,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   adapter: ChannelAdapter | null = null;
-  readonly adapters = new Map<string, ChannelAdapter>();
-  /** Track which adapter each instance is bound to (adapterId) */
-  private instanceAdapterBinding = new Map<string, string>();
+  readonly worlds = new Map<string, AdapterWorld>();
+  readonly adapters: Map<string, ChannelAdapter> = new Map(); // derived view for backward compat
+  /** Track which world each instance is bound to */
+  private instanceWorldBinding = new Map<string, string>();
   private accessManager: AccessManager | null = null;
-  private accessManagers = new Map<string, AccessManager>();
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
   instanceIpcClients: Map<string, IpcClient> = new Map();
@@ -182,30 +183,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
-    const adapterId = this.instanceAdapterBinding.get(name);
-    if (adapterId) return this.adapters.get(adapterId) ?? this.adapter;
+    const worldId = this.instanceWorldBinding.get(name);
+    if (worldId) return this.worlds.get(worldId)?.adapter ?? this.adapter;
     return this.adapter;
+  }
+
+  /** Get the world for an instance */
+  getWorldForInstance(name: string): AdapterWorld | undefined {
+    const worldId = this.instanceWorldBinding.get(name);
+    return worldId ? this.worlds.get(worldId) : (this.worlds.values().next().value as AdapterWorld | undefined);
   }
 
   /** Get channel config for a specific adapter (by id), falling back to primary */
   getChannelConfig(adapterId?: string): import("./types.js").ChannelConfig | undefined {
-    if (adapterId && this.fleetConfig?.channels) {
-      const found = this.fleetConfig.channels.find(ch => (ch.id ?? ch.type) === adapterId);
-      if (found) return found;
+    if (adapterId) {
+      const world = this.worlds.get(adapterId);
+      if (world) return world.channelConfig;
     }
     return this.fleetConfig?.channel;
   }
 
   /** Get the group_id for an instance's bound adapter */
   getGroupIdForInstance(name: string): string {
-    const adapterId = this.instanceAdapterBinding.get(name);
-    return String(this.getChannelConfig(adapterId)?.group_id ?? this.fleetConfig?.channel?.group_id ?? "");
+    const world = this.getWorldForInstance(name);
+    return world?.groupId ?? String(this.fleetConfig?.channel?.group_id ?? "");
   }
 
-  /** Bind an instance to a specific adapter. fromInbound=true skips general_topic to prevent overwrite. */
+  /** Bind an instance to a specific world. fromInbound=true skips general_topic to prevent overwrite. */
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
     if (fromInbound && this.fleetConfig?.instances[name]?.general_topic) return;
-    this.instanceAdapterBinding.set(name, adapterId);
+    this.instanceWorldBinding.set(name, adapterId);
   }
 
   getInstanceStatus(name: string): "running" | "stopped" | "crashed" {
@@ -650,17 +657,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       join(accessDir, "access.json"),
     );
     this.accessManager = accessManager;
-    this.accessManagers.set(channelConfig.id ?? channelConfig.type, accessManager);
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
+    const adapterId = channelConfig.id ?? channelConfig.type;
     this.adapter = await createAdapter(channelConfig, {
-      id: channelConfig.id ?? channelConfig.type,
+      id: adapterId,
       botToken,
       accessManager,
       inboxDir,
     });
-    this.adapters.set(channelConfig.id ?? channelConfig.type, this.adapter);
+    const world = new AdapterWorld(adapterId, this.adapter, accessManager, channelConfig);
+    this.worlds.set(adapterId, world);
+    (this.adapters as Map<string, ChannelAdapter>).set(adapterId, this.adapter);
 
     this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       await this.handleInboundMessage(msg);
@@ -842,7 +851,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       channelConfig.access,
       join(accessDir, `access-${adapterId}.json`),
     );
-    this.accessManagers.set(adapterId, accessManager);
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
@@ -852,7 +860,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessManager,
       inboxDir,
     });
-    this.adapters.set(adapterId, adapter);
+    const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
+    this.worlds.set(adapterId, world);
+    (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
 
     // Wire up event handlers (same as primary, routes through shared handleInboundMessage)
     adapter.on("message", safeHandler(async (msg: InboundMessage) => {
@@ -1082,7 +1092,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Access control — classic channels are open to all, others require allowed user
-    const am = this.accessManagers.get(msg.adapterId ?? "") ?? this.accessManager;
+    const am = (msg.adapterId ? this.worlds.get(msg.adapterId)?.accessManager : undefined) ?? this.accessManager;
     if (am && !am.isAllowed(msg.userId)) {
       const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
       const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
@@ -1953,9 +1963,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   reactMessageStatus(chatId: string, messageId: string, emoji: string): void {
     // Find the adapter that owns this chatId (check all adapters, not just primary)
-    for (const [, a] of this.adapters) {
-      if (a.type === "discord") {
-        a.react(chatId, messageId, emoji)
+    for (const [, w] of this.worlds) {
+      if (w.type === "discord") {
+        w.react(chatId, messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
         return;
       }
@@ -2012,7 +2022,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   notifyInstanceTopic(instanceName: string, text: string): void {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    const channelCfg = this.getChannelConfig(this.instanceAdapterBinding.get(instanceName));
+    const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
     const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
@@ -2057,7 +2067,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async sendHangNotification(instanceName: string): Promise<void> {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    const channelCfg = this.getChannelConfig(this.instanceAdapterBinding.get(instanceName));
+    const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
     const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
@@ -2579,11 +2589,12 @@ When users create specialized instances, suggest these configurations:
     }
     this.instanceIpcClients.clear();
 
-    for (const [, a] of this.adapters) {
-      await a.stop().catch(() => {});
+    for (const [, w] of this.worlds) {
+      await w.stop().catch(() => {});
     }
     this.adapter = null;
-    this.adapters.clear();
+    this.worlds.clear();
+    (this.adapters as Map<string, ChannelAdapter>).clear();
 
     this.controlClient?.stop();
     this.controlClient = null;
