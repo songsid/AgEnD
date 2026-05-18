@@ -69,6 +69,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Track which world each instance is bound to */
   private instanceWorldBinding = new Map<string, string>();
   private accessManager: AccessManager | null = null;
+
+  /** Primary world (first adapter) — used for fleet-level notifications */
+  get primaryWorld(): AdapterWorld | undefined { return this.worlds.values().next().value as AdapterWorld | undefined; }
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
   instanceIpcClients: Map<string, IpcClient> = new Map();
@@ -168,9 +171,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
     }
     // Always update adapter openChannels (including empty — clears stale entries on /stop)
-    const hasMethod = typeof (this.adapter as any)?.setOpenChannels === "function";
-    if (hasMethod) {
-      (this.adapter as any).setOpenChannels(channels.map(ch => ch.channelId));
+    for (const [, w] of this.worlds) {
+      if (typeof (w.adapter as any)?.setOpenChannels === "function") {
+        (w.adapter as any).setOpenChannels(channels.map(ch => ch.channelId));
+      }
     }
     if (channels.length > 0) {
       this.logger.info({ count: channels.length }, "Registered classic channel routes");
@@ -1113,7 +1117,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const chatId = msg.chatId;
         const text = msg.text ?? "";
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
-        const msgAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+        const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
@@ -1177,7 +1181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (generalInstance) {
         this.warnIfRateLimited(generalInstance, msg);
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
-        const inboundAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+        const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
         if (ipc) {
@@ -1217,7 +1221,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!target) {
       // Suppress unbound topic message for Discord — regular text channels are expected
       // to be unbound (classic mode or user-created). Only show for Telegram forum topics.
-      if (this.adapter?.type !== "discord") {
+      if (msg.source !== "discord") {
         this.topicCommands.handleUnboundTopic(msg);
       }
       return;
@@ -1245,7 +1249,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.warnIfRateLimited(instanceName, msg);
 
-    const inboundAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+    const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
     const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
 
     const ipc = this.instanceIpcClients.get(instanceName);
@@ -1300,7 +1304,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const lastWarn = this.rateLimitWarnedAt.get(instanceName) ?? 0;
     if (Date.now() - lastWarn < 30 * 60_000) return;
     this.rateLimitWarnedAt.set(instanceName, Date.now());
-    const warnAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+    const warnAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
     if (warnAdapter && msg.chatId) {
       warnAdapter.sendText(msg.chatId, warning, { threadId: msg.threadId ?? undefined }).catch(() => {});
     }
@@ -1308,7 +1312,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Handle outbound tool calls from a daemon instance */
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
-    if (!this.adapter) return;
+    if (this.worlds.size === 0) return;
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
@@ -1338,6 +1342,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Select adapter: use instance binding, or resolve from chatId in args
     const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
+    if (!outAdapter) { respond(null, "No adapter available"); return; }
 
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
@@ -2352,7 +2357,7 @@ When users create specialized instances, suggest these configurations:
       const cleanText = text.replace(new RegExp(`<@${this.botUserId}>`, "g"), "").trim();
       if (!cleanText && !msg.attachments?.length) return;
 
-      const classicAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+      const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       if (classicAdapter && msg.chatId && msg.messageId) {
         classicAdapter.react(msg.chatId, msg.messageId, "👀")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
@@ -2378,7 +2383,7 @@ When users create specialized instances, suggest these configurations:
 
     // Bare attachment without /chat: save + log only, don't trigger agent
     if (!isChat) {
-      const reactAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+      const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       if (saved && reactAdapter && msg.chatId && msg.messageId) {
         reactAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
@@ -2396,7 +2401,7 @@ When users create specialized instances, suggest these configurations:
     const savedKind = saved?.kind;
     const patchedAttachments = savedKind ? msg.attachments?.filter(a => a.kind !== savedKind) : msg.attachments;
     const patchedMsg = { ...msg, text: chatText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
-    const classicMsgAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter!;
+    const classicMsgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
     const { text: processedText, extraMeta } = await processAttachments(patchedMsg, classicMsgAdapter, this.logger, instanceName);
 
     // Use workspace inbox path for saved attachment
@@ -2423,7 +2428,7 @@ When users create specialized instances, suggest these configurations:
   /** Download photo or document attachment to classic instance workspace inbox. Returns { path, kind } or undefined. */
   private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<{ path: string; kind: "photo" | "document" } | undefined> {
     const att = msg.attachments?.find(a => a.kind === "photo" || a.kind === "document");
-    const dlAdapter = (msg.adapterId ? this.adapters.get(msg.adapterId) : undefined) ?? this.adapter;
+    const dlAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
     if (!att || !dlAdapter) return undefined;
     try {
       const tmpPath = await dlAdapter.downloadAttachment(att.fileId);
