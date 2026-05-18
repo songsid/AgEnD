@@ -1116,7 +1116,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
         // Strip @BotUsername suffix from commands (e.g. /start@BotName → /start)
-        const text = (msg.text ?? "").replace(/^(\/\w+)@\S+/, "$1");
+        // Also treat @BotUsername as /chat trigger (e.g. "@Bot hello" → "/chat hello")
+        let text = (msg.text ?? "").replace(/^(\/\w+)@\S+/, "$1");
+        if (/^@\S+\s/.test(text)) text = `/chat ${text.replace(/^@\S+\s*/, "")}`;
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
@@ -1156,7 +1158,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             const syntheticMsg = { ...msg, threadId: chatId, text: chatText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           } else {
-            const syntheticMsg = { ...msg, threadId: chatId };
+            const syntheticMsg = { ...msg, threadId: chatId, text };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           }
           return;
