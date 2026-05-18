@@ -49,11 +49,6 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/update" || text === "/update@" || text.startsWith("/update@")) {
-      await this.handleUpdateCommand(msg);
-      return true;
-    }
-
     return false;
   }
 
@@ -321,7 +316,6 @@ export class TopicCommands {
                 { command: "status", description: "Show fleet status and costs" },
                 { command: "restart", description: "Graceful restart all instances" },
                 { command: "sysinfo", description: "System diagnostics" },
-                { command: "update", description: "Update AgEnD and restart service" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
