@@ -1152,6 +1152,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Route to classic channel if registered
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
+          if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
           if (isPrivateChat) {
             if (!text && !msg.attachments?.length) return;
             const chatText = text.startsWith("/chat ") ? text : `/chat ${text}`;
