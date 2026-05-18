@@ -29,7 +29,7 @@ export interface LifecycleContext {
   getInstanceDir(name: string): string;
   saveFleetConfig(): void;
   connectIpcToInstance(name: string): Promise<void>;
-  createForumTopic(topicName: string): Promise<number | string>;
+  createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   deleteForumTopic(topicId: number | string): Promise<void>;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
@@ -342,6 +342,7 @@ export class InstanceLifecycle {
   async handleCreate(
     args: LifecycleCreateArgs,
     respond: (result: unknown, error?: string) => void,
+    adapterId?: string,
   ): Promise<void> {
     const rawDirectory = args.directory;
     const directory = rawDirectory ? rawDirectory.replace(/^~/, process.env.HOME || "~") : undefined;
@@ -485,7 +486,7 @@ export class InstanceLifecycle {
     let newInstanceName: string | undefined;
 
     try {
-      createdTopicId = await this.ctx.createForumTopic(topicName!);
+      createdTopicId = await this.ctx.createForumTopic(topicName!, adapterId);
 
       // Use explicit topic_name as name base when provided; fall back to directory basename
       const explicitTopicName = args.topic_name;
