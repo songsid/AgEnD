@@ -1245,6 +1245,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    // Intercept /ctx in any instance topic
+    if (await this.topicCommands.handleInstanceCommand(msg, instanceName)) {
+      return;
+    }
+
     // Bind instance to the adapter that delivered this message
     if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
 
