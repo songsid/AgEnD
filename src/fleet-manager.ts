@@ -831,6 +831,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Adapter handler error");
     }, this.logger, "adapter.handler_error"));
 
+    this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
+      const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
+      const generalId = this.findGeneralInstance();
+      if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
+    }, this.logger, "adapter.new_group_detected"));
+
     this.startTopicCleanupPoller();
 
     // Prune stale external sessions every 5 minutes
@@ -994,6 +1000,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
     }, this.logger, `adapter[${adapterId}].started`));
 
+    adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
+      const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
+      const generalId = this.findGeneralInstance(adapterId);
+      if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
+    }, this.logger, `adapter[${adapterId}].new_group_detected`));
+
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
   }
 
@@ -1131,7 +1143,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             }
           } else {
             if (!this.classicChannels.isGroupAllowed(chatId)) {
-              await msgAdapter?.sendText(chatId, "⛔ This group is not in the allowed groups list.");
+              // Notify admin about new group wanting access
+              const groupTitle = (msg as any).chatTitle || chatId;
+              const adminMsg = `🆕 New group detected:\n• Name: ${groupTitle}\n• ID: ${chatId}\n• User: ${msg.username} (${msg.userId})\n• Platform: ${msg.source}\n\nTo allow: add \`${chatId}\` to classicBot.yaml \`allowed_guilds\``;
+              const generalId = this.findGeneralInstance(msg.adapterId);
+              if (generalId) {
+                this.notifyInstanceTopic(generalId, adminMsg);
+              }
+              await msgAdapter?.sendText(chatId, "⏳ Access requested. Waiting for admin approval.");
               return;
             }
           }
