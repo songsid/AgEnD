@@ -2398,7 +2398,32 @@ When users create specialized instances, suggest these configurations:
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
-      await this.forwardToClassicInstance(instanceName, cleanText, msg);
+      // Block /raw bypass
+      if (cleanText.startsWith("/raw ")) return;
+
+      // Save and process attachments (same as /chat mode)
+      const saved = await this.saveClassicAttachment(instanceName, msg);
+      if (saved && classicAdapter && msg.chatId && msg.messageId) {
+        classicAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+          .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      }
+      // Strip saved attachment to avoid double download
+      const savedKind = saved?.kind;
+      const patchedAttachments = savedKind ? msg.attachments?.filter(a => a.kind !== savedKind) : msg.attachments;
+      const patchedMsg = { ...msg, text: cleanText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
+      const { text: processedText, extraMeta } = await processAttachments(patchedMsg, classicAdapter!, this.logger, instanceName);
+      let finalText = processedText || cleanText;
+      if (saved?.path) {
+        if (saved.kind === "photo") {
+          extraMeta.image_path = saved.path;
+          finalText = `[📷 Image: ${saved.path}]\n${finalText}`;
+        } else {
+          extraMeta.attachment_path = saved.path;
+          finalText = `[📎 File: ${saved.path}]\n${finalText}`;
+        }
+      }
+
+      await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
       return;
     }
 
