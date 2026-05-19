@@ -178,6 +178,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           ? String(msg.reply_to_message.message_id)
           : undefined,
         replyToText: replyToText || undefined,
+        chatTitle: msg.chat.title || undefined,
       });
     });
 
