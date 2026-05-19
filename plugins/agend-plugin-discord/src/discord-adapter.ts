@@ -124,7 +124,35 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const threadId = msg.channelId;
       const messageId = msg.id;
       const username = msg.author.username;
-      const text = msg.content;
+      let text = msg.content;
+
+      // Handle forwarded messages (messageSnapshots) and embeds
+      if (!text) {
+        const parts: string[] = [];
+        // Forwarded message snapshots (Discord forward feature)
+        if ((msg as any).messageSnapshots?.size > 0) {
+          for (const [, snap] of (msg as any).messageSnapshots) {
+            if (snap.message?.content) parts.push(snap.message.content);
+            if (snap.message?.embeds?.length) {
+              for (const e of snap.message.embeds) {
+                if (e.title) parts.push(e.title);
+                if (e.description) parts.push(e.description);
+              }
+            }
+          }
+        }
+        // Rich embeds (links, bot messages, etc.)
+        if (parts.length === 0 && msg.embeds.length > 0) {
+          for (const e of msg.embeds) {
+            if (e.title) parts.push(e.title);
+            if (e.description) parts.push(e.description);
+            if (e.fields?.length) {
+              for (const f of e.fields) parts.push(`${f.name}: ${f.value}`);
+            }
+          }
+        }
+        if (parts.length > 0) text = parts.join("\n");
+      }
       const isBotMessage = msg.author.bot;
 
       // Collect attachments
