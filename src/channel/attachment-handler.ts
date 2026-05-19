@@ -23,14 +23,22 @@ export async function processAttachments(
   const extraMeta: Record<string, string> = {};
 
   // Auto-download photos so Claude can Read them directly
-  const photoAttachment = msg.attachments?.find(a => a.kind === "photo");
-  if (photoAttachment) {
-    try {
-      const localPath = await adapter.downloadAttachment(photoAttachment.fileId);
-      extraMeta.image_path = localPath;
-      text = `[📷 Image: ${localPath}]\n${text}`;
-    } catch (err) {
-      logger.warn({ err: (err as Error).message }, "Photo download failed");
+  const photoAttachments = msg.attachments?.filter(a => a.kind === "photo") ?? [];
+  if (photoAttachments.length > 0) {
+    const paths: string[] = [];
+    for (const photo of photoAttachments) {
+      try {
+        const localPath = await adapter.downloadAttachment(photo.fileId);
+        paths.push(localPath);
+      } catch (err) {
+        logger.warn({ err: (err as Error).message }, "Photo download failed");
+      }
+    }
+    if (paths.length > 0) {
+      extraMeta.image_path = paths[0];
+      if (paths.length > 1) extraMeta.image_paths = paths.join(",");
+      const tags = paths.map(p => `[📷 Image: ${p}]`).join("\n");
+      text = `${tags}\n${text}`;
     }
   }
 
