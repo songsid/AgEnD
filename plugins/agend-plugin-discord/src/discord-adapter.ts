@@ -240,6 +240,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     });
 
     // Handle channel deletion (equivalent to topic_closed)
+    this.client.on("guildCreate", (guild) => {
+      this.emit("new_group_detected", {
+        groupId: guild.id,
+        groupTitle: guild.name,
+        source: "discord",
+      });
+    });
+
     this.client.on("channelDelete", (channel) => {
       if (!("guildId" in channel)) return;
       if (channel.guildId !== this.guildId) {
