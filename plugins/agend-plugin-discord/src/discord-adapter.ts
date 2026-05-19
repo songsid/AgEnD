@@ -139,6 +139,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
                 if (e.description) parts.push(e.description);
               }
             }
+            // Forward attachments (images, files) into the main message
+            if (snap.message?.attachments?.size > 0) {
+              for (const [, att] of snap.message.attachments) {
+                msg.attachments.set(att.id, att);
+              }
+            }
           }
         }
         // Rich embeds (links, bot messages, etc.)
