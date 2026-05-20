@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+// Force IPv4 for all DNS lookups (fixes IPv6 timeout issues in corporate/WSL environments)
+import dns from "node:dns";
+dns.setDefaultResultOrder("ipv4first");
+
 import { Command } from "commander";
 import { join, dirname } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
