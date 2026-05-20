@@ -18,7 +18,6 @@ export class AntigravityBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Antigravity uses .gemini/settings.json for MCP servers (same structure as gemini-cli)
     const geminiDir = join(config.workingDirectory, ".gemini");
     mkdirSync(geminiDir, { recursive: true });
     const settingsPath = join(geminiDir, "settings.json");
@@ -28,8 +27,18 @@ export class AntigravityBackend implements CliBackend {
       try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { /* ignore */ }
     }
 
+    // Instance-namespaced MCP keys (same as gemini-cli) to avoid conflicts
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-      settings.mcpServers = config.mcpServers;
+      const servers = (settings.mcpServers ?? {}) as Record<string, unknown>;
+      for (const [name, entry] of Object.entries(config.mcpServers)) {
+        const instanceKey = `${name}-${config.instanceName}`;
+        servers[instanceKey] = {
+          ...entry,
+          env: { ...(entry as any).env, AGEND_INSTANCE_NAME: config.instanceName },
+        };
+      }
+      delete servers["agend"];
+      settings.mcpServers = servers;
     }
 
     writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
@@ -41,15 +50,23 @@ export class AntigravityBackend implements CliBackend {
     }
   }
 
-  cleanupConfig(workingDirectory: string): void {
+  cleanupConfig(workingDirectory: string, instanceName?: string): void {
     const agentsPath = join(workingDirectory, "AGENTS.md");
     if (existsSync(agentsPath)) {
-      removeMarker(agentsPath, "agend");
+      removeMarker(agentsPath, instanceName ?? "agend");
     }
-  }
-
-  getPromptPattern(): RegExp {
-    return /^>\s*$/m;
+    // Clean up namespaced MCP key
+    const settingsPath = join(workingDirectory, ".gemini", "settings.json");
+    if (existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        const servers = settings.mcpServers;
+        if (servers && instanceName) {
+          delete servers[`agend-${instanceName}`];
+          writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        }
+      } catch { /* ignore */ }
+    }
   }
 
   getReadyPattern(): RegExp {
@@ -71,8 +88,8 @@ export class AntigravityBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      { pattern: /error.*quota/i, type: "quota", action: "restart", message: "Quota exceeded" },
-      { pattern: /error.*authentication/i, type: "auth_error", action: "restart", message: "Authentication error" },
+      { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },
+      { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "restart", message: "Authentication error" },
     ];
   }
 
