@@ -2488,6 +2488,10 @@ When users create specialized instances, suggest these configurations:
     if (msg.chatId && msg.messageId) {
       classicMsgAdapter.react(msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      if (saved) {
+        classicMsgAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+          .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      }
     }
 
     await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
