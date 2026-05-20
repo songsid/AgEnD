@@ -581,7 +581,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
 
       // Notify General topic that fleet is up
-      const total = Object.keys(fleet.instances).length;
+      const classicCount = this.classicChannels?.getAll().length ?? 0;
+      const total = Object.keys(fleet.instances).length + classicCount;
       const started = this.daemons.size;
       const failedNames = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
       const generalName = this.findGeneralInstance();
