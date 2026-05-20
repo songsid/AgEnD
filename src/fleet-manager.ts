@@ -251,8 +251,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     topicMode: boolean,
   ): Promise<void> {
     const raw = this.fleetConfig?.defaults?.startup;
-    const concurrency = Math.max(1, Math.min(20, raw?.concurrency ?? 3));
-    const staggerMs = Math.max(0, Math.min(30_000, raw?.stagger_delay_ms ?? 2000));
+    const concurrency = Math.max(1, Math.min(20, raw?.concurrency ?? 10));
+    const staggerMs = Math.max(0, Math.min(30_000, raw?.stagger_delay_ms ?? 500));
 
     const byWorkDir = new Map<string, [string, InstanceConfig][]>();
     for (const [name, config] of entries) {
