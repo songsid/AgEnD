@@ -2452,8 +2452,9 @@ When users create specialized instances, suggest these configurations:
     // Bare attachment without /chat: save + log only, don't trigger agent
     if (!isChat) {
       const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-      if (saved && reactAdapter && msg.chatId && msg.messageId) {
-        reactAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+      const reactChatId = msg.threadId ?? msg.chatId;
+      if (saved && reactAdapter && reactChatId && msg.messageId) {
+        reactAdapter.react(reactChatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       return;
