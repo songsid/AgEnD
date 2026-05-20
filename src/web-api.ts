@@ -54,7 +54,7 @@ const ConfigUpdateSchema = z.object({
     access: z.record(z.string(), z.unknown()).optional(),
   }).strict().optional(),
   defaults: z.object({
-    backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli"]).optional(),
+    backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity"]).optional(),
     model: z.string().max(128).optional(),
   }).strict().optional(),
   project_roots: z.array(z.string().min(1).max(1024)).max(64).optional(),
