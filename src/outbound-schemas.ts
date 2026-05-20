@@ -187,7 +187,7 @@ export const CreateInstanceArgs = z.object({
   model: z.string().optional().describe(
     "Model to use. Claude: sonnet, opus, haiku, opusplan, best, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Gemini: gemini-2.5-pro. Omit for default.",
   ),
-  backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli"]).optional()
+  backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity"]).optional()
     .describe("CLI backend to use. Defaults to claude-code."),
   branch: z.string().optional().describe(
     "Git branch name. When specified, creates a git worktree from the directory's repo and uses it as the working directory. If the branch doesn't exist, it will be created.",
