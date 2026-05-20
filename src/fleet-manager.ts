@@ -2412,7 +2412,10 @@ When users create specialized instances, suggest these configurations:
       // Save and process attachments (same as /chat mode)
       const saved = await this.saveClassicAttachment(instanceName, msg);
       if (saved && classicAdapter && msg.chatId && msg.messageId) {
-        classicAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+        const emoji = msg.source === "telegram"
+          ? (saved.kind === "photo" ? "👌" : "👍")
+          : (saved.kind === "photo" ? "📸" : "📎");
+        classicAdapter.react(msg.chatId, msg.messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       // Strip saved attachment to avoid double download
@@ -2454,7 +2457,11 @@ When users create specialized instances, suggest these configurations:
       const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const reactChatId = msg.threadId ?? msg.chatId;
       if (saved && reactAdapter && reactChatId && msg.messageId) {
-        reactAdapter.react(reactChatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+        // Telegram only supports limited emoji for reactions; use 👌 for photo, 👍 for file
+        const emoji = msg.source === "telegram"
+          ? (saved.kind === "photo" ? "👌" : "👍")
+          : (saved.kind === "photo" ? "📸" : "📎");
+        reactAdapter.react(reactChatId, msg.messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       return;
@@ -2490,7 +2497,10 @@ When users create specialized instances, suggest these configurations:
       classicMsgAdapter.react(msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
-        classicMsgAdapter.react(msg.chatId, msg.messageId, saved.kind === "photo" ? "📸" : "📎")
+        const savedEmoji = msg.source === "telegram"
+          ? (saved.kind === "photo" ? "👌" : "👍")
+          : (saved.kind === "photo" ? "📸" : "📎");
+        classicMsgAdapter.react(msg.chatId, msg.messageId, savedEmoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
     }
