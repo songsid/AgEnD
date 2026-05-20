@@ -1439,7 +1439,12 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
 
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
       if (singleSource) return singleSource;
-      if (classicNames.has(name)) return "DC";
+      if (classicNames.has(name)) {
+        // Match channelId by suffix: Telegram IDs are short/negative, Discord snowflakes are 17+ digits
+        const suffix = name.slice(-4);
+        const matchedChId = Object.keys(classicConfig?.channels ?? {}).find(id => id.slice(-4) === suffix) ?? "";
+        return matchedChId.startsWith("-") || matchedChId.length < 17 ? "TG" : "DC";
+      }
       const topicId = String(inst?.topic_id ?? "");
       if (topicId.length >= 17) return "DC";
       if (topicId.length > 0 && topicId.length < 17) return "TG";
