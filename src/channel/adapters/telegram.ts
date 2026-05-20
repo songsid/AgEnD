@@ -309,32 +309,44 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // or second Claude Code instance). Retry with backoff, but cap attempts so a
     // permanently-stuck conflict does not loop forever.
     const MAX_409_RETRIES = 30; // ~7 min total at 15s ceiling
+    const MAX_RECONNECT_RETRIES = 10; // auto-reconnect on non-409 errors
     void (async () => {
-      for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
-        try {
-          await this.bot.start({
-            drop_pending_updates: attempt === 1,
-            onStart: (info) => {
-              this.emit("started", info.username);
-            },
-          });
-          return; // bot.stop() was called — clean exit
-        } catch (err) {
-          if (err instanceof GrammyError && err.error_code === 409) {
-            if (attempt >= MAX_409_RETRIES) {
-              this.emit("error", new Error(
-                `Telegram polling: 409 conflict persisted after ${MAX_409_RETRIES} attempts; giving up`,
-              ));
+      let reconnects = 0;
+      while (true) {
+        for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
+          try {
+            await this.bot.start({
+              drop_pending_updates: attempt === 1 && reconnects === 0,
+              onStart: (info) => {
+                reconnects = 0; // reset on successful start
+                this.emit("started", info.username);
+              },
+            });
+            return; // bot.stop() was called — clean exit
+          } catch (err) {
+            if (err instanceof GrammyError && err.error_code === 409) {
+              if (attempt >= MAX_409_RETRIES) {
+                this.emit("error", new Error(
+                  `Telegram polling: 409 conflict persisted after ${MAX_409_RETRIES} attempts; giving up`,
+                ));
+                return;
+              }
+              const delay = Math.min(1000 * attempt, 15000);
+              this.emit("polling_conflict", { attempt, delay });
+              await new Promise(r => setTimeout(r, delay));
+              continue;
+            }
+            if (err instanceof Error && err.message === "Aborted delay") return;
+            // Auto-reconnect on transient errors (network, timeout, 5xx)
+            reconnects++;
+            if (reconnects > MAX_RECONNECT_RETRIES) {
+              this.emit("error", new Error(`Telegram polling: gave up after ${reconnects} reconnect attempts. Last error: ${(err as Error).message}`));
               return;
             }
-            const delay = Math.min(1000 * attempt, 15000);
-            this.emit("polling_conflict", { attempt, delay });
-            await new Promise(r => setTimeout(r, delay));
-            continue;
+            console.warn(`[telegram] Polling error (reconnect ${reconnects}/${MAX_RECONNECT_RETRIES}): ${(err as Error).message}`);
+            await new Promise(r => setTimeout(r, Math.min(5000 * reconnects, 30000)));
+            break; // break inner loop to restart bot.start()
           }
-          if (err instanceof Error && err.message === "Aborted delay") return;
-          this.emit("error", err);
-          return;
         }
       }
     })();
