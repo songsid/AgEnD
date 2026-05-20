@@ -998,6 +998,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     adapter.on("started", safeHandler((username: string) => {
       this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
+      const world = this.worlds.get(adapterId);
+      if (world) world.botUsername = username;
     }, this.logger, `adapter[${adapterId}].started`));
 
     adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
@@ -1128,9 +1130,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
         // Strip @BotUsername suffix from commands (e.g. /start@BotName → /start)
-        // Also treat @BotUsername as /chat trigger (e.g. "@Bot hello" → "/chat hello")
+        // Also treat @OurBot as /chat trigger (only our bot, not other bots)
         let text = (msg.text ?? "").replace(/^(\/\w+)@\S+/, "$1");
-        if (/^@\S+\s/.test(text)) text = `/chat ${text.replace(/^@\S+\s*/, "")}`;
+        const world = this.worlds.get(msg.adapterId ?? "");
+        const botUser = world?.botUsername;
+        if (botUser && text.toLowerCase().startsWith(`@${botUser.toLowerCase()} `)) {
+          text = `/chat ${text.slice(botUser.length + 2)}`;
+        }
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
@@ -1178,7 +1184,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             const syntheticMsg = { ...msg, threadId: chatId, text: chatText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           } else {
-            const syntheticMsg = { ...msg, threadId: chatId, text };
+            // In groups: if message has attachments but no /chat prefix, treat as /chat
+            const groupText = (!text && msg.attachments?.length) ? "/chat " : text;
+            const syntheticMsg = { ...msg, threadId: chatId, text: groupText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
           }
           return;

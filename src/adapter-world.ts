@@ -8,6 +8,8 @@ import type { ChannelConfig } from "./types.js";
  * own world. Instances are bound to exactly one world.
  */
 export class AdapterWorld {
+  botUsername?: string;
+
   constructor(
     readonly id: string,
     readonly adapter: ChannelAdapter,
