@@ -341,6 +341,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async startAll(configPath: string): Promise<void> {
     this.configPath = configPath;
     this.loadEnvFile();
+
+    // Rotate fleet.log if oversized (before any logging)
+    const { rotateLogIfNeeded } = await import("./logger.js");
+    rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
+
     const fleet = this.loadConfig(configPath);
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
@@ -2985,35 +2990,39 @@ When users create specialized instances, suggest these configurations:
       await this.adapter.sendText(String(groupId), restartText, notifyOpts)
         .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
 
-      // Notify each instance's channel — tailor message based on session state
+      // Notify each instance's channel — staggered to avoid rate limit storm
       const instances = Object.entries(this.fleetConfig?.instances ?? {});
-      this.logger.info({ count: instances.length }, "Sending restart notification to instances");
-      for (const [name, config] of instances) {
-        const threadId = config.topic_id != null ? String(config.topic_id) : undefined;
-        const daemon = this.daemons.get(name);
-        const isNewSession = daemon?.isNewSession ?? false;
-        const msg = isNewSession
-          ? "Fleet restart complete. Configuration changed — starting fresh session."
-          : "Fleet restart complete. Continue from where you left off.";
+      this.logger.info({ count: instances.length }, "Sending restart notification to instances (staggered)");
+      const BATCH_SIZE = 3;
+      const BATCH_DELAY_MS = 2500;
+      for (let i = 0; i < instances.length; i += BATCH_SIZE) {
+        if (i > 0) await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
+        const batch = instances.slice(i, i + BATCH_SIZE);
+        for (const [name, config] of batch) {
+          const threadId = config.topic_id != null ? String(config.topic_id) : undefined;
+          const daemon = this.daemons.get(name);
+          const isNewSession = daemon?.isNewSession ?? false;
+          const msg = isNewSession
+            ? "Fleet restart complete. Configuration changed — starting fresh session."
+            : "Fleet restart complete. Continue from where you left off.";
 
-        // Send to topic so the message appears in the instance's channel
-        if (threadId) {
-          this.adapter.sendText(String(groupId), msg, { threadId })
-            .catch(e => this.logger.warn({ err: e, name, threadId }, "Failed to post per-instance restart notification"));
-        }
+          if (threadId) {
+            this.adapter.sendText(String(groupId), msg, { threadId })
+              .catch(e => this.logger.warn({ err: e, name, threadId }, "Failed to post per-instance restart notification"));
+          }
 
-        // Push to daemon IPC so the CLI session receives the message
-        const ipc = this.instanceIpcClients.get(name);
-        if (ipc?.connected) {
-          ipc.send({
-            type: "fleet_inbound",
-            content: msg,
-            meta: {
-              chat_id: String(groupId),
-              thread_id: threadId ?? "",
-              ts: new Date().toISOString(),
-            },
-          });
+          const ipc = this.instanceIpcClients.get(name);
+          if (ipc?.connected) {
+            ipc.send({
+              type: "fleet_inbound",
+              content: msg,
+              meta: {
+                chat_id: String(groupId),
+                thread_id: threadId ?? "",
+                ts: new Date().toISOString(),
+              },
+            });
+          }
         }
       }
     }
