@@ -828,7 +828,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
-      if (userId) this.botUserId = userId;
+      if (userId) {
+        this.botUserId = userId;
+        const w = this.worlds.values().next().value as AdapterWorld | undefined;
+        if (w) w.botUserId = userId;
+      }
     }, this.logger, "adapter.started"));
     this.adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
       this.logger.warn(`409 Conflict (attempt ${attempt}), retry in ${delay / 1000}s`);
@@ -1002,10 +1006,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter.setChatId(String(channelConfig.group_id));
     }
 
-    adapter.on("started", safeHandler((username: string) => {
+    adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
       const world = this.worlds.get(adapterId);
-      if (world) world.botUsername = username;
+      if (world) {
+        world.botUsername = username;
+        if (userId) world.botUserId = userId;
+      }
     }, this.logger, `adapter[${adapterId}].started`));
 
     adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
@@ -1136,13 +1143,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
         // Strip @BotUsername suffix from commands (e.g. /start@BotName → /start)
-        // Also treat @OurBot as /chat trigger (only our bot, not other bots)
         let text = (msg.text ?? "").replace(/^(\/\w+)@\S+/, "$1");
+        // Detect @OurBot mention (only our bot, not other bots)
         const world = this.worlds.get(msg.adapterId ?? "");
         const botUser = world?.botUsername;
-        if (botUser && text.toLowerCase().startsWith(`@${botUser.toLowerCase()} `)) {
-          text = `/chat ${text.slice(botUser.length + 2)}`;
-        }
+        const isBotMentioned = !!(botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`));
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
@@ -1184,22 +1189,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
           if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
-          if (isPrivateChat) {
-            if (!text && !msg.attachments?.length) return;
-            const chatText = text.startsWith("/chat ") ? text : `/chat ${text}`;
-            const syntheticMsg = { ...msg, threadId: chatId, text: chatText };
+          // TG ClassicBot: only @mention triggers agent (both private and group).
+          // /chat command is NOT supported for TG classic — use @bot instead.
+          if (!isBotMentioned) {
+            // No trigger: save attachments + react, log, but don't forward to agent
+            const syntheticMsg = { ...msg, threadId: chatId, text: "" };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
-          } else {
-            // In groups: if message has attachments but no /chat prefix, treat as /chat
-            const groupText = (!text && msg.attachments?.length) ? "/chat " : text;
-            const syntheticMsg = { ...msg, threadId: chatId, text: groupText };
-            await this.handleClassicChannelMessage(target.name, syntheticMsg);
+            return;
           }
+          // Strip @bot from text and forward as /chat
+          const cleanText = botUser ? text.replace(new RegExp(`@${botUser}`, "gi"), "").trim() : text;
+          const syntheticMsg = { ...msg, threadId: chatId, text: `/chat ${cleanText}` };
+          await this.handleClassicChannelMessage(target.name, syntheticMsg);
           return;
         }
 
-        // Handle /chat without active agent
-        if (text.startsWith("/chat ") || text === "/chat") {
+        // Handle @bot without active agent
+        if (isBotMentioned) {
           await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
           return;
         }
@@ -2396,19 +2402,39 @@ When users create specialized instances, suggest these configurations:
     if (isCollabMode) {
       // Log every message (including other bots) to chat-logs
       ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp, msg.replyToText);
+      this.logger.info({ instanceName, user: msg.username, textLen: text.length, attachments: msg.attachments?.length ?? 0, source: msg.source }, "Collab mode message");
 
       // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here
-      const mentionTag = this.botUserId ? `<@${this.botUserId}>` : null;
+      const adapterBotUserId = this.worlds.get(msg.adapterId ?? "")?.botUserId ?? this.botUserId;
+      const mentionTag = adapterBotUserId ? `<@${adapterBotUserId}>` : null;
       const isMentioned = mentionTag && text.includes(mentionTag);
-      if (!isMentioned) return;
+      if (!isMentioned) {
+        // Save bare attachments (stickers, images) even without @mention
+        if (msg.attachments?.length) {
+          const saved = await this.saveClassicAttachment(instanceName, msg);
+          if (saved) {
+            const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
+            const noMentionReactChatId = msg.threadId ?? msg.chatId;
+            if (reactAdapter && noMentionReactChatId && msg.messageId) {
+              const emoji = msg.source === "telegram"
+                ? (saved.kind === "photo" ? "👌" : "👍")
+                : (saved.kind === "photo" ? "📸" : "📎");
+              reactAdapter.react(noMentionReactChatId, msg.messageId, emoji)
+                .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+            }
+          }
+        }
+        return;
+      }
 
       // Strip the @mention from text
-      const cleanText = text.replace(new RegExp(`<@${this.botUserId}>`, "g"), "").trim();
+      const cleanText = text.replace(new RegExp(`<@${adapterBotUserId}>`, "g"), "").trim();
       if (!cleanText && !msg.attachments?.length) return;
 
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-      if (classicAdapter && msg.chatId && msg.messageId) {
-        classicAdapter.react(msg.chatId, msg.messageId, "👀")
+      const collabReactChatId = msg.threadId ?? msg.chatId;
+      if (classicAdapter && collabReactChatId && msg.messageId) {
+        classicAdapter.react(collabReactChatId, msg.messageId, "👀")
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
@@ -2417,11 +2443,11 @@ When users create specialized instances, suggest these configurations:
 
       // Save and process attachments (same as /chat mode)
       const saved = await this.saveClassicAttachment(instanceName, msg);
-      if (saved && classicAdapter && msg.chatId && msg.messageId) {
+      if (saved && classicAdapter && collabReactChatId && msg.messageId) {
         const emoji = msg.source === "telegram"
           ? (saved.kind === "photo" ? "👌" : "👍")
           : (saved.kind === "photo" ? "📸" : "📎");
-        classicAdapter.react(msg.chatId, msg.messageId, emoji)
+        classicAdapter.react(collabReactChatId, msg.messageId, emoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
       // Strip saved attachment to avoid double download
@@ -2430,13 +2456,21 @@ When users create specialized instances, suggest these configurations:
       const patchedMsg = { ...msg, text: cleanText, attachments: patchedAttachments?.length ? patchedAttachments : undefined };
       const { text: processedText, extraMeta } = await processAttachments(patchedMsg, classicAdapter!, this.logger, instanceName);
       let finalText = processedText || cleanText;
-      if (saved?.path) {
+      if (saved) {
         if (saved.kind === "photo") {
-          extraMeta.image_path = saved.path;
-          finalText = `[📷 Image: ${saved.path}]\n${finalText}`;
+          extraMeta.image_path = saved.paths[0];
+          if (saved.paths.length > 1) extraMeta.image_paths = saved.paths.join(",");
+          const tags = saved.paths.map(p => `[📷 Image: ${p}]`).join("\n");
+          finalText = `${tags}\n${finalText}`;
         } else {
-          extraMeta.attachment_path = saved.path;
-          finalText = `[📎 File: ${saved.path}]\n${finalText}`;
+          extraMeta.attachment_path = saved.paths[0];
+          if (saved.paths.length > 1) extraMeta.attachment_paths = saved.paths.join(",");
+          const docAtts = msg.attachments?.filter(a => a.kind === "document") ?? [];
+          const tags = saved.paths.map((p, i) => {
+            const filename = docAtts[i]?.filename ?? "file";
+            return `[📎 File: ${filename} → ${p}]`;
+          }).join("\n");
+          finalText = `${tags}\n${finalText}`;
         }
       }
 
@@ -2450,10 +2484,9 @@ When users create specialized instances, suggest these configurations:
 
     // Save photos/documents to workspace inbox so agent can read them later
     const saved = await this.saveClassicAttachment(instanceName, msg);
-    const savedPath = saved?.path;
 
     // Log every message to the daily chat log (include saved path)
-    const attachmentTag = saved ? ` [${saved.kind === "photo" ? "📷" : "📎"} saved: ${savedPath}]`
+    const attachmentTag = saved ? ` [${saved.kind === "photo" ? "📷" : "📎"} saved: ${saved.paths.join(", ")}]`
       : msg.attachments?.length ? ` [${msg.attachments.map(a => `📎 ${a.kind}${a.filename ? `: ${a.filename}` : ""}`).join(", ")}]`
       : "";
     ClassicChannelManager.logMessage(instanceName, msg.username, text + attachmentTag, msg.timestamp, msg.replyToText);
@@ -2490,23 +2523,31 @@ When users create specialized instances, suggest these configurations:
     let finalText = processedText || chatText;
     if (saved) {
       if (saved.kind === "photo") {
-        extraMeta.image_path = savedPath!;
-        finalText = `[📷 Image: ${savedPath}]\n${chatText}`;
+        extraMeta.image_path = saved.paths[0];
+        if (saved.paths.length > 1) extraMeta.image_paths = saved.paths.join(",");
+        const tags = saved.paths.map(p => `[📷 Image: ${p}]`).join("\n");
+        finalText = `${tags}\n${chatText}`;
       } else {
-        extraMeta.attachment_path = savedPath!;
-        const filename = msg.attachments?.find(a => a.kind === "document")?.filename ?? "file";
-        finalText = `[📎 File: ${filename} → ${savedPath}]\n${chatText}`;
+        extraMeta.attachment_path = saved.paths[0];
+        if (saved.paths.length > 1) extraMeta.attachment_paths = saved.paths.join(",");
+        const docAtts = msg.attachments?.filter(a => a.kind === "document") ?? [];
+        const tags = saved.paths.map((p, i) => {
+          const filename = docAtts[i]?.filename ?? "file";
+          return `[📎 File: ${filename} → ${p}]`;
+        }).join("\n");
+        finalText = `${tags}\n${chatText}`;
       }
     }
 
     if (msg.chatId && msg.messageId) {
-      classicMsgAdapter.react(msg.chatId, msg.messageId, "👀")
+      const reactChatId = msg.threadId ?? msg.chatId;
+      classicMsgAdapter.react(reactChatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       if (saved) {
         const savedEmoji = msg.source === "telegram"
           ? (saved.kind === "photo" ? "👌" : "👍")
           : (saved.kind === "photo" ? "📸" : "📎");
-        classicMsgAdapter.react(msg.chatId, msg.messageId, savedEmoji)
+        classicMsgAdapter.react(reactChatId, msg.messageId, savedEmoji)
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
     }
@@ -2515,22 +2556,29 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Download photo or document attachment to classic instance workspace inbox. Returns { path, kind } or undefined. */
-  private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<{ path: string; kind: "photo" | "document" } | undefined> {
-    const att = msg.attachments?.find(a => a.kind === "photo" || a.kind === "document");
+  private async saveClassicAttachment(instanceName: string, msg: InboundMessage): Promise<{ path: string; paths: string[]; kind: "photo" | "document" } | undefined> {
+    const atts = msg.attachments?.filter(a => a.kind === "photo" || a.kind === "document" || a.kind === "sticker") ?? [];
     const dlAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-    if (!att || !dlAdapter) return undefined;
-    try {
-      const tmpPath = await dlAdapter.downloadAttachment(att.fileId);
-      const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
-      mkdirSync(inboxDir, { recursive: true });
-      const dest = join(inboxDir, basename(tmpPath));
-      try { renameSync(tmpPath, dest); } catch { copyFileSync(tmpPath, dest); unlinkSync(tmpPath); }
-      this.logger.info({ instanceName, path: dest, kind: att.kind }, "Classic attachment saved to workspace inbox");
-      return { path: dest, kind: att.kind as "photo" | "document" };
-    } catch (err) {
-      this.logger.warn({ err: (err as Error).message, instanceName }, "Classic attachment save failed");
-      return undefined;
+    if (atts.length === 0 || !dlAdapter) return undefined;
+    const paths: string[] = [];
+    let kind: "photo" | "document" = "document";
+    for (const att of atts) {
+      try {
+        const tmpPath = await dlAdapter.downloadAttachment(att.fileId);
+        const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
+        mkdirSync(inboxDir, { recursive: true });
+        const dest = join(inboxDir, basename(tmpPath));
+        try { renameSync(tmpPath, dest); } catch { copyFileSync(tmpPath, dest); unlinkSync(tmpPath); }
+        const savedKind = att.kind === "sticker" ? "photo" : att.kind;
+        paths.push(dest);
+        if (paths.length === 1) kind = savedKind as "photo" | "document";
+        this.logger.info({ instanceName, path: dest, kind: savedKind }, "Classic attachment saved to workspace inbox");
+      } catch (err) {
+        this.logger.warn({ err: (err as Error).message, instanceName }, "Classic attachment save failed");
+      }
     }
+    if (paths.length === 0) return undefined;
+    return { path: paths[0], paths, kind };
   }
 
   /** Forward a message to a classic channel instance with chat log context */
@@ -2841,9 +2889,10 @@ When users create specialized instances, suggest these configurations:
       this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
     }
 
-    // Stop removed instances
+    // Stop removed instances (skip classic bot instances — they're managed by classicBot.yaml)
+    const classicNames = new Set(this.classicChannels?.getAll().map(ch => ch.instanceName) ?? []);
     for (const name of this.daemons.keys()) {
-      if (!(name in newInstances)) {
+      if (!(name in newInstances) && !classicNames.has(name)) {
         this.logger.info({ name }, "Instance removed from config — stopping");
         await this.stopInstance(name).catch(err =>
           this.logger.error({ err, name }, "Failed to stop removed instance"));
