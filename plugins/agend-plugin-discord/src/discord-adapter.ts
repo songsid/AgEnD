@@ -24,9 +24,9 @@ import type {
   PermissionPrompt,
   Choice,
   AlertData,
-} from "@songsid/agend/channel";
-import type { AccessManager } from "@songsid/agend/channel/access-manager";
-import { MessageQueue } from "@songsid/agend/channel/message-queue";
+} from "@suzuke/agend/channel";
+import type { AccessManager } from "@suzuke/agend/channel/access-manager";
+import { MessageQueue } from "@suzuke/agend/channel/message-queue";
 
 const DISCORD_MAX_LENGTH = 2000;
 

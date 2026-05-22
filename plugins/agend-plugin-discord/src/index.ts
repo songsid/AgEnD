@@ -7,9 +7,9 @@
  *   channel:
  *     type: discord
  */
-import type { ChannelAdapter } from "@songsid/agend/channel";
-import type { ChannelConfig } from "@songsid/agend/types";
-import type { AccessManager } from "@songsid/agend/channel/access-manager";
+import type { ChannelAdapter } from "@suzuke/agend/channel";
+import type { ChannelConfig } from "@suzuke/agend/types";
+import type { AccessManager } from "@suzuke/agend/channel/access-manager";
 import { DiscordAdapter } from "./discord-adapter.js";
 
 interface AdapterOpts {
