@@ -4,7 +4,7 @@
     <strong>Run a fleet of AI coding agents from your phone.</strong>
   </p>
   <p align="center">
-    <a href="https://www.npmjs.com/package/@suzuke/agend"><img src="https://img.shields.io/npm/v/@suzuke/agend" alt="npm"></a>
+    <a href="https://www.npmjs.com/package/@songsid/agend"><img src="https://img.shields.io/npm/v/@songsid/agend" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg" alt="Node.js >= 20"></a>
   </p>
@@ -64,24 +64,24 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 One-liner (macOS / Linux — installs Node.js via nvm + tmux + agend, then runs quickstart):
 
 ```bash
-curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
+curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
 Or install manually:
 
 ```bash
 # Option A: One-line install (Linux / macOS / WSL)
-curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
+curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 
 # Option B: Manual install
-npm install -g @suzuke/agend    # 1. Install
+npm install -g @songsid/agend    # 1. Install
 agend quickstart                # 2. Setup — bot token, backend, done
 agend fleet start               # 3. Launch your fleet 🎉
 ```
 
 Open Telegram, send a message to your bot, and start coding from your phone.
 
-> **Discord?** `agend quickstart` supports Discord too — install the plugin first: `npm install -g @suzuke/agend-plugin-discord`. See [Discord setup guide](docs/features.md#discord-adapter-mvp).
+> **Discord?** `agend quickstart` supports Discord too — install the plugin first: `npm install -g @songsid/agend-plugin-discord`. See [Discord setup guide](docs/features.md#discord-adapter-mvp).
 
 ## How It Works
 
@@ -131,7 +131,7 @@ graph LR
 > [interop]
 > appendWindowsPath=false
 > ```
-> Then restart WSL (`wsl --shutdown`). Install with: `curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash`
+> Then restart WSL (`wsl --shutdown`). Install with: `curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash`
 
 ## Documentation
 
@@ -148,7 +148,7 @@ ClassicBot lets users start AI agents in any Discord text channel using slash co
 
 ```bash
 # 1. Install Discord plugin
-npm install -g @suzuke/agend-plugin-discord
+npm install -g @songsid/agend-plugin-discord
 
 # 2. Run quickstart (select Discord)
 agend quickstart
