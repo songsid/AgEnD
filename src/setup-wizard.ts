@@ -765,7 +765,7 @@ export async function runSetupWizard(): Promise<void> {
   console.log(`  Bot: ${channelType === "telegram" ? "@" : ""}${botUsername}`);
   console.log(`  Config: ${FLEET_CONFIG_PATH}`);
   if (channelType === "discord") {
-    console.log(`  ${dim("Install Discord plugin: npm install -g @suzuke/agend-plugin-discord")}`);
+    console.log(`  ${dim("Install Discord plugin: npm install -g @songsid/agend-plugin-discord")}`);
   }
   console.log();
   console.log(`  Start the fleet:`);
