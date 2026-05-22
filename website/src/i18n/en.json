@@ -67,10 +67,10 @@
     "title": "Up and running in minutes",
     "oneLiner": {
       "label": "One-liner (macOS / Linux)",
-      "cmd": "curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash",
+      "cmd": "curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash",
       "note": "Installs Node.js (via nvm), tmux, agend, then launches the wizard. Or step through manually below."
     },
-    "step1": { "label": "Install", "cmd": "npm install -g @suzuke/agend" },
+    "step1": { "label": "Install", "cmd": "npm install -g @songsid/agend" },
     "step2": { "label": "Setup", "cmd": "agend quickstart" },
     "step3": { "label": "Launch", "cmd": "agend fleet start" },
     "footer": "Open Telegram, send a message, start coding from your phone."

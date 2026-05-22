@@ -269,7 +269,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 
 1. **Install the Discord plugin:**
    ```bash
-   npm install -g @suzuke/agend-plugin-discord
+   npm install -g @songsid/agend-plugin-discord
    ```
 
 2. **Create a Discord bot** at [Discord Developer Portal](https://discord.com/developers/applications):
