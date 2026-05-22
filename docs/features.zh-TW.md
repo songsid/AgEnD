@@ -266,7 +266,7 @@ defaults:
 
 1. **安裝 Discord 外掛：**
    ```bash
-   npm install -g @suzuke/agend-plugin-discord
+   npm install -g @songsid/agend-plugin-discord
    ```
 
 2. **建立 Discord bot**，前往 [Discord Developer Portal](https://discord.com/developers/applications)：

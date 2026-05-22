@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # AgEnD Bootstrap Installer
-# Usage: curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
+# Usage: curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 #
 # This script:
 # 1. Detects OS + architecture
@@ -10,7 +10,7 @@
 # 5. Detects backend CLIs
 # 6. Runs agend quickstart
 #
-# Source: https://github.com/suzuke/AgEnD/blob/main/website/public/install.sh
+# Source: https://github.com/songsid/AgEnD/blob/main/website/public/install.sh
 
 set -euo pipefail
 
@@ -170,10 +170,10 @@ if command_exists agend; then
   warn "AgEnD already installed (${CURRENT}), upgrading..."
 fi
 
-npm install -g @suzuke/agend
+npm install -g @songsid/agend
 
 if ! command_exists agend; then
-  error "Installation failed. Try: npm install -g @suzuke/agend"
+  error "Installation failed. Try: npm install -g @songsid/agend"
 fi
 info "AgEnD $(agend --version) installed"
 
