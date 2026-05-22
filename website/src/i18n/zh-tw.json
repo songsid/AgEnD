@@ -67,10 +67,10 @@
     "title": "幾分鐘就能上線",
     "oneLiner": {
       "label": "一行安裝（macOS / Linux）",
-      "cmd": "curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash",
+      "cmd": "curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash",
       "note": "會透過 nvm 裝 Node.js，再裝 tmux、agend，接著直接進設定精靈。或照下面三步手動設定。"
     },
-    "step1": { "label": "安裝", "cmd": "npm install -g @suzuke/agend" },
+    "step1": { "label": "安裝", "cmd": "npm install -g @songsid/agend" },
     "step2": { "label": "設定", "cmd": "agend quickstart" },
     "step3": { "label": "啟動", "cmd": "agend fleet start" },
     "footer": "打開 Telegram，傳訊息，開始用手機寫 code。"

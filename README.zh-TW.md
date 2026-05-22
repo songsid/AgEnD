@@ -4,7 +4,7 @@
     <strong>用手機管理一整個 AI coding agent 團隊。</strong>
   </p>
   <p align="center">
-    <a href="https://www.npmjs.com/package/@suzuke/agend"><img src="https://img.shields.io/npm/v/@suzuke/agend" alt="npm"></a>
+    <a href="https://www.npmjs.com/package/@songsid/agend"><img src="https://img.shields.io/npm/v/@songsid/agend" alt="npm"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
     <a href="https://nodejs.org"><img src="https://img.shields.io/badge/Node.js-%3E%3D%2020-green.svg" alt="Node.js >= 20"></a>
   </p>
@@ -60,13 +60,13 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 一行安裝（macOS / Linux — 自動裝 Node.js（經 nvm）+ tmux + agend，完成後跑 quickstart）：
 
 ```bash
-curl -fsSL https://suzuke.github.io/AgEnD/install.sh | bash
+curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash
 ```
 
 或手動安裝：
 
 ```bash
-npm install -g @suzuke/agend    # 1. 安裝
+npm install -g @songsid/agend    # 1. 安裝
 agend quickstart                # 2. 設定 — bot token、backend，搞定
 agend fleet start               # 3. 啟動 fleet 🎉
 ```

@@ -1,6 +1,6 @@
 # Plugin Development Guide
 
-Build channel adapter plugins for AgEnD. This guide uses the Discord adapter (`@suzuke/agend-plugin-discord`) as a reference implementation.
+Build channel adapter plugins for AgEnD. This guide uses the Discord adapter (`@songsid/agend-plugin-discord`) as a reference implementation.
 
 ## Plugin Architecture
 
@@ -10,7 +10,7 @@ AgEnD's plugin system lets you add new channel adapters (Slack, Matrix, LINE, et
 fleet.yaml: channel.type: "slack"
     ↓
 factory.ts tries import():
-    1. @suzuke/agend-plugin-slack   (scoped official)
+    1. @songsid/agend-plugin-slack   (scoped official)
     2. agend-plugin-slack           (community)
     3. agend-adapter-slack          (legacy)
     4. slack                        (bare name)
@@ -41,7 +41,7 @@ npm install -D typescript
     "build": "tsc"
   },
   "peerDependencies": {
-    "@suzuke/agend": ">=1.14.0"
+    "@songsid/agend": ">=1.14.0"
   },
   "dependencies": {
     "myapp-sdk": "^1.0.0"
@@ -50,7 +50,7 @@ npm install -D typescript
 ```
 
 Key points:
-- `peerDependencies` on `@suzuke/agend` — don't bundle AgEnD itself
+- `peerDependencies` on `@songsid/agend` — don't bundle AgEnD itself
 - `"type": "module"` — AgEnD uses ESM
 - Your channel SDK goes in `dependencies`
 
@@ -78,8 +78,8 @@ Key points:
 **src/index.ts** — Plugin entry point:
 
 ```typescript
-import type { ChannelAdapter } from "@suzuke/agend/channel";
-import type { ChannelConfig } from "@suzuke/agend/types";
+import type { ChannelAdapter } from "@songsid/agend/channel";
+import type { ChannelConfig } from "@songsid/agend/types";
 import { MyAppAdapter } from "./myapp-adapter.js";
 
 interface AdapterOpts {
@@ -115,9 +115,9 @@ import type {
   PermissionPrompt,
   Choice,
   AlertData,
-} from "@suzuke/agend/channel";
-import type { AccessManager } from "@suzuke/agend/channel/access-manager";
-import { MessageQueue } from "@suzuke/agend/channel/message-queue";
+} from "@songsid/agend/channel";
+import type { AccessManager } from "@songsid/agend/channel/access-manager";
+import { MessageQueue } from "@songsid/agend/channel/message-queue";
 
 export class MyAppAdapter extends EventEmitter implements ChannelAdapter {
   readonly type = "myapp";
@@ -231,12 +231,12 @@ Your plugin can import these from the main package:
 
 ```typescript
 // Types
-import type { ChannelAdapter, SendOpts, SentMessage, ... } from "@suzuke/agend/channel";
-import type { ChannelConfig } from "@suzuke/agend/types";
+import type { ChannelAdapter, SendOpts, SentMessage, ... } from "@songsid/agend/channel";
+import type { ChannelConfig } from "@songsid/agend/types";
 
 // Utilities
-import type { AccessManager } from "@suzuke/agend/channel/access-manager";
-import { MessageQueue } from "@suzuke/agend/channel/message-queue";
+import type { AccessManager } from "@songsid/agend/channel/access-manager";
+import { MessageQueue } from "@songsid/agend/channel/message-queue";
 ```
 
 **MessageQueue** handles rate limiting and message ordering. Wrap your send/edit operations:
@@ -250,7 +250,7 @@ this.queue = new MessageQueue({ send, edit, sendFile });
 
 AgEnD's `factory.ts` resolves plugins in this order:
 
-1. `@suzuke/agend-plugin-{type}` — Scoped official plugins
+1. `@songsid/agend-plugin-{type}` — Scoped official plugins
 2. `agend-plugin-{type}` — Community plugins
 3. `agend-adapter-{type}` — Legacy naming convention
 4. `{type}` — Bare package name
