@@ -600,7 +600,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const token = (this.bot as unknown as { token: string }).token;
     const url = `${this.apiRoot}/file/bot${token}/${filePath}`;
 
-    const filename = filePath.split("/").pop() ?? fileId;
+    const filename = `${Date.now()}-${fileId.slice(-8)}-${filePath.split("/").pop() ?? fileId}`;
     const localPath = join(this.inboxDir, filename);
 
     // Download using fetch
