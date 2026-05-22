@@ -193,7 +193,15 @@ if command_exists agend; then
   warn "AgEnD already installed (${CURRENT}), upgrading..."
 fi
 
-npm install -g @songsid/agend @songsid/agend-plugin-discord
+# Detect if npm global dir needs sudo
+NPM_PREFIX=$(npm config get prefix 2>/dev/null || echo "/usr/local")
+if [ -w "$NPM_PREFIX/lib/node_modules" ] 2>/dev/null || [ -w "$NPM_PREFIX/lib" ] 2>/dev/null; then
+  SUDO=""
+else
+  SUDO="sudo"
+fi
+
+$SUDO npm install -g @songsid/agend @songsid/agend-plugin-discord
 
 if ! command_exists agend; then
   error "Installation failed. Try: npm install -g @songsid/agend"
