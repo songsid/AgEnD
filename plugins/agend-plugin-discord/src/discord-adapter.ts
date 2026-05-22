@@ -549,7 +549,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     if (!url) throw new Error(`No URL for attachment: ${fileId}`);
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-    const filename = fileId + "_" + (url.split("/").pop()?.split("?")[0] ?? "file");
+    const filename = `${Date.now()}-${fileId.slice(-8)}-${url.split("/").pop()?.split("?")[0] ?? "file"}`;
     const localPath = join(this.inboxDir, filename);
     const dest = createWriteStream(localPath);
     const body = response.body;
