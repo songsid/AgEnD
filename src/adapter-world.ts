@@ -9,6 +9,7 @@ import type { ChannelConfig } from "./types.js";
  */
 export class AdapterWorld {
   botUsername?: string;
+  botUserId?: string;
 
   constructor(
     readonly id: string,
