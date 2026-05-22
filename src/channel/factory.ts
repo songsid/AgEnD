@@ -50,7 +50,8 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
 
   // Plugin adapters — try multiple package name conventions
   const candidates = [
-    `@suzuke/agend-plugin-${config.type}`, // scoped official plugin
+    `@songsid/agend-plugin-${config.type}`, // scoped official plugin
+    `@suzuke/agend-plugin-${config.type}`,  // upstream plugin
     `agend-plugin-${config.type}`,          // community plugin
     `agend-adapter-${config.type}`,         // legacy convention
     config.type,                             // bare name
@@ -69,6 +70,6 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
 
   throw new Error(
     `Channel adapter "${config.type}" not found. ` +
-    `Install the plugin: npm install -g @suzuke/agend-plugin-${config.type}`
+    `Install the plugin: npm install -g @songsid/agend-plugin-${config.type}`
   );
 }
