@@ -170,12 +170,13 @@ if command_exists agend; then
   warn "AgEnD already installed (${CURRENT}), upgrading..."
 fi
 
-npm install -g @songsid/agend
+npm install -g @songsid/agend @songsid/agend-plugin-discord
 
 if ! command_exists agend; then
   error "Installation failed. Try: npm install -g @songsid/agend"
 fi
 info "AgEnD $(agend --version) installed"
+info "Discord plugin installed"
 
 # ── Step 5: Detect backend ───────────────────────────────
 
