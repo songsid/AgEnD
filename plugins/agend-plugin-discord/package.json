@@ -9,7 +9,7 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@songsid/agend": ">=0.0.1"
+    "@suzuke/agend": ">=1.13.0"
   },
   "dependencies": {
     "discord.js": "^14.25.1"
