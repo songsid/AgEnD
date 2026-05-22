@@ -9,11 +9,16 @@
     "build": "tsc"
   },
   "peerDependencies": {
-    "@suzuke/agend": ">=1.13.0"
+    "@songsid/agend": ">=0.0.1"
   },
   "dependencies": {
     "discord.js": "^14.25.1"
   },
-  "keywords": ["agend", "plugin", "discord", "adapter"],
+  "keywords": [
+    "agend",
+    "plugin",
+    "discord",
+    "adapter"
+  ],
   "license": "MIT"
 }
