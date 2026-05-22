@@ -201,6 +201,12 @@ else
   SUDO="sudo"
 fi
 
+# Remove old @suzuke/agend if present (bin name conflict)
+if npm list -g @suzuke/agend >/dev/null 2>&1; then
+  warn "Removing old @suzuke/agend to avoid conflicts..."
+  $SUDO npm uninstall -g @suzuke/agend 2>/dev/null || true
+fi
+
 $SUDO npm install -g @songsid/agend @songsid/agend-plugin-discord
 
 if ! command_exists agend; then
