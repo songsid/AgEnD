@@ -1,5 +1,6 @@
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -94,10 +95,26 @@ export class AntigravityBackend implements CliBackend {
   }
 
   getStartupDialogs(): StartupDialog[] {
-    return [];
+    return [
+      { pattern: /Do you trust the contents|Yes, I trust this folder/i, keys: ["Enter"], description: "Antigravity trust folder dialog" },
+    ];
   }
 
   getRuntimeDialogs(): StartupDialog[] {
     return [];
+  }
+
+  preTrust(workDir: string): void {
+    const trustFile = join(homedir(), ".gemini", "trustedFolders.json");
+    let trusted: Record<string, string> = {};
+    try { trusted = JSON.parse(readFileSync(trustFile, "utf-8")); } catch {}
+    let changed = false;
+    if (!trusted[workDir]) { trusted[workDir] = "TRUST_FOLDER"; changed = true; }
+    const parent = dirname(workDir);
+    if (parent !== workDir && !trusted[parent]) { trusted[parent] = "TRUST_PARENT"; changed = true; }
+    if (changed) {
+      mkdirSync(dirname(trustFile), { recursive: true });
+      writeFileSync(trustFile, JSON.stringify(trusted, null, 2));
+    }
   }
 }
