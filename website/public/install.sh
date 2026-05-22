@@ -127,6 +127,29 @@ if [ "$NODE_OK" = false ]; then
     error "Failed to install Node.js. Please install manually: https://nodejs.org"
   fi
   info "Node.js $(node -v) installed via nvm"
+
+  # Ensure nvm loads in login shells (some .bashrc files exit early for non-interactive shells)
+  ensure_nvm_in_profile() {
+    local profile_file=""
+    if [ -f "$HOME/.bash_profile" ]; then
+      profile_file="$HOME/.bash_profile"
+    elif [ -f "$HOME/.profile" ]; then
+      profile_file="$HOME/.profile"
+    else
+      profile_file="$HOME/.profile"
+    fi
+
+    if ! grep -q "NVM_DIR" "$profile_file" 2>/dev/null; then
+      cat >> "$profile_file" << 'EOF'
+
+# NVM (added by AgEnD installer)
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+EOF
+      info "Added nvm to $profile_file for new shell sessions"
+    fi
+  }
+  ensure_nvm_in_profile
 fi
 
 # Ensure nvm node is first in PATH on WSL
@@ -206,6 +229,9 @@ fi
 echo -e "\n${BOLD}═══ Installation Complete ═══${NC}\n"
 echo "  Run the setup wizard:"
 echo -e "  ${BOLD}agend quickstart${NC}\n"
+
+warn "If 'agend' is not found in a new terminal, run: source ~/.profile"
+echo ""
 
 # Auto-launch if interactive terminal
 if [ -t 0 ] && [ -t 1 ]; then
