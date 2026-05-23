@@ -188,6 +188,17 @@ fi
 
 step 4 "Installing AgEnD"
 
+# Ensure build tools are available (needed for native modules like better-sqlite3)
+if ! command_exists g++; then
+  echo "  Installing build tools (needed for native modules)..."
+  case "$PKG_MGR" in
+    brew)   ;; # macOS Xcode CLT usually provides this
+    apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq build-essential python3 ;;
+    dnf)    $SUDO dnf groupinstall -y "Development Tools" ;;
+    pacman) $SUDO pacman -S --noconfirm base-devel ;;
+  esac
+fi
+
 if command_exists agend; then
   CURRENT=$(agend --version 2>/dev/null || echo "unknown")
   warn "AgEnD already installed (${CURRENT}), upgrading..."
