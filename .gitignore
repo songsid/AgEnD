@@ -22,3 +22,6 @@ website/.astro/
 e2e/results/
 .kiro/settings/mcp.json
 plugins/agend-plugin-discord/package-lock.json
+
+# NPM auth (generated during publish, auto-cleaned)
+.npmrc
