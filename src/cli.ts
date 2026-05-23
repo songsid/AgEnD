@@ -804,57 +804,120 @@ access
 program
   .command("update")
   .description("Update AgEnD to latest version and restart service")
-  .option("--skip-install", "Skip npm install, only restart service")
-  .action(async (opts: { skipInstall?: boolean }) => {
-    const { detectPlatform } = await import("./service-installer.js");
+  .option("--version <ver>", "Specific version to install", "latest")
+  .action(async (opts: { version: string }) => {
+    const { installService, activateService, detectPlatform } = await import("./service-installer.js");
+    const { spawnSync, spawn: spawnAsync } = await import("node:child_process");
+    const ver = opts.version;
+    const pkg = "@songsid/agend";
+    const pluginPkg = "@songsid/agend-plugin-discord";
 
-    if (!opts.skipInstall) {
-      console.log("  Updating AgEnD...");
+    console.log(`\n  Updating AgEnD to ${ver}...\n`);
+
+    // ── Check if npm global needs sudo ──
+    let needsSudo = false;
+    try {
+      const prefix = execSync("npm config get prefix", { encoding: "utf-8" }).trim();
+      const { accessSync, constants } = await import("node:fs");
+      try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
+    } catch { /* assume no sudo needed */ }
+
+    let npmCmd: string;
+    if (needsSudo) {
+      // ── nvm path: install without sudo ──
+      const nvmDir = join(homedir(), ".nvm");
+      const nvmSh = join(nvmDir, "nvm.sh");
+      if (!existsSync(nvmSh)) {
+        console.log("  Installing nvm (npm global requires sudo)...");
+        try {
+          execSync("curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash", { stdio: "inherit" });
+        } catch {
+          console.error("  Failed to install nvm. Install manually: https://github.com/nvm-sh/nvm");
+          process.exit(1);
+        }
+      }
+      console.log("  Using nvm to install Node 22...");
+      const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
       try {
-        execSync("npm install -g @songsid/agend@latest", { stdio: "inherit" });
-      } catch (err) {
-        console.error("  Failed to update. Try: npm install -g @songsid/agend@latest");
+        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}@${ver} ${pluginPkg}@${ver}'`, { stdio: "inherit" });
+      } catch {
+        console.error("  Failed to install via nvm.");
         process.exit(1);
       }
-    }
-
-    const plat = detectPlatform();
-    const label = "com.agend.fleet";
-
-    if (plat === "macos") {
-      const plistPath = join(homedir(), "Library/LaunchAgents", `${label}.plist`);
-      if (existsSync(plistPath)) {
-        const uid = process.getuid?.() ?? 501;
-        console.log("  Restarting launchd service...");
-        try {
-          execSync(`launchctl kickstart -k gui/${uid}/${label}`, { stdio: "inherit" });
-          console.log("  ✓ Service restarted with new version");
-        } catch {
-          console.log("  Failed to restart service. Try: launchctl kickstart -k gui/" + uid + "/" + label);
-        }
-        return;
-      }
+      // Try to remove old system binary
+      console.log("  Attempting to remove old system-level install...");
+      spawnSync("sudo", ["npm", "uninstall", "-g", pkg], { stdio: "inherit" });
+      npmCmd = `bash -c 'source ${nvmSh} && nvm use 22'`;
     } else {
+      // ── Direct install ──
       try {
-        execSync(`systemctl --user restart ${label}`, { stdio: "inherit" });
-        console.log("  ✓ Service restarted with new version");
-        return;
-      } catch { /* no systemd service */ }
-    }
-
-    // Fallback: signal running daemon
-    const pidPath = join(DATA_DIR, "fleet.pid");
-    if (existsSync(pidPath)) {
-      const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-      try {
-        process.kill(pid, "SIGUSR1");
-        console.log("  ✓ Sent restart signal to running fleet (PID " + pid + ")");
+        execSync(`npm install -g ${pkg}@${ver} ${pluginPkg}@${ver}`, { stdio: "inherit" });
       } catch {
-        console.log("  Fleet not running. Start with: agend fleet start");
+        console.error(`  Failed to update. Try: npm install -g ${pkg}@${ver}`);
+        process.exit(1);
       }
-    } else {
-      console.log("  No service or running fleet found. Start with: agend fleet start");
+      npmCmd = "";
     }
+
+    // ── Verify installation ──
+    console.log("\n  Verifying installation...");
+    const verifyResult = spawnSync("agend", ["--version"], { encoding: "utf-8", timeout: 5000 });
+    if (verifyResult.status !== 0) {
+      console.error("  ✗ Verification failed: agend not found in PATH after install.");
+      if (needsSudo) console.error("  You may need to add nvm to your shell profile and restart.");
+      process.exit(1);
+    }
+    const newVersion = (verifyResult.stdout ?? "").trim();
+    console.log(`  ✓ Installed: ${newVersion}`);
+
+    // ── Update service file ──
+    const plat = detectPlatform();
+    const agendPath = spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
+    if (agendPath) {
+      try {
+        const svcPath = installService({
+          label: "com.agend.fleet",
+          execPath: agendPath,
+          path: process.env.PATH!,
+          workingDirectory: DATA_DIR,
+          logPath: join(DATA_DIR, "fleet.log"),
+        });
+        console.log(`  ✓ Service updated: ${svcPath}`);
+      } catch (e) {
+        console.log(`  ⚠ Service file update failed (non-fatal): ${(e as Error).message}`);
+      }
+    }
+
+    // ── Restart fleet ──
+    const pidPath = join(DATA_DIR, "fleet.pid");
+    if (!existsSync(pidPath)) {
+      console.log("\n  Fleet not running. Start with: agend fleet start\n");
+      return;
+    }
+
+    console.log("  Restarting fleet...");
+    if (plat === "macos") {
+      const uid = process.getuid?.() ?? 501;
+      const label = "com.agend.fleet";
+      try {
+        execSync(`launchctl kickstart -k gui/${uid}/${label}`, { stdio: "inherit", timeout: 15000 });
+        console.log("  ✓ Service restarted\n");
+        return;
+      } catch { /* fall through to manual restart */ }
+    } else {
+      try {
+        execSync("systemctl --user restart com.agend.fleet", { stdio: "inherit", timeout: 15000 });
+        console.log("  ✓ Service restarted\n");
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Fallback: background stop+start
+    const child = spawnAsync("bash", ["-c", "sleep 2 && agend fleet stop 2>/dev/null; agend fleet start"], {
+      detached: true, stdio: "ignore",
+    });
+    child.unref();
+    console.log("  ✓ Fleet restarting in background\n");
   });
 
 program
