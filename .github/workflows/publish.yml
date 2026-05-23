@@ -32,7 +32,7 @@ jobs:
       - name: Build Discord plugin
         working-directory: plugins/agend-plugin-discord
         run: |
-          npm ci
+          npm install
           npm run build
       - name: Swap Discord plugin names
         working-directory: plugins/agend-plugin-discord
