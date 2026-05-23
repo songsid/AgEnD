@@ -2401,7 +2401,10 @@ When users create specialized instances, suggest these configurations:
     // Collab mode: trigger on @mention of our bot, log all messages
     if (isCollabMode) {
       // Log every message (including other bots) to chat-logs
-      ClassicChannelManager.logMessage(instanceName, msg.username, text, msg.timestamp, msg.replyToText);
+      const collabAttachTag = msg.attachments?.length
+        ? ` [${msg.attachments.map(a => `${a.kind === "photo" ? "📷" : "📎"} ${a.filename || a.kind}`).join(", ")}]`
+        : "";
+      ClassicChannelManager.logMessage(instanceName, msg.username, text + collabAttachTag, msg.timestamp, msg.replyToText);
       this.logger.info({ instanceName, user: msg.username, textLen: text.length, attachments: msg.attachments?.length ?? 0, source: msg.source }, "Collab mode message");
 
       // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here
