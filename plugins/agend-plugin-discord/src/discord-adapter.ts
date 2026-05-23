@@ -173,24 +173,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         filename: att.name ?? undefined,
       }));
 
-      // Collect stickers as photo attachments (skip Lottie format which is JSON)
-      for (const [, sticker] of msg.stickers) {
-        if (sticker.format === 3) continue; // Lottie = not a raster image
-        const stickerUrl = sticker.url;
-        if (stickerUrl) {
-          const stickerId = `sticker-${sticker.id}`;
-          const ext = sticker.format === 4 ? "gif" : "png";
-          attachments.push({
-            kind: "photo" as const,
-            fileId: stickerId,
-            mime: `image/${ext}`,
-            size: 0,
-            filename: `${sticker.name}.${ext}`,
-          });
-          this.attachmentUrls.set(stickerId, stickerUrl);
-        }
-      }
-
       // Store attachment URLs for later download
       for (const att of msg.attachments.values()) {
         this.attachmentUrls.set(att.id, att.url);
