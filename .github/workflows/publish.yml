@@ -40,7 +40,9 @@ jobs:
           sed -i 's/"name": "@suzuke\/agend-plugin-discord"/"name": "@songsid\/agend-plugin-discord"/' package.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
           sed -i 's/@suzuke\/agend/@songsid\/agend/g' package.json
+          sed -i 's/">=1.13.0"/">='$VERSION'"/' package.json
           find dist -name '*.js' -exec sed -i 's/@suzuke\/agend/@songsid\/agend/g' {} +
+          find dist -name '*.d.ts' -exec sed -i 's/@suzuke\/agend/@songsid\/agend/g' {} +
       - name: Publish Discord plugin
         working-directory: plugins/agend-plugin-discord
         run: npm publish --access public
