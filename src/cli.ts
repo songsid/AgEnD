@@ -811,6 +811,7 @@ program
     const ver = opts.version;
     const pkg = "@songsid/agend";
     const pluginPkg = "@songsid/agend-plugin-discord";
+    const pluginVer = ver === "latest" ? "latest" : "latest"; // plugin uses latest to avoid version mismatch
 
     console.log(`\n  Updating AgEnD to ${ver}...\n`);
 
@@ -822,7 +823,6 @@ program
       try { accessSync(prefix, constants.W_OK); } catch { needsSudo = true; }
     } catch { /* assume no sudo needed */ }
 
-    let npmCmd: string;
     if (needsSudo) {
       // ── nvm path: install without sudo ──
       const nvmDir = join(homedir(), ".nvm");
@@ -839,32 +839,38 @@ program
       console.log("  Using nvm to install Node 22...");
       const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
       try {
-        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}@${ver} ${pluginPkg}@${ver}'`, { stdio: "inherit" });
+        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}@${ver} ${pluginPkg}@${pluginVer}'`, { stdio: "inherit" });
       } catch {
         console.error("  Failed to install via nvm.");
         process.exit(1);
       }
       // Try to remove old system binary
-      console.log("  Attempting to remove old system-level install...");
+      console.log("  Note: removing old system install (may require sudo)...");
       spawnSync("sudo", ["npm", "uninstall", "-g", pkg], { stdio: "inherit" });
-      npmCmd = `bash -c 'source ${nvmSh} && nvm use 22'`;
     } else {
       // ── Direct install ──
       try {
-        execSync(`npm install -g ${pkg}@${ver} ${pluginPkg}@${ver}`, { stdio: "inherit" });
+        execSync(`npm install -g ${pkg}@${ver} ${pluginPkg}@${pluginVer}`, { stdio: "inherit" });
       } catch {
         console.error(`  Failed to update. Try: npm install -g ${pkg}@${ver}`);
         process.exit(1);
       }
-      npmCmd = "";
     }
 
     // ── Verify installation ──
     console.log("\n  Verifying installation...");
-    const verifyResult = spawnSync("agend", ["--version"], { encoding: "utf-8", timeout: 5000 });
-    if (verifyResult.status !== 0) {
+    const nvmSh2 = join(homedir(), ".nvm", "nvm.sh");
+    const agendPath = needsSudo
+      ? spawnSync("bash", ["-c", `source ${nvmSh2} && nvm use 22 > /dev/null 2>&1 && which agend`], { encoding: "utf-8" }).stdout?.trim()
+      : spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
+    if (!agendPath) {
       console.error("  ✗ Verification failed: agend not found in PATH after install.");
       if (needsSudo) console.error("  You may need to add nvm to your shell profile and restart.");
+      process.exit(1);
+    }
+    const verifyResult = spawnSync(agendPath, ["--version"], { encoding: "utf-8", timeout: 5000 });
+    if (verifyResult.status !== 0) {
+      console.error("  ✗ Verification failed: agend --version returned error.");
       process.exit(1);
     }
     const newVersion = (verifyResult.stdout ?? "").trim();
@@ -872,7 +878,6 @@ program
 
     // ── Update service file ──
     const plat = detectPlatform();
-    const agendPath = spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
     if (agendPath) {
       try {
         const svcPath = installService({
