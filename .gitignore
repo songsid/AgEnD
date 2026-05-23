@@ -25,3 +25,9 @@ plugins/agend-plugin-discord/package-lock.json
 
 # NPM auth (generated during publish, auto-cleaned)
 .npmrc
+
+# Session files (Claude Code / OpenCode)
+*.session.json
+20[0-9][0-9][01][0-9][0-3][0-9].json
+opencode.json
+.kiro/settings/lsp.json
