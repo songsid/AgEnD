@@ -175,3 +175,98 @@ templates:        # Reusable fleet deployment templates
 - `describe_instance("<name>")` — shows status, last activity, description
 - `tmux capture-pane -t agend:<name> -p | tail -20` — see actual CLI screen
 - Look for `X% !>` prompt = idle, `Thinking...` = busy, `error` = needs attention
+
+## 10. Safe Update & Restart
+
+**Update AgEnD to latest version:**
+```bash
+agend update              # update to latest
+agend update --version 0.0.6  # pin specific version
+```
+
+The `agend update` command automatically:
+- Detects if sudo is needed (switches to nvm if so)
+- Installs new version
+- Verifies installation succeeded
+- Updates service file (ExecStart path)
+- Restarts fleet
+
+**Manual restart (if update isn't needed):**
+```bash
+agend fleet restart       # graceful restart (SIGUSR2) — keeps sessions, reloads config
+agend fleet stop && agend fleet start  # full restart — new code takes effect
+```
+
+**NEVER do:**
+- `kill -9` on the fleet process (corrupts state)
+- Edit fleet.yaml while fleet is restarting
+- Run `agend update` while another update is in progress
+
+## 11. Model Names by Backend
+
+Models are specified in fleet.yaml `defaults.model` or per-instance `model` field.
+
+| Backend | Model Names | Default |
+|---------|-------------|---------|
+| **kiro-cli** | `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-haiku-3-20250307` | auto (latest) |
+| **claude-code** | `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]` | sonnet |
+| **gemini-cli** | `gemini-2.5-pro`, `gemini-2.5-flash` | auto |
+| **codex** | `gpt-4o`, `o3`, `o4-mini` | gpt-4o |
+| **opencode** | depends on provider config | — |
+
+**Important:** kiro-cli uses FULL model IDs (e.g. `claude-sonnet-4-20250514`), NOT short names like `sonnet`. Claude Code uses short names. Don't mix them up.
+
+Example fleet.yaml:
+```yaml
+defaults:
+  backend: kiro-cli
+  model: claude-sonnet-4-20250514
+
+instances:
+  heavy-task:
+    model: claude-opus-4-20250514
+```
+
+## 12. Config Validation
+
+**Before editing fleet.yaml or classicBot.yaml, always validate after:**
+
+```bash
+# Validate fleet.yaml syntax
+agend fleet start --dry-run 2>&1 | head -5
+# Or simply:
+node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs.readFileSync('$HOME/.agend/fleet.yaml', 'utf-8')); console.log('✓ valid YAML')"
+```
+
+**Common fleet.yaml mistakes:**
+- Missing `channel.mode` field → error on start
+- Wrong indentation (YAML is indent-sensitive)
+- `topic_id` as string vs number (both work, but be consistent)
+- `backend` typo (valid: `claude-code`, `gemini-cli`, `codex`, `opencode`, `kiro-cli`)
+- `model` using wrong format for the backend
+
+**classicBot.yaml validation:**
+```bash
+node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs.readFileSync('$HOME/.agend/classicBot.yaml', 'utf-8')); console.log('✓ valid YAML')"
+```
+
+**Common classicBot.yaml mistakes:**
+- `allowed_guilds` values must be strings (Discord IDs are too large for YAML integers)
+- Channel IDs as keys must be quoted strings
+- Missing `defaults` section (optional but recommended)
+
+**After editing config:**
+```bash
+agend reload              # hot-reload (SIGHUP) — adds/removes instances without restart
+agend fleet restart       # if channel/defaults changed — needs full restart
+```
+
+## 13. What NOT to Do (Dangerous Operations)
+
+- **Don't delete `~/.agend/fleet.yaml`** while fleet is running
+- **Don't delete `~/.agend/fleet.pid`** manually — use `agend fleet stop`
+- **Don't kill tmux server** (`tmux kill-server`) — kills all agent sessions
+- **Don't edit instance output.log** — it's actively written by the daemon
+- **Don't run two fleet processes** on the same AGEND_HOME — port/socket conflicts
+- **Don't change `channel.group_id`** without re-creating all topics — routing breaks
+- **Don't remove an instance from fleet.yaml** that has active work — stop it first
