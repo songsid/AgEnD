@@ -104,7 +104,7 @@ graph LR
 | OpenAI Codex | `npm i -g @openai/codex` | `codex`（ChatGPT 登入）或 `OPENAI_API_KEY` |
 | Gemini CLI | `npm i -g @google/gemini-cli` | `gemini`（Google OAuth） |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode`（設定 provider） |
-| Kiro CLI | `brew install --cask kiro-cli` | `kiro-cli login`（AWS Builder ID） |
+| Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login`（AWS Builder ID） |
 
 ## 系統需求
 
