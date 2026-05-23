@@ -224,7 +224,7 @@ if ! command_exists agend; then
   error "Installation failed. Try: npm install -g @songsid/agend"
 fi
 info "AgEnD $(agend --version) installed"
-info "Discord plugin installed"
+info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/dev/null | grep agend-plugin-discord | sed 's/.*@//' || echo 'unknown') installed"
 
 # ── Step 5: Detect backend ───────────────────────────────
 
