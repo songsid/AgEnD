@@ -155,6 +155,7 @@ export function startService(): boolean {
       execSync(`launchctl bootstrap ${domain} ${plistPath}`, { stdio: "inherit" });
       execSync(`launchctl enable ${domain}/${SERVICE_LABEL}`, { stdio: "inherit" });
     } else {
+      try { execSync("systemctl --user daemon-reload", { stdio: "pipe" }); } catch {}
       execSync(`systemctl --user start ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
     return true;

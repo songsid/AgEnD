@@ -911,6 +911,7 @@ program
       } catch { /* fall through to manual restart */ }
     } else {
       try {
+        execSync("systemctl --user daemon-reload", { stdio: "pipe", timeout: 5000 });
         execSync("systemctl --user restart com.agend.fleet", { stdio: "inherit", timeout: 15000 });
         console.log("  ✓ Service restarted\n");
         return;
