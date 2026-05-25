@@ -270,3 +270,28 @@ agend fleet restart       # if channel/defaults changed — needs full restart
 - **Don't run two fleet processes** on the same AGEND_HOME — port/socket conflicts
 - **Don't change `channel.group_id`** without re-creating all topics — routing breaks
 - **Don't remove an instance from fleet.yaml** that has active work — stop it first
+
+## 14. Access Mode Reference
+
+fleet.yaml `channel.access.mode` valid values:
+
+| Mode | Behavior |
+|------|----------|
+| `locked` | Only `allowed_users` can interact (default) |
+| `pairing` | Users can request access via `/pair` command |
+| `open` | All users can interact, no restrictions |
+
+Example:
+```yaml
+channel:
+  access:
+    mode: open          # everyone can use
+    # mode: locked      # whitelist only (add allowed_users)
+    # mode: pairing     # users self-register via /pair
+    allowed_users: [123456789]  # only needed for locked/pairing
+```
+
+**When to use each:**
+- `locked` — production, private bot, security-sensitive
+- `pairing` — semi-open, users request access with admin approval
+- `open` — public demo, shared team bot, testing
