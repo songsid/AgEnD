@@ -10,7 +10,7 @@ interface PendingCode {
 }
 
 interface AccessState {
-  mode?: "pairing" | "locked";
+  mode?: "pairing" | "locked" | "open";
   allowed_users: (number | string)[];
   pending_codes: PendingCode[];
 }
@@ -72,6 +72,7 @@ export class AccessManager {
   }
 
   isAllowed(userId: number | string): boolean {
+    if (this.getMode() === "open") return true;
     const key = String(userId);
     return this.state.allowed_users.some(u => String(u) === key);
   }
@@ -169,12 +170,12 @@ export class AccessManager {
     return true;
   }
 
-  setMode(mode: "pairing" | "locked"): void {
+  setMode(mode: "pairing" | "locked" | "open"): void {
     this.state.mode = mode;
     this.persist();
   }
 
-  getMode(): "pairing" | "locked" {
+  getMode(): "pairing" | "locked" | "open" {
     return this.state.mode ?? this.config.mode;
   }
 

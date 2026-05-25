@@ -26,7 +26,7 @@ export interface StatusLineData {
 }
 
 export interface AccessConfig {
-  mode: "pairing" | "locked";
+  mode: "pairing" | "locked" | "open";
   allowed_users: (number | string)[];
   max_pending_codes: number;
   code_expiry_minutes: number;
