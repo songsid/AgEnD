@@ -97,7 +97,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["set_display_name", schemas.SetDisplayNameArgs,
     "Set your display name. This name will be shown in Telegram messages, activity logs, and when other agents refer to you."],
   ["set_description", schemas.SetDescriptionArgs,
-    "Set your role description. This is injected into your system prompt as your role definition. Takes effect on next context rotation."],
+    "Set your role description. This is injected into your system prompt as your role definition. Takes effect on next session restart."],
   ["checkout_repo", schemas.CheckoutRepoArgs,
     "Mount another repo as a read-only worktree. Returns a local path you can Read files from. Use instance name or absolute path as source."],
   ["release_repo", schemas.ReleaseRepoArgs,

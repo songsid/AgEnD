@@ -2249,9 +2249,9 @@ When instances disagree, collect both viewpoints, make a decision, and record it
 
 -----
 
-## Context Rotation Bootstrap
+## After Restart
 
-After your context rotates, run this sequence BEFORE processing any new messages:
+After a restart, run this sequence BEFORE processing any new messages:
 1. list_instances()   → rebuild fleet awareness
 2. list_teams()       → restore team structure
 3. list_decisions()   → reload policies and conventions

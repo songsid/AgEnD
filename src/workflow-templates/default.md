@@ -12,7 +12,7 @@
 
 ## Shared Decisions
 
-- Run `list_decisions` after context rotation to reload fleet-wide decisions.
+- Run `list_decisions` after restart to reload fleet-wide decisions.
 - Use `post_decision` to share architectural choices that affect other instances.
 
 ## Progress Tracking
@@ -28,8 +28,7 @@ Use the **Task Board** (`task` tool) for multi-step work:
 - **Large searches**: use subagents (Agent tool) instead of reading many files directly
 - **Big codebases**: glob/grep for specific targets, don't read entire directories
 - **Long conversations**: summarize decisions into Shared Decisions before context fills up
-- Watch your context usage; when it's high, wrap up current work and let context rotation handle the rest
 
 ## On Startup
 
-- **Read all steering files first**: On startup or context rotation, immediately read all files in `.kiro/steering/` (or equivalent) to load your full skill set and role context. Do not wait for a task to trigger reading them — proactively load all available knowledge before responding to any message.
+- **Read all steering files first**: On startup, immediately read all files in `.kiro/steering/` (or equivalent) to load your full skill set and role context. Do not wait for a task to trigger reading them — proactively load all available knowledge before responding to any message.

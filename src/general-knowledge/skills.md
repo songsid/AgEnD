@@ -169,7 +169,7 @@ templates:        # Reusable fleet deployment templates
 **When to replace (not restart):**
 - Instance keeps hallucinating or referencing stale information
 - Instance is stuck in a tool-call loop
-- Context is >80% full and responses are degrading
+- Context is reported >80% full and responses are degrading (only applicable to backends that report context usage)
 
 **Monitoring instance state:**
 - `describe_instance("<name>")` — shows status, last activity, description
