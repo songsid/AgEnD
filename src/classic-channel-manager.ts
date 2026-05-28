@@ -10,6 +10,7 @@ export interface ClassicChannel {
   name: string;
   instanceName: string;
   backend?: string;
+  model?: string;
   collab?: boolean;
   preTaskCommand?: string;
   createdAt: string;
@@ -17,10 +18,11 @@ export interface ClassicChannel {
 }
 
 interface ClassicBotYaml {
-  defaults?: { backend?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
+  defaults?: { backend?: string; model?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
   channels?: Record<string, {
     name?: string;
     backend?: string;
+    model?: string;
     collab?: boolean;
     pre_task_command?: string;
     createdBy?: string;
@@ -45,7 +47,7 @@ export function classicInstanceName(sanitizedName: string, channelId: string): s
  */
 export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
-  private defaults: { backend?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
+  private defaults: { backend?: string; model?: string; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
 
@@ -69,6 +71,7 @@ export class ClassicChannelManager {
             name,
             instanceName: classicInstanceName(sanitizeInstanceName(name), channelId),
             backend: val.backend,
+            model: val.model,
             collab: val.collab,
             preTaskCommand: val.pre_task_command,
             createdAt: val.createdAt ?? "",
@@ -89,6 +92,7 @@ export class ClassicChannelManager {
     for (const ch of this.channels.values()) {
       const entry: Record<string, unknown> = { name: ch.name, createdBy: ch.createdBy, createdAt: ch.createdAt };
       if (ch.backend) entry.backend = ch.backend;
+      if (ch.model) entry.model = ch.model;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![ch.channelId] = entry as any;
@@ -154,6 +158,12 @@ export class ClassicChannelManager {
   getBackend(channelId: string, fleetDefault?: string): string {
     const ch = this.channels.get(channelId);
     return ch?.backend || this.defaults.backend || fleetDefault || "claude-code";
+  }
+
+  /** Get model for a channel — channel override → defaults → fleet default */
+  getModel(channelId: string, fleetDefault?: string): string | undefined {
+    const ch = this.channels.get(channelId);
+    return ch?.model || this.defaults.model || fleetDefault;
   }
 
   /** Get backend for an instance by name */
