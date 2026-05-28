@@ -2646,7 +2646,7 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Start a classic channel instance with lightweight config */
-  private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string): Promise<void> {
+  private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string, model?: string): Promise<void> {
     if (this.daemons.has(instanceName)) return;
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
@@ -2654,6 +2654,7 @@ When users create specialized instances, suggest these configurations:
       working_directory: join(getAgendHome(), "workspaces", instanceName),
       lightweight: true,
       ...(backend ? { backend } : {}),
+      ...(model ? { model } : {}),
       ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -2671,7 +2672,7 @@ When users create specialized instances, suggest these configurations:
     this.classicChannels.register(channelId, instanceName, channelName || channelId, userId);
     this.routing.register(channelId, { kind: "classic", name: instanceName });
 
-    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId));
+    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId), this.classicChannels.getModel(channelId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
     return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
