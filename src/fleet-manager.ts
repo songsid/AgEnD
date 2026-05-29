@@ -2591,7 +2591,8 @@ When users create specialized instances, suggest these configurations:
     msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
-    const logContext = this.getRecentChatLog(instanceName);
+    const contextLines = this.classicChannels?.getContextLines(msg.chatId) ?? 10;
+    const logContext = this.getRecentChatLog(instanceName, contextLines);
     const fullText = logContext
       ? `[Chat log for context]\n${logContext}\n\n[User message]\n${text}`
       : text;
@@ -2633,15 +2634,15 @@ When users create specialized instances, suggest these configurations:
     this.logger.info({ instanceName, text: text.slice(0, 100) }, "Raw paste sent to classic instance");
   }
 
-  /** Read recent chat log (last ~50 lines) for agent context */
-  private getRecentChatLog(instanceName: string): string | undefined {
+  /** Read recent chat log for agent context */
+  private getRecentChatLog(instanceName: string, maxLines = 10): string | undefined {
     const logDir = ClassicChannelManager.chatLogDir(instanceName);
     const today = new Date().toISOString().slice(0, 10);
     const logFile = join(logDir, `${today}.log`);
     try {
       if (!existsSync(logFile)) return undefined;
       const lines = readFileSync(logFile, "utf-8").trim().split("\n");
-      return lines.slice(-10).join("\n");
+      return lines.slice(-maxLines).join("\n");
     } catch { return undefined; }
   }
 
