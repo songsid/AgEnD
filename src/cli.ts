@@ -880,14 +880,13 @@ program
     const plat = detectPlatform();
     if (agendPath) {
       try {
-        const svcPath = installService({
-          label: "com.agend.fleet",
-          execPath: agendPath,
-          path: process.env.PATH!,
-          workingDirectory: DATA_DIR,
-          logPath: join(DATA_DIR, "fleet.log"),
-        });
-        console.log(`  ✓ Service updated: ${svcPath}`);
+        // Use the NEW binary to install service (old binary's templates may be deleted)
+        const installResult = spawnSync(agendPath, ["install"], { encoding: "utf-8", timeout: 15000 });
+        if (installResult.status === 0) {
+          console.log(`  ✓ Service updated`);
+        } else {
+          console.log(`  ⚠ Service file update failed (non-fatal): ${(installResult.stderr || installResult.stdout || "unknown error").trim()}`);
+        }
       } catch (e) {
         console.log(`  ⚠ Service file update failed (non-fatal): ${(e as Error).message}`);
       }
