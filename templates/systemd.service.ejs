@@ -9,6 +9,7 @@ Environment=PATH=<%= path %>
 Environment=TERM=xterm-256color
 WorkingDirectory=<%= workingDirectory %>
 Restart=no
+TimeoutStopSec=300
 StandardOutput=append:<%= logPath %>
 StandardError=append:<%= logPath %>
 
