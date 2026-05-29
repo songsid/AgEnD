@@ -2718,16 +2718,20 @@ When users create specialized instances, suggest these configurations:
 
     this.scheduler?.shutdown();
 
-    // Stop instances sequentially to avoid tmux send-keys race conditions.
-    // Each stop sends quit + Enter via separate tmux commands; parallel stops
-    // can cause the Enter to arrive before the quit text is processed.
-    for (const [name, daemon] of this.daemons) {
-      try {
-        await daemon.stop();
-      } catch (err) {
-        this.logger.warn({ name, err }, "Stop failed");
-      }
-      this.daemons.delete(name);
+    // Stop instances in parallel batches to avoid long sequential waits.
+    // Concurrency limited to avoid overwhelming the tmux server.
+    const STOP_CONCURRENCY = 5;
+    const entries = [...this.daemons.entries()];
+    for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
+      const batch = entries.slice(i, i + STOP_CONCURRENCY);
+      await Promise.all(batch.map(async ([name, daemon]) => {
+        try {
+          await daemon.stop();
+        } catch (err) {
+          this.logger.warn({ name, err }, "Stop failed");
+        }
+        this.daemons.delete(name);
+      }));
     }
 
     for (const [, ipc] of this.instanceIpcClients) {
