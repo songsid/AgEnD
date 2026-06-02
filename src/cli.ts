@@ -1662,9 +1662,11 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     }
 
     // System memory footer
+    const totalMemMb = rows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
+    const runningCount = rows.filter(r => r.status === "running").length;
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
-    console.log(`\nSystem Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
+    console.log(`\nInstances: ${runningCount} running | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
 }
 
 program
