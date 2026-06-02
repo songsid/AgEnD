@@ -22,7 +22,6 @@ export interface LifecycleContext {
   readonly dataDir: string;
   readonly routing: RoutingEngine;
   readonly instanceIpcClients: Map<string, IpcClient>;
-  readonly ipcStoppingInstances: Set<string>;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
   readonly controlClient: TmuxControlClient | null;
@@ -230,13 +229,11 @@ export class InstanceLifecycle {
     }
 
     // Clean up IPC client (prevents stale routing after stop)
-    this.ctx.ipcStoppingInstances.add(name);
     const ipc = this.ctx.instanceIpcClients.get(name);
     if (ipc) {
       try { ipc.close(); } catch { /* already closed */ }
       this.ctx.instanceIpcClients.delete(name);
     }
-    this.ctx.ipcStoppingInstances.delete(name);
     // Clean up session registry entries pointing to this instance
     for (const [session, instance] of this.ctx.sessionRegistry) {
       if (instance === name) this.ctx.sessionRegistry.delete(session);
