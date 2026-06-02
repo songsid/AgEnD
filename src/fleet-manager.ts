@@ -99,6 +99,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
 
+  // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
+  readonly ipcStoppingInstances = new Set<string>();
+
+  // Adapter restart: prevents re-entrant restart attempts
+  private adapterRestarting = new Set<string>();
+
   // Health endpoint
   private healthServer: Server | null = null;
   private startedAt = 0;
@@ -840,6 +846,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.adapter.on("handler_error", safeHandler((err: unknown) => {
       this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Adapter handler error");
     }, this.logger, "adapter.handler_error"));
+    this.adapter.on("error", (err: unknown) => {
+      this.logger.error({ err }, "Primary adapter fatal error");
+      this.restartAdapter(this.adapter!, "primary").catch(() => {});
+    });
 
     this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
       const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
@@ -1020,6 +1030,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalId = this.findGeneralInstance(adapterId);
       if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
     }, this.logger, `adapter[${adapterId}].new_group_detected`));
+    adapter.on("error", (err: unknown) => {
+      this.logger.error({ err, adapterId }, "Additional adapter fatal error");
+      this.restartAdapter(adapter, adapterId).catch(() => {});
+    });
 
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
   }
@@ -1029,8 +1043,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Close existing client to prevent socket leak on reconnect
     const existing = this.instanceIpcClients.get(name);
     if (existing) {
+      this.ipcStoppingInstances.add(name);
       try { existing.close(); } catch (err) { this.logger.debug({ err, name }, "IPC client close failed (likely already closed)"); }
       this.instanceIpcClients.delete(name);
+      this.ipcStoppingInstances.delete(name);
     }
 
     const sockPath = join(this.getInstanceDir(name), "channel.sock");
@@ -1087,8 +1103,80 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.statuslineWatcher.has(name)) {
         this.statuslineWatcher.watch(name);
       }
+
+      // Auto-reconnect on disconnect (unless intentionally stopping)
+      ipc.on("disconnect", () => {
+        this.instanceIpcClients.delete(name);
+        if (this.ipcStoppingInstances.has(name)) return;
+        this.ipcReconnect(name).catch(() => {});
+      });
     } catch (err) {
       this.logger.warn({ name, err }, "Failed to connect to instance IPC");
+    }
+  }
+
+  /** Attempt IPC reconnection with exponential backoff */
+  private async ipcReconnect(name: string): Promise<void> {
+    for (let attempt = 1; ; attempt++) {
+      if (this.ipcStoppingInstances.has(name) || !this.daemons.has(name)) return;
+      const delay = attempt <= 3 ? 3000 * Math.pow(2, attempt - 1) : 60_000; // 3s, 6s, 12s, then 60s
+      await new Promise(r => setTimeout(r, delay));
+      if (this.ipcStoppingInstances.has(name) || !this.daemons.has(name)) return;
+      try {
+        await this.connectIpcToInstance(name);
+        if (this.instanceIpcClients.has(name)) {
+          this.logger.info({ name, attempt }, "IPC reconnected");
+          return;
+        }
+      } catch { /* retry */ }
+      // Periodic pane health check (every attempt after initial 3)
+      if (attempt >= 3) {
+        const instanceDir = this.getInstanceDir(name);
+        const windowIdPath = join(instanceDir, "window-id");
+        if (existsSync(windowIdPath)) {
+          const windowId = readFileSync(windowIdPath, "utf-8").trim();
+          if (windowId) {
+            try {
+              const { execSync } = await import("node:child_process");
+              execSync(`tmux list-panes -t "${windowId}"`, { stdio: "ignore" });
+            } catch {
+              // Pane dead — respawn
+              this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");
+              this.restartSingleInstance(name).catch(err =>
+                this.logger.error({ name, err }, "Auto-respawn after IPC loss failed"));
+              return;
+            }
+          }
+        }
+      }
+      if (attempt % 10 === 0) {
+        this.logger.warn({ name, attempt }, "IPC reconnect still failing");
+      }
+    }
+  }
+
+  /** Restart a channel adapter after fatal error with infinite retry + 60s cap */
+  private async restartAdapter(adapter: ChannelAdapter, id: string): Promise<void> {
+    if (this.adapterRestarting.has(id)) return;
+    this.adapterRestarting.add(id);
+    try {
+      for (let attempt = 1; ; attempt++) {
+        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        const delay = attempt <= 3 ? 5000 * Math.pow(2, attempt - 1) : 60_000; // 5s, 10s, 20s, then 60s
+        await new Promise(r => setTimeout(r, delay));
+        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        try {
+          await adapter.stop().catch(() => {});
+          await adapter.start();
+          this.logger.info({ id, attempt }, "Adapter restarted successfully");
+          return;
+        } catch { /* retry */ }
+        if (attempt % 10 === 0) {
+          this.logger.warn({ id, attempt }, "Adapter restart still failing");
+        }
+      }
+    } finally {
+      this.adapterRestarting.delete(id);
     }
   }
 
@@ -2694,6 +2782,7 @@ When users create specialized instances, suggest these configurations:
   }
 
   async stopAll(): Promise<void> {
+    this.ipcStoppingInstances.add("__fleet_stopping__");
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
@@ -2723,6 +2812,7 @@ When users create specialized instances, suggest these configurations:
     // Concurrency limited to avoid overwhelming the tmux server.
     const STOP_CONCURRENCY = 5;
     const entries = [...this.daemons.entries()];
+    for (const [name] of entries) this.ipcStoppingInstances.add(name);
     for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
       const batch = entries.slice(i, i + STOP_CONCURRENCY);
       await Promise.all(batch.map(async ([name, daemon]) => {
@@ -2739,6 +2829,7 @@ When users create specialized instances, suggest these configurations:
       await ipc.close();
     }
     this.instanceIpcClients.clear();
+    this.ipcStoppingInstances.clear();
 
     for (const [, w] of this.worlds) {
       await w.stop().catch(() => {});
