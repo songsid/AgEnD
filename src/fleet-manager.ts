@@ -99,6 +99,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
 
+  // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
+  readonly ipcStoppingInstances = new Set<string>();
+
   // Health endpoint
   private healthServer: Server | null = null;
   private startedAt = 0;
@@ -1029,8 +1032,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Close existing client to prevent socket leak on reconnect
     const existing = this.instanceIpcClients.get(name);
     if (existing) {
+      this.ipcStoppingInstances.add(name);
       try { existing.close(); } catch (err) { this.logger.debug({ err, name }, "IPC client close failed (likely already closed)"); }
       this.instanceIpcClients.delete(name);
+      this.ipcStoppingInstances.delete(name);
     }
 
     const sockPath = join(this.getInstanceDir(name), "channel.sock");
@@ -1087,8 +1092,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!this.statuslineWatcher.has(name)) {
         this.statuslineWatcher.watch(name);
       }
+
+      // Auto-reconnect on disconnect (unless intentionally stopping)
+      ipc.on("disconnect", () => {
+        this.instanceIpcClients.delete(name);
+        if (this.ipcStoppingInstances.has(name)) return;
+        this.ipcReconnect(name).catch(() => {});
+      });
     } catch (err) {
       this.logger.warn({ name, err }, "Failed to connect to instance IPC");
+    }
+  }
+
+  /** Attempt IPC reconnection with exponential backoff */
+  private async ipcReconnect(name: string, maxRetries = 3): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (this.ipcStoppingInstances.has(name) || !this.daemons.has(name)) return;
+      const delay = 3000 * Math.pow(2, attempt - 1); // 3s, 6s, 12s
+      await new Promise(r => setTimeout(r, delay));
+      if (this.ipcStoppingInstances.has(name) || !this.daemons.has(name)) return;
+      try {
+        await this.connectIpcToInstance(name);
+        if (this.instanceIpcClients.has(name)) {
+          this.logger.info({ name, attempt }, "IPC reconnected");
+          return;
+        }
+      } catch { /* retry */ }
+    }
+    // All retries exhausted — check if tmux pane still alive
+    this.logger.warn({ name }, "IPC reconnect failed after all retries, checking pane health");
+    const daemon = this.daemons.get(name);
+    if (!daemon) return;
+    const instanceDir = this.getInstanceDir(name);
+    const windowIdPath = join(instanceDir, "window-id");
+    if (!existsSync(windowIdPath)) return;
+    const windowId = readFileSync(windowIdPath, "utf-8").trim();
+    if (!windowId) return;
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync(`tmux list-panes -t "${windowId}"`, { stdio: "ignore" });
+      // Pane alive but IPC gone — log and wait for next health cycle
+      this.logger.warn({ name }, "Tmux pane alive but IPC unrecoverable — awaiting health check");
+    } catch {
+      // Pane dead — trigger respawn via restartSingleInstance
+      this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");
+      this.restartSingleInstance(name).catch(err =>
+        this.logger.error({ name, err }, "Auto-respawn after IPC loss failed"));
     }
   }
 
@@ -2723,6 +2772,7 @@ When users create specialized instances, suggest these configurations:
     // Concurrency limited to avoid overwhelming the tmux server.
     const STOP_CONCURRENCY = 5;
     const entries = [...this.daemons.entries()];
+    for (const [name] of entries) this.ipcStoppingInstances.add(name);
     for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
       const batch = entries.slice(i, i + STOP_CONCURRENCY);
       await Promise.all(batch.map(async ([name, daemon]) => {
@@ -2739,6 +2789,7 @@ When users create specialized instances, suggest these configurations:
       await ipc.close();
     }
     this.instanceIpcClients.clear();
+    this.ipcStoppingInstances.clear();
 
     for (const [, w] of this.worlds) {
       await w.stop().catch(() => {});
