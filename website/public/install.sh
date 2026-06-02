@@ -234,22 +234,16 @@ info "AgEnD $(agend --version) installed"
 info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/dev/null | grep agend-plugin-discord | sed 's/.*@//' || echo 'unknown') installed"
 
 # ── Ensure binaries are accessible without nvm sourced ────
-# Creates symlinks in /usr/local/bin so agend/node work in non-login shells (root, systemd, cron)
+# Root user: create symlinks in /usr/local/bin (for systemd, cron, non-login shells)
+# Normal user: nvm PATH in .bashrc/.profile is sufficient
 AGEND_BIN=$(command -v agend 2>/dev/null)
 NODE_BIN=$(command -v node 2>/dev/null)
-if [ -n "$AGEND_BIN" ] && [[ "$AGEND_BIN" == */.nvm/* ]]; then
-  LINK_CMD=""
-  if [ -w /usr/local/bin ]; then
-    LINK_CMD=""
-  else
-    LINK_CMD="sudo"
-  fi
-  $LINK_CMD ln -sf "$AGEND_BIN" /usr/local/bin/agend 2>/dev/null && info "Symlinked agend → /usr/local/bin/agend" || true
-  $LINK_CMD ln -sf "$NODE_BIN" /usr/local/bin/node 2>/dev/null && info "Symlinked node → /usr/local/bin/node" || true
-  # Also link kiro-cli if present
+if [ -n "$AGEND_BIN" ] && [[ "$AGEND_BIN" == */.nvm/* ]] && [ "$(id -u)" -eq 0 ]; then
+  ln -sf "$AGEND_BIN" /usr/local/bin/agend 2>/dev/null && info "Symlinked agend → /usr/local/bin/agend" || true
+  ln -sf "$NODE_BIN" /usr/local/bin/node 2>/dev/null && info "Symlinked node → /usr/local/bin/node" || true
   KIRO_BIN=$(command -v kiro-cli 2>/dev/null)
   if [ -n "$KIRO_BIN" ]; then
-    $LINK_CMD ln -sf "$KIRO_BIN" /usr/local/bin/kiro-cli 2>/dev/null && info "Symlinked kiro-cli → /usr/local/bin/kiro-cli" || true
+    ln -sf "$KIRO_BIN" /usr/local/bin/kiro-cli 2>/dev/null && info "Symlinked kiro-cli → /usr/local/bin/kiro-cli" || true
   fi
 fi
 
