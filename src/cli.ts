@@ -1398,9 +1398,21 @@ function getTreeRssKb(pid: number, depth = 0): number {
   if (!Number.isInteger(pid) || pid <= 0) return 0;
   let total = 0;
   try {
-    const rss = parseInt(execFileSync("ps", ["-o", "rss=", "-p", String(pid)], { stdio: "pipe" }).toString().trim(), 10);
-    if (!isNaN(rss)) total += rss;
-  } catch { return 0; }
+    // Try PSS from smaps_rollup (more accurate — excludes shared page double-counting)
+    const smaps = readFileSync(`/proc/${pid}/smaps_rollup`, "utf-8");
+    const match = smaps.match(/^Pss:\s+(\d+)/m);
+    if (match) {
+      total += parseInt(match[1], 10);
+    } else {
+      throw new Error("no Pss line");
+    }
+  } catch {
+    // Fallback to RSS via ps
+    try {
+      const rss = parseInt(execFileSync("ps", ["-o", "rss=", "-p", String(pid)], { stdio: "pipe" }).toString().trim(), 10);
+      if (!isNaN(rss)) total += rss;
+    } catch { return 0; }
+  }
   try {
     const children = execFileSync("pgrep", ["-P", String(pid)], { stdio: "pipe" }).toString().trim();
     for (const line of children.split("\n")) {
