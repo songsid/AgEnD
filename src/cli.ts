@@ -899,6 +899,20 @@ program
       return;
     }
 
+    // Kill old fleet process first to prevent duplicate
+    const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+    if (oldPid) {
+      try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
+      // Wait up to 10s for old process to exit
+      for (let i = 0; i < 20; i++) {
+        try { process.kill(oldPid, 0); } catch { break; }
+        spawnSync("sleep", ["0.5"]);
+      }
+      // Force kill if still alive
+      try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ }
+      try { unlinkSync(pidPath); } catch { /* best effort */ }
+    }
+
     console.log("  Restarting fleet...");
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
@@ -911,14 +925,14 @@ program
     } else {
       try {
         execSync("systemctl --user daemon-reload", { stdio: "pipe", timeout: 5000 });
-        execSync("systemctl --user restart com.agend.fleet", { stdio: "inherit", timeout: 15000 });
+        execSync("systemctl --user start com.agend.fleet", { stdio: "inherit", timeout: 15000 });
         console.log("  ✓ Service restarted\n");
         return;
       } catch { /* fall through */ }
     }
 
-    // Fallback: background stop+start
-    const child = spawnAsync("bash", ["-c", "sleep 2 && agend fleet stop 2>/dev/null; agend fleet start"], {
+    // Fallback: start directly using new binary
+    const child = spawnAsync(agendPath!, ["fleet", "start"], {
       detached: true, stdio: "ignore",
     });
     child.unref();
