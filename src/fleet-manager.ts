@@ -102,6 +102,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
   readonly ipcStoppingInstances = new Set<string>();
 
+  // Adapter restart: prevents re-entrant restart attempts
+  private adapterRestarting = new Set<string>();
+
   // Health endpoint
   private healthServer: Server | null = null;
   private startedAt = 0;
@@ -844,6 +847,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Adapter handler error");
     }, this.logger, "adapter.handler_error"));
 
+    this.adapter.on("error", (err: unknown) => {
+      this.restartAdapter(this.adapter!, "primary").catch(() => {});
+      this.logger.error({ err }, "Primary adapter fatal error");
+    });
+
     this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
       const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
       const generalId = this.findGeneralInstance();
@@ -1024,6 +1032,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
     }, this.logger, `adapter[${adapterId}].new_group_detected`));
 
+    adapter.on("error", (err: unknown) => {
+      this.restartAdapter(adapter, adapterId).catch(() => {});
+      this.logger.error({ err, adapterId }, "Additional adapter fatal error");
+    });
+
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
   }
 
@@ -1138,6 +1151,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");
       this.restartSingleInstance(name).catch(err =>
         this.logger.error({ name, err }, "Auto-respawn after IPC loss failed"));
+    }
+  }
+
+  /** Restart a channel adapter after fatal error with exponential backoff */
+  private async restartAdapter(adapter: ChannelAdapter, id: string): Promise<void> {
+    if (this.adapterRestarting.has(id)) return;
+    this.adapterRestarting.add(id);
+    try {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        const delay = 5000 * Math.pow(2, attempt - 1); // 5s, 10s, 20s
+        await new Promise(r => setTimeout(r, delay));
+        if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
+        try {
+          await adapter.stop().catch(() => {});
+          await adapter.start();
+          this.logger.info({ id, attempt }, "Adapter restarted successfully");
+          return;
+        } catch { /* retry */ }
+      }
+      this.logger.error({ id }, "Adapter restart failed after all retries");
+      // Alert via another adapter if available
+      const generalName = this.findGeneralInstance();
+      if (generalName) {
+        this.notifyInstanceTopic(generalName, `⚠️ Adapter \`${id}\` crashed and could not restart after 3 attempts.`);
+      }
+    } finally {
+      this.adapterRestarting.delete(id);
     }
   }
 
@@ -2743,6 +2784,7 @@ When users create specialized instances, suggest these configurations:
   }
 
   async stopAll(): Promise<void> {
+    this.ipcStoppingInstances.add("__fleet_stopping__");
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
