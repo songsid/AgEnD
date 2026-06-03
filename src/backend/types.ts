@@ -90,6 +90,9 @@ export interface CliBackend {
   /** Pre-approve a working directory to skip trust dialogs on startup. */
   preTrust?(workingDirectory: string): void;
 
+  /** Resolve working directory (e.g. create symlink to avoid hidden paths). Returns resolved path. */
+  resolveWorkingDirectory?(workingDirectory: string): string;
+
   /** Command to gracefully quit the CLI (e.g. "/exit", "/quit"). */
   getQuitCommand(): string;
 
