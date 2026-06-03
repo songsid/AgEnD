@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, realpathSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -20,7 +20,7 @@ export class AntigravityBackend implements CliBackend {
 
   /**
    * If workingDirectory is under a hidden path (e.g. ~/.agend/workspaces/),
-   * agy refuses to operate. Create a non-hidden symlink and return it.
+   * agy refuses to operate. Use a real non-hidden directory instead.
    */
   resolveWorkingDirectory(workingDirectory: string, instanceName?: string): string {
     const home = homedir();
@@ -29,32 +29,18 @@ export class AntigravityBackend implements CliBackend {
     const hasHidden = parts.some(p => p.startsWith(".") && p !== "~");
     if (!hasHidden) return workingDirectory;
 
-    const symlinkName = instanceName || parts[parts.length - 1] || "workspace";
-    const symlinkParent = join(home, "agend-workspaces");
-    mkdirSync(symlinkParent, { recursive: true });
-    const symlinkPath = join(symlinkParent, symlinkName);
-
-    if (existsSync(symlinkPath)) {
-      try {
-        if (realpathSync(symlinkPath) !== workingDirectory) {
-          unlinkSync(symlinkPath);
-          symlinkSync(workingDirectory, symlinkPath);
-        }
-      } catch {
-        try { unlinkSync(symlinkPath); } catch { /* ignore */ }
-        try { symlinkSync(workingDirectory, symlinkPath); } catch { /* ignore */ }
-      }
-    } else {
-      symlinkSync(workingDirectory, symlinkPath);
-    }
-    return symlinkPath;
+    const name = instanceName || parts[parts.length - 1] || "workspace";
+    const resolvedDir = join(home, "agend-workspaces", name);
+    mkdirSync(resolvedDir, { recursive: true });
+    return resolvedDir;
   }
 
   writeConfig(config: CliBackendConfig): void {
-    const agentsDir = join(config.workingDirectory, ".agents");
+    // Write .agents/agents.md in the resolved CWD (which may differ from config.workingDirectory)
+    const cwd = this.resolveWorkingDirectory(config.workingDirectory, config.instanceName);
+    const agentsDir = join(cwd, ".agents");
     mkdirSync(agentsDir, { recursive: true });
 
-    // Write AGENTS.md instructions in .agents/ directory
     if (config.instructions) {
       const agentsPath = join(agentsDir, "agents.md");
       appendWithMarker(agentsPath, config.instanceName, config.instructions);
@@ -62,17 +48,10 @@ export class AntigravityBackend implements CliBackend {
   }
 
   cleanup(config: CliBackendConfig): void {
-    const agentsDir = join(config.workingDirectory, ".agents");
-    const agentsPath = join(agentsDir, "agents.md");
-    if (existsSync(agentsPath)) {
-      removeMarker(agentsPath, config.instanceName);
+    const cwd = join(homedir(), "agend-workspaces", config.instanceName);
+    if (existsSync(cwd)) {
+      try { rmSync(cwd, { recursive: true }); } catch { /* ignore */ }
     }
-    // Remove symlink
-    const symlinkPath = join(homedir(), "agend-workspaces", config.instanceName);
-    try {
-      const stat = lstatSync(symlinkPath);
-      if (stat.isSymbolicLink()) unlinkSync(symlinkPath);
-    } catch { /* ignore */ }
   }
 
   getReadyPattern(): RegExp {
