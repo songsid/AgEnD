@@ -4,7 +4,7 @@ import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getAgendHome } from "./paths.js";
+import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2737,10 +2737,12 @@ When users create specialized instances, suggest these configurations:
   /** Start a classic channel instance with lightweight config */
   private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string, model?: string): Promise<void> {
     if (this.daemons.has(instanceName)) return;
+    const workDir = join(getAgendHome(), "workspaces", instanceName);
+    ensureWorkspaceGit(workDir);
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
       ...this.fleetConfig?.defaults,
-      working_directory: join(getAgendHome(), "workspaces", instanceName),
+      working_directory: workDir,
       lightweight: true,
       ...(backend ? { backend } : {}),
       ...(model ? { model } : {}),
@@ -3199,6 +3201,8 @@ When users create specialized instances, suggest these configurations:
       // Public health probe — no auth required.
       if (req.method === "GET" && req.url === "/health") {
         // fallthrough to existing handler below
+      } else if (req.method === "POST" && req.url === "/agent") {
+        // /agent handles its own instance-level auth via X-Agend-Instance-Token
       } else {
         // All other endpoints require a valid token (query ?token= or X-Agend-Token header).
         // /ui/* will also re-check in web-api.ts, which is harmless.

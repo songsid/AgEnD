@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
+import { execSync } from "node:child_process";
 
 /** Resolve the AgEnD data directory. Override with AGEND_HOME env var. */
 export function getAgendHome(): string {
@@ -39,4 +41,11 @@ export function getTmuxSocketName(): string | null {
   // a single daemon restart resyncs cleanly (any orphan tmux session under
   // the old name can be killed manually).
   return "agend-" + createHash("sha256").update(home).digest("hex").slice(0, 6);
+}
+
+/** Ensure an auto-created workspace has a .git directory (best effort). */
+export function ensureWorkspaceGit(dir: string): void {
+  if (!existsSync(join(dir, ".git"))) {
+    try { execSync(`git init "${dir}"`, { stdio: "ignore" }); } catch { /* best effort */ }
+  }
 }

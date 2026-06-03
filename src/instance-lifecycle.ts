@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
-import { getAgendHome } from "./paths.js";
+import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
@@ -500,6 +500,7 @@ export class InstanceLifecycle {
       if (!directory) {
         workDir = join(getAgendHome(), "workspaces", newInstanceName);
         mkdirSync(workDir, { recursive: true });
+        ensureWorkspaceGit(workDir);
       }
 
       const instanceConfig = {
