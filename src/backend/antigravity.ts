@@ -1,5 +1,6 @@
 import { join } from "node:path";
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, unlinkSync, realpathSync, lstatSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -17,19 +18,51 @@ export class AntigravityBackend implements CliBackend {
     return cmd;
   }
 
-  writeConfig(config: CliBackendConfig): void {
-    const geminiDir = join(config.workingDirectory, ".gemini");
-    mkdirSync(geminiDir, { recursive: true });
-    const settingsPath = join(geminiDir, "settings.json");
+  /**
+   * If workingDirectory is under a hidden path (e.g. ~/.agend/workspaces/),
+   * agy refuses to operate. Create a non-hidden symlink and return it.
+   */
+  resolveWorkingDirectory(workingDirectory: string, instanceName?: string): string {
+    const home = homedir();
+    const rel = workingDirectory.startsWith(home) ? "~" + workingDirectory.slice(home.length) : workingDirectory;
+    const parts = rel.split("/");
+    const hasHidden = parts.some(p => p.startsWith(".") && p !== "~");
+    if (!hasHidden) return workingDirectory;
 
-    let settings: Record<string, unknown> = {};
-    if (existsSync(settingsPath)) {
-      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { /* ignore */ }
+    const symlinkName = instanceName || parts[parts.length - 1] || "workspace";
+    const symlinkParent = join(home, "agend-workspaces");
+    mkdirSync(symlinkParent, { recursive: true });
+    const symlinkPath = join(symlinkParent, symlinkName);
+
+    if (existsSync(symlinkPath)) {
+      try {
+        if (realpathSync(symlinkPath) !== workingDirectory) {
+          unlinkSync(symlinkPath);
+          symlinkSync(workingDirectory, symlinkPath);
+        }
+      } catch {
+        try { unlinkSync(symlinkPath); } catch { /* ignore */ }
+        try { symlinkSync(workingDirectory, symlinkPath); } catch { /* ignore */ }
+      }
+    } else {
+      symlinkSync(workingDirectory, symlinkPath);
+    }
+    return symlinkPath;
+  }
+
+  writeConfig(config: CliBackendConfig): void {
+    const agentsDir = join(config.workingDirectory, ".agents");
+    mkdirSync(agentsDir, { recursive: true });
+    const mcpConfigPath = join(agentsDir, "mcp_config.json");
+
+    let mcpConfig: Record<string, unknown> = {};
+    if (existsSync(mcpConfigPath)) {
+      try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch { /* ignore */ }
     }
 
-    // Instance-namespaced MCP keys (same as gemini-cli) to avoid conflicts
+    // Write MCP servers in agy format
     if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-      const servers = (settings.mcpServers ?? {}) as Record<string, unknown>;
+      const servers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
       for (const [name, entry] of Object.entries(config.mcpServers)) {
         const instanceKey = `${name}-${config.instanceName}`;
         servers[instanceKey] = {
@@ -38,35 +71,42 @@ export class AntigravityBackend implements CliBackend {
         };
       }
       delete servers["agend"];
-      settings.mcpServers = servers;
+      mcpConfig.mcpServers = servers;
     }
 
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 
-    // Write AGENTS.md instructions
+    // Write AGENTS.md instructions in .agents/ directory
     if (config.instructions) {
-      const agentsPath = join(config.workingDirectory, "AGENTS.md");
+      const agentsPath = join(agentsDir, "AGENTS.md");
       appendWithMarker(agentsPath, config.instanceName, config.instructions);
     }
   }
 
-  cleanupConfig(workingDirectory: string, instanceName?: string): void {
-    const agentsPath = join(workingDirectory, "AGENTS.md");
+  cleanup(config: CliBackendConfig): void {
+    const agentsDir = join(config.workingDirectory, ".agents");
+    const agentsPath = join(agentsDir, "AGENTS.md");
     if (existsSync(agentsPath)) {
-      removeMarker(agentsPath, instanceName ?? "agend");
+      removeMarker(agentsPath, config.instanceName);
     }
     // Clean up namespaced MCP key
-    const settingsPath = join(workingDirectory, ".gemini", "settings.json");
-    if (existsSync(settingsPath)) {
+    const mcpConfigPath = join(agentsDir, "mcp_config.json");
+    if (existsSync(mcpConfigPath)) {
       try {
-        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-        const servers = settings.mcpServers;
-        if (servers && instanceName) {
-          delete servers[`agend-${instanceName}`];
-          writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+        const mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
+        const servers = mcpConfig.mcpServers;
+        if (servers) {
+          delete servers[`agend-${config.instanceName}`];
+          writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
         }
       } catch { /* ignore */ }
     }
+    // Remove symlink
+    const symlinkPath = join(homedir(), "agend-workspaces", config.instanceName);
+    try {
+      const stat = lstatSync(symlinkPath);
+      if (stat.isSymbolicLink()) unlinkSync(symlinkPath);
+    } catch { /* ignore */ }
   }
 
   getReadyPattern(): RegExp {
@@ -94,7 +134,9 @@ export class AntigravityBackend implements CliBackend {
   }
 
   getStartupDialogs(): StartupDialog[] {
-    return [];
+    return [
+      { pattern: /Do you trust.*folder|Yes, I trust/i, keys: ["Enter"], description: "Trust folder prompt" },
+    ];
   }
 
   getRuntimeDialogs(): StartupDialog[] {

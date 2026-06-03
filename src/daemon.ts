@@ -1295,6 +1295,9 @@ export class Daemon extends EventEmitter {
     this.backend!.writeConfig(backendConfig);
     this.backend!.preTrust?.(this.config.working_directory);
 
+    // Resolve working directory (e.g. symlink for hidden paths)
+    const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;
+
     // Generate a fresh per-instance agent token each spawn. agent-cli reads
     // this file from <instanceDir>/agent.token (mode 0o600) and sends its
     // value in the X-Agend-Instance-Token header; the daemon-side /agent
@@ -1317,7 +1320,7 @@ export class Daemon extends EventEmitter {
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
-    const windowId = await this.tmux!.createWindow(cmd, this.config.working_directory, this.name);
+    const windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
