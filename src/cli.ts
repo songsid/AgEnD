@@ -804,16 +804,16 @@ access
 program
   .command("update")
   .description("Update AgEnD to latest version and restart service")
-  .option("--version <ver>", "Specific version to install", "latest")
-  .action(async (opts: { version: string }) => {
+  .option("--version <ver>", "Specific version to install")
+  .option("--beta", "Install beta version")
+  .action(async (opts: { version?: string; beta?: boolean }) => {
     const { installService, activateService, detectPlatform } = await import("./service-installer.js");
     const { spawnSync, spawn: spawnAsync } = await import("node:child_process");
-    const ver = opts.version;
-    const pkg = "@songsid/agend";
-    const pluginPkg = "@songsid/agend-plugin-discord";
-    const pluginVer = ver === "latest" ? "latest" : "latest"; // plugin uses latest to avoid version mismatch
+    const tag = opts.version ? opts.version : (opts.beta ? "beta" : "latest");
+    const pkg = `@songsid/agend@${tag}`;
+    const pluginPkg = `@songsid/agend-plugin-discord@${tag}`;
 
-    console.log(`\n  Updating AgEnD to ${ver}...\n`);
+    console.log(`\n  Updating AgEnD to ${tag}...\n`);
 
     // ── Check if npm global needs sudo ──
     let needsSudo = false;
@@ -839,20 +839,20 @@ program
       console.log("  Using nvm to install Node 22...");
       const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
       try {
-        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}@${ver} ${pluginPkg}@${pluginVer}'`, { stdio: "inherit" });
+        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg} ${pluginPkg}'`, { stdio: "inherit" });
       } catch {
         console.error("  Failed to install via nvm.");
         process.exit(1);
       }
       // Try to remove old system binary
       console.log("  Note: removing old system install (may require sudo)...");
-      spawnSync("sudo", ["npm", "uninstall", "-g", pkg], { stdio: "inherit" });
+      spawnSync("sudo", ["npm", "uninstall", "-g", "@songsid/agend"], { stdio: "inherit" });
     } else {
       // ── Direct install ──
       try {
-        execSync(`npm install -g ${pkg}@${ver} ${pluginPkg}@${pluginVer}`, { stdio: "inherit" });
+        execSync(`npm install -g ${pkg} ${pluginPkg}`, { stdio: "inherit" });
       } catch {
-        console.error(`  Failed to update. Try: npm install -g ${pkg}@${ver}`);
+        console.error(`  Failed to update. Try: npm install -g ${pkg}`);
         process.exit(1);
       }
     }

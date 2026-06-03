@@ -20,11 +20,18 @@ jobs:
       # Publish main package as @songsid/agend
       - name: Set version from tag
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+      - name: Determine npm tag
+        run: |
+          if [[ "$VERSION" == *-beta* ]]; then
+            echo "NPM_TAG=beta" >> $GITHUB_ENV
+          else
+            echo "NPM_TAG=latest" >> $GITHUB_ENV
+          fi
       - name: Swap package name and version
         run: |
           sed -i 's/"name": "@suzuke\/agend"/"name": "@songsid\/agend"/' package.json
           sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
-      - run: npm publish --access public
+      - run: npm publish --access public --tag ${{ env.NPM_TAG }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
@@ -45,6 +52,6 @@ jobs:
           find dist -name '*.d.ts' -exec sed -i 's/@suzuke\/agend/@songsid\/agend/g' {} +
       - name: Publish Discord plugin
         working-directory: plugins/agend-plugin-discord
-        run: npm publish --access public
+        run: npm publish --access public --tag ${{ env.NPM_TAG }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
