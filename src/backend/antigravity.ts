@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, symlinkSync, unlinkSync, realpathSync, lstatSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, realpathSync, lstatSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -53,28 +53,6 @@ export class AntigravityBackend implements CliBackend {
   writeConfig(config: CliBackendConfig): void {
     const agentsDir = join(config.workingDirectory, ".agents");
     mkdirSync(agentsDir, { recursive: true });
-    const mcpConfigPath = join(agentsDir, "mcp_config.json");
-
-    let mcpConfig: Record<string, unknown> = {};
-    if (existsSync(mcpConfigPath)) {
-      try { mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8")); } catch { /* ignore */ }
-    }
-
-    // Write MCP servers in agy format
-    if (config.mcpServers && Object.keys(config.mcpServers).length > 0) {
-      const servers = (mcpConfig.mcpServers ?? {}) as Record<string, unknown>;
-      for (const [name, entry] of Object.entries(config.mcpServers)) {
-        const instanceKey = `${name}-${config.instanceName}`;
-        servers[instanceKey] = {
-          ...entry,
-          env: { ...(entry as any).env, AGEND_INSTANCE_NAME: config.instanceName },
-        };
-      }
-      delete servers["agend"];
-      mcpConfig.mcpServers = servers;
-    }
-
-    writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 
     // Write AGENTS.md instructions in .agents/ directory
     if (config.instructions) {
@@ -88,18 +66,6 @@ export class AntigravityBackend implements CliBackend {
     const agentsPath = join(agentsDir, "AGENTS.md");
     if (existsSync(agentsPath)) {
       removeMarker(agentsPath, config.instanceName);
-    }
-    // Clean up namespaced MCP key
-    const mcpConfigPath = join(agentsDir, "mcp_config.json");
-    if (existsSync(mcpConfigPath)) {
-      try {
-        const mcpConfig = JSON.parse(readFileSync(mcpConfigPath, "utf-8"));
-        const servers = mcpConfig.mcpServers;
-        if (servers) {
-          delete servers[`agend-${config.instanceName}`];
-          writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
-        }
-      } catch { /* ignore */ }
     }
     // Remove symlink
     const symlinkPath = join(homedir(), "agend-workspaces", config.instanceName);
