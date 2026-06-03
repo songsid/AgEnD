@@ -56,14 +56,14 @@ export class AntigravityBackend implements CliBackend {
 
     // Write AGENTS.md instructions in .agents/ directory
     if (config.instructions) {
-      const agentsPath = join(agentsDir, "AGENTS.md");
+      const agentsPath = join(agentsDir, "agents.md");
       appendWithMarker(agentsPath, config.instanceName, config.instructions);
     }
   }
 
   cleanup(config: CliBackendConfig): void {
     const agentsDir = join(config.workingDirectory, ".agents");
-    const agentsPath = join(agentsDir, "AGENTS.md");
+    const agentsPath = join(agentsDir, "agents.md");
     if (existsSync(agentsPath)) {
       removeMarker(agentsPath, config.instanceName);
     }
