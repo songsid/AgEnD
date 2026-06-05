@@ -158,12 +158,12 @@ export class ClassicChannelManager {
     return this.channels.get(channelId)?.preTaskCommand;
   }
 
-  /** Context lines fallback: per-channel → defaults → 10 */
+  /** Context lines fallback: per-channel → defaults → 5 */
   getContextLines(channelId: string): number {
     const ch = this.channels.get(channelId);
     if (ch?.contextLines != null) return ch.contextLines;
     if (this.defaults.context_lines != null) return this.defaults.context_lines;
-    return 10;
+    return 5;
   }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */
