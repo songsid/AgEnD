@@ -787,7 +787,7 @@ export class Daemon extends EventEmitter {
 
     let formatted: string;
     if (fromInstance) {
-      formatted = `[from:${fromInstance}] ${content}\n(Reply using send_to_instance tool, NOT direct text)`;
+      formatted = `[from:${fromInstance}] ${content}\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)`;
     } else {
       const via = meta.source ? ` via ${meta.source}` : "";
       formatted = `[user:${user}${via}] ${content}\n(Reply using the reply tool — do NOT respond with direct text)`;
