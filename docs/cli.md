@@ -18,6 +18,8 @@ agend start                     # Start AgEnD service (requires install)
 agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
 agend update                    # Update AgEnD to latest version and restart
+agend update --beta             # Install from beta channel instead of latest
+agend update --version 1.23.0   # Install a specific version
 agend update --skip-install     # Skip npm install, only restart service
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)
 ```
