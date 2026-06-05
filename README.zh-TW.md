@@ -35,7 +35,7 @@ AgEnD（**Agent Engineering Daemon**）把你的 Telegram 或 Discord 變成 AI 
 
 🚀 **Fleet 管理** — 一個 bot、N 個專案。每個 Telegram Forum Topic 就是獨立的 agent session。
 
-🔄 **多後端支援** — Claude Code、Gemini CLI、Codex、OpenCode、Kiro CLI，自由切換或混用。
+🔄 **多後端支援** — Claude Code、Gemini CLI、Codex、OpenCode、Kiro CLI、Antigravity CLI，自由切換或混用。
 
 🤝 **Agent 協作** — Agent 之間透過 MCP tools 互相發現、喚醒、傳訊。General Topic 用自然語言把任務路由到對的 agent。
 
@@ -105,6 +105,7 @@ graph LR
 | Gemini CLI | `npm i -g @google/gemini-cli` | `gemini`（Google OAuth） |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode`（設定 provider） |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login`（AWS Builder ID） |
+| Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy`（Google Sign-In） |
 
 ## 系統需求
 
