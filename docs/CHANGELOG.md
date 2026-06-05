@@ -6,8 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Antigravity CLI backend** — full support for Google's `agy` CLI. Uses CLI mode by default (no MCP). Non-hidden workspace at `~/agend-workspaces/`, instructions in `.agents/agents.md`, trust prompt auto-dismiss.
+- **IPC + adapter auto-reconnect** — IPC disconnect retries with exponential backoff then every 60s indefinitely. Adapter fatal errors (Telegram polling init, Discord gateway) also auto-restart with same strategy. Dead tmux panes are auto-respawned.
+- **Beta update channel** — `agend update --beta` installs from `@beta` npm dist-tag. CI publishes with `--tag beta` when git tag contains `-beta`.
+- **PSS memory reporting** — `agend ls` uses Proportional Set Size from `/proc/<pid>/smaps_rollup` instead of RSS to avoid shared page double-counting.
+- **Parallel instance stop** — shutdown uses concurrency 5 for faster fleet stop. Systemd timeout extended accordingly.
+- **Configurable context_lines** — per-channel chat log injection depth in classicBot.yaml. Set 0 to disable.
+- **Model support in classicBot.yaml** — per-channel model override.
+- **Access mode "open"** — allows all users without an allowlist.
+- **Fleet memory total** — `agend ls` footer shows instance count and total memory.
+- **`agend update` command** — full lifecycle: sudo/nvm detection, npm install, service restart, health check.
+- **GitHub Actions CI/CD** — ci, publish, and gitleaks workflows.
+- **Workspace git init** — auto-created workspaces get `git init` for CLI backend project root detection.
+- **`/agent` endpoint auth bypass** — POST /agent uses instance-level token, skips web UI token check.
+
 ### Fixed
-- **Health check loop stops when instance directory is removed externally** — previously, `rm -rf ~/.agend/instances/<name>` while the daemon was running caused the health check to respawn-crash every ~30s indefinitely, spamming `ENOENT … rotation-state.json` / `tmux server died` / `Failed to respawn Claude window`. Loop now detects missing `instanceDir` at the start of each tick and pauses itself.
+- Install script: auto-detect sudo, nvm-aware PATH, build-essential for native modules, /usr/local/bin symlinks only as root.
+- Discord: stickers no longer treated as photo attachments; collab mode chat log includes attachment filenames.
+- Daemon: unified log rotation; stale context rotation references removed from prompts.
+- Update: kill old fleet process before restart; run daemon-reload before systemctl restart.
+
+### Performance
+- Parallel instance stop with concurrency 5.
+- Staggered restart notifications.
+
+## [1.24.0] - 2026-05-01
+
+### Added
+- **Discord quickstart UX** — plugin check, channel selection, options output.
+
+### Fixed
+- Health check stops when instance directory is removed externally.
+- NaN crash on non-numeric input; plugin check uses `npm list -g`.
 
 ## [1.23.0] - 2026-04-20
 

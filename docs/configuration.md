@@ -104,7 +104,7 @@ health_port: 19280
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = whitelist only. `pairing` = users can request access via `/pair` command (requires manual code confirmation) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = whitelist only. `pairing` = users can request access via `/pair` command. `open` = all users allowed without an allowlist |
 | `allowed_users` | (number\|string)[] | `[]` | Whitelisted user IDs. Supports both number and string (cross-platform) |
 | `max_pending_codes` | number | `3` | Max simultaneous pairing codes (if pairing mode used) |
 | `code_expiry_minutes` | number | `10` | Pairing code expiry time |
@@ -222,7 +222,7 @@ Use `broadcast(team: "backend-squad", message: "...")` to send to all members.
 | `tags` | string[] | — | Tags for categorization and capability discovery. Agents can filter by tags in `list_instances` and `broadcast` |
 | `topic_id` | number\|string | auto | Channel topic/thread ID. Auto-assigned on create |
 | `general_topic` | boolean | `false` | Mark as General Topic (receives unrouted messages) |
-| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `gemini-cli`, `opencode`, `kiro-cli` |
+| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `gemini-cli`, `opencode`, `kiro-cli`, `antigravity` |
 | `model` | string | — | Model alias. Claude: `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]`. Codex: `gpt-4o`, `o3`. Gemini: `gemini-2.5-pro`. Kiro: `auto`, `claude-sonnet-4.5`, `claude-sonnet-4`, `claude-haiku-4.5` |
 | `model_failover` | string[] | — | Fallback models when rate-limited (e.g. `["opus", "sonnet"]`). A 5-minute cooldown prevents repeated failover within the same window |
 | `tool_set` | string | `"full"` | MCP tool profile: `full` (all), `standard` (10), `minimal` (4) |
@@ -420,7 +420,7 @@ ClassicBot mode uses a separate config file at `~/.agend/classicBot.yaml`. This 
 
 ```yaml
 # ClassicBot Configuration
-# Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli
+# Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity
 defaults:
   backend: claude-code          # Default backend for all classic channels
 
@@ -443,6 +443,19 @@ channels:
 - **Hot reload**: file changes are detected every 30 seconds — edit `defaults.backend` or a channel's `backend` and it takes effect on the next `/chat` message
 - **Instance naming**: derived from the channel key — `classic-<key>`
 - **`agend ls`**: classic instances appear with a `(classic)` tag
+
+### Additional fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `defaults.model` | string | Default model override for all classic channels |
+| `defaults.context_lines` | number | Lines of chat history injected before each message (default: 50, set 0 to disable) |
+| `defaults.allowed_guilds` | string[] | Discord server IDs allowed to use ClassicBot (empty = all allowed) |
+| `defaults.allowed_groups` | string[] | Telegram group IDs allowed to use ClassicBot |
+| `defaults.allowed_users` | string[] | User IDs allowed to interact |
+| `defaults.admin_users` | string[] | User IDs with admin access (/compact, /save, /load) |
+| `channels.<key>.model` | string | Per-channel model override |
+| `channels.<key>.context_lines` | number | Per-channel chat history lines |
 
 ### Manual management
 
