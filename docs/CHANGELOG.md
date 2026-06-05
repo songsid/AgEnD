@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Parallel instance stop with concurrency 5.
 - Staggered restart notifications.
 
-## [1.24.0] - 2026-05-01
+## [1.24.0] - 2026-04-21
 
 ### Added
 - **Discord quickstart UX** — plugin check, channel selection, options output.
