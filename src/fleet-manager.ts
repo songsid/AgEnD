@@ -2679,7 +2679,7 @@ When users create specialized instances, suggest these configurations:
     msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
-    const contextLines = this.classicChannels?.getContextLines(msg.chatId) ?? 10;
+    const contextLines = this.classicChannels?.getContextLines(msg.chatId) ?? 5;
     const logContext = this.getRecentChatLog(instanceName, contextLines);
     const fullText = logContext
       ? `[Chat log for context]\n${logContext}\n\n[User message]\n${text}`
