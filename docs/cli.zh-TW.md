@@ -20,6 +20,8 @@ agend start                     # 啟動 AgEnD 服務（需先安裝）
 agend stop                      # 停止 AgEnD 服務
 agend restart                   # 重啟 AgEnD 服務
 agend update                    # 更新 AgEnD 到最新版本並重啟服務
+agend update --beta             # 安裝 beta 版本
+agend update --version 1.23.0   # 安裝指定版本
 agend reload                    # 熱讀取配置（重新讀取 fleet.yaml，啟動新實例）
 ```
 
