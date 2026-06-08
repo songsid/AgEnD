@@ -112,7 +112,7 @@ graph LR
 |---------|---------|------|
 | Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude` (OAuth) or `ANTHROPIC_API_KEY` |
 | OpenAI Codex | `npm i -g @openai/codex` | `codex` (ChatGPT login) or `OPENAI_API_KEY` |
-| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini` (Google OAuth) |
+| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini` (Google OAuth) ⚠️ Deprecated 2026-06-18 |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` (configure provider) |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login` (AWS Builder ID) |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` (Google Sign-In) |
