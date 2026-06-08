@@ -6,8 +6,39 @@
 
 ## [未發佈] (Unreleased)
 
+### 新增 (Added)
+- **Antigravity CLI 後端** — 完整支援 Google `agy` CLI。預設使用 CLI 模式（無 MCP）。非隱藏路徑 workspace `~/agend-workspaces/`，instructions 寫入 `.agents/agents.md`，trust 提示自動 dismiss。
+- **IPC + adapter 自動重連** — IPC 斷線後指數退避重試，之後每 60 秒無限重試。Adapter 致命錯誤（Telegram polling 初始化、Discord gateway）同策略自動重啟。死亡 tmux pane 自動 respawn。
+- **Beta 更新頻道** — `agend update --beta` 從 `@beta` npm dist-tag 安裝。CI 偵測 tag 含 `-beta` 時以 `--tag beta` 發布。
+- **PSS 記憶體報告** — `agend ls` 使用 PSS 取代 RSS，避免共用頁面重複計算。
+- **平行 instance 停止** — 併發數 5 加速關閉，systemd timeout 相應延長。
+- **可配置 context_lines** — classicBot.yaml 個別 channel 聊天記錄注入深度，設 0 停用。
+- **classicBot.yaml model 支援** — 個別 channel 模型覆蓋。
+- **Access mode "open"** — 允許所有使用者，無需白名單。
+- **Fleet 記憶體總計** — `agend ls` footer 顯示 instance 數量與總記憶體。
+- **`agend update` 指令** — 完整生命週期：sudo/nvm 偵測、npm install、service 重啟、健康檢查。
+- **GitHub Actions CI/CD** — ci、publish、gitleaks workflows。
+- **Workspace git init** — 自動建立的 workspace 執行 `git init`，確保 CLI backend 正確辨識 project root。
+- **`/agent` endpoint auth bypass** — POST /agent 使用 instance-level token，跳過 web UI token 驗證。
+
 ### 修復 (Fixed)
-- **Instance 目錄被外部刪除時健康檢查迴圈會停止** — 先前若 daemon 執行中有人 `rm -rf ~/.agend/instances/<name>`，健康檢查每 ~30s 會不斷嘗試 respawn，產生 `ENOENT … rotation-state.json` / `tmux server died` / `Failed to respawn Claude window` 的連鎖錯誤 spam。現在每次 tick 開頭會檢查 `instanceDir` 是否還存在，不存在就暫停該 instance 的健康檢查。
+- 安裝腳本：自動偵測 sudo、nvm-aware PATH、native modules 用 build-essential、/usr/local/bin symlink 僅 root 執行。
+- Discord：sticker 不再當作 photo attachment；collab 模式 chat log 包含附件檔名。
+- Daemon：統一 log rotation；移除過時的 context rotation 參考。
+- Update：重啟前先終止舊 fleet process；systemctl restart 前執行 daemon-reload。
+
+### 效能 (Performance)
+- 平行 instance 停止（併發 5）。
+- 交錯重啟通知。
+
+## [1.24.0] - 2026-04-21
+
+### 新增 (Added)
+- **Discord quickstart UX** — plugin 檢查、channel 選擇、options 輸出。
+
+### 修復 (Fixed)
+- Instance 目錄被外部刪除時健康檢查迴圈會停止。
+- 非數字輸入時 NaN crash；plugin 檢查改用 `npm list -g`。
 
 ## [1.23.0] - 2026-04-20
 

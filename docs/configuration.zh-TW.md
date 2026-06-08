@@ -74,7 +74,7 @@ health_port: 19280
 
 | 欄位 | 型別 | 預設 | 說明 |
 |------|------|------|------|
-| `mode` | `"locked"` \| `"pairing"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者可透過 `/pair` 指令申請存取（需手動確認 code） |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = 僅白名單。`pairing` = 使用者可透過 `/pair` 指令申請存取。`open` = 允許所有使用者，無需白名單 |
 | `allowed_users` | (number\|string)[] | `[]` | 白名單使用者 ID。支援 number 和 string（跨平台） |
 | `max_pending_codes` | number | `3` | 同時可有的配對碼數量上限（pairing 模式） |
 | `code_expiry_minutes` | number | `10` | 配對碼過期時間 |
@@ -168,7 +168,7 @@ teams:
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
-| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli` |
+| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity` |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
 | `tool_set` | string | `"full"` | MCP tool 設定：`full`（全部）、`standard`（10 個）、`minimal`（4 個） |
@@ -303,6 +303,19 @@ channels:
 - **熱載入**：每 30 秒偵測檔案變更 — 修改 backend 後下一次 `/chat` 即生效
 - **Instance 命名**：從 channel key 推導 — `classic-<key>`
 - **`agend ls`**：classic instance 會顯示 `(classic)` 標籤
+
+### 額外欄位
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| `defaults.model` | string | 所有 classic channel 的預設模型 |
+| `defaults.context_lines` | number | 每次訊息前注入的聊天記錄行數（預設 50，設 0 停用） |
+| `defaults.allowed_guilds` | string[] | 允許使用 ClassicBot 的 Discord 伺服器 ID（空 = 全部允許） |
+| `defaults.allowed_groups` | string[] | 允許使用 ClassicBot 的 Telegram 群組 ID |
+| `defaults.allowed_users` | string[] | 允許互動的使用者 ID |
+| `defaults.admin_users` | string[] | 擁有管理權限的使用者 ID（/compact、/save、/load） |
+| `channels.<key>.model` | string | 個別 channel 模型覆蓋 |
+| `channels.<key>.context_lines` | number | 個別 channel 聊天記錄行數 |
 
 ### 手動管理
 

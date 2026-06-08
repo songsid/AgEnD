@@ -492,3 +492,50 @@ defaults:
 ```
 
 Instances sharing the same working directory are serialized within a group to avoid config file races.
+
+## Antigravity CLI backend
+
+AgEnD supports Google's Antigravity CLI (`agy`) as a backend. Since agy does not support MCP, it operates in CLI mode (`agent_mode: cli`) by default — using `agend-agent` commands for fleet communication.
+
+```yaml
+instances:
+  my-agent:
+    backend: antigravity
+    # agent_mode defaults to "cli" for antigravity
+```
+
+### Workspace handling
+
+Agy rejects working directories under hidden paths (dot-prefixed ancestors like `~/.agend/`). When the workspace is under a hidden path, AgEnD creates a real directory at `~/agend-workspaces/<instanceName>/` and uses it as the CWD. Instructions are written to `.agents/agents.md` inside this directory.
+
+### Trust prompt
+
+Agy's "Do you trust this folder?" prompt is automatically dismissed on startup.
+
+## IPC + adapter auto-reconnect
+
+When network interruptions cause IPC connections or Telegram/Discord adapters to drop, AgEnD automatically recovers:
+
+- **IPC disconnect**: retries with exponential backoff (3s, 6s, 12s) then every 60 seconds indefinitely. Each cycle checks if the tmux pane is still alive — if dead, respawns the instance.
+- **Adapter fatal error**: retries with backoff (5s, 10s, 20s) then every 60 seconds indefinitely. Covers Telegram polling init failures and Discord gateway disconnects.
+
+Both mechanisms are suppressed during intentional shutdown (`agend stop` / fleet restart). Log spam is limited to one WARN every 10 retry attempts.
+
+## Parallel instance stop
+
+Instance shutdown uses concurrency of 5 to speed up `agend fleet stop` and `agend stop`. The systemd timeout is extended accordingly to prevent premature kill during large fleet shutdowns.
+
+## Beta update channel
+
+Install pre-release versions with:
+
+```bash
+agend update --beta     # Install from @beta npm dist-tag
+agend update            # Install from @latest (default)
+```
+
+The CI pipeline automatically publishes with `--tag beta` when the git tag contains `-beta` (e.g., `v1.24.0-beta.1`).
+
+## PSS memory reporting
+
+`agend ls` reports memory using PSS (Proportional Set Size) from `/proc/<pid>/smaps_rollup` instead of RSS. This avoids double-counting shared library pages across the process tree, giving a more accurate picture of actual memory consumption. Falls back to RSS on non-Linux systems.

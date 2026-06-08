@@ -35,7 +35,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram Forum Topic is an isolated agent session.
 
-🔄 **Multi-Backend** — Claude Code, Gemini CLI, Codex, OpenCode, Kiro CLI. Switch or mix freely.
+🔄 **Multi-Backend** — Claude Code, Gemini CLI, Codex, OpenCode, Kiro CLI, Antigravity CLI. Switch or mix freely.
 
 🤝 **Agent Collaboration** — Agents discover, wake, and message each other via MCP tools. A General Topic routes tasks to the right agent using natural language.
 
@@ -112,9 +112,10 @@ graph LR
 |---------|---------|------|
 | Claude Code | `curl -fsSL https://claude.ai/install.sh \| bash` | `claude` (OAuth) or `ANTHROPIC_API_KEY` |
 | OpenAI Codex | `npm i -g @openai/codex` | `codex` (ChatGPT login) or `OPENAI_API_KEY` |
-| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini` (Google OAuth) |
+| Gemini CLI | `npm i -g @google/gemini-cli` | `gemini` (Google OAuth) ⚠️ Deprecated 2026-06-18 |
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` (configure provider) |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login` (AWS Builder ID) |
+| Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` (Google Sign-In) |
 
 ## Requirements
 
