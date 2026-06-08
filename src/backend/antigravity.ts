@@ -15,6 +15,7 @@ export class AntigravityBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     let cmd = `${this.binaryPath} --dangerously-skip-permissions`;
     if (!config.skipResume) cmd += " --continue";
+    if (config.model) cmd += ` --model ${config.model.replace(/[^a-zA-Z0-9_./-]/g, "")}`;
     return cmd;
   }
 

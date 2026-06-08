@@ -12,6 +12,7 @@ export function createBackend(name: string, instanceDir: string): CliBackend {
     case "claude-code":
       return new ClaudeCodeBackend(instanceDir);
     case "gemini-cli":
+      console.warn("⚠️  gemini-cli is deprecated (stops 2026-06-18). Consider switching to backend: antigravity");
       return new GeminiCliBackend(instanceDir);
     case "codex":
       return new CodexBackend(instanceDir);
