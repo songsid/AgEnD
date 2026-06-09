@@ -408,28 +408,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {
     try {
-      // Try chatId as channel ID first (Discord classic bot passes channelId as chatId)
-      try {
-        const ch = await this._fetchTextChannel(chatId);
-        const msg = await ch.messages.fetch(messageId);
-        await msg.react(emoji);
-        return;
-      } catch { /* not found in this channel, search guild */ }
-
-      const guild = await this.client.guilds.fetch(this.guildId);
-      const channels = guild.channels.cache.filter(
-        (c: { type: ChannelType }) => c.type === ChannelType.GuildText,
+      // Direct REST call — single API request instead of 3 (fetchChannel → fetchMessage → react)
+      const encoded = encodeURIComponent(emoji);
+      await (this.client as any).rest.put(
+        `/channels/${chatId}/messages/${messageId}/reactions/${encoded}/@me`
       );
-      for (const [, ch] of channels) {
-        try {
-          const textCh = ch as TextChannel;
-          const msg = await textCh.messages.fetch(messageId);
-          await msg.react(emoji);
-          return;
-        } catch {
-          continue;
-        }
-      }
     } catch {
       // No-op per degradation strategy
     }
