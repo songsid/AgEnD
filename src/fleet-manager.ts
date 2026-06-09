@@ -1310,13 +1310,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Forward to General Topic instance if configured
       const generalInstance = this.findGeneralInstance(msg.adapterId);
       if (generalInstance) {
-        this.warnIfRateLimited(generalInstance, msg);
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+
+        // React immediately — before any other API calls
         if (msg.chatId && msg.messageId) {
           inboundAdapter.react(msg.chatId, msg.messageId, "👀")
             .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
         }
+
+        this.warnIfRateLimited(generalInstance, msg);
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
         if (ipc) {
@@ -1381,22 +1384,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Bind instance to the adapter that delivered this message
     if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
 
-    // Reopen archived topic before routing
+    const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+
+    // React immediately — before any other Discord API calls
+    if (msg.chatId && msg.messageId) {
+      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
+        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+    }
+
+    // These may hit Discord API (topic icon, archive) — do after react
     if (this.topicArchiver.isArchived(threadId)) {
       await this.topicArchiver.reopen(threadId, instanceName);
     }
 
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "blue");
-
     this.warnIfRateLimited(instanceName, msg);
-
-    const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
-
-    if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
-        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
-    }
 
     const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
 
