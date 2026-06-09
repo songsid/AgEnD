@@ -1313,13 +1313,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.warnIfRateLimited(generalInstance, msg);
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+        if (msg.chatId && msg.messageId) {
+          inboundAdapter.react(msg.chatId, msg.messageId, "👀")
+            .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+        }
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
         const ipc = this.instanceIpcClients.get(generalInstance);
         if (ipc) {
-          if (msg.chatId && msg.messageId) {
-            inboundAdapter.react(msg.chatId, msg.messageId, "👀")
-              .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
-          }
           ipc.send({
             type: "fleet_inbound",
             content: text,
@@ -1392,17 +1392,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.warnIfRateLimited(instanceName, msg);
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
+
+    if (msg.chatId && msg.messageId) {
+      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
+        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+    }
+
     const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
 
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) {
       this.logger.warn({ instanceName }, "No IPC connection to instance");
       return;
-    }
-
-    if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
-        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
     ipc.send({
