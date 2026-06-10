@@ -208,7 +208,7 @@ Models are specified in fleet.yaml `defaults.model` or per-instance `model` fiel
 
 | Backend | How to list models | Default |
 |---------|-------------------|---------|
-| **kiro-cli** | `kiro-cli settings` or check docs | auto (latest) |
+| **kiro-cli** | In tmux: send `/model` + Enter → read model list → Esc to close | auto (latest) |
 | **claude-code** | `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]` | sonnet |
 | **antigravity** | Run `agy models` to see available models | Gemini 3.5 Flash (Medium) |
 | **codex** | `gpt-4o`, `o3`, `o4-mini` | gpt-4o |
