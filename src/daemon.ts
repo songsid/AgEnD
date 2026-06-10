@@ -808,7 +808,7 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
     }
     if (wasQueued && chatId && messageId) {
-      this.emit("message_queued", { chatId, messageId });
+      this.emit("message_queued", { chatId: meta.thread_id || chatId, messageId });
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -826,7 +826,7 @@ export class Daemon extends EventEmitter {
         }
         await this.deliverMessage(formatted);
         if (chatId && messageId) {
-          this.emit("message_delivered", { chatId, messageId });
+          this.emit("message_delivered", { chatId: meta.thread_id || chatId, messageId });
         }
       } finally {
         this.pasteQueueDepth--;
