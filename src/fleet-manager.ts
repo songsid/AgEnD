@@ -1315,7 +1315,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // React immediately — before any other API calls
         if (msg.chatId && msg.messageId) {
-          inboundAdapter.react(msg.chatId, msg.messageId, "👀")
+          inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
             .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
         }
 
@@ -1388,7 +1388,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // React immediately — before any other Discord API calls
     if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.chatId, msg.messageId, "👀")
+      inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
