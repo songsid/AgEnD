@@ -206,15 +206,20 @@ agend fleet stop && agend fleet start  # full restart — new code takes effect
 
 Models are specified in fleet.yaml `defaults.model` or per-instance `model` field.
 
-| Backend | Model Names | Default |
-|---------|-------------|---------|
-| **kiro-cli** | `claude-sonnet-4-20250514`, `claude-opus-4-20250514`, `claude-haiku-3-20250307` | auto (latest) |
+| Backend | How to list models | Default |
+|---------|-------------------|---------|
+| **kiro-cli** | `kiro-cli settings` or check docs | auto (latest) |
 | **claude-code** | `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]` | sonnet |
-| **gemini-cli** | `gemini-2.5-pro`, `gemini-2.5-flash` | auto |
+| **antigravity** | Run `agy models` to see available models | Gemini 3.5 Flash (Medium) |
 | **codex** | `gpt-4o`, `o3`, `o4-mini` | gpt-4o |
-| **opencode** | depends on provider config | — |
+| **opencode** | `opencode models` | depends on provider |
 
-**Important:** kiro-cli uses FULL model IDs (e.g. `claude-sonnet-4-20250514`), NOT short names like `sonnet`. Claude Code uses short names. Don't mix them up.
+**To discover available models for a backend, run the CLI's model listing command:**
+- `agy models` — lists all available models for antigravity
+- `opencode models` — lists all available models for opencode
+- `codex` — check config.toml
+
+**Important:** Model names vary by backend. Always check the actual CLI output rather than guessing names. For antigravity, use the exact display name shown by `agy models` (e.g. "Gemini 3.5 Flash (High)").
 
 Example fleet.yaml:
 ```yaml
