@@ -2409,23 +2409,48 @@ When users create specialized instances, suggest these configurations:
     this.syncGeneralKnowledge(workDir, backend);
   }
 
-  /** Copy src/general-knowledge/*.md to the general instance's steering dir */
+  /** Copy general-knowledge steering + skills to the general instance's workspace */
   private syncGeneralKnowledge(workDir: string, backend: string): void {
     const knowledgeDir = join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
     if (!existsSync(knowledgeDir)) return;
+
+    // Sync steering files → .kiro/steering/ (or workDir root for non-kiro)
     const steeringDir = backend === "kiro-cli"
       ? join(workDir, ".kiro", "steering")
-      : workDir; // other backends: put in working dir root
+      : workDir;
     mkdirSync(steeringDir, { recursive: true });
-    for (const file of readdirSync(knowledgeDir)) {
-      if (!file.endsWith(".md")) continue;
-      const src = join(knowledgeDir, file);
-      const dest = join(steeringDir, file);
-      // Only write if content actually changed — avoids triggering instructions hash diff
-      const newContent = readFileSync(src, "utf-8");
-      try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
-      writeFileSync(dest, newContent);
+    const srcSteering = join(knowledgeDir, "steering");
+    if (existsSync(srcSteering)) {
+      for (const file of readdirSync(srcSteering)) {
+        if (!file.endsWith(".md")) continue;
+        const src = join(srcSteering, file);
+        const dest = join(steeringDir, file);
+        const newContent = readFileSync(src, "utf-8");
+        try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
+        writeFileSync(dest, newContent);
+      }
     }
+
+    // Sync skills → .kiro/skills/ (kiro-cli only)
+    if (backend === "kiro-cli") {
+      const srcSkills = join(knowledgeDir, "skills");
+      if (existsSync(srcSkills)) {
+        const destSkills = join(workDir, ".kiro", "skills");
+        mkdirSync(destSkills, { recursive: true });
+        for (const skillDir of readdirSync(srcSkills)) {
+          const skillSrc = join(srcSkills, skillDir);
+          if (!existsSync(join(skillSrc, "SKILL.md"))) continue;
+          const skillDest = join(destSkills, skillDir);
+          mkdirSync(skillDest, { recursive: true });
+          const src = join(skillSrc, "SKILL.md");
+          const dest = join(skillDest, "SKILL.md");
+          const newContent = readFileSync(src, "utf-8");
+          try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
+          writeFileSync(dest, newContent);
+        }
+      }
+    }
+
     this.logger.debug({ knowledgeDir, steeringDir }, "Synced general knowledge files");
   }
 
