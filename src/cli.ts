@@ -925,6 +925,8 @@ program
     } else {
       try {
         execSync("systemctl --user daemon-reload", { stdio: "pipe", timeout: 5000 });
+        // Reset failed state in case the kill above left systemd confused
+        try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch {}
         execSync("systemctl --user start com.agend.fleet", { stdio: "inherit", timeout: 15000 });
         console.log("  ✓ Service restarted\n");
         return;
