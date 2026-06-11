@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.19] - 2026-06-11
+
+### Fixed
+- **agy model discovery skill** — clarify that effort suffix (Medium/High/Low/Thinking) is not part of the model name.
+
 ## [0.0.18] - 2026-06-11
 
 ### Added
