@@ -128,6 +128,23 @@ export function validateModel(model: string): string {
   return model;
 }
 
+/** Known model prefixes/patterns per backend. Model is skipped if it doesn't match the target backend. */
+const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
+  "claude-code": /^(sonnet|opus|haiku|opusplan|best|claude)/i,
+  "kiro-cli": /^(claude|sonnet|opus|haiku)/i,
+  "codex": /^(gpt|o[0-9]|chatgpt)/i,
+  "gemini-cli": /^gemini/i,
+  "opencode": /./,  // opencode accepts anything (provider-dependent)
+  "antigravity": / /,  // agy models always contain spaces (display names like "Gemini 3.5 Flash (High)")
+};
+
+/** Check if a model name is compatible with the given backend. */
+export function isModelCompatible(backendName: string, model: string): boolean {
+  const pattern = BACKEND_MODEL_PATTERNS[backendName];
+  if (!pattern) return true; // unknown backend — pass through
+  return pattern.test(model);
+}
+
 /** POSIX single-quote escape for embedding arbitrary values in a shell command. */
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
