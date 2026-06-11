@@ -20,16 +20,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **GitHub Actions CI/CD** — ci, publish, and gitleaks workflows.
 - **Workspace git init** — auto-created workspaces get `git init` for CLI backend project root detection.
 - **`/agent` endpoint auth bypass** — POST /agent uses instance-level token, skips web UI token check.
+- **agy `--model` flag** — pass model selection to antigravity CLI.
+- **General-knowledge refactor** — split into `steering/` (always loaded core rules) + `skills/` (on-demand with YAML frontmatter). Reduces General's default context usage.
+- **Dynamic model discovery** — skills teach General to run CLI commands (`agy models`, `/model`) instead of hard-coded model lists.
 
 ### Fixed
 - Install script: auto-detect sudo, nvm-aware PATH, build-essential for native modules, /usr/local/bin symlinks only as root.
 - Discord: stickers no longer treated as photo attachments; collab mode chat log includes attachment filenames.
 - Daemon: unified log rotation; stale context rotation references removed from prompts.
 - Update: kill old fleet process before restart; run daemon-reload before systemctl restart.
+- Discord react: use `threadId` instead of `chatId` (guild ID) for 👀, ⏳, ✅ reactions.
+- `agend update` restart: add `reset-failed` before `systemctl start` to handle post-kill failed state.
+- Cross-instance silence: allow agents to stay silent when they have nothing to add.
+- Default `context_lines` reduced from 10 to 5.
 
 ### Performance
 - Parallel instance stop with concurrency 5.
 - Staggered restart notifications.
+- Discord `react()` uses single REST PUT instead of 3 sequential API calls (fetchChannel → fetchMessage → react). ~1s → ~300ms.
+- 👀 auto-react moved before `setTopicIcon`/`archive`/`processAttachments` for instant feedback.
+
+### Deprecated
+- **gemini-cli** — sunset 2026-06-18. Warning shown on fleet start.
 
 ## [1.24.0] - 2026-04-21
 
