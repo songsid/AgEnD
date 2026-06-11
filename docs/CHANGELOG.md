@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.18] - 2026-06-11
+
+### Added
+- **Model compatibility check** — `defaults.model` only applies to backends that recognize the model name pattern. Incompatible models are silently skipped (e.g. `claude-opus-4.6` won't be passed to Codex).
+
 ## [0.0.17] - 2026-06-11
 
 ### Added
