@@ -20,7 +20,13 @@ Models are specified in fleet.yaml `defaults.model` or per-instance `model` fiel
 - `opencode models` — lists all available models for opencode
 - `codex` — check config.toml
 
-**Important:** Model names vary by backend. Always check the actual CLI output rather than guessing names. For antigravity, use the exact display name shown by `agy models` (e.g. "Gemini 3.5 Flash (High)").
+**Important for antigravity (agy):**
+- `agy models` shows names like `Gemini 3.5 Flash (Medium)` — the parenthetical suffix (Medium/High/Low/Thinking) is the **effort level**, NOT part of the model name.
+- When setting model in fleet.yaml, use only the base name WITHOUT the effort suffix.
+- Example: `agy models` shows `Gemini 3.5 Flash (Medium)` → set `model: "Gemini 3.5 Flash"`
+- Example: `agy models` shows `Claude Opus 4.6 (Thinking)` → set `model: "Claude Opus 4.6"`
+
+**Important:** Model names vary by backend. Always check the actual CLI output rather than guessing names.
 
 Example fleet.yaml:
 ```yaml
