@@ -186,6 +186,13 @@ export class ClassicChannelManager {
     return this.defaults.backend || fleetDefault || "claude-code";
   }
 
+  getChannelIdByInstance(instanceName: string): string | undefined {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) return ch.channelId;
+    }
+    return undefined;
+  }
+
   isClassicChannel(channelId: string): boolean { return this.channels.has(channelId); }
   get(channelId: string): ClassicChannel | undefined { return this.channels.get(channelId); }
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }

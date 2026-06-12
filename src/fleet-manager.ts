@@ -1484,7 +1484,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const routingConfig = senderInstanceName
       ? this.fleetConfig?.instances[senderInstanceName]
       : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
-    const threadId = resolveReplyThreadId(args.thread_id, routingConfig);
+    const threadId = resolveReplyThreadId(args.thread_id, routingConfig)
+      ?? this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
 
     // Select adapter: use instance binding, or resolve from chatId in args
     const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
