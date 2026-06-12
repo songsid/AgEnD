@@ -1204,8 +1204,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
 
-    this.logger.info({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length }, "handleInboundMessage entry");
-
     // Bot messages: only allow in collab channels
     if (msg.isBotMessage) {
       if (!threadId) return;
@@ -1220,7 +1218,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (am && !am.isAllowed(msg.userId)) {
       const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
       const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
-      this.logger.info({ userId: msg.userId, isTelegramClassicCandidate, adapterGroupId, chatId: msg.chatId, threadId }, "Access control check");
       if (!isTelegramClassicCandidate) {
         const target = threadId ? this.routing.resolve(threadId) : undefined;
         this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access DENIED for non-allowed user");
@@ -1254,7 +1251,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
 
         const isBotMentioned = !!(botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`));
-        this.logger.info({ rawText, botUser, isBotMentioned, adapterId: msg.adapterId, textLen: text.length }, "TG classic mention check");
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
