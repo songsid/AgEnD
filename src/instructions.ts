@@ -37,10 +37,16 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
     // MCP mode: inject MCP tool usage instructions
     sections.push([
       "## Message Format",
-      "- `[user:name]` — from a Telegram/Discord user → reply with the `reply` tool.",
+      "- `[user:name via platform, id:USER_ID]` — from a Telegram/Discord user → reply with the `reply` tool.",
       "- `[from:instance-name]` — from another fleet instance → reply with `send_to_instance`, NOT the reply tool.",
       "",
       "**Always use the `reply` tool for ALL responses to users.** Do not respond directly in the terminal.",
+      "",
+      "## Mentioning Users & Bots",
+      "- Discord: `<@USER_ID>` (e.g. `<@368442276000694273>`). Extract the id from the `id:` field in the message header.",
+      "- Telegram: `@username` (plain text).",
+      "- When notifying a specific user in a channel, include their mention in the reply text.",
+      "- To mention another bot in collab mode, use the same format with the bot's user ID.",
       "",
       "## Tool Usage",
       "- reply: respond to users. react: emoji reactions. edit_message: update a sent message. download_attachment: fetch files.",
