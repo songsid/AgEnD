@@ -1277,6 +1277,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               await msgAdapter?.sendText(chatId, "⏳ Access requested. Waiting for admin approval.");
               return;
             }
+            if (!this.classicChannels.isAdmin(msg.userId)) {
+              await msgAdapter?.sendText(chatId, "⛔ Only admins can start agents. Ask an admin to /start.");
+              return;
+            }
           }
           const channelName = msg.username || chatId;
           const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
@@ -1287,6 +1291,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle /stop command
         if (text === "/stop" || text.startsWith("/stop ")) {
+          if (!this.classicChannels.isAdmin(msg.userId)) {
+            await msgAdapter?.sendText(chatId, "⛔ Only admins can stop agents.");
+            return;
+          }
           const reply = await this.handleClassicStop(chatId);
           await msgAdapter?.sendText(chatId, reply);
           return;
@@ -1306,6 +1314,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           // Strip @bot from text and forward as /chat
           const cleanText = botUser ? text.replace(new RegExp(`@${botUser}`, "gi"), "").trim() : text;
+          if (cleanText.startsWith("/raw") && !this.classicChannels.isAdmin(msg.userId)) {
+            await msgAdapter?.sendText(chatId, "⛔ /raw requires admin access.");
+            return;
+          }
           const syntheticMsg = { ...msg, threadId: chatId, text: `/chat ${cleanText}` };
           await this.handleClassicChannelMessage(target.name, syntheticMsg);
           return;
