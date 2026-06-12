@@ -1230,11 +1230,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
-        // Strip @BotUsername suffix from commands (e.g. /start@BotName → /start)
-        let text = (msg.text ?? "").replace(/^(\/\w+)@\S+/, "$1");
+        const rawText = msg.text ?? "";
         // Detect @OurBot mention (only our bot, not other bots)
         const world = this.worlds.get(msg.adapterId ?? "");
         const botUser = world?.botUsername;
+
+        // Strip @BotUsername suffix from commands — but only if it's OUR bot or no bot specified
+        let text = rawText;
+        const cmdMatch = rawText.match(/^(\/\w+)@(\S+)/);
+        if (cmdMatch) {
+          const targetBot = cmdMatch[2];
+          if (botUser && targetBot.toLowerCase() !== botUser.toLowerCase()) {
+            // Command targeted at another bot — ignore entirely
+            return;
+          }
+          text = rawText.replace(/^(\/\w+)@\S+/, "$1");
+        }
+
         const isBotMentioned = !!(botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`));
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
