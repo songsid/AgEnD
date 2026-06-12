@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.20] - 2026-06-12
+
+### Added
+- **User ID in inbound messages** — format now includes `id:USER_ID` for mention support. Agents can `<@ID>` to mention Discord users or use Telegram mention syntax.
+
+### Fixed
+- **Classic instance reply fallback** — classic channel agents can now reply even after fleet restart. Falls back to `classicBot.yaml` channelId when `topic_id` is unavailable.
+
 ## [0.0.19] - 2026-06-11
 
 ### Fixed
