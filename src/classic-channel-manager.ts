@@ -117,22 +117,25 @@ export class ClassicChannelManager {
 
   getDefaults(): { backend?: string } { return this.defaults; }
 
-  /** Check if a guild is allowed. Empty/unset allowed_guilds = allow all (backward compat). */
+  /** Check if a guild is allowed. Empty/unset/non-array allowed_guilds = allow all (backward compat). */
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
-    return !list || list.length === 0 || list.includes(guildId);
+    if (!Array.isArray(list) || list.length === 0) return true;
+    return list.includes(guildId);
   }
 
-  /** Check if a Telegram group is allowed. Empty/unset = allow all. */
+  /** Check if a Telegram group is allowed. Empty/unset/non-array = allow all. */
   isGroupAllowed(groupId: string): boolean {
     const list = this.defaults.allowed_groups;
-    return !list || list.length === 0 || list.includes(groupId);
+    if (!Array.isArray(list) || list.length === 0) return true;
+    return list.includes(groupId);
   }
 
-  /** Check if a Telegram user (private chat) is allowed. Empty/unset = allow all. */
+  /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array = allow all. */
   isUserAllowed(userId: string): boolean {
     const list = this.defaults.allowed_users;
-    return !list || list.length === 0 || list.includes(userId);
+    if (!Array.isArray(list) || list.length === 0) return true;
+    return list.includes(userId);
   }
 
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
