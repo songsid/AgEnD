@@ -1248,6 +1248,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
 
         const isBotMentioned = !!(botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`));
+        this.logger.debug({ rawText, botUser, isBotMentioned, adapterId: msg.adapterId, textLen: text.length }, "TG classic mention check");
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
