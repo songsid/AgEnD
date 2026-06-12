@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.21] - 2026-06-12
+
+### Added
+- **Mention rules in fleet instructions** — all instances now know how to `<@USER_ID>` mention Discord users/bots and `@username` for Telegram. Extracted from `id:` field in inbound messages.
+
 ## [0.0.20] - 2026-06-12
 
 ### Added
