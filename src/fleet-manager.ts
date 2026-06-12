@@ -827,18 +827,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     await this.topicCommands.registerBotCommands().catch(e =>
       this.logger.warn({ err: e }, "registerBotCommands failed (non-fatal)"));
-    await this.adapter.start();
-    if (fleet.channel?.group_id) {
-      this.adapter.setChatId(String(fleet.channel.group_id));
-    }
 
     this.adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
-      if (userId) {
-        this.botUserId = userId;
-        const w = this.worlds.values().next().value as AdapterWorld | undefined;
-        if (w) w.botUserId = userId;
+      const w = this.worlds.values().next().value as AdapterWorld | undefined;
+      if (w) {
+        w.botUsername = username;
+        if (userId) w.botUserId = userId;
       }
+      if (userId) this.botUserId = userId;
     }, this.logger, "adapter.started"));
     this.adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
       this.logger.warn(`409 Conflict (attempt ${attempt}), retry in ${delay / 1000}s`);
@@ -856,6 +853,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalId = this.findGeneralInstance();
       if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
     }, this.logger, "adapter.new_group_detected"));
+
+    // Start adapter AFTER all event listeners are registered (started event sets botUsername)
+    await this.adapter.start();
+    if (fleet.channel?.group_id) {
+      this.adapter.setChatId(String(fleet.channel.group_id));
+    }
 
     this.startTopicCleanupPoller();
 
