@@ -68,7 +68,7 @@ Commands available in regular channels/groups/private chats.
 | Command | Permission Check | Who Can Use |
 |---------|-----------------|-------------|
 | `/start` | `isUserAllowed(userId)` | Allowed users (empty = all) |
-| `/stop` | None | All users |
+| `/stop` | `isAdmin(userId)` | Admin only |
 | Direct message | None (after /start) | All users |
 
 ### Telegram ClassicBot — Group Chat
@@ -124,7 +124,7 @@ Message arrives
 
 6. **`defaults.admin_users` empty** — no one is admin (secure default). Must explicitly add user IDs.
 
-7. **TG private chat `/stop`** — currently has no admin check. Low risk (user can only stop their own agent in their own private chat).
+7. **TG private chat `/stop`** — requires admin (same as group). If `admin_users` is empty, no one can `/stop` in private chat. Add yourself to `admin_users` to manage agents.
 
 ---
 
