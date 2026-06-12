@@ -537,7 +537,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
-    await this.startInstancesWithConcurrency(Object.entries(fleet.instances), topicMode);
+    // Phase 1: Start general instances first and wait for them
+    const allEntries = Object.entries(fleet.instances);
+    const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
+    const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
+
+    if (generals.length > 0) {
+      for (const [name, cfg] of generals) {
+        await this.startInstance(name, cfg, topicMode).catch(err =>
+          this.logger.error({ err, name }, "Failed to start general instance"));
+      }
+    }
+
+    // Phase 2: Start remaining instances with staggered concurrency
+    if (others.length > 0) {
+      await this.startInstancesWithConcurrency(others, topicMode);
+    }
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
 
@@ -3159,7 +3174,17 @@ When users create specialized instances, suggest these configurations:
     this.fleetConfig = fleet;
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
-    await this.startInstancesWithConcurrency(Object.entries(fleet.instances), topicMode);
+    // Phase 1: generals first
+    const restartEntries = Object.entries(fleet.instances);
+    const restartGenerals = restartEntries.filter(([_, cfg]) => cfg.general_topic);
+    const restartOthers = restartEntries.filter(([_, cfg]) => !cfg.general_topic);
+    for (const [name, cfg] of restartGenerals) {
+      await this.startInstance(name, cfg, topicMode).catch(err =>
+        this.logger.error({ err, name }, "Failed to start general instance"));
+    }
+    if (restartOthers.length > 0) {
+      await this.startInstancesWithConcurrency(restartOthers, topicMode);
+    }
 
     if (topicMode) {
       this.routing.rebuild(this.fleetConfig!);
