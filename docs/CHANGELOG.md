@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.22] - 2026-06-12
+
+### Fixed
+- **Classic instance proactive reply** — daemon no longer blocks `reply` tool when no prior inbound message exists. Fleet-manager's classicBot channelId fallback now correctly routes outbound messages.
+
 ## [0.0.21] - 2026-06-12
 
 ### Added
