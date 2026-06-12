@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.23] - 2026-06-12
+
+### Added
+- **Permissions matrix** — `docs/permissions.md` documents all commands × platforms × access levels.
+
+### Fixed
+- **TG classic `botUsername` never set on primary adapter** — `isBotMentioned` was always false. Now correctly sets `world.botUsername` in the `started` event handler and registers listeners before `adapter.start()`.
+- **TG `/start@other_bot` triggers all bots** — commands with `@suffix` targeting another bot are now ignored entirely.
+- **TG `/start` `/stop` `/raw` admin lock** — group-mode `/start` and `/stop` now require `admin_users`. `@bot /raw` also requires admin.
+- **`allowed_guilds: {}` (non-array) breaks access** — non-array values are now treated as "allow all" instead of rejecting everything.
+
 ## [0.0.22] - 2026-06-12
 
 ### Fixed
