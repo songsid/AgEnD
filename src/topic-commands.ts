@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
@@ -201,41 +201,29 @@ export class TopicCommands {
       return;
     }
 
-    await adapter.sendText(chatId, "✅ Updated. Restarting service...", { threadId });
-    await new Promise(r => setTimeout(r, 1000));
+    // Get new version
+    let newVersion = "latest";
+    try {
+      const { stdout } = await execAsync("npm view @songsid/agend version", { timeout: 10_000 });
+      newVersion = stdout.trim();
+    } catch { /* use "latest" */ }
+
+    await adapter.sendText(chatId, `✅ Updated to v${newVersion}. Restarting in 2s...`, { threadId });
 
     const label = "com.agend.fleet";
     const plat = detectPlatform();
 
     if (plat === "macos") {
-      const plistPath = join(homedir(), "Library/LaunchAgents", `${label}.plist`);
-      if (existsSync(plistPath)) {
-        const uid = process.getuid?.() ?? 501;
-        try {
-          await execAsync(`launchctl kickstart -k gui/${uid}/${label}`, { timeout: 15_000 });
-          return;
-        } catch {
-          await adapter.sendText(chatId, "⚠️ Failed to restart launchd service", { threadId });
-          return;
-        }
-      }
+      const uid = process.getuid?.() ?? 501;
+      const child = spawn("sh", ["-c", `sleep 2 && launchctl kickstart -k gui/${uid}/${label}`], {
+        detached: true, stdio: "ignore",
+      });
+      child.unref();
     } else {
-      try {
-        await execAsync(`systemctl --user restart ${label}`, { timeout: 15_000 });
-        return;
-      } catch { /* no systemd service */ }
-    }
-
-    const pidPath = join(this.ctx.dataDir, "fleet.pid");
-    if (existsSync(pidPath)) {
-      const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-      try {
-        process.kill(pid, "SIGUSR1");
-      } catch {
-        await adapter.sendText(chatId, "⚠️ Fleet not running", { threadId });
-      }
-    } else {
-      await adapter.sendText(chatId, "⚠️ No service or running fleet found", { threadId });
+      const child = spawn("sh", ["-c", `sleep 2 && systemctl --user daemon-reload && systemctl --user reset-failed ${label} 2>/dev/null; systemctl --user restart ${label}`], {
+        detached: true, stdio: "ignore",
+      });
+      child.unref();
     }
   }
 
