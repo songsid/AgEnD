@@ -107,6 +107,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
@@ -625,6 +626,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Health HTTP endpoint
     this.startHealthServer(fleet.health_port ?? 19280);
+
+    // Daily update check — first check after 1 hour, then every 24 hours
+    this.updateCheckTimer = setTimeout(() => {
+      this.checkForUpdates();
+      this.updateCheckTimer = setInterval(() => this.checkForUpdates(), 24 * 60 * 60 * 1000);
+    }, 60 * 60 * 1000);
 
     // SIGHUP: hot-reload instance config (add/remove/restart instances)
     const onSighup = () => {
@@ -2860,6 +2867,7 @@ When users create specialized instances, suggest these configurations:
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
+    if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);
@@ -3259,6 +3267,30 @@ When users create specialized instances, suggest these configurations:
         }
       }
     }
+  }
+
+  // ── Update check ────────────────────────────────────────────────────
+
+  private async checkForUpdates(): Promise<void> {
+    try {
+      const { execSync } = await import("node:child_process");
+      const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+      const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
+      const latest = execSync("npm view @songsid/agend version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
+      let target = latest;
+      if (currentVersion.includes("-beta")) {
+        try {
+          const beta = execSync("npm view @songsid/agend@beta version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
+          if (beta && beta !== currentVersion) target = beta;
+        } catch { /* no beta tag */ }
+      }
+      if (target && target !== currentVersion) {
+        const generalId = this.findGeneralInstance();
+        if (generalId) {
+          this.notifyInstanceTopic(generalId, `🆕 AgEnD v${target} available (current: v${currentVersion}). Use /update to upgrade.`);
+        }
+      }
+    } catch { /* silent — network issues */ }
   }
 
   // ── Health HTTP endpoint ─────────────────────────────────────────────
