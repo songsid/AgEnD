@@ -310,26 +310,26 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // Register classic bot slash commands
       try {
         await this.client.application?.commands.set([
-          { name: "start", description: "Start an agent in this channel" },
-          { name: "stop", description: "Stop the agent in this channel" },
+          { name: "start", description: "[ClassicBot] Start an agent in this channel" },
+          { name: "stop", description: "[ClassicBot] Stop the agent in this channel" },
           {
-            name: "chat", description: "Send a message to the agent",
+            name: "chat", description: "[ClassicBot] Send a message to the agent",
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
           },
-          { name: "compact", description: "Compact the agent's context window" },
+          { name: "compact", description: "[ClassicBot] Compact the agent's context window" },
           {
-            name: "save", description: "Save the agent's conversation",
+            name: "save", description: "[ClassicBot] Save the agent's conversation",
             options: [
               { name: "filename", description: "File name to save as", type: 3, required: true },
               { name: "force", description: "Overwrite if file exists", type: 5, required: false },
             ],
           },
           {
-            name: "load", description: "Load a saved conversation",
+            name: "load", description: "[ClassicBot] Load a saved conversation",
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
-          { name: "ctx", description: "Show agent context usage" },
-          { name: "collab", description: "Toggle collaboration mode (@mention trigger)" },
+          { name: "ctx", description: "[ClassicBot] Show agent context usage" },
+          { name: "collab", description: "[ClassicBot] Toggle collaboration mode (@mention trigger)" },
         ]);
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
