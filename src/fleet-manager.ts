@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { sdNotify } from "./sd-notify.js";
 import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -108,6 +109,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Health endpoint
   private healthServer: Server | null = null;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
@@ -545,10 +547,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
-        await this.startInstance(name, cfg, topicMode).catch(err =>
-          this.logger.error({ err, name }, "Failed to start general instance"));
+        try {
+          await this.startInstance(name, cfg, topicMode);
+        } catch (err) {
+          this.logger.error({ err, name }, "Failed to start general instance");
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const topicId = cfg.topic_id ? String(cfg.topic_id) : undefined;
+          if (this.adapter && topicId) {
+            const chatId = this.adapter.getChatId?.() ?? "";
+            if (chatId) {
+              this.adapter.sendText(chatId, `⚠️ General instance "${name}" failed to start:\n${errorMsg}`, { threadId: topicId }).catch(() => {});
+            }
+          }
+        }
       }
     }
+
+    // Signal systemd: generals ready
+    sdNotify("READY=1");
+    this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
 
     // Phase 2: Start remaining instances with staggered concurrency
     if (others.length > 0) {
@@ -2864,6 +2881,8 @@ When users create specialized instances, suggest these configurations:
 
   async stopAll(): Promise<void> {
     this.ipcStoppingInstances.add("__fleet_stopping__");
+    sdNotify("STOPPING=1");
+    if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
