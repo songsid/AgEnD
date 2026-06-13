@@ -352,9 +352,9 @@ export class TopicCommands {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               commands: [
-                { command: "status", description: "Show fleet status and costs" },
-                { command: "restart", description: "Graceful restart all instances" },
-                { command: "sysinfo", description: "System diagnostics" },
+                { command: "status", description: "[Fleet] Show fleet status and costs" },
+                { command: "restart", description: "[Fleet] Graceful restart all instances" },
+                { command: "sysinfo", description: "[Fleet] System diagnostics" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
@@ -369,9 +369,9 @@ export class TopicCommands {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               commands: [
-                { command: "start", description: "Start an agent in this chat" },
-                { command: "stop", description: "Stop the agent" },
-                { command: "chat", description: "Talk to the agent" },
+                { command: "start", description: "[ClassicBot] Start an agent in this chat" },
+                { command: "stop", description: "[ClassicBot] Stop the agent" },
+                { command: "chat", description: "[ClassicBot] Talk to the agent" },
               ],
               scope: { type: "default" },
             }),
