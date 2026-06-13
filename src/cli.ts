@@ -588,6 +588,97 @@ backend
       }
     }
 
+    // ── Fleet-level checks ──
+    console.log(`\n  \x1b[1mFleet checks\x1b[0m\n`);
+
+    // fleet.yaml syntax
+    const fleetYamlPath = join(DATA_DIR, "fleet.yaml");
+    if (existsSync(fleetYamlPath)) {
+      try {
+        const yaml = await import("js-yaml");
+        yaml.default.load(readFileSync(fleetYamlPath, "utf-8"));
+        ok(`fleet.yaml${" ".repeat(10)} valid syntax`);
+      } catch (e) {
+        fail(`fleet.yaml${" ".repeat(10)} parse error: ${(e as Error).message?.split("\n")[0]}`);
+      }
+    } else {
+      fail(`fleet.yaml${" ".repeat(10)} not found at ${fleetYamlPath}`);
+    }
+
+    // Port 19280 availability
+    try {
+      const net = await import("node:net");
+      await new Promise<void>((resolve, reject) => {
+        const srv = net.createServer();
+        srv.once("error", reject);
+        srv.listen(19280, () => { srv.close(); resolve(); });
+      });
+      ok(`port 19280${" ".repeat(10)} available`);
+    } catch {
+      fail(`port 19280${" ".repeat(10)} in use (fleet already running or port conflict)`);
+    }
+
+    // Stale MCP sockets
+    const instancesDir = join(DATA_DIR, "instances");
+    if (existsSync(instancesDir)) {
+      const { execSync: execSyncCheck } = await import("node:child_process");
+      let stale = 0;
+      for (const d of readdirSync(instancesDir)) {
+        const sock = join(instancesDir, d, "channel.mcp.sock");
+        if (existsSync(sock)) {
+          const pidFile = join(instancesDir, d, "daemon.pid");
+          if (existsSync(pidFile)) {
+            const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
+            try { process.kill(pid, 0); } catch { stale++; }
+          } else { stale++; }
+        }
+      }
+      if (stale > 0) fail(`MCP sockets${" ".repeat(9)} ${stale} stale socket(s) found`);
+      else ok(`MCP sockets${" ".repeat(9)} no stale sockets`);
+    }
+
+    // Service file ExecStart vs current binary
+    try {
+      const { execSync: es } = await import("node:child_process");
+      const svcPath = join(homedir(), ".config/systemd/user/com.agend.fleet.service");
+      if (existsSync(svcPath)) {
+        const svc = readFileSync(svcPath, "utf-8");
+        const match = svc.match(/ExecStart=(\S+)/);
+        const svcBin = match?.[1] ?? "";
+        const currentBin = es("which agend", { stdio: "pipe" }).toString().trim();
+        if (svcBin === currentBin) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
+        else fail(`service ExecStart${" ".repeat(3)} ${svcBin} ≠ ${currentBin}`);
+      }
+    } catch { /* no service file or which fails */ }
+
+    // kiro-cli auth
+    if (backendName === "kiro-cli") {
+      const kiroDir = join(homedir(), ".kiro");
+      if (existsSync(kiroDir)) {
+        ok(`kiro-cli auth${" ".repeat(6)} ~/.kiro/ exists`);
+      } else {
+        fail(`kiro-cli auth${" ".repeat(6)} ~/.kiro/ not found — run: kiro-cli login`);
+      }
+    }
+
+    // working_directory existence
+    if (existsSync(fleetYamlPath)) {
+      try {
+        const yaml = await import("js-yaml");
+        const fleet = yaml.default.load(readFileSync(fleetYamlPath, "utf-8")) as any;
+        if (fleet?.instances) {
+          let missing = 0;
+          for (const [name, cfg] of Object.entries(fleet.instances) as [string, any][]) {
+            if (cfg.working_directory && !existsSync(cfg.working_directory)) {
+              missing++;
+              fail(`working_dir${" ".repeat(9)} ${name}: ${cfg.working_directory} does not exist`);
+            }
+          }
+          if (missing === 0) ok(`working_dir${" ".repeat(9)} all instance directories exist`);
+        }
+      } catch { /* already reported parse error above */ }
+    }
+
     console.log();
     if (issues === 0) {
       console.log(`  \x1b[32m✓ All checks passed\x1b[0m`);
