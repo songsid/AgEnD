@@ -3,7 +3,9 @@ Description=AgEnD — AI Engineering Daemon
 After=network.target
 
 [Service]
-Type=simple
+Type=notify
+NotifyAccess=main
+WatchdogSec=60
 ExecStart=<%= execPath %> fleet start
 Environment=PATH=<%= path %>
 Environment=TERM=xterm-256color
