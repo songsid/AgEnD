@@ -648,6 +648,23 @@ backend
         const currentBin = es("which agend", { stdio: "pipe" }).toString().trim();
         if (svcBin === currentBin) ok(`service ExecStart${" ".repeat(3)} matches current binary`);
         else fail(`service ExecStart${" ".repeat(3)} ${svcBin} ≠ ${currentBin}`);
+
+        // Check Restart=on-failure
+        if (svc.includes("Restart=on-failure")) {
+          ok(`service restart${" ".repeat(5)} Restart=on-failure configured`);
+        } else {
+          fail(`service restart${" ".repeat(5)} missing Restart=on-failure — run: agend fleet start --install-service`);
+        }
+
+        // Check if daemon-reload needed
+        try {
+          const status = es("systemctl --user show com.agend.fleet --property=NeedDaemonReload", { stdio: "pipe" }).toString().trim();
+          if (status.includes("yes")) {
+            fail(`service reload${" ".repeat(6)} daemon-reload needed — run: systemctl --user daemon-reload`);
+          } else {
+            ok(`service reload${" ".repeat(6)} up to date`);
+          }
+        } catch { /* systemctl not available */ }
       }
     } catch { /* no service file or which fails */ }
 
