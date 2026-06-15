@@ -923,6 +923,18 @@ program
 
     console.log(`\n  Updating AgEnD to ${tag}...\n`);
 
+    // Detect and remove stale npm link (local build that shadows global install)
+    try {
+      const agendPath = execSync("which agend", { encoding: "utf-8", stdio: "pipe" }).trim();
+      const resolved = execSync(`readlink -f "${agendPath}"`, { encoding: "utf-8", stdio: "pipe" }).trim();
+      if (resolved.includes("/Projects/") || resolved.includes("@suzuke") || resolved.includes("/src/")) {
+        console.log(`  ⚠️  Detected local npm link: ${resolved}`);
+        console.log("  Removing link to allow global install...\n");
+        try { execSync("npm unlink -g @suzuke/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
+        try { execSync("npm unlink -g @songsid/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
+      }
+    } catch { /* which/readlink failed — no agend installed, fine */ }
+
     // ── Check if npm global needs sudo ──
     let needsSudo = false;
     try {
