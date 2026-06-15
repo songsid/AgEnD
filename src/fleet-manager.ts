@@ -1469,9 +1469,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const target = this.routing.resolve(threadId);
     if (!target) {
-      // Suppress unbound topic message for Discord — regular text channels are expected
-      // to be unbound (classic mode or user-created). Only show for Telegram forum topics.
-      if (msg.source !== "discord") {
+      // Only show unbound message for actual forum topics (same group, has threadId)
+      const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
+      const isForumTopic = msg.source === "telegram" && msg.chatId === adapterGroupId && threadId;
+      if (isForumTopic) {
         this.topicCommands.handleUnboundTopic(msg);
       }
       return;
