@@ -94,7 +94,9 @@ export class KiroBackend implements CliBackend {
   }
 
   getErrorPatterns(): ErrorPattern[] {
-    return [];
+    return [
+      { pattern: /having trouble responding/i, type: "rate_limit", action: "notify", message: "Rate limit (having trouble responding)" },
+    ];
   }
 
   getStartupDialogs(): StartupDialog[] {
