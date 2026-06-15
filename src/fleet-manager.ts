@@ -2584,6 +2584,9 @@ When users create specialized instances, suggest these configurations:
 
     // Collab mode: trigger on @mention of our bot, log all messages
     if (isCollabMode) {
+      // Skip empty bot messages (e.g., reactions) — don't pollute chat log
+      if (msg.isBotMessage && !text && !msg.attachments?.length) return;
+
       // Log every message (including other bots) to chat-logs
       const collabAttachTag = msg.attachments?.length
         ? ` [${msg.attachments.map(a => `${a.kind === "photo" ? "📷" : "📎"} ${a.filename || a.kind}`).join(", ")}]`
