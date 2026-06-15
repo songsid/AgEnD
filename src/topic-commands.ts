@@ -109,7 +109,7 @@ export class TopicCommands {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
 
-    const lines: string[] = [];
+    const rows: string[] = [];
     for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
       const status = this.ctx.getInstanceStatus(name);
       const paused = this.ctx.costGuard?.isLimited(name);
@@ -123,6 +123,7 @@ export class TopicCommands {
       } catch { /* file may not exist yet */ }
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
+      const backend = this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
 
       let icon: string;
       if (paused) icon = "⏸";
@@ -130,21 +131,29 @@ export class TopicCommands {
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
 
-      lines.push(`${icon} ${name} — ctx ${contextStr}, ${formatCents(costCents)} today`);
+      rows.push(`| ${name} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} |`);
     }
 
-    if (lines.length === 0) {
-      lines.push("No instances configured.");
+    if (rows.length === 0) {
+      await adapter.sendText(msg.chatId, "No instances configured.", { threadId: msg.threadId });
+      return;
     }
+
+    const lines = [
+      "## Fleet Status",
+      "",
+      "| Instance | Backend | Ctx | Cost | Status |",
+      "|----------|---------|-----|------|--------|",
+      ...rows,
+    ];
 
     const limitCents = this.ctx.costGuard?.getLimitCents() ?? 0;
     const totalCents = this.ctx.costGuard?.getFleetTotalCents() ?? 0;
     if (limitCents > 0) {
-      lines.push("");
-      lines.push(`Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
+      lines.push("", `Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
     }
 
-    await adapter.sendText(msg.chatId, lines.join("\n"));
+    await adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
   }
 
   private async handleSysInfoCommand(msg: InboundMessage): Promise<void> {
@@ -154,27 +163,31 @@ export class TopicCommands {
 
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
+
     const lines: string[] = [
-      `⚙️ System Info`,
-      `Uptime: ${upHours}h ${upMins}m`,
-      `Memory: ${info.memory_mb.rss} MB RSS, ${info.memory_mb.heapUsed}/${info.memory_mb.heapTotal} MB heap`,
+      "## System Info",
       "",
-      "Instances:",
+      "| Metric | Value |",
+      "|--------|-------|",
+      `| Uptime | ${upHours}h ${upMins}m |`,
+      `| Memory | ${info.memory_mb.rss} MB RSS |`,
+      `| Heap | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
+      "",
+      "## Instances",
+      "",
+      "| Name | IPC | Cost | Rate |",
+      "|------|-----|------|------|",
     ];
 
     for (const inst of info.instances) {
       const icon = inst.status === "running" ? "🟢" : inst.status === "crashed" ? "🔴" : "⚪";
       const ipc = inst.ipc ? "✓" : "✗";
-      let detail = `${icon} ${inst.name} [IPC:${ipc}] ${formatCents(inst.costCents)}`;
-      if (inst.rateLimits) {
-        detail += ` (5h:${inst.rateLimits.five_hour_pct}% 7d:${inst.rateLimits.seven_day_pct}%)`;
-      }
-      lines.push(detail);
+      const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
+      lines.push(`| ${icon} ${inst.name} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
     }
 
     if (info.fleet_cost_limit_cents > 0) {
-      lines.push("");
-      lines.push(`Fleet cost: ${formatCents(info.fleet_cost_cents)} / ${formatCents(info.fleet_cost_limit_cents)} daily`);
+      lines.push("", `Fleet cost: ${formatCents(info.fleet_cost_cents)} / ${formatCents(info.fleet_cost_limit_cents)} daily`);
     }
 
     await adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
