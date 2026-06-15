@@ -4,7 +4,8 @@ After=network.target
 
 [Service]
 Type=notify
-NotifyAccess=main
+NotifyAccess=all
+TimeoutStartSec=0
 WatchdogSec=60
 ExecStart=<%= execPath %> fleet start
 Environment=PATH=<%= path %>
