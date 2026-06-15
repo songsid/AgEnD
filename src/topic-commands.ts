@@ -49,6 +49,11 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/doctor" || text.startsWith("/doctor@")) {
+      await this.handleDoctorCommand(msg);
+      return true;
+    }
+
     return false;
   }
 
@@ -227,6 +232,30 @@ export class TopicCommands {
     }
   }
 
+  private async handleDoctorCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    const chatId = msg.chatId;
+    const threadId = msg.threadId;
+
+    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
+    if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
+      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      return;
+    }
+
+    await adapter.sendText(chatId, "🩺 Running diagnostics...", { threadId });
+    try {
+      const { execSync } = await import("node:child_process");
+      const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+      const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      await adapter.sendText(chatId, clean || "No output", { threadId });
+    } catch (err: any) {
+      const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      await adapter.sendText(chatId, output, { threadId });
+    }
+  }
+
   /** Reply with redirect when message arrives in an unbound topic */
   async handleUnboundTopic(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
@@ -343,6 +372,8 @@ export class TopicCommands {
                 { command: "status", description: "[Fleet] Show fleet status and costs" },
                 { command: "restart", description: "[Fleet] Graceful restart all instances" },
                 { command: "sysinfo", description: "[Fleet] System diagnostics" },
+                { command: "update", description: "[Fleet] Update AgEnD to latest" },
+                { command: "doctor", description: "[Fleet] Run health diagnostics" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
