@@ -861,6 +861,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(newState
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
+      } else if (data.command === "update") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        await data.respond("📦 Updating AgEnD... Use `agend update` from CLI for full control.");
+      } else if (data.command === "doctor") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        try {
+          const { execSync } = await import("node:child_process");
+          const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+          const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          await data.respond(clean || "No output");
+        } catch (err: any) {
+          const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          await data.respond(output);
+        }
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -1050,6 +1070,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(newState
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
+      } else if (data.command === "update") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        await data.respond("📦 Updating AgEnD... Use `agend update` from CLI for full control.");
+      } else if (data.command === "doctor") {
+        if (!this.classicChannels?.isAdmin(data.userId)) {
+          await data.respond("⛔ This command requires admin access.");
+          return;
+        }
+        try {
+          const { execSync } = await import("node:child_process");
+          const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+          const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          await data.respond(clean || "No output");
+        } catch (err: any) {
+          const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          await data.respond(output);
+        }
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
