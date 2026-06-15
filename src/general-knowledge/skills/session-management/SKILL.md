@@ -1,7 +1,19 @@
 ---
 name: session-management
-description: Save/load/fork sessions, batch backup, reviewer session setup
+description: Save/load/fork sessions, batch backup, reviewer session setup, kiro-cli session paths
 ---
+
+## kiro-cli Session Storage
+
+kiro-cli automatically stores conversation sessions at:
+- **Path:** `~/.kiro/sessions/cli/<uuid>.json`
+- Each session is a JSON file with the full conversation history
+- Sessions persist across restarts — kiro-cli auto-resumes the latest session for each working directory
+
+**Useful for:**
+- Manual backup: `cp ~/.kiro/sessions/cli/*.json ~/backup/`
+- Finding a specific session: `ls -lt ~/.kiro/sessions/cli/ | head -5`
+- Loading a session into a new instance via `pre_task_command: "/chat load <path>"`
 
 ## Reviewer Session Management
 
