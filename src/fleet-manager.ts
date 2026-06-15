@@ -1356,6 +1356,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             }
             if (!this.classicChannels.isAdmin(msg.userId)) {
               await msgAdapter?.sendText(chatId, "⛔ Only admins can start agents. Ask an admin to /start.");
+              const generalId = this.findGeneralInstance(msg.adapterId);
+              if (generalId) {
+                this.notifyInstanceTopic(generalId, `🔑 User wants to /start but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
+              }
               return;
             }
           }
@@ -1370,6 +1374,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (text === "/stop" || text.startsWith("/stop ")) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
             await msgAdapter?.sendText(chatId, "⛔ Only admins can stop agents.");
+            const generalId = this.findGeneralInstance(msg.adapterId);
+            if (generalId) {
+              this.notifyInstanceTopic(generalId, `🔑 User wants to /stop but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
+            }
             return;
           }
           const reply = await this.handleClassicStop(chatId);
