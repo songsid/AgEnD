@@ -54,3 +54,14 @@ channel:
 - `locked` — production, private bot, security-sensitive
 - `pairing` — semi-open, users request access with admin approval
 - `open` — public demo, shared team bot, testing
+
+## Dangerous Working Directories
+
+NEVER create an instance with these working_directory values:
+- `.` or `./` (current directory — pollutes global .kiro config)
+- `~` or `/root` or `/home/user` (home directory)
+- `/` (root filesystem)
+
+These will cause kiro-cli to write MCP config to the global ~/.kiro/ instead of the instance workspace, breaking ALL instances.
+
+Always use a dedicated subdirectory like `/home/user/projects/my-project` or let AgEnD auto-create workspace.
