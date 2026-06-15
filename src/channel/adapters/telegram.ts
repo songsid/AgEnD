@@ -375,7 +375,23 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   // ── Text / file sending ───────────────────────────────────────────────────
 
+  private needsRichMessage(text: string): boolean {
+    return /\n\|.+\|.+\|/m.test(text) || /```[\s\S]+?```/.test(text) || /^#{1,6}\s/m.test(text) || /^---$/m.test(text) || /<details/i.test(text);
+  }
+
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    // Try rich message for content with tables, code blocks, headings, etc.
+    if (this.needsRichMessage(text)) {
+      try {
+        const result = await (this.bot.api as any).raw.sendRichMessage({
+          chat_id: Number(chatId),
+          rich_message: { markdown: text },
+          ...(toThreadId(opts?.threadId) ? { message_thread_id: toThreadId(opts?.threadId) } : {}),
+        });
+        return { messageId: String(result.message_id), chatId, threadId: opts?.threadId };
+      } catch { /* fallback to normal sendText below */ }
+    }
+
     return new Promise<SentMessage>((resolve, reject) => {
       // We enqueue and immediately capture the first sent messageId via a one-shot sender
       // For simplicity we use the bot API directly for the first chunk resolution,
