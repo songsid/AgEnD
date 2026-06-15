@@ -247,7 +247,8 @@ export class TopicCommands {
     await adapter.sendText(chatId, "🩺 Running diagnostics...", { threadId });
     try {
       const { execSync } = await import("node:child_process");
-      const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+      const backend = this.ctx.fleetConfig?.defaults?.backend || "claude-code";
+      const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
       const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
       await adapter.sendText(chatId, clean || "No output", { threadId });
     } catch (err: any) {

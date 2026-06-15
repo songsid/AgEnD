@@ -874,7 +874,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         try {
           const { execSync } = await import("node:child_process");
-          const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+          const backend = this.fleetConfig?.defaults?.backend || "claude-code";
+          const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
           const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
           await data.respond(clean || "No output");
         } catch (err: any) {
@@ -1083,7 +1084,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         try {
           const { execSync } = await import("node:child_process");
-          const result = execSync("agend doctor", { timeout: 30_000, encoding: "utf-8" });
+          const backend = this.fleetConfig?.defaults?.backend || "claude-code";
+          const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
           const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
           await data.respond(clean || "No output");
         } catch (err: any) {
