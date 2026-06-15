@@ -653,7 +653,7 @@ backend
         if (svc.includes("Restart=on-failure")) {
           ok(`service restart${" ".repeat(5)} Restart=on-failure configured`);
         } else {
-          fail(`service restart${" ".repeat(5)} missing Restart=on-failure — run: agend fleet start --install-service`);
+          fail(`service restart${" ".repeat(5)} missing Restart=on-failure — run: agend start --install-service`);
         }
 
         // Check if daemon-reload needed
@@ -1003,7 +1003,7 @@ program
     // ── Restart fleet ──
     const pidPath = join(DATA_DIR, "fleet.pid");
     if (!existsSync(pidPath)) {
-      console.log("\n  Fleet not running. Start with: agend fleet start\n");
+      console.log("\n  Fleet not running. Start with: agend start\n");
       return;
     }
 
@@ -1055,7 +1055,7 @@ program
   .action(async () => {
     const pidPath = join(DATA_DIR, "fleet.pid");
     if (!existsSync(pidPath)) {
-      console.error("Fleet is not running. Start with: agend fleet start");
+      console.error("Fleet is not running. Start with: agend start");
       process.exit(1);
     }
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -1143,7 +1143,7 @@ program
     const { getServicePath, startService } = await import("./service-installer.js");
     if (!getServicePath()) {
       console.log("No service installed. Run: agend install");
-      console.log("Or start manually: agend fleet start");
+      console.log("Or start manually: agend start");
       return;
     }
     if (startService()) {
@@ -1954,7 +1954,7 @@ program
     const status = getInstanceStatusStandalone(name);
 
     if (status !== "running") {
-      console.error(`Instance "${name}" is ${status}. Start it first with: agend fleet start ${name}`);
+      console.error(`Instance "${name}" is ${status}. Start it first with: agend start ${name}`);
       process.exit(1);
     }
 
