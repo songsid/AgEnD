@@ -364,6 +364,16 @@ const reportResult = wrapAsSend(
 const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(CreateInstanceArgs, rawArgs, "create_instance");
   if (!v.ok) { respond(null, v.error); return; }
+  // Reject dangerous working directories
+  const dir = v.data.directory;
+  if (dir) {
+    const resolved = dir.replace(/^~/, process.env.HOME || "/root").replace(/\/+$/, "");
+    const dangerous = [".", "./", "/", process.env.HOME || "/root", "/root"];
+    if (dangerous.includes(resolved) || resolved === "") {
+      respond(null, `⛔ Dangerous working_directory "${dir}" — would pollute global config. Use a dedicated subdirectory.`);
+      return;
+    }
+  }
   const callerAdapterId = meta?.instanceName ? ctx.getWorldForInstance?.(meta.instanceName)?.id : undefined;
   await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
