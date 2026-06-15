@@ -35,3 +35,21 @@ States:
 
 If an instance is stuck (busy for >10 minutes with no output), restart it:
 - `restart_instance("<instance-name>")`
+
+## Unsticking a Frozen Instance via tmux
+
+If an instance is frozen (not responding, no output, no prompt):
+1. Send Ctrl+C via tmux to interrupt the current operation:
+   ```bash
+   tmux send-keys -t agend:<instance-name> C-c
+   ```
+2. Wait a few seconds, then check if it returned to idle:
+   ```bash
+   tmux capture-pane -t agend:<instance-name> -p | tail -5
+   ```
+3. If it shows the prompt (`X% !>` or `(To exit the CLI...)`) — it's unstuck. Resend the task.
+4. If still frozen after Ctrl+C, use `restart_instance("<instance-name>")`
+
+**When to use Ctrl+C vs restart:**
+- Ctrl+C: instance is alive but stuck on a long operation (API timeout, large file read, infinite loop)
+- restart: instance is completely dead (no tmux pane, crash loop, or Ctrl+C doesn't help)
