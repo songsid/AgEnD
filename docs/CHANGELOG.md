@@ -4,6 +4,38 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1] - 2026-06-15
+
+### Added
+- **Telegram Rich Messages** — grammy 1.44.0, auto-detects markdown tables/code blocks/headings → sendRichMessage with fallback.
+- **`/update` + `/doctor` commands** — available in both TG and Discord (admin only). /doctor runs backend diagnostics.
+- **systemd watchdog** — Type=notify, WatchdogSec=60, sd_notify via systemd-notify command.
+- **Non-blocking startup** — generals start first → READY=1 → remaining instances in background.
+- **Daily update check** — fleet daemon checks npm for new versions every 24h, notifies General.
+- **Admin reject notification** — non-admin /start or /stop triggers notification to General with user info.
+- **Workspace path guard** — create_instance rejects dangerous paths (`.`, `~`, `/`).
+- **npm link auto-detect** — `agend update` detects and removes stale npm link before install.
+- **install.sh link removal** — readlink fallback to detect npm-linked old versions.
+- **Slash command prefixes** — [Fleet] / [ClassicBot] in TG+DC command descriptions.
+- **kiro-cli error detection** — "having trouble responding" triggers rate_limit notification.
+- **`/status` + `/sysinfo` rich tables** — markdown table output for TG Rich Message rendering.
+
+### Fixed
+- **systemd startup kill** — NotifyAccess=all + TimeoutStartSec=0 for 50+ instance fleets.
+- **Classic group unbound message** — no longer shows "not bound to an instance" in classic groups.
+- **`agend update` message** — says `agend start` instead of `agend fleet start`.
+- **Collab empty log** — skip empty bot messages in collab chat log.
+- **`/doctor` command path** — uses `agend backend doctor` with fleet default backend.
+
+### Changed
+- **Versioning** — jumped from v0.0.23 to v2.0.0. New versioning starts from v2.x.
+- **PR flow** — all changes go through feature branch → PR → merge. Branch protection on main.
+- **CI auto GitHub Release** — stable tags auto-create GitHub Release with generated notes.
+
+## [2.0.0] - 2026-06-15
+
+Same content as v0.0.23. Version bump to establish new major version baseline.
+
 ## [0.0.23] - 2026-06-12
 
 ### Added
