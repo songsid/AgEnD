@@ -1602,8 +1602,8 @@ function formatTimeSince(isoStr: string): string {
 /** Backend-specific parsers for extracting context usage from tmux pane output. */
 const contextParsers: Record<string, (output: string) => number | null> = {
   "kiro-cli": (output) => {
-    // Classic mode: "8% !>" | TUI mode: "◔ 1%"
-    const m = output.match(/(\d+)%.*!>/m) || output.match(/◔\s*(\d+)%/);
+    // Classic mode: "8% !>" | TUI mode: "◔ 1%" | Bracket: "[8%]" | Prompt: "8% ❯"
+    const m = output.match(/(\d+)%.*[!❯>]/m) || output.match(/◔\s*(\d+)%/) || output.match(/\[(\d+)%\]/);
     return m ? parseInt(m[1], 10) : null;
   },
 };
