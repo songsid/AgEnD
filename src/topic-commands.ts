@@ -434,14 +434,13 @@ export class TopicCommands {
               commands: [
                 { command: "start", description: "[ClassicBot] Start an agent in this chat" },
                 { command: "stop", description: "[ClassicBot] Stop the agent" },
-                { command: "chat", description: "[ClassicBot] Talk to the agent" },
               ],
               scope: { type: "default" },
             }),
           },
         );
 
-        this.ctx.logger.info({ adapterId: ch.id ?? ch.type }, "Registered bot commands: /status (forum), /start /stop /chat (default)");
+        this.ctx.logger.info({ adapterId: ch.id ?? ch.type }, "Registered bot commands: /status (forum), /start /stop (default)");
       } catch (err) {
         this.ctx.logger.warn({ err, adapterId: ch.id ?? ch.type }, "Failed to register bot commands (non-fatal)");
       }
