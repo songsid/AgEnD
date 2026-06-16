@@ -891,7 +891,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               : ["capture-pane", "-t", `${getTmuxSession()}:${instanceName}`, "-p"];
             const pane = execFileSync("tmux", tmuxArgs,
               { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-            const m = pane.match(/(\d+)%.*!>/m) || pane.match(/◔\s*(\d+)%/);
+            const m = pane.match(/(\d+)%.*[!❯>]/m) || pane.match(/◔\s*(\d+)%/) || pane.match(/\[(\d+)%\]/);
             if (m) context = parseInt(m[1], 10);
           } catch { /* ignore */ }
         }
