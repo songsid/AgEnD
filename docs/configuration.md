@@ -196,7 +196,7 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 | `allowed_guilds` | string[] | `[]` | Discord server IDs allowed to use ClassicBot (empty = all) |
 | `allowed_groups` | string[] | `[]` | Telegram group IDs allowed |
 | `allowed_users` | string[] | `[]` | User IDs allowed to interact |
-| `admin_users` | string[] | `[]` | User IDs with admin access (/start, /stop, /raw, /compact, /save, /load) |
+| `admin_users` | string[] | `[]` | User IDs with admin access (/start, /stop, /raw, /compact, /save, /load, /collab) |
 
 ### channels.\<channelId\>
 

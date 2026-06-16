@@ -8,9 +8,9 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 
 | Command | Description | Permission | Handler |
 |---------|-------------|------------|---------|
-| `/status` | Show fleet status and costs | All users | Markdown table with instance/backend/ctx/cost/status |
-| `/restart` | Graceful restart all instances | Admin | SIGUSR2 graceful restart |
-| `/sysinfo` | System diagnostics | All users | Markdown table with uptime/memory/heap + instance table |
+| `/status` | Show fleet status and costs | All (within fleet access) | Markdown table with instance/backend/ctx/cost/status |
+| `/restart` | Graceful restart all instances | Admin (allowed_users) | SIGUSR2 graceful restart |
+| `/sysinfo` | System diagnostics | All (within fleet access) | Markdown table with uptime/memory/heap + instance table |
 | `/update` | Update AgEnD to latest | Admin (allowed_users) | npm install + detached systemd restart |
 | `/doctor` | Run health diagnostics | Admin (allowed_users) | Executes `agend backend doctor` |
 
