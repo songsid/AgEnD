@@ -488,27 +488,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
 
-    // Auto-create general instance(s) — one per adapter when multi-channel
-    const hasGeneralTopic = Object.values(fleet.instances).some(inst => inst.general_topic === true);
-    if (!hasGeneralTopic) {
-      const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
-      const needsSuffix = channelConfigs.length > 1;
-      for (const ch of channelConfigs) {
-        const name = needsSuffix ? `general-${ch.id ?? ch.type}` : "general";
-        if (fleet.instances[name]) continue;
-        this.logger.info({ name }, "Auto-creating general instance");
-        const generalDir = join(getAgendHome(), name);
-        mkdirSync(generalDir, { recursive: true });
-        const backendName = fleet.defaults.backend ?? "claude-code";
-        this.ensureGeneralInstructions(generalDir, backendName);
-        fleet.instances[name] = {
-          ...DEFAULT_INSTANCE_CONFIG,
-          working_directory: generalDir,
-          general_topic: true,
-        };
-      }
-      this.saveFleetConfig();
+    // Auto-create general instance(s) — one per adapter that lacks a general
+    const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+    const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
+    let generalsCreated = false;
+    for (const ch of channelConfigs) {
+      const adapterId = ch.id ?? ch.type;
+      // Check if any general is bound to this adapter (by channel_id field or by matching topic)
+      const hasGeneral = generalInstances.some(([, inst]) => inst.channel_id === adapterId);
+      if (hasGeneral) continue;
+      // For single-channel setups, accept any general
+      if (channelConfigs.length === 1 && generalInstances.length > 0) continue;
+      const name = channelConfigs.length > 1 ? `general-${adapterId}` : "general";
+      if (fleet.instances[name]) continue;
+      this.logger.warn({ adapter: adapterId, name }, "No general instance for adapter — auto-creating");
+      const generalDir = join(getAgendHome(), name);
+      mkdirSync(generalDir, { recursive: true });
+      const backendName = fleet.defaults.backend ?? "claude-code";
+      this.ensureGeneralInstructions(generalDir, backendName);
+      fleet.instances[name] = {
+        ...DEFAULT_INSTANCE_CONFIG,
+        working_directory: generalDir,
+        general_topic: true,
+        channel_id: adapterId,
+      };
+      generalsCreated = true;
     }
+    if (generalsCreated) this.saveFleetConfig();
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       const schedulerConfig: SchedulerConfig = {
@@ -1276,8 +1282,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (generals.length === 0) return undefined;
     if (generals.length === 1) return generals[0];
     if (adapterId) {
-      const match = generals.find(n => n.includes(adapterId));
-      if (match) return match;
+      // Prefer explicit channel_id match
+      const byChannelId = generals.find(n => this.fleetConfig!.instances[n].channel_id === adapterId);
+      if (byChannelId) return byChannelId;
+      // Fallback: name contains adapter id
+      const byName = generals.find(n => n.includes(adapterId));
+      if (byName) return byName;
     }
     return generals[0];
   }
@@ -2168,6 +2178,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
       // Preserve all optional user-configured fields so saveFleetConfig() never silently drops them
       if (inst.general_topic) serialized.general_topic = true;
+      if (inst.channel_id) serialized.channel_id = inst.channel_id;
       if (inst.description) serialized.description = inst.description;
       if (inst.tags?.length) serialized.tags = inst.tags;
       if (inst.model) serialized.model = inst.model;
