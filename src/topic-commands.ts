@@ -101,6 +101,13 @@ export class TopicCommands {
     if (!adapter) return;
     const chatId = msg.chatId;
     const threadId = msg.threadId;
+
+    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
+    if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
+      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      return;
+    }
+
     await adapter.sendText(chatId, "🔄 Graceful restart — waiting for instances to idle...", { threadId });
     process.kill(process.pid, "SIGUSR2");
   }
