@@ -492,16 +492,62 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
     const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
     let generalsCreated = false;
+
+    // Collect unbound generals (no channel_id set) for auto-assignment
+    const unboundGenerals = generalInstances.filter(([, inst]) => !inst.channel_id);
+    // Track which adapters still need a general
+    const needsGeneral: Array<{ adapterId: string; ch: typeof channelConfigs[0] }> = [];
+
     for (const ch of channelConfigs) {
       const adapterId = ch.id ?? ch.type;
-      // Check if any general is bound to this adapter (by channel_id field or by matching topic)
-      const hasGeneral = generalInstances.some(([, inst]) => inst.channel_id === adapterId);
-      if (hasGeneral) continue;
+      // Check if any general is explicitly bound to this adapter
+      if (generalInstances.some(([, inst]) => inst.channel_id === adapterId)) continue;
+      // Check if any general matches by name heuristic
+      if (generalInstances.some(([name]) => name.includes(adapterId))) continue;
       // For single-channel setups, accept any general
       if (channelConfigs.length === 1 && generalInstances.length > 0) continue;
-      const name = channelConfigs.length > 1 ? `general-${adapterId}` : "general";
+      needsGeneral.push({ adapterId, ch });
+    }
+
+    // Phase 1: Adopt unbound generals by topic_id match (most accurate)
+    for (const need of [...needsGeneral]) {
+      const matchIdx = unboundGenerals.findIndex(([, inst]) => {
+        const topicId = String(inst.topic_id ?? "");
+        if (need.ch.type === "discord" && need.ch.options?.general_channel_id) {
+          return topicId === String(need.ch.options.general_channel_id);
+        }
+        if (need.ch.type === "telegram") {
+          return topicId === "1" || topicId === "";
+        }
+        return false;
+      });
+      if (matchIdx >= 0) {
+        const [[unboundName, unboundInst]] = unboundGenerals.splice(matchIdx, 1);
+        unboundInst.channel_id = need.adapterId;
+        this.logger.info({ adapter: need.adapterId, name: unboundName }, "Bound existing general to adapter (topic_id match)");
+        needsGeneral.splice(needsGeneral.indexOf(need), 1);
+        generalsCreated = true;
+      }
+    }
+
+    // Phase 2: Adopt remaining unbound generals (first-come)
+    for (const need of [...needsGeneral]) {
+      if (unboundGenerals.length > 0) {
+        const [[unboundName, unboundInst]] = unboundGenerals.splice(0, 1);
+        unboundInst.channel_id = need.adapterId;
+        this.logger.info({ adapter: need.adapterId, name: unboundName }, "Bound existing general to adapter");
+        needsGeneral.splice(needsGeneral.indexOf(need), 1);
+        generalsCreated = true;
+        continue;
+      }
+      break;
+    }
+
+    // Phase 3: Create new generals for any remaining adapters
+    for (const need of needsGeneral) {
+      const name = channelConfigs.length > 1 ? `general-${need.adapterId}` : "general";
       if (fleet.instances[name]) continue;
-      this.logger.warn({ adapter: adapterId, name }, "No general instance for adapter — auto-creating");
+      this.logger.warn({ adapter: need.adapterId, name }, "No general instance for adapter — auto-creating");
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true });
       const backendName = fleet.defaults.backend ?? "claude-code";
@@ -510,7 +556,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...DEFAULT_INSTANCE_CONFIG,
         working_directory: generalDir,
         general_topic: true,
-        channel_id: adapterId,
+        channel_id: need.adapterId,
       };
       generalsCreated = true;
     }
