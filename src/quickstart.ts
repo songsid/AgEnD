@@ -309,14 +309,16 @@ async function runDiscordFlow(rl: import("node:readline/promises").Interface): P
   const userId = (await rl.question("  Paste your User ID: ")).trim();
   console.log(`  ${green("✓")} User: ${userId}\n`);
 
-  console.log(`  To get a Channel ID for the General channel:`);
+  console.log(`\n  To get a Channel ID for the General channel:`);
   console.log(`  Right-click the text channel → ${bold("Copy Channel ID")}\n`);
-  const generalChannelId = (await rl.question("  Paste General Channel ID (optional, Enter to skip): ")).trim();
-  if (generalChannelId) {
-    console.log(`  ${green("✓")} General Channel: ${generalChannelId}\n`);
-  } else {
-    console.log(`  ${dim("Skipped")}\n`);
+  let generalChannelId = "";
+  while (!generalChannelId) {
+    generalChannelId = (await rl.question("  Paste General Channel ID (required): ")).trim();
+    if (!generalChannelId) {
+      console.log(`  ${yellow("⚠")} General Channel ID is required for Discord. The General dispatcher needs a channel to operate in.`);
+    }
   }
+  console.log(`  ${green("✓")} General Channel: ${generalChannelId}\n`);
 
   return { type: "discord", token, tokenEnvName, botUsername, groupId, userId, generalChannelId: generalChannelId || undefined };
 }
