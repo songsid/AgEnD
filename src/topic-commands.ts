@@ -3,6 +3,7 @@ import { exec, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
+import { createRequire } from "node:module";
 
 const execAsync = promisify(exec);
 import type { FleetContext } from "./fleet-context.js";
@@ -85,7 +86,7 @@ export class TopicCommands {
           ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"]
           : ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"];
         const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-        const m = pane.match(/(\d+)%.*!>/m) || pane.match(/◔\s*(\d+)%/);
+        const m = pane.match(/(\d+)%.*[!❯>]/m) || pane.match(/◔\s*(\d+)%/) || pane.match(/\[(\d+)%\]/);
         if (m) context = parseInt(m[1], 10);
       } catch { /* ignore */ }
     }
@@ -170,12 +171,15 @@ export class TopicCommands {
 
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
+    const require = createRequire(import.meta.url);
+    const agendVersion = require("../package.json").version ?? "unknown";
 
     const lines: string[] = [
       "## System Info",
       "",
       "| Metric | Value |",
       "|--------|-------|",
+      `| AgEnD | v${agendVersion} |`,
       `| Uptime | ${upHours}h ${upMins}m |`,
       `| Memory | ${info.memory_mb.rss} MB RSS |`,
       `| Heap | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
