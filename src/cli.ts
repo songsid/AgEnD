@@ -1161,14 +1161,22 @@ program
   .action(async () => {
     const { getServicePath, startService } = await import("./service-installer.js");
     if (!getServicePath()) {
-      console.log("No service installed. Run: agend install");
-      console.log("Or start manually: agend start");
+      console.log("No service installed. Starting fleet directly...");
+      const { spawn } = await import("node:child_process");
+      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+      child.unref();
+      console.log("Fleet starting in background.");
       return;
     }
     if (startService()) {
       console.log("Service started.");
     } else {
-      console.log("Failed to start service. Check: agend backend doctor");
+      // systemd/launchd failed — fallback to direct start
+      console.log("Service manager unavailable. Starting fleet directly...");
+      const { spawn } = await import("node:child_process");
+      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
+      child.unref();
+      console.log("Fleet starting in background.");
     }
   });
 
