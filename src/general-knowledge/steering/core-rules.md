@@ -71,14 +71,15 @@ Always use a dedicated subdirectory like `/home/user/projects/my-project` or let
 
 Use layered memory to minimize context usage:
 
-1. **Fleet Decision** — short, shared rules only (role, workflow rules, TODOs). Max 20 lines.
+1. **Fleet Decision** — short, shared rules only (role, workflow rules, TODOs). Keep concise (~20 lines guideline). If it exceeds this, consider whether the details belong in soul.md instead.
 2. **soul.md** (workspace root) — full memory: architecture, decisions, history. Loaded as steering.
+   - If soul.md doesn't exist, do NOT create one unprompted. Only create when the user explicitly asks.
 3. **Skills** (`.kiro/skills/`) — reusable workflows. On-demand loading.
 
 Rules:
 - Keep Fleet Decisions minimal. Move details to soul.md.
 - Each instance maintains its own soul.md (not shared).
-- Good workflows → convert to a skill in YOUR `.kiro/skills/` (per-instance, not global).
+- Good workflows → **propose** converting to a skill. Create in `.kiro/skills/<name>/SKILL.md` only after user approval.
 - Global skills (`src/general-knowledge/skills/`) only for knowledge ALL instances need.
 - Never put architecture details or bug history in Fleet Decisions.
-- After completing a key workflow or milestone, ask the user: "Should I update soul.md or create a skill from this?"
+- After completing a **multi-step task that introduced new architectural knowledge or a reusable process**, suggest updating soul.md. Do NOT ask after routine tasks (reviews, single-file fixes, Q&A).
