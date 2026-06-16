@@ -345,12 +345,6 @@ export async function runQuickstart(): Promise<void> {
   try {
     console.log(`\n${bold("═══ AgEnD Quickstart ═══")}\n`);
 
-    // Check fleet.pid conflict
-    if (existsSync(join(DATA_DIR, "fleet.pid"))) {
-      console.error("Fleet is already running. Stop it first: agend fleet stop");
-      process.exit(1);
-    }
-
     // Check existing config
     if (existsSync(FLEET_CONFIG_PATH)) {
       console.log(`  ${yellow("fleet.yaml already exists.")} What would you like to do?`);
@@ -376,6 +370,12 @@ export async function runQuickstart(): Promise<void> {
         (config as any).channel.access.allowed_users = currentUsers;
         writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
         console.log(`  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+
+        // Hot-reload if fleet is running
+        const pidPathUsers = join(DATA_DIR, "fleet.pid");
+        if (existsSync(pidPathUsers)) {
+          try { process.kill(parseInt(readFileSync(pidPathUsers, "utf-8").trim(), 10), "SIGHUP"); console.log(`  ${green("✓")} Fleet hot-reloaded.`); } catch { /* not running */ }
+        }
 
         await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
@@ -436,6 +436,21 @@ export async function runQuickstart(): Promise<void> {
         console.log(`  ${green("✓")} ${ENV_PATH}`);
 
         await maybeUpdateClassicBot(rl);
+
+        // Auto-restart fleet if running (detached spawn to avoid exit(0) + Restart=on-failure issue)
+        const pidPath = join(DATA_DIR, "fleet.pid");
+        if (existsSync(pidPath)) {
+          const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+          try {
+            process.kill(pid, 0); // check alive
+            console.log(`\n  Fleet is running. Restarting to apply new channel...`);
+            const { spawn } = await import("node:child_process");
+            const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
+            child.unref();
+            console.log(`  ${green("✓")} Fleet restart scheduled (2s). New platform will be available shortly.`);
+          } catch { /* not running, user will start manually */ }
+        }
+
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
@@ -446,7 +461,10 @@ export async function runQuickstart(): Promise<void> {
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
-      // action === "3" → fall through to full setup
+      // action === "3" → overwrite requires fleet to be stopped
+      if (existsSync(join(DATA_DIR, "fleet.pid"))) {
+        try { process.kill(parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10), 0); console.error("Fleet is running. Stop it first: agend stop"); process.exit(1); } catch { /* stale pid, ok to proceed */ }
+      }
     }
 
     // Check tmux
