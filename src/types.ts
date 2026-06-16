@@ -72,6 +72,8 @@ export interface InstanceConfig {
   /** Tags for capability discovery (e.g. ["code-reviewer", "researcher", "executor"]) */
   tags?: string[];
   topic_id?: number | string;
+  /** Which channel adapter this instance is bound to (matches channel `id` field). Used for multi-channel general routing. */
+  channel_id?: string;
   general_topic?: boolean;
   restart_policy: {
     max_retries: number;
