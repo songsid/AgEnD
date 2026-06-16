@@ -1144,7 +1144,14 @@ program
     if (stopService()) {
       console.log("Service stopped.");
     } else {
-      console.log("Service is not running or already stopped.");
+      // systemd/launchd failed (e.g. no D-Bus user session) — fallback to PID kill
+      const pidPath = join(DATA_DIR, "fleet.pid");
+      if (existsSync(pidPath)) {
+        const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+        try { process.kill(pid, "SIGTERM"); console.log(`Stopped fleet via PID (${pid}). Service manager unavailable.`); } catch { console.log("Fleet not running."); }
+      } else {
+        console.log("Service is not running or already stopped.");
+      }
     }
   });
 
