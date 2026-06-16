@@ -330,20 +330,26 @@ export class TopicCommands {
     for (const [name, config] of Object.entries(this.ctx.fleetConfig.instances)) {
       if (config.topic_id != null) continue;
 
-      // General topic: use Discord general_channel_id if available, else Telegram thread_id = 1
+      // General topic: determine platform type from channel_id → channels config
       if (config.general_topic) {
-        const ch = this.ctx.fleetConfig?.channel;
-        if (name.includes("telegram")) {
-          config.topic_id = 1;
-        } else if (name.includes("discord") && ch?.options?.general_channel_id) {
-          config.topic_id = ch.options.general_channel_id as string | number;
+        const channels = this.ctx.fleetConfig?.channels ?? (this.ctx.fleetConfig?.channel ? [this.ctx.fleetConfig.channel] : []);
+        let platformType: string | undefined;
+        if ((config as any).channel_id) {
+          const matched = channels.find(c => (c.id ?? c.type) === (config as any).channel_id);
+          platformType = matched?.type;
+        }
+        if (!platformType) {
+          if (name.includes("telegram")) platformType = "telegram";
+          else if (name.includes("discord")) platformType = "discord";
+        }
+        if (platformType === "discord") {
+          const ch = channels.find(c => c.type === "discord");
+          config.topic_id = (ch?.options?.general_channel_id as string | number) ?? 1;
         } else {
-          // Default: use discord general_channel_id if available, else Telegram thread_id 1
-          const discordGeneralId = ch?.options?.general_channel_id as string | undefined;
-          config.topic_id = discordGeneralId || 1;
+          config.topic_id = 1;
         }
         configChanged = true;
-        this.ctx.logger.info({ name, topicId: config.topic_id }, "Bound to General topic");
+        this.ctx.logger.info({ name, topicId: config.topic_id, platformType }, "Bound to General topic");
         continue;
       }
 

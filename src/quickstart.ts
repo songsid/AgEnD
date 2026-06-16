@@ -437,17 +437,25 @@ export async function runQuickstart(): Promise<void> {
 
         await maybeUpdateClassicBot(rl);
 
-        // Auto-restart fleet if running (detached spawn to avoid exit(0) + Restart=on-failure issue)
+        // Auto-restart fleet if running — prefer systemd to keep watchdog/crash recovery
         const pidPath = join(DATA_DIR, "fleet.pid");
         if (existsSync(pidPath)) {
           const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
           try {
             process.kill(pid, 0); // check alive
             console.log(`\n  Fleet is running. Restarting to apply new channel...`);
-            const { spawn } = await import("node:child_process");
-            const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
-            child.unref();
-            console.log(`  ${green("✓")} Fleet restart scheduled (2s). New platform will be available shortly.`);
+            const { execSync, spawn } = await import("node:child_process");
+            let usedSystemd = false;
+            try {
+              execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });
+              execSync("systemctl --user restart com.agend.fleet", { stdio: "pipe" });
+              usedSystemd = true;
+              console.log(`  ${green("✓")} Fleet restarted via systemd.`);
+            } catch {
+              const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
+              child.unref();
+              console.log(`  ${green("✓")} Fleet restart scheduled (2s). New platform will be available shortly.`);
+            }
           } catch { /* not running, user will start manually */ }
         }
 
