@@ -174,10 +174,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       if (!text && (msg as any).rich_message) {
         text = extractRichText((msg as any).rich_message.blocks);
       }
-      if (!text && msg.from?.is_bot) {
-        // Dump raw msg keys for debugging Rich Message structure
+      if (msg.from?.is_bot) {
+        // Dump raw msg for debugging Rich Message structure
         const keys = Object.keys(msg).filter(k => !["chat", "from", "date", "message_id"].includes(k));
-        console.log(`[TG-RAW] Bot msg keys: ${keys.join(", ")} | full: ${JSON.stringify(msg, null, 0).slice(0, 500)}`);
+        console.log(`[TG-RAW] Bot msg: text="${text.slice(0,50)}" keys=${keys.join(",")} | ${JSON.stringify(msg, null, 0).slice(0, 800)}`);
       }
 
       // Collect attachments
