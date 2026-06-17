@@ -63,6 +63,17 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
 
+    if (text === "/collab" || text.startsWith("/collab@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      const isCollab = this.ctx.toggleFleetCollab(instanceName);
+      await adapter.sendText(msg.chatId, isCollab
+        ? "🤝 Collaboration mode **ON** — bot/webhook messages to this topic will reach the agent."
+        : "💬 Collaboration mode **OFF** — only user messages trigger the agent.",
+        { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/compact" || text.startsWith("/compact@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
