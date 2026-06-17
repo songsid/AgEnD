@@ -1449,7 +1449,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // /chat command is NOT supported for TG classic — use @bot instead.
           if (!isBotMentioned) {
             // No trigger: save attachments + react, log, but don't forward to agent
-            const syntheticMsg = { ...msg, threadId: chatId, text: "" };
+            const syntheticMsg = { ...msg, threadId: chatId, text: rawText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
             return;
           }
@@ -2351,11 +2351,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!adapter) return;
     const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
     const groupId = channelCfg?.group_id;
-    if (!groupId) return;
+
+    // Fleet topic instance
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
-    adapter.sendText(String(groupId), text, {
-      threadId: threadId != null ? String(threadId) : undefined,
-    }).catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
+    if (threadId != null && groupId) {
+      adapter.sendText(String(groupId), text, { threadId: String(threadId) })
+        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
+      return;
+    }
+
+    // Classic instance: find chatId from routing table
+    for (const [chatId, target] of this.routing.entries()) {
+      if (target.kind === "classic" && target.name === instanceName) {
+        adapter.sendText(chatId, text)
+          .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
+        return;
+      }
+    }
+
+    // Fallback: send to group without threadId
+    if (groupId) {
+      adapter.sendText(String(groupId), text)
+        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
+    }
   }
 
   queueMirrorMessage(text: string): void {
