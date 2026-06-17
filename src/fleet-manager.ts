@@ -1382,6 +1382,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (isTelegramClassic && this.classicChannels) {
         const chatId = msg.chatId;
         const rawText = msg.text ?? "";
+        console.log(`[TG-CLASSIC] Entry: userId=${msg.userId} isBot=${msg.isBotMessage} chatId=${chatId} text="${rawText.slice(0, 50)}"`);
         // Detect @OurBot mention (only our bot, not other bots)
         const world = this.worlds.get(msg.adapterId ?? "");
         const botUser = world?.botUsername;
@@ -1399,6 +1400,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
 
         const isBotMentioned = !!(botUser && text.toLowerCase().includes(`@${botUser.toLowerCase()}`));
+        console.log(`[TG-CLASSIC] botUser=${botUser} isBotMentioned=${isBotMentioned} text="${text.slice(0, 50)}"`);
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
@@ -1454,6 +1456,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Route to classic channel if registered
         const target = this.routing.resolve(chatId);
+        console.log(`[TG-CLASSIC] routing: chatId=${chatId} target=${JSON.stringify(target)}`);
         if (target?.kind === "classic") {
           if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
           // TG ClassicBot: only @mention triggers agent (both private and group).
