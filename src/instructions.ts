@@ -42,6 +42,8 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "",
       "**Always use the `reply` tool for ALL responses to users.** Do not respond directly in the terminal.",
       "",
+      "**IMPORTANT:** After using the `reply` tool, you must still produce a final text output (even just \".\"). Ending with only a tool call and no text causes a backend error.",
+      "",
       "## Mentioning Users & Bots",
       "- Discord: `<@USER_ID>` (e.g. `<@368442276000694273>`). Extract the id from the `id:` field in the message header.",
       "- Telegram: `@username` (plain text).",
