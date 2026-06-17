@@ -183,8 +183,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const messageId = String(msg.message_id);
       const username = msg.from?.username ?? msg.from?.first_name ?? String(userId);
       let text = msg.text ?? msg.caption ?? "";
-      if (!text && (msg as any).rich_message?.blocks) {
-        text = extractRichText((msg as any).rich_message.blocks);
+      if (!text && msg.rich_message?.blocks) {
+        text = extractRichText(msg.rich_message.blocks);
       }
       // Collect attachments
       const attachments = this._extractAttachments(msg);
