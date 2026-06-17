@@ -904,6 +904,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "collab") {
         const collabTarget = this.routing.resolve(data.channelId);
         if (collabTarget && collabTarget.kind !== "classic") {
+          const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+          if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+            await data.respond("⛔ Not authorized");
+            return;
+          }
           const isCollab = this.toggleFleetCollab(collabTarget.name);
           await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
           return;
@@ -1141,6 +1146,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "collab") {
         const collabTarget2 = this.routing.resolve(data.channelId);
         if (collabTarget2 && collabTarget2.kind !== "classic") {
+          const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+          if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+            await data.respond("⛔ Not authorized");
+            return;
+          }
           const isCollab = this.toggleFleetCollab(collabTarget2.name);
           await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
           return;
