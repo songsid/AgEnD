@@ -234,39 +234,11 @@ export class TopicCommands {
       return;
     }
 
-    await adapter.sendText(chatId, "📦 Updating AgEnD...", { threadId });
+    await adapter.sendText(chatId, "📦 Updating AgEnD... Fleet will restart automatically.", { threadId });
 
-    try {
-      await execAsync("npm install -g @songsid/agend@latest", { timeout: 120_000 });
-    } catch {
-      await adapter.sendText(chatId, "❌ npm install failed. Try manually: npm install -g @songsid/agend@latest", { threadId });
-      return;
-    }
-
-    // Get new version
-    let newVersion = "latest";
-    try {
-      const { stdout } = await execAsync("npm view @songsid/agend version", { timeout: 10_000 });
-      newVersion = stdout.trim();
-    } catch { /* use "latest" */ }
-
-    await adapter.sendText(chatId, `✅ Updated to v${newVersion}. Restarting in 2s...`, { threadId });
-
-    const label = "com.agend.fleet";
-    const plat = detectPlatform();
-
-    if (plat === "macos") {
-      const uid = process.getuid?.() ?? 501;
-      const child = spawn("sh", ["-c", `sleep 2 && launchctl kickstart -k gui/${uid}/${label}`], {
-        detached: true, stdio: "ignore",
-      });
-      child.unref();
-    } else {
-      const child = spawn("sh", ["-c", `sleep 2 && systemctl --user daemon-reload && systemctl --user reset-failed ${label} 2>/dev/null; systemctl --user restart ${label}`], {
-        detached: true, stdio: "ignore",
-      });
-      child.unref();
-    }
+    const { spawn } = await import("node:child_process");
+    const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+    child.unref();
   }
 
   private async handleDoctorCommand(msg: InboundMessage): Promise<void> {
