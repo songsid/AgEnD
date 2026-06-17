@@ -58,15 +58,42 @@ export class TopicCommands {
     return false;
   }
 
-  /** Handle /ctx in any instance topic — returns true if handled */
+  /** Handle /ctx or /compact in any instance topic — returns true if handled */
   async handleInstanceCommand(msg: InboundMessage, instanceName: string): Promise<boolean> {
     const text = msg.text?.trim();
     if (!text) return false;
+
+    if (text === "/compact" || text.startsWith("/compact@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      try {
+        const { execFileSync } = await import("node:child_process");
+        const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
+        const socketName = getTmuxSocketName();
+        const target = `${getTmuxSessionName()}:${instanceName}`;
+        const base = socketName ? ["-L", socketName] : [];
+        execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
+        await new Promise(r => setTimeout(r, 500));
+        execFileSync("tmux", [...base, "send-keys", "-t", target, "/compact", "Enter"], { stdio: "pipe", timeout: 2000 });
+        await adapter.sendText(msg.chatId, "🗜️ Compact command sent.", { threadId: msg.threadId });
+      } catch {
+        await adapter.sendText(msg.chatId, "❌ Failed to send compact (tmux error)", { threadId: msg.threadId });
+      }
+      return true;
+    }
+
     if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
 
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return false;
 
+    const reply = await this.getCtxText(instanceName);
+    await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+    return true;
+  }
+
+  /** Get context usage text for an instance (shared by TG + DC) */
+  async getCtxText(instanceName: string): Promise<string> {
     const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
       ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     let context: number | null = null;
@@ -90,11 +117,26 @@ export class TopicCommands {
         if (m) context = parseInt(m[1], 10);
       } catch { /* ignore */ }
     }
-    const reply = context != null
+    return context != null
       ? `📊 Context: ${context}% used\nBackend: ${backend}\nInstance: ${instanceName}`
       : `Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`;
-    await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
-    return true;
+  }
+
+  /** Send /compact to an instance's tmux pane */
+  async sendCompact(instanceName: string): Promise<string> {
+    try {
+      const { execFileSync } = await import("node:child_process");
+      const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
+      const socketName = getTmuxSocketName();
+      const target = `${getTmuxSessionName()}:${instanceName}`;
+      const base = socketName ? ["-L", socketName] : [];
+      execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
+      await new Promise(r => setTimeout(r, 500));
+      execFileSync("tmux", [...base, "send-keys", "-t", target, "/compact", "Enter"], { stdio: "pipe", timeout: 2000 });
+      return "🗜️ Compact command sent.";
+    } catch {
+      return "❌ Failed to send compact (tmux error)";
+    }
   }
 
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
