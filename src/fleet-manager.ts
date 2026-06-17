@@ -1341,13 +1341,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
 
-    // Bot messages: only allow in collab channels
+    // Bot messages: only allow in collab channels or TG classic with @mention
     if (msg.isBotMessage) {
-      if (!threadId) return;
-      const target = this.routing.resolve(threadId);
-      if (!target || target.kind !== "classic") return;
-      if (!this.classicChannels?.isCollab(threadId)) return;
-      // Fall through to classic channel handling
+      if (!threadId) {
+        // TG classic: allow if bot @mentions our bot (bot-to-bot communication)
+        const world = this.worlds.get(msg.adapterId ?? "");
+        const botUser = world?.botUsername;
+        const mentionsUs = !!(botUser && msg.text?.toLowerCase().includes(`@${botUser.toLowerCase()}`));
+        if (!mentionsUs) return;
+        // Fall through to TG classic handling below
+      } else {
+        const target = this.routing.resolve(threadId);
+        if (!target || target.kind !== "classic") return;
+        if (!this.classicChannels?.isCollab(threadId)) return;
+        // Fall through to classic channel handling
+      }
     }
 
     // Access control — classic channels are open to all, others require allowed user
@@ -1674,6 +1682,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text: (args.text as string ?? "").slice(0, 2000),
           ts: new Date().toISOString(),
         });
+        // Log bot reply to classic instance chat-log
+        const isClassic = [...this.routing.entries()].some(([, t]) => t.kind === "classic" && t.name === instanceName);
+        if (isClassic) {
+          ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
+        }
       }
       return;
     }
