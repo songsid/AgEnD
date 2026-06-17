@@ -143,7 +143,12 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         // Allow messages from non-primary chats through for classic mode
         // (classic mode has its own access control in fleet-manager)
         const chatId = String(msg.chat.id);
-        if (this.lastChatId && chatId === this.lastChatId) return;
+        const isBot = msg.from?.is_bot ?? false;
+        if (this.lastChatId && chatId === this.lastChatId) {
+          console.log(`[TG-DEBUG] Blocked: userId=${userId} isBot=${isBot} chatId=${chatId} === lastChatId (primary forum group)`);
+          return;
+        }
+        console.log(`[TG-DEBUG] Passing through: userId=${userId} isBot=${isBot} chatId=${chatId} lastChatId=${this.lastChatId} (classic candidate)`);
         // Non-primary chat: let it through to fleet-manager for classic routing
       }
 
@@ -173,6 +178,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         username,
         text,
         timestamp: new Date(msg.date * 1000),
+        isBotMessage: msg.from?.is_bot ?? false,
         attachments: attachments.length > 0 ? attachments : undefined,
         replyTo: msg.reply_to_message?.message_id != null
           ? String(msg.reply_to_message.message_id)
