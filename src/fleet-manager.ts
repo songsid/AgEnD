@@ -3419,12 +3419,16 @@ When users create specialized instances, suggest these configurations:
         } catch (err) {
           this.logger.debug({ err }, "Old fleet process kill skipped (already gone or no permission)");
         }
+        // Remove this listener before retry to prevent infinite retry loops
+        this.healthServer!.removeAllListeners("error");
         setTimeout(() => {
           if (!this.healthServer) return;
+          this.healthServer.on("error", () => {
+            // Single debug-level log — do not retry again
+            this.logger.debug({ port }, "Health port still in use after takeover — skipping health endpoint");
+          });
           this.healthServer.listen(port, "127.0.0.1", () => {
             this.logger.info({ port }, "Health endpoint listening (after takeover)");
-          }).on("error", () => {
-            this.logger.warn({ port }, "Health port still in use — skipping health endpoint");
           });
         }, 1500);
         return;
