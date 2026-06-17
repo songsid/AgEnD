@@ -105,6 +105,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Adapter restart: prevents re-entrant restart attempts
   private adapterRestarting = new Set<string>();
+  private collabInstances = new Set<string>();
 
   // Health endpoint
   private healthServer: Server | null = null;
@@ -901,6 +902,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(`Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`);
         }
       } else if (data.command === "collab") {
+        const collabTarget = this.routing.resolve(data.channelId);
+        if (collabTarget && collabTarget.kind !== "classic") {
+          const isCollab = this.toggleFleetCollab(collabTarget.name);
+          await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
+          return;
+        }
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -1132,6 +1139,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(`Context info not available yet.\nBackend: ${ctxBackend}\nInstance: ${instanceName}`);
         }
       } else if (data.command === "collab") {
+        const collabTarget2 = this.routing.resolve(data.channelId);
+        if (collabTarget2 && collabTarget2.kind !== "classic") {
+          const isCollab = this.toggleFleetCollab(collabTarget2.name);
+          await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
+          return;
+        }
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -1397,9 +1410,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Fall through to TG classic handling below
       } else {
         const target = this.routing.resolve(threadId);
-        if (!target || target.kind !== "classic") return;
-        if (!this.classicChannels?.isCollab(threadId)) return;
-        // Fall through to classic channel handling
+        if (!target) return;
+        if (target.kind === "classic") {
+          if (!this.classicChannels?.isCollab(threadId)) return;
+        } else {
+          if (!this.collabInstances.has(target.name)) return;
+        }
+        // Fall through to channel handling
       }
     }
 
@@ -2402,6 +2419,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.notifyInstanceTopic(name,
         `✅ Rate limit recovered (${fiveHourPct}%) — next rotation will use ${primaryModel}`);
     }
+  }
+
+  toggleFleetCollab(instanceName: string): boolean {
+    if (this.collabInstances.has(instanceName)) {
+      this.collabInstances.delete(instanceName);
+      return false;
+    }
+    this.collabInstances.add(instanceName);
+    return true;
   }
 
   notifyInstanceTopic(instanceName: string, text: string): void {
