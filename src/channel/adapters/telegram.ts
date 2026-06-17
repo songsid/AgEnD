@@ -150,6 +150,38 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
+    // Middleware: catch Rich Message updates that grammy doesn't route to bot.on("message")
+    this.bot.use(async (ctx, next) => {
+      const rawMsg = (ctx.update as any)?.message;
+      if (rawMsg?.rich_message && !rawMsg.text) {
+        // grammy doesn't fire bot.on("message") for rich-only messages — handle manually
+        const msg = rawMsg;
+        const userId = msg.from?.id;
+        if (!userId) return next();
+
+        const chatId = String(msg.chat.id);
+        const threadId = msg.message_thread_id != null ? String(msg.message_thread_id) : undefined;
+        const messageId = String(msg.message_id);
+        const username = msg.from?.username ?? msg.from?.first_name ?? String(userId);
+        const text = extractRichText(msg.rich_message.blocks ?? []);
+
+        this.emit("message", {
+          source: "telegram",
+          adapterId: this.id,
+          chatId,
+          threadId,
+          messageId,
+          userId: String(userId),
+          username,
+          text,
+          timestamp: new Date(msg.date * 1000),
+          isBotMessage: msg.from?.is_bot ?? false,
+        });
+        return; // Don't call next — we handled it
+      }
+      return next();
+    });
+
     this.bot.on("message", async (ctx: Context) => {
       const msg = ctx.message;
       if (!msg) return;
@@ -185,13 +217,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       let text = msg.text ?? msg.caption ?? "";
       if (!text && (msg as any).rich_message?.blocks) {
         text = extractRichText((msg as any).rich_message.blocks);
-      }
-      // Debug: log bot messages to help diagnose rich_message receive
-      if (msg.from?.is_bot) {
-        const rm = (msg as any).rich_message;
-        const richKeys = rm ? Object.keys(rm) : [];
-        const msgKeys = Object.keys(msg).filter(k => !["chat", "from", "date", "message_id", "message_thread_id"].includes(k));
-        console.log(`[TG-BOT-MSG] text="${text.slice(0, 60)}" rich_message=${!!rm} richKeys=[${richKeys}] msgKeys=[${msgKeys}]`);
       }
       // Collect attachments
       const attachments = this._extractAttachments(msg);
