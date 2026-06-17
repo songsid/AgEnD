@@ -19,6 +19,18 @@ function toThreadId(threadId: string | null | undefined): number | undefined {
   return Number(threadId);
 }
 
+/** Recursively extract plain text from RichText nodes (Bot API 10.1) */
+function extractRichText(nodes: unknown): string {
+  if (typeof nodes === "string") return nodes;
+  if (Array.isArray(nodes)) return nodes.map(extractRichText).join("");
+  if (nodes && typeof nodes === "object") {
+    const n = nodes as Record<string, unknown>;
+    if (n.text != null) return extractRichText(n.text);
+    if (n.blocks != null) return extractRichText(n.blocks);
+  }
+  return "";
+}
+
 export interface TelegramAdapterOptions {
   id: string;
   botToken: string;
@@ -143,12 +155,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         // Allow messages from non-primary chats through for classic mode
         // (classic mode has its own access control in fleet-manager)
         const chatId = String(msg.chat.id);
-        const isBot = msg.from?.is_bot ?? false;
         if (this.lastChatId && chatId === this.lastChatId) {
-          console.log(`[TG-DEBUG] Blocked: userId=${userId} isBot=${isBot} chatId=${chatId} === lastChatId (primary forum group)`);
           return;
         }
-        console.log(`[TG-DEBUG] Passing through: userId=${userId} isBot=${isBot} chatId=${chatId} lastChatId=${this.lastChatId} (classic candidate)`);
         // Non-primary chat: let it through to fleet-manager for classic routing
       }
 
@@ -161,7 +170,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         : undefined;
       const messageId = String(msg.message_id);
       const username = msg.from?.username ?? msg.from?.first_name ?? String(userId);
-      const text = msg.text ?? msg.caption ?? "";
+      let text = msg.text ?? msg.caption ?? "";
+      if (!text && (msg as any).rich_message) {
+        text = extractRichText((msg as any).rich_message.blocks);
+      }
 
       // Collect attachments
       const attachments = this._extractAttachments(msg);
