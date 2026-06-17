@@ -330,6 +330,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "ctx", description: "[ClassicBot] Show agent context usage" },
           { name: "collab", description: "[ClassicBot] Toggle collaboration mode (@mention trigger)" },
+          { name: "status", description: "[Fleet] Show fleet status and costs" },
+          { name: "sysinfo", description: "[Fleet] System diagnostics" },
+          { name: "restart", description: "[Fleet] Graceful restart all instances" },
           { name: "update", description: "[Fleet] Update AgEnD to latest version" },
           { name: "doctor", description: "[Fleet] Run health diagnostics" },
         ]);

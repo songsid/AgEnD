@@ -937,6 +937,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
           await data.respond(output);
         }
+      } else if (data.command === "status") {
+        const text = await this.topicCommands.getStatusText();
+        await data.respond(text);
+      } else if (data.command === "sysinfo") {
+        await data.respond(this.topicCommands.getSysInfoText());
+      } else if (data.command === "restart") {
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
+          return;
+        }
+        await data.respond("🔄 Graceful restart — waiting for instances to idle...");
+        process.kill(process.pid, "SIGUSR2");
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -1150,6 +1163,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
           await data.respond(output);
         }
+      } else if (data.command === "status") {
+        const text = await this.topicCommands.getStatusText();
+        await data.respond(text);
+      } else if (data.command === "sysinfo") {
+        await data.respond(this.topicCommands.getSysInfoText());
+      } else if (data.command === "restart") {
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
+          return;
+        }
+        await data.respond("🔄 Graceful restart — waiting for instances to idle...");
+        process.kill(process.pid, "SIGUSR2");
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
