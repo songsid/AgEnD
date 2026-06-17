@@ -1341,6 +1341,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
 
+    this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
+
     // Bot messages: only allow in collab channels or TG classic with @mention
     if (msg.isBotMessage) {
       if (!threadId) {
@@ -1348,6 +1350,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const world = this.worlds.get(msg.adapterId ?? "");
         const botUser = world?.botUsername;
         const mentionsUs = !!(botUser && msg.text?.toLowerCase().includes(`@${botUser.toLowerCase()}`));
+        this.logger.debug({ botUser, mentionsUs, isBotMessage: true, threadId: null }, "Bot message filter (no threadId path)");
         if (!mentionsUs) return;
         // Fall through to TG classic handling below
       } else {
