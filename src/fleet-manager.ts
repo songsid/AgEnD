@@ -1449,7 +1449,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // /chat command is NOT supported for TG classic — use @bot instead.
           if (!isBotMentioned) {
             // No trigger: save attachments + react, log, but don't forward to agent
-            const syntheticMsg = { ...msg, threadId: chatId, text: rawText };
+            const syntheticMsg = { ...msg, threadId: chatId, text: rawText.startsWith("/") ? "" : rawText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
             return;
           }
