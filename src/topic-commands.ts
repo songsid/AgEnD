@@ -116,6 +116,13 @@ export class TopicCommands {
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
+    const text = await this.getStatusText();
+    await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
+  }
+
+  /** Get fleet status as markdown text (shared by TG + DC) */
+  async getStatusText(): Promise<string> {
+    if (!this.ctx.fleetConfig) return "No fleet config loaded.";
 
     const rows: string[] = [];
     for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
@@ -155,10 +162,7 @@ export class TopicCommands {
       rows.push(`| ${name} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} |`);
     }
 
-    if (rows.length === 0) {
-      await adapter.sendText(msg.chatId, "No instances configured.", { threadId: msg.threadId });
-      return;
-    }
+    if (rows.length === 0) return "No instances configured.";
 
     const lines = [
       "## Fleet Status",
@@ -174,14 +178,19 @@ export class TopicCommands {
       lines.push("", `Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
     }
 
-    await adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
+    return lines.join("\n");
   }
 
   private async handleSysInfoCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
-    const info = this.ctx.getSysInfo();
+    const text = this.getSysInfoText();
+    await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
+  }
 
+  /** Get system info as markdown text (shared by TG + DC) */
+  getSysInfoText(): string {
+    const info = this.ctx.getSysInfo();
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
     const require = createRequire(import.meta.url);
@@ -214,7 +223,7 @@ export class TopicCommands {
       lines.push("", `Fleet cost: ${formatCents(info.fleet_cost_cents)} / ${formatCents(info.fleet_cost_limit_cents)} daily`);
     }
 
-    await adapter.sendText(msg.chatId, lines.join("\n"), { threadId: msg.threadId });
+    return lines.join("\n");
   }
 
   private async handleUpdateCommand(msg: InboundMessage): Promise<void> {
