@@ -19,16 +19,28 @@ function toThreadId(threadId: string | null | undefined): number | undefined {
   return Number(threadId);
 }
 
-/** Recursively extract plain text from RichText nodes (Bot API 10.1) */
-function extractRichText(nodes: unknown): string {
-  if (typeof nodes === "string") return nodes;
-  if (Array.isArray(nodes)) return nodes.map(extractRichText).join("");
-  if (nodes && typeof nodes === "object") {
-    const n = nodes as Record<string, unknown>;
-    if (n.text != null) return extractRichText(n.text);
-    if (n.blocks != null) return extractRichText(n.blocks);
+/** Extract plain text from Rich Message blocks (Bot API 10.1) */
+function extractRichText(blocks: unknown[]): string {
+  if (!Array.isArray(blocks)) return "";
+  const parts: string[] = [];
+  for (const block of blocks) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as Record<string, unknown>;
+    if ((b.type === "paragraph" || b.type === "heading") && Array.isArray(b.text)) {
+      parts.push((b.text as unknown[]).map(node =>
+        typeof node === "string" ? node : (node && typeof node === "object" && "text" in node) ? (node as any).text : ""
+      ).join(""));
+    } else if (b.type === "pre" && Array.isArray(b.text)) {
+      parts.push((b.text as unknown[]).map(node =>
+        typeof node === "string" ? node : (node && typeof node === "object" && "text" in node) ? (node as any).text : ""
+      ).join(""));
+    } else if (b.type === "table" && Array.isArray(b.cells)) {
+      for (const row of b.cells as unknown[][]) {
+        parts.push(Array.isArray(row) ? row.map((cell: any) => cell?.text ?? "").join(" | ") : "");
+      }
+    }
   }
-  return "";
+  return parts.join("\n");
 }
 
 export interface TelegramAdapterOptions {
@@ -171,15 +183,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const messageId = String(msg.message_id);
       const username = msg.from?.username ?? msg.from?.first_name ?? String(userId);
       let text = msg.text ?? msg.caption ?? "";
-      if (!text && (msg as any).rich_message) {
+      if (!text && (msg as any).rich_message?.blocks) {
         text = extractRichText((msg as any).rich_message.blocks);
       }
-      if (msg.from?.is_bot) {
-        // Dump raw msg for debugging Rich Message structure
-        const keys = Object.keys(msg).filter(k => !["chat", "from", "date", "message_id"].includes(k));
-        console.log(`[TG-RAW] Bot msg: text="${text.slice(0,50)}" keys=${keys.join(",")} | ${JSON.stringify(msg, null, 0).slice(0, 800)}`);
-      }
-
       // Collect attachments
       const attachments = this._extractAttachments(msg);
 
