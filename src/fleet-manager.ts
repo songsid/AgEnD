@@ -918,7 +918,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        await data.respond("📦 Updating AgEnD... Use `agend update` from CLI for full control.");
+        await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
+        const { spawn } = await import("node:child_process");
+        const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+        child.unref();
       } else if (data.command === "doctor") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
@@ -1128,7 +1131,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        await data.respond("📦 Updating AgEnD... Use `agend update` from CLI for full control.");
+        await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
+        const { spawn } = await import("node:child_process");
+        const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+        child.unref();
       } else if (data.command === "doctor") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
