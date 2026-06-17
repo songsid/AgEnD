@@ -950,6 +950,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
+      } else if (data.command === "compact") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(target.name);
+        await data.respond(result);
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -1176,6 +1181,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
+      } else if (data.command === "compact") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(target.name);
+        await data.respond(result);
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
