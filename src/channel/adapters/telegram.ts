@@ -133,6 +133,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const userId = msg.from?.id;
       if (userId == null) return;
 
+      console.log(`[TG-DEBUG] bot.on(message): userId=${userId} isBot=${msg.from?.is_bot} chatId=${msg.chat.id} text=${(msg.text ?? "").slice(0, 50)}`);
+
       // Access control
       if (!this.accessManager.isAllowed(userId)) {
         // In pairing mode, allow /pair commands through
