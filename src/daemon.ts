@@ -840,6 +840,12 @@ export class Daemon extends EventEmitter {
 
   /** Deliver a single message: wait for idle, then paste */
   private async deliverMessage(formatted: string): Promise<void> {
+    // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
+    const fenceCount = (formatted.match(/```/g) || []).length;
+    if (fenceCount % 2 !== 0) {
+      // Odd number of fences = unclosed. Remove all code fences from the message.
+      formatted = formatted.replace(/```/g, "");
+    }
     const windowId = this.getWindowId();
     if (windowId && this.controlClient) {
       const idle = await this.controlClient.waitForIdle(windowId, this.config.lightweight ? 30_000 : 120_000);
