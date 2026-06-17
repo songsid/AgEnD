@@ -39,6 +39,7 @@ export interface FleetContext {
 
   getSysInfo(): SysInfo;
   getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  toggleFleetCollab(instanceName: string): boolean;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
