@@ -4,6 +4,36 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.2] - 2026-06-17
+
+### Added
+- **TG Rich Message receive** — grammy middleware intercepts Rich Message (Bot API 10.1), extracts text for bot-to-bot @mention communication.
+- **Multi-channel auto-detect** — each adapter gets its own General instance; unbound generals adopted by topic_id match.
+- **`channel_id` field** — explicit binding of General instances to specific adapters.
+- **Quickstart live add platform** — add a second platform while fleet is running (systemd restart preferred, fallback detached spawn).
+- **`agend stop/start` fallback** — works on machines without D-Bus/systemd (PID kill / direct fleet start).
+- **`/sysinfo` version display** — shows AgEnD version in system info table.
+- **`/status` context percentage** — tmux capture fallback matches `agend ls` behavior.
+- **Multi-channel skill** — General knowledge for dual-platform setup guidance.
+- **Memory best practice** — steering rules: Decision (short) → soul.md (full) → skill (on-demand).
+- **Configuration & commands docs** — complete fleet.yaml/classicBot.yaml reference + all slash commands.
+- **Reply tool instruction** — all instances know to output "." after reply tool to avoid kiro-cli error.
+
+### Fixed
+- **TG ClassicBot chat-log** — non-@mention messages now correctly recorded (was empty due to text clearing).
+- **TG ClassicBot bot reply logging** — agent outbound replies written to chat-log.
+- **TG ClassicBot error notifications** — classic instances receive error alerts via routing table fallback.
+- **Bot-to-bot @mention (TG)** — isBotMessage filter allows bot messages with @ourBot mention; Rich Message text extraction.
+- **Duplicate general on add platform** — adopt unbound generals instead of creating duplicates.
+- **`/restart` admin check** — mode:open no longer allows unauthorized users to restart fleet.
+- **Discord `general_channel_id` required** — quickstart loops until provided (prevents broken routing).
+- **Unclosed code fences** — stripped before CLI paste to prevent input hang.
+- **TG `/chat` removed from menu** — not implemented for TG classic, use @mention instead.
+
+### Changed
+- **grammy 1.44.0** — upgraded for Bot API 10.1 support.
+- **`assignTopicIds`** — uses `channel_id` → channels config type for platform detection (not name heuristic).
+
 ## [2.0.1] - 2026-06-15
 
 ### Added
