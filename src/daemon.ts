@@ -265,13 +265,20 @@ export class Daemon extends EventEmitter {
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
 
-    // Warmup: trigger CLI to load context (steering + MCP) ahead of first user message
-    setTimeout(async () => {
+    // Warmup: wait for CLI idle, then trigger steering reload
+    (async () => {
       try {
+        const wid = existsSync(join(this.instanceDir, "window-id"))
+          ? readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() : "";
+        if (wid && this.controlClient) {
+          await this.controlClient.waitForIdle(wid, 120_000);
+        } else {
+          await new Promise(r => setTimeout(r, 5000));
+        }
         await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
-        this.logger.debug("Warmup message sent");
+        this.logger.debug("Warmup sent after idle");
       } catch { /* non-fatal */ }
-    }, 3000);
+    })();
 
     if (!this.config.lightweight) {
       // 3. Pipe-pane for prompt detection

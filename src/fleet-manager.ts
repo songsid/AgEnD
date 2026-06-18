@@ -134,6 +134,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lastActivity.get(name) ?? 0;
   }
 
+  private getInstanceIdle(name: string): boolean {
+    try {
+      const widFile = join(this.getInstanceDir(name), "window-id");
+      if (!existsSync(widFile)) return true;
+      const wid = readFileSync(widFile, "utf-8").trim();
+      return wid ? (this.controlClient?.isIdle(wid) ?? true) : true;
+    } catch { return true; }
+  }
+
   // ── LifecycleContext bridge methods ──────────────────────────────────────
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void {
     this.webhookEmitter?.emit(event, name, data);
@@ -3651,6 +3660,7 @@ When users create specialized instances, suggest these configurations:
             general_topic: config?.general_topic ?? false,
             lastActivity: this.lastActivityMs(inst.name) || null,
             currentTask,
+            idle: this.getInstanceIdle(inst.name),
           };
         });
         res.setHeader("Access-Control-Allow-Origin", "*");
