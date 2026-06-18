@@ -470,6 +470,7 @@ export class TopicCommands {
               commands: [
                 { command: "start", description: "[ClassicBot] Start an agent in this chat" },
                 { command: "stop", description: "[ClassicBot] Stop the agent" },
+                { command: "compact", description: "[ClassicBot] Compact agent context" },
               ],
               scope: { type: "default" },
             }),
