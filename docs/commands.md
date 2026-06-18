@@ -11,7 +11,9 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/status` | Show fleet status and costs | All (within fleet access) | Markdown table with instance/backend/ctx/cost/status |
 | `/restart` | Graceful restart all instances | Admin (allowed_users) | SIGUSR2 graceful restart |
 | `/sysinfo` | System diagnostics | All (within fleet access) | Markdown table with uptime/memory/heap + instance table |
-| `/update` | Update AgEnD to latest | Admin (allowed_users) | npm install + detached systemd restart |
+| `/compact` | Compact agent context | All (within fleet access) | Sends Escape + /compact to instance tmux pane |
+| `/collab` | Toggle bot/webhook message reception | All (within fleet access) | Per-instance, in-memory toggle |
+| `/update` | Update AgEnD to latest | Admin (allowed_users) | Detached `agend update` (auto-detects beta) |
 | `/doctor` | Run health diagnostics | Admin (allowed_users) | Executes `agend backend doctor` |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
@@ -22,6 +24,7 @@ Registered via `setMyCommands` with `scope: default`.
 |---------|-------------|------------|-------|
 | `/start` | Start an agent in this chat | Private: allowed_users. Group: admin_users | Creates classic instance |
 | `/stop` | Stop the agent | admin_users | Stops and unregisters instance |
+| `/compact` | Compact agent context | admin_users | Sends /compact to tmux pane |
 | `/chat` | Talk to the agent | — | Not implemented for TG classic (use @mention instead) |
 
 ### Telegram ClassicBot — unregistered commands
@@ -47,9 +50,13 @@ Registered globally via `client.application.commands.set()`.
 | `/compact` | Compact the agent's context window | admin_users | [ClassicBot] |
 | `/save <filename>` | Save the agent's conversation | admin_users | [ClassicBot] Optional: --force |
 | `/load <filename>` | Load a saved conversation | admin_users | [ClassicBot] |
-| `/ctx` | Show agent context usage | All users | [ClassicBot] Shows % used + backend |
-| `/collab` | Toggle collaboration mode | admin_users | [ClassicBot] @mention trigger on/off |
-| `/update` | Update AgEnD to latest version | admin_users | [Fleet] Notifies user to use CLI |
+| `/ctx` | Show agent context usage | All users | [ClassicBot/Fleet] Shows % used + backend |
+| `/collab` | Toggle collaboration mode | admin_users / All | [ClassicBot] @mention trigger. [Fleet] bot/webhook reception. DC /start auto-enables collab. |
+| `/status` | Show fleet status and costs | All (fleet access) | [Fleet] Markdown table |
+| `/sysinfo` | System diagnostics | All (fleet access) | [Fleet] Uptime/memory/instances |
+| `/restart` | Graceful restart all instances | Admin (allowed_users) | [Fleet] SIGUSR2 |
+| `/compact` | Compact agent context | All (fleet access) | [Fleet/ClassicBot] Sends /compact to tmux |
+| `/update` | Update AgEnD to latest version | admin_users | [Fleet] Detached `agend update` (auto-detects beta) |
 | `/doctor` | Run health diagnostics | admin_users | [Fleet] Executes `agend backend doctor` |
 
 ---
