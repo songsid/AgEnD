@@ -42,7 +42,7 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = whitelist only. `pairing` = self-register via /pair. `open` = all users allowed |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = whitelist only. `pairing` = self-register via /pair. `open` = all users + bots allowed (bot messages reach fleet topics directly) |
 | `allowed_users` | (number\|string)[] | `[]` | Whitelisted user IDs |
 | `max_pending_codes` | number | `3` | Max simultaneous pairing codes |
 | `code_expiry_minutes` | number | `10` | Pairing code TTL |
@@ -216,3 +216,5 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 - **Backend fallback**: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
 - **Hot reload**: changes detected every 30 seconds
 - **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`
+- **DC auto-collab**: Discord `/start` auto-enables collab mode (bot messages visible without @mention)
+- **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Allows bot/webhook messages to reach a fleet topic instance.
