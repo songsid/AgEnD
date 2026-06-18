@@ -933,7 +933,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
         const { spawn } = await import("node:child_process");
-        const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+        const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
+        const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
+        const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
         child.unref();
       } else if (data.command === "doctor") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
@@ -1175,7 +1177,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
         const { spawn } = await import("node:child_process");
-        const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+        const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
+        const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
+        const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
         child.unref();
       } else if (data.command === "doctor") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
