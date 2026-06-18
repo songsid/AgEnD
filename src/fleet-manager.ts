@@ -109,6 +109,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Health endpoint
   private healthServer: Server | null = null;
+  private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
@@ -3733,6 +3734,11 @@ When users create specialized instances, suggest these configurations:
 
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
+        if (this.healthPortRetried) {
+          this.logger.debug({ port }, "Health port still in use after takeover — skipping health endpoint");
+          return;
+        }
+        this.healthPortRetried = true;
         this.logger.warn({ port }, "Health port in use — attempting takeover");
         const pidPath = join(this.dataDir, "fleet.pid");
         try {
@@ -3750,8 +3756,6 @@ When users create specialized instances, suggest these configurations:
           if (!this.healthServer) return;
           this.healthServer.listen(port, "127.0.0.1", () => {
             this.logger.info({ port }, "Health endpoint listening (after takeover)");
-          }).on("error", () => {
-            this.logger.warn({ port }, "Health port still in use — skipping health endpoint");
           });
         }, 1500);
         return;
