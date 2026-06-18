@@ -1543,6 +1543,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // Handle /compact command (admin only)
+        if (text === "/compact" || text.startsWith("/compact@")) {
+          if (!this.classicChannels.isAdmin(msg.userId)) {
+            await msgAdapter?.sendText(chatId, "⛔ /compact requires admin access.");
+            return;
+          }
+          const compactTarget = this.routing.resolve(chatId);
+          if (!compactTarget || compactTarget.kind !== "classic") {
+            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            return;
+          }
+          const result = await this.topicCommands.sendCompact(compactTarget.name);
+          await msgAdapter?.sendText(chatId, result);
+          return;
+        }
+
         // Route to classic channel if registered
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
