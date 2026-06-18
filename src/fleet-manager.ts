@@ -1412,12 +1412,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Bot messages: only allow in collab channels or TG classic with @mention
     if (msg.isBotMessage) {
       if (!threadId) {
-        // TG classic: allow if bot @mentions our bot (bot-to-bot communication)
+        // TG classic: allow if bot @mentions our bot or access mode is open
         const world = this.worlds.get(msg.adapterId ?? "");
         const botUser = world?.botUsername;
+        const channelCfg = this.getChannelConfig(msg.adapterId);
+        const isOpen = channelCfg?.access?.mode === "open";
         const mentionsUs = !!(botUser && msg.text?.toLowerCase().includes(`@${botUser.toLowerCase()}`));
-        this.logger.debug({ botUser, mentionsUs, isBotMessage: true, threadId: null }, "Bot message filter (no threadId path)");
-        if (!mentionsUs) return;
+        this.logger.debug({ botUser, mentionsUs, isOpen, isBotMessage: true, threadId: null }, "Bot message filter (no threadId path)");
+        if (!isOpen && !mentionsUs) return;
         // Fall through to TG classic handling below
       } else {
         const target = this.routing.resolve(threadId);
@@ -1425,7 +1427,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (target.kind === "classic") {
           if (!this.classicChannels?.isCollab(threadId)) return;
         } else {
-          if (!this.collabInstances.has(target.name)) return;
+          // Fleet topic: allow if collab enabled OR access mode is open
+          const channelCfg = this.getChannelConfig(msg.adapterId);
+          const isOpen = channelCfg?.access?.mode === "open";
+          if (!isOpen && !this.collabInstances.has(target.name)) return;
         }
         // Fall through to channel handling
       }
@@ -3085,8 +3090,12 @@ When users create specialized instances, suggest these configurations:
 
     await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId), this.classicChannels.getModel(channelId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
+    // Auto-enable collab for Discord classic channels
+    if (!this.classicChannels.isCollab(channelId)) {
+      this.classicChannels.toggleCollab(channelId);
+    }
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
-    return `✅ Agent started in this channel. Use \`/chat <message>\` to talk.`;
+    return `✅ Agent started in this channel. Use \`/chat <message>\` or @mention to talk.`;
   }
 
   /** Handle /stop slash command — unregister classic channel */
