@@ -265,6 +265,14 @@ export class Daemon extends EventEmitter {
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
 
+    // Warmup: trigger CLI to load context (steering + MCP) ahead of first user message
+    setTimeout(async () => {
+      try {
+        await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+        this.logger.debug("Warmup message sent");
+      } catch { /* non-fatal */ }
+    }, 3000);
+
     if (!this.config.lightweight) {
       // 3. Pipe-pane for prompt detection
       const outputLog = join(this.instanceDir, "output.log");
