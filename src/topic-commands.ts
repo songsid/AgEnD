@@ -298,8 +298,10 @@ export class TopicCommands {
 
     await adapter.sendText(chatId, "📦 Updating AgEnD... Fleet will restart automatically.", { threadId });
 
+    const currentVersion: string = createRequire(import.meta.url)("../package.json").version ?? "";
+    const updateCmd = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
     const { spawn } = await import("node:child_process");
-    const child = spawn("sh", ["-c", "sleep 2 && agend update"], { detached: true, stdio: "ignore" });
+    const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], { detached: true, stdio: "ignore" });
     child.unref();
   }
 
