@@ -261,8 +261,14 @@ export class Daemon extends EventEmitter {
     if (!resumed) {
       await this.injectSnapshotMessage();
     } else {
-      // Clean up stale snapshot file — resume restored full context, snapshot not needed
+      // Resume succeeded — steering may have updated, send lightweight warmup
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
+      setTimeout(async () => {
+        try {
+          await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+          this.logger.debug("Warmup sent after resume");
+        } catch { /* non-fatal */ }
+      }, 3000);
     }
 
     if (!this.config.lightweight) {
