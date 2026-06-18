@@ -1737,8 +1737,19 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         } catch { /* ignore */ }
       }
 
-      return { name, backend, status, teams, source, context, memMb, lastActivity };
+      return { name, backend, status, teams, source, context, memMb, lastActivity, idle: undefined as boolean | undefined };
     });
+
+    // Enrich with idle state from fleet API (if fleet is running)
+    try {
+      const port = (config as any).health_port ?? 19280;
+      const resp = await fetch(`http://127.0.0.1:${port}/api/fleet`, { signal: AbortSignal.timeout(2000) });
+      const apiData = await resp.json() as { instances?: Array<{ name: string; idle?: boolean }> };
+      for (const inst of apiData.instances ?? []) {
+        const row = rows.find(r => r.name === inst.name);
+        if (row) row.idle = inst.idle;
+      }
+    } catch { /* fleet not running or API unreachable */ }
 
     if (opts.json) {
       console.log(JSON.stringify(rows, null, 2));
@@ -1746,8 +1757,10 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     }
 
     // Status icon
-    const statusIcon = (s: string) =>
-      s === "running" ? "\x1b[32m●\x1b[0m" : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+    const statusIcon = (s: string, idle?: boolean) =>
+      s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+    const statusLabel = (s: string, idle?: boolean) =>
+      s === "running" ? (idle === false ? "Busy" : "Idle") : s === "crashed" ? "Crashed" : "Stopped";
 
     /** Get display width accounting for fullwidth (CJK) characters */
     const displayWidth = (s: string): number => {
@@ -1789,7 +1802,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       console.log(
         padDisplay(r.name, nameW) +
         r.backend.padEnd(backendW) +
-        statusIcon(r.status) + " " + r.status.padEnd(statusW - 2) +
+        statusIcon(r.status, r.idle) + " " + statusLabel(r.status, r.idle).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
         r.source.padEnd(srcW) +
         ctxStr.padEnd(ctxW) +
@@ -1850,7 +1863,7 @@ program
     if (fleetUp) {
       try {
         const resp = await fetch(`http://127.0.0.1:${port}/api/fleet`, { signal: AbortSignal.timeout(3000) });
-        const data = await resp.json() as { uptime_seconds?: number; instances?: Array<{ name: string; ipc: boolean; rateLimits: { five_hour_pct: number; seven_day_pct: number } | null; lastActivity: number | null }> };
+        const data = await resp.json() as { uptime_seconds?: number; instances?: Array<{ name: string; ipc: boolean; idle?: boolean; rateLimits: { five_hour_pct: number; seven_day_pct: number } | null; lastActivity: number | null }> };
         uptime = data.uptime_seconds ?? 0;
         for (const inst of data.instances ?? []) {
           fleetApiData[inst.name] = { ipc: inst.ipc, rateLimits: inst.rateLimits, lastActivity: inst.lastActivity };
