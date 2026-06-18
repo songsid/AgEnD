@@ -685,10 +685,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const failedNames = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
       const generalName = this.findGeneralInstance();
       const generalThreadId = generalName ? fleet.instances[generalName]?.topic_id : undefined;
+      const { createRequire } = await import("node:module");
+      const _require = createRequire(import.meta.url);
+      const agendVersion = _require("../package.json").version ?? "unknown";
       if (this.adapter && fleet.channel?.group_id) {
         const text = failedNames.length === 0
-          ? `Fleet ready. ${started}/${total} instances running.`
-          : `Fleet ready. ${started}/${total} instances running. Failed: ${failedNames.join(", ")}`;
+          ? `Fleet ready. ${started}/${total} instances running. v${agendVersion}`
+          : `Fleet ready. ${started}/${total} instances running. v${agendVersion} | Failed: ${failedNames.join(", ")}`;
         this.adapter.sendText(String(fleet.channel.group_id), text, {
           threadId: generalThreadId != null ? String(generalThreadId) : undefined,
         }).catch(e => this.logger.warn({ err: e }, "Failed to send fleet start notification"));
@@ -3481,9 +3484,12 @@ When users create specialized instances, suggest these configurations:
       const total = Object.keys(fleet.instances).length;
       const started = this.daemons.size;
       const failedNames = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const { createRequire } = await import("node:module");
+      const _require2 = createRequire(import.meta.url);
+      const agendVersion2 = _require2("../package.json").version ?? "unknown";
       const restartText = failedNames.length === 0
-        ? `Fleet ready. ${started}/${total} instances running.`
-        : `Fleet ready. ${started}/${total} instances running. Failed: ${failedNames.join(", ")}`;
+        ? `Fleet ready. ${started}/${total} instances running. v${agendVersion2}`
+        : `Fleet ready. ${started}/${total} instances running. v${agendVersion2} | Failed: ${failedNames.join(", ")}`;
       await this.adapter.sendText(String(groupId), restartText, notifyOpts)
         .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
 
