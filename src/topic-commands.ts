@@ -189,19 +189,6 @@ export class TopicCommands {
           contextStr = `${Math.round(data.context_window.used_percentage)}%`;
         }
       } catch { /* file may not exist yet */ }
-      if (contextStr === "-") {
-        try {
-          const { execFileSync } = await import("node:child_process");
-          const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
-          const socketName = getTmuxSocketName();
-          const tmuxArgs = socketName
-            ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSessionName()}:${name}`, "-p"]
-            : ["capture-pane", "-t", `${getTmuxSessionName()}:${name}`, "-p"];
-          const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-          const m = pane.match(/(\d+)%.*[!❯>]/m) || pane.match(/◔\s*(\d+)%/) || pane.match(/\[(\d+)%\]/);
-          if (m) contextStr = `${parseInt(m[1], 10)}%`;
-        } catch { /* tmux capture failed */ }
-      }
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
       const backend = this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
