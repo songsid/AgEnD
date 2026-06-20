@@ -1594,11 +1594,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
 
-      // General topic: check for /status command
+      // General topic: check /ctx /compact /collab first, then admin commands
+      const generalInstance = this.findGeneralInstance(msg.adapterId);
+      if (generalInstance && await this.topicCommands.handleInstanceCommand(msg, generalInstance)) return;
       if (await this.topicCommands.handleGeneralCommand(msg)) return;
 
       // Forward to General Topic instance if configured
-      const generalInstance = this.findGeneralInstance(msg.adapterId);
       if (generalInstance) {
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
@@ -2923,6 +2924,14 @@ When users create specialized instances, suggest these configurations:
       }
 
       await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
+      return;
+    }
+
+    // Handle /ctx in classic mode
+    if (text === "/ctx" || text.startsWith("/ctx@")) {
+      const reply = await this.topicCommands.getCtxText(instanceName);
+      const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
+      if (classicAdapter) await classicAdapter.sendText(msg.threadId ?? msg.chatId, reply, { threadId: msg.threadId });
       return;
     }
 
