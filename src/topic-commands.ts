@@ -449,11 +449,14 @@ export class TopicCommands {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               commands: [
-                { command: "status", description: "[Fleet] Show fleet status and costs" },
-                { command: "restart", description: "[Fleet] Graceful restart all instances" },
-                { command: "sysinfo", description: "[Fleet] System diagnostics" },
-                { command: "update", description: "[Fleet] Update AgEnD to latest" },
-                { command: "doctor", description: "[Fleet] Run health diagnostics" },
+                { command: "status", description: "Show fleet status and costs" },
+                { command: "sysinfo", description: "System diagnostics" },
+                { command: "ctx", description: "Show context usage" },
+                { command: "compact", description: "Compact agent context" },
+                { command: "restart", description: "🔒 Graceful restart all instances" },
+                { command: "collab", description: "🔒 Toggle bot/webhook mode" },
+                { command: "update", description: "🔒 Update AgEnD to latest" },
+                { command: "doctor", description: "🔒 Run health diagnostics" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
@@ -468,9 +471,9 @@ export class TopicCommands {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               commands: [
-                { command: "start", description: "[ClassicBot] Start an agent in this chat" },
-                { command: "stop", description: "[ClassicBot] Stop the agent" },
-                { command: "compact", description: "[ClassicBot] Compact agent context" },
+                { command: "start", description: "🔒 Start an agent in this chat" },
+                { command: "stop", description: "🔒 Stop the agent" },
+                { command: "compact", description: "🔒 Compact agent context" },
               ],
               scope: { type: "default" },
             }),
