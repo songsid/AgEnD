@@ -1661,14 +1661,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const instanceName = target.name;
 
-    // Intercept admin commands (/status, /restart, /sysinfo) in general topics
-    const instanceConfig = this.fleetConfig?.instances[instanceName];
-    if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg)) {
+    // Intercept /ctx /compact /collab in ANY topic (including general)
+    if (await this.topicCommands.handleInstanceCommand(msg, instanceName)) {
       return;
     }
 
-    // Intercept /ctx in any instance topic
-    if (await this.topicCommands.handleInstanceCommand(msg, instanceName)) {
+    // Intercept admin commands (/status, /restart, /sysinfo) in general topics
+    const instanceConfig = this.fleetConfig?.instances[instanceName];
+    if (instanceConfig?.general_topic && await this.topicCommands.handleGeneralCommand(msg)) {
       return;
     }
 
