@@ -316,7 +316,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "chat", description: "[ClassicBot] Send a message to the agent",
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
           },
-          { name: "compact", description: "[ClassicBot] Compact the agent's context window" },
+          { name: "compact", description: "Compact agent context window" },
           {
             name: "save", description: "[ClassicBot] Save the agent's conversation",
             options: [
@@ -328,12 +328,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "load", description: "[ClassicBot] Load a saved conversation",
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
-          { name: "ctx", description: "[ClassicBot] Show agent context usage" },
-          { name: "collab", description: "[ClassicBot] Toggle collaboration mode (@mention trigger)" },
+          { name: "ctx", description: "Show agent context usage" },
+          { name: "collab", description: "Toggle bot/webhook collaboration mode" },
           { name: "status", description: "[Fleet] Show fleet status and costs" },
           { name: "sysinfo", description: "[Fleet] System diagnostics" },
           { name: "restart", description: "[Fleet] Graceful restart all instances" },
-          { name: "compact", description: "[Fleet] Compact agent context window" },
           { name: "update", description: "[Fleet] Update AgEnD to latest version" },
           { name: "doctor", description: "[Fleet] Run health diagnostics" },
         ]);
