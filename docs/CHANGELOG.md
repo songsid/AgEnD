@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.3] - 2026-06-21
+
+### Added
+- **Unified `/update`** — both TG and DC spawn `agend update` (detached); auto-detects beta version and uses `--beta` flag accordingly.
+- **DC Fleet slash commands** — `/status`, `/sysinfo`, `/restart`, `/ctx`, `/compact`, `/collab` now available as Discord slash commands (parity with TG).
+- **TG Fleet `/ctx` `/compact` `/collab`** — registered in forum bot menu; works in General topic and instance topics.
+- **TG Classic `/compact`** — admin-only command to compact classic instance context.
+- **TG Classic `/ctx`** — show context usage in classic mode.
+- **Fleet `/collab`** — allow bot/webhook messages in fleet topics (TG + DC). Fleet open mode bypasses bot message filter.
+- **DC auto-collab on `/start`** — Discord `/start` auto-enables collab mode for the new instance.
+- **Instance warmup** — auto-trigger context loading (steering + skills) after spawn; waits for instance to reach idle before marking ready.
+- **`agend ls` status indicators** — shows Idle/Busy/Crashed/Stopped per instance in real-time.
+- **Fleet ready version** — show AgEnD version in "Fleet ready" startup notification.
+- **🔒 Admin markers** — slash command descriptions use 🔒 prefix for admin-only commands.
+
+### Fixed
+- **Health port retry loop** — prevent infinite health check retry with re-entry guard flag (#44).
+- **`/update` beta auto-detect** — correctly spawns `agend update --beta` when current version is a beta release.
+- **DC `/collab` fleet topic permission** — fleet topic `/collab` now correctly requires `allowed_users` permission.
+- **DC slash commands duplicate** — `compact` was registered twice causing all commands to fail silently; deduplicated.
+- **`/status` performance** — removed serial tmux capture fallback (too slow with 48+ instances); now uses statusline.json only.
+- **General topic `/ctx`** — TG General topic (threadId=undefined) now correctly routes to handleInstanceCommand.
+
 ## [2.0.2] - 2026-06-17
 
 ### Added
