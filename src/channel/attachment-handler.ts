@@ -42,23 +42,36 @@ export async function processAttachments(
     }
   }
 
-  // Transcribe voice/audio
+  // Transcribe voice/audio (with download fallback)
   const voiceAttachment = msg.attachments?.find(a => a.kind === "voice" || a.kind === "audio");
   if (voiceAttachment) {
+    let localPath: string | undefined;
+    try {
+      localPath = await adapter.downloadAttachment(voiceAttachment.fileId);
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, "Audio download failed");
+    }
+
     const groqKey = process.env.GROQ_API_KEY;
-    if (groqKey) {
+    let transcribed = false;
+    if (localPath && groqKey) {
       try {
-        const localPath = await adapter.downloadAttachment(voiceAttachment.fileId);
         const result = await transcribe(localPath, groqKey);
-        try { unlinkSync(localPath); } catch { /* ignore */ }
         text = text ? `${text}\n\n[Voice message] ${result.text}` : `[Voice message] ${result.text}`;
         logger.info({ ...(logPrefix ? { context: logPrefix } : {}), transcription: result.text.slice(0, 80) }, "Voice transcribed");
+        try { unlinkSync(localPath); } catch { /* ignore */ }
+        transcribed = true;
       } catch (err) {
         logger.warn({ err: (err as Error).message }, "Voice transcription failed");
-        text = text || "[Voice message — transcription failed]";
       }
-    } else {
-      text = text || "[Voice message — STT API key not set]";
+    }
+
+    if (!transcribed && localPath) {
+      const filename = voiceAttachment.filename ?? "audio";
+      text = `[🎵 Audio: ${filename} → ${localPath}]\n${text}`;
+      extraMeta.attachment_path = localPath;
+    } else if (!transcribed && !localPath) {
+      text = text || "[Audio attachment — download failed]";
     }
     extraMeta.attachment_file_id = voiceAttachment.fileId;
   }
@@ -84,9 +97,30 @@ export async function processAttachments(
     }
   }
 
+  // Auto-download video attachments
+  const videoAttachments = msg.attachments?.filter(a => a.kind === "video") ?? [];
+  if (videoAttachments.length > 0) {
+    const paths: string[] = [];
+    for (const vid of videoAttachments) {
+      try {
+        const localPath = await adapter.downloadAttachment(vid.fileId);
+        paths.push(localPath);
+        const filename = vid.filename ?? "video";
+        text = `[🎬 Video: ${filename} → ${localPath}]\n${text}`;
+      } catch (err) {
+        logger.warn({ err: (err as Error).message }, "Video download failed");
+        if (!extraMeta.attachment_file_id) extraMeta.attachment_file_id = vid.fileId;
+      }
+    }
+    if (paths.length > 0) {
+      if (!extraMeta.attachment_path) extraMeta.attachment_path = paths[0];
+      if (paths.length > 1) extraMeta.attachment_paths = (extraMeta.attachment_paths ? extraMeta.attachment_paths + "," : "") + paths.join(",");
+    }
+  }
+
   // Pass remaining attachment types as file_id for manual download
   const otherAttachment = msg.attachments?.find(a =>
-    a.kind !== "photo" && a.kind !== "voice" && a.kind !== "audio" && a.kind !== "document",
+    a.kind !== "photo" && a.kind !== "voice" && a.kind !== "audio" && a.kind !== "document" && a.kind !== "video",
   );
   if (otherAttachment) {
     extraMeta.attachment_file_id = otherAttachment.fileId;
