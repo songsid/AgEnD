@@ -56,6 +56,36 @@ When an instance's context is polluted or it's stuck in a loop, use `replace_ins
 3. Creates a new instance with the same config, reusing the Telegram topic
 4. Sends handover context to the new instance via the standard message delivery path
 
+## Instance warmup
+
+When a new instance spawns, the daemon automatically triggers context loading before any user message arrives. This ensures steering files and skills are loaded immediately — no first-message delay.
+
+1. Instance spawns (tmux pane + CLI backend starts)
+2. Daemon sends a system prompt to trigger `.kiro/steering/` and skill loading
+3. Daemon waits for instance to reach idle state
+4. Instance is marked ready
+
+Warmup is always-on with no configuration needed. During warmup, `agend ls` shows the instance as "Busy".
+
+## Instance status indicators
+
+`agend ls` shows real-time status for each instance:
+
+```
+🟢 proj-a    Idle    ctx 42%  $3.20
+🔵 proj-b    Busy    ctx 67%  $8.50
+💀 proj-c    Crashed
+⏹ proj-d    Stopped
+```
+
+Status is determined by tmux pane output activity — "Busy" when the CLI is producing output, "Idle" after 2 seconds of silence.
+
+## Fleet /collab
+
+Enables bot-to-bot and webhook messages in fleet topics. When `/collab` is toggled on for a topic, messages from other bots and webhooks are routed to the instance — enabling multi-bot collaboration within a single Telegram/Discord channel.
+
+In fleet `open` mode, bot messages bypass the filter automatically (no `/collab` toggle needed).
+
 ## Peer-to-peer agent collaboration
 
 Every instance is an equal peer that can discover, wake, create, and message other instances. No dispatcher needed — collaboration emerges from the tools available to each agent.
