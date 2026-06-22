@@ -461,6 +461,7 @@ export class TopicCommands {
                 { command: "start", description: "🔒 Start an agent in this chat" },
                 { command: "stop", description: "🔒 Stop the agent" },
                 { command: "compact", description: "🔒 Compact agent context" },
+                { command: "ctx", description: "Show context usage" },
               ],
               scope: { type: "default" },
             }),
