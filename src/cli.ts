@@ -705,6 +705,148 @@ backend
     console.log();
   });
 
+// ── doctor mcp ──
+program
+  .command("doctor")
+  .description("Run fleet health diagnostics")
+  .argument("[check]", "Specific check to run (mcp)")
+  .action(async (check?: string) => {
+    if (check === "mcp") {
+      await doctorMcp();
+    } else {
+      console.log("Usage: agend doctor mcp");
+      console.log("  mcp  — Check fleet MCP health (IPC sockets, MCP configs, backends)");
+    }
+  });
+
+async function doctorMcp(): Promise<void> {
+  const { execSync } = await import("node:child_process");
+  const net = await import("node:net");
+  const yaml = await import("js-yaml");
+
+  const fleetYamlPath = join(DATA_DIR, "fleet.yaml");
+  if (!existsSync(fleetYamlPath)) {
+    console.error("  fleet.yaml not found at " + fleetYamlPath);
+    process.exit(1);
+  }
+  const fleet = yaml.default.load(readFileSync(fleetYamlPath, "utf-8")) as any;
+  const instances: Record<string, any> = fleet?.instances ?? {};
+  const names = Object.keys(instances);
+
+  let errors = 0, warnings = 0, healthy = 0;
+  const ok = (msg: string) => { healthy++; console.log(`  \x1b[32m✓\x1b[0m ${msg}`); };
+  const fail = (msg: string) => { errors++; console.log(`  \x1b[31m✗\x1b[0m ${msg}`); };
+  const warn = (msg: string) => { warnings++; console.log(`  \x1b[33m⚠\x1b[0m ${msg}`); };
+
+  console.log(`\n  \x1b[1mMCP Health Check (${names.length} instances)\x1b[0m\n`);
+
+  // Detect duplicate working_directories
+  const dirMap = new Map<string, string[]>();
+  for (const [name, cfg] of Object.entries(instances) as [string, any][]) {
+    const dir = cfg.working_directory ?? cfg.directory;
+    if (dir) {
+      if (!dirMap.has(dir)) dirMap.set(dir, []);
+      dirMap.get(dir)!.push(name);
+    }
+  }
+
+  for (const name of names) {
+    const cfg = instances[name] as any;
+    const dir = cfg.working_directory ?? cfg.directory;
+    const backend = cfg.backend ?? fleet?.defaults?.backend ?? "claude-code";
+    const issues: string[] = [];
+    const suggestions: string[] = [];
+
+    // 1. IPC socket check
+    const sockPath = join(DATA_DIR, "instances", name, "channel.sock");
+    let ipcOk = false;
+    if (existsSync(sockPath)) {
+      ipcOk = await new Promise<boolean>((resolve) => {
+        const client = net.connect(sockPath);
+        const timeout = setTimeout(() => { client.destroy(); resolve(false); }, 1000);
+        client.on("connect", () => { clearTimeout(timeout); client.destroy(); resolve(true); });
+        client.on("error", () => { clearTimeout(timeout); resolve(false); });
+      });
+    }
+    if (!ipcOk) {
+      issues.push("IPC ✗ (socket not responding)");
+      suggestions.push("agend fleet restart");
+    }
+
+    // 2. MCP config check
+    let mcpOk = false;
+    if (dir) {
+      let mcpPaths: string[] = [];
+      if (backend === "claude-code") mcpPaths = [join(dir, ".claude", "mcp.json"), join(dir, ".mcp.json")];
+      else if (backend === "kiro-cli") mcpPaths = [join(dir, ".kiro", "settings", "mcp.json")];
+      else mcpPaths = [join(dir, ".mcp.json")];
+
+      for (const mp of mcpPaths) {
+        if (existsSync(mp)) {
+          try {
+            const mcpCfg = JSON.parse(readFileSync(mp, "utf-8"));
+            const servers = mcpCfg.mcpServers ?? mcpCfg;
+            for (const [, srv] of Object.entries(servers) as [string, any][]) {
+              const args: string[] = srv.args ?? [];
+              const serverJs = args.find((a: string) => a.includes("mcp-server"));
+              if (serverJs && existsSync(serverJs)) { mcpOk = true; break; }
+              if (serverJs && !existsSync(serverJs)) {
+                issues.push(`MCP config ✗ (server.js not found: ${serverJs})`);
+                suggestions.push("npm update -g @songsid/agend");
+              }
+            }
+          } catch { /* parse error */ }
+          if (mcpOk) break;
+        }
+      }
+    }
+
+    // 3. Duplicate working_directory
+    let dupWarn = false;
+    if (dir && dirMap.get(dir)!.length > 1) {
+      const others = dirMap.get(dir)!.filter(n => n !== name);
+      if (others.length > 0) {
+        dupWarn = true;
+        warn(`${name.padEnd(24)} Duplicate working_directory with ${others.join(", ")}`);
+        console.log(`    → Use --branch to create separate worktrees`);
+      }
+    }
+
+    // Output
+    if (issues.length === 0 && !dupWarn) {
+      const parts = [`IPC ${ipcOk ? "✓" : "—"}`];
+      if (mcpOk) parts.push("MCP config ✓");
+      ok(`${name.padEnd(24)} ${parts.join("  ")}`);
+    } else if (!dupWarn) {
+      fail(`${name.padEnd(24)} ${issues.join("  ")}`);
+      for (const s of suggestions) console.log(`    → ${s}`);
+    }
+  }
+
+  // Backend PATH check
+  console.log(`\n  \x1b[1mBackend PATH\x1b[0m\n`);
+  const backendsUsed = new Set<string>();
+  for (const cfg of Object.values(instances) as any[]) {
+    backendsUsed.add(cfg.backend ?? fleet?.defaults?.backend ?? "claude-code");
+  }
+  const binaryMap: Record<string, string> = {
+    "claude-code": "claude", "codex": "codex", "gemini-cli": "gemini",
+    "opencode": "opencode", "kiro-cli": "kiro-cli", "antigravity": "agy",
+  };
+  for (const b of backendsUsed) {
+    const bin = binaryMap[b] ?? b;
+    try {
+      const which = execSync(`which ${bin}`, { stdio: "pipe" }).toString().trim();
+      ok(`${bin.padEnd(24)} ${which}`);
+    } catch {
+      fail(`${bin.padEnd(24)} not found in PATH`);
+    }
+  }
+
+  const total = healthy + errors + warnings;
+  console.log(`\n  Summary: ${healthy}/${total} healthy, ${errors} error(s), ${warnings} warning(s)\n`);
+}
+
 backend
   .command("trust")
   .description("Pre-trust working directories for a backend (prevents trust dialogs)")
