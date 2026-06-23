@@ -113,6 +113,8 @@ export interface InstanceConfig {
   agent_mode?: "mcp" | "cli";
   /** Command to paste raw before each user message (e.g. "/chat load base.json") */
   pre_task_command?: string;
+  /** Exempt this instance from auto-pause (never gets paused due to inactivity) */
+  never_pause?: boolean;
 }
 
 export interface WebhookConfig {

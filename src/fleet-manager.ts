@@ -94,6 +94,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
   private topicArchiver: TopicArchiver;
 
+  // Auto-pause state
+  private pausedInstances = new Set<string>();
+  private wakingInstances = new Set<string>();
+  private pausedMessageQueue = new Map<string, InboundMessage[]>();
+  private autoPauseTimer: ReturnType<typeof setInterval> | null = null;
+
   controlClient: TmuxControlClient | null = null;
   classicChannels: ClassicChannelManager | null = null;
 
@@ -239,7 +245,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceWorldBinding.set(name, adapterId);
   }
 
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed" {
+  getInstanceStatus(name: string): "running" | "stopped" | "crashed" | "paused" {
+    if (this.pausedInstances.has(name)) return "paused";
     const pidPath = join(this.getInstanceDir(name), "daemon.pid");
     if (!existsSync(pidPath)) return "stopped";
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -258,6 +265,113 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.lifecycle.start(name, config, topicMode);
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
+  }
+
+  // ── Auto-Pause / Wake ────────────────────────────────────────────────
+
+  private startAutoPauseTimer(): void {
+    const checkIntervalMs = 30 * 60_000; // every 30 min
+    this.autoPauseTimer = setInterval(() => this.checkAutoPause(), checkIntervalMs);
+  }
+
+  private checkAutoPause(): void {
+    const idleHours = 72;
+    const idleMs = idleHours * 3600_000;
+    const now = Date.now();
+    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      if (config.general_topic || config.never_pause) continue;
+      if (this.pausedInstances.has(name) || !this.daemons.has(name)) continue;
+      const lastAct = this.lastActivity.get(name) ?? 0;
+      if (lastAct > 0 && now - lastAct > idleMs) {
+        this.pauseInstance(name).catch(err =>
+          this.logger.error({ err, name }, "Auto-pause failed"));
+      }
+    }
+  }
+
+  async pauseInstance(name: string): Promise<void> {
+    this.logger.info({ name }, "Auto-pausing idle instance");
+    // Stop daemon (kills tmux window, preserves session-id)
+    await this.stopInstance(name);
+    // Close IPC
+    const ipc = this.instanceIpcClients.get(name);
+    if (ipc) { ipc.close(); this.instanceIpcClients.delete(name); }
+    // Write marker
+    const markerPath = join(this.getInstanceDir(name), "paused.json");
+    writeFileSync(markerPath, JSON.stringify({ pausedAt: Date.now() }));
+    this.pausedInstances.add(name);
+    this.savePausedState();
+    this.eventLog?.logActivity("auto_pause", name, `Instance paused after idle`);
+  }
+
+  async wakeInstance(name: string, msg: InboundMessage): Promise<void> {
+    if (this.wakingInstances.has(name)) {
+      // Already waking — just queue
+      this.pausedMessageQueue.get(name)?.push(msg);
+      return;
+    }
+    this.wakingInstances.add(name);
+    this.pausedInstances.delete(name);
+    this.pausedMessageQueue.set(name, [msg]);
+
+    // Remove marker
+    const markerPath = join(this.getInstanceDir(name), "paused.json");
+    try { unlinkSync(markerPath); } catch {}
+    this.savePausedState();
+
+    this.logger.info({ name }, "Waking paused instance");
+    const config = this.fleetConfig?.instances[name];
+    if (config) {
+      const topicMode = this.fleetConfig?.channel?.mode === "topic" || !!this.fleetConfig?.channels?.some(ch => ch.mode === "topic");
+      try {
+        await this.startInstance(name, config, topicMode);
+        this.eventLog?.logActivity("auto_wake", name, `Instance woken by message`);
+      } catch (err) {
+        this.logger.error({ err, name }, "Wake failed");
+      }
+    }
+
+    // Flush queued messages
+    const queued = this.pausedMessageQueue.get(name) ?? [];
+    this.pausedMessageQueue.delete(name);
+    this.wakingInstances.delete(name);
+
+    for (const qMsg of queued) {
+      // Re-emit the message through the normal handling path
+      this.touchActivity(name);
+      const ipc = this.instanceIpcClients.get(name);
+      if (ipc) {
+        const adapter = this.worlds.get(qMsg.adapterId ?? "")?.adapter ?? this.adapter!;
+        const { text, extraMeta } = await processAttachments(qMsg, adapter, this.logger, name);
+        ipc.send({
+          type: "fleet_inbound",
+          content: text,
+          targetSession: name,
+          meta: {
+            chat_id: qMsg.chatId,
+            message_id: qMsg.messageId,
+            user: qMsg.username,
+            user_id: qMsg.userId,
+            ts: qMsg.timestamp.toISOString(),
+            thread_id: qMsg.threadId ?? "",
+            source: qMsg.source,
+            ...(qMsg.replyToText ? { reply_to_text: qMsg.replyToText } : {}),
+            ...extraMeta,
+          },
+        });
+      }
+    }
+  }
+
+  private savePausedState(): void {
+    writeFileSync(join(this.dataDir, "paused.json"), JSON.stringify([...this.pausedInstances]));
+  }
+
+  private restorePausedState(): void {
+    try {
+      const data = JSON.parse(readFileSync(join(this.dataDir, "paused.json"), "utf-8"));
+      for (const name of data) this.pausedInstances.add(name);
+    } catch { /* no paused state file */ }
   }
 
   /**
@@ -608,6 +722,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
 
+    // Restore paused state from previous run
+    this.restorePausedState();
+    // Filter out paused instances — they stay paused until a message wakes them
+    const othersToStart = others.filter(([name]) => !this.pausedInstances.has(name));
+    if (this.pausedInstances.size > 0) {
+      this.logger.info({ paused: [...this.pausedInstances] }, "Restored paused instances (will wake on message)");
+    }
+
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
         try {
@@ -631,9 +753,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
 
     // Phase 2: Start remaining instances with staggered concurrency
-    if (others.length > 0) {
-      await this.startInstancesWithConcurrency(others, topicMode);
+    if (othersToStart.length > 0) {
+      await this.startInstancesWithConcurrency(othersToStart, topicMode);
     }
+
+    // Start auto-pause idle check timer (every 30 min)
+    this.startAutoPauseTimer();
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
 
@@ -1675,6 +1800,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Bind instance to the adapter that delivered this message
     if (msg.adapterId) this.bindInstanceAdapter(instanceName, msg.adapterId, true);
+
+    // Auto-wake paused instance
+    if (this.pausedInstances.has(instanceName) || this.wakingInstances.has(instanceName)) {
+      await this.wakeInstance(instanceName, msg);
+      return;
+    }
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 

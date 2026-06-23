@@ -38,7 +38,7 @@ export interface FleetContext {
   readonly costGuard: CostGuard | null;
 
   getSysInfo(): SysInfo;
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  getInstanceStatus(name: string): "running" | "stopped" | "crashed" | "paused";
   toggleFleetCollab(instanceName: string): boolean;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
