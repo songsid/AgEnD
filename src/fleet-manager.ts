@@ -1559,6 +1559,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // Handle /ctx command
+        if (text === "/ctx" || text.startsWith("/ctx@")) {
+          const ctxTarget = this.routing.resolve(chatId);
+          if (!ctxTarget || ctxTarget.kind !== "classic") {
+            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            return;
+          }
+          const reply = await this.topicCommands.getCtxText(ctxTarget.name);
+          await msgAdapter?.sendText(chatId, reply);
+          return;
+        }
+
         // Route to classic channel if registered
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
