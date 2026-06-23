@@ -30,13 +30,14 @@ export class HangDetector extends EventEmitter {
 
   isHung(): boolean {
     if (this.lastActivityTs === 0) return false;
-    // Only detect hangs when the instance recently received a message
     if (this.lastInboundTs === 0) return false;
     const now = Date.now();
-    if (now - this.lastInboundTs > this.timeoutMs * 2) return false; // idle, not hung
-    const transcriptStale = now - this.lastActivityTs > this.timeoutMs;
-    const statuslineStale = this.lastStatuslineTs === 0 || now - this.lastStatuslineTs > this.timeoutMs;
-    return transcriptStale && statuslineStale;
+    // Only flag as hung if:
+    // 1. There's an inbound that hasn't been answered (no activity since inbound)
+    // 2. Timeout has elapsed since that inbound
+    const noActivitySinceInbound = this.lastActivityTs < this.lastInboundTs;
+    const stale = now - this.lastInboundTs > this.timeoutMs;
+    return stale && noActivitySinceInbound;
   }
 
   start(intervalMs = 60_000): void {
