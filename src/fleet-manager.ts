@@ -2841,6 +2841,14 @@ When users create specialized instances, suggest these configurations:
     const channelId = msg.threadId ?? msg.chatId;
     const isCollabMode = this.classicChannels?.isCollab(channelId) ?? false;
 
+    // Handle /ctx in classic mode — always, regardless of collab mode
+    if (text === "/ctx" || text.startsWith("/ctx@")) {
+      const reply = await this.topicCommands.getCtxText(instanceName);
+      const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
+      if (classicAdapter) await classicAdapter.sendText(msg.threadId ?? msg.chatId, reply, { threadId: msg.threadId });
+      return;
+    }
+
     // Collab mode: trigger on @mention of our bot, log all messages
     if (isCollabMode) {
       // Skip empty bot messages (e.g., reactions) — don't pollute chat log
@@ -2924,14 +2932,6 @@ When users create specialized instances, suggest these configurations:
       }
 
       await this.forwardToClassicInstance(instanceName, finalText, msg, extraMeta);
-      return;
-    }
-
-    // Handle /ctx in classic mode
-    if (text === "/ctx" || text.startsWith("/ctx@")) {
-      const reply = await this.topicCommands.getCtxText(instanceName);
-      const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-      if (classicAdapter) await classicAdapter.sendText(msg.threadId ?? msg.chatId, reply, { threadId: msg.threadId });
       return;
     }
 
