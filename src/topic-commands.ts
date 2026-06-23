@@ -85,7 +85,8 @@ export class TopicCommands {
         const base = socketName ? ["-L", socketName] : [];
         execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
         await new Promise(r => setTimeout(r, 500));
-        execFileSync("tmux", [...base, "send-keys", "-t", target, "/compact", "Enter"], { stdio: "pipe", timeout: 2000 });
+        execFileSync("tmux", [...base, "send-keys", "-l", "-t", target, "/compact"], { stdio: "pipe", timeout: 2000 });
+        execFileSync("tmux", [...base, "send-keys", "-t", target, "Enter"], { stdio: "pipe", timeout: 2000 });
         await adapter.sendText(msg.chatId, "🗜️ Compact command sent.", { threadId: msg.threadId });
       } catch {
         await adapter.sendText(msg.chatId, "❌ Failed to send compact (tmux error)", { threadId: msg.threadId });
@@ -143,7 +144,8 @@ export class TopicCommands {
       const base = socketName ? ["-L", socketName] : [];
       execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
       await new Promise(r => setTimeout(r, 500));
-      execFileSync("tmux", [...base, "send-keys", "-t", target, "/compact", "Enter"], { stdio: "pipe", timeout: 2000 });
+      execFileSync("tmux", [...base, "send-keys", "-l", "-t", target, "/compact"], { stdio: "pipe", timeout: 2000 });
+      execFileSync("tmux", [...base, "send-keys", "-t", target, "Enter"], { stdio: "pipe", timeout: 2000 });
       return "🗜️ Compact command sent.";
     } catch {
       return "❌ Failed to send compact (tmux error)";
