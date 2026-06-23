@@ -851,7 +851,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: "discord",
           timestamp: new Date(),
         });
-      } else if (data.command === "compact" || data.command === "save" || data.command === "load") {
+      } else if (data.command === "save" || data.command === "load") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -862,9 +862,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
         let rawCmd: string;
-        if (data.command === "compact") {
-          rawCmd = "/compact";
-        } else if (data.command === "save") {
+        if (data.command === "save") {
           const filename = data.options?.filename as string;
           if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
           rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
@@ -875,6 +873,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         this.pasteRawToClassicInstance(target.name, rawCmd);
         await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+      } else if (data.command === "compact") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(target.name);
+        await data.respond(result);
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
         if (!target) {
@@ -1114,7 +1117,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: channelConfig.type,
           timestamp: new Date(),
         });
-      } else if (data.command === "compact" || data.command === "save" || data.command === "load") {
+      } else if (data.command === "save" || data.command === "load") {
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -1125,9 +1128,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
         let rawCmd: string;
-        if (data.command === "compact") {
-          rawCmd = "/compact";
-        } else if (data.command === "save") {
+        if (data.command === "save") {
           const filename = data.options?.filename as string;
           if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
           rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
@@ -1138,6 +1139,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         this.pasteRawToClassicInstance(target.name, rawCmd);
         await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+      } else if (data.command === "compact") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(target.name);
+        await data.respond(result);
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
         if (!target) { await data.respond("No active agent in this channel."); return; }
