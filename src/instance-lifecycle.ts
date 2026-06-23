@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, mkdirSync, realpathSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
@@ -109,6 +110,21 @@ export class InstanceLifecycle {
     const { createBackend } = await import("./backend/factory.js");
 
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+
+    // Verify backend binary is in PATH before spawning
+    const binaryMap: Record<string, string> = {
+      "claude-code": "claude", "codex": "codex", "gemini-cli": "gemini",
+      "opencode": "opencode", "kiro-cli": "kiro-cli", "antigravity": "agy",
+    };
+    const bin = binaryMap[backendName];
+    if (bin) {
+      try {
+        execFileSync("which", [bin], { stdio: "pipe", timeout: 2000 });
+      } catch {
+        this.ctx.logger.error({ binary: bin, backend: backendName, instance: name }, `Backend binary "${bin}" not found in PATH`);
+      }
+    }
+
     const backend = createBackend(backendName, instanceDir);
     const daemon = new Daemon(name, config, instanceDir, topicMode, backend, this.ctx.controlClient ?? undefined);
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
