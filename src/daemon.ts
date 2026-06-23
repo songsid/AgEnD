@@ -220,10 +220,12 @@ export class Daemon extends EventEmitter {
         this.pushChannelMessage(msg.content as string, meta, targetSession);
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
-        // Use pasteLock to serialize with other deliveries and wait for idle.
+        // Send Escape first to interrupt current activity, then deliver.
         if (this.tmux) {
           const rawText = msg.content as string;
           this.pasteLock = this.pasteLock.then(async () => {
+            await this.tmux!.sendKeys("Escape");
+            await new Promise(r => setTimeout(r, 500));
             await this.deliverMessage(rawText);
             this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
           }).catch(err => {
