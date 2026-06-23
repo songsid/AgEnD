@@ -444,6 +444,23 @@ export class Daemon extends EventEmitter {
           await this.tmux.killWindow();
         }
 
+        // Detect claude-code background session conflict — recover without counting as crash
+        if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
+          const sidFile = join(this.instanceDir, "session-id");
+          try { unlinkSync(sidFile); } catch {}
+          this.skipResume = true;
+          await new Promise(r => setTimeout(r, 2_000));
+          try {
+            await this.spawnClaudeWindow();
+            this.logger.info("Recovered from background session conflict");
+            this.emit("crash_respawn", this.name);
+          } catch (err) {
+            this.logger.error({ err: (err as Error).message }, "Recovery from background session conflict failed");
+          }
+          return; // Don't count as crash
+        }
+
         // Append to crash history
         this.appendCrashHistory({ exitCode, lastOutput, crashType });
 
