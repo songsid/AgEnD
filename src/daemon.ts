@@ -64,6 +64,7 @@ export class Daemon extends EventEmitter {
   private healthCheckPaused = false;
   private spawning = false;
   private skipResume = false;
+  private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
   isNewSession = false;
   // Context rotation quality tracking
@@ -442,6 +443,27 @@ export class Daemon extends EventEmitter {
         // Kill the dead window (remain-on-exit keeps it around) before respawn
         if (paneStatus) {
           await this.tmux.killWindow();
+        }
+
+        // Detect claude-code background session conflict — recover without counting as crash
+        if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (!this.backgroundSessionRecoveryAttempted) {
+            this.backgroundSessionRecoveryAttempted = true;
+            this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
+            const sidFile = join(this.instanceDir, "session-id");
+            try { unlinkSync(sidFile); } catch {}
+            this.skipResume = true;
+            await new Promise(r => setTimeout(r, 2_000));
+            try {
+              await this.spawnClaudeWindow();
+              this.logger.info("Recovered from background session conflict");
+              this.emit("crash_respawn", this.name);
+            } catch (err) {
+              this.logger.error({ err: (err as Error).message }, "Recovery from background session conflict failed");
+            }
+            return; // Don't count as crash
+          }
+          // Already attempted recovery — fall through to normal crash handling
         }
 
         // Append to crash history
@@ -1280,6 +1302,7 @@ export class Daemon extends EventEmitter {
 
     this.lastSpawnAt = Date.now();
     this.skipResume = false; // CLI started successfully — reset for next spawn
+    this.backgroundSessionRecoveryAttempted = false;
     } finally {
       this.spawning = false;
     }
