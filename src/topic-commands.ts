@@ -77,20 +77,8 @@ export class TopicCommands {
     if (text === "/compact" || text.startsWith("/compact@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
-      try {
-        const { execFileSync } = await import("node:child_process");
-        const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
-        const socketName = getTmuxSocketName();
-        const target = `${getTmuxSessionName()}:${instanceName}`;
-        const base = socketName ? ["-L", socketName] : [];
-        execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
-        await new Promise(r => setTimeout(r, 500));
-        execFileSync("tmux", [...base, "send-keys", "-l", "-t", target, "/compact"], { stdio: "pipe", timeout: 2000 });
-        execFileSync("tmux", [...base, "send-keys", "-t", target, "Enter"], { stdio: "pipe", timeout: 2000 });
-        await adapter.sendText(msg.chatId, "🗜️ Compact command sent.", { threadId: msg.threadId });
-      } catch {
-        await adapter.sendText(msg.chatId, "❌ Failed to send compact (tmux error)", { threadId: msg.threadId });
-      }
+      const result = await this.sendCompact(instanceName);
+      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
       return true;
     }
 
@@ -136,20 +124,12 @@ export class TopicCommands {
 
   /** Send /compact to an instance's tmux pane */
   async sendCompact(instanceName: string): Promise<string> {
-    try {
-      const { execFileSync } = await import("node:child_process");
-      const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
-      const socketName = getTmuxSocketName();
-      const target = `${getTmuxSessionName()}:${instanceName}`;
-      const base = socketName ? ["-L", socketName] : [];
-      execFileSync("tmux", [...base, "send-keys", "-t", target, "Escape"], { stdio: "pipe", timeout: 2000 });
-      await new Promise(r => setTimeout(r, 500));
-      execFileSync("tmux", [...base, "send-keys", "-l", "-t", target, "/compact"], { stdio: "pipe", timeout: 2000 });
-      execFileSync("tmux", [...base, "send-keys", "-t", target, "Enter"], { stdio: "pipe", timeout: 2000 });
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (ipc?.connected) {
+      ipc.send({ type: "raw_paste", content: "/compact" });
       return "🗜️ Compact command sent.";
-    } catch {
-      return "❌ Failed to send compact (tmux error)";
     }
+    return "❌ Instance not connected (IPC unavailable)";
   }
 
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
