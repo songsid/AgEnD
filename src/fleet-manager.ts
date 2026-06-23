@@ -327,7 +327,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await this.startInstance(name, config, topicMode);
         this.eventLog?.logActivity("auto_wake", name, `Instance woken by message`);
       } catch (err) {
-        this.logger.error({ err, name }, "Wake failed");
+        this.logger.error({ err, name }, "Wake failed — restoring paused state");
+        this.pausedInstances.add(name);
+        const markerPath = join(this.getInstanceDir(name), "paused.json");
+        writeFileSync(markerPath, JSON.stringify({ pausedAt: Date.now() }));
+        this.savePausedState();
       }
     }
 
@@ -336,30 +340,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pausedMessageQueue.delete(name);
     this.wakingInstances.delete(name);
 
-    for (const qMsg of queued) {
-      // Re-emit the message through the normal handling path
-      this.touchActivity(name);
-      const ipc = this.instanceIpcClients.get(name);
-      if (ipc) {
-        const adapter = this.worlds.get(qMsg.adapterId ?? "")?.adapter ?? this.adapter!;
-        const { text, extraMeta } = await processAttachments(qMsg, adapter, this.logger, name);
-        ipc.send({
-          type: "fleet_inbound",
-          content: text,
-          targetSession: name,
-          meta: {
-            chat_id: qMsg.chatId,
-            message_id: qMsg.messageId,
-            user: qMsg.username,
-            user_id: qMsg.userId,
-            ts: qMsg.timestamp.toISOString(),
-            thread_id: qMsg.threadId ?? "",
-            source: qMsg.source,
-            ...(qMsg.replyToText ? { reply_to_text: qMsg.replyToText } : {}),
-            ...extraMeta,
-          },
-        });
+    const ipc = this.instanceIpcClients.get(name);
+    if (!ipc) {
+      // Wake failed — notify user for each queued message
+      for (const qMsg of queued) {
+        const adapter = this.getAdapterForInstance?.(name) ?? this.adapter;
+        adapter?.sendText(qMsg.chatId, `⚠️ ${name} failed to wake. Message not delivered. Use /restart.`, { threadId: qMsg.threadId });
       }
+      return;
+    }
+
+    for (const qMsg of queued) {
+      this.touchActivity(name);
+      const adapter = this.worlds.get(qMsg.adapterId ?? "")?.adapter ?? this.adapter!;
+      const { text, extraMeta } = await processAttachments(qMsg, adapter, this.logger, name);
+      ipc.send({
+        type: "fleet_inbound",
+        content: text,
+        targetSession: name,
+        meta: {
+          chat_id: qMsg.chatId,
+          message_id: qMsg.messageId,
+          user: qMsg.username,
+          user_id: qMsg.userId,
+          ts: qMsg.timestamp.toISOString(),
+          thread_id: qMsg.threadId ?? "",
+          source: qMsg.source,
+          ...(qMsg.replyToText ? { reply_to_text: qMsg.replyToText } : {}),
+          ...extraMeta,
+        },
+      });
     }
   }
 
@@ -3288,6 +3298,7 @@ When users create specialized instances, suggest these configurations:
     this.ipcStoppingInstances.add("__fleet_stopping__");
     sdNotify("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+    if (this.autoPauseTimer) { clearInterval(this.autoPauseTimer); this.autoPauseTimer = null; }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
