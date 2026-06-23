@@ -90,6 +90,10 @@ export class Daemon extends EventEmitter {
   get isErrorState(): boolean {
     return this.errorWaitingForRecovery || this.healthCheckPaused || Daemon.tmuxServerPaused;
   }
+  /** Whether this instance is in a crash loop (3+ consecutive crashes). */
+  get isCrashLoop(): boolean {
+    return this.crashCount >= 3;
+  }
   private lastFailoverAt = 0; // cooldown: prevent repeated failover triggers
   private static FAILOVER_COOLDOWN_MS = 5 * 60_000; // 5 minutes
   private lastErrorNotifiedAt = new Map<string, number>(); // per-type cooldown for all actions
