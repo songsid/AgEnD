@@ -180,7 +180,11 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
   ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 500)}${(message ?? "").length > 500 ? " […]" : ""}`);
   respond({ sent: true, target: targetName, correlation_id: correlationId,
     ...(ctx.lifecycle.daemons.get(targetInstanceName)?.isErrorState && {
-      warning: `${targetName} is currently in error state (rate-limited or paused). Message delivered but may not be processed.`,
+      warning: (() => {
+        const daemon = ctx.lifecycle.daemons.get(targetInstanceName)!;
+        if (daemon.isCrashLoop) return `${targetName} is in a crash loop — restart or replace required. Message delivered but may not be processed.`;
+        return `${targetName} is in an error state (rate-limited or paused). Message delivered but may not be processed.`;
+      })(),
     }),
   });
 };

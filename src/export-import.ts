@@ -10,7 +10,7 @@ import {
 import { join, basename, resolve, sep as pathSep } from "node:path";
 import { homedir } from "node:os";
 
-const MINIMAL_FILES = ["fleet.yaml", ".env", "scheduler.db"];
+const MINIMAL_FILES = ["fleet.yaml", ".env", "scheduler.db", "classicBot.yaml"];
 const RUNTIME_EXCLUDES = [
   "*.sock",
   "*.pid",
