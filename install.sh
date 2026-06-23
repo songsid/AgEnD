@@ -223,6 +223,8 @@ fi
 if npm list -g @suzuke/agend >/dev/null 2>&1; then
   warn "Removing old @suzuke/agend to avoid conflicts..."
   $SUDO npm uninstall -g @suzuke/agend 2>/dev/null || true
+  # Remove leftover binary symlink (npm uninstall sometimes leaves it)
+  rm -f "$(npm prefix -g)/bin/agend" 2>/dev/null || true
 elif command_exists agend; then
   AGEND_REAL=$(readlink -f "$(command -v agend)" 2>/dev/null || true)
   if [[ "$AGEND_REAL" == */AgEnD/* ]] || [[ "$AGEND_REAL" == *"@suzuke/agend"* ]] || [[ "$AGEND_REAL" == */Projects/* ]]; then
