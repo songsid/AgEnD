@@ -1702,7 +1702,9 @@ function getTreeRssKb(pid: number, depth = 0): number {
   return total;
 }
 
-function getInstanceStatusStandalone(name: string): "running" | "stopped" | "crashed" {
+function getInstanceStatusStandalone(name: string): "running" | "stopped" | "crashed" | "paused" {
+  const pausedMarker = join(DATA_DIR, "instances", name, "paused.json");
+  if (existsSync(pausedMarker)) return "paused";
   const pidPath = join(DATA_DIR, "instances", name, "daemon.pid");
   if (!existsSync(pidPath)) return "stopped";
   const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -1900,9 +1902,9 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
 
     // Status icon
     const statusIcon = (s: string, idle?: boolean) =>
-      s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+      s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "paused" ? "\x1b[33m●\x1b[0m" : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
     const statusLabel = (s: string, idle?: boolean) =>
-      s === "running" ? (idle === false ? "Busy" : "Idle") : s === "crashed" ? "Crashed" : "Stopped";
+      s === "running" ? (idle === false ? "Busy" : "Idle") : s === "paused" ? "Paused" : s === "crashed" ? "Crashed" : "Stopped";
 
     /** Get display width accounting for fullwidth (CJK) characters */
     const displayWidth = (s: string): number => {
