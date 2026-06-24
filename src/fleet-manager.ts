@@ -592,9 +592,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Snapshotted at startup — new decisions via post_decision are available
       // through list_decisions tool but not auto-injected until restart.
       try {
-        const decisions = this.scheduler.db.listDecisions("", { includeArchived: false });
+        const decisions = this.scheduler.db.listAllActiveDecisions();
         if (decisions.length > 0) {
-          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200) }));
+          const capped = decisions.slice(0, 20).map(d => ({ title: d.title, content: (d.content ?? "").slice(0, 200), scope: d.scope, project_root: d.project_root }));
           process.env.AGEND_DECISIONS = JSON.stringify(capped);
           this.logger.info({ count: decisions.length, injected: capped.length }, "Injected active decisions into env");
         }
