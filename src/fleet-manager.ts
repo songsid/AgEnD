@@ -1581,9 +1581,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const target = this.routing.resolve(chatId);
         if (target?.kind === "classic") {
           if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
-          // TG ClassicBot: only @mention triggers agent (both private and group).
-          // /chat command is NOT supported for TG classic — use @bot instead.
-          if (!isBotMentioned) {
+          // TG ClassicBot: group requires @mention, private chat forwards directly.
+          if (!isPrivateChat && !isBotMentioned) {
             // No trigger: save attachments + react, log, but don't forward to agent
             const syntheticMsg = { ...msg, threadId: chatId, text: rawText.startsWith("/") ? "" : rawText };
             await this.handleClassicChannelMessage(target.name, syntheticMsg);
