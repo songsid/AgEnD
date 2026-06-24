@@ -124,23 +124,12 @@ export class TopicCommands {
 
   /** Send /compact to an instance's tmux pane */
   async sendCompact(instanceName: string): Promise<string> {
-    try {
-      const { execFileSync } = await import("node:child_process");
-      const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
-      const socketName = getTmuxSocketName();
-      const target = `${getTmuxSessionName()}:${instanceName}`;
-      const baseArgs = socketName ? ["-L", socketName] : [];
-      const opts = { encoding: "utf-8" as const, timeout: 5000, stdio: ["pipe", "pipe", "pipe"] as ["pipe", "pipe", "pipe"] };
-      // Escape to interrupt current activity
-      execFileSync("tmux", [...baseArgs, "send-keys", "-t", target, "Escape"], opts);
-      await new Promise(r => setTimeout(r, 500));
-      // Paste /compact and press Enter
-      execFileSync("tmux", [...baseArgs, "send-keys", "-l", "-t", target, "/compact"], opts);
-      execFileSync("tmux", [...baseArgs, "send-keys", "-t", target, "Enter"], opts);
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (ipc?.connected) {
+      ipc.send({ type: "raw_paste", content: "/compact" });
       return "🗜️ Compact command sent.";
-    } catch (err) {
-      return `❌ Failed to send compact: ${(err as Error).message}`;
     }
+    return "❌ Instance not connected (IPC unavailable)";
   }
 
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
