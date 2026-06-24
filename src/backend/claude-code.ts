@@ -26,8 +26,7 @@ export class ClaudeCodeBackend implements CliBackend {
 
     const sessionIdFile = join(this.instanceDir, "session-id");
     if (!config.skipResume && existsSync(sessionIdFile)) {
-      const sid = readFileSync(sessionIdFile, "utf-8").trim();
-      if (sid && /^[a-zA-Z0-9_-]+$/.test(sid)) cmd += ` --continue ${sid}`;
+      cmd += " --continue";
     }
 
     if (config.model && isModelCompatible("claude-code", config.model)) {
