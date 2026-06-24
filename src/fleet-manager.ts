@@ -1503,6 +1503,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (text === "/start" || text.startsWith("/start ")) {
           if (isPrivateChat) {
             if (!this.classicChannels.isUserAllowed(msg.userId)) {
+              const generalId = this.findGeneralInstance(msg.adapterId);
+              if (generalId) {
+                this.notifyInstanceTopic(generalId, `🆕 Unauthorized user tried /start in private chat:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n\nTo allow: add \`${msg.userId}\` to classicBot.yaml \`allowed_users\``);
+              }
               await msgAdapter?.sendText(chatId, "⛔ You are not in the allowed users list.");
               return;
             }
@@ -3147,7 +3151,13 @@ When users create specialized instances, suggest these configurations:
   /** Handle /start slash command — register classic channel */
   async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string): Promise<string> {
     if (!this.classicChannels) return "Classic channel manager not initialized.";
-    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) return "⛔ This server is not in the allowed guilds list.";
+    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
+      const generalId = this.findGeneralInstance();
+      if (generalId) {
+        this.notifyInstanceTopic(generalId, `🆕 Unauthorized guild tried /start:\n• Guild ID: ${guildId}\n• User: ${userId}\n• Platform: discord\n\nTo allow: add \`${guildId}\` to classicBot.yaml \`allowed_guilds\``);
+      }
+      return "⛔ This server is not in the allowed guilds list.";
+    }
     if (this.classicChannels.isClassicChannel(channelId)) return "This channel already has an active agent. Use /chat to talk.";
     if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
 
