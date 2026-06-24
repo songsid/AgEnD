@@ -3149,8 +3149,8 @@ When users create specialized instances, suggest these configurations:
 
     await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId), this.classicChannels.getModel(channelId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
-    // Auto-enable collab for Discord classic channels
-    if (!this.classicChannels.isCollab(channelId)) {
+    // Auto-enable collab for Discord classic channels (TG uses @mention directly without collab mode)
+    if (guildId && !this.classicChannels.isCollab(channelId)) {
       this.classicChannels.toggleCollab(channelId);
     }
     this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
