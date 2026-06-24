@@ -1183,7 +1183,7 @@ export class Daemon extends EventEmitter {
     if (resolvedWorkflow === false) mcpEnv.AGEND_WORKFLOW = "false";
     else if (resolvedWorkflow) mcpEnv.AGEND_WORKFLOW = resolvedWorkflow;
     if (resolvedCustomPrompt) mcpEnv.AGEND_CUSTOM_PROMPT = resolvedCustomPrompt;
-    if (process.env.AGEND_DECISIONS) mcpEnv.AGEND_DECISIONS = process.env.AGEND_DECISIONS;
+    if (decisions && decisions.length > 0) mcpEnv.AGEND_DECISIONS = JSON.stringify(decisions);
 
     // ── Fleet instructions for additive system prompt injection ──
     let instructions: string;
