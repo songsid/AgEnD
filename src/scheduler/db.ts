@@ -239,6 +239,14 @@ export class SchedulerDb {
     return rows.map(r => this.rowToDecision(r));
   }
 
+  /** Return all active decisions regardless of project_root (for env var injection). */
+  listAllActiveDecisions(): Decision[] {
+    const rows = this.db.prepare(
+      "SELECT * FROM decisions WHERE status = 'active' ORDER BY CASE scope WHEN 'fleet' THEN 0 ELSE 1 END, created_at DESC"
+    ).all() as Record<string, unknown>[];
+    return rows.map(r => this.rowToDecision(r));
+  }
+
   updateDecision(id: string, params: UpdateDecisionParams): Decision {
     const existing = this.getDecision(id);
     if (!existing) throw new Error(`Decision "${id}" not found`);

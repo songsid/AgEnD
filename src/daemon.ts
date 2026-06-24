@@ -1163,7 +1163,9 @@ export class Daemon extends EventEmitter {
     let decisions: { title: string; content: string }[] | undefined;
     if (process.env.AGEND_DECISIONS) {
       try {
-        decisions = JSON.parse(process.env.AGEND_DECISIONS);
+        const all: { title: string; content: string; scope?: string; project_root?: string }[] = JSON.parse(process.env.AGEND_DECISIONS);
+        const workDir = this.config.working_directory;
+        decisions = all.filter(d => d.scope === "fleet" || d.project_root === workDir);
       } catch (err) {
         this.logger.warn({ err }, "AGEND_DECISIONS env var is not valid JSON — decisions will not be injected");
       }
