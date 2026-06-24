@@ -1800,14 +1800,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
-    // For classic instances: set chat_id to channelId and clear threadId
-    // (classic chats don't use forum threads — threadId would be misinterpreted as message_thread_id)
-    if (!args.chat_id && threadId) {
-      const classicChannelId = this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
-      if (classicChannelId) {
-        args.chat_id = classicChannelId;
-        threadId = undefined;
-      }
+    // For classic instances: clear thread_id to prevent TG interpreting it as message_thread_id
+    // (classic chats — private or group — don't use forum threads)
+    const classicChannelId = this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
+    if (classicChannelId) {
+      if (!args.chat_id) args.chat_id = classicChannelId;
+      delete args.thread_id;
+      threadId = undefined;
     }
 
     // Route standard channel tools (reply, react, edit_message, download_attachment)
