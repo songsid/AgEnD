@@ -82,6 +82,22 @@ No permission check:
 
 ---
 
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `agend start` | Start the fleet daemon |
+| `agend stop` | Stop the fleet daemon |
+| `agend ls` | List instances with status (Idle/Busy/Crashed/Stopped/Paused) |
+| `agend update [--beta]` | Update AgEnD to latest version |
+| `agend doctor` | Run backend health diagnostics |
+| `agend doctor mcp` | Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH) |
+| `agend web` | Launch Web UI dashboard |
+| `agend export` | Export fleet config (fleet.yaml + classicBot.yaml) |
+| `agend logs` | View fleet logs |
+
+---
+
 ## Command Flow
 
 ```

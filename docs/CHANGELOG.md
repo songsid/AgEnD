@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.5] - 2026-06-24
+
+### Added
+- **`agend doctor mcp`** — fleet-wide MCP health check (IPC connectivity, config paths, duplicates, binary PATH).
+- **TG Classic `/ctx`** — show context usage in classic mode.
+- **`/start` notifications to General** — unauthorized DC guilds and TG private chat users trigger an alert to General.
+- **Decision filtering** — instances only see fleet-scope + same-project decisions (not all fleet decisions).
+
+### Fixed
+- **TG Classic @mention broken by auto-collab** — auto-collab on `/start` now Discord-only; TG classic @mention works correctly again.
+- **TG private chat reply 'thread not found'** — `thread_id` no longer incorrectly passed as `message_thread_id` in private chats.
+- **`/compact` slash lost** — unified via IPC `raw_paste`; uses `tmux send-keys -l` (literal mode).
+- **DC Fleet `/compact` blocked** — no longer incorrectly blocked by classic-only check.
+- **Hang detector false positives reduced ~73%** — only flags when pending inbound message exists.
+- **claude-code background session conflict** — auto-recovery with re-entry guard instead of crash loop (#79).
+- **Crash loop error message** — now distinguishes from 'rate-limited' in notifications.
+- **Chat-log timezone** — uses local timezone instead of UTC.
+- **install.sh EEXIST** — cleanup error on suzuke→songsid package name upgrade.
+- **Export includes classicBot.yaml** — previously missing from `agend export`.
+- **Removed soul.md + CLAUDE.md from repo** — accidentally committed files removed.
+- **MCP env decision filtering** — passes only filtered decisions, not all fleet decisions.
+
 ## [2.0.3] - 2026-06-21
 
 ### Added
