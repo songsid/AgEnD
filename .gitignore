@@ -32,3 +32,4 @@ plugins/agend-plugin-discord/package-lock.json
 opencode.json
 .kiro/settings/lsp.json
 .kiro/steering/
+.kiro/skills/
