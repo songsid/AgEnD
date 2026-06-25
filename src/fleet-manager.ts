@@ -1804,11 +1804,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
-    // For classic instances: clear thread_id to prevent TG interpreting it as message_thread_id
-    // (classic chats — private or group — don't use forum threads)
+    // For classic instances: force chat_id to channelId and clear thread_id
+    // (daemon may have set chat_id to guild_id which is wrong for DC; TG may have set thread_id which causes 'thread not found')
     const classicChannelId = this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
     if (classicChannelId) {
-      if (!args.chat_id) args.chat_id = classicChannelId;
+      args.chat_id = classicChannelId;
       delete args.thread_id;
       threadId = undefined;
     }
