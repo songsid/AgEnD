@@ -55,6 +55,11 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/update" || text.startsWith("/update@")) {
+      await this.handleUpdateCommand(msg);
+      return true;
+    }
+
     return false;
   }
 

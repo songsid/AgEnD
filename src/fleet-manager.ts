@@ -942,8 +942,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
       } else if (data.command === "update") {
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
           return;
         }
         await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
@@ -953,8 +954,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
         child.unref();
       } else if (data.command === "doctor") {
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
           return;
         }
         try {
@@ -1189,8 +1191,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
       } else if (data.command === "update") {
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
           return;
         }
         await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
@@ -1200,8 +1203,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
         child.unref();
       } else if (data.command === "doctor") {
-        if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+          await data.respond("⛔ Not authorized");
           return;
         }
         try {
