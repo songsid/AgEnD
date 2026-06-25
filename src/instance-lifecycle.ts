@@ -125,6 +125,14 @@ export class InstanceLifecycle {
       }
     }
 
+    // claude-code refuses --dangerously-skip-permissions as root — fail fast
+    if (process.getuid?.() === 0 && backendName === "claude-code") {
+      const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Use a non-root user or switch backend.`;
+      this.ctx.logger.error({ name, backend: backendName }, msg);
+      this.ctx.notifyInstanceTopic(name, msg);
+      return;
+    }
+
     const backend = createBackend(backendName, instanceDir);
     const daemon = new Daemon(name, config, instanceDir, topicMode, backend, this.ctx.controlClient ?? undefined);
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
