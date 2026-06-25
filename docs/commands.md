@@ -62,16 +62,23 @@ Registered globally via `client.application.commands.set()`.
 
 ## Permission Model
 
-### Admin (allowed_users)
+### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
-Fleet-level admin commands — checked against `fleet.yaml` → `channel.access.allowed_users`:
+Fleet-level commands — requires fleet admin:
 - `/restart`, `/update`, `/doctor`, `/collab`
 
-### Admin (admin_users)
+### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
-ClassicBot management commands — checked against `classicBot.yaml` → `defaults.admin_users`:
-- TG: `/start` (groups), `/stop`, `/compact`, `/raw`
-- DC: `/compact`, `/save`, `/load`, `/collab`
+ClassicBot management commands:
+- TG: `/start` (groups), `/stop`, `/raw`
+- DC: `/save`, `/load`
+
+### Context-dependent
+
+Permission varies by platform/mode:
+- `/compact` — TG Classic: admin required. DC + TG Fleet: all users.
+- `/ctx` — all users (both platforms)
+- `/collab` — fleet topics: fleet admin. Classic: admin.
 
 ### All Users
 
