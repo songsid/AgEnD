@@ -902,39 +902,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("No active agent in this channel.");
           return;
         }
-        const instanceName = target.name;
-        const backend = target.kind === "classic"
-          ? (this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code")
-          : (this.fleetConfig?.instances[instanceName]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
-        let context: number | null = null;
-        // Try statusline.json first
-        try {
-          const statusFile = join(this.getInstanceDir(instanceName), "statusline.json");
-          if (existsSync(statusFile)) {
-            const d = JSON.parse(readFileSync(statusFile, "utf-8"));
-            context = d.context_window?.used_percentage ?? null;
-          }
-        } catch { /* ignore */ }
-        // Fallback: capture tmux pane
-        if (context == null) {
-          try {
-            const { execFileSync } = await import("node:child_process");
-            const { getTmuxSocketName } = await import("./paths.js");
-            const socketName = getTmuxSocketName();
-            const tmuxArgs = socketName
-              ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSession()}:${instanceName}`, "-p"]
-              : ["capture-pane", "-t", `${getTmuxSession()}:${instanceName}`, "-p"];
-            const pane = execFileSync("tmux", tmuxArgs,
-              { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-            const m = pane.match(/(\d+)%.*[!❯>]/m) || pane.match(/◔\s*(\d+)%/) || pane.match(/\[(\d+)%\]/);
-            if (m) context = parseInt(m[1], 10);
-          } catch { /* ignore */ }
-        }
-        if (context != null) {
-          await data.respond(`📊 Context: ${context}% used\nBackend: ${backend}\nInstance: ${instanceName}`);
-        } else {
-          await data.respond(`Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`);
-        }
+        // Single source of truth (statusline.json + robust tmux pane fallback).
+        await data.respond(await this.topicCommands.getCtxText(target.name));
       } else if (data.command === "collab") {
         const collabTarget = this.routing.resolve(data.channelId);
         if (collabTarget && collabTarget.kind !== "classic") {
