@@ -13,7 +13,7 @@ export interface InstanceStatusData {
 }
 
 export interface AlertData {
-  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation";
+  type: "hang" | "cost_warn" | "cost_limit" | "schedule_deferred" | "rotation" | "cancel";
   instanceName: string;
   message: string;
   choices?: Choice[];
@@ -29,6 +29,9 @@ export interface ChannelAdapter extends EventEmitter {
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage>;
   editMessage(chatId: string, messageId: string, text: string): Promise<void>;
+  /** Edit a message's text AND remove any inline buttons/components. Used to
+   * retire a Cancel button after the agent replies or a timeout elapses. */
+  editMessageRemoveButtons?(chatId: string, messageId: string, text: string): Promise<void>;
   react(chatId: string, messageId: string, emoji: string): Promise<void>;
 
   sendApproval(
