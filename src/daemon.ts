@@ -81,6 +81,12 @@ export class Daemon extends EventEmitter {
   private pasteLock: Promise<void> = Promise.resolve();
   private pendingInstructionsUpdate: string | undefined;
   private pendingInstructionsNotice = false;
+  // Whether the warmup steering-reload notice should be injected after spawn.
+  // Set in trySpawn by comparing the freshly-built instructions against the
+  // last value the agent was told about (prev-instructions). Skipped when
+  // unchanged so agents don't waste 10-30s re-reading identical steering.
+  private warmupNeeded = false;
+  private lastBuiltInstructions = "";
   private pasteQueueDepth = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
@@ -269,9 +275,16 @@ export class Daemon extends EventEmitter {
       try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
     }
 
-    // Warmup: wait for CLI idle, then trigger steering reload
+    // Warmup: wait for CLI idle, then trigger steering reload — but only when
+    // the instructions actually changed since the agent last saw them.
+    // Skipping the no-op reload saves 10-30s of agent time on every restart
+    // where instructions are unchanged.
     (async () => {
       try {
+        if (!this.warmupNeeded) {
+          this.logger.debug("Warmup skipped — instructions unchanged");
+          return;
+        }
         const wid = existsSync(join(this.instanceDir, "window-id"))
           ? readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() : "";
         if (wid && this.controlClient) {
@@ -280,6 +293,9 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, 5000));
         }
         await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+        // Record the value the agent has now been told about so the next
+        // unchanged restart skips the reload.
+        try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
         this.logger.debug("Warmup sent after idle");
       } catch { /* non-fatal */ }
     })();
@@ -1166,6 +1182,9 @@ export class Daemon extends EventEmitter {
         const all: { title: string; content: string; scope?: string; project_root?: string }[] = JSON.parse(process.env.AGEND_DECISIONS);
         const workDir = this.config.working_directory;
         decisions = all.filter(d => d.scope === "fleet" || d.project_root === workDir);
+        // Stable ordering so identical decision sets always build byte-identical
+        // instructions — otherwise source ordering jitter flips the warmup hash.
+        decisions.sort((a, b) => a.title.localeCompare(b.title));
       } catch (err) {
         this.logger.warn({ err }, "AGEND_DECISIONS env var is not valid JSON — decisions will not be injected");
       }
@@ -1331,13 +1350,21 @@ export class Daemon extends EventEmitter {
   private async trySpawn(): Promise<boolean> {
     const backendConfig = this.buildBackendConfig();
 
-    // Detect instructions change → notify agent on next message instead of
-    // forcing a new session. Resume is preserved so context isn't lost.
-    if (!backendConfig.skipResume && !this.backend!.instructionsReloadedOnResume && backendConfig.instructions) {
+    // Compare freshly-built instructions against the last value the agent was
+    // told about. Computed for ALL backends (not gated by
+    // instructionsReloadedOnResume) so the warmup steering-reload can be
+    // skipped when nothing changed.
+    this.lastBuiltInstructions = backendConfig.instructions ?? "";
+    {
       const prevFile = join(this.instanceDir, "prev-instructions");
       let prev = "";
       try { prev = readFileSync(prevFile, "utf-8"); } catch {}
-      if (prev !== backendConfig.instructions) {
+      this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
+
+      // For backends that don't re-read instructions on resume (kiro/codex/
+      // gemini), also notify the agent on next message instead of forcing a new
+      // session. Resume is preserved so context isn't lost.
+      if (!backendConfig.skipResume && !this.backend!.instructionsReloadedOnResume && this.warmupNeeded) {
         if (prev) {
           this.logger.info("Instructions changed — will notify agent on next message");
           this.pendingInstructionsNotice = true;
