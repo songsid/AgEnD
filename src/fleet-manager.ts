@@ -96,7 +96,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // retired when the agent replies, when cancelled, or after a timeout.
   private pendingCancelMessages = new Map<string, { adapterId?: string; chatId: string; messageId: string; threadId?: string; timer: ReturnType<typeof setTimeout> }>();
   // Last user message delivered to each instance — used to react ✅ on completion.
-  private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string }>();
+  private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
 
   controlClient: TmuxControlClient | null = null;
@@ -1744,7 +1744,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // React immediately — before any other Discord API calls
     if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
+      inboundAdapter.react(this.reactTarget(msg), msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
@@ -2652,11 +2652,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /**
+   * Reaction target chat id. Telegram reactions key on the supergroup chat_id
+   * (the topic thread is NOT a chat_id), so a forum-topic message must react on
+   * msg.chatId — reacting on threadId silently fails. Discord reactions key on
+   * the channel/thread id.
+   */
+  private reactTarget(msg: { source?: string; chatId: string; threadId?: string }): string {
+    return msg.source === "telegram" ? msg.chatId : (msg.threadId ?? msg.chatId);
+  }
+
   /** Remember the user message just delivered, so we can react ✅ when done. */
-  private trackInboundMsg(instanceName: string, msg: { chatId: string; messageId: string; threadId?: string; adapterId?: string }): void {
+  private trackInboundMsg(instanceName: string, msg: { chatId: string; messageId: string; threadId?: string; adapterId?: string; source?: string }): void {
     if (!msg.chatId || !msg.messageId) return;
     this.lastInboundMsg.set(instanceName, {
-      adapterId: msg.adapterId, chatId: msg.chatId, threadId: msg.threadId ?? undefined, messageId: msg.messageId,
+      adapterId: msg.adapterId, chatId: msg.chatId, threadId: msg.threadId ?? undefined, messageId: msg.messageId, source: msg.source,
     });
   }
 
@@ -2667,7 +2677,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.lastInboundMsg.delete(instanceName);
     const adapter = (m.adapterId ? this.worlds.get(m.adapterId)?.adapter : undefined)
       ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
-    adapter?.react(m.threadId ?? m.chatId, m.messageId, "✅").catch(() => { /* best effort */ });
+    adapter?.react(this.reactTarget(m), m.messageId, "✅").catch(() => { /* best effort */ });
   }
 
   /** Interrupt an instance's current generation (cancel button / /cancel). */
