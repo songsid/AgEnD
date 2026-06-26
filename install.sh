@@ -236,13 +236,12 @@ elif command_exists agend; then
   fi
 fi
 
-$SUDO npm install -g @songsid/agend @songsid/agend-plugin-discord
+$SUDO npm install -g @songsid/agend
 
 if ! command_exists agend; then
   error "Installation failed. Try: npm install -g @songsid/agend"
 fi
 info "AgEnD $(agend --version) installed"
-info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/dev/null | grep agend-plugin-discord | sed 's/.*@//' || echo 'unknown') installed"
 
 # ── Ensure binaries are accessible without nvm sourced ────
 # Root user: create symlinks in /usr/local/bin (for systemd, cron, non-login shells)
