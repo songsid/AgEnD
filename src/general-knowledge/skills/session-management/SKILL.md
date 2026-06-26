@@ -1,6 +1,6 @@
 ---
 name: session-management
-description: Save/load/fork sessions, batch backup, reviewer session setup, kiro-cli session paths
+description: Save/load/fork sessions, batch backup, reviewer session setup, kiro-cli and claude-code session paths
 ---
 
 ## kiro-cli Session Storage
@@ -51,6 +51,61 @@ Steps:
 5. Wait for new instance to be idle, then load session via tmux:
    - `execute_bash`: `tmux send-keys -t agend:<new-instance-name> '/chat load YYYYMMDD.json' Enter`
    - Or configure `pre_task_command: "/chat load YYYYMMDD.json"` for auto-load on restart
+
+## Claude Code Session Storage & Fork
+
+claude-code stores conversation sessions as JSONL, **keyed by the project (working) directory**:
+- **Path:** `~/.claude/projects/<project-path-encoded>/*.jsonl`
+- `<project-path-encoded>` is the absolute working_directory with `/` replaced by `-`
+  (e.g. `/home/han/Projects/AgEnD` → `-home-han-Projects-AgEnD`)
+- Each `.jsonl` is one session (full message history). Latest = most recently modified.
+
+**Key difference from kiro-cli:** claude-code has **no `/chat save` / `/chat load`**. You resume
+only via `--continue` (latest session for this dir) or `--resume <id>`. `/export` produces
+plain text only — it **cannot** be reloaded as a session. So forking is done by **copying the
+`.jsonl` file**, not by save/load commands.
+
+### Fork a claude-code session to a new instance
+
+1. **Confirm source instance is idle** — `tmux capture-pane -t agend:<source> -p | tail -5`
+   (look for the ready prompt, e.g. `❯`). Don't fork mid-task.
+
+2. **Find the source session file** (newest first):
+   ```bash
+   ls -lt ~/.claude/projects/<source-path-encoded>/*.jsonl | head -5
+   ```
+
+3. **Create the new instance** with `create_instance` (backend: `claude-code`). Note its
+   `working_directory` — it determines the target project path.
+
+4. **Copy the `.jsonl` into the new instance's encoded project dir:**
+   ```bash
+   TARGET_ENC="$(echo '<target-working-dir>' | sed 's#/#-#g')"
+   mkdir -p ~/.claude/projects/$TARGET_ENC
+   cp ~/.claude/projects/<source-path-encoded>/<session>.jsonl \
+      ~/.claude/projects/$TARGET_ENC/
+   ```
+
+5. **Start/restart the new instance** — the claude-code backend resumes via `--continue`
+   (it auto-picks the latest session for that project dir), so the copied session is continued.
+
+### Caveats
+- **Same project path required:** a session can only resume under the working_directory it
+  was recorded in. If the target dir differs, claude-code still loads it via `--continue`
+  (it reads the newest `.jsonl` in the target's encoded dir), but file paths/context inside
+  the transcript will refer to the original dir.
+- `/export` = text only, not reloadable. Use the raw `.jsonl`.
+- Pick the **right** `.jsonl` if multiple exist (sort by mtime; each branch/compaction can
+  create new files).
+
+### kiro-cli vs claude-code fork (summary)
+| | kiro-cli | claude-code |
+|---|---|---|
+| Store | `~/.kiro/sessions/cli/<uuid>.json` | `~/.claude/projects/<path-encoded>/*.jsonl` |
+| Keyed by | session uuid | project (working) directory |
+| Fork method | `/chat save` → copy → `/chat load` | copy `.jsonl` → `--continue` |
+| Reload command | `/chat load <file>` | none — `--continue` / `--resume` only |
+| Text export | — | `/export` (not reloadable) |
 
 ## Batch Session Backup
 
