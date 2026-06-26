@@ -530,6 +530,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
   }
 
+  async deleteMessage(chatId: string, messageId: string): Promise<void> {
+    await this.bot.api.deleteMessage(Number(chatId), Number(messageId));
+  }
+
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {
     await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), [
       { type: "emoji", emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"] },
