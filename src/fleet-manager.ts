@@ -1697,7 +1697,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             instance: generalInstance, sender: msg.username,
             text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
           });
-          void this.sendCancelButton(generalInstance);
         }
       }
       return;
@@ -1739,11 +1738,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-    // React immediately — before any other Discord API calls
-    if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
-        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
-    }
+    // The 👀 acknowledgement is now the cancel-button message (sent by
+    // sendCancelButton below), so no separate reaction is needed here.
 
     // These may hit Discord API (topic icon, archive) — do after react
     if (this.topicArchiver.isArchived(threadId)) {
@@ -2612,7 +2608,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const sent = await adapter.notifyAlert(chatId, {
         type: "cancel",
         instanceName,
-        message: "⏳ Processing…",
+        message: "👀",
         choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
       }, threadId ? { threadId } : undefined);
       const timer = setTimeout(() => this.clearCancelButton(instanceName, "⌛"), 30_000);
