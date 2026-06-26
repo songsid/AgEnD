@@ -87,6 +87,14 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/cancel" || text.startsWith("/cancel@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      const ok = this.ctx.cancelInstance(instanceName);
+      await adapter.sendText(msg.chatId, ok ? `🛑 已送出取消給 ${instanceName}。` : `❌ ${instanceName} 未在執行。`, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
 
     const adapter = this.getReplyAdapter(msg);

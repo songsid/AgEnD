@@ -525,6 +525,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
   }
 
+  /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */
+  async editMessageRemoveButtons(chatId: string, messageId: string, text: string): Promise<void> {
+    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+  }
+
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {
     await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), [
       { type: "emoji", emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"] },

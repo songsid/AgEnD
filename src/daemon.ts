@@ -712,6 +712,15 @@ export class Daemon extends EventEmitter {
     }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
   }
 
+  /**
+   * Send an Escape keypress to the CLI pane — interrupts the current
+   * generation (the cancel button / `/cancel` command). Direct tmux key event
+   * (not a paste), so it registers as the interrupt key rather than literal text.
+   */
+  async sendEscape(): Promise<void> {
+    await this.tmux?.sendSpecialKey("Escape");
+  }
+
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }

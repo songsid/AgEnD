@@ -335,6 +335,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "load", description: "🔒 Load a saved conversation",
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
+          { name: "cancel", description: "Interrupt the agent's current operation (sends Escape)" },
         ]);
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
@@ -409,6 +410,25 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         await channel.send(text.slice(0, DISCORD_MAX_LENGTH));
       }
     }
+  }
+
+  /** Edit text and clear components (Discord keeps components on a plain edit,
+   * so we must pass an empty array to drop the Cancel button). */
+  async editMessageRemoveButtons(chatId: string, messageId: string, text: string): Promise<void> {
+    try {
+      const guild = await this.client.guilds.fetch(this.guildId);
+      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+      for (const [, ch] of channels) {
+        try {
+          const textCh = ch as TextChannel;
+          const msg = await textCh.messages.fetch(messageId);
+          await msg.edit({ content: text.slice(0, DISCORD_MAX_LENGTH), components: [] });
+          return;
+        } catch {
+          continue;
+        }
+      }
+    } catch { /* message gone — nothing to clear */ }
   }
 
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {

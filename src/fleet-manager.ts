@@ -92,6 +92,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicIcons: { green?: string; blue?: string; red?: string } = {};
   private lastActivity = new Map<string, number>();
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
+  // Pending "🛑 Cancel" button per instance — sent after a message is delivered,
+  // retired when the agent replies, when cancelled, or after a timeout.
+  private pendingCancelMessages = new Map<string, { adapterId?: string; chatId: string; messageId: string; threadId?: string; timer: ReturnType<typeof setTimeout> }>();
   private topicArchiver: TopicArchiver;
 
   controlClient: TmuxControlClient | null = null;
@@ -815,6 +818,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         return;
       }
+      if (data.callbackData.startsWith("cancel:")) {
+        const instanceName = data.callbackData.slice("cancel:".length);
+        this.cancelInstance(instanceName);
+        return;
+      }
     }, this.logger, "adapter.callback_query"));
 
     this.adapter.on("topic_closed", safeHandler(async (data: { chatId: string; threadId: string }) => {
@@ -878,6 +886,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!target) { await data.respond("No active agent in this channel."); return; }
         const result = await this.topicCommands.sendCompact(target.name);
         await data.respond(result);
+      } else if (data.command === "cancel") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const ok = this.cancelInstance(target.name);
+        await data.respond(ok ? `🛑 Sent cancel to ${target.name}.` : `❌ ${target.name} not running.`);
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
         if (!target) {
@@ -1083,6 +1096,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } else {
           adapter.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`).catch(() => {});
         }
+        return;
+      }
+      if (data.callbackData.startsWith("cancel:")) {
+        this.cancelInstance(data.callbackData.slice("cancel:".length));
+        return;
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
 
@@ -1146,6 +1164,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!target) { await data.respond("No active agent in this channel."); return; }
         const result = await this.topicCommands.sendCompact(target.name);
         await data.respond(result);
+      } else if (data.command === "cancel") {
+        const target = this.routing.resolve(data.channelId);
+        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const ok = this.cancelInstance(target.name);
+        await data.respond(ok ? `🛑 Sent cancel to ${target.name}.` : `❌ ${target.name} not running.`);
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
         if (!target) { await data.respond("No active agent in this channel."); return; }
@@ -1573,6 +1596,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // Handle /cancel command
+        if (text === "/cancel" || text.startsWith("/cancel@")) {
+          const cancelTarget = this.routing.resolve(chatId);
+          if (!cancelTarget || cancelTarget.kind !== "classic") {
+            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            return;
+          }
+          const ok = this.cancelInstance(cancelTarget.name);
+          await msgAdapter?.sendText(chatId, ok ? `🛑 已送出取消給 ${cancelTarget.name}。` : `❌ ${cancelTarget.name} 未在執行。`);
+          return;
+        }
+
         // Handle /ctx command
         if (text === "/ctx" || text.startsWith("/ctx@")) {
           const ctxTarget = this.routing.resolve(chatId);
@@ -1703,11 +1738,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-    // React immediately — before any other Discord API calls
-    if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
-        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
-    }
+    // The 👀 acknowledgement is now the cancel-button message (sent by
+    // sendCancelButton below), so no separate reaction is needed here.
 
     // These may hit Discord API (topic icon, archive) — do after react
     if (this.topicArchiver.isArchived(threadId)) {
@@ -1749,6 +1781,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instance: instanceName, sender: msg.username,
       text: (text ?? "").slice(0, 2000), ts: new Date().toISOString(),
     });
+    void this.sendCancelButton(instanceName);
   }
 
   /** Handle outbound tool calls from a daemon instance */
@@ -1820,6 +1853,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
       if (tool === "reply") {
+        // Agent answered — retire its pending cancel button.
+        this.clearCancelButton(instanceName);
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
         this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
         this.emitSseEvent("message", {
@@ -2543,6 +2578,71 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  // ── Cancel button ────────────────────────────────────────────────────
+  // Sent after delivering a user message to an instance; clicking it (or
+  // /cancel) sends Escape to the instance's pane to interrupt generation.
+
+  /** Send a "🛑 Cancel" button to the instance's topic/channel after delivery. */
+  private async sendCancelButton(instanceName: string): Promise<void> {
+    // Replace any stale button for this instance first.
+    this.clearCancelButton(instanceName);
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return;
+    const adapterId = this.instanceWorldBinding.get(instanceName);
+    const groupId = this.getChannelConfig(adapterId)?.group_id;
+    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
+
+    let chatId: string | undefined;
+    let threadId: string | undefined;
+    if (topicId != null && groupId) {
+      chatId = String(groupId);
+      threadId = String(topicId);
+    } else {
+      for (const [cid, target] of this.routing.entries()) {
+        if (target.kind === "classic" && target.name === instanceName) { chatId = cid; break; }
+      }
+    }
+    if (!chatId) return;
+
+    try {
+      const sent = await adapter.notifyAlert(chatId, {
+        type: "cancel",
+        instanceName,
+        message: "👀",
+        choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
+      }, threadId ? { threadId } : undefined);
+      const timer = setTimeout(() => this.clearCancelButton(instanceName, "⌛"), 30_000);
+      this.pendingCancelMessages.set(instanceName, {
+        adapterId, chatId: sent.chatId, messageId: sent.messageId, threadId: sent.threadId ?? threadId, timer,
+      });
+    } catch (e) {
+      this.logger.debug({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
+    }
+  }
+
+  /** Retire the pending cancel button (on reply, cancel, or timeout). */
+  private clearCancelButton(instanceName: string, finalText = "✅"): void {
+    const pending = this.pendingCancelMessages.get(instanceName);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingCancelMessages.delete(instanceName);
+    const adapter = (pending.adapterId ? this.worlds.get(pending.adapterId)?.adapter : undefined)
+      ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return;
+    const remove = adapter.editMessageRemoveButtons?.bind(adapter) ?? adapter.editMessage.bind(adapter);
+    remove(pending.chatId, pending.messageId, finalText)
+      .catch((e: Error) => this.logger.debug({ err: e.message, instanceName }, "Failed to clear cancel button"));
+  }
+
+  /** Interrupt an instance's current generation (cancel button / /cancel). */
+  cancelInstance(instanceName: string): boolean {
+    const daemon = this.daemons.get(instanceName);
+    if (!daemon) return false;
+    daemon.sendEscape().catch(e => this.logger.warn({ err: e, instanceName }, "sendEscape failed"));
+    this.clearCancelButton(instanceName, "🛑 已取消");
+    return true;
+  }
+
   queueMirrorMessage(text: string): void {
     const mirrorTopicId = this.fleetConfig?.channel?.mirror_topic_id;
     if (mirrorTopicId == null || !this.adapter) return;
@@ -3109,6 +3209,7 @@ When users create specialized instances, suggest these configurations:
     });
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
+    void this.sendCancelButton(instanceName);
   }
 
   /** Paste raw text directly to a classic instance's CLI (no [user:] wrapping) */
