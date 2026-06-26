@@ -145,6 +145,19 @@ export function isModelCompatible(backendName: string, model: string): boolean {
   return pattern.test(model);
 }
 
+/**
+ * Warn (but never block) when a model name doesn't match the backend's typical
+ * pattern. The model is still passed through to the CLI — the CLI is the source
+ * of truth for which models it accepts, and new model names (e.g. "fable")
+ * appear faster than this heuristic can track. Silently dropping --model would
+ * leave the CLI on its default model, which is worse than a loud CLI error.
+ */
+export function warnIfModelMismatch(backendName: string, model: string): void {
+  if (!isModelCompatible(backendName, model)) {
+    console.warn(`[agend] model "${model}" doesn't match typical pattern for ${backendName}, passing through anyway`);
+  }
+}
+
 /** POSIX single-quote escape for embedding arbitrary values in a shell command. */
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`;
