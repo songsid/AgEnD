@@ -391,10 +391,28 @@ export class Daemon extends EventEmitter {
           return;
         }
 
-        const paneStatus = await this.tmux.getPaneStatus();
+        // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
+        const cliLabel = this.backend?.binaryName ?? "CLI";
+
+        let paneStatus = await this.tmux.getPaneStatus();
         if (paneStatus?.alive) {
           scheduleNext();
           return;
+        }
+
+        // A null status is ambiguous: it can be a transient `tmux list-panes`
+        // failure (e.g. tmux busy during a fleet-restart storm) rather than a
+        // real exit. Re-confirm once after a short delay before treating it as
+        // a crash. A non-null {alive:false} is a definite dead pane (real exit)
+        // and needs no recheck.
+        if (paneStatus === null) {
+          await new Promise(r => setTimeout(r, 1500));
+          paneStatus = await this.tmux.getPaneStatus();
+          if (paneStatus?.alive) {
+            this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+            scheduleNext();
+            return;
+          }
         }
 
         // paneStatus === null → window gone entirely (e.g. tmux server crash)
@@ -410,13 +428,17 @@ export class Daemon extends EventEmitter {
           return;
         }
 
-        // Distinguish tmux server crash from single window crash
+        // Distinguish tmux server crash from single window crash.
+        // nullReason records *why* getPaneStatus returned null (for diagnosing
+        // whether this was a real window loss or a transient query failure).
         let crashType: "server" | "window" = "window";
+        let nullReason: string | undefined;
         if (!paneStatus) {
           const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
           if (!serverAlive) {
             crashType = "server";
-            this.logger.error("tmux server died — all windows lost");
+            nullReason = "server_gone";
+            this.logger.error(`tmux server died — all ${cliLabel} windows lost`);
 
             // Fleet-level circuit breaker: pause all instances on repeated tmux server crashes
             Daemon.tmuxServerCrashTimestamps.push(Date.now());
@@ -438,22 +460,29 @@ export class Daemon extends EventEmitter {
 
             await new Promise(r => setTimeout(r, 2_000)); // let session stabilize
           } else {
-            this.logger.warn({ exitCode }, "Claude window died (tmux server alive)");
+            // null but server alive: window-level disappearance. Probe whether
+            // the window truly no longer exists vs a transient query glitch.
+            nullReason = "no_window";
+            try {
+              const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+              if (windows.some(w => w.name === this.name)) nullReason = "window_present_query_glitch";
+            } catch { nullReason = "query_error"; }
+            this.logger.warn({ exitCode, nullReason }, `${cliLabel} window not found (tmux server alive)`);
           }
         } else {
-          this.logger.warn({ exitCode }, "Claude process exited");
+          this.logger.warn({ exitCode }, `${cliLabel} process exited`);
         }
 
-        // Capture last output from dead pane before killing
+        // Capture last output before killing. Best-effort even when the pane is
+        // gone (paneStatus null) — gives the crash record something to diagnose
+        // from instead of an empty lastOutput.
         let lastOutput: string | undefined;
-        if (paneStatus) {
-          try {
-            const raw = await this.tmux.capturePaneWithHistory(50);
-            // Strip ANSI escape codes for readability
-            const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-            lastOutput = cleaned.trimEnd() || undefined;
-          } catch { /* best effort */ }
-        }
+        try {
+          const raw = await this.tmux.capturePaneWithHistory(50);
+          // Strip ANSI escape codes for readability
+          const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          lastOutput = cleaned.trimEnd() || undefined;
+        } catch { /* best effort — pane may already be gone */ }
 
         // Kill the dead window (remain-on-exit keeps it around) before respawn
         if (paneStatus) {
@@ -482,7 +511,7 @@ export class Daemon extends EventEmitter {
         }
 
         // Append to crash history
-        this.appendCrashHistory({ exitCode, lastOutput, crashType });
+        this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
 
         // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
         this.crashTimestamps.push(Date.now());
@@ -525,7 +554,7 @@ export class Daemon extends EventEmitter {
           ? Math.min(1000 * Math.pow(2, this.crashCount - 1), 60_000)
           : 1000 * this.crashCount;
 
-        this.logger.warn({ crashCount: this.crashCount, delay }, "Claude window died — respawning after backoff");
+        this.logger.warn({ crashCount: this.crashCount, delay }, `${cliLabel} window died — respawning after backoff`);
 
         await new Promise(r => setTimeout(r, delay));
 
@@ -563,10 +592,10 @@ export class Daemon extends EventEmitter {
             // Clean up stale snapshot — resume restored full context
             try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
           }
-          this.logger.info({ resumed }, "Respawned Claude window after crash");
+          this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
           this.emit("crash_respawn", this.name);
         } catch (err) {
-          this.logger.error({ err }, "Failed to respawn Claude window");
+          this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
         }
 
         scheduleNext();
@@ -1625,7 +1654,7 @@ export class Daemon extends EventEmitter {
     return lines.join("\n").slice(0, 4000);
   }
 
-  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window" }): void {
+  private appendCrashHistory(data: { exitCode?: number; lastOutput?: string; crashType: "server" | "window"; reason?: string }): void {
     try {
       const historyPath = join(this.instanceDir, "crash-history.jsonl");
       const entry = {
@@ -1633,6 +1662,7 @@ export class Daemon extends EventEmitter {
         instance: this.name,
         crashType: data.crashType,
         exitCode: data.exitCode,
+        reason: data.reason,
         lastOutput: data.lastOutput,
         crashCount: this.crashCount + 1,
         crashesInWindow: this.crashTimestamps.length,
