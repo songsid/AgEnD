@@ -1061,7 +1061,6 @@ program
     const { spawnSync, spawn: spawnAsync } = await import("node:child_process");
     const tag = opts.version ? opts.version : (opts.beta ? "beta" : "latest");
     const pkg = `@songsid/agend@${tag}`;
-    const pluginPkg = `@songsid/agend-plugin-discord@${tag}`;
 
     console.log(`\n  Updating AgEnD to ${tag}...\n`);
 
@@ -1101,7 +1100,7 @@ program
       console.log("  Using nvm to install Node 22...");
       const nvmPrefix = `source ${nvmSh} && nvm install 22 && nvm use 22`;
       try {
-        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg} ${pluginPkg}'`, { stdio: "inherit" });
+        execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}'`, { stdio: "inherit" });
       } catch {
         console.error("  Failed to install via nvm.");
         process.exit(1);
@@ -1112,7 +1111,7 @@ program
     } else {
       // ── Direct install ──
       try {
-        execSync(`npm install -g ${pkg} ${pluginPkg}`, { stdio: "inherit" });
+        execSync(`npm install -g ${pkg}`, { stdio: "inherit" });
       } catch {
         console.error(`  Failed to update. Try: npm install -g ${pkg}`);
         process.exit(1);

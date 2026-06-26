@@ -632,9 +632,8 @@ export async function runQuickstart(): Promise<void> {
     const hasDiscord = platforms.some(p => p.type === "discord");
     if (hasDiscord) {
       console.log("  Next steps:");
-      console.log(`    1. ${bold("npm install -g @songsid/agend-plugin-discord")}`);
-      console.log(`    2. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
-      console.log(`    3. ${bold("agend fleet start")}`);
+      console.log(`    1. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
+      console.log(`    2. ${bold("agend fleet start")}`);
       for (const p of platforms) {
         if (p.type === "discord") console.log(`    • Talk to ${p.botUsername} in your Discord server`);
         else console.log(`    • Talk to @${p.botUsername} in your Telegram group`);

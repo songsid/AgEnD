@@ -297,24 +297,21 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
 
 ### Setup
 
-1. **Install the Discord plugin:**
-   ```bash
-   npm install -g @songsid/agend-plugin-discord
-   ```
+Discord support is built into the core package — no extra install needed.
 
-2. **Create a Discord bot** at [Discord Developer Portal](https://discord.com/developers/applications):
+1. **Create a Discord bot** at [Discord Developer Portal](https://discord.com/developers/applications):
    - Create a new Application → Bot
    - Enable **Privileged Gateway Intents**: Presence Intent, Server Members Intent, Message Content Intent
    - Generate an invite URL with `bot` scope and `Send Messages`, `Read Message History`, `Manage Channels` permissions
    - Invite the bot to your server
 
-3. **Run the quickstart** (recommended for Discord):
+2. **Run the quickstart** (recommended for Discord):
    ```bash
    agend quickstart    # Select "Discord" when prompted
    ```
    > **Note:** `agend init` (advanced wizard) currently supports Telegram only. Use `agend quickstart` for Discord setup.
 
-4. **Or configure manually** in `fleet.yaml`:
+3. **Or configure manually** in `fleet.yaml`:
    ```yaml
    channel:
      type: discord
@@ -327,7 +324,7 @@ Connect your fleet to Discord instead of (or alongside) Telegram.
          - "your_discord_user_id"     # Also quote user IDs
    ```
 
-5. **Set the bot token** in `~/.agend/.env`:
+4. **Set the bot token** in `~/.agend/.env`:
    ```
    AGEND_DISCORD_TOKEN=your_bot_token_here
    ```
