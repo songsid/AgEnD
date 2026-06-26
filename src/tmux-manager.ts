@@ -150,7 +150,7 @@ export class TmuxManager {
     } catch { return false; }
   }
 
-  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left"): Promise<boolean> {
+  async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c"): Promise<boolean> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]));
       return true;

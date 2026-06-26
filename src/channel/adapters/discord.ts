@@ -431,6 +431,23 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch { /* message gone — nothing to clear */ }
   }
 
+  async deleteMessage(chatId: string, messageId: string): Promise<void> {
+    try {
+      const guild = await this.client.guilds.fetch(this.guildId);
+      const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
+      for (const [, ch] of channels) {
+        try {
+          const textCh = ch as TextChannel;
+          const msg = await textCh.messages.fetch(messageId);
+          await msg.delete();
+          return;
+        } catch {
+          continue;
+        }
+      }
+    } catch { /* message already gone */ }
+  }
+
   async react(chatId: string, messageId: string, emoji: string): Promise<void> {
     try {
       // Direct REST call — single API request instead of 3 (fetchChannel → fetchMessage → react)
