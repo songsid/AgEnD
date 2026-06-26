@@ -713,12 +713,13 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Send an Escape keypress to the CLI pane — interrupts the current
-   * generation (the cancel button / `/cancel` command). Direct tmux key event
-   * (not a paste), so it registers as the interrupt key rather than literal text.
+   * Interrupt the CLI's current generation (cancel button / `/cancel`).
+   * Direct tmux key event (not a paste) so it registers as the interrupt key.
+   * kiro-cli interrupts on Ctrl+C; the others (claude-code, codex, …) on Escape.
    */
   async sendEscape(): Promise<void> {
-    await this.tmux?.sendSpecialKey("Escape");
+    const cancelKey = this.backend?.binaryName === "kiro-cli" ? "C-c" : "Escape";
+    await this.tmux?.sendSpecialKey(cancelKey);
   }
 
   async stop(): Promise<void> {

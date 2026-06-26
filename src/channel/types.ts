@@ -32,6 +32,8 @@ export interface ChannelAdapter extends EventEmitter {
   /** Edit a message's text AND remove any inline buttons/components. Used to
    * retire a Cancel button after the agent replies or a timeout elapses. */
   editMessageRemoveButtons?(chatId: string, messageId: string, text: string): Promise<void>;
+  /** Delete a message (e.g. retire the Cancel button message when done). */
+  deleteMessage?(chatId: string, messageId: string): Promise<void>;
   react(chatId: string, messageId: string, emoji: string): Promise<void>;
 
   sendApproval(
