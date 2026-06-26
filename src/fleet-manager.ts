@@ -822,7 +822,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       if (data.callbackData.startsWith("cancel:")) {
         const instanceName = data.callbackData.slice("cancel:".length);
-        this.cancelInstance(instanceName);
+        // Idempotent: a button click only acts while the button is live. A
+        // second click (entry already cleared) is a no-op — don't re-send the
+        // interrupt key. (The /cancel command path calls cancelInstance directly.)
+        if (this.pendingCancelMessages.has(instanceName)) this.cancelInstance(instanceName);
         return;
       }
     }, this.logger, "adapter.callback_query"));
@@ -1101,7 +1104,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       if (data.callbackData.startsWith("cancel:")) {
-        this.cancelInstance(data.callbackData.slice("cancel:".length));
+        const instanceName = data.callbackData.slice("cancel:".length);
+        // Idempotent: only the first click (while the button is live) acts.
+        if (this.pendingCancelMessages.has(instanceName)) this.cancelInstance(instanceName);
         return;
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
