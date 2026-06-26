@@ -1960,6 +1960,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
         meta: { chat_id: reply_chat_id, thread_id: reply_thread_id, user: "scheduler" },
       });
+      // A scheduled trigger also puts the instance to work — show a cancel button.
+      void this.sendCancelButton(target);
       return true;
     };
 
@@ -2597,7 +2599,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // /cancel) sends Escape to the instance's pane to interrupt generation.
 
   /** Send a "🛑 Cancel" button to the instance's topic/channel after delivery. */
-  private async sendCancelButton(instanceName: string): Promise<void> {
+  async sendCancelButton(instanceName: string): Promise<void> {
     // Replace any stale button for this instance first.
     this.clearCancelButton(instanceName);
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;

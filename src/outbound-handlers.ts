@@ -53,6 +53,7 @@ export interface OutboundContext {
   getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
   getGroupIdForInstance?(name: string): string;
   getWorldForInstance?(name: string): { id: string; adapter: ChannelAdapter } | undefined;
+  sendCancelButton?(instanceName: string): Promise<void>;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -133,6 +134,9 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
   if (branch) ipcMeta.branch = branch;
 
   targetIpc.send({ type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
+  // Show a cancel button on the target's topic so a watching user can interrupt
+  // work started by another instance (delegate_task/request_information/etc).
+  void ctx.sendCancelButton?.(targetInstanceName);
 
   // Cross-instance topic notifications for visibility.
   // general_topic instances are always skipped (keep General clean).
