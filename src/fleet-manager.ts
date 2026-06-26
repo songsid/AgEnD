@@ -1148,23 +1148,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "ctx") {
         const target = this.routing.resolve(data.channelId);
         if (!target) { await data.respond("No active agent in this channel."); return; }
-        const instanceName = target.name;
-        const ctxBackend = target.kind === "classic"
-          ? (this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend) ?? "claude-code")
-          : (this.fleetConfig?.instances[instanceName]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
-        let context: number | null = null;
-        try {
-          const statusFile = join(this.getInstanceDir(instanceName), "statusline.json");
-          if (existsSync(statusFile)) {
-            const d = JSON.parse(readFileSync(statusFile, "utf-8"));
-            context = d.context_window?.used_percentage ?? null;
-          }
-        } catch { /* ignore */ }
-        if (context != null) {
-          await data.respond(`📊 Context: ${context}% used\nBackend: ${ctxBackend}\nInstance: ${instanceName}`);
-        } else {
-          await data.respond(`Context info not available yet.\nBackend: ${ctxBackend}\nInstance: ${instanceName}`);
-        }
+        // Single source of truth (statusline.json + robust tmux pane fallback).
+        await data.respond(await this.topicCommands.getCtxText(target.name));
       } else if (data.command === "collab") {
         const collabTarget2 = this.routing.resolve(data.channelId);
         if (collabTarget2 && collabTarget2.kind !== "classic") {
