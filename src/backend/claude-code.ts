@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, shellQuote, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, warnIfModelMismatch, resolveBinary, shellQuote, validateModel } from "./types.js";
 
 
 export class ClaudeCodeBackend implements CliBackend {
@@ -29,7 +29,8 @@ export class ClaudeCodeBackend implements CliBackend {
       cmd += " --continue";
     }
 
-    if (config.model && isModelCompatible("claude-code", config.model)) {
+    if (config.model) {
+      warnIfModelMismatch("claude-code", config.model);
       cmd += ` --model ${validateModel(config.model)}`;
     }
 

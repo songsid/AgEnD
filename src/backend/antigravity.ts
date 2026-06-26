@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, isModelCompatible, resolveBinary } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, warnIfModelMismatch, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 export class AntigravityBackend implements CliBackend {
@@ -15,7 +15,12 @@ export class AntigravityBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     let cmd = `${this.binaryPath} --dangerously-skip-permissions`;
     if (!config.skipResume) cmd += " --continue";
-    if (config.model && isModelCompatible("antigravity", config.model)) cmd += ` --model ${config.model.replace(/[^a-zA-Z0-9_./ ()-]/g, "")}`;
+    if (config.model) {
+      warnIfModelMismatch("antigravity", config.model);
+      // agy display names contain spaces/parens — strip only shell-unsafe chars
+      // rather than validateModel() (which forbids spaces).
+      cmd += ` --model ${config.model.replace(/[^a-zA-Z0-9_./ ()-]/g, "")}`;
+    }
     return cmd;
   }
 
