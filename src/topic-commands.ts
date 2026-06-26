@@ -18,6 +18,23 @@ export function sanitizeInstanceName(name: string): string {
   return sanitized || "project";
 }
 
+/**
+ * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
+ * MOST RECENT prompt wins (a captured scrollback may hold several). Covers the
+ * common CLI prompt formats:
+ *   kiro-cli classic:  "6% !>"        kiro-cli TUI: "◔ 6%"
+ *   bracketed:         "[6%]"         claude/others prompt: "6% ❯" / "6% >"
+ */
+export function parseContextPercent(pane: string): number | null {
+  const lines = pane.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const m = line.match(/(\d+)%\s*[!❯>]/) || line.match(/◔\s*(\d+)%/) || line.match(/\[(\d+)%\]/);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
+}
+
 export class TopicCommands {
   constructor(private ctx: FleetContext) {}
 
@@ -122,12 +139,12 @@ export class TopicCommands {
         const { execFileSync } = await import("node:child_process");
         const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
         const socketName = getTmuxSocketName();
-        const tmuxArgs = socketName
-          ? ["-L", socketName, "capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"]
-          : ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p"];
+        // Include scrollback (-S -60) so a recent prompt is captured even when
+        // the CLI is mid-output and the bottom of the visible pane has no prompt.
+        const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
+        const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
         const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-        const m = pane.match(/(\d+)%.*[!❯>]/m) || pane.match(/◔\s*(\d+)%/) || pane.match(/\[(\d+)%\]/);
-        if (m) context = parseInt(m[1], 10);
+        context = parseContextPercent(pane);
       } catch { /* ignore */ }
     }
     return context != null
