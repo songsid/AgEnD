@@ -81,7 +81,7 @@ agend fleet start               # 3. Launch your fleet 🎉
 
 Open Telegram, send a message to your bot, and start coding from your phone.
 
-> **Discord?** `agend quickstart` supports Discord too — install the plugin first: `npm install -g @songsid/agend-plugin-discord`. See [Discord setup guide](docs/features.md#discord-adapter-mvp).
+> **Discord?** `agend quickstart` supports Discord too — it's built in, no extra install needed. See [Discord setup guide](docs/features.md#discord-adapter-mvp).
 
 ## How It Works
 
@@ -148,13 +148,10 @@ ClassicBot lets users start AI agents in any Discord text channel using slash co
 ### Setup
 
 ```bash
-# 1. Install Discord plugin
-npm install -g @songsid/agend-plugin-discord
-
-# 2. Run quickstart (select Discord)
+# 1. Run quickstart (select Discord — built in, no extra install)
 agend quickstart
 
-# 3. Start the fleet
+# 2. Start the fleet
 agend fleet start
 ```
 

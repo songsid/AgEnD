@@ -264,24 +264,21 @@ defaults:
 
 ### 設定步驟
 
-1. **安裝 Discord 外掛：**
-   ```bash
-   npm install -g @songsid/agend-plugin-discord
-   ```
+Discord 支援已內建於核心套件，無需額外安裝。
 
-2. **建立 Discord bot**，前往 [Discord Developer Portal](https://discord.com/developers/applications)：
+1. **建立 Discord bot**，前往 [Discord Developer Portal](https://discord.com/developers/applications)：
    - 建立新 Application → Bot
    - 啟用 **Privileged Gateway Intents**：Presence Intent、Server Members Intent、Message Content Intent
    - 產生邀請 URL，scope 選 `bot`，權限選 `Send Messages`、`Read Message History`、`Manage Channels`
    - 邀請 bot 到你的伺服器
 
-3. **執行 quickstart**（Discord 推薦方式）：
+2. **執行 quickstart**（Discord 推薦方式）：
    ```bash
    agend quickstart    # 選擇 "Discord"
    ```
    > **注意：** `agend init`（進階設定精靈）目前僅支援 Telegram。Discord 請使用 `agend quickstart`。
 
-4. **或手動設定** `fleet.yaml`：
+3. **或手動設定** `fleet.yaml`：
    ```yaml
    channel:
      type: discord
@@ -294,7 +291,7 @@ defaults:
          - "your_discord_user_id"     # User ID 也要加引號
    ```
 
-5. **設定 bot token**，寫入 `~/.agend/.env`：
+4. **設定 bot token**，寫入 `~/.agend/.env`：
    ```
    AGEND_DISCORD_TOKEN=your_bot_token_here
    ```
