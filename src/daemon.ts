@@ -739,14 +739,15 @@ export class Daemon extends EventEmitter {
         // instances stop in parallel (same pattern as pasteText).
         await new Promise(r => setTimeout(r, 150));
         await this.tmux.sendSpecialKey("Enter");
-        // Wait up to 10s for graceful exit
-        for (let i = 0; i < 20; i++) {
-          await new Promise(r => setTimeout(r, 500));
+        // Wait up to 3s for graceful exit, polling every 200ms. A healthy CLI
+        // exits within ~1s; a longer wait just delays the force-kill fallback.
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
           if (!status || !status.alive) { killed = true; break; }
         }
       }
-      if (!killed) this.logger.warn("CLI did not exit gracefully within 10s, force killing window");
+      if (!killed) this.logger.warn("CLI did not exit gracefully within 3s, force killing window");
       // Always kill window — remain-on-exit keeps dead panes around after CLI exits
       await this.tmux.killWindow();
       const windowIdFile = join(this.instanceDir, "window-id");

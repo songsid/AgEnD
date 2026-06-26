@@ -3224,9 +3224,11 @@ When users create specialized instances, suggest these configurations:
     this.scheduler?.shutdown();
 
     // Stop instances in parallel batches to avoid long sequential waits.
-    // Concurrency limited to avoid overwhelming the tmux server.
-    const STOP_CONCURRENCY = 5;
+    // Concurrency scales with fleet size — larger fleets tolerate more parallel
+    // tmux ops, while small fleets stay conservative to avoid overwhelming the
+    // tmux server.
     const entries = [...this.daemons.entries()];
+    const STOP_CONCURRENCY = entries.length > 30 ? 15 : entries.length >= 10 ? 10 : 5;
     for (const [name] of entries) this.ipcStoppingInstances.add(name);
     for (let i = 0; i < entries.length; i += STOP_CONCURRENCY) {
       const batch = entries.slice(i, i + STOP_CONCURRENCY);
@@ -3240,9 +3242,10 @@ When users create specialized instances, suggest these configurations:
       }));
     }
 
-    for (const [, ipc] of this.instanceIpcClients) {
-      await ipc.close();
-    }
+    // Close IPC clients in parallel — serial close over a large fleet adds
+    // noticeable latency.
+    await Promise.all([...this.instanceIpcClients.values()].map(ipc =>
+      Promise.resolve(ipc.close()).catch(() => { /* best effort */ })));
     this.instanceIpcClients.clear();
     this.ipcStoppingInstances.clear();
 
