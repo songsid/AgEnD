@@ -3623,7 +3623,7 @@ When users create specialized instances, suggest these configurations:
       if (target && target !== currentVersion) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
-          this.notifyInstanceTopic(generalId, `🆕 AgEnD v${target} available (current: v${currentVersion}). Use /update to upgrade.`);
+          this.notifyInstanceTopic(generalId, `🆕 AgEnD v${target} available (current: v${currentVersion}). Use \`/update\` to upgrade.`);
         }
       }
     } catch { /* silent — network issues */ }
