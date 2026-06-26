@@ -2988,10 +2988,18 @@ When users create specialized instances, suggest these configurations:
       // Skip empty bot messages (e.g., reactions) — don't pollute chat log
       if (msg.isBotMessage && !text && !msg.attachments?.length) return;
 
+      // Save attachments FIRST so the chat-log records their inbox paths
+      // (consistent with the /chat path). Otherwise a non-@mention image is
+      // saved to inbox but its path never reaches the agent — the log keeps
+      // only a pathless filename, so later context can't locate the file.
+      const saved = msg.attachments?.length ? await this.saveClassicAttachment(instanceName, msg) : undefined;
+
       // Log every message (including other bots) to chat-logs
-      const collabAttachTag = msg.attachments?.length
-        ? ` [${msg.attachments.map(a => `${a.kind === "photo" ? "📷" : "📎"} ${a.filename || a.kind}`).join(", ")}]`
-        : "";
+      const collabAttachTag = saved
+        ? ` [${saved.kind === "photo" ? "📷" : "📎"} saved: ${saved.paths.join(", ")}]`
+        : (msg.attachments?.length
+            ? ` [${msg.attachments.map(a => `${a.kind === "photo" ? "📷" : "📎"} ${a.filename || a.kind}`).join(", ")}]`
+            : "");
       ClassicChannelManager.logMessage(instanceName, msg.username, text + collabAttachTag, msg.timestamp, msg.replyToText);
       this.logger.info({ instanceName, user: msg.username, textLen: text.length, attachments: msg.attachments?.length ?? 0, source: msg.source }, "Collab mode message");
 
@@ -3000,19 +3008,16 @@ When users create specialized instances, suggest these configurations:
       const mentionTag = adapterBotUserId ? `<@${adapterBotUserId}>` : null;
       const isMentioned = mentionTag && text.includes(mentionTag);
       if (!isMentioned) {
-        // Save bare attachments (stickers, images) even without @mention
-        if (msg.attachments?.length) {
-          const saved = await this.saveClassicAttachment(instanceName, msg);
-          if (saved) {
-            const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
-            const noMentionReactChatId = msg.threadId ?? msg.chatId;
-            if (reactAdapter && noMentionReactChatId && msg.messageId) {
-              const emoji = msg.source === "telegram"
-                ? (saved.kind === "photo" ? "👌" : "👍")
-                : (saved.kind === "photo" ? "📸" : "📎");
-              reactAdapter.react(noMentionReactChatId, msg.messageId, emoji)
-                .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
-            }
+        // Bare attachment (no @mention) — already saved above; just acknowledge.
+        if (saved) {
+          const reactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
+          const noMentionReactChatId = msg.threadId ?? msg.chatId;
+          if (reactAdapter && noMentionReactChatId && msg.messageId) {
+            const emoji = msg.source === "telegram"
+              ? (saved.kind === "photo" ? "👌" : "👍")
+              : (saved.kind === "photo" ? "📸" : "📎");
+            reactAdapter.react(noMentionReactChatId, msg.messageId, emoji)
+              .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
           }
         }
         return;
@@ -3032,8 +3037,7 @@ When users create specialized instances, suggest these configurations:
       // Block /raw bypass
       if (cleanText.startsWith("/raw ")) return;
 
-      // Save and process attachments (same as /chat mode)
-      const saved = await this.saveClassicAttachment(instanceName, msg);
+      // Attachments already saved at the top of the collab block.
       if (saved && classicAdapter && collabReactChatId && msg.messageId) {
         const emoji = msg.source === "telegram"
           ? (saved.kind === "photo" ? "👌" : "👍")
