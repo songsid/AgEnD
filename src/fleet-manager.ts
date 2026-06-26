@@ -3247,21 +3247,34 @@ When users create specialized instances, suggest these configurations:
       return;
     }
 
+    const meta: Record<string, string> = {
+      chat_id: msg.chatId,
+      message_id: msg.messageId,
+      user: msg.username,
+      user_id: msg.userId,
+      ts: msg.timestamp.toISOString(),
+      thread_id: msg.threadId ?? "",
+      source: msg.source,
+      ...extraMeta,
+      ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
+    };
+
+    // If the triggering message carried no image of its own, surface the most
+    // recent image saved earlier in this channel (logged as "[📷 saved: <path>]"
+    // by an untriggered collab message) as image_path, so the agent's
+    // read-the-image trigger fires instead of the path sitting inert in context.
+    if (!meta.image_path && logContext) {
+      const saves = [...logContext.matchAll(/\[📷 saved: ([^\]]+)\]/g)];
+      if (saves.length > 0) {
+        meta.image_path = saves[saves.length - 1][1].split(",")[0].trim();
+      }
+    }
+
     ipc.send({
       type: "fleet_inbound",
       content: fullText,
       targetSession: instanceName,
-      meta: {
-        chat_id: msg.chatId,
-        message_id: msg.messageId,
-        user: msg.username,
-        user_id: msg.userId,
-        ts: msg.timestamp.toISOString(),
-        thread_id: msg.threadId ?? "",
-        source: msg.source,
-        ...extraMeta,
-        ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
-      },
+      meta,
     });
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
