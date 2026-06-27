@@ -66,7 +66,7 @@ export function routeToolCall(
         .catch(e => respond(null, e.message));
       return true;
     case "edit_message":
-      adapter.editMessage(chatId, args.message_id as string ?? "", args.text as string ?? "")
+      adapter.editMessage(chatId, args.message_id as string ?? "", args.text as string ?? "", threadId)
         .then(() => respond("ok"))
         .catch(e => respond(null, e.message));
       return true;
