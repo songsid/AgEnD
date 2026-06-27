@@ -3747,18 +3747,57 @@ When users create specialized instances, suggest these configurations:
       const latest = execSync("npm view @songsid/agend version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
       let target = latest;
       if (currentVersion.includes("-beta")) {
+        // Beta users track the @beta channel (never fall back to @latest, which is
+        // older), but should also hear when a newer STABLE ships — pick whichever
+        // of beta/latest is the newest.
+        let beta = "";
         try {
-          const beta = execSync("npm view @songsid/agend@beta version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
-          if (beta && beta !== currentVersion) target = beta;
+          beta = execSync("npm view @songsid/agend@beta version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
         } catch { /* no beta tag */ }
+        target = beta || latest;
+        if (latest && this.semverGt(latest, target)) target = latest;
       }
-      if (target && target !== currentVersion) {
+      // Only notify when target is genuinely newer (semver), so a beta user on
+      // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
+      if (target && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
           this.notifyInstanceTopic(generalId, `🆕 AgEnD v${target} available (current: v${currentVersion}). Use \`/update\` to upgrade.`);
         }
       }
     } catch { /* silent — network issues */ }
+  }
+
+  /**
+   * Semver "a > b". Compares major.minor.patch numerically; a version without a
+   * prerelease outranks the same core with one (2.0.8 > 2.0.8-beta.16); two
+   * prereleases compare identifier-by-identifier (numeric < alphanumeric, numeric
+   * fields compared as numbers). Sufficient for our X.Y.Z[-beta.N] scheme.
+   */
+  private semverGt(a: string, b: string): boolean {
+    const parse = (v: string) => {
+      const [core, pre] = v.replace(/^v/, "").split("-");
+      const nums = core.split(".").map(n => parseInt(n, 10) || 0);
+      return { nums: [nums[0] ?? 0, nums[1] ?? 0, nums[2] ?? 0], pre: pre ? pre.split(".") : [] };
+    };
+    const pa = parse(a), pb = parse(b);
+    for (let i = 0; i < 3; i++) {
+      if (pa.nums[i] !== pb.nums[i]) return pa.nums[i] > pb.nums[i];
+    }
+    if (pa.pre.length === 0 && pb.pre.length === 0) return false;
+    if (pa.pre.length === 0) return true;   // a stable, b prerelease → a > b
+    if (pb.pre.length === 0) return false;  // a prerelease, b stable → a < b
+    const len = Math.max(pa.pre.length, pb.pre.length);
+    for (let i = 0; i < len; i++) {
+      const x = pa.pre[i], y = pb.pre[i];
+      if (x === undefined) return false; // a has fewer identifiers → a < b
+      if (y === undefined) return true;  // a has more identifiers → a > b
+      const xn = /^\d+$/.test(x), yn = /^\d+$/.test(y);
+      if (xn && yn) { const dx = parseInt(x, 10), dy = parseInt(y, 10); if (dx !== dy) return dx > dy; }
+      else if (xn !== yn) return yn;     // numeric has lower precedence than alphanumeric
+      else if (x !== y) return x > y;    // both alphanumeric
+    }
+    return false; // identical
   }
 
   // ── Health HTTP endpoint ─────────────────────────────────────────────
