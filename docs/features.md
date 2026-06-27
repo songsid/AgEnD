@@ -21,7 +21,7 @@ Schedules can target a specific instance or the same instance that created them.
 
 ## Crash recovery
 
-Watches Claude's status line JSON for context usage metrics (used for dashboard and logging). All CLI backends (Claude Code, Codex, Gemini CLI, OpenCode, Kiro CLI) have built-in auto-compact that handles context limits internally — AgEnD does not trigger restarts based on context usage or session age.
+Watches Claude's status line JSON for context usage metrics (used for dashboard and logging). All CLI backends (Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI) have built-in auto-compact that handles context limits internally — AgEnD does not trigger restarts based on context usage or session age.
 
 When a CLI process crashes, the daemon's health check detects the dead tmux window and:
 
@@ -85,6 +85,31 @@ Status is determined by tmux pane output activity — "Busy" when the CLI is pro
 Enables bot-to-bot and webhook messages in fleet topics. When `/collab` is toggled on for a topic, messages from other bots and webhooks are routed to the instance — enabling multi-bot collaboration within a single Telegram/Discord channel.
 
 In fleet `open` mode, bot messages bypass the filter automatically (no `/collab` toggle needed).
+
+## Cancel button
+
+Every message sent to an agent shows an inline cancel button (🛑). Tapping it interrupts the current generation:
+
+- **Telegram**: inline keyboard button below the 👀 reaction message
+- **Discord**: button component on the status message
+- **`/cancel` command**: also available as a slash command
+
+The cancel sends the appropriate interrupt key to the CLI backend (Escape for Claude Code/Codex, Ctrl+C for Kiro CLI). The button is removed once the agent finishes responding (✅) or is cancelled.
+
+Cancel also works for cross-instance messages and scheduled triggers.
+
+## Delivery status
+
+Message delivery progress is shown visually:
+
+| Stage | Indicator | Meaning |
+|-------|-----------|---------|
+| Received | 👀 | Message seen by daemon |
+| Processing | ⏳ | Pasted to CLI, awaiting response |
+| Done | ✅ | Agent finished responding |
+| Failed | ❌ | Delivery or processing error |
+
+The status message is posted immediately on receipt and updated as the agent processes. On completion, the cancel button is removed and ✅ is shown.
 
 ## Peer-to-peer agent collaboration
 
