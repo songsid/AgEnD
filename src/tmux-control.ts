@@ -107,6 +107,19 @@ export class TmuxControlClient extends EventEmitter {
     return Date.now() - last >= this.silenceMs;
   }
 
+  /** Timestamp of the window pane's last observed output, or undefined if unknown. */
+  getLastOutputAt(windowId: string): number | undefined {
+    const paneId = this.windowToPaneId(windowId);
+    if (!paneId) return undefined;
+    return this.lastOutputAt.get(paneId);
+  }
+
+  /** True if the window's pane produced output strictly after `ts` (an idle→busy transition). */
+  hasOutputSince(windowId: string, ts: number): boolean {
+    const last = this.getLastOutputAt(windowId);
+    return last != null && last > ts;
+  }
+
   // PLACEHOLDER_WAIT
 
   /**

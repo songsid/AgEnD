@@ -921,9 +921,9 @@ export class Daemon extends EventEmitter {
           this.pendingInstructionsNotice = false;
           await this.deliverMessage("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
         }
-        await this.deliverMessage(formatted);
+        const delivered = await this.deliverMessage(formatted);
         if (chatId && messageId) {
-          this.emit("message_delivered", { chatId: meta.thread_id || chatId, messageId });
+          this.emit(delivered ? "message_delivered" : "message_failed", { chatId: meta.thread_id || chatId, messageId });
         }
       } finally {
         this.pasteQueueDepth--;
@@ -934,40 +934,102 @@ export class Daemon extends EventEmitter {
     this.logger.debug({ user: meta.user, text: content.slice(0, 100) }, "Queued channel message for delivery");
   }
 
-  /** Deliver a single message: wait for idle, then paste */
-  private async deliverMessage(formatted: string): Promise<void> {
+  /**
+   * Deliver a single message: wait for idle, paste, submit, and verify receipt.
+   * Returns true if the message was delivered (and the CLI acknowledged it by
+   * transitioning idle→busy), false on failure or if the CLI is stuck.
+   *
+   * Bug A (silent message loss): paste failures now retry with backoff and, on
+   * total failure, return false so the caller can emit `message_failed`.
+   * Bug B (swallowed Enter / blind force-paste): we never force-paste into a busy
+   * CLI; instead we wait for idle (up to the ceiling), then confirm the idle→busy
+   * transition after Enter, re-sending Enter once if it was swallowed.
+   */
+  private async deliverMessage(formatted: string): Promise<boolean> {
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
     if (fenceCount % 2 !== 0) {
       // Odd number of fences = unclosed. Remove all code fences from the message.
       formatted = formatted.replace(/```/g, "");
     }
-    const windowId = this.getWindowId();
+
+    let windowId = this.getWindowId();
+
+    // Bug B step 3: wait for idle. Do NOT blind-paste on timeout — a CLI that is
+    // still busy after the full ceiling is genuinely stuck; hand it to the hang
+    // detector rather than corrupting its input mid-stream.
     if (windowId && this.controlClient) {
-      const idle = await this.controlClient.waitForIdle(windowId, this.config.lightweight ? 30_000 : 120_000);
+      const idleTimeout = this.config.lightweight ? 30_000 : 120_000;
+      const idle = await this.controlClient.waitForIdle(windowId, idleTimeout);
       if (!idle) {
-        this.logger.warn("Delivering message after idle timeout (CLI may be busy)");
+        this.logger.warn({ idleTimeout }, "Delivery aborted — CLI still busy after idle timeout (stuck)");
+        this.emit("deliveryStuck", { name: this.name, timeoutMs: idleTimeout });
+        return false;
       }
     }
 
-    const ok = await this.tmux!.pasteText(formatted);
-    if (!ok) {
-      // Window ID may be stale after crash/respawn — try to find by name
-      this.logger.warn("pasteText failed, looking up window by name");
-      try {
-        const windows = await TmuxManager.listWindows(this.tmuxSessionName);
-        const match = windows.find(w => w.name === this.name);
-        if (match) {
-          this.tmux = new TmuxManager(this.tmuxSessionName, match.id);
-          writeFileSync(join(this.instanceDir, "window-id"), match.id);
-          await this.controlClient?.registerWindow(match.id);
-          await this.tmux.pasteText(formatted);
-          this.logger.info({ windowId: match.id }, "Recovered window ID and delivered message");
-        }
-      } catch (retryErr) {
-        this.logger.error({ err: retryErr }, "Failed to recover window for message delivery");
+    // Bug A: paste with backoff. Transient failures are usually a stale window id
+    // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const pasted = await this.tmux!.pasteBuffer(formatted);
+      if (!pasted) {
+        this.logger.warn({ attempt }, "pasteBuffer failed — recovering window and backing off");
+        windowId = (await this.recoverWindow()) ?? windowId;
+        if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
+        continue;
       }
+
+      // Settle the bracketed paste, then submit.
+      await new Promise(r => setTimeout(r, 500));
+      const enterAt = Date.now();
+      await this.tmux!.sendSpecialKey("Enter");
+
+      // Bug B step 1+2: confirm the CLI accepted the message by transitioning
+      // idle→busy (new output after Enter). If still idle after ~2s the Enter was
+      // likely swallowed while the TUI was redrawing — re-send Enter once.
+      if (windowId && this.controlClient) {
+        const becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
+        if (!becameBusy) {
+          this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
+          await this.tmux!.sendSpecialKey("Enter");
+        }
+      } else {
+        // No control client to observe output: fall back to the legacy double-Enter.
+        await new Promise(r => setTimeout(r, 1000));
+        await this.tmux!.sendSpecialKey("Enter");
+      }
+      return true;
     }
+
+    this.logger.error("Message delivery failed after retries — window not ready");
+    return false;
+  }
+
+  /** Re-resolve this instance's tmux window by name (stale id after crash/respawn). */
+  private async recoverWindow(): Promise<string | undefined> {
+    try {
+      const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+      const match = windows.find(w => w.name === this.name);
+      if (!match) return undefined;
+      this.tmux = new TmuxManager(this.tmuxSessionName, match.id);
+      writeFileSync(join(this.instanceDir, "window-id"), match.id);
+      await this.controlClient?.registerWindow(match.id);
+      this.logger.info({ windowId: match.id }, "Recovered window ID for message delivery");
+      return match.id;
+    } catch (retryErr) {
+      this.logger.error({ err: retryErr }, "Failed to recover window for message delivery");
+      return undefined;
+    }
+  }
+
+  /** Poll up to ~2s (200ms × 10) for the pane to emit output after `since`. */
+  private async confirmBusyAfterEnter(windowId: string, since: number): Promise<boolean> {
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 200));
+      if (this.controlClient!.hasOutputSince(windowId, since)) return true;
+    }
+    return false;
   }
 
   private getWindowId(): string | undefined {
