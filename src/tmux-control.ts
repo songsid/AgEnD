@@ -147,6 +147,23 @@ export class TmuxControlClient extends EventEmitter {
   }
 
   /**
+   * Wait until a window's pane is idle, with NO timeout — resolves only once idle
+   * (or the client stops). Used by message delivery to queue behind a busy CLI and
+   * deliver the moment it frees up, rather than force-pasting or giving up.
+   */
+  waitUntilIdle(windowId: string): Promise<void> {
+    if (this.isIdle(windowId)) return Promise.resolve();
+    return new Promise((resolve) => {
+      const check = setInterval(() => {
+        if (this.stopped || this.isIdle(windowId)) {
+          clearInterval(check);
+          resolve();
+        }
+      }, 200);
+    });
+  }
+
+  /**
    * Wait until a window's pane produces any output.
    * Used to verify CLI startup — if no output within timeout, CLI likely failed.
    */
