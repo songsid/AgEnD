@@ -894,9 +894,9 @@ export class Daemon extends EventEmitter {
     }
 
     // Serialize deliveries: each message waits for the previous to complete,
-    // and each waits for the CLI to be idle before pasting.
-    const enqueuedAt = Date.now();
-    const isFromInstance = !!meta.from_instance;
+    // and each waits for the CLI to be idle before pasting. Messages are never
+    // dropped for age — a long-busy CLI just queues them until it frees up
+    // (the user can press Cancel to interrupt and let the queue drain sooner).
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
     const wasQueued = this.pasteQueueDepth > 0;
@@ -909,11 +909,6 @@ export class Daemon extends EventEmitter {
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
-        // Drop stale user messages (>60s in queue), but never drop cross-instance messages
-        if (!isFromInstance && Date.now() - enqueuedAt > 60_000) {
-          this.logger.warn({ age: Date.now() - enqueuedAt, user: meta.user }, "Dropping stale message");
-          return;
-        }
         if (this.config.pre_task_command) {
           await this.deliverMessage(this.config.pre_task_command);
         }
