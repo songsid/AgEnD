@@ -173,6 +173,21 @@ export class TmuxManager {
     } catch { return false; }
   }
 
+  /**
+   * Paste text into the pane WITHOUT submitting (no Enter). Returns false on failure.
+   * Callers that need to verify the idle→busy transition before/after Enter use this
+   * together with sendSpecialKey("Enter") so they control submit timing and retries.
+   */
+  async pasteBuffer(text: string): Promise<boolean> {
+    try {
+      const target = `${this.sessionName}:${this.windowId}`;
+      const bufName = `paste-${this.windowId}-${Date.now()}`;
+      await exec("tmux", TmuxManager.tmuxArgs(["set-buffer", "-b", bufName, "--", text]));
+      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
+      return true;
+    } catch { return false; }
+  }
+
   async pipeOutput(logPath: string): Promise<void> {
     // pipe-pane's shell command runs via /bin/sh -c. Reject control characters
     // that would break out of the single-quote escape (newlines, NULs, etc.);
