@@ -86,8 +86,6 @@ export interface LifecycleReplaceArgs {
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
-  /** Last time a deliveryStuck hang notification fired per instance (debounce). */
-  private lastStuckNotifyAt = new Map<string, number>();
 
   constructor(private ctx: LifecycleContext) {}
 
@@ -219,26 +217,18 @@ export class InstanceLifecycle {
     daemon.on("message_queued", (data: { chatId: string; messageId: string }) => {
       this.ctx.reactMessageStatus(data.chatId, data.messageId, "⏳");
     });
+    // 👀 delivered (agent has the message), ✅ confirmed (agent started processing).
     daemon.on("message_delivered", (data: { chatId: string; messageId: string }) => {
+      this.ctx.reactMessageStatus(data.chatId, data.messageId, "👀");
+    });
+    daemon.on("message_confirmed", (data: { chatId: string; messageId: string }) => {
       this.ctx.reactMessageStatus(data.chatId, data.messageId, "✅");
     });
     daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string }) => {
       this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
-      this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed");
+      this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
       this.ctx.reactMessageStatus(data.chatId, data.messageId, "❌");
     }, this.ctx.logger, `daemon.message_failed[${name}]`));
-    daemon.on("deliveryStuck", safeHandler(async (data: { name: string; timeoutMs: number }) => {
-      // Merge with hang notification, but debounce: a stuck CLI may stack several
-      // queued messages, each aborting — only surface one alert per 5 min.
-      const now = Date.now();
-      const last = this.lastStuckNotifyAt.get(name) ?? 0;
-      if (now - last < 5 * 60_000) return;
-      this.lastStuckNotifyAt.set(name, now);
-      this.ctx.eventLog?.insert(name, "delivery_stuck", { timeoutMs: data.timeoutMs });
-      this.ctx.logger.warn({ name, timeoutMs: data.timeoutMs }, "Delivery stuck — CLI busy past idle ceiling");
-      await this.ctx.sendHangNotification(name);
-      this.ctx.webhookEmit("delivery_stuck", name, { timeoutMs: data.timeoutMs });
-    }, this.ctx.logger, `daemon.deliveryStuck[${name}]`));
 
     this.ctx.setTopicIcon(name, "green");
     this.ctx.touchActivity(name);
