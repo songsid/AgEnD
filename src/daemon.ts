@@ -510,6 +510,17 @@ export class Daemon extends EventEmitter {
           // Already attempted recovery — fall through to normal crash handling
         }
 
+        // Detect a --continue/--resume failure (no conversation to resume). The
+        // session-id file persists across the crash, so a blind respawn would add
+        // --continue again and crash in the same way → loop. Clear the session id
+        // and skip resume so the next spawn starts fresh. (skipResume also stops
+        // saveSessionId below from resurrecting the id from statusline.json.)
+        if (lastOutput && /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)|--continue/i.test(lastOutput)) {
+          this.logger.warn("Detected --continue/resume failure — clearing session-id; next spawn starts fresh");
+          try { unlinkSync(join(this.instanceDir, "session-id")); } catch { /* may not exist */ }
+          this.skipResume = true;
+        }
+
         // Append to crash history
         this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
 
@@ -1595,6 +1606,9 @@ export class Daemon extends EventEmitter {
   }
 
   private saveSessionId(): void {
+    // When a resume failure has forced a fresh start, don't persist the stale id
+    // back from statusline.json — that would re-arm --continue and re-loop.
+    if (this.skipResume) return;
     const sid = this.backend?.getSessionId();
     if (sid) {
       writeFileSync(join(this.instanceDir, "session-id"), sid);
