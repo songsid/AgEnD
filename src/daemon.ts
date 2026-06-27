@@ -894,9 +894,9 @@ export class Daemon extends EventEmitter {
     }
 
     // Serialize deliveries: each message waits for the previous to complete,
-    // and each waits for the CLI to be idle before pasting.
-    const enqueuedAt = Date.now();
-    const isFromInstance = !!meta.from_instance;
+    // and each waits for the CLI to be idle before pasting. Messages are never
+    // dropped for age — a long-busy CLI just queues them until it frees up
+    // (the user can press Cancel to interrupt and let the queue drain sooner).
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
     const wasQueued = this.pasteQueueDepth > 0;
@@ -909,11 +909,6 @@ export class Daemon extends EventEmitter {
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
-        // Drop stale user messages (>60s in queue), but never drop cross-instance messages
-        if (!isFromInstance && Date.now() - enqueuedAt > 60_000) {
-          this.logger.warn({ age: Date.now() - enqueuedAt, user: meta.user }, "Dropping stale message");
-          return;
-        }
         if (this.config.pre_task_command) {
           await this.deliverMessage(this.config.pre_task_command);
         }
@@ -921,10 +916,10 @@ export class Daemon extends EventEmitter {
           this.pendingInstructionsNotice = false;
           await this.deliverMessage("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
         }
-        const delivered = await this.deliverMessage(formatted);
-        if (chatId && messageId) {
-          this.emit(delivered ? "message_delivered" : "message_failed", { chatId: meta.thread_id || chatId, messageId });
-        }
+        const status = (chatId && messageId)
+          ? { chatId: meta.thread_id || chatId, messageId }
+          : undefined;
+        await this.deliverMessage(formatted, status);
       } finally {
         this.pasteQueueDepth--;
       }
@@ -935,17 +930,21 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Deliver a single message: wait for idle, paste, submit, and verify receipt.
-   * Returns true if the message was delivered (and the CLI acknowledged it by
-   * transitioning idle→busy), false on failure or if the CLI is stuck.
+   * Deliver a single message and drive its status reactions:
+   *   ⏳ message_queued    — CLI busy; queued, waiting for idle
+   *   👀 message_delivered — pasted + Enter sent; agent now has it
+   *   ✅ message_confirmed — idle→busy transition observed; agent is processing
+   *   ❌ message_failed    — tmux window gone, paste retries exhausted
+   * Returns true once the message is in the CLI, false only on real delivery failure.
    *
-   * Bug A (silent message loss): paste failures now retry with backoff and, on
-   * total failure, return false so the caller can emit `message_failed`.
-   * Bug B (swallowed Enter / blind force-paste): we never force-paste into a busy
-   * CLI; instead we wait for idle (up to the ceiling), then confirm the idle→busy
-   * transition after Enter, re-sending Enter once if it was swallowed.
+   * Bug A (silent message loss): paste failures retry with backoff (window recovery)
+   * and emit `message_failed` if all attempts fail.
+   * Busy handling (UX): we never force-paste into a busy CLI and never give up on a
+   * busy one — we show ⏳ and wait for idle indefinitely (a genuinely hung CLI is the
+   * hang detector's job; a user who can't wait presses Cancel → Escape → idle). The
+   * pasteLock is serial, so later messages naturally queue behind this wait.
    */
-  private async deliverMessage(formatted: string): Promise<boolean> {
+  private async deliverMessage(formatted: string, status?: { chatId: string; messageId: string }): Promise<boolean> {
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
     if (fenceCount % 2 !== 0) {
@@ -955,17 +954,11 @@ export class Daemon extends EventEmitter {
 
     let windowId = this.getWindowId();
 
-    // Bug B step 3: wait for idle. Do NOT blind-paste on timeout — a CLI that is
-    // still busy after the full ceiling is genuinely stuck; hand it to the hang
-    // detector rather than corrupting its input mid-stream.
-    if (windowId && this.controlClient) {
-      const idleTimeout = this.config.lightweight ? 30_000 : 120_000;
-      const idle = await this.controlClient.waitForIdle(windowId, idleTimeout);
-      if (!idle) {
-        this.logger.warn({ idleTimeout }, "Delivery aborted — CLI still busy after idle timeout (stuck)");
-        this.emit("deliveryStuck", { name: this.name, timeoutMs: idleTimeout });
-        return false;
-      }
+    // If the CLI is busy, show ⏳ and wait for it to go idle — no timeout, no force.
+    if (windowId && this.controlClient && !this.controlClient.isIdle(windowId)) {
+      if (status) this.emit("message_queued", status);
+      this.logger.debug("CLI busy — queuing message until idle");
+      await this.controlClient.waitUntilIdle(windowId);
     }
 
     // Bug A: paste with backoff. Transient failures are usually a stale window id
@@ -984,25 +977,31 @@ export class Daemon extends EventEmitter {
       await new Promise(r => setTimeout(r, 500));
       const enterAt = Date.now();
       await this.tmux!.sendSpecialKey("Enter");
+      if (status) this.emit("message_delivered", status); // 👀
 
-      // Bug B step 1+2: confirm the CLI accepted the message by transitioning
-      // idle→busy (new output after Enter). If still idle after ~2s the Enter was
-      // likely swallowed while the TUI was redrawing — re-send Enter once.
+      // Confirm the CLI accepted the message by transitioning idle→busy (new output
+      // after Enter). If still idle after ~2s the Enter was likely swallowed while
+      // the TUI was redrawing — re-send Enter once and re-check.
       if (windowId && this.controlClient) {
-        const becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
+        let becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
+          const retryAt = Date.now();
           await this.tmux!.sendSpecialKey("Enter");
+          becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
         }
+        if (becameBusy && status) this.emit("message_confirmed", status); // ✅
       } else {
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
         await this.tmux!.sendSpecialKey("Enter");
+        if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
       }
       return true;
     }
 
     this.logger.error("Message delivery failed after retries — window not ready");
+    if (status) this.emit("message_failed", status); // ❌
     return false;
   }
 
