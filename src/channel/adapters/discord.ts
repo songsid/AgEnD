@@ -382,12 +382,17 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return { messageId: msg.id, chatId, threadId: opts?.threadId };
   }
 
-  async editMessage(chatId: string, messageId: string, text: string): Promise<void> {
-    // chatId is guild ID in channels topology, but messageId is in a channel.
-    // We need to find the message. Try all text channels in the guild.
-    // Optimization: caller usually provides the channel via sendText return value.
+  async editMessage(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
+    // Prefer the exact channel (handles forum-topic threads, which a GuildText
+    // scan misses). chatId is the guild id in the channels topology, so the
+    // message actually lives in threadId (when set) or a specific text channel.
     try {
-      // Try the general channel first, then search
+      const channel = await this._fetchTextChannel(threadId ?? chatId);
+      const msg = await channel.messages.fetch(messageId);
+      await msg.edit(text.slice(0, DISCORD_MAX_LENGTH));
+      return;
+    } catch { /* not in that channel — fall through to scan */ }
+    try {
       const guild = await this.client.guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter(
         (c) => c.type === ChannelType.GuildText,

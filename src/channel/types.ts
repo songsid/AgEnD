@@ -28,7 +28,9 @@ export interface ChannelAdapter extends EventEmitter {
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage>;
-  editMessage(chatId: string, messageId: string, text: string): Promise<void>;
+  /** threadId locates the message when it lives in a topic/thread (Discord forum
+   * topics are their own channel and won't be found by a guild text-channel scan). */
+  editMessage(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
   /** Edit a message's text AND remove any inline buttons/components. Used to
    * retire a Cancel button after the agent replies or a timeout elapses.
    * threadId locates the message when it lives in a topic/thread (Discord
