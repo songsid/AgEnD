@@ -3982,6 +3982,29 @@ When users create specialized instances, suggest these configurations:
         return;
       }
 
+      if (req.method === "POST" && req.url?.startsWith("/stop/")) {
+        const name = decodeURIComponent(req.url.slice("/stop/".length));
+        this.logger.info({ name }, "Instance stop requested via HTTP");
+        (async () => {
+          try {
+            // Runs inside the live fleet process: lifecycle.stop finds the
+            // in-memory daemon and stops just this instance. (Doing this from a
+            // detached CLI FleetManager would read the shared daemon.pid — the
+            // fleet's own pid — and kill the whole fleet.)
+            await this.stopInstance(name);
+            this.logger.info({ name }, "Instance stopped");
+            this.emitSseEvent("status", this.getUiStatus());
+            res.writeHead(200);
+            res.end(JSON.stringify({ stopped: name }));
+          } catch (err) {
+            this.logger.error({ err, name }, "Instance stop failed");
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: `Stop failed: ${(err as Error).message}` }));
+          }
+        })();
+        return;
+      }
+
       // ── Agent CLI endpoint ─────
       if (req.url === "/agent" && req.method === "POST") {
         handleAgentRequest(req, res, this as unknown as import("./agent-endpoint.js").AgentEndpointContext);

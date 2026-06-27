@@ -147,11 +147,35 @@ fleet
   .argument("[instance]", "Specific instance to stop")
   .action(async (instance?: string) => {
     if (instance) {
-      const { FleetManager } = await import("./fleet-manager.js");
-      const fm = new FleetManager(DATA_DIR);
-      await fm.stopInstance(instance);
-      console.log("Stopped");
-    } else {
+      // Stop a single instance via the RUNNING fleet's HTTP API. Do NOT spawn a
+      // detached FleetManager and call stopInstance(): its in-memory daemons map
+      // is empty, so lifecycle.stop falls back to reading the instance's
+      // daemon.pid — which is the shared fleet process pid (daemons run
+      // in-process) — and SIGTERMs the whole fleet.
+      const { loadFleetConfig } = await import("./config.js");
+      const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
+      const port = fleet.health_port ?? 19280;
+      let token = "";
+      try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
+      try {
+        const resp = await fetch(`http://127.0.0.1:${port}/stop/${encodeURIComponent(instance)}`, {
+          method: "POST",
+          headers: token ? { "X-Agend-Token": token } : {},
+        });
+        const body = await resp.json().catch(() => ({})) as Record<string, unknown>;
+        if (resp.ok) {
+          console.log(`Instance "${instance}" stopped`);
+        } else {
+          console.error(`Stop failed: ${body.error ?? resp.statusText}`);
+          process.exit(1);
+        }
+      } catch {
+        console.error(`Cannot connect to fleet (port ${port}). Is the fleet running?`);
+        process.exit(1);
+      }
+      return;
+    }
+    {
       const pidPath = join(DATA_DIR, "fleet.pid");
       if (!existsSync(pidPath)) {
         console.error("Fleet is not running (no PID file found)");
@@ -197,8 +221,13 @@ fleet
       const { loadFleetConfig } = await import("./config.js");
       const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
       const port = fleet.health_port ?? 19280;
+      let token = "";
+      try { token = readFileSync(join(DATA_DIR, "web.token"), "utf-8").trim(); } catch { /* fleet may not be running */ }
       try {
-        const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, { method: "POST" });
+        const resp = await fetch(`http://127.0.0.1:${port}/restart/${encodeURIComponent(instance)}`, {
+          method: "POST",
+          headers: token ? { "X-Agend-Token": token } : {},
+        });
         const body = await resp.json() as Record<string, unknown>;
         if (resp.ok) {
           console.log(`Instance "${instance}" restarted (immediate)`);
