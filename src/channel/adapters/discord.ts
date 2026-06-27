@@ -414,7 +414,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   /** Edit text and clear components (Discord keeps components on a plain edit,
    * so we must pass an empty array to drop the Cancel button). */
-  async editMessageRemoveButtons(chatId: string, messageId: string, text: string): Promise<void> {
+  async editMessageRemoveButtons(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
+    // Prefer the exact channel (handles forum-topic threads, which a GuildText
+    // scan misses); fall back to scanning top-level text channels.
+    try {
+      const channel = await this._fetchTextChannel(threadId ?? chatId);
+      const msg = await channel.messages.fetch(messageId);
+      await msg.edit({ content: text.slice(0, DISCORD_MAX_LENGTH), components: [] });
+      return;
+    } catch { /* not in that channel — fall through to scan */ }
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
@@ -431,7 +439,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch { /* message gone — nothing to clear */ }
   }
 
-  async deleteMessage(chatId: string, messageId: string): Promise<void> {
+  async deleteMessage(chatId: string, messageId: string, threadId?: string): Promise<void> {
+    // Prefer the exact channel (handles forum-topic threads, which a GuildText
+    // scan misses); fall back to scanning top-level text channels.
+    try {
+      const channel = await this._fetchTextChannel(threadId ?? chatId);
+      const msg = await channel.messages.fetch(messageId);
+      await msg.delete();
+      return;
+    } catch { /* not in that channel — fall through to scan */ }
     try {
       const guild = await this.client.guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
