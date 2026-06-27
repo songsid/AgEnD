@@ -2604,12 +2604,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
     if (adapter.deleteMessage) {
-      adapter.deleteMessage(pending.chatId, pending.messageId)
+      adapter.deleteMessage(pending.chatId, pending.messageId, pending.threadId)
         .catch((e: Error) => this.logger.debug({ err: e.message, instanceName }, "Failed to delete cancel button"));
+    } else if (adapter.editMessageRemoveButtons) {
+      adapter.editMessageRemoveButtons(pending.chatId, pending.messageId, "✅", pending.threadId)
+        .catch(() => { /* best effort */ });
     } else {
-      // Fallback for adapters without delete: at least drop the button.
-      const remove = adapter.editMessageRemoveButtons?.bind(adapter) ?? adapter.editMessage.bind(adapter);
-      remove(pending.chatId, pending.messageId, "✅").catch(() => { /* best effort */ });
+      // Last resort for adapters without delete or button-removal.
+      adapter.editMessage(pending.chatId, pending.messageId, "✅").catch(() => { /* best effort */ });
     }
   }
 
