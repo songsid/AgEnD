@@ -1154,52 +1154,69 @@ program
     }
 
     // ── Restart fleet ──
+    // Try each runtime environment in order and stop at the first that succeeds.
+    // We no longer gate on fleet.pid existence: a fleet running under systemd or
+    // launchd writes its pid in the service's own HOME, which may differ from the
+    // path this command resolves (sudo, AGEND_HOME, etc.) — so an absent pid file
+    // does NOT mean the fleet is stopped. Ask the service manager first.
     const pidPath = join(DATA_DIR, "fleet.pid");
-    if (!existsSync(pidPath)) {
-      console.log("\n  Fleet not running. Start with: agend start\n");
-      return;
-    }
-
-    // Kill old fleet process first to prevent duplicate
-    const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-    if (oldPid) {
-      try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
-      // Wait up to 10s for old process to exit
-      for (let i = 0; i < 20; i++) {
-        try { process.kill(oldPid, 0); } catch { break; }
-        spawnSync("sleep", ["0.5"]);
-      }
-      // Force kill if still alive
-      try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ }
-      try { unlinkSync(pidPath); } catch { /* best effort */ }
-    }
-
     console.log("  Restarting fleet...");
+
+    const isActive = (cmd: string): boolean => {
+      try {
+        return spawnSync("sh", ["-c", cmd], { encoding: "utf-8", timeout: 5000 }).stdout?.trim() === "active";
+      } catch { return false; }
+    };
+    const run = (cmd: string): boolean => {
+      try { execSync(cmd, { stdio: "inherit", timeout: 15000 }); return true; }
+      catch { return false; }
+    };
+
+    // 1. System-level systemd service "agend"
+    if (plat !== "macos" && isActive("systemctl is-active agend 2>/dev/null")) {
+      run("systemctl daemon-reload");
+      if (run("systemctl restart agend")) { console.log("  ✓ Service restarted (system)\n"); return; }
+    }
+    // 2. User-level systemd service "com.agend.fleet"
+    if (plat !== "macos" && isActive("systemctl --user is-active com.agend.fleet 2>/dev/null")) {
+      run("systemctl --user daemon-reload");
+      try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
+      if (run("systemctl --user restart com.agend.fleet")) { console.log("  ✓ Service restarted (user)\n"); return; }
+    }
+    // 3. launchd (macOS)
     if (plat === "macos") {
       const uid = process.getuid?.() ?? 501;
       const label = "com.agend.fleet";
       try {
-        execSync(`launchctl kickstart -k gui/${uid}/${label}`, { stdio: "inherit", timeout: 15000 });
-        console.log("  ✓ Service restarted\n");
-        return;
-      } catch { /* fall through to manual restart */ }
-    } else {
-      try {
-        execSync("systemctl --user daemon-reload", { stdio: "pipe", timeout: 5000 });
-        // Reset failed state in case the kill above left systemd confused
-        try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch {}
-        execSync("systemctl --user start com.agend.fleet", { stdio: "inherit", timeout: 15000 });
-        console.log("  ✓ Service restarted\n");
-        return;
-      } catch { /* fall through */ }
+        // print succeeds only if the service is loaded in launchd
+        execSync(`launchctl print gui/${uid}/${label}`, { stdio: "pipe", timeout: 5000 });
+        if (run(`launchctl kickstart -k gui/${uid}/${label}`)) { console.log("  ✓ Service restarted\n"); return; }
+      } catch { /* not loaded — fall through */ }
     }
-
-    // Fallback: start directly using new binary
-    const child = spawnAsync(agendPath!, ["fleet", "start"], {
-      detached: true, stdio: "ignore",
-    });
-    child.unref();
-    console.log("  ✓ Fleet restarting in background\n");
+    // 4. Detached process tracked by fleet.pid (no service manager)
+    if (existsSync(pidPath)) {
+      const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
+      let alive = false;
+      if (oldPid) { try { process.kill(oldPid, 0); alive = true; } catch { /* dead or not ours */ } }
+      if (alive) {
+        try { process.kill(oldPid, "SIGTERM"); } catch { /* already gone */ }
+        // Wait up to 10s for the old process to exit
+        for (let i = 0; i < 20; i++) {
+          try { process.kill(oldPid, 0); } catch { break; }
+          spawnSync("sleep", ["0.5"]);
+        }
+        try { process.kill(oldPid, "SIGKILL"); } catch { /* already gone */ }
+        try { unlinkSync(pidPath); } catch { /* best effort */ }
+        const child = spawnAsync(agendPath!, ["fleet", "start"], { detached: true, stdio: "ignore" });
+        child.unref();
+        console.log("  ✓ Fleet restarting in background\n");
+        return;
+      }
+      // Stale pid file (process gone) — clean it up before declaring stopped.
+      try { unlinkSync(pidPath); } catch { /* best effort */ }
+    }
+    // 5. Nothing running anywhere
+    console.log("\n  Fleet not running. Start with: agend start\n");
   });
 
 program
