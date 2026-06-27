@@ -20,7 +20,7 @@ export class ToolTracker {
       this.statusMessageId = sent.messageId;
     } else {
       // Subsequent — edit existing
-      await this.adapter.editMessage(this.chatId, this.statusMessageId, this.lines.join("\n"));
+      await this.adapter.editMessage(this.chatId, this.statusMessageId, this.lines.join("\n"), this.threadId);
     }
   }
 
@@ -33,7 +33,7 @@ export class ToolTracker {
       }
     }
     if (this.statusMessageId) {
-      await this.adapter.editMessage(this.chatId, this.statusMessageId, this.lines.join("\n"));
+      await this.adapter.editMessage(this.chatId, this.statusMessageId, this.lines.join("\n"), this.threadId);
     }
   }
 

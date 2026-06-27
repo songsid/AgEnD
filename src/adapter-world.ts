@@ -31,8 +31,8 @@ export class AdapterWorld {
     return this.adapter.react(chatId, messageId, emoji);
   }
 
-  editMessage(chatId: string, messageId: string, text: string): Promise<void> {
-    return this.adapter.editMessage(chatId, messageId, text);
+  editMessage(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
+    return this.adapter.editMessage(chatId, messageId, text, threadId);
   }
 
   downloadAttachment(fileId: string): Promise<string> {

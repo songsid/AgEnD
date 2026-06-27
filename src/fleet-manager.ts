@@ -814,9 +814,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await this.startInstance(instanceName, config, topicMode);
             // startInstance already calls connectIpcToInstance
           }
-          this.adapter?.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`).catch(() => {});
+          this.adapter?.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`, data.threadId).catch(() => {});
         } else {
-          this.adapter?.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`).catch(() => {});
+          this.adapter?.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`, data.threadId).catch(() => {});
         }
         return;
       }
@@ -1066,9 +1066,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             const topicMode = this.fleetConfig?.channel?.mode === "topic";
             await this.startInstance(instanceName, config, topicMode);
           }
-          adapter.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`).catch(() => {});
+          adapter.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`, data.threadId).catch(() => {});
         } else {
-          adapter.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`).catch(() => {});
+          adapter.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`, data.threadId).catch(() => {});
         }
         return;
       }
@@ -1871,7 +1871,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!chatId) return;
 
     if (editMessageId) {
-      statusAdapter.editMessage(chatId, editMessageId, text).catch(e => this.logger.debug({ err: e }, "Failed to edit tool status message"));
+      statusAdapter.editMessage(chatId, editMessageId, text, threadId).catch(e => this.logger.debug({ err: e }, "Failed to edit tool status message"));
     } else {
       statusAdapter.sendText(chatId, text, { threadId }).then((sent) => {
         const ipc = this.instanceIpcClients.get(instanceName);
@@ -2611,7 +2611,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         .catch(() => { /* best effort */ });
     } else {
       // Last resort for adapters without delete or button-removal.
-      adapter.editMessage(pending.chatId, pending.messageId, "✅").catch(() => { /* best effort */ });
+      adapter.editMessage(pending.chatId, pending.messageId, "✅", pending.threadId).catch(() => { /* best effort */ });
     }
   }
 
