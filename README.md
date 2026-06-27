@@ -35,7 +35,7 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 
 🚀 **Fleet Management** — One bot, N projects. Each Telegram Forum Topic is an isolated agent session.
 
-🔄 **Multi-Backend** — Claude Code, Gemini CLI, Codex, OpenCode, Kiro CLI, Antigravity CLI. Switch or mix freely.
+🔄 **Multi-Backend** — Claude Code, Codex, OpenCode, Kiro CLI, Antigravity CLI. Switch or mix freely.
 
 🤝 **Agent Collaboration** — Agents discover, wake, and message each other via MCP tools. A General Topic routes tasks to the right agent using natural language.
 
@@ -50,6 +50,10 @@ AgEnD (**Agent Engineering Daemon**) turns your Telegram or Discord into a comma
 📄 **HTML Chat Export** — Export any agent session as a self-contained HTML file for sharing or archiving.
 
 🪞 **Mirror Topic** — Cross-instance visibility. Watch another agent's work in real time from a separate topic.
+
+🛑 **Cancel Button** — Interrupt agent generation with a single tap. Inline button appears on every message; works across TG and Discord.
+
+📬 **Delivery Status** — See message delivery progress: 👀 received → ⏳ processing → ✅ done (or ❌ failed).
 
 🖥️ **Web Dashboard** — Live fleet monitoring in the browser with SSE updates and integrated chat UI.
 
@@ -93,7 +97,7 @@ graph LR
   subgraph Fleet
     Daemon --> General["General<br/>Dispatcher"]
     Daemon --> A["Instance A<br/>Claude Code<br/>Project X"]
-    Daemon --> B["Instance B<br/>Gemini CLI<br/>Project Y"]
+    Daemon --> B["Instance B<br/>Antigravity CLI<br/>Project Y"]
     A <-.->|MCP Tools| B
     General -.->|routes tasks| A
     General -.->|routes tasks| B
@@ -192,7 +196,7 @@ defaults:
 channels:
   "1234567890":               # Discord channel ID
     name: dev-help
-    backend: gemini-cli       # Override for this channel
+    backend: kiro-cli          # Override for this channel
 ```
 
 Backend fallback: channel → `defaults.backend` → `fleet.yaml` defaults → `claude-code`
@@ -202,6 +206,7 @@ Backend fallback: channel → `defaults.backend` → `fleet.yaml` defaults → `
 - macOS (launchd) and Linux (systemd) supported; Windows is not
 - Official Telegram plugin in global `enabledPlugins` causes 409 polling conflicts
 - OpenCode and Kiro CLI do not read MCP server `instructions` field — fleet context and workflow templates are not injected into these backends' system prompts. Awaiting upstream fix.
+- Gemini CLI is deprecated since 2026-06-18 — use Antigravity CLI (`agy`) instead
 
 ## License
 
