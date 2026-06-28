@@ -148,6 +148,20 @@ export class Daemon extends EventEmitter {
       }
     } catch { /* corrupt file — ignore */ }
 
+    // Restore last reply target so a fleet-topic instance can reply correctly
+    // BEFORE its first post-restart inbound arrives (otherwise lastChatId is empty
+    // → reply tool sends to "" → Discord 404).
+    try {
+      const lastChatPath = join(this.instanceDir, "last-chat.json");
+      if (existsSync(lastChatPath)) {
+        const saved = JSON.parse(readFileSync(lastChatPath, "utf-8"));
+        if (saved.chatId) {
+          this.lastChatId = saved.chatId;
+          this.lastThreadId = saved.threadId || undefined;
+        }
+      }
+    } catch { /* corrupt/missing — ignore */ }
+
     // 1. IPC server — bridge between MCP server (Claude's child) and daemon
     const sockPath = join(this.instanceDir, "channel.sock");
     this.ipcServer = new IpcServer(sockPath, this.logger);
@@ -219,10 +233,6 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
-        // Only update lastChatId/lastThreadId from real channel messages (non-empty chat_id).
-        // Cross-instance messages have empty chat_id and must not overwrite these.
-        if (meta.chat_id) this.lastChatId = meta.chat_id;
-        if (meta.chat_id && meta.thread_id) this.lastThreadId = meta.thread_id;
         this.pushChannelMessage(msg.content as string, meta, targetSession);
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
@@ -238,8 +248,6 @@ export class Daemon extends EventEmitter {
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
-        this.lastChatId = meta.chat_id;
-        this.lastThreadId = meta.thread_id;
         this.pushChannelMessage(payload.message as string, meta);
       } else if (msg.type === "fleet_tool_status_ack") {
         // Fleet manager sent us the messageId for our tool status message
@@ -868,6 +876,10 @@ export class Daemon extends EventEmitter {
       this.logger.warn("Cannot push channel message: tmux not running");
       return;
     }
+    // Remember (and persist) the reply target. Only real channel messages have a
+    // non-empty chat_id; cross-instance messages have chat_id="" and must NOT
+    // overwrite it (their reply would otherwise go nowhere).
+    this.updateLastChat(meta.chat_id, meta.thread_id);
     if (this.pendingInstructionsUpdate) {
       writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
       this.pendingInstructionsUpdate = undefined;
@@ -1603,6 +1615,21 @@ export class Daemon extends EventEmitter {
     }
     // Exhausted attempts — assume ok for unknown CLI prompts
     return true;
+  }
+
+  /**
+   * Update and persist the last reply target. Ignores empty chatId (cross-instance
+   * messages) so it never overwrites a real channel target. Persisted to
+   * last-chat.json so the reply target survives a restart (see start()).
+   */
+  private updateLastChat(chatId?: string, threadId?: string): void {
+    if (!chatId) return;
+    this.lastChatId = chatId;
+    if (threadId) this.lastThreadId = threadId;
+    try {
+      writeFileSync(join(this.instanceDir, "last-chat.json"),
+        JSON.stringify({ chatId: this.lastChatId, threadId: this.lastThreadId }));
+    } catch { /* best effort */ }
   }
 
   private saveSessionId(): void {
