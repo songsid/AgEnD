@@ -18,6 +18,28 @@ export function sanitizeInstanceName(name: string): string {
   return sanitized || "project";
 }
 
+/** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
+export const SAVE_FILENAME_RE = /^[\w.-]+$/;
+
+/**
+ * Build the backend-specific session-save command, or null if the backend has no
+ * /save equivalent. kiro-cli → `/chat save <name>`; claude-code → `/export <name>.md`.
+ */
+export function saveCommandForBackend(backend: string, filename: string, force = false): string | null {
+  if (backend === "kiro-cli") return force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
+  if (backend === "claude-code") return `/export ${filename}.md`;
+  return null;
+}
+
+/** Extract the filename argument from `/save <name>` or `/save@bot <name>`. */
+export function parseSaveFilename(text: string): string {
+  const m = text.match(/^\/save(?:@\S+)?(?:\s+(.*))?$/);
+  return (m?.[1] ?? "").trim();
+}
+
+/** Shared message when a backend doesn't support /save. */
+export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this backend (only kiro-cli and claude-code)";
+
 /**
  * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
  * MOST RECENT prompt wins (a captured scrollback may hold several). Covers the
@@ -112,6 +134,23 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      const filename = parseSaveFilename(text);
+      if (!filename) {
+        await adapter.sendText(msg.chatId, "Usage: /save <filename>", { threadId: msg.threadId });
+        return true;
+      }
+      if (!SAVE_FILENAME_RE.test(filename)) {
+        await adapter.sendText(msg.chatId, "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.", { threadId: msg.threadId });
+        return true;
+      }
+      const result = await this.sendSave(instanceName, filename);
+      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text !== "/ctx" && !text.startsWith("/ctx@")) return false;
 
     const adapter = this.getReplyAdapter(msg);
@@ -158,6 +197,20 @@ export class TopicCommands {
     if (ipc?.connected) {
       ipc.send({ type: "raw_paste", content: "/compact" });
       return "🗜️ Compact command sent.";
+    }
+    return "❌ Instance not connected (IPC unavailable)";
+  }
+
+  /** Send a backend-appropriate session-save command to a fleet-topic instance. */
+  async sendSave(instanceName: string, filename: string): Promise<string> {
+    const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+      ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+    const cmd = saveCommandForBackend(backend, filename);
+    if (!cmd) return SAVE_UNSUPPORTED_MSG;
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (ipc?.connected) {
+      ipc.send({ type: "raw_paste", content: cmd });
+      return `💾 Save command sent (\`${cmd}\`).`;
     }
     return "❌ Instance not connected (IPC unavailable)";
   }
