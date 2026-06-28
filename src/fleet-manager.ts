@@ -28,7 +28,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, sanitizeInstanceName } from "./topic-commands.js";
+import { TopicCommands, sanitizeInstanceName, saveCommandForBackend, parseSaveFilename, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -864,7 +864,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: "discord",
           timestamp: new Date(),
         });
-      } else if (data.command === "save" || data.command === "load") {
+      } else if (data.command === "save") {
+        await this.handleSlashSave(data);
+      } else if (data.command === "load") {
+        // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -874,18 +877,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
-        let rawCmd: string;
-        if (data.command === "save") {
-          const filename = data.options?.filename as string;
-          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-          rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
-        } else {
-          const filename = data.options?.filename as string;
-          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-          rawCmd = `/chat load ${filename}`;
-        }
-        this.pasteRawToClassicInstance(target.name, rawCmd);
-        await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+        const filename = data.options?.filename as string;
+        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+        this.pasteRawToClassicInstance(target.name, `/chat load ${filename}`);
+        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${target.name}`);
       } else if (data.command === "compact") {
         const target = this.routing.resolve(data.channelId);
         if (!target) { await data.respond("No active agent in this channel."); return; }
@@ -1113,7 +1108,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           source: channelConfig.type,
           timestamp: new Date(),
         });
-      } else if (data.command === "save" || data.command === "load") {
+      } else if (data.command === "save") {
+        await this.handleSlashSave(data);
+      } else if (data.command === "load") {
+        // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
@@ -1123,18 +1121,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
-        let rawCmd: string;
-        if (data.command === "save") {
-          const filename = data.options?.filename as string;
-          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-          rawCmd = data.options?.force ? `/chat save ${filename} -f` : `/chat save ${filename}`;
-        } else {
-          const filename = data.options?.filename as string;
-          if (!/^[\w.-]+$/.test(filename)) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-          rawCmd = `/chat load ${filename}`;
-        }
-        this.pasteRawToClassicInstance(target.name, rawCmd);
-        await data.respond(`✅ Sent \`${rawCmd}\` to ${target.name}`);
+        const filename = data.options?.filename as string;
+        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+        this.pasteRawToClassicInstance(target.name, `/chat load ${filename}`);
+        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${target.name}`);
       } else if (data.command === "compact") {
         const target = this.routing.resolve(data.channelId);
         if (!target) { await data.respond("No active agent in this channel."); return; }
@@ -1578,6 +1568,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           const reply = await this.topicCommands.getCtxText(ctxTarget.name);
           await msgAdapter?.sendText(chatId, reply);
+          return;
+        }
+
+        // Handle /save command (admin only)
+        if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
+          if (!this.classicChannels.isAdmin(msg.userId)) {
+            await msgAdapter?.sendText(chatId, "⛔ /save requires admin access.");
+            return;
+          }
+          const saveTarget = this.routing.resolve(chatId);
+          if (!saveTarget || saveTarget.kind !== "classic") {
+            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            return;
+          }
+          const filename = parseSaveFilename(text);
+          if (!filename) { await msgAdapter?.sendText(chatId, "Usage: /save <filename>"); return; }
+          if (!SAVE_FILENAME_RE.test(filename)) { await msgAdapter?.sendText(chatId, "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+          const backend = this.classicChannels.getBackendByInstance(saveTarget.name, this.fleetConfig?.defaults?.backend);
+          const cmd = saveCommandForBackend(backend, filename);
+          if (!cmd) { await msgAdapter?.sendText(chatId, SAVE_UNSUPPORTED_MSG); return; }
+          this.pasteRawToClassicInstance(saveTarget.name, cmd);
+          await msgAdapter?.sendText(chatId, `✅ Sent \`${cmd}\` to ${saveTarget.name}`);
           return;
         }
 
@@ -2553,6 +2565,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // /cancel) sends Escape to the instance's pane to interrupt generation.
 
   /** Send a "🛑 Cancel" button to the instance's topic/channel after delivery. */
+  /**
+   * Handle the DC `/save` slash command for both classic AND fleet-topic targets.
+   * Picks the backend-appropriate command (kiro → /chat save, claude → /export);
+   * unsupported backends get a clear error. Routes via classic paste or fleet IPC.
+   */
+  private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }): Promise<void> {
+    if (!this.classicChannels?.isAdmin(data.userId)) {
+      await data.respond("⛔ This command requires admin access.");
+      return;
+    }
+    const target = this.routing.resolve(data.channelId);
+    if (!target) {
+      await data.respond("No active agent in this channel. Use `/start` first.");
+      return;
+    }
+    const filename = (data.options?.filename as string) ?? "";
+    if (!SAVE_FILENAME_RE.test(filename)) {
+      await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.");
+      return;
+    }
+    const backend = target.kind === "classic"
+      ? this.classicChannels.getBackendByInstance(target.name, this.fleetConfig?.defaults?.backend)
+      : (this.fleetConfig?.instances[target.name]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+    // force (-f) is only meaningful for kiro/classic /chat save.
+    const force = target.kind === "classic" && !!data.options?.force;
+    const cmd = saveCommandForBackend(backend, filename, force);
+    if (!cmd) {
+      await data.respond(SAVE_UNSUPPORTED_MSG);
+      return;
+    }
+    if (target.kind === "classic") {
+      this.pasteRawToClassicInstance(target.name, cmd);
+    } else {
+      this.instanceIpcClients.get(target.name)?.send({ type: "raw_paste", content: cmd });
+    }
+    await data.respond(`✅ Sent \`${cmd}\` to ${target.name}`);
+  }
+
   async sendCancelButton(instanceName: string): Promise<void> {
     // Replace any stale button for this instance first.
     this.clearCancelButton(instanceName);
