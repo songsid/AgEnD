@@ -43,7 +43,10 @@ export class CodexBackend implements CliBackend {
     // containing JSON (e.g. AGEND_DECISIONS). Use namespaced key to avoid
     // conflicts when multiple Codex instances run simultaneously.
     for (const [name, entry] of Object.entries(config.mcpServers)) {
-      const mcpName = `${name}-${config.instanceName}`;
+      // Codex rejects non-ASCII MCP server names (e.g. CJK instance names) and
+      // would otherwise fail silently, leaving the instance with no reply MCP
+      // server. Sanitize to the safe charset codex accepts.
+      const mcpName = `${name}-${config.instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
       const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
       const args = ["mcp", "add", mcpName];
       for (const [k, v] of Object.entries(allEnv)) {
@@ -52,7 +55,9 @@ export class CodexBackend implements CliBackend {
       args.push("--", entry.command, ...entry.args);
       // Remove existing entry first (codex mcp add fails if name exists)
       try { execFileSync(this.binaryPath, ["mcp", "remove", mcpName], { stdio: "ignore" }); } catch { /* may not exist */ }
-      try { execFileSync(this.binaryPath, args, { stdio: "ignore" }); } catch { /* best effort */ }
+      // Surface add failures — a silent failure means no reply MCP server.
+      try { execFileSync(this.binaryPath, args, { stdio: "ignore" }); }
+      catch (e) { console.warn(`[codex] mcp add "${mcpName}" failed: ${(e as Error).message}`); }
     }
     // Clean up old non-namespaced key if present (one-time migration)
     try { execFileSync(this.binaryPath, ["mcp", "remove", "agend"], { stdio: "ignore" }); } catch { /* may not exist */ }
@@ -132,7 +137,8 @@ export class CodexBackend implements CliBackend {
 
   cleanup(config: CliBackendConfig): void {
     for (const name of Object.keys(config.mcpServers)) {
-      const mcpName = `${name}-${config.instanceName}`;
+      // Must match the sanitized name used in writeConfig, or removal misses it.
+      const mcpName = `${name}-${config.instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
       try { execFileSync(this.binaryPath, ["mcp", "remove", mcpName], { stdio: "ignore" }); } catch { /* best effort */ }
     }
 
