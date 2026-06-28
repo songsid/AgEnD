@@ -213,17 +213,19 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // interaction expires (>3s). Catch to prevent crashing the entire daemon.
     this.client.on("interactionCreate", async (interaction: Interaction) => {
       try {
-        if (interaction.guildId !== this.guildId) {
-          // Allow slash commands through — guild whitelist is checked by fleet-manager.
-          // Only block non-slash interactions (buttons) from unknown channels.
-          if (!interaction.isChatInputCommand() && !this.openChannels.has(interaction.channelId ?? "")) return;
-          if (!interaction.isChatInputCommand()) {
-            console.log(`[discord] classic channel interaction from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
-          }
-        }
-
+        // Buttons: acknowledge IMMEDIATELY, before any guild/channel filtering.
+        // A button has a 3s ack window; any early return (unknown guild/channel)
+        // or a downstream no-op (e.g. the cancel button was already cleared) would
+        // otherwise leave it unacknowledged and Discord shows "interaction failed /
+        // expired" right away. deferUpdate is a no-op edit, safe even if we then
+        // decide not to act on it.
         if (interaction.isButton()) {
-          await interaction.deferUpdate();
+          try { await interaction.deferUpdate(); } catch { /* already acknowledged / unknown interaction */ }
+          // Only act on buttons from the primary guild or a known open channel.
+          if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")) {
+            console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+            return;
+          }
           this.emit("callback_query", {
             callbackData: interaction.customId,
             chatId: this.guildId,
@@ -231,6 +233,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             messageId: interaction.message.id,
           });
           return;
+        }
+
+        if (interaction.guildId !== this.guildId) {
+          // Allow slash commands through — guild whitelist is checked by fleet-manager.
+          if (!interaction.isChatInputCommand() && !this.openChannels.has(interaction.channelId ?? "")) return;
         }
 
         if (interaction.isChatInputCommand()) {
