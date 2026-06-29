@@ -54,6 +54,7 @@ export interface OutboundContext {
   getGroupIdForInstance?(name: string): string;
   getWorldForInstance?(name: string): { id: string; adapter: ChannelAdapter } | undefined;
   sendCancelButton?(instanceName: string): Promise<void>;
+  clearCancelButton?(instanceName: string): void;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -135,8 +136,16 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
 
   targetIpc.send({ type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
   // Show a cancel button on the target's topic so a watching user can interrupt
-  // work started by another instance (delegate_task/request_information/etc).
-  void ctx.sendCancelButton?.(targetInstanceName);
+  // work started by another instance — but only for messages that actually put
+  // the recipient to work (task/query). Informational report/update messages
+  // don't trigger a turn the recipient would `reply` to, so a button there would
+  // orphan (nothing ever clears it). (A)
+  const isInformational = reqKind === "report" || reqKind === "update";
+  if (!isInformational) void ctx.sendCancelButton?.(targetInstanceName);
+  // A report_result means the SENDER just finished the delegated task it was
+  // working on — retire its own cancel button. report_result doesn't go through
+  // the reply tool, so nothing else would clear it. (B)
+  if (reqKind === "report") ctx.clearCancelButton?.(senderLabel);
 
   // Cross-instance topic notifications for visibility.
   // general_topic instances are always skipped (keep General clean).
