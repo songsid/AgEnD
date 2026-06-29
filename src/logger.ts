@@ -1,6 +1,6 @@
 import pino from "pino";
 import { join } from "node:path";
-import { mkdirSync, statSync, existsSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, statSync, existsSync, unlinkSync, renameSync, copyFileSync, truncateSync } from "node:fs";
 import { getAgendHome } from "./paths.js";
 
 const DATA_DIR = getAgendHome();
@@ -8,22 +8,32 @@ const LOG_FILE = join(DATA_DIR, "daemon.log");
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10 MB
 const ROTATE_MAX_FILES = 3;
 
-/** Rotate a log file: foo.log → foo.log.1 → foo.log.2 → foo.log.3 (deleted) */
+/**
+ * Rotate a log file via copytruncate: foo.log → foo.log.1 → foo.log.2 → foo.log.3 (deleted).
+ *
+ * We copy-then-truncate rather than rename the live log. pino (and any other
+ * writer) holds an open fd to the original inode; renaming the file would leave
+ * the writer appending to the rotated copy while the fresh log stays empty.
+ * truncateSync resets the same inode to size 0 in place, so the held fd keeps
+ * writing to the now-empty file. Copying before truncating means no data loss.
+ */
 export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFiles = ROTATE_MAX_FILES): void {
   try {
     if (!existsSync(logPath)) return;
     const stat = statSync(logPath);
     if (stat.size < maxSize) return;
 
-    // Shift existing rotated files
-    for (let i = maxFiles; i >= 1; i--) {
-      const src = i === 1 ? logPath : `${logPath}.${i - 1}`;
+    // Shift existing rotated files: .2 → .3 (oldest deleted), .1 → .2, …
+    for (let i = maxFiles; i >= 2; i--) {
+      const src = `${logPath}.${i - 1}`;
       const dst = `${logPath}.${i}`;
       if (i === maxFiles) { try { unlinkSync(dst); } catch {} }
       if (existsSync(src)) { try { renameSync(src, dst); } catch {} }
     }
-    // Truncate current log
-    writeFileSync(logPath, "");
+    // Copy current content to .1, then truncate the live file in place so the
+    // writer's open fd keeps appending to the same (now-empty) inode.
+    copyFileSync(logPath, `${logPath}.1`);
+    truncateSync(logPath, 0);
   } catch { /* best effort */ }
 }
 
