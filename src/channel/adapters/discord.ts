@@ -108,7 +108,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _registerHandlers(): void {
+    // Client/shard errors (WebSocket hiccups, gateway resumes, etc.). discord.js
+    // auto-reconnects; we just need a listener so Node's EventEmitter doesn't
+    // rethrow on "error" — without one it surfaces as an uncaughtException and
+    // the process-level handler tears down the whole fleet (the built-in adapter
+    // shares the fleet process).
+    this.client.on("error", (err) => console.warn(`[discord] client error: ${(err as Error)?.message ?? err}`));
+    this.client.on("shardError", (err) => console.warn(`[discord] shard error: ${(err as Error)?.message ?? err}`));
+
     this.client.on("messageCreate", async (msg: Message) => {
+      try {
       if (msg.author.id === this.client.user?.id) return; // Ignore own messages
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
@@ -206,6 +215,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         replyTo: msg.reference?.messageId ?? undefined,
         replyToText,
       });
+      } catch (err) {
+        // A throw here would become an unhandledRejection → process.exit(1) for
+        // the whole fleet. Contain it like the interactionCreate handler does.
+        console.warn(`[discord] messageCreate handler error (${(err as Error).message})`);
+      }
     });
 
     // Handle button interactions and slash commands
