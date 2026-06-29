@@ -2651,8 +2651,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** Retire (delete) the pending cancel button — on reply, cancel, or 30min cap. */
-  private clearCancelButton(instanceName: string): void {
+  /** Retire (delete) the pending cancel button — on reply, cancel, report, or 30min cap. */
+  clearCancelButton(instanceName: string): void {
     const pending = this.pendingCancelMessages.get(instanceName);
     if (!pending) return;
     clearTimeout(pending.timer);
