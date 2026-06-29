@@ -94,7 +94,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
   // Pending "🛑 Cancel" button per instance — sent after a message is delivered,
   // retired when the agent replies, when cancelled, or after a timeout.
-  private pendingCancelMessages = new Map<string, { adapterId?: string; chatId: string; messageId: string; threadId?: string; timer: ReturnType<typeof setInterval> }>();
+  private pendingCancelMessages = new Map<string, { adapterId?: string; chatId: string; messageId: string; threadId?: string; timer: ReturnType<typeof setTimeout> }>();
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -2635,12 +2635,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         message: "👀 處理中…",
         choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
       }, threadId ? { threadId } : undefined);
-      // Retire the button when the instance returns to idle (work done), not on a
-      // fixed timer. A fixed timeout fails for instances that finish without
-      // calling the reply tool — notably the General coordinator, whose cancel
-      // button is also continuously re-posted by inbound cross-instance traffic,
-      // resetting any fixed timer so it never elapses. Tie clearing to actual idle.
-      const timer = this.startCancelButtonIdleWatch(instanceName);
+      // The button is normally retired when the agent replies (reply tool →
+      // clearCancelButton). Agents that finish without replying (schedule,
+      // cross-instance) won't auto-clear — accepted for now; smart cleanup
+      // returns once we have proper busy/idle/thinking state detection. The
+      // idle-poll approach was removed because a mid-turn thinking pause reads as
+      // idle and cleared the button early. Keep a 30min hard cap so an orphaned
+      // button can't live forever.
+      const timer = setTimeout(() => this.clearCancelButton(instanceName), 30 * 60_000);
       this.pendingCancelMessages.set(instanceName, {
         adapterId, chatId: sent.chatId, messageId: sent.messageId, threadId: sent.threadId ?? threadId, timer,
       });
@@ -2649,41 +2651,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /**
-   * Poll the instance's idle state and retire its cancel button once the work is
-   * done. Waits until the CLI has actually gone busy, then requires a short
-   * sustained-idle streak (so a mid-turn thinking pause doesn't clear it early).
-   * A long hard cap guards against leaks without cutting off legitimately
-   * long-running work (the button must stay clickable while the CLI is busy).
-   */
-  private startCancelButtonIdleWatch(instanceName: string): ReturnType<typeof setInterval> {
-    const POLL_MS = 2000;
-    const IDLE_STREAK_TO_CLEAR = 3; // ~6s sustained idle
-    const HARD_CAP_MS = 30 * 60_000;
-    const start = Date.now();
-    let sawBusy = false;
-    let idleStreak = 0;
-    return setInterval(() => {
-      if (Date.now() - start > HARD_CAP_MS) { this.clearCancelButton(instanceName); return; }
-      const idle = this.getInstanceIdle(instanceName);
-      if (!idle) { sawBusy = true; idleStreak = 0; return; }
-      // Idle observed. Don't clear until the CLI has actually started working,
-      // otherwise delivery latency (queue → paste → run) would clear it instantly.
-      // But if it never goes busy (delivery failed / no-op message), don't linger
-      // to the hard cap — retire it after a short grace period.
-      if (!sawBusy) {
-        if (Date.now() - start > 60_000) this.clearCancelButton(instanceName);
-        return;
-      }
-      if (++idleStreak >= IDLE_STREAK_TO_CLEAR) this.clearCancelButton(instanceName);
-    }, POLL_MS);
-  }
-
-  /** Retire (delete) the pending cancel button — on reply, cancel, idle, or cap. */
+  /** Retire (delete) the pending cancel button — on reply, cancel, or 30min cap. */
   private clearCancelButton(instanceName: string): void {
     const pending = this.pendingCancelMessages.get(instanceName);
     if (!pending) return;
-    clearInterval(pending.timer);
+    clearTimeout(pending.timer);
     this.pendingCancelMessages.delete(instanceName);
     const adapter = (pending.adapterId ? this.worlds.get(pending.adapterId)?.adapter : undefined)
       ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
