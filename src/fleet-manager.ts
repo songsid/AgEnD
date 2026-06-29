@@ -487,6 +487,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Rotate classic channel chat logs daily
       this.classicChannels?.rotateLogs();
       this.rotateInboxes();
+      // Rotate fleet.log daily too (besides the startup size check above), so a
+      // long-running fleet doesn't accumulate an unbounded log.
+      rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
     }, () => {
       const instances = Object.keys(this.fleetConfig?.instances ?? {});
       const costMap = new Map<string, number>();
