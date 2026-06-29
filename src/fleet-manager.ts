@@ -2635,19 +2635,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         message: "👀 處理中…",
         choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
       }, threadId ? { threadId } : undefined);
-      // The button is normally retired when the agent replies (reply tool →
-      // clearCancelButton). Agents that finish without replying (schedule,
-      // cross-instance) won't auto-clear — accepted for now; smart cleanup
-      // returns once we have proper busy/idle/thinking state detection. The
-      // idle-poll approach was removed because a mid-turn thinking pause reads as
-      // idle and cleared the button early. Keep a 30min hard cap so an orphaned
-      // button can't live forever.
-      const timer = setTimeout(() => this.clearCancelButton(instanceName), 30 * 60_000);
-      this.pendingCancelMessages.set(instanceName, {
-        adapterId, chatId: sent.chatId, messageId: sent.messageId, threadId: sent.threadId ?? threadId, timer,
-      });
+
+      const entry = { adapterId, chatId: sent.chatId, messageId: sent.messageId, threadId: sent.threadId ?? threadId };
+
+      // A concurrent sendCancelButton for the same instance may have installed a
+      // pending entry while we awaited notifyAlert — we BOTH passed the
+      // clear-before-send when the slot was still empty. Retire whatever is there
+      // now (delete its message + clear its timer) so overwriting the slot doesn't
+      // orphan that button or leak its timer.
+      const prev = this.pendingCancelMessages.get(instanceName);
+      if (prev) { clearTimeout(prev.timer); this.deleteCancelMessage(prev); }
+
+      // Hard cap: delete THIS specific button after 30min. The timer targets its
+      // own captured message (not "whatever is pending for the instance" — which
+      // could be a different, later button), so a replaced/orphaned button is
+      // still reliably cleaned even if the immediate delete above ever missed it.
+      const timer = setTimeout(() => {
+        this.logger.debug({ instanceName, messageId: entry.messageId }, "Cancel button 30min cap fired");
+        this.deleteCancelMessage(entry);
+        const cur = this.pendingCancelMessages.get(instanceName);
+        if (cur && cur.messageId === entry.messageId) this.pendingCancelMessages.delete(instanceName);
+      }, 30 * 60_000);
+      this.pendingCancelMessages.set(instanceName, { ...entry, timer });
     } catch (e) {
       this.logger.debug({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
+    }
+  }
+
+  /** Delete a specific cancel-button message (best-effort, via its own adapter). */
+  private deleteCancelMessage(e: { adapterId?: string; chatId: string; messageId: string; threadId?: string }): void {
+    const adapter = (e.adapterId ? this.worlds.get(e.adapterId)?.adapter : undefined) ?? this.adapter;
+    if (!adapter) return;
+    if (adapter.deleteMessage) {
+      adapter.deleteMessage(e.chatId, e.messageId, e.threadId)
+        .catch((err: Error) => this.logger.debug({ err: err.message }, "Failed to delete cancel button"));
+    } else if (adapter.editMessageRemoveButtons) {
+      adapter.editMessageRemoveButtons(e.chatId, e.messageId, "✅", e.threadId).catch(() => { /* best effort */ });
+    } else {
+      adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId).catch(() => { /* best effort */ });
     }
   }
 
@@ -2657,19 +2682,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!pending) return;
     clearTimeout(pending.timer);
     this.pendingCancelMessages.delete(instanceName);
-    const adapter = (pending.adapterId ? this.worlds.get(pending.adapterId)?.adapter : undefined)
-      ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
-    if (!adapter) return;
-    if (adapter.deleteMessage) {
-      adapter.deleteMessage(pending.chatId, pending.messageId, pending.threadId)
-        .catch((e: Error) => this.logger.debug({ err: e.message, instanceName }, "Failed to delete cancel button"));
-    } else if (adapter.editMessageRemoveButtons) {
-      adapter.editMessageRemoveButtons(pending.chatId, pending.messageId, "✅", pending.threadId)
-        .catch(() => { /* best effort */ });
-    } else {
-      // Last resort for adapters without delete or button-removal.
-      adapter.editMessage(pending.chatId, pending.messageId, "✅", pending.threadId).catch(() => { /* best effort */ });
-    }
+    this.deleteCancelMessage(pending);
   }
 
   /**
