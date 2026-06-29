@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -486,6 +486,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         .catch(e => this.logger.warn({ err: e }, "Failed to send daily summary"));
       // Rotate classic channel chat logs daily
       this.classicChannels?.rotateLogs();
+      this.rotateInboxes();
     }, () => {
       const instances = Object.keys(this.fleetConfig?.instances ?? {});
       const costMap = new Map<string, number>();
@@ -503,6 +504,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Rotate classic channel chat logs daily (piggyback on daily summary timer)
     this.classicChannels?.rotateLogs();
+    this.rotateInboxes();
 
     // Auto-create general instance(s) — one per adapter that lacks a general
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
@@ -752,6 +754,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
     };
     process.once("SIGUSR1", onFullRestart);
+  }
+
+  /**
+   * Delete inbox files older than retentionDays (by mtime). Cleans the shared
+   * inbox (`<dataDir>/inbox`) and every workspace inbox
+   * (`<agendHome>/workspaces/*\/inbox`). Piggybacks on the daily summary timer,
+   * mirroring classic chat-log rotation (same 7-day retention).
+   */
+  private rotateInboxes(retentionDays = 7): number {
+    const cutoff = Date.now() - retentionDays * 86400_000;
+    const dirs: string[] = [join(this.dataDir, "inbox")];
+    const workspacesDir = join(getAgendHome(), "workspaces");
+    if (existsSync(workspacesDir)) {
+      for (const ws of readdirSync(workspacesDir)) {
+        dirs.push(join(workspacesDir, ws, "inbox"));
+      }
+    }
+    let deleted = 0;
+    for (const dir of dirs) {
+      if (!existsSync(dir)) continue;
+      for (const file of readdirSync(dir)) {
+        const full = join(dir, file);
+        try {
+          const st = statSync(full);
+          if (st.isFile() && st.mtimeMs < cutoff) { unlinkSync(full); deleted++; }
+        } catch { /* file vanished or unreadable — skip */ }
+      }
+    }
+    if (deleted > 0) this.logger.info({ deleted }, "Rotated inbox files");
+    return deleted;
   }
 
   /** Start the shared channel adapter(s) for topic mode */
