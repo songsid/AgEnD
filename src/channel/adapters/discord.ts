@@ -122,7 +122,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
         if (!this.openChannels.has(msg.channelId)) return;
-        console.log(`[discord] classic channel message from non-primary guild ${msg.guildId} channel ${msg.channelId}`);
+        // Allowed: an open classic channel in a non-primary guild.
       }
 
       const userId = msg.author.id;
@@ -307,7 +307,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       if (!("guildId" in channel)) return;
       if (channel.guildId !== this.guildId) {
         if (!this.openChannels.has(channel.id)) return;
-        console.log(`[discord] classic channel deleted from non-primary guild ${channel.guildId} channel ${channel.id}`);
+        // Allowed: an open classic channel in a non-primary guild was deleted.
       }
       this.emit("topic_closed", {
         chatId: this.guildId,
