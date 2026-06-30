@@ -58,6 +58,24 @@ export function resolveReplyThreadId(
   return instanceConfig?.topic_id != null ? String(instanceConfig.topic_id) : undefined;
 }
 
+/** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
+ * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
+const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
+const CANCEL_BTN_MAX_RETRIES = 3;
+
+/** One tracked cancel button. Keyed by messageId in `cancelButtons`, so each
+ * button is retired independently — replacing one never strands another. */
+interface CancelButtonEntry {
+  instanceName: string;
+  adapterId?: string;
+  chatId: string;
+  messageId: string;
+  threadId?: string;
+  retryCount: number;
+  retryTimer?: ReturnType<typeof setTimeout>;
+  retiring?: boolean;
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
@@ -92,9 +110,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicIcons: { green?: string; blue?: string; red?: string } = {};
   private lastActivity = new Map<string, number>();
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
-  // Pending "🛑 Cancel" button per instance — sent after a message is delivered,
-  // retired when the agent replies, when cancelled, or after a timeout.
-  private pendingCancelMessages = new Map<string, { adapterId?: string; chatId: string; messageId: string; threadId?: string; timer: ReturnType<typeof setTimeout> }>();
+  // Active "🛑 Cancel" buttons, tracked per button (keyed by messageId) rather
+  // than one-per-instance. A button is retired (deleted, with bounded retry) on
+  // reply, on cancel, or when a newer button supersedes it for the same
+  // instance. Per-button tracking means a failed delete never strands a button.
+  private cancelButtons = new Map<string, CancelButtonEntry>();
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -860,7 +880,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Idempotent: a button click only acts while the button is live. A
         // second click (entry already cleared) is a no-op — don't re-send the
         // interrupt key. (The /cancel command path calls cancelInstance directly.)
-        if (this.pendingCancelMessages.has(instanceName)) this.cancelInstance(instanceName);
+        if (this.hasCancelButton(instanceName)) this.cancelInstance(instanceName);
         return;
       }
     }, this.logger, "adapter.callback_query"));
@@ -1105,7 +1125,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (data.callbackData.startsWith("cancel:")) {
         const instanceName = data.callbackData.slice("cancel:".length);
         // Idempotent: only the first click (while the button is live) acts.
-        if (this.pendingCancelMessages.has(instanceName)) this.cancelInstance(instanceName);
+        if (this.hasCancelButton(instanceName)) this.cancelInstance(instanceName);
         return;
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
@@ -2648,9 +2668,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await data.respond(`✅ Sent \`${cmd}\` to ${target.name}`);
   }
 
+  /** Whether the instance currently has at least one live cancel button. */
+  private hasCancelButton(instanceName: string): boolean {
+    for (const e of this.cancelButtons.values()) {
+      if (e.instanceName === instanceName) return true;
+    }
+    return false;
+  }
+
   async sendCancelButton(instanceName: string): Promise<void> {
-    // Replace any stale button for this instance first.
-    this.clearCancelButton(instanceName);
+    // At most one button shown per instance: retire any existing ones first
+    // (delete + bounded retry). Each is tracked separately, so a failed delete
+    // here doesn't strand it — it keeps retrying on its own timer.
+    this.retireInstanceButtons(instanceName);
+
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
     const adapterId = this.instanceWorldBinding.get(instanceName);
@@ -2681,53 +2712,88 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
       }, threadId ? { threadId } : undefined);
 
-      const entry = { adapterId, chatId: sent.chatId, messageId: sent.messageId, threadId: sent.threadId ?? threadId };
+      // A concurrent sendCancelButton for the same instance may have posted its
+      // own button while we awaited notifyAlert. Retire any other buttons for
+      // this instance (not the one we just posted) so only the newest shows.
+      for (const other of this.cancelButtons.values()) {
+        if (other.instanceName === instanceName) this.retireButton(other);
+      }
 
-      // A concurrent sendCancelButton for the same instance may have installed a
-      // pending entry while we awaited notifyAlert — we BOTH passed the
-      // clear-before-send when the slot was still empty. Retire whatever is there
-      // now (delete its message + clear its timer) so overwriting the slot doesn't
-      // orphan that button or leak its timer.
-      const prev = this.pendingCancelMessages.get(instanceName);
-      if (prev) { clearTimeout(prev.timer); this.deleteCancelMessage(prev); }
-
-      // Hard cap: delete THIS specific button after 30min. The timer targets its
-      // own captured message (not "whatever is pending for the instance" — which
-      // could be a different, later button), so a replaced/orphaned button is
-      // still reliably cleaned even if the immediate delete above ever missed it.
-      const timer = setTimeout(() => {
-        this.logger.debug({ instanceName, messageId: entry.messageId }, "Cancel button 30min cap fired");
-        this.deleteCancelMessage(entry);
-        const cur = this.pendingCancelMessages.get(instanceName);
-        if (cur && cur.messageId === entry.messageId) this.pendingCancelMessages.delete(instanceName);
-      }, 30 * 60_000);
-      this.pendingCancelMessages.set(instanceName, { ...entry, timer });
+      this.cancelButtons.set(sent.messageId, {
+        instanceName,
+        adapterId,
+        chatId: sent.chatId,
+        messageId: sent.messageId,
+        threadId: sent.threadId ?? threadId,
+        retryCount: 0,
+      });
+      this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
     } catch (e) {
-      this.logger.debug({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
+      this.logger.warn({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
     }
   }
 
-  /** Delete a specific cancel-button message (best-effort, via its own adapter). */
-  private deleteCancelMessage(e: { adapterId?: string; chatId: string; messageId: string; threadId?: string }): void {
+  /** Retire (delete) every cancel button belonging to an instance. */
+  private retireInstanceButtons(instanceName: string): void {
+    // Snapshot first — retireButton may delete entries from the map on success.
+    for (const e of [...this.cancelButtons.values()]) {
+      if (e.instanceName === instanceName) this.retireButton(e);
+    }
+  }
+
+  /** Begin retiring one button (delete + bounded retry on failure). Idempotent:
+   * a button already in a retire cycle is left to its own timer, so a second
+   * retire request (e.g. a new send + the post-await sweep) won't double-delete. */
+  private retireButton(entry: CancelButtonEntry): void {
+    if (entry.retiring) return;
+    entry.retiring = true;
+    this.attemptButtonDelete(entry);
+  }
+
+  private attemptButtonDelete(entry: CancelButtonEntry): void {
+    this.deleteButtonMessage(entry)
+      .then(() => {
+        if (entry.retryTimer) clearTimeout(entry.retryTimer);
+        this.cancelButtons.delete(entry.messageId);
+        this.logger.info({ instanceName: entry.instanceName, messageId: entry.messageId }, "Cancel button removed");
+      })
+      .catch((err: Error) => this.scheduleButtonRetry(entry, err));
+  }
+
+  /** Re-attempt a failed button delete up to CANCEL_BTN_MAX_RETRIES times. */
+  private scheduleButtonRetry(entry: CancelButtonEntry, err: Error): void {
+    if (entry.retryCount >= CANCEL_BTN_MAX_RETRIES) {
+      if (entry.retryTimer) clearTimeout(entry.retryTimer);
+      this.cancelButtons.delete(entry.messageId);
+      this.logger.warn(
+        { instanceName: entry.instanceName, messageId: entry.messageId, err: err.message },
+        `Cancel button delete gave up after ${CANCEL_BTN_MAX_RETRIES} retries`,
+      );
+      return;
+    }
+    entry.retryCount++;
+    this.logger.warn(
+      { instanceName: entry.instanceName, messageId: entry.messageId, attempt: entry.retryCount, err: err.message },
+      "Cancel button delete failed, will retry",
+    );
+    if (entry.retryTimer) clearTimeout(entry.retryTimer);
+    // Continue the same retire cycle (bypass the retiring-guard in retireButton).
+    entry.retryTimer = setTimeout(() => this.attemptButtonDelete(entry), CANCEL_BTN_RETRY_INTERVAL_MS);
+  }
+
+  /** Delete one button's message via its own adapter. Resolves on success,
+   * rejects on failure so the caller can retry. */
+  private deleteButtonMessage(e: CancelButtonEntry): Promise<void> {
     const adapter = (e.adapterId ? this.worlds.get(e.adapterId)?.adapter : undefined) ?? this.adapter;
-    if (!adapter) return;
-    if (adapter.deleteMessage) {
-      adapter.deleteMessage(e.chatId, e.messageId, e.threadId)
-        .catch((err: Error) => this.logger.debug({ err: err.message }, "Failed to delete cancel button"));
-    } else if (adapter.editMessageRemoveButtons) {
-      adapter.editMessageRemoveButtons(e.chatId, e.messageId, "✅", e.threadId).catch(() => { /* best effort */ });
-    } else {
-      adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId).catch(() => { /* best effort */ });
-    }
+    if (!adapter) return Promise.reject(new Error("no adapter for cancel button"));
+    if (adapter.deleteMessage) return adapter.deleteMessage(e.chatId, e.messageId, e.threadId);
+    if (adapter.editMessageRemoveButtons) return adapter.editMessageRemoveButtons(e.chatId, e.messageId, "✅", e.threadId);
+    return adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId);
   }
 
-  /** Retire (delete) the pending cancel button — on reply, cancel, report, or 30min cap. */
+  /** Retire all cancel buttons for an instance — on reply, cancel, or report. */
   clearCancelButton(instanceName: string): void {
-    const pending = this.pendingCancelMessages.get(instanceName);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    this.pendingCancelMessages.delete(instanceName);
-    this.deleteCancelMessage(pending);
+    this.retireInstanceButtons(instanceName);
   }
 
   /**
