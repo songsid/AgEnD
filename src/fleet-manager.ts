@@ -1512,6 +1512,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const isPrivateChat = !chatId.startsWith("-"); // Telegram: positive = private, negative = group
         const msgAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
 
+        // In a TG Classic group, ignore bare slash commands (no @bot specified).
+        // Prevents multiple bots all responding to the same /ctx, /compact, etc.
+        // `/cmd@otherbot` already returned above; `/cmd@mybot` set cmdMatch, so it
+        // still processes. Private chat (only one bot) always processes.
+        // NOTE: this also silently drops bare `/start` in a group, so group
+        // onboarding now requires `/start@mybot` — consistent with the policy.
+        if (!isPrivateChat && !cmdMatch && rawText.startsWith("/")) {
+          return; // bare slash in group — ignore silently
+        }
+
         // Handle /start command
         if (text === "/start" || text.startsWith("/start ")) {
           if (isPrivateChat) {
