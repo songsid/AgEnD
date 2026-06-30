@@ -237,7 +237,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           try { await interaction.deferUpdate(); } catch { /* already acknowledged / unknown interaction */ }
           // Only act on buttons from the primary guild or a known open channel.
           if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")) {
-            console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
+            // console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
             return;
           }
           this.emit("callback_query", {
@@ -319,7 +319,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   /** Mark channels as open (skip access control) — used for classic bot channels */
   setOpenChannels(channelIds: string[]): void {
     this.openChannels = new Set(channelIds);
-    console.log(`[AgEnD] setOpenChannels: ${channelIds.length} channels`, channelIds);
+    // console.log(`[AgEnD] setOpenChannels: ${channelIds.length} channels`, channelIds);
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
