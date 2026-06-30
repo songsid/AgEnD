@@ -71,6 +71,10 @@ interface CancelButtonEntry {
   chatId: string;
   messageId: string;
   threadId?: string;
+  /** Set for cross-instance task/query buttons: the delegate→report correlation
+   * id, used to retire the button on report_result (sender/target names are
+   * derived by independent paths and don't reliably match). */
+  correlationId?: string;
   retryCount: number;
   retryTimer?: ReturnType<typeof setTimeout>;
   retiring?: boolean;
@@ -2676,7 +2680,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
-  async sendCancelButton(instanceName: string): Promise<void> {
+  async sendCancelButton(instanceName: string, correlationId?: string): Promise<void> {
     // At most one button shown per instance: retire any existing ones first
     // (delete + bounded retry). Each is tracked separately, so a failed delete
     // here doesn't strand it — it keeps retrying on its own timer.
@@ -2725,6 +2729,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         chatId: sent.chatId,
         messageId: sent.messageId,
         threadId: sent.threadId ?? threadId,
+        correlationId,
         retryCount: 0,
       });
       this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
@@ -2791,9 +2796,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId);
   }
 
-  /** Retire all cancel buttons for an instance — on reply, cancel, or report. */
+  /** Retire all cancel buttons for an instance — on reply or cancel. */
   clearCancelButton(instanceName: string): void {
     this.retireInstanceButtons(instanceName);
+  }
+
+  /** Retire the cross-instance button matching a delegate→report correlation id.
+   * Used by report_result, where the sender's self-derived name may not match
+   * the target-address name the button was registered under. */
+  clearCancelButtonByCorrelation(correlationId: string): void {
+    if (!correlationId) return;
+    for (const e of [...this.cancelButtons.values()]) {
+      if (e.correlationId === correlationId) this.retireButton(e);
+    }
   }
 
   /**
