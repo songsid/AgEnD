@@ -193,6 +193,11 @@ async function dispatch(
       const fullArgs = { ...args, chat_id: chatId, thread_id: threadId };
       const adapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
       const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
+        // A successful reply retires the instance's cancel button — mirroring the
+        // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,
+        // which replies via POST /agent instead of an MCP tool call) never hit
+        // that path, so without this their cancel button would never clear.
+        if (!error && tool === "reply") ctx.clearCancelButton?.(instance);
         resolve(error ? { error } : result);
       });
       if (!handled) resolve({ error: `Unhandled channel tool: ${tool}` });
