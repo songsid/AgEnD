@@ -39,7 +39,10 @@ export interface ChannelAdapter extends EventEmitter {
   /** Delete a message (e.g. retire the Cancel button message when done).
    * threadId locates the message when it lives in a topic/thread. */
   deleteMessage?(chatId: string, messageId: string, threadId?: string): Promise<void>;
-  react(chatId: string, messageId: string, emoji: string): Promise<void>;
+  /** React to a message. threadId locates a message in a topic/thread (Discord
+   * threads are their own channel; Telegram reactions key on the supergroup
+   * chat_id and ignore it). */
+  react(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void>;
 
   sendApproval(
     prompt: PermissionPrompt,
