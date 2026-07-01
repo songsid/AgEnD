@@ -2829,14 +2829,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
-  /** React ✅ on the last user message after the agent replies. */
+  /** Clear the tracked last-inbound message after the agent replies. The ✅
+   * reaction is already applied by delivery confirmation (message_confirmed), so
+   * reacting again here would be a duplicate API call — we only drop the entry. */
   private reactDone(instanceName: string): void {
-    const m = this.lastInboundMsg.get(instanceName);
-    if (!m) return;
+    if (!this.lastInboundMsg.has(instanceName)) return;
     this.lastInboundMsg.delete(instanceName);
-    const adapter = (m.adapterId ? this.worlds.get(m.adapterId)?.adapter : undefined)
-      ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
-    adapter?.react(this.reactTarget(m), m.messageId, "✅").catch(() => { /* best effort */ });
   }
 
   /** Interrupt an instance's current generation (cancel button / /cancel). */
