@@ -62,6 +62,10 @@ export function resolveReplyThreadId(
  * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
 const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
 const CANCEL_BTN_MAX_RETRIES = 3;
+/** Backstop: every 5min, retire a button whose instance has gone idle. Catches
+ * buttons no clear trigger reached (e.g. a scheduled/HTTP turn that never called
+ * reply). 5min (not the old 2s idle-watch) so Thinking isn't misread as idle. */
+const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
 
 /** One tracked cancel button. Keyed by messageId in `cancelButtons`, so each
  * button is retired independently — replacing one never strands another. */
@@ -77,6 +81,8 @@ interface CancelButtonEntry {
   correlationId?: string;
   retryCount: number;
   retryTimer?: ReturnType<typeof setTimeout>;
+  /** 5-min idle-check backstop; retires the button once the instance is idle. */
+  idleCheckTimer?: ReturnType<typeof setInterval>;
   retiring?: boolean;
 }
 
@@ -2723,7 +2729,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (other.instanceName === instanceName) this.retireButton(other);
       }
 
-      this.cancelButtons.set(sent.messageId, {
+      const entry: CancelButtonEntry = {
         instanceName,
         adapterId,
         chatId: sent.chatId,
@@ -2731,7 +2737,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         threadId: sent.threadId ?? threadId,
         correlationId,
         retryCount: 0,
-      });
+      };
+      // Idle-check backstop: every 5min, if the instance is idle, retire the
+      // button. Covers turns that end without hitting a clear trigger (reply /
+      // cancel / correlation). Cleared in discardButton when the entry is removed.
+      entry.idleCheckTimer = setInterval(() => {
+        if (!this.cancelButtons.has(entry.messageId)) { clearInterval(entry.idleCheckTimer); return; }
+        if (this.getInstanceIdle(instanceName)) {
+          this.logger.info({ instanceName, messageId: entry.messageId }, "Cancel button idle backstop retiring");
+          this.retireButton(entry);
+        }
+      }, CANCEL_BTN_IDLE_CHECK_INTERVAL_MS);
+      this.cancelButtons.set(sent.messageId, entry);
       this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
     } catch (e) {
       this.logger.warn({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
@@ -2758,18 +2775,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private attemptButtonDelete(entry: CancelButtonEntry): void {
     this.deleteButtonMessage(entry)
       .then(() => {
-        if (entry.retryTimer) clearTimeout(entry.retryTimer);
-        this.cancelButtons.delete(entry.messageId);
+        this.discardButton(entry);
         this.logger.info({ instanceName: entry.instanceName, messageId: entry.messageId }, "Cancel button removed");
       })
       .catch((err: Error) => this.scheduleButtonRetry(entry, err));
   }
 
+  /** Clear an entry's timers (retry + idle-check) and drop it from the map. */
+  private discardButton(entry: CancelButtonEntry): void {
+    if (entry.retryTimer) clearTimeout(entry.retryTimer);
+    if (entry.idleCheckTimer) clearInterval(entry.idleCheckTimer);
+    this.cancelButtons.delete(entry.messageId);
+  }
+
   /** Re-attempt a failed button delete up to CANCEL_BTN_MAX_RETRIES times. */
   private scheduleButtonRetry(entry: CancelButtonEntry, err: Error): void {
     if (entry.retryCount >= CANCEL_BTN_MAX_RETRIES) {
-      if (entry.retryTimer) clearTimeout(entry.retryTimer);
-      this.cancelButtons.delete(entry.messageId);
+      this.discardButton(entry);
       this.logger.warn(
         { instanceName: entry.instanceName, messageId: entry.messageId, err: err.message },
         `Cancel button delete gave up after ${CANCEL_BTN_MAX_RETRIES} retries`,
