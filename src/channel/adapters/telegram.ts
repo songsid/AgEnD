@@ -534,7 +534,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.bot.api.deleteMessage(Number(chatId), Number(messageId));
   }
 
-  async react(chatId: string, messageId: string, emoji: string): Promise<void> {
+  // threadId is ignored: Telegram reactions key on the supergroup chat_id, not
+  // the forum topic thread (reacting on a thread id silently fails).
+  async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
     await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), [
       { type: "emoji", emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"] },
     ]);

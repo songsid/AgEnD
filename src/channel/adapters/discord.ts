@@ -490,12 +490,15 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch { /* message already gone */ }
   }
 
-  async react(chatId: string, messageId: string, emoji: string): Promise<void> {
+  async react(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void> {
     try {
+      // A Discord thread is its own channel — a message posted in a topic thread
+      // lives there, not in the parent channel, so react on threadId when given.
+      const channelId = threadId ?? chatId;
       // Direct REST call — single API request instead of 3 (fetchChannel → fetchMessage → react)
       const encoded = encodeURIComponent(emoji);
       await (this.client as any).rest.put(
-        `/channels/${chatId}/messages/${messageId}/reactions/${encoded}/@me`
+        `/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`
       );
     } catch {
       // No-op per degradation strategy
