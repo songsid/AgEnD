@@ -61,7 +61,9 @@ export function routeToolCall(
       return true;
     }
     case "react":
-      adapter.react(chatId, args.message_id as string ?? "", args.emoji as string ?? "")
+      // Pass threadId so Discord reacts in the topic thread (a message there
+      // lives in the thread's own channel, not chatId). Telegram ignores it.
+      adapter.react(chatId, args.message_id as string ?? "", args.emoji as string ?? "", args.thread_id as string ?? threadId)
         .then(() => respond("ok"))
         .catch(e => respond(null, e.message));
       return true;
