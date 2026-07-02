@@ -61,7 +61,14 @@ function validateVars(vars: ServiceVars & { path: string }): void {
 }
 
 function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
-  const full = { ...vars, path: vars.path ?? process.env.PATH ?? "", isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
+  // Drop Windows PATH entries that WSL injects (e.g. /mnt/c/.../Program Files):
+  // they contain spaces and cause systemd "Ignoring invalid environment" parse
+  // warnings, and are useless to the Linux-side fleet anyway.
+  const path = (vars.path ?? process.env.PATH ?? "")
+    .split(":")
+    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files"))
+    .join(":");
+  const full = { ...vars, path, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;
 }
