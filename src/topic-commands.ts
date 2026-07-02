@@ -51,7 +51,7 @@ export function parseContextPercent(pane: string): number | null {
   const lines = pane.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
-    const m = line.match(/(\d+)%\s*[!❯>]/) || line.match(/◔\s*(\d+)%/) || line.match(/\[(\d+)%\]/);
+    const m = line.match(/(\d+)%.*[!❯>]/) || line.match(/◔\s*(\d+)%/) || line.match(/\[(\d+)%\]/);
     if (m) return parseInt(m[1], 10);
   }
   return null;
