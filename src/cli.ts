@@ -1342,12 +1342,24 @@ program
     if (plat !== "macos" && isActive("systemctl is-active agend 2>/dev/null")) {
       run("systemctl daemon-reload");
       if (run("systemctl restart agend")) { console.log("Service restarted (system)."); return; }
+      // The service exists and is managed by systemd. A restart that reports
+      // failure (e.g. a Type=notify start-protocol hiccup) will be retried by
+      // systemd's Restart=on-failure. Falling through to spawn a detached fleet
+      // here would race that auto-retry and leave two fleets running.
+      console.log("  ⚠ systemd restart reported failure, but the service exists — systemd will auto-retry.");
+      console.log("  Check: systemctl status agend");
+      return;
     }
     // 2. User-level systemd service "com.agend.fleet"
     if (plat !== "macos" && isActive("systemctl --user is-active com.agend.fleet 2>/dev/null")) {
       run("systemctl --user daemon-reload");
       try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
       if (run("systemctl --user restart com.agend.fleet")) { console.log("Service restarted (user)."); return; }
+      // Same as above: service exists → systemd auto-retries. Don't fall through
+      // to the detached-spawn path, or we'd race the retry and get two fleets.
+      console.log("  ⚠ systemd user service restart reported failure, but the service exists — systemd will auto-retry.");
+      console.log("  Check: systemctl --user status com.agend.fleet");
+      return;
     }
     // 3. launchd (macOS)
     if (plat === "macos") {
