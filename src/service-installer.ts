@@ -15,6 +15,7 @@ interface ServiceVars {
   path?: string;
   workingDirectory: string;
   logPath: string;
+  isRoot?: boolean;
 }
 
 export function detectPlatform(): "macos" | "linux" {
@@ -60,7 +61,7 @@ function validateVars(vars: ServiceVars & { path: string }): void {
 }
 
 function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
-  const full = { ...vars, path: vars.path ?? process.env.PATH ?? "" };
+  const full = { ...vars, path: vars.path ?? process.env.PATH ?? "", isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;
 }
