@@ -629,21 +629,46 @@ export async function runQuickstart(): Promise<void> {
     // ── Next steps ───────────────────────────────────────
 
     console.log(`\n${bold("═══ Setup Complete ═══")}\n`);
+    console.log(`  ${dim("(Optional)")} Edit ${FLEET_CONFIG_PATH} to customize\n`);
+
+    // Offer to install & start as a system service (auto-start, survives reboot).
+    // On success the fleet is already running; on failure (e.g. WSL without
+    // systemd) we fall back to telling the user to start it manually.
+    const svcAnswer = (await rl.question("  Install as system service? [Y/n] ")).trim().toLowerCase();
+    const wantsService = svcAnswer === "" || svcAnswer === "y" || svcAnswer === "yes";
+    let serviceRunning = false;
+    if (wantsService) {
+      try {
+        const { installService, activateService } = await import("./service-installer.js");
+        const svcPath = installService({
+          label: "com.agend.fleet",
+          execPath: process.argv[1],
+          path: process.env.PATH!,
+          workingDirectory: DATA_DIR,
+          logPath: join(DATA_DIR, "fleet.log"),
+        });
+        // Stops any manually-started fleet, then daemon-reload + enable + start.
+        activateService(svcPath, join(DATA_DIR, "fleet.pid"));
+        console.log(`\n  ${green("✅")} Fleet service installed and running.`);
+        serviceRunning = true;
+      } catch (err) {
+        console.log(`\n  ${yellow("⚠")}  Could not install the service automatically (${(err as Error).message}).`);
+        console.log(`     Start the fleet manually: ${bold("agend fleet start")}`);
+      }
+    }
+    if (!serviceRunning) {
+      console.log(`\n  Start the fleet: ${bold("agend fleet start")}`);
+    }
+
     const hasDiscord = platforms.some(p => p.type === "discord");
     if (hasDiscord) {
-      console.log("  Next steps:");
-      console.log(`    1. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
-      console.log(`    2. ${bold("agend fleet start")}`);
       for (const p of platforms) {
-        if (p.type === "discord") console.log(`    • Talk to ${p.botUsername} in your Discord server`);
-        else console.log(`    • Talk to @${p.botUsername} in your Telegram group`);
+        if (p.type === "discord") console.log(`  • Talk to ${p.botUsername} in your Discord server`);
+        else console.log(`  • Talk to @${p.botUsername} in your Telegram group`);
       }
       console.log(`\n  ${dim("Classic Bot Mode: Use /start in any Discord channel to start an agent. Use /chat to talk.")}\n`);
     } else {
-      console.log("  Next steps:");
-      console.log(`    1. ${dim("(Optional)")} Edit ~/.agend/fleet.yaml to customize`);
-      console.log(`    2. ${bold("agend fleet start")}`);
-      console.log(`    3. Talk to @${primaryPlatform.botUsername} in your Telegram group\n`);
+      console.log(`  • Talk to @${primaryPlatform.botUsername} in your Telegram group\n`);
     }
   } finally {
     rl.close();
