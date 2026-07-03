@@ -98,6 +98,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly adapters: Map<string, ChannelAdapter> = new Map(); // derived view for backward compat
   /** Track which world each instance is bound to */
   private instanceWorldBinding = new Map<string, string>();
+  // Dedup inbound messages seen by more than one adapter (e.g. two DC bots in the
+  // same guild both receive every message). Bounded FIFO of recent message keys.
+  private recentMessageIds = new Set<string>();
   private accessManager: AccessManager | null = null;
 
   /** Primary world (first adapter) — used for fleet-level notifications */
@@ -270,9 +273,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return world?.groupId ?? String(this.fleetConfig?.channel?.group_id ?? "");
   }
 
-  /** Bind an instance to a specific world. fromInbound=true skips general_topic to prevent overwrite. */
+  /**
+   * Bind an instance to a specific world (the bot that answers for it).
+   * fromInbound=true (binding inferred from which adapter received a message)
+   * must not override a configured identity: skip when the instance is a general
+   * or has an explicit channel_id — otherwise a persona instance whose message
+   * was also seen by the main bot would get rebound to the wrong bot.
+   */
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
-    if (fromInbound && this.fleetConfig?.instances[name]?.general_topic) return;
+    const cfg = this.fleetConfig?.instances[name];
+    if (fromInbound && (cfg?.general_topic || cfg?.channel_id)) return;
     this.instanceWorldBinding.set(name, adapterId);
   }
 
@@ -685,11 +695,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
       }
 
-      // Pre-bind general instances to their corresponding adapter
+      // Bind instances to their adapter (which bot answers on their behalf).
+      // An explicit channel_id is authoritative — this is how a persona instance
+      // picks its bot when several share one guild. Generals without a channel_id
+      // fall back to a name-contains-adapterId heuristic.
+      const channelConfigsForBind = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
       for (const [name, config] of Object.entries(fleet.instances)) {
+        if (config.channel_id) {
+          this.bindInstanceAdapter(name, config.channel_id);
+          continue;
+        }
         if (!config.general_topic) continue;
-        const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
-        for (const ch of channelConfigs) {
+        for (const ch of channelConfigsForBind) {
           const id = ch.id ?? ch.type;
           if (name.includes(id)) { this.bindInstanceAdapter(name, id); break; }
         }
@@ -826,12 +843,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
     if (channelConfigs.length === 0) return;
 
-    // Start primary adapter (first channel) — this.adapter for backward compat
+    // Start primary adapter (first channel) — this.adapter for backward compat.
+    // The primary owns the guild's slash commands.
     await this.startSingleAdapter(fleet, channelConfigs[0]);
+    const primaryGroup = String(channelConfigs[0].group_id ?? "");
 
-    // Start additional adapters
+    // Start additional adapters. A secondary bot in the SAME guild as the primary
+    // must not re-register the guild's slash commands (they'd appear twice); a bot
+    // in a different guild still registers its own.
     for (let i = 1; i < channelConfigs.length; i++) {
-      await this.startAdditionalAdapter(channelConfigs[i]);
+      const sameGuild = String(channelConfigs[i].group_id ?? "") === primaryGroup;
+      await this.startAdditionalAdapter(channelConfigs[i], !sameGuild);
     }
   }
 
@@ -1084,7 +1106,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start an additional (non-primary) adapter */
-  private async startAdditionalAdapter(channelConfig: ChannelConfig): Promise<void> {
+  private async startAdditionalAdapter(channelConfig: ChannelConfig, registerCommands = true): Promise<void> {
     const adapterId = channelConfig.id ?? channelConfig.type;
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
@@ -1106,6 +1128,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       botToken,
       accessManager,
       inboxDir,
+      registerCommands,
     });
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
@@ -1475,6 +1498,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const threadId = msg.threadId || undefined;
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
+
+    // Multi-adapter dedup: when several bots share a guild, each adapter fires
+    // its own "message" event for the same underlying message. Process it once.
+    // Routing (by topic/channel) and reply-adapter selection (by channel_id
+    // binding) are adapter-independent, so it's safe to let whichever adapter
+    // arrives first handle it.
+    if (msg.messageId) {
+      const dedupKey = `${msg.source}:${msg.chatId}:${msg.messageId}`;
+      if (this.recentMessageIds.has(dedupKey)) {
+        this.logger.debug({ dedupKey, adapterId: msg.adapterId }, "Duplicate inbound across adapters — skipping");
+        return;
+      }
+      this.recentMessageIds.add(dedupKey);
+      if (this.recentMessageIds.size > 1000) {
+        // Set preserves insertion order — drop the oldest key.
+        const oldest = this.recentMessageIds.values().next().value;
+        if (oldest !== undefined) this.recentMessageIds.delete(oldest);
+      }
+    }
 
     // Bot messages: only allow in collab channels or TG classic with @mention
     if (msg.isBotMessage) {
