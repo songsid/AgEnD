@@ -4,53 +4,6 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.0.10] - 2026-07-03
-
-### Added
-- **Quickstart auto-installs system service** — asks at end of quickstart, one-step setup.
-
-### Fixed
-- **Double fleet race condition** — restart no longer falls back to detached spawn when systemd service exists (#161).
-- **WSL Windows PATH filter** — systemd service `Environment=` filters Windows PATH entries.
-- **`IS_SANDBOX=1` for root** — systemd service adds env var for claude-code v2.1+ compatibility.
-
-### Changed
-- **Remove CI GitHub Release step** — leader writes release notes manually.
-
-## [2.0.9] - 2026-07-02
-
-### Fixed
-- **`/ctx` regex for Kiro CLI v3** — matches new λ prompt format (`26% λ !>`).
-
-## [2.0.8] - 2026-07-02
-
-### Added
-- **Cancel button** — inline 🛑 button on every inbound message. Track-all design (per-button Map), cross-instance cancel via `correlation_id`, 5-minute idle backstop. Interrupt key: Escape (claude-code/codex) or Ctrl+C (kiro-cli).
-- **Delivery status UX** — 👀 received → ⏳ processing → ✅ done (or ❌ failed). Boolean delivery result with backoff + idle→busy verification.
-- **Discord built-in** — Discord adapter merged into core; no separate plugin install needed.
-- **`/save` for fleet topics** — kiro-cli uses `/chat save`, claude-code uses `/export`.
-- **`/cancel` command** — slash command alternative to the inline button (TG + DC).
-- **Model pass-through** — unknown model names passed directly to CLI with warning instead of silently dropped.
-- **Inbox file rotation** — daily timer rotates inbox files alongside fleet.log.
-- **Log rotation** — `fleet.log` rotated via copytruncate on daily timer.
-- **Warmup skip** — instances that already have context loaded skip redundant warmup.
-
-### Fixed
-- **`--continue` crash loop** — break loop when resume fails + stop single instance without killing fleet.
-- **`lastChatId` persist** — fleet-topic reply works after daemon restart.
-- **DC forum thread-aware** — editMessage, deleteMessage, and reactions now find messages in forum-topic threads.
-- **Health-check null retry** — re-confirms null pane status (1.5s delay) before declaring crash.
-- **Update restart** — runs via new binary's `agend restart`; semver-correct upgrade notification.
-- **TG bare slash ignore** — bare `/` commands in Classic groups no longer trigger errors.
-- **DC adapter error isolation** — Discord errors no longer crash the fleet process.
-- **Classic collab image path** — surface earlier saved image path as `image_path` on @mention trigger.
-- **Codex MCP server name** — sanitize name + surface add failures.
-- **Cancel button async race** — bounded delete retry, retire by correlation_id, clear on HTTP agent-endpoint reply.
-
-### Changed
-- **Fleet stop performance** — faster stop for large instance counts.
-- **`/ctx` scrollback** — robust tmux fallback for kiro-cli (scrollback + most-recent prompt scan).
-
 ## [2.0.5] - 2026-06-24
 
 ### Added

@@ -37,4 +37,9 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-
+      # Create GitHub Release with auto-generated notes from merged PRs
+      - name: Create GitHub Release
+        if: "!contains(env.VERSION, 'beta')"
+        run: gh release create "v$VERSION" --generate-notes --title "v$VERSION"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

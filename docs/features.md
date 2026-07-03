@@ -90,13 +90,13 @@ In fleet `open` mode, bot messages bypass the filter automatically (no `/collab`
 
 Every message sent to an agent shows an inline cancel button (🛑). Tapping it interrupts the current generation:
 
-- **Telegram**: inline keyboard button below the 👀 status message
+- **Telegram**: inline keyboard button below the 👀 reaction message
 - **Discord**: button component on the status message
 - **`/cancel` command**: also available as a slash command
 
-The cancel sends the appropriate interrupt key to the CLI backend (Escape for Claude Code/Codex, Ctrl+C for Kiro CLI). The button is removed once the agent finishes responding (✅) or is cancelled. A 5-minute idle backstop ensures buttons are cleaned up even if the normal clear path fails.
+The cancel sends the appropriate interrupt key to the CLI backend (Escape for Claude Code/Codex, Ctrl+C for Kiro CLI). The button is removed once the agent finishes responding (✅) or is cancelled.
 
-Cancel also works for cross-instance messages (tracked by `correlation_id`) and scheduled triggers. Each button is tracked independently (per-button Map), so concurrent requests each get their own cancellable button.
+Cancel also works for cross-instance messages and scheduled triggers.
 
 ## Delivery status
 
@@ -109,7 +109,7 @@ Message delivery progress is shown visually:
 | Done | ✅ | Agent finished responding |
 | Failed | ❌ | Delivery or processing error |
 
-Delivery uses boolean results with backoff and idle→busy verification to ensure messages are reliably pasted. The status message is posted immediately on receipt and updated as the agent processes. On completion, the cancel button is removed and ✅ is shown.
+The status message is posted immediately on receipt and updated as the agent processes. On completion, the cancel button is removed and ✅ is shown.
 
 ## Peer-to-peer agent collaboration
 
