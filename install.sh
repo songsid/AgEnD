@@ -236,21 +236,13 @@ elif command_exists agend; then
   fi
 fi
 
-# Discord is now a built-in adapter — the standalone plugin is no longer needed.
-# Remove it if a previous (beta) install left it behind (best-effort; the
-# built-in adapter takes precedence over the plugin regardless, so this is just
-# cleanup, not a correctness requirement).
-if npm list -g @songsid/agend-plugin-discord >/dev/null 2>&1; then
-  warn "Removing obsolete @songsid/agend-plugin-discord (Discord is now built in)..."
-  $SUDO npm uninstall -g @songsid/agend-plugin-discord 2>/dev/null || true
-fi
-
-$SUDO npm install -g @songsid/agend
+$SUDO npm install -g @songsid/agend @songsid/agend-plugin-discord
 
 if ! command_exists agend; then
   error "Installation failed. Try: npm install -g @songsid/agend"
 fi
 info "AgEnD $(agend --version) installed"
+info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/dev/null | grep agend-plugin-discord | sed 's/.*@//' || echo 'unknown') installed"
 
 # ── Ensure binaries are accessible without nvm sourced ────
 # Root user: create symlinks in /usr/local/bin (for systemd, cron, non-login shells)
