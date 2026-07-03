@@ -10,7 +10,8 @@ WatchdogSec=60
 ExecStart=<%= execPath %> fleet start
 Environment=PATH=<%= path %>
 Environment=TERM=xterm-256color
-WorkingDirectory=<%= workingDirectory %>
+<% if (isRoot) { %>Environment=IS_SANDBOX=1
+<% } %>WorkingDirectory=<%= workingDirectory %>
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=300
