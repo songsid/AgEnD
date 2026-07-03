@@ -70,6 +70,12 @@ fleet
   .description("Start fleet or specific instance")
   .argument("[instance]", "Specific instance to start")
   .action(async (instance?: string) => {
+    // Root running fleet = sandbox environment (e.g. Docker, WSL root service)
+    // Set IS_SANDBOX so child processes (claude-code) don't refuse to run
+    if (process.getuid?.() === 0 && !process.env.IS_SANDBOX) {
+      process.env.IS_SANDBOX = "1";
+    }
+
     if (instance) {
       // If fleet daemon is already running, delegate via HTTP API
       const { loadFleetConfig } = await import("./config.js");
@@ -1342,12 +1348,20 @@ program
     if (plat !== "macos" && isActive("systemctl is-active agend 2>/dev/null")) {
       run("systemctl daemon-reload");
       if (run("systemctl restart agend")) { console.log("Service restarted (system)."); return; }
+      // Service exists → systemd will auto-retry via Restart=on-failure. Don't spawn fallback.
+      console.log("  ⚠ systemd restart reported failure, but the service exists — systemd will auto-retry.");
+      console.log("  Check: systemctl status agend");
+      return;
     }
     // 2. User-level systemd service "com.agend.fleet"
     if (plat !== "macos" && isActive("systemctl --user is-active com.agend.fleet 2>/dev/null")) {
       run("systemctl --user daemon-reload");
       try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
       if (run("systemctl --user restart com.agend.fleet")) { console.log("Service restarted (user)."); return; }
+      // Service exists → systemd will auto-retry. Don't fall through to detached spawn.
+      console.log("  ⚠ systemd user service restart reported failure, but the service exists — systemd will auto-retry.");
+      console.log("  Check: systemctl --user status com.agend.fleet");
+      return;
     }
     // 3. launchd (macOS)
     if (plat === "macos") {
