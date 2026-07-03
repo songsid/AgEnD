@@ -10,6 +10,10 @@ export interface AdapterOpts {
   botToken: string;
   accessManager: AccessManager;
   inboxDir: string;
+  /** Register slash commands on start (Discord). Default true. Set false for a
+   * secondary bot sharing a guild with the primary, so it doesn't duplicate the
+   * guild's slash commands — only the primary registers them. */
+  registerCommands?: boolean;
 }
 
 /** Factory function that external adapter packages must default-export. */
@@ -54,6 +58,7 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
       guildId: config.group_id != null ? String(config.group_id) : "",
       categoryName: (config.options?.category_name as string) ?? undefined,
       generalChannelId: (config.options?.general_channel_id as string) ?? undefined,
+      registerCommands: opts.registerCommands,
     });
   }
 
