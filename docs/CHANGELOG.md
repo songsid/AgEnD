@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.10] - 2026-07-03
+
+### Added
+- **Quickstart auto-installs system service** — asks at end of quickstart, one-step setup.
+
+### Fixed
+- **Double fleet race condition** — restart no longer falls back to detached spawn when systemd service exists (#161).
+- **WSL Windows PATH filter** — systemd service `Environment=` filters Windows PATH entries.
+- **`IS_SANDBOX=1` for root** — systemd service adds env var for claude-code v2.1+ compatibility.
+
+### Changed
+- **Remove CI GitHub Release step** — leader writes release notes manually.
+
+## [2.0.9] - 2026-07-02
+
+### Fixed
+- **`/ctx` regex for Kiro CLI v3** — matches new λ prompt format (`26% λ !>`).
+
 ## [2.0.8] - 2026-07-02
 
 ### Added
