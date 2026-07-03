@@ -70,6 +70,12 @@ fleet
   .description("Start fleet or specific instance")
   .argument("[instance]", "Specific instance to start")
   .action(async (instance?: string) => {
+    // Root running fleet = sandbox environment (e.g. Docker, WSL root service)
+    // Set IS_SANDBOX so child processes (claude-code) don't refuse to run
+    if (process.getuid?.() === 0 && !process.env.IS_SANDBOX) {
+      process.env.IS_SANDBOX = "1";
+    }
+
     if (instance) {
       // If fleet daemon is already running, delegate via HTTP API
       const { loadFleetConfig } = await import("./config.js");
