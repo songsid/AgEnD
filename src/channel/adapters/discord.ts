@@ -38,6 +38,7 @@ export interface DiscordAdapterOptions {
   guildId: string;
   categoryName?: string;
   generalChannelId?: string;
+  registerCommands?: boolean;
 }
 
 export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
@@ -53,6 +54,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private openChannels = new Set<string>();
   private categoryName: string;
   private generalChannelId?: string;
+  private registerCommands: boolean;
   private queue: MessageQueue;
   private lastChatId: string | null = null;
   private attachmentUrls = new Map<string, string>();
@@ -67,6 +69,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.guildId = opts.guildId;
     this.categoryName = opts.categoryName ?? "AgEnD Agents";
     this.generalChannelId = opts.generalChannelId;
+    this.registerCommands = opts.registerCommands !== false;
 
     mkdirSync(this.inboxDir, { recursive: true });
 
@@ -328,8 +331,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     this.queue.start();
 
     this.client.once("ready", async () => {
-      // Register classic bot slash commands
-      try {
+      // Register classic bot slash commands (skipped for a secondary bot sharing
+      // a guild with the primary — only the primary owns the guild's commands).
+      if (this.registerCommands) try {
         await this.client.application?.commands.set([
           { name: "start", description: "Start an agent in this channel" },
           { name: "stop", description: "Stop the agent in this channel" },
