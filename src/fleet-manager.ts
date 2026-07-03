@@ -40,6 +40,7 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
+import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, classicInstanceName } from "./classic-channel-manager.js";
 
@@ -156,6 +157,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
   private webToken: string | null = null;
+  private viewToken: string | null = null;
 
   constructor(public dataDir: string) {
     this.lifecycle = new InstanceLifecycle(this);
@@ -4032,6 +4034,13 @@ When users create specialized instances, suggest these configurations:
       // best-effort
     }
 
+    // Separate read-only token for the /view page: grants terminal-view + profile
+    // read, but never write (POSTs still require the full web token).
+    this.viewToken = randomBytes(24).toString("hex");
+    const viewTokenPath = join(this.dataDir, "view.token");
+    writeFileSync(viewTokenPath, this.viewToken, { mode: 0o600 });
+    try { chmodSync(viewTokenPath, 0o600); } catch { /* best-effort */ }
+
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
 
@@ -4040,6 +4049,9 @@ When users create specialized instances, suggest these configurations:
         // fallthrough to existing handler below
       } else if (req.method === "POST" && req.url === "/agent") {
         // /agent handles its own instance-level auth via X-Agend-Instance-Token
+      } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
+        // /view routes accept the read-only view.token (or web.token) and do
+        // their own per-method auth in view-api.ts — skip the web-token gate.
       } else {
         // All other endpoints require a valid token (query ?token= or X-Agend-Token header).
         // /ui/* will also re-check in web-api.ts, which is harmless.
@@ -4230,6 +4242,7 @@ When users create specialized instances, suggest these configurations:
       // ── Web UI endpoints (delegated to web-api.ts) ─────
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
+      if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
       if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
 
       res.writeHead(404);
@@ -4272,6 +4285,7 @@ When users create specialized instances, suggest these configurations:
     });
 
     this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
+    this.logger.info({ url: `http://localhost:${port}/view?token=${this.viewToken}` }, "Web View available");
   }
 
   getUiStatus(): unknown {
