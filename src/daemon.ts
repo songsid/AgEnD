@@ -293,6 +293,15 @@ export class Daemon extends EventEmitter {
           this.logger.debug("Warmup skipped — instructions unchanged");
           return;
         }
+        // Skip warmup if no one is talking to this instance (avoid triggering
+        // unsolicited agent replies on idle instances after fleet restart).
+        if (this.pasteQueueDepth === 0) {
+          this.logger.debug("Warmup deferred — no pending inbound messages");
+          // Convert to pendingInstructionsNotice so it fires on next real message.
+          this.pendingInstructionsNotice = true;
+          try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch {}
+          return;
+        }
         const wid = existsSync(join(this.instanceDir, "window-id"))
           ? readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim() : "";
         if (wid && this.controlClient) {
@@ -300,7 +309,7 @@ export class Daemon extends EventEmitter {
         } else {
           await new Promise(r => setTimeout(r, 5000));
         }
-        await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+        await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Re-read your steering files. Do not reply to this message.");
         // Record the value the agent has now been told about so the next
         // unchanged restart skips the reload.
         try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
@@ -937,7 +946,7 @@ export class Daemon extends EventEmitter {
         }
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
-          await this.deliverMessage("[system] Your instructions/steering files have been updated. Please re-read them for the latest guidelines.");
+          await this.deliverMessage("[system] Your instructions/steering files have been updated. Re-read your steering files. Do not reply to this message.");
         }
         const status = (chatId && messageId)
           ? { chatId: meta.thread_id || chatId, messageId }
@@ -1483,7 +1492,13 @@ export class Daemon extends EventEmitter {
       const prevFile = join(this.instanceDir, "prev-instructions");
       let prev = "";
       try { prev = readFileSync(prevFile, "utf-8"); } catch {}
-      this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
+      if (!prev && backendConfig.instructions) {
+        // First time (no prev-instructions file): write current hash, skip warmup.
+        try { writeFileSync(prevFile, backendConfig.instructions); } catch {}
+        this.warmupNeeded = false;
+      } else {
+        this.warmupNeeded = !!backendConfig.instructions && prev !== backendConfig.instructions;
+      }
 
       // For backends that don't re-read instructions on resume (kiro/codex/
       // gemini), also notify the agent on next message instead of forcing a new

@@ -15,7 +15,6 @@ interface ServiceVars {
   path?: string;
   workingDirectory: string;
   logPath: string;
-  isRoot?: boolean;
 }
 
 export function detectPlatform(): "macos" | "linux" {
@@ -61,14 +60,7 @@ function validateVars(vars: ServiceVars & { path: string }): void {
 }
 
 function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
-  // Drop Windows PATH entries that WSL injects (e.g. /mnt/c/.../Program Files):
-  // they contain spaces and cause systemd "Ignoring invalid environment" parse
-  // warnings, and are useless to the Linux-side fleet anyway.
-  const path = (vars.path ?? process.env.PATH ?? "")
-    .split(":")
-    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files"))
-    .join(":");
-  const full = { ...vars, path, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
+  const full = { ...vars, path: vars.path ?? process.env.PATH ?? "" };
   validateVars(full);
   return full;
 }
