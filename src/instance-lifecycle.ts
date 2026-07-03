@@ -126,8 +126,9 @@ export class InstanceLifecycle {
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
-    if (process.getuid?.() === 0 && backendName === "claude-code") {
-      const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Use a non-root user or switch backend.`;
+    // Unless IS_SANDBOX=1 is set (recognized sandbox environment)
+    if (process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
+      const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Set IS_SANDBOX=1 or use a non-root user.`;
       this.ctx.logger.error({ name, backend: backendName }, msg);
       this.ctx.notifyInstanceTopic(name, msg);
       return;
