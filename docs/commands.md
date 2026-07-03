@@ -12,8 +12,6 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
 | `/compact` | Compact agent context | All |
-| `/cancel` | Interrupt agent generation | All |
-| `/save` | Save agent session | All |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
@@ -52,7 +50,6 @@ Registered globally via `client.application.commands.set()`.
 | `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
-| `/cancel` | Interrupt agent generation | All |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
