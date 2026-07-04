@@ -2,7 +2,7 @@
  * Read-only Web View (`/view`) — a terminal-streaming page plus editable
  * instance profiles. Separate from the operator Web UI (`/ui`):
  *
- *   GET  /view                 → static page (view.token or web.token)
+ *   GET  /view                 → static page (no token)
  *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text)
  *   GET  /api/profiles          → merged roster (live status + config + profile)
  *   GET  /api/profile/:instance → one profile row
@@ -10,8 +10,8 @@
  *   GET  /api/avatar/:instance  → avatar image
  *   POST /api/avatar/:instance  → upload avatar               (web.token only)
  *
- * Auth: GET routes accept view.token OR web.token; POST routes require the
- * (read-write) web.token. Instance names are whitelisted against fleet config
+ * Auth: GET routes are open (read-only dashboard, no token); POST routes require
+ * the (read-write) web.token. Instance names are whitelisted against fleet config
  * and tmux is invoked via execFile (no shell) to prevent command injection.
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
@@ -173,12 +173,11 @@ export function handleViewRequest(
 
   const method = req.method ?? "GET";
   const token = tokenFrom(req, url);
-  const canRead = !!token && (token === ctx.viewToken || token === ctx.webToken);
+  // GET routes are open (read-only dashboard); writes still require the web token.
   const canWrite = !!token && token === ctx.webToken;
 
   // ── GET /view — static page ──
   if (method === "GET" && path === "/view") {
-    if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
     try {
       const html = readFileSync(join(__dirname, "ui", "view.html"), "utf-8");
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -191,7 +190,6 @@ export function handleViewRequest(
 
   // ── GET /api/pane/:instance ──
   if (method === "GET" && path.startsWith("/api/pane/")) {
-    if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
     const name = decodeURIComponent(path.slice("/api/pane/".length));
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
     capturePane(ctx, name)
@@ -202,7 +200,6 @@ export function handleViewRequest(
 
   // ── GET /api/profiles — merged roster ──
   if (method === "GET" && path === "/api/profiles") {
-    if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
     const ui = ctx.getUiStatus() as { instances: Array<{ name: string; status: string; context_pct: number; model: string }> };
     const live = new Map(ui.instances.map(i => [i.name, i]));
     const db = profileDb(ctx.dataDir);
@@ -236,7 +233,6 @@ export function handleViewRequest(
   // ── /api/sort-order — sidebar drag-sort override ──
   if (path === "/api/sort-order") {
     if (method === "GET") {
-      if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
       const db = profileDb(ctx.dataDir);
       const rows = db.prepare("SELECT item_type, item_name, sort_index, group_name FROM view_sort_order ORDER BY sort_index").all();
       json(res, 200, rows);
@@ -275,7 +271,6 @@ export function handleViewRequest(
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
 
     if (method === "GET") {
-      if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
       const db = profileDb(ctx.dataDir);
       const row = (db.prepare("SELECT * FROM instance_profile WHERE instance_name = ?").get(name) as ProfileRow | undefined)
         ?? { instance_name: name, display_name: null, avatar_path: null, role: null, description: null, updated_at: 0 };
@@ -310,7 +305,6 @@ export function handleViewRequest(
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
 
     if (method === "GET") {
-      if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
       const db = profileDb(ctx.dataDir);
       const row = db.prepare("SELECT avatar_path FROM instance_profile WHERE instance_name = ?").get(name) as { avatar_path: string | null } | undefined;
       const file = row?.avatar_path;
