@@ -233,13 +233,21 @@
   // ── Terminal ──────────────────────────────────────────
   async function refreshPane() {
     if (!current) return;
+    const target = current;  // guard against a switch mid-fetch
     try {
-      const r = await fetch(api(`/api/pane/${encodeURIComponent(current)}`));
+      const r = await fetch(api(`/api/pane/${encodeURIComponent(target)}`));
+      if (target !== current) return;  // user switched while awaiting — drop stale
+      if (!r.ok) {
+        // Surface the failure instead of leaving the previous instance's output
+        // on screen (which reads as "switching did nothing").
+        q("pre").textContent = `⚠ Could not load pane for ${target} (HTTP ${r.status}).`;
+        return;
+      }
       const text = await r.text();
-      const pre = q("pre");
-      pre.innerHTML = ansiToHtml(text);
+      if (target !== current) return;
+      q("pre").innerHTML = ansiToHtml(text);
       if (!fitted) { fitFont(text); fitted = true; }
-    } catch { /* transient */ }
+    } catch { /* transient network error — keep last frame */ }
   }
 
   // Fit font size so the widest line fits the terminal width. Recomputed only
@@ -258,6 +266,7 @@
     if (name === current) return;
     current = name; fitted = false;
     exitEdit();
+    q("pre").textContent = "";  // blank the old instance's output immediately
     renderList(); renderCard(); refreshPane();
   }
 
