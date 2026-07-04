@@ -1711,9 +1711,12 @@ async function resolveInstance(query: string, config: import("./types.js").Fleet
     const classicPath = join(DATA_DIR, "classicBot.yaml");
     if (existsSync(classicPath)) {
       const yamlMod = (await import("js-yaml")).default;
-      const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string }> } | null;
+      const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string; channelId?: string; instanceName?: string }> } | null;
       if (classic?.channels) {
-        for (const [channelId, val] of Object.entries(classic.channels)) {
+        for (const [key, val] of Object.entries(classic.channels)) {
+          // New format persists instanceName; old format keyed by channelId.
+          if (val.instanceName) { names.push(val.instanceName); continue; }
+          const channelId = val.channelId ?? key;
           const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
           names.push(`classic-${chName}-${channelId.slice(-4)}`);
         }
@@ -1814,7 +1817,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
 
     // Load classic channels from classicBot.yaml (keyed by channelId)
     const classicPath = join(DATA_DIR, "classicBot.yaml");
-    interface ClassicEntry { name?: string; backend?: string; createdBy?: string; createdAt?: string }
+    interface ClassicEntry { name?: string; backend?: string; createdBy?: string; createdAt?: string; channelId?: string; adapterId?: string; instanceName?: string }
     interface ClassicBotConfig { defaults?: { backend?: string }; channels?: Record<string, ClassicEntry> }
     let classicConfig: ClassicBotConfig | null = null;
     try {
@@ -1824,16 +1827,20 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const allNames = [...names];
     const classicNames = new Set<string>();
     const classicBackends = new Map<string, string>();
+    const classicChannelIdByName = new Map<string, string>();
     if (classicConfig?.channels) {
       const classicDefault = classicConfig.defaults?.backend || config.defaults?.backend || "claude-code";
-      for (const [channelId, val] of Object.entries(classicConfig.channels)) {
+      for (const [key, val] of Object.entries(classicConfig.channels)) {
+        // New format stores channelId + instanceName explicitly; old format used
+        // the map key as the channelId and had no adapter suffix.
+        const channelId = val.channelId ?? key;
         const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
-        const suffix = channelId.slice(-4);
-        const iName = `classic-${chName}-${suffix}`;
+        const iName = val.instanceName ?? `classic-${chName}-${channelId.slice(-4)}`;
         if (!allNames.includes(iName)) {
           allNames.push(iName);
           classicNames.add(iName);
           classicBackends.set(iName, val.backend || classicDefault);
+          classicChannelIdByName.set(iName, channelId);
         }
       }
     }
@@ -1870,9 +1877,8 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     const getSource = (name: string, inst?: Record<string, unknown>): string => {
       if (singleSource) return singleSource;
       if (classicNames.has(name)) {
-        // Match channelId by suffix: Telegram IDs are short/negative, Discord snowflakes are 17+ digits
-        const suffix = name.slice(-4);
-        const matchedChId = Object.keys(classicConfig?.channels ?? {}).find(id => id.slice(-4) === suffix) ?? "";
+        // Telegram IDs are short/negative, Discord snowflakes are 17+ digits.
+        const matchedChId = classicChannelIdByName.get(name) ?? "";
         return matchedChId.startsWith("-") || matchedChId.length < 17 ? "TG" : "DC";
       }
       const topicId = String(inst?.topic_id ?? "");
