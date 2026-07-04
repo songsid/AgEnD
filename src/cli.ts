@@ -1444,6 +1444,32 @@ program
     child.unref();
   });
 
+  program
+  .command("view")
+  .description("Open the read-only View dashboard in your browser")
+  .action(async () => {
+    const tokenPath = join(DATA_DIR, "view.token");
+    if (!existsSync(tokenPath)) {
+      console.error("View token not found. Is the fleet running?");
+      process.exit(1);
+    }
+    const token = readFileSync(tokenPath, "utf-8").trim();
+    const { loadFleetConfig } = await import("./config.js");
+    const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
+    const port = fleet.health_port ?? 19280;
+    const url = `http://localhost:${port}/view?token=${encodeURIComponent(token)}`;
+    console.log(`Opening ${url}`);
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const tmpDir = mkdtempSync(join(tmpdir(), "agend-view-"));
+    const htmlPath = join(tmpDir, "open.html");
+    const htmlUrl = url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+    writeFileSync(htmlPath, `<!doctype html><meta http-equiv="refresh" content="0; url=${htmlUrl}">`, { mode: 0o600 });
+    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+    const child = spawn(cmd, [htmlPath], { detached: true, stdio: "ignore" });
+    child.unref();
+  });
+
 // === Schedule commands ===
 const schedule = program.command("schedule").description("Manage scheduled tasks");
 
