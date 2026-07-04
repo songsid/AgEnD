@@ -283,6 +283,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
     const cfg = this.fleetConfig?.instances[name];
     if (fromInbound && (cfg?.general_topic || cfg?.channel_id)) return;
+    // A classic instance is bound authoritatively at /start. Don't let an inbound
+    // (seen by every same-guild bot) override an existing binding — but if there
+    // is none yet (e.g. after a restart, before v2.1 persistence), allow inbound
+    // to re-establish it so replies don't fall back to the primary bot forever.
+    if (fromInbound && this.classicChannels?.getChannelIdByInstance(name) !== undefined && this.instanceWorldBinding.has(name)) return;
     this.instanceWorldBinding.set(name, adapterId);
   }
 
@@ -844,16 +849,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (channelConfigs.length === 0) return;
 
     // Start primary adapter (first channel) — this.adapter for backward compat.
-    // The primary owns the guild's slash commands.
     await this.startSingleAdapter(fleet, channelConfigs[0]);
-    const primaryGroup = String(channelConfigs[0].group_id ?? "");
 
-    // Start additional adapters. A secondary bot in the SAME guild as the primary
-    // must not re-register the guild's slash commands (they'd appear twice); a bot
-    // in a different guild still registers its own.
+    // Start additional adapters. Every bot registers its own slash commands —
+    // Discord slash commands are per-application, so a same-guild secondary bot's
+    // /start etc. are distinct entries (labelled with the bot name) and the
+    // interaction only reaches the invoked bot. This is how ClassicBot supports
+    // multiple bots in one guild: the user picks which bot from autocomplete.
     for (let i = 1; i < channelConfigs.length; i++) {
-      const sameGuild = String(channelConfigs[i].group_id ?? "") === primaryGroup;
-      await this.startAdditionalAdapter(channelConfigs[i], !sameGuild);
+      await this.startAdditionalAdapter(channelConfigs[i]);
     }
   }
 
@@ -928,7 +932,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
       if (data.command === "start") {
-        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
+        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
         await data.respond(reply);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId);
@@ -1173,7 +1177,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
       if (data.command === "start") {
-        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId);
+        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
         await data.respond(reply);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId);
@@ -1629,8 +1633,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             }
           }
           const channelName = msg.username || chatId;
-          const reply = await this.handleClassicStart(chatId, channelName, msg.userId);
-          if (msg.adapterId) this.bindInstanceAdapter(classicInstanceName(sanitizeInstanceName(channelName || chatId), chatId), msg.adapterId, true);
+          // handleClassicStart binds the instance to this adapter authoritatively.
+          const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId);
           await msgAdapter?.sendText(chatId, reply);
           return;
         }
@@ -3542,7 +3546,7 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Handle /start slash command — register classic channel */
-  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string): Promise<string> {
+  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string): Promise<string> {
     if (!this.classicChannels) return "Classic channel manager not initialized.";
     if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
       const generalId = this.findGeneralInstance();
@@ -3557,6 +3561,10 @@ When users create specialized instances, suggest these configurations:
     const instanceName = classicInstanceName(sanitizeInstanceName(channelName || channelId), channelId);
     this.classicChannels.register(channelId, instanceName, channelName || channelId, userId);
     this.routing.register(channelId, { kind: "classic", name: instanceName });
+    // Bind this classic instance to the bot that started it (authoritative), so
+    // replies/cancel go out through that bot even though every same-guild bot
+    // also sees the channel's messages. (Persisting this survives to v2.1.)
+    if (adapterId) this.bindInstanceAdapter(instanceName, adapterId);
 
     await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId), this.classicChannels.getModel(channelId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
