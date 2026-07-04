@@ -71,6 +71,8 @@ export function classicInstanceName(sanitizedName: string, channelId: string, ad
 export class ClassicChannelManager {
   /** Keyed by compositeKey(channelId, adapterId) — see {@link ClassicChannel.adapterId}. */
   private channels = new Map<string, ClassicChannel>();
+  /** Distinct channelIds across all adapters — makes hasChannel() O(1) (hot path: every inbound). */
+  private channelIds = new Set<string>();
   private defaults: { backend?: string; model?: string; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
@@ -97,6 +99,11 @@ export class ClassicChannelManager {
   /** Map key for a (channelId, adapterId) pair. adapterId-less = legacy entry (pre-migration). */
   private compositeKey(channelId: string, adapterId?: string): string {
     return adapterId ? `${channelId}#${adapterId}` : channelId;
+  }
+
+  /** Rebuild the channelId presence set from the entry map (call after any mutation). */
+  private rebuildChannelIds(): void {
+    this.channelIds = new Set([...this.channels.values()].map(ch => ch.channelId));
   }
 
   /**
@@ -144,6 +151,7 @@ export class ClassicChannelManager {
           });
         }
       }
+      this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
     } catch (err) {
@@ -288,12 +296,9 @@ export class ClassicChannelManager {
     return classicInstanceName(sanitizeInstanceName(channelName || channelId), channelId, suffixAdapter);
   }
 
-  /** Whether ANY bot has an agent in this channel (adapter-independent). */
+  /** Whether ANY bot has an agent in this channel (adapter-independent). O(1). */
   hasChannel(channelId: string): boolean {
-    for (const ch of this.channels.values()) {
-      if (ch.channelId === channelId) return true;
-    }
-    return false;
+    return this.channelIds.has(channelId);
   }
 
   /** Exact per-bot check. adapterId omitted matches only a legacy entry. */
@@ -304,6 +309,7 @@ export class ClassicChannelManager {
   register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string): ClassicChannel {
     const ch: ClassicChannel = { channelId, adapterId, name: channelName, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
     this.channels.set(this.compositeKey(channelId, adapterId), ch);
+    this.rebuildChannelIds();
     this.save();
     this.logger.info({ channelId, adapterId, instanceName }, "Registered classic channel");
     return ch;
@@ -313,6 +319,7 @@ export class ClassicChannelManager {
     const ch = this.find(channelId, adapterId);
     if (!ch) return undefined;
     this.channels.delete(this.compositeKey(ch.channelId, ch.adapterId));
+    this.rebuildChannelIds();
     this.save();
     this.logger.info({ channelId, adapterId: ch.adapterId, instanceName: ch.instanceName }, "Unregistered classic channel");
     return ch;
