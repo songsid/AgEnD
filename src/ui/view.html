@@ -13,7 +13,11 @@
   /* Sidebar */
   #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
   #sidebar h1 { font-size: 14px; color: var(--accent); padding: 14px 16px; border-bottom: 1px solid var(--border); font-weight: 600; letter-spacing: .5px; }
-  .inst { display: flex; align-items: center; gap: 8px; padding: 10px 16px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px; }
+  .group-header { display: flex; align-items: center; gap: 6px; padding: 8px 12px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .4px; background: rgba(255,255,255,.02); border-bottom: 1px solid var(--border); user-select: none; }
+  .group-header:hover { color: var(--fg); }
+  .group-header .caret { width: 10px; flex: 0 0 10px; }
+  .group-header .gcount { margin-left: auto; opacity: .7; font-weight: 400; }
+  .inst { display: flex; align-items: center; gap: 8px; padding: 10px 16px 10px 24px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px; }
   .inst:hover { background: rgba(255,255,255,.04); }
   .inst.active { background: rgba(88,166,255,.14); border-left: 3px solid var(--accent); padding-left: 13px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
@@ -86,6 +90,7 @@
   let current = null;
   let poll = null;
   let fitted = false;
+  const collapsed = new Set();  // group names the user has collapsed
 
   const api = (path) => `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 
@@ -147,17 +152,59 @@
     const l = (n - 232) * 10 + 8; return `rgb(${l},${l},${l})`;
   }
 
-  // ── Sidebar ───────────────────────────────────────────
+  // ── Sidebar (grouped by tag) ──────────────────────────
+  // Group name: "Classic" if tagged classic, else the first tag, else "Other".
+  function groupOf(it) {
+    const tags = it.tags || [];
+    if (tags.includes("classic")) return "Classic";
+    if (tags.length) return tags[0];
+    return "Other";
+  }
+  // Short label: display name if set, else instance name minus its tag prefix
+  // and the -t<id> suffix (doupo-server-t1503… → server).
+  function shortName(it) {
+    if (it.display_name) return it.display_name;
+    let n = it.instance_name.replace(/-t[0-9a-z]+$/i, "");
+    const tag = (it.tags || [])[0];
+    if (tag && n.toLowerCase().startsWith(tag.toLowerCase() + "-")) n = n.slice(tag.length + 1);
+    return n || it.instance_name;
+  }
+
   function renderList() {
     const list = q("list");
     list.innerHTML = "";
+
+    // Bucket instances by group.
+    const groups = new Map();
     for (const it of roster) {
-      const el = document.createElement("div");
-      el.className = "inst" + (it.instance_name === current ? " active" : "");
-      const label = it.display_name || it.instance_name;
-      el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(label)}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>`;
-      el.onclick = () => select(it.instance_name);
-      list.appendChild(el);
+      const g = groupOf(it);
+      if (!groups.has(g)) groups.set(g, []);
+      groups.get(g).push(it);
+    }
+    // Sort group names alphabetically, but keep "Other" last.
+    const names = [...groups.keys()].sort((a, b) => {
+      if (a === "Other") return 1;
+      if (b === "Other") return -1;
+      return a.localeCompare(b);
+    });
+
+    for (const g of names) {
+      const items = groups.get(g);
+      const isCollapsed = collapsed.has(g);
+      const header = document.createElement("div");
+      header.className = "group-header";
+      header.innerHTML = `<span class="caret">${isCollapsed ? "▶" : "▼"}</span><span>${esc(g)}</span><span class="gcount">${items.length}</span>`;
+      header.onclick = () => { if (collapsed.has(g)) collapsed.delete(g); else collapsed.add(g); renderList(); };
+      list.appendChild(header);
+      if (isCollapsed) continue;
+
+      for (const it of items) {
+        const el = document.createElement("div");
+        el.className = "inst" + (it.instance_name === current ? " active" : "");
+        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>`;
+        el.onclick = () => select(it.instance_name);
+        list.appendChild(el);
+      }
     }
   }
 
