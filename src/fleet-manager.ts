@@ -28,7 +28,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, sanitizeInstanceName, saveCommandForBackend, parseSaveFilename, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -42,7 +42,7 @@ import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, classicInstanceName } from "./classic-channel-manager.js";
+import { ClassicChannelManager } from "./classic-channel-manager.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -223,21 +223,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.routing.map;
   }
 
-  /** Re-register classic channels after routing rebuild (rebuild clears the table) */
+  /**
+   * Refresh each adapter's open-channel whitelist after a classic change.
+   * Classic channels are NOT registered in the routing engine (it's single-key
+   * per channel — can't represent two bots in one channel); routing resolves
+   * per-bot via ClassicChannelManager.getInstanceByChannel. Each adapter only
+   * opens the channels IT owns so a sibling bot doesn't process another's cross-
+   * guild channel.
+   */
   private reregisterClassicChannels(): void {
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
-    for (const ch of channels) {
-      this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
-    }
     // Always update adapter openChannels (including empty — clears stale entries on /stop)
-    for (const [, w] of this.worlds) {
+    for (const [adapterId, w] of this.worlds) {
       if (typeof (w.adapter as any)?.setOpenChannels === "function") {
-        (w.adapter as any).setOpenChannels(channels.map(ch => ch.channelId));
+        const owned = channels.filter(ch => ch.adapterId === adapterId).map(ch => ch.channelId);
+        (w.adapter as any).setOpenChannels(owned);
       }
     }
     if (channels.length > 0) {
-      this.logger.info({ count: channels.length }, "Registered classic channel routes");
+      this.logger.info({ count: channels.length }, "Refreshed classic channel open-lists");
     }
   }
 
@@ -465,10 +470,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.eventLog = new EventLog(join(this.dataDir, "events.db"));
 
-    // Initialize classic channel manager and register existing channels in routing
+    // Initialize classic channel manager. The primary adapter (channels[0])
+    // migrates legacy single-bot entries and names without a suffix. Classic
+    // routing does NOT go through the routing engine (single-key, can't hold two
+    // bots in one channel) — it resolves per-bot via getInstanceByChannel.
     this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
+    const primaryCh = fleet.channels?.[0] ?? fleet.channel;
+    if (primaryCh) this.classicChannels.setPrimaryAdapterId(primaryCh.id ?? primaryCh.type);
+    // Restore the persisted bot binding so replies/cancel go through the right
+    // bot after a restart (before this, inbound would re-bind lazily).
     for (const ch of this.classicChannels.getAll()) {
-      this.routing.register(ch.channelId, { kind: "classic", name: ch.instanceName });
+      if (ch.adapterId) this.instanceWorldBinding.set(ch.instanceName, ch.adapterId);
     }
 
     // Poll classicBot.yaml for external changes every 30s
@@ -935,20 +947,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
         await data.respond(reply);
       } else if (data.command === "stop") {
-        const reply = await this.handleClassicStop(data.channelId);
+        const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
         if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
-        const target = this.routing.resolve(data.channelId);
-        if (!target || target.kind !== "classic") {
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
         const replyMsgId = await data.respond("👀");
         const username = data.username ?? data.userId;
-        ClassicChannelManager.logMessage(target.name, username, `/chat ${text}`, new Date());
-        await this.forwardToClassicInstance(target.name, text, {
+        ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
+        await this.forwardToClassicInstance(name, text, {
           chatId: data.channelId,
           threadId: data.channelId,
           messageId: replyMsgId ?? "",
@@ -958,40 +970,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           timestamp: new Date(),
         });
       } else if (data.command === "save") {
-        await this.handleSlashSave(data);
+        await this.handleSlashSave(data, adapterId);
       } else if (data.command === "load") {
         // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        const target = this.routing.resolve(data.channelId);
-        if (!target || target.kind !== "classic") {
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
         const filename = data.options?.filename as string;
         if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-        this.pasteRawToClassicInstance(target.name, `/chat load ${filename}`);
-        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${target.name}`);
+        this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
+        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "compact") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const result = await this.topicCommands.sendCompact(target.name);
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       } else if (data.command === "cancel") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const ok = this.cancelInstance(target.name);
-        await data.respond(ok ? `🛑 Sent cancel to ${target.name}.` : `❌ ${target.name} not running.`);
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
+        const ok = this.cancelInstance(name);
+        await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
       } else if (data.command === "ctx") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) {
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) {
           await data.respond("No active agent in this channel.");
           return;
         }
         // Single source of truth (statusline.json + robust tmux pane fallback).
-        await data.respond(await this.topicCommands.getCtxText(target.name));
+        await data.respond(await this.topicCommands.getCtxText(name));
       } else if (data.command === "collab") {
         const collabTarget = this.routing.resolve(data.channelId);
         if (collabTarget && collabTarget.kind !== "classic") {
@@ -1008,11 +1020,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        if (!this.classicChannels.isClassicChannel(data.channelId)) {
+        if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
-        const newState = this.classicChannels.toggleCollab(data.channelId);
+        const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
         await data.respond(newState
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
@@ -1058,9 +1070,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const result = await this.topicCommands.sendCompact(target.name);
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       }
     }, this.logger, "adapter.slash_command"));
@@ -1180,20 +1192,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
         await data.respond(reply);
       } else if (data.command === "stop") {
-        const reply = await this.handleClassicStop(data.channelId);
+        const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
         if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
-        const target = this.routing.resolve(data.channelId);
-        if (!target || target.kind !== "classic") {
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
         const replyMsgId = await data.respond("👀");
         const username = data.username ?? data.userId;
-        ClassicChannelManager.logMessage(target.name, username, `/chat ${text}`, new Date());
-        await this.forwardToClassicInstance(target.name, text, {
+        ClassicChannelManager.logMessage(name, username, `/chat ${text}`, new Date());
+        await this.forwardToClassicInstance(name, text, {
           chatId: data.channelId,
           threadId: data.channelId,
           messageId: replyMsgId ?? "",
@@ -1203,37 +1215,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           timestamp: new Date(),
         });
       } else if (data.command === "save") {
-        await this.handleSlashSave(data);
+        await this.handleSlashSave(data, adapterId);
       } else if (data.command === "load") {
         // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        const target = this.routing.resolve(data.channelId);
-        if (!target || target.kind !== "classic") {
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
         const filename = data.options?.filename as string;
         if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-        this.pasteRawToClassicInstance(target.name, `/chat load ${filename}`);
-        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${target.name}`);
-      } else if (data.command === "compact") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const result = await this.topicCommands.sendCompact(target.name);
-        await data.respond(result);
+        this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
+        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "cancel") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const ok = this.cancelInstance(target.name);
-        await data.respond(ok ? `🛑 Sent cancel to ${target.name}.` : `❌ ${target.name} not running.`);
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
+        const ok = this.cancelInstance(name);
+        await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
       } else if (data.command === "ctx") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
         // Single source of truth (statusline.json + robust tmux pane fallback).
-        await data.respond(await this.topicCommands.getCtxText(target.name));
+        await data.respond(await this.topicCommands.getCtxText(name));
       } else if (data.command === "collab") {
         const collabTarget2 = this.routing.resolve(data.channelId);
         if (collabTarget2 && collabTarget2.kind !== "classic") {
@@ -1250,11 +1257,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond("⛔ This command requires admin access.");
           return;
         }
-        if (!this.classicChannels.isClassicChannel(data.channelId)) {
+        if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
           await data.respond("No active agent in this channel. Use `/start` first.");
           return;
         }
-        const newState = this.classicChannels.toggleCollab(data.channelId);
+        const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
         await data.respond(newState
           ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
           : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
@@ -1300,9 +1307,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
-        const target = this.routing.resolve(data.channelId);
-        if (!target) { await data.respond("No active agent in this channel."); return; }
-        const result = await this.topicCommands.sendCompact(target.name);
+        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        if (!name) { await data.respond("No active agent in this channel."); return; }
+        const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
@@ -1508,8 +1515,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Routing (by topic/channel) and reply-adapter selection (by channel_id
     // binding) are adapter-independent, so it's safe to let whichever adapter
     // arrives first handle it.
+    //
+    // EXCEPTION — classic channels with same-channel multi-bot: two bots may own
+    // separate agents in one channel, so each bot must process its OWN copy of
+    // the message (the @mention filter downstream decides who actually forwards).
+    // Key the dedup per-adapter there so a sibling bot's copy isn't dropped.
     if (msg.messageId) {
-      const dedupKey = `${msg.source}:${msg.chatId}:${msg.messageId}`;
+      const classicCid = msg.threadId || msg.chatId;
+      const isClassicMsg = this.classicChannels?.hasChannel(classicCid) ?? false;
+      const dedupKey = isClassicMsg
+        ? `${msg.source}:${msg.chatId}:${msg.messageId}:${msg.adapterId ?? ""}`
+        : `${msg.source}:${msg.chatId}:${msg.messageId}`;
       if (this.recentMessageIds.has(dedupKey)) {
         this.logger.debug({ dedupKey, adapterId: msg.adapterId }, "Duplicate inbound across adapters — skipping");
         return;
@@ -1534,17 +1550,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.debug({ botUser, mentionsUs, isOpen, isBotMessage: true, threadId: null }, "Bot message filter (no threadId path)");
         if (!isOpen && !mentionsUs) return;
         // Fall through to TG classic handling below
+      } else if (this.classicChannels?.hasChannel(threadId)) {
+        // Classic channel (per-bot): bot messages only when THIS bot owns an
+        // agent here and collab is on for it.
+        const classicName = this.classicChannels.getInstanceByChannel(threadId, msg.adapterId);
+        if (!classicName) return;
+        if (!this.classicChannels.isCollab(threadId, msg.adapterId)) return;
+        // Fall through to channel handling
       } else {
         const target = this.routing.resolve(threadId);
         if (!target) return;
-        if (target.kind === "classic") {
-          if (!this.classicChannels?.isCollab(threadId)) return;
-        } else {
-          // Fleet topic: allow if collab enabled OR access mode is open
-          const channelCfg = this.getChannelConfig(msg.adapterId);
-          const isOpen = channelCfg?.access?.mode === "open";
-          if (!isOpen && !this.collabInstances.has(target.name)) return;
-        }
+        // Fleet topic: allow if collab enabled OR access mode is open
+        const channelCfg = this.getChannelConfig(msg.adapterId);
+        const isOpen = channelCfg?.access?.mode === "open";
+        if (!isOpen && !this.collabInstances.has(target.name)) return;
         // Fall through to channel handling
       }
     }
@@ -1555,9 +1574,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
       const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
       if (!isTelegramClassicCandidate) {
-        const target = threadId ? this.routing.resolve(threadId) : undefined;
-        this.logger.info({ userId: msg.userId, threadId, targetKind: target?.kind, targetName: (target as any)?.name }, "Access DENIED for non-allowed user");
-        if (!target || target.kind !== "classic") return;
+        // Classic channels are open to all; check per-bot ownership (or fleet topic).
+        const isClassic = !!(threadId && this.classicChannels?.hasChannel(threadId));
+        this.logger.info({ userId: msg.userId, threadId, isClassic }, "Access DENIED for non-allowed user");
+        if (!isClassic) return;
       }
     }
     if (threadId == null) {
@@ -1649,7 +1669,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             }
             return;
           }
-          const reply = await this.handleClassicStop(chatId);
+          const reply = await this.handleClassicStop(chatId, msg.adapterId);
           await msgAdapter?.sendText(chatId, reply);
           return;
         }
@@ -1660,36 +1680,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, "⛔ /compact requires admin access.");
             return;
           }
-          const compactTarget = this.routing.resolve(chatId);
-          if (!compactTarget || compactTarget.kind !== "classic") {
+          const compactName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!compactName) {
             await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
             return;
           }
-          const result = await this.topicCommands.sendCompact(compactTarget.name);
+          const result = await this.topicCommands.sendCompact(compactName);
           await msgAdapter?.sendText(chatId, result);
           return;
         }
 
         // Handle /cancel command
         if (text === "/cancel" || text.startsWith("/cancel@")) {
-          const cancelTarget = this.routing.resolve(chatId);
-          if (!cancelTarget || cancelTarget.kind !== "classic") {
+          const cancelName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!cancelName) {
             await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
             return;
           }
-          const ok = this.cancelInstance(cancelTarget.name);
-          await msgAdapter?.sendText(chatId, ok ? `🛑 已送出取消給 ${cancelTarget.name}。` : `❌ ${cancelTarget.name} 未在執行。`);
+          const ok = this.cancelInstance(cancelName);
+          await msgAdapter?.sendText(chatId, ok ? `🛑 已送出取消給 ${cancelName}。` : `❌ ${cancelName} 未在執行。`);
           return;
         }
 
         // Handle /ctx command
         if (text === "/ctx" || text.startsWith("/ctx@")) {
-          const ctxTarget = this.routing.resolve(chatId);
-          if (!ctxTarget || ctxTarget.kind !== "classic") {
+          const ctxName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!ctxName) {
             await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
             return;
           }
-          const reply = await this.topicCommands.getCtxText(ctxTarget.name);
+          const reply = await this.topicCommands.getCtxText(ctxName);
           await msgAdapter?.sendText(chatId, reply);
           return;
         }
@@ -1700,31 +1720,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, "⛔ /save requires admin access.");
             return;
           }
-          const saveTarget = this.routing.resolve(chatId);
-          if (!saveTarget || saveTarget.kind !== "classic") {
+          const saveName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!saveName) {
             await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
             return;
           }
           const filename = parseSaveFilename(text);
           if (!filename) { await msgAdapter?.sendText(chatId, "Usage: /save <filename>"); return; }
           if (!SAVE_FILENAME_RE.test(filename)) { await msgAdapter?.sendText(chatId, "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
-          const backend = this.classicChannels.getBackendByInstance(saveTarget.name, this.fleetConfig?.defaults?.backend);
+          const backend = this.classicChannels.getBackendByInstance(saveName, this.fleetConfig?.defaults?.backend);
           const cmd = saveCommandForBackend(backend, filename);
           if (!cmd) { await msgAdapter?.sendText(chatId, SAVE_UNSUPPORTED_MSG); return; }
-          this.pasteRawToClassicInstance(saveTarget.name, cmd);
-          await msgAdapter?.sendText(chatId, `✅ Sent \`${cmd}\` to ${saveTarget.name}`);
+          this.pasteRawToClassicInstance(saveName, cmd);
+          await msgAdapter?.sendText(chatId, `✅ Sent \`${cmd}\` to ${saveName}`);
           return;
         }
 
-        // Route to classic channel if registered
-        const target = this.routing.resolve(chatId);
-        if (target?.kind === "classic") {
-          if (msg.adapterId) this.bindInstanceAdapter(target.name, msg.adapterId, true);
+        // Route to classic channel if this bot has an agent here (per-bot).
+        const classicName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+        if (classicName) {
+          if (msg.adapterId) this.bindInstanceAdapter(classicName, msg.adapterId, true);
           // TG ClassicBot: group requires @mention, private chat forwards directly.
           if (!isPrivateChat && !isBotMentioned) {
             // No trigger: save attachments + react, log, but don't forward to agent
             const syntheticMsg = { ...msg, threadId: chatId, text: rawText.startsWith("/") ? "" : rawText };
-            await this.handleClassicChannelMessage(target.name, syntheticMsg);
+            await this.handleClassicChannelMessage(classicName, syntheticMsg);
             return;
           }
           // Strip @bot from text and forward as /chat
@@ -1734,7 +1754,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return;
           }
           const syntheticMsg = { ...msg, threadId: chatId, text: `/chat ${cleanText}` };
-          await this.handleClassicChannelMessage(target.name, syntheticMsg);
+          await this.handleClassicChannelMessage(classicName, syntheticMsg);
           return;
         }
 
@@ -1797,6 +1817,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           void this.sendCancelButton(generalInstance);
         }
       }
+      return;
+    }
+
+    // Classic channels resolve per-bot (same-channel multi-bot) — a channel can
+    // host two bots' agents. If this channel is classic but THIS bot has no
+    // agent here, a sibling bot owns it; skip rather than misroute to it.
+    if (this.classicChannels?.hasChannel(threadId)) {
+      const classicName = this.classicChannels.getInstanceByChannel(threadId, msg.adapterId);
+      if (!classicName) return;
+      if (msg.adapterId) this.bindInstanceAdapter(classicName, msg.adapterId, true);
+      await this.handleClassicChannelMessage(classicName, msg);
       return;
     }
 
@@ -1966,7 +1997,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ts: new Date().toISOString(),
         });
         // Log bot reply to classic instance chat-log
-        const isClassic = [...this.routing.entries()].some(([, t]) => t.kind === "classic" && t.name === instanceName);
+        const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
         if (isClassic) {
           ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
         }
@@ -2667,13 +2698,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    // Classic instance: find chatId from routing table
-    for (const [chatId, target] of this.routing.entries()) {
-      if (target.kind === "classic" && target.name === instanceName) {
-        adapter.sendText(chatId, text)
-          .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
-        return;
-      }
+    // Classic instance: find its channelId from the classic manager
+    const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
+    if (classicChatId) {
+      adapter.sendText(classicChatId, text)
+        .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
+      return;
     }
 
     // Fallback: send to group without threadId
@@ -2693,12 +2723,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Picks the backend-appropriate command (kiro → /chat save, claude → /export);
    * unsupported backends get a clear error. Routes via classic paste or fleet IPC.
    */
-  private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }): Promise<void> {
+  private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }, adapterId?: string): Promise<void> {
     if (!this.classicChannels?.isAdmin(data.userId)) {
       await data.respond("⛔ This command requires admin access.");
       return;
     }
-    const target = this.routing.resolve(data.channelId);
+    // Classic resolves per-bot (same-channel multi-bot); otherwise a fleet topic.
+    const classicName = this.classicChannels.getInstanceByChannel(data.channelId, adapterId);
+    const target: RouteTarget | undefined = classicName
+      ? { kind: "classic", name: classicName }
+      : this.routing.resolve(data.channelId);
     if (!target) {
       await data.respond("No active agent in this channel. Use `/start` first.");
       return;
@@ -2753,10 +2787,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId = String(groupId);
       threadId = String(topicId);
     } else {
-      // Classic instance: chatId from the routing table.
-      for (const [cid, target] of this.routing.entries()) {
-        if (target.kind === "classic" && target.name === instanceName) { chatId = cid; break; }
-      }
+      // Classic instance: channelId from the classic manager.
+      chatId = this.classicChannels?.getChannelIdByInstance(instanceName);
       // General / flat fallback: post to the group (no thread).
       if (!chatId && groupId) chatId = String(groupId);
     }
@@ -3247,7 +3279,7 @@ When users create specialized instances, suggest these configurations:
   private async handleClassicChannelMessage(instanceName: string, msg: InboundMessage): Promise<void> {
     const text = msg.text ?? "";
     const channelId = msg.threadId ?? msg.chatId;
-    const isCollabMode = this.classicChannels?.isCollab(channelId) ?? false;
+    const isCollabMode = this.classicChannels?.isCollab(channelId, msg.adapterId) ?? false;
 
     // Handle /ctx in classic mode — always, regardless of collab mode
     if (text === "/ctx" || text.startsWith("/ctx@")) {
@@ -3457,7 +3489,11 @@ When users create specialized instances, suggest these configurations:
     msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
-    const contextLines = this.classicChannels?.getContextLines(msg.chatId) ?? 5;
+    // Resolve the channel/adapter from the instance itself so per-channel context
+    // config is correct even for a same-channel second bot.
+    const ctxAdapterId = this.classicChannels?.getAdapterIdByInstance(instanceName);
+    const ctxChannelId = this.classicChannels?.getChannelIdByInstance(instanceName) ?? msg.chatId;
+    const contextLines = this.classicChannels?.getContextLines(ctxChannelId, ctxAdapterId) ?? 5;
     const logContext = this.getRecentChatLog(instanceName, contextLines);
     const fullText = logContext
       ? `[Chat log for context]\n${logContext}\n\n[User message]\n${text}`
@@ -3555,38 +3591,40 @@ When users create specialized instances, suggest these configurations:
       }
       return "⛔ This server is not in the allowed guilds list.";
     }
-    if (this.classicChannels.isClassicChannel(channelId)) return "This channel already has an active agent. Use /chat to talk.";
+    // Per-bot check: a second bot may /start in the same channel (own agent).
+    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return "This channel already has an active agent. Use /chat to talk.";
+    // Classic no longer lives in the routing engine, so this only guards against
+    // a fleet topic-mode instance colliding with the channel.
     if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
 
-    const instanceName = classicInstanceName(sanitizeInstanceName(channelName || channelId), channelId);
-    this.classicChannels.register(channelId, instanceName, channelName || channelId, userId);
-    this.routing.register(channelId, { kind: "classic", name: instanceName });
+    const instanceName = this.classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
+    this.classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId);
     // Bind this classic instance to the bot that started it (authoritative), so
     // replies/cancel go out through that bot even though every same-guild bot
-    // also sees the channel's messages. (Persisting this survives to v2.1.)
+    // also sees the channel's messages.
     if (adapterId) this.bindInstanceAdapter(instanceName, adapterId);
 
-    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId), this.classicChannels.getModel(channelId, this.fleetConfig?.defaults?.model));
+    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId, adapterId), this.classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
     // Auto-enable collab for Discord classic channels (TG uses @mention directly without collab mode)
-    if (guildId && !this.classicChannels.isCollab(channelId)) {
-      this.classicChannels.toggleCollab(channelId);
+    if (guildId && !this.classicChannels.isCollab(channelId, adapterId)) {
+      this.classicChannels.toggleCollab(channelId, adapterId);
     }
-    this.logger.info({ channelId, instanceName, userId }, "Classic channel started");
+    this.logger.info({ channelId, adapterId, instanceName, userId }, "Classic channel started");
     return `✅ Agent started in this channel. Use \`/chat <message>\` or @mention to talk.`;
   }
 
   /** Handle /stop slash command — unregister classic channel */
-  async handleClassicStop(channelId: string): Promise<string> {
+  async handleClassicStop(channelId: string, adapterId?: string): Promise<string> {
     if (!this.classicChannels) return "Classic channel manager not initialized.";
-    const ch = this.classicChannels.unregister(channelId);
+    const ch = this.classicChannels.unregister(channelId, adapterId);
     if (!ch) return "No active agent in this channel.";
 
-    this.routing.unregister(channelId);
+    this.instanceWorldBinding.delete(ch.instanceName);
     await this.stopInstance(ch.instanceName).catch(err =>
       this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to stop classic instance"));
     this.reregisterClassicChannels();
-    this.logger.info({ channelId, instanceName: ch.instanceName }, "Classic channel stopped");
+    this.logger.info({ channelId, adapterId, instanceName: ch.instanceName }, "Classic channel stopped");
     return `🛑 Agent stopped in this channel.`;
   }
 
