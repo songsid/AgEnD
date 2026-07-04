@@ -410,13 +410,14 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
     if (again.toLowerCase() === "skip") { console.log("  Cancelled."); return; }
   }
 
-  // Step 3: adapter id (default from username), unique + [a-z0-9-].
+  // Step 3: adapter id — the fleet.yaml channel `id`. Any characters except
+  // whitespace, path separators, and null (CJK / emoji are fine).
   const existingIds = new Set(channels.map((c: any) => String(c.id ?? c.type)));
-  const defaultId = botUser.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "persona";
+  const defaultId = botUser.trim().replace(/[\s\\/\x00]+/g, "-").replace(/^-+|-+$/g, "") || "persona";
   let adapterId = "";
   while (true) {
-    adapterId = ((await rl.question(`  Adapter ID [${defaultId}]: `)).trim() || defaultId).toLowerCase();
-    if (!/^[a-z0-9-]+$/.test(adapterId)) { console.log(`  ${yellow("Use only a-z, 0-9, and hyphens.")}`); continue; }
+    adapterId = (await rl.question(`  Adapter ID [${defaultId}]: `)).trim() || defaultId;
+    if (!/^[^\s\\/\x00]+$/.test(adapterId)) { console.log(`  ${yellow("No spaces, slashes, or control characters.")}`); continue; }
     if (existingIds.has(adapterId)) { console.log(`  ${yellow(`"${adapterId}" is already a channel id — pick another.`)}`); continue; }
     break;
   }
@@ -429,15 +430,27 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
   } else {
     console.log(`\n  Bind which instances to ${botUser}? (comma-separated numbers, Enter for none)`);
     instanceNames.forEach((n, i) => console.log(`    ${i + 1}. ${n}${config.instances[n]?.channel_id ? dim(` (currently → ${config.instances[n].channel_id})`) : ""}`));
-    const pick = (await rl.question("  Select: ")).trim();
+    const pick = (await rl.question("  Select (Enter for none): ")).trim();
     for (const tok of pick.split(",").map(s => s.trim()).filter(Boolean)) {
       const idx = parseInt(tok, 10) - 1;
       if (idx >= 0 && idx < instanceNames.length) selected.push(instanceNames[idx]);
     }
   }
 
-  // Step 5: env var name.
-  const defaultEnv = `${adapterId.toUpperCase().replace(/-/g, "_")}_BOT_TOKEN`;
+  // Step 5: env var name. Derive an UPPER_SNAKE base from the adapter id; a CJK/
+  // emoji id yields no usable ASCII, so fall back to PERSONA_<N> (N = this bot's
+  // position among Discord bots). Then de-dup against existing .env vars so a
+  // second persona never defaults to a name already in use.
+  const envText0 = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
+  const existingEnvVars = new Set(envText0.split("\n").map(l => l.split("=")[0].trim()).filter(Boolean));
+  let envBase = adapterId.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!envBase) envBase = `PERSONA_${channels.filter((c: any) => c.type === "discord").length}`;
+  let defaultEnv = `${envBase}_BOT_TOKEN`;
+  if (existingEnvVars.has(defaultEnv)) {
+    let n = 2;
+    while (existingEnvVars.has(`${envBase}_${n}_BOT_TOKEN`)) n++;
+    defaultEnv = `${envBase}_${n}_BOT_TOKEN`;
+  }
   let envVar = "";
   while (true) {
     envVar = (await rl.question(`  Env var name [${defaultEnv}]: `)).trim() || defaultEnv;
