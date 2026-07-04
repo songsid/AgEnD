@@ -1005,8 +1005,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Single source of truth (statusline.json + robust tmux pane fallback).
         await data.respond(await this.topicCommands.getCtxText(name));
       } else if (data.command === "collab") {
+        // Classic no longer lives in the routing engine, so a routing hit here is
+        // always a fleet-topic instance.
         const collabTarget = this.routing.resolve(data.channelId);
-        if (collabTarget && collabTarget.kind !== "classic") {
+        if (collabTarget) {
           const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
           if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
             await data.respond("⛔ Not authorized");
@@ -1242,8 +1244,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Single source of truth (statusline.json + robust tmux pane fallback).
         await data.respond(await this.topicCommands.getCtxText(name));
       } else if (data.command === "collab") {
+        // Classic no longer lives in the routing engine, so a routing hit here is
+        // always a fleet-topic instance.
         const collabTarget2 = this.routing.resolve(data.channelId);
-        if (collabTarget2 && collabTarget2.kind !== "classic") {
+        if (collabTarget2) {
           const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
           if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
             await data.respond("⛔ Not authorized");
@@ -1780,9 +1784,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-        // React immediately — before any other API calls
+        // React immediately — before any other API calls. Use the adapter BOUND to
+        // the instance (not whichever same-guild bot received the event first) so
+        // exactly the owning bot reacts — no duplicate 👀 from a sibling bot.
         if (msg.chatId && msg.messageId) {
-          inboundAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
+          const reactAdapter = this.getAdapterForInstance(generalInstance) ?? inboundAdapter;
+          reactAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
             .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
         }
 
@@ -1867,9 +1874,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-    // React immediately — before any other Discord API calls
+    // React immediately — before any other Discord API calls. Use the adapter
+    // BOUND to the instance (not whichever same-guild bot received the event
+    // first) so exactly the owning bot reacts — no duplicate 👀 from a sibling.
     if (msg.chatId && msg.messageId) {
-      inboundAdapter.react(this.reactTarget(msg), msg.messageId, "👀")
+      const reactAdapter = this.getAdapterForInstance(instanceName) ?? inboundAdapter;
+      reactAdapter.react(this.reactTarget(msg), msg.messageId, "👀")
         .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
     }
 
