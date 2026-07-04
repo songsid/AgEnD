@@ -18,6 +18,10 @@
   .group-header .caret { width: 10px; flex: 0 0 10px; }
   .group-header .gcount { margin-left: auto; opacity: .7; font-weight: 400; }
   .inst { display: flex; align-items: center; gap: 8px; padding: 10px 16px 10px 24px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,.03); font-size: 13px; }
+  .dragging { opacity: .4; }
+  .drop-before { border-top: 2px solid var(--accent) !important; }
+  .drop-after { border-bottom: 2px solid var(--accent) !important; }
+  [draggable="true"] { cursor: grab; }
   .inst:hover { background: rgba(255,255,255,.04); }
   .inst.active { background: rgba(88,166,255,.14); border-left: 3px solid var(--accent); padding-left: 13px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
@@ -87,10 +91,19 @@
   const token = new URLSearchParams(location.search).get("token") || "";
   const q = (id) => document.getElementById(id);
   let roster = [];
+  let rosterByName = new Map();
   let current = null;
   let poll = null;
   let fitted = false;
   const collapsed = new Set();  // group names the user has collapsed
+  // Drag-sort state
+  let sortGroups = new Map();   // groupName    -> sort_index (persisted override)
+  let sortInsts = new Map();    // instanceName -> sort_index (within its group)
+  let groupNames = [];          // group display order (computed)
+  let instByGroup = new Map();  // group -> [instance_name, …] display order (computed)
+  let writable = false;         // whether the URL token can POST (web token)
+  let probed = false;
+  let dragItem = null;          // { type:'group'|'instance', name, group }
 
   const api = (path) => `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
 
@@ -170,42 +183,149 @@
     return n || it.instance_name;
   }
 
-  function renderList() {
-    const list = q("list");
-    list.innerHTML = "";
-
-    // Bucket instances by group.
+  // Compute display order: persisted sort-order first (by index), then any
+  // new/unsorted groups & instances by the tag+alpha fallback. Stored in
+  // groupNames / instByGroup so drag handlers can mutate + persist them.
+  function computeOrder() {
     const groups = new Map();
     for (const it of roster) {
       const g = groupOf(it);
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g).push(it);
     }
-    // Sort group names alphabetically, but keep "Other" last.
-    const names = [...groups.keys()].sort((a, b) => {
+    const gidx = (g) => (sortGroups.has(g) ? sortGroups.get(g) : Infinity);
+    groupNames = [...groups.keys()].sort((a, b) => {
+      const ia = gidx(a), ib = gidx(b);
+      if (ia !== ib) return ia - ib;
       if (a === "Other") return 1;
       if (b === "Other") return -1;
       return a.localeCompare(b);
     });
+    instByGroup = new Map();
+    for (const [g, items] of groups) {
+      // stable sort keeps roster order for equal (unsorted) indices
+      const names = items.map(it => it.instance_name).sort((a, b) => {
+        const ia = sortInsts.has(a) ? sortInsts.get(a) : Infinity;
+        const ib = sortInsts.has(b) ? sortInsts.get(b) : Infinity;
+        return ia - ib;
+      });
+      instByGroup.set(g, names);
+    }
+  }
 
-    for (const g of names) {
-      const items = groups.get(g);
+  function renderList() {
+    const list = q("list");
+    list.innerHTML = "";
+    for (const g of groupNames) {
+      const names = instByGroup.get(g) || [];
+      if (!names.length) continue;
       const isCollapsed = collapsed.has(g);
       const header = document.createElement("div");
       header.className = "group-header";
-      header.innerHTML = `<span class="caret">${isCollapsed ? "▶" : "▼"}</span><span>${esc(g)}</span><span class="gcount">${items.length}</span>`;
+      header.draggable = writable;
+      header.innerHTML = `<span class="caret">${isCollapsed ? "▶" : "▼"}</span><span>${esc(g)}</span><span class="gcount">${names.length}</span>`;
       header.onclick = () => { if (collapsed.has(g)) collapsed.delete(g); else collapsed.add(g); renderList(); };
+      if (writable) wireDrag(header, { type: "group", name: g });
       list.appendChild(header);
       if (isCollapsed) continue;
 
-      for (const it of items) {
+      for (const name of names) {
+        const it = rosterByName.get(name);
+        if (!it) continue;
         const el = document.createElement("div");
-        el.className = "inst" + (it.instance_name === current ? " active" : "");
+        el.className = "inst" + (name === current ? " active" : "");
+        el.draggable = writable;
         el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>`;
-        el.onclick = () => select(it.instance_name);
+        el.onclick = () => select(name);
+        if (writable) wireDrag(el, { type: "instance", name, group: g });
         list.appendChild(el);
       }
     }
+  }
+
+  // ── Drag & drop ───────────────────────────────────────
+  function wireDrag(el, item) {
+    el.addEventListener("dragstart", (e) => {
+      dragItem = item;
+      el.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", item.name); } catch { /* Firefox needs data set */ }
+    });
+    el.addEventListener("dragend", () => {
+      el.classList.remove("dragging");
+      document.querySelectorAll(".drop-before,.drop-after").forEach(n => n.classList.remove("drop-before", "drop-after"));
+      dragItem = null;
+    });
+    el.addEventListener("dragover", (e) => {
+      if (!dragItem || dragItem.type !== item.type) return;                 // only same kind
+      if (item.type === "instance" && dragItem.group !== item.group) return; // no cross-group
+      if (dragItem.name === item.name) return;
+      e.preventDefault();
+      const before = e.clientY < el.getBoundingClientRect().top + el.offsetHeight / 2;
+      el.classList.toggle("drop-before", before);
+      el.classList.toggle("drop-after", !before);
+    });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-before", "drop-after"));
+    el.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const before = el.classList.contains("drop-before");
+      el.classList.remove("drop-before", "drop-after");
+      if (!dragItem || dragItem.type !== item.type) return;
+      if (item.type === "group") reorder(groupNames, dragItem.name, item.name, before);
+      else if (dragItem.group === item.group) reorder(instByGroup.get(item.group), dragItem.name, item.name, before);
+      else return;
+      renderList();
+      persistOrder();
+    });
+  }
+
+  function reorder(arr, moving, target, before) {
+    if (!arr) return;
+    const from = arr.indexOf(moving);
+    if (from === -1) return;
+    arr.splice(from, 1);
+    let to = arr.indexOf(target);
+    if (to === -1) { arr.push(moving); return; }
+    if (!before) to += 1;
+    arr.splice(to, 0, moving);
+  }
+
+  function orderRows() {
+    const rows = [];
+    groupNames.forEach((g, i) => rows.push({ item_type: "group", item_name: g, sort_index: i, group_name: null }));
+    for (const g of groupNames) {
+      (instByGroup.get(g) || []).forEach((n, j) => rows.push({ item_type: "instance", item_name: n, sort_index: j, group_name: g }));
+    }
+    return rows;
+  }
+
+  async function persistOrder() {
+    // Mirror into the local maps so a mid-flight refresh doesn't revert.
+    sortGroups = new Map(groupNames.map((g, i) => [g, i]));
+    sortInsts = new Map();
+    for (const g of groupNames) (instByGroup.get(g) || []).forEach((n, j) => sortInsts.set(n, j));
+    try {
+      const r = await fetch("/api/sort-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Agend-Token": token },
+        body: JSON.stringify(orderRows()),
+      });
+      if (r.status === 401) { writable = false; renderList(); }
+    } catch { /* transient */ }
+  }
+
+  // Probe write permission once by POSTing the current order (idempotent for a
+  // web-token user; 401 for view-token → drag stays disabled).
+  async function probeWrite() {
+    try {
+      const r = await fetch("/api/sort-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Agend-Token": token },
+        body: JSON.stringify(orderRows()),
+      });
+      const nowWritable = r.ok;
+      if (nowWritable !== writable) { writable = nowWritable; renderList(); }
+    } catch { /* leave disabled */ }
   }
 
   function renderCard() {
@@ -222,11 +342,20 @@
 
   async function loadRoster() {
     try {
-      const r = await fetch(api("/api/profiles"));
-      if (!r.ok) throw new Error("HTTP " + r.status);
-      roster = await r.json();
+      const [pr, so] = await Promise.all([fetch(api("/api/profiles")), fetch(api("/api/sort-order"))]);
+      if (!pr.ok) throw new Error("HTTP " + pr.status);
+      roster = await pr.json();
+      rosterByName = new Map(roster.map(r => [r.instance_name, r]));
+      const soRows = so.ok ? await so.json() : [];
+      sortGroups = new Map(); sortInsts = new Map();
+      for (const row of soRows) {
+        if (row.item_type === "group") sortGroups.set(row.item_name, row.sort_index);
+        else if (row.item_type === "instance") sortInsts.set(row.item_name, row.sort_index);
+      }
       if (!current && roster.length) current = roster[0].instance_name;
+      computeOrder();
       renderList(); renderCard();
+      if (!probed) { probed = true; probeWrite(); }
     } catch (e) { q("pre").textContent = "Failed to load roster: " + e.message + "\n(Check the token in the URL.)"; }
   }
 

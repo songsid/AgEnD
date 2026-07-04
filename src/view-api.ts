@@ -69,6 +69,13 @@ function profileDb(dataDir: string): Database.Database {
     description TEXT,
     updated_at INTEGER
   );`);
+  db.exec(`CREATE TABLE IF NOT EXISTS view_sort_order (
+    item_type TEXT NOT NULL,   -- 'group' or 'instance'
+    item_name TEXT NOT NULL,
+    sort_index INTEGER NOT NULL,
+    group_name TEXT,           -- owning group (for instances)
+    PRIMARY KEY (item_type, item_name)
+  );`);
   _db = db;
   _dbPath = p;
   return db;
@@ -147,7 +154,8 @@ export function isViewPath(path: string): boolean {
     || path.startsWith("/api/pane/")
     || path === "/api/profiles"
     || path.startsWith("/api/profile/")
-    || path.startsWith("/api/avatar/");
+    || path.startsWith("/api/avatar/")
+    || path === "/api/sort-order";
 }
 
 /**
@@ -222,6 +230,42 @@ export function handleViewRequest(
       };
     });
     json(res, 200, roster);
+    return true;
+  }
+
+  // ── /api/sort-order — sidebar drag-sort override ──
+  if (path === "/api/sort-order") {
+    if (method === "GET") {
+      if (!canRead) { json(res, 401, { error: "Unauthorized" }); return true; }
+      const db = profileDb(ctx.dataDir);
+      const rows = db.prepare("SELECT item_type, item_name, sort_index, group_name FROM view_sort_order ORDER BY sort_index").all();
+      json(res, 200, rows);
+      return true;
+    }
+    if (method === "POST") {
+      if (!canWrite) { json(res, 401, { error: "Unauthorized (web token required)" }); return true; }
+      readBody(req, 512 * 1024).then(buf => {
+        let body: Array<{ item_type: string; item_name: string; sort_index: number; group_name?: string | null }>;
+        try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { json(res, 400, { error: "invalid JSON" }); return; }
+        if (!Array.isArray(body)) { json(res, 400, { error: "expected an array" }); return; }
+        const db = profileDb(ctx.dataDir);
+        // Replace the whole ordering atomically — the client always sends the
+        // complete order, so a full swap keeps the table consistent.
+        const replace = db.transaction((rows: typeof body) => {
+          db.prepare("DELETE FROM view_sort_order").run();
+          const ins = db.prepare("INSERT OR REPLACE INTO view_sort_order (item_type, item_name, sort_index, group_name) VALUES (@t, @n, @i, @g)");
+          for (const r of rows) {
+            if (r.item_type !== "group" && r.item_type !== "instance") continue;
+            if (typeof r.item_name !== "string") continue;
+            ins.run({ t: r.item_type, n: r.item_name, i: Number(r.sort_index) || 0, g: r.group_name ?? null });
+          }
+        });
+        replace(body);
+        json(res, 200, { ok: true, count: body.length });
+      }).catch(err => json(res, 400, { error: (err as Error).message }));
+      return true;
+    }
+    json(res, 405, { error: "method not allowed" });
     return true;
   }
 
