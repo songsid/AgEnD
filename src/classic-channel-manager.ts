@@ -7,6 +7,14 @@ import type { Logger } from "./logger.js";
 
 export interface ClassicChannel {
   channelId: string;
+  /**
+   * Which bot adapter owns this channel's agent. `undefined` only transiently
+   * for legacy (pre-multi-bot) entries loaded before the primary adapter id is
+   * known — {@link ClassicChannelManager.setPrimaryAdapterId} migrates those to
+   * the primary. Enables same-channel multi-bot: two bots in one channel are
+   * distinct entries keyed by (channelId, adapterId).
+   */
+  adapterId?: string;
   name: string;
   instanceName: string;
   backend?: string;
@@ -21,6 +29,12 @@ export interface ClassicChannel {
 interface ClassicBotYaml {
   defaults?: { backend?: string; model?: string; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
   channels?: Record<string, {
+    // New format persists channelId/adapterId/instanceName explicitly so the
+    // yaml key is just a unique id and naming never drifts. Old format omitted
+    // these (key WAS the channelId) — load() migrates on read.
+    channelId?: string;
+    adapterId?: string;
+    instanceName?: string;
     name?: string;
     backend?: string;
     model?: string;
@@ -36,10 +50,17 @@ const YAML_HEADER = `# ClassicBot Configuration
 # Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli
 `;
 
-/** Derive instance name from channel name + last 4 digits of channelId */
-export function classicInstanceName(sanitizedName: string, channelId: string): string {
+/**
+ * Derive instance name from channel name + last 4 digits of channelId.
+ * When `adapterId` is given (a non-primary bot in the same channel), append a
+ * sanitized adapter suffix so two bots in one channel get distinct instance
+ * names (dirs / tmux windows / IPC). The primary bot passes `undefined` to keep
+ * the historical name — single-bot users see no change across the upgrade.
+ */
+export function classicInstanceName(sanitizedName: string, channelId: string, adapterId?: string): string {
   const suffix = channelId.slice(-4);
-  return `classic-${sanitizedName}-${suffix}`;
+  const base = `classic-${sanitizedName}-${suffix}`;
+  return adapterId ? `${base}-${sanitizeInstanceName(adapterId)}` : base;
 }
 
 /**
@@ -48,14 +69,48 @@ export function classicInstanceName(sanitizedName: string, channelId: string): s
  * YAML keys are channelId to avoid duplicate name collisions.
  */
 export class ClassicChannelManager {
+  /** Keyed by compositeKey(channelId, adapterId) — see {@link ClassicChannel.adapterId}. */
   private channels = new Map<string, ClassicChannel>();
   private defaults: { backend?: string; model?: string; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
+  /** The primary (channels[0]) adapter id. Legacy entries migrate to it; it also names without a suffix. */
+  private primaryAdapterId?: string;
 
   constructor(private dataDir: string, private logger: Logger) {
     this.configPath = join(dataDir, "classicBot.yaml");
     this.load();
+  }
+
+  /**
+   * Record which adapter is primary. Migrates any legacy (adapterId-less)
+   * entries onto it and rewrites the file in the new format. Idempotent.
+   */
+  setPrimaryAdapterId(adapterId: string): void {
+    if (this.primaryAdapterId === adapterId) return;
+    this.primaryAdapterId = adapterId;
+    const hadLegacy = [...this.channels.values()].some(ch => ch.adapterId === undefined);
+    this.load();          // re-derive keys/names now that the primary id is known
+    if (hadLegacy) this.save(); // persist the upgraded format once
+  }
+
+  /** Map key for a (channelId, adapterId) pair. adapterId-less = legacy entry (pre-migration). */
+  private compositeKey(channelId: string, adapterId?: string): string {
+    return adapterId ? `${channelId}#${adapterId}` : channelId;
+  }
+
+  /**
+   * Resolve the entry for a channel as seen by a specific bot. Exact
+   * (channelId, adapterId) match wins; the primary adapter also matches a
+   * not-yet-migrated legacy entry as a defensive fallback.
+   */
+  private find(channelId: string, adapterId?: string): ClassicChannel | undefined {
+    const exact = this.channels.get(this.compositeKey(channelId, adapterId));
+    if (exact) return exact;
+    if (adapterId && adapterId === this.primaryAdapterId) {
+      return this.channels.get(this.compositeKey(channelId, undefined));
+    }
+    return undefined;
   }
 
   private load(): void {
@@ -66,12 +121,19 @@ export class ClassicChannelManager {
       this.defaults = raw.defaults ?? {};
       this.channels.clear();
       if (raw.channels) {
-        for (const [channelId, val] of Object.entries(raw.channels)) {
+        for (const [key, val] of Object.entries(raw.channels)) {
+          // Old format: key IS the channelId, no adapterId/instanceName fields.
+          const channelId = val.channelId ?? key;
+          const adapterId = val.adapterId ?? this.primaryAdapterId; // migrate legacy → primary
           const name = val.name ?? channelId;
-          this.channels.set(channelId, {
+          // Non-primary adapters carry a suffix; primary/legacy keep the historical name.
+          const suffixAdapter = adapterId && adapterId !== this.primaryAdapterId ? adapterId : undefined;
+          const instanceName = val.instanceName ?? classicInstanceName(sanitizeInstanceName(name), channelId, suffixAdapter);
+          this.channels.set(this.compositeKey(channelId, adapterId), {
             channelId,
+            adapterId,
             name,
-            instanceName: classicInstanceName(sanitizeInstanceName(name), channelId),
+            instanceName,
             backend: val.backend,
             model: val.model,
             collab: val.collab,
@@ -93,13 +155,20 @@ export class ClassicChannelManager {
     mkdirSync(this.dataDir, { recursive: true });
     const obj: ClassicBotYaml = { defaults: this.defaults, channels: {} };
     for (const ch of this.channels.values()) {
-      const entry: Record<string, unknown> = { name: ch.name, createdBy: ch.createdBy, createdAt: ch.createdAt };
+      const entry: Record<string, unknown> = {
+        channelId: ch.channelId,
+        instanceName: ch.instanceName,
+        name: ch.name,
+        createdBy: ch.createdBy,
+        createdAt: ch.createdAt,
+      };
+      if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
-      obj.channels![ch.channelId] = entry as any;
+      obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
     }
     writeFileSync(this.configPath, YAML_HEADER + yaml.dump(obj, { lineWidth: -1 }));
     this.lastMtime = existsSync(this.configPath) ? statSync(this.configPath).mtimeMs : 0;
@@ -145,39 +214,39 @@ export class ClassicChannelManager {
   }
 
   /** Toggle collab mode for a channel. Returns new state. */
-  toggleCollab(channelId: string): boolean {
-    const ch = this.channels.get(channelId);
+  toggleCollab(channelId: string, adapterId?: string): boolean {
+    const ch = this.find(channelId, adapterId);
     if (!ch) return false;
     ch.collab = !ch.collab;
     this.save();
     return ch.collab;
   }
 
-  isCollab(channelId: string): boolean {
-    return this.channels.get(channelId)?.collab ?? false;
+  isCollab(channelId: string, adapterId?: string): boolean {
+    return this.find(channelId, adapterId)?.collab ?? false;
   }
 
-  getPreTaskCommand(channelId: string): string | undefined {
-    return this.channels.get(channelId)?.preTaskCommand;
+  getPreTaskCommand(channelId: string, adapterId?: string): string | undefined {
+    return this.find(channelId, adapterId)?.preTaskCommand;
   }
 
   /** Context lines fallback: per-channel → defaults → 5 */
-  getContextLines(channelId: string): number {
-    const ch = this.channels.get(channelId);
+  getContextLines(channelId: string, adapterId?: string): number {
+    const ch = this.find(channelId, adapterId);
     if (ch?.contextLines != null) return ch.contextLines;
     if (this.defaults.context_lines != null) return this.defaults.context_lines;
     return 5;
   }
 
   /** Backend fallback: per-channel → classic defaults → fleetDefault → "claude-code" */
-  getBackend(channelId: string, fleetDefault?: string): string {
-    const ch = this.channels.get(channelId);
+  getBackend(channelId: string, adapterId?: string, fleetDefault?: string): string {
+    const ch = this.find(channelId, adapterId);
     return ch?.backend || this.defaults.backend || fleetDefault || "claude-code";
   }
 
   /** Get model for a channel — channel override → defaults → fleet default */
-  getModel(channelId: string, fleetDefault?: string): string | undefined {
-    const ch = this.channels.get(channelId);
+  getModel(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined {
+    const ch = this.find(channelId, adapterId);
     return ch?.model || this.defaults.model || fleetDefault;
   }
 
@@ -196,24 +265,56 @@ export class ClassicChannelManager {
     return undefined;
   }
 
-  isClassicChannel(channelId: string): boolean { return this.channels.has(channelId); }
-  get(channelId: string): ClassicChannel | undefined { return this.channels.get(channelId); }
+  /** The bot adapter that owns an instance's channel (for restart rebind). */
+  getAdapterIdByInstance(instanceName: string): string | undefined {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) return ch.adapterId;
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve the instance a given bot should route to in a channel. Returns
+   * undefined if this adapter has no agent here (e.g. a sibling same-guild bot
+   * that never ran /start) — callers must NOT fall back to another bot's agent.
+   */
+  getInstanceByChannel(channelId: string, adapterId?: string): string | undefined {
+    return this.find(channelId, adapterId)?.instanceName;
+  }
+
+  /** Instance name for a new registration, applying the primary-adapter naming rule. */
+  deriveInstanceName(channelName: string, channelId: string, adapterId?: string): string {
+    const suffixAdapter = adapterId && adapterId !== this.primaryAdapterId ? adapterId : undefined;
+    return classicInstanceName(sanitizeInstanceName(channelName || channelId), channelId, suffixAdapter);
+  }
+
+  /** Whether ANY bot has an agent in this channel (adapter-independent). */
+  hasChannel(channelId: string): boolean {
+    for (const ch of this.channels.values()) {
+      if (ch.channelId === channelId) return true;
+    }
+    return false;
+  }
+
+  /** Exact per-bot check. adapterId omitted matches only a legacy entry. */
+  isClassicChannel(channelId: string, adapterId?: string): boolean { return !!this.find(channelId, adapterId); }
+  get(channelId: string, adapterId?: string): ClassicChannel | undefined { return this.find(channelId, adapterId); }
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }
 
-  register(channelId: string, instanceName: string, channelName: string, userId: string): ClassicChannel {
-    const ch: ClassicChannel = { channelId, name: channelName, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
-    this.channels.set(channelId, ch);
+  register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string): ClassicChannel {
+    const ch: ClassicChannel = { channelId, adapterId, name: channelName, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
+    this.channels.set(this.compositeKey(channelId, adapterId), ch);
     this.save();
-    this.logger.info({ channelId, instanceName }, "Registered classic channel");
+    this.logger.info({ channelId, adapterId, instanceName }, "Registered classic channel");
     return ch;
   }
 
-  unregister(channelId: string): ClassicChannel | undefined {
-    const ch = this.channels.get(channelId);
+  unregister(channelId: string, adapterId?: string): ClassicChannel | undefined {
+    const ch = this.find(channelId, adapterId);
     if (!ch) return undefined;
-    this.channels.delete(channelId);
+    this.channels.delete(this.compositeKey(ch.channelId, ch.adapterId));
     this.save();
-    this.logger.info({ channelId, instanceName: ch.instanceName }, "Unregistered classic channel");
+    this.logger.info({ channelId, adapterId: ch.adapterId, instanceName: ch.instanceName }, "Unregistered classic channel");
     return ch;
   }
 
