@@ -81,14 +81,18 @@
           <button id="cancelBtn">Cancel</button>
           <span id="msg"></span>
         </div>
-        <div class="hint">Read access uses the view token in the URL. Saving requires the web.token (~/.agend/web.token).</div>
+        <div class="hint">Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).</div>
       </div>
     </div>
   </div>
 
 <script>
 (() => {
-  const token = new URLSearchParams(location.search).get("token") || "";
+  // GET routes are open (no token). Writes (profile/avatar/sort-order POST)
+  // require the web.token, which the user enters in the edit panel; we keep it
+  // in localStorage. A ?token= URL param is still honored as a fallback.
+  const urlToken = new URLSearchParams(location.search).get("token") || "";
+  const webToken = () => localStorage.getItem("agend_web_token") || urlToken;
   const q = (id) => document.getElementById(id);
   let roster = [];
   let rosterByName = new Map();
@@ -101,11 +105,11 @@
   let sortInsts = new Map();    // instanceName -> sort_index (within its group)
   let groupNames = [];          // group display order (computed)
   let instByGroup = new Map();  // group -> [instance_name, …] display order (computed)
-  let writable = false;         // whether the URL token can POST (web token)
+  let writable = false;         // whether the current web.token can POST
   let probed = false;
   let dragItem = null;          // { type:'group'|'instance', name, group }
 
-  const api = (path) => `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(token)}`;
+  const api = (path) => urlToken ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(urlToken)}` : path;
 
   // ── ANSI (SGR) → HTML ─────────────────────────────────
   const BASE = ["#000000","#cd3131","#0dbc79","#e5e510","#2472c8","#bc3fbc","#11a8cd","#e5e5e5"];
@@ -307,20 +311,22 @@
     try {
       const r = await fetch("/api/sort-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": token },
+        headers: { "Content-Type": "application/json", "X-Agend-Token": webToken() },
         body: JSON.stringify(orderRows()),
       });
       if (r.status === 401) { writable = false; renderList(); }
     } catch { /* transient */ }
   }
 
-  // Probe write permission once by POSTing the current order (idempotent for a
-  // web-token user; 401 for view-token → drag stays disabled).
+  // Probe write permission by POSTing the current order (idempotent for a
+  // web-token user; 401 without a valid web.token → drag stays disabled).
+  // Re-run after the user enters a web.token so drag-sort lights up.
   async function probeWrite() {
+    if (!webToken()) { if (writable) { writable = false; renderList(); } return; }
     try {
       const r = await fetch("/api/sort-order", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": token },
+        headers: { "Content-Type": "application/json", "X-Agend-Token": webToken() },
         body: JSON.stringify(orderRows()),
       });
       const nowWritable = r.ok;
@@ -356,7 +362,7 @@
       computeOrder();
       renderList(); renderCard();
       if (!probed) { probed = true; probeWrite(); }
-    } catch (e) { q("pre").textContent = "Failed to load roster: " + e.message + "\n(Check the token in the URL.)"; }
+    } catch (e) { q("pre").textContent = "Failed to load roster: " + e.message + "\n(Is the fleet running?)"; }
   }
 
   // ── Terminal ──────────────────────────────────────────
@@ -421,24 +427,25 @@
   async function save() {
     const it = roster.find(r => r.instance_name === current);
     if (!it) return;
-    const webToken = q("fToken").value.trim();
-    if (!webToken) { q("msg").className = "err"; q("msg").textContent = "web.token required"; return; }
-    localStorage.setItem("agend_web_token", webToken);
+    const wt = q("fToken").value.trim();
+    if (!wt) { q("msg").className = "err"; q("msg").textContent = "web.token required"; return; }
+    localStorage.setItem("agend_web_token", wt);
     const name = encodeURIComponent(current);
     try {
       const r = await fetch(`/api/profile/${name}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": webToken },
+        headers: { "Content-Type": "application/json", "X-Agend-Token": wt },
         body: JSON.stringify({ display_name: q("fDisplay").value, role: q("fRole").value, description: q("fDesc").value }),
       });
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + r.status)); }
       const file = q("fAvatar").files[0];
       if (file) {
-        const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": file.type, "X-Agend-Token": webToken }, body: file });
+        const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": file.type, "X-Agend-Token": wt }, body: file });
         if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error("avatar: " + (e.error || ar.status)); }
       }
       q("msg").className = "ok"; q("msg").textContent = "Saved";
       await loadRoster();
+      probeWrite();  // web.token now stored — enable drag-sort
       setTimeout(exitEdit, 500);
     } catch (e) { q("msg").className = "err"; q("msg").textContent = e.message; }
   }
