@@ -102,9 +102,13 @@ function allInstanceNames(ctx: ViewApiContext): Set<string> {
   return s;
 }
 
-/** Safe instance name that also exists as a fleet or classic instance. */
+/** Safe instance name that also exists as a fleet or classic instance. The
+ * exact-match against the known-instances set IS the whitelist (a traversal or
+ * injected name simply won't be in it), so we only additionally block path
+ * separators / null bytes — the previous ASCII-only regex wrongly rejected
+ * legitimate non-ASCII names (e.g. `classic-鬥破串接-1843`). */
 function knownInstance(ctx: ViewApiContext, name: string): boolean {
-  return /^[A-Za-z0-9._-]+$/.test(name) && allInstanceNames(ctx).has(name);
+  return /^[^\\/\x00]+$/.test(name) && allInstanceNames(ctx).has(name);
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
