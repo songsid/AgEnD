@@ -193,6 +193,7 @@ export function handleViewRequest(
         context_pct: l?.context_pct ?? 0,
         model: l?.model ?? "",
         backend: cfg?.backend ?? "claude-code",
+        tags: cfg?.tags ?? [],
         display_name: p?.display_name ?? null,
         role: p?.role ?? null,
         avatar_path: p?.avatar_path ?? null,
