@@ -250,6 +250,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return join(this.dataDir, "instances", name);
   }
 
+  /**
+   * Resolve a slash-command target in a channel. Classic channels are looked up
+   * per-bot (same-channel multi-bot); a fleet-topic instance is found via the
+   * routing engine. Used by commands that work in BOTH contexts (/ctx, /compact,
+   * /cancel). Classic-only commands (/chat, /load) must NOT use this.
+   */
+  private resolveSlashTarget(channelId: string, adapterId?: string): string | undefined {
+    return this.classicChannels?.getInstanceByChannel(channelId, adapterId)
+      ?? this.routing.resolve(channelId)?.name;
+  }
+
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
     const worldId = this.instanceWorldBinding.get(name);
@@ -987,17 +998,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
         await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "compact") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       } else if (data.command === "cancel") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         const ok = this.cancelInstance(name);
         await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
       } else if (data.command === "ctx") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) {
           await data.respond("No active agent in this channel.");
           return;
@@ -1072,7 +1083,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
@@ -1234,12 +1245,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
         await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "cancel") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         const ok = this.cancelInstance(name);
         await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
       } else if (data.command === "ctx") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         // Single source of truth (statusline.json + robust tmux pane fallback).
         await data.respond(await this.topicCommands.getCtxText(name));
@@ -1311,7 +1322,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond("🔄 Graceful restart — waiting for instances to idle...");
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
-        const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond("No active agent in this channel."); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
