@@ -2638,15 +2638,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.watch(name);
   }
 
-  reactMessageStatus(chatId: string, messageId: string, emoji: string): void {
-    // Find the adapter that owns this chatId (check all adapters, not just primary)
-    for (const [, w] of this.worlds) {
-      if (w.type === "discord") {
-        w.react(chatId, messageId, emoji)
-          .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
-        return;
-      }
-    }
+  reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void {
+    // React via the adapter BOUND to this instance — NOT the first discord world.
+    // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
+    // (bound bot) and the delivery/confirm reactions (some other bot) come from
+    // different bots, leaving a duplicate 👀 that never turns into ✅.
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    // Status reactions are Discord-only (TG/others use the inbound react path).
+    if (!adapter || adapter.type !== "discord") return;
+    adapter.react(chatId, messageId, emoji)
+      .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
   }
 
   // ── Model failover ──────────────────────────────────────────────────────

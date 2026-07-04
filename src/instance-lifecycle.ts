@@ -44,7 +44,7 @@ export interface LifecycleContext {
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void;
   checkModelFailover(name: string, fiveHourPct: number): void;
   startStatuslineWatcher(name: string): void;
-  reactMessageStatus(chatId: string, messageId: string, emoji: string): void;
+  reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
 }
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
@@ -216,19 +216,19 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.pty_recovered[${name}]`));
 
     daemon.on("message_queued", (data: { chatId: string; messageId: string }) => {
-      this.ctx.reactMessageStatus(data.chatId, data.messageId, "⏳");
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "⏳");
     });
     // 👀 delivered (agent has the message), ✅ confirmed (agent started processing).
     daemon.on("message_delivered", (data: { chatId: string; messageId: string }) => {
-      this.ctx.reactMessageStatus(data.chatId, data.messageId, "👀");
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "👀");
     });
     daemon.on("message_confirmed", (data: { chatId: string; messageId: string }) => {
-      this.ctx.reactMessageStatus(data.chatId, data.messageId, "✅");
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "✅");
     });
     daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string }) => {
       this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
       this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
-      this.ctx.reactMessageStatus(data.chatId, data.messageId, "❌");
+      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "❌");
     }, this.ctx.logger, `daemon.message_failed[${name}]`));
 
     this.ctx.setTopicIcon(name, "green");
