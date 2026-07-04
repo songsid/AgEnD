@@ -34,15 +34,16 @@ function detectBackends(): typeof BACKENDS {
 
 // ── Discord bot verification ─────────────────────────────
 
-async function verifyDiscordToken(token: string): Promise<{ valid: boolean; username: string | null }> {
+async function verifyDiscordToken(token: string): Promise<{ valid: boolean; username: string | null; id: string | null }> {
   try {
     const res = await fetch("https://discord.com/api/v10/users/@me", {
       headers: { Authorization: `Bot ${token}` },
     });
-    if (!res.ok) return { valid: false, username: null };
-    const data = (await res.json()) as { username?: string };
-    return { valid: true, username: data.username ?? null };
-  } catch { return { valid: false, username: null }; }
+    if (!res.ok) return { valid: false, username: null, id: null };
+    // For a bot user, the account id is also its application (client) id.
+    const data = (await res.json()) as { username?: string; id?: string };
+    return { valid: true, username: data.username ?? null, id: data.id ?? null };
+  } catch { return { valid: false, username: null, id: null }; }
 }
 
 async function listDiscordGuilds(token: string): Promise<{ id: string; name: string }[]> {
@@ -339,6 +340,152 @@ function buildChannelConfig(p: PlatformResult): Record<string, any> {
   return cfg;
 }
 
+// ── Persona bot (secondary Discord bot in the same guild) ───
+
+/** Restart a running fleet to pick up config changes (systemd first, else a
+ * detached `agend fleet restart --reload`). No-op if the fleet isn't running. */
+async function restartFleetIfRunning(): Promise<void> {
+  const pidPath = join(DATA_DIR, "fleet.pid");
+  if (!existsSync(pidPath)) return;
+  try { process.kill(parseInt(readFileSync(pidPath, "utf-8").trim(), 10), 0); }
+  catch { return; } // stale pid / not running
+  console.log(`\n  Fleet is running. Restarting to apply changes...`);
+  const { execSync, spawn } = await import("node:child_process");
+  try {
+    execSync("systemctl --user is-active com.agend.fleet", { stdio: "pipe" });
+    execSync("systemctl --user restart com.agend.fleet", { stdio: "pipe" });
+    console.log(`  ${green("✓")} Fleet restarted via systemd.`);
+  } catch {
+    const child = spawn("sh", ["-c", "sleep 2 && agend fleet restart --reload"], { detached: true, stdio: "ignore" });
+    child.unref();
+    console.log(`  ${green("✓")} Fleet restart scheduled (2s).`);
+  }
+}
+
+/** Add a second Discord bot ("persona") that shares the primary's guild and
+ * answers on behalf of selected instances (via their channel_id binding). */
+async function addPersonaBot(rl: import("node:readline/promises").Interface): Promise<void> {
+  const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as Record<string, any>;
+  // Normalize singular channel → channels array.
+  if (config.channel && !config.channels) {
+    config.channels = [{ ...config.channel, id: config.channel.id ?? config.channel.type }];
+    delete config.channel;
+  }
+  const channels: any[] = config.channels ?? [];
+  const primary = channels.find((c: any) => c.type === "discord");
+  if (!primary) { console.log(`  ${yellow("No Discord channel found — persona bots are Discord-only.")}`); return; }
+  const primaryGroup = String(primary.group_id ?? "");
+
+  console.log(`\n  ${bold("Add persona bot (Discord)")}`);
+  console.log(`  ${dim("A second bot in the same server that answers as selected agents.")}\n`);
+
+  // Step 1: bot token → verify → username + application id.
+  let token = "", botUser = "", appId = "";
+  while (true) {
+    token = (await rl.question("  Paste new bot token: ")).trim();
+    if (!token) { console.log("  Cancelled."); return; }
+    const v = await verifyDiscordToken(token);
+    if (v.valid) { botUser = v.username ?? "persona"; appId = v.id ?? ""; console.log(`  ${green("✓")} Bot verified: ${botUser}`); break; }
+    console.log(`  ${yellow("Token rejected by Discord.")} Try again.`);
+  }
+
+  // Step 2: ensure the bot is in the primary guild (invite + re-check loop).
+  // Non-Administrator permission set covering what a reply/topic bot needs.
+  const PERMS = (
+    (1n << 10n) | // VIEW_CHANNEL
+    (1n << 11n) | // SEND_MESSAGES
+    (1n << 38n) | // SEND_MESSAGES_IN_THREADS (topics are threads)
+    (1n << 13n) | // MANAGE_MESSAGES (retire cancel buttons)
+    (1n << 16n) | // READ_MESSAGE_HISTORY
+    (1n << 6n)  | // ADD_REACTIONS
+    (1n << 31n)   // USE_APPLICATION_COMMANDS (slash)
+  ).toString();
+  while (true) {
+    const guilds = await listDiscordGuilds(token);
+    if (guilds.some(g => g.id === primaryGroup)) { console.log(`  ${green("✓")} Bot is in the server (${primaryGroup}).`); break; }
+    console.log(`  ${yellow("Bot is not in your server yet.")} Invite it:`);
+    if (appId) console.log(`  ${dim(`https://discord.com/oauth2/authorize?client_id=${appId}&scope=bot%20applications.commands&permissions=${PERMS}`)}`);
+    else console.log(`  ${dim("https://discord.com/developers/applications → OAuth2 → URL Generator (scopes: bot, applications.commands)")}`);
+    const again = (await rl.question("  Press Enter after inviting (or type 'skip' to abort): ")).trim();
+    if (again.toLowerCase() === "skip") { console.log("  Cancelled."); return; }
+  }
+
+  // Step 3: adapter id (default from username), unique + [a-z0-9-].
+  const existingIds = new Set(channels.map((c: any) => String(c.id ?? c.type)));
+  const defaultId = botUser.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "persona";
+  let adapterId = "";
+  while (true) {
+    adapterId = ((await rl.question(`  Adapter ID [${defaultId}]: `)).trim() || defaultId).toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(adapterId)) { console.log(`  ${yellow("Use only a-z, 0-9, and hyphens.")}`); continue; }
+    if (existingIds.has(adapterId)) { console.log(`  ${yellow(`"${adapterId}" is already a channel id — pick another.`)}`); continue; }
+    break;
+  }
+
+  // Step 4: select instances to bind to this bot (multi-select).
+  const instanceNames = Object.keys(config.instances ?? {});
+  const selected: string[] = [];
+  if (instanceNames.length === 0) {
+    console.log(`  ${yellow("No instances in fleet.yaml to bind — the bot will start but answer for nobody until you set channel_id.")}`);
+  } else {
+    console.log(`\n  Bind which instances to ${botUser}? (comma-separated numbers, Enter for none)`);
+    instanceNames.forEach((n, i) => console.log(`    ${i + 1}. ${n}${config.instances[n]?.channel_id ? dim(` (currently → ${config.instances[n].channel_id})`) : ""}`));
+    const pick = (await rl.question("  Select: ")).trim();
+    for (const tok of pick.split(",").map(s => s.trim()).filter(Boolean)) {
+      const idx = parseInt(tok, 10) - 1;
+      if (idx >= 0 && idx < instanceNames.length) selected.push(instanceNames[idx]);
+    }
+  }
+
+  // Step 5: env var name.
+  const defaultEnv = `${adapterId.toUpperCase().replace(/-/g, "_")}_BOT_TOKEN`;
+  let envVar = "";
+  while (true) {
+    envVar = (await rl.question(`  Env var name [${defaultEnv}]: `)).trim() || defaultEnv;
+    if (/^[A-Z_][A-Z0-9_]*$/.test(envVar)) break;
+    console.log(`  ${yellow("Env var must be UPPER_SNAKE (A-Z, 0-9, _), not starting with a digit.")}`);
+  }
+
+  // Step 6: summary + confirm.
+  console.log(`\n  ${bold("Summary")}`);
+  console.log(`    Bot:        ${botUser}`);
+  console.log(`    Adapter ID: ${adapterId}`);
+  console.log(`    Guild:      ${primaryGroup} (shared with primary)`);
+  console.log(`    Env var:    ${envVar}`);
+  console.log(`    Instances:  ${selected.length ? selected.join(", ") : "(none)"}`);
+  const confirm = (await rl.question(`  Apply? [Y/n] `)).trim().toLowerCase();
+  if (confirm === "n" || confirm === "no") { console.log("  Cancelled — nothing written."); return; }
+
+  // Step 7: write fleet.yaml (channel + instance bindings) + .env, then restart.
+  channels.push({
+    id: adapterId,
+    type: "discord",
+    mode: "topic",
+    bot_token_env: envVar,
+    group_id: primary.group_id,
+    // Inherit the primary's access policy; a shared-guild persona uses the same
+    // allow-list. No general_channel_id — it shares the primary's routing.
+    access: primary.access ?? { mode: "locked" },
+  });
+  config.channels = channels;
+  for (const name of selected) {
+    (config.instances[name] ??= {}).channel_id = adapterId;
+  }
+  writeFileSync(FLEET_CONFIG_PATH, yaml.dump(config, { quotingType: '"', forceQuotes: false }));
+  console.log(`\n  ${green("✓")} Updated ${FLEET_CONFIG_PATH}`);
+
+  // .env: append or replace the token line.
+  const existingEnv = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
+  const lines = existingEnv.split("\n");
+  const idx = lines.findIndex(l => l.startsWith(envVar + "="));
+  if (idx >= 0) { lines[idx] = `${envVar}=${token}`; console.log(`  ${yellow("!")} ${envVar} already in .env — overwritten.`); }
+  else lines.push(`${envVar}=${token}`);
+  writeFileSync(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n", { mode: 0o600 });
+  try { chmodSync(ENV_PATH, 0o600); } catch { /* best effort */ }
+  console.log(`  ${green("✓")} ${ENV_PATH}`);
+
+  await restartFleetIfRunning();
+}
+
 // ── Main ─────────────────────────────────────────────────
 
 export async function runQuickstart(): Promise<void> {
@@ -349,12 +496,23 @@ export async function runQuickstart(): Promise<void> {
 
     // Check existing config
     if (existsSync(FLEET_CONFIG_PATH)) {
+      // Persona bot is only offered when there's already a Discord channel.
+      const existingCfg = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as Record<string, any>;
+      const hasDiscord = existingCfg?.channel?.type === "discord"
+        || (existingCfg?.channels ?? []).some((c: any) => c.type === "discord");
       console.log(`  ${yellow("fleet.yaml already exists.")} What would you like to do?`);
       console.log("    1. Add allowed users");
       console.log("    2. Add another platform");
-      console.log("    3. Overwrite (start fresh)");
-      console.log("    4. Skip");
-      const action = (await rl.question("  Choose [4]: ")).trim();
+      if (hasDiscord) console.log("    3. Add persona bot (Discord)");
+      console.log("    4. Overwrite (start fresh)");
+      console.log("    5. Skip");
+      const action = (await rl.question("  Choose [5]: ")).trim();
+
+      if (action === "3" && hasDiscord) {
+        await addPersonaBot(rl);
+        console.log(`\n${bold("═══ Done ═══")}\n`);
+        return;
+      }
 
       if (action === "1") {
         // ── Add allowed users to existing fleet.yaml ──
@@ -465,13 +623,13 @@ export async function runQuickstart(): Promise<void> {
         return;
       }
 
-      if (action !== "3") {
-        // Skip (default)
+      if (action !== "4") {
+        // Skip (default, option 5). Options 1/2/3 already returned above.
         await maybeUpdateClassicBot(rl);
         console.log(`\n${bold("═══ Done ═══")}\n`);
         return;
       }
-      // action === "3" → overwrite requires fleet to be stopped
+      // action === "4" → overwrite requires fleet to be stopped
       if (existsSync(join(DATA_DIR, "fleet.pid"))) {
         try { process.kill(parseInt(readFileSync(join(DATA_DIR, "fleet.pid"), "utf-8").trim(), 10), 0); console.error("Fleet is running. Stop it first: agend stop"); process.exit(1); } catch { /* stale pid, ok to proceed */ }
       }
