@@ -3319,8 +3319,15 @@ When users create specialized instances, suggest these configurations:
       ClassicChannelManager.logMessage(instanceName, msg.username, text + collabAttachTag, msg.timestamp, msg.replyToText);
       this.logger.info({ instanceName, user: msg.username, textLen: text.length, attachments: msg.attachments?.length ?? 0, source: msg.source }, "Collab mode message");
 
-      // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here
-      const adapterBotUserId = this.worlds.get(msg.adapterId ?? "")?.botUserId ?? this.botUserId;
+      // Check for @mention trigger: must be exact <@BOT_USER_ID>, not @everyone/@here.
+      // Each bot matches ONLY its own id. A secondary bot must NOT fall back to the
+      // process-wide botUserId (the primary's) — otherwise, in a same-channel
+      // multi-bot setup, an @mention of the primary would also match the secondary
+      // and BOTH bots would react 👀 and forward. Only the primary adapter may use
+      // the fallback.
+      const mentionWorld = this.worlds.get(msg.adapterId ?? "");
+      const isPrimaryAdapter = !mentionWorld || mentionWorld.adapter === this.adapter;
+      const adapterBotUserId = mentionWorld?.botUserId ?? (isPrimaryAdapter ? this.botUserId : undefined);
       const mentionTag = adapterBotUserId ? `<@${adapterBotUserId}>` : null;
       const isMentioned = mentionTag && text.includes(mentionTag);
       if (!isMentioned) {
