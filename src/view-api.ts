@@ -35,6 +35,11 @@ export interface ViewApiContext {
   readonly dataDir: string;
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
+  // Dynamically-created ClassicBot instances (not in fleet.yaml). Null before init.
+  readonly classicChannels: {
+    getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[];
+    getBackendByInstance(name: string, fleetDefault?: string): string;
+  } | null;
   getInstanceStatus(name: string): "running" | "stopped" | "crashed";
   getUiStatus(): unknown;
 }
@@ -90,9 +95,16 @@ function json(res: ServerResponse, code: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-/** Safe instance name that also exists in fleet config. */
+/** All instance names the view knows about: fleet-config + dynamic classic. */
+function allInstanceNames(ctx: ViewApiContext): Set<string> {
+  const s = new Set(Object.keys(ctx.fleetConfig?.instances ?? {}));
+  for (const c of ctx.classicChannels?.getAll() ?? []) s.add(c.instanceName);
+  return s;
+}
+
+/** Safe instance name that also exists as a fleet or classic instance. */
 function knownInstance(ctx: ViewApiContext, name: string): boolean {
-  return /^[A-Za-z0-9._-]+$/.test(name) && !!ctx.fleetConfig?.instances?.[name];
+  return /^[A-Za-z0-9._-]+$/.test(name) && allInstanceNames(ctx).has(name);
 }
 
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
@@ -183,8 +195,12 @@ export function handleViewRequest(
     const live = new Map(ui.instances.map(i => [i.name, i]));
     const db = profileDb(ctx.dataDir);
     const profiles = new Map((db.prepare("SELECT * FROM instance_profile").all() as ProfileRow[]).map(r => [r.instance_name, r]));
-    const roster = Object.keys(ctx.fleetConfig?.instances ?? {}).map(name => {
-      const cfg = ctx.fleetConfig!.instances[name];
+    // Merge fleet-config instances with dynamically-created classic instances
+    // (which have tmux windows + status but aren't in fleet.yaml).
+    const classicByName = new Map((ctx.classicChannels?.getAll() ?? []).map(c => [c.instanceName, c]));
+    const roster = [...allInstanceNames(ctx)].map(name => {
+      const cfg = ctx.fleetConfig?.instances[name];
+      const classic = classicByName.get(name);
       const l = live.get(name);
       const p = profiles.get(name);
       return {
@@ -192,8 +208,8 @@ export function handleViewRequest(
         status: l?.status ?? ctx.getInstanceStatus(name),
         context_pct: l?.context_pct ?? 0,
         model: l?.model ?? "",
-        backend: cfg?.backend ?? "claude-code",
-        tags: cfg?.tags ?? [],
+        backend: cfg?.backend ?? (classic ? ctx.classicChannels!.getBackendByInstance(name) : "claude-code"),
+        tags: cfg?.tags ?? (classic ? ["classic"] : []),
         display_name: p?.display_name ?? null,
         role: p?.role ?? null,
         avatar_path: p?.avatar_path ?? null,
