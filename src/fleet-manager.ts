@@ -579,8 +579,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.classicChannels?.rotateLogs();
     this.rotateInboxes();
 
-    // Auto-create general instance(s) — one per adapter that lacks a general
+    // Auto-create/adopt a general dispatcher — ONLY for the primary adapter.
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+    const primaryAdapterId = channelConfigs[0] ? (channelConfigs[0].id ?? channelConfigs[0].type) : undefined;
     const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
     let generalsCreated = false;
 
@@ -591,6 +592,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (const ch of channelConfigs) {
       const adapterId = ch.id ?? ch.type;
+      // Only the primary adapter gets an auto-general. Secondary (persona) bots
+      // answer for their explicitly-bound instances only — they don't need or
+      // auto-claim a general dispatcher, and must never adopt the primary's
+      // unbound general. A general a user manually bound to a secondary
+      // (channel_id: <persona>) is left untouched — the auto logic just won't
+      // create or reassign bindings for non-primary adapters.
+      if (adapterId !== primaryAdapterId) continue;
       // Check if any general is explicitly bound to this adapter
       if (generalInstances.some(([, inst]) => inst.channel_id === adapterId)) continue;
       // Check if any general matches by name heuristic
