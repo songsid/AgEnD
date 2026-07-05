@@ -479,6 +479,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         .sendMessage(Number(chatId), chunks[0], {
           message_thread_id: toThreadId(threadId),
           parse_mode: parseMode,
+          ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
         })
         .then((msg) => {
           const result: SentMessage = {
