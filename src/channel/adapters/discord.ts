@@ -343,6 +343,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "status", description: "Show fleet status and costs" },
           { name: "sysinfo", description: "System diagnostics" },
+          { name: "dashboard", description: "Get dashboard URLs (admin only)" },
           { name: "ctx", description: "Show agent context usage" },
           { name: "restart", description: "🔒 Graceful restart all instances" },
           { name: "update", description: "🔒 Update AgEnD to latest version" },

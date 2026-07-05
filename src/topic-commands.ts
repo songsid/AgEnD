@@ -11,6 +11,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
+import { getAgendHome } from "./paths.js";
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
 export function sanitizeInstanceName(name: string): string {
@@ -99,7 +100,48 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/dashboard" || text.startsWith("/dashboard@")) {
+      await this.handleDashboardCommand(msg);
+      return true;
+    }
+
     return false;
+  }
+
+  /** Build the dashboard URL text (View / Settings / Web UI). Includes the web token. */
+  getDashboardText(): string {
+    const port = this.ctx.fleetConfig?.health_port ?? 19280;
+    const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
+    let token = "";
+    try { token = readFileSync(join(getAgendHome(), "web.token"), "utf-8").trim(); } catch { /* not started yet */ }
+    const base = `http://${host}:${port}`;
+    return [
+      "📊 AgEnD Dashboard",
+      "",
+      `• View:     ${base}/view`,
+      `• Settings: ${base}/settings?token=${token}`,
+      `• Web UI:   ${base}/ui?token=${token}`,
+    ].join("\n");
+  }
+
+  /**
+   * /dashboard (TG): admin-only. The URLs carry the web token, so prefer a
+   * private DM to the caller; fall back to an in-thread reply only if the DM
+   * fails (e.g. the user hasn't opened a private chat with the bot).
+   */
+  private async handleDashboardCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    const chatId = msg.chatId;
+    const threadId = msg.threadId;
+    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
+    if (allowed.length === 0) { await adapter.sendText(chatId, "⛔ /dashboard disabled — no allowed_users configured", { threadId }); return; }
+    if (!allowed.some(u => String(u) === String(msg.userId))) { await adapter.sendText(chatId, "⛔ Not authorized", { threadId }); return; }
+
+    const text = this.getDashboardText();
+    const dmOk = await adapter.sendText(String(msg.userId), text).then(() => true).catch(() => false);
+    if (dmOk) await adapter.sendText(chatId, "📊 Dashboard URLs sent to you privately.", { threadId });
+    else await adapter.sendText(chatId, text, { threadId }); // fallback: reply in the topic
   }
 
   /** Handle /ctx or /compact in any instance topic — returns true if handled */
@@ -503,6 +545,7 @@ export class TopicCommands {
               commands: [
                 { command: "status", description: "Show fleet status and costs" },
                 { command: "sysinfo", description: "System diagnostics" },
+                { command: "dashboard", description: "🔒 Get dashboard URLs" },
                 { command: "ctx", description: "Show context usage" },
                 { command: "compact", description: "Compact agent context" },
                 { command: "restart", description: "🔒 Graceful restart all instances" },
