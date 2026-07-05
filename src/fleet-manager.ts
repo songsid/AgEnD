@@ -4147,7 +4147,9 @@ When users create specialized instances, suggest these configurations:
       if (target && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
-          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})`);
+          // Beta builds have no per-tag release page → link to the latest release.
+          const releaseUrl = target.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${target}`;
+          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})\n📄 ${releaseUrl}`);
         }
       }
     } catch { /* silent — network issues */ }
