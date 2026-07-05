@@ -82,6 +82,8 @@ export interface SendOpts {
   replyTo?: string;
   format?: "text" | "html";
   chunkLimit?: number;
+  /** Suppress the link/web-page preview for URLs in the message (Telegram). */
+  disablePreview?: boolean;
 }
 
 export interface SentMessage {
