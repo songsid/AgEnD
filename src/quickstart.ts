@@ -505,6 +505,16 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
 // ── Main ─────────────────────────────────────────────────
 
 export async function runQuickstart(): Promise<void> {
+  // Quickstart requires an interactive terminal for prompts.
+  if (!stdin.isTTY) {
+    console.error(
+      "Error: Quickstart requires an interactive terminal.\n" +
+      "Run this command directly in a terminal (not piped, not via systemd exec, not headless).\n" +
+      "If you're in WSL, open a WSL terminal. If via SSH, ensure TTY allocation (ssh -t)."
+    );
+    process.exit(1);
+  }
+
   const rl = createInterface({ input: stdin, output: stdout });
 
   try {
