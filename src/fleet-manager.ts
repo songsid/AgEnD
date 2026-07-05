@@ -10,7 +10,10 @@ import yaml from "js-yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { FleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig } from "./types.js";
+import type { FleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig } from "./types.js";
+
+/** Fallback access policy for a channel with no `access:` block — open (no gate). */
+const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
@@ -749,6 +752,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
       }
 
+      // Guard against a stale/invalid general topic_id. An old auto-general
+      // could have written the TG-convention "1" for a Discord general; the DC
+      // adapter then throws fetching channel "1" → unhandled → fleet crash loop.
+      // Unbind (+ warn) so it's simply skipped, never routed to a bogus channel.
+      let fixedGeneral = false;
+      for (const [name, cfg] of Object.entries(this.fleetConfig!.instances)) {
+        if (!cfg.general_topic || cfg.topic_id == null) continue;
+        const adapterId = this.instanceWorldBinding.get(name) ?? cfg.channel_id;
+        if (this.getChannelConfig(adapterId)?.type === "discord" && !/^\d{17,}$/.test(String(cfg.topic_id))) {
+          this.logger.warn({ name, topic_id: cfg.topic_id }, "Discord general topic_id is not a valid channel — unbinding to avoid a crash loop");
+          delete (cfg as { topic_id?: unknown }).topic_id;
+          fixedGeneral = true;
+        }
+      }
+      if (fixedGeneral) this.saveFleetConfig();
+
       // Auto-create topics AFTER adapter is ready (needs adapter.createTopic)
       await this.topicCommands.autoCreateTopics();
       const routeSummary = this.routing.rebuild(this.fleetConfig!);
@@ -904,7 +923,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
     const accessManager = new AccessManager(
-      channelConfig.access,
+      channelConfig.access ?? DEFAULT_OPEN_ACCESS,
       join(accessDir, "access.json"),
     );
     this.accessManager = accessManager;
@@ -1162,7 +1181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
     const accessManager = new AccessManager(
-      channelConfig.access,
+      channelConfig.access ?? DEFAULT_OPEN_ACCESS,
       join(accessDir, `access-${adapterId}.json`),
     );
     const inboxDir = join(this.dataDir, "inbox");

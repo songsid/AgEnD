@@ -502,7 +502,15 @@ export class TopicCommands {
         }
         if (platformType === "discord") {
           const ch = channels.find(c => c.type === "discord");
-          config.topic_id = (ch?.options?.general_channel_id as string | number) ?? 1;
+          const gcid = ch?.options?.general_channel_id as string | number | undefined;
+          // A Discord general needs a real channel id — NOT the TG-convention
+          // "1", which makes the DC adapter throw fetching channel "1". Skip
+          // (leave unbound) if there's no valid channel to bind to.
+          if (gcid == null || !/^\d{17,}$/.test(String(gcid))) {
+            this.ctx.logger.warn({ name }, "Discord general has no valid general_channel_id — skipping topic bind (set channel.options.general_channel_id)");
+            continue;
+          }
+          config.topic_id = gcid;
         } else {
           config.topic_id = 1;
         }
