@@ -12,10 +12,13 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
 | `/compact` | Compact agent context | All |
+| `/cancel` | Interrupt agent generation | All |
+| `/save` | Save agent session | All |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
+| 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -50,11 +53,13 @@ Registered globally via `client.application.commands.set()`.
 | `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
+| `/cancel` | Interrupt agent generation | All |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/compact` | Compact agent context | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
+| 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
 
