@@ -8,6 +8,7 @@ import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
+import { t } from "./locale.js";
 import type { Logger } from "./logger.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
@@ -130,7 +131,7 @@ export class InstanceLifecycle {
     if (process.getuid?.() === 0 && backendName === "claude-code" && !process.env.IS_SANDBOX) {
       const msg = `⚠️ claude-code cannot run with --dangerously-skip-permissions as root. Set IS_SANDBOX=1 or use a non-root user.`;
       this.ctx.logger.error({ name, backend: backendName }, msg);
-      this.ctx.notifyInstanceTopic(name, msg);
+      this.ctx.notifyInstanceTopic(name, t("inst.root_skip_perms"));
       return;
     }
 
@@ -173,22 +174,22 @@ export class InstanceLifecycle {
     daemon.on("crash_respawn", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_respawn", {});
       this.ctx.logger.warn({ name }, "Instance crashed and respawned");
-      this.ctx.notifyInstanceTopic(name, `⚠️ ${name} crashed and respawned.`);
+      this.ctx.notifyInstanceTopic(name, t("inst.crashed_respawned", name));
       const generalName = this.findGeneralInstance();
       if (generalName && generalName !== name) {
-        this.ctx.notifyInstanceTopic(generalName, `⚠️ ${name} crashed and respawned. Check ~/.agend/daemon.log for details.`);
+        this.ctx.notifyInstanceTopic(generalName, t("inst.crashed_respawned_log", name));
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
 
     daemon.on("snapshot_failed", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "snapshot_failed", {});
-      this.ctx.notifyInstanceTopic(name, `⚠️ ${name}: restarted without context (snapshot injection failed)`);
+      this.ctx.notifyInstanceTopic(name, t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
     daemon.on("crash_loop", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_loop", {});
       this.ctx.logger.error({ name }, "Instance in crash loop — respawn paused");
-      this.ctx.notifyInstanceTopic(name, `🔴 ${name} keeps crashing shortly after launch — respawn paused. Check rate limits or run \`agend fleet restart\`.`);
+      this.ctx.notifyInstanceTopic(name, t("inst.respawn_paused", name));
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
@@ -197,7 +198,7 @@ export class InstanceLifecycle {
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
       const emoji = data.type === "rate_limit" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
-      this.ctx.notifyInstanceTopic(name, `${emoji} ${name}: ${data.message} (action: ${data.action})`);
+      this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
       if (data.action === "failover") {
@@ -211,7 +212,7 @@ export class InstanceLifecycle {
       const duration = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
       this.ctx.eventLog?.insert(name, "pty_recovered", { downtime_s: data.downtime_s });
       this.ctx.logger.info({ name, downtime_s: data.downtime_s }, "PTY error recovered");
-      this.ctx.notifyInstanceTopic(name, `✅ ${name}: recovered after ${duration}`);
+      this.ctx.notifyInstanceTopic(name, t("inst.recovered", name, duration));
       this.ctx.webhookEmit("pty_recovered", name, { downtime_s: data.downtime_s });
     }, this.ctx.logger, `daemon.pty_recovered[${name}]`));
 
