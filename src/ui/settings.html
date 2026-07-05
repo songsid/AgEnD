@@ -159,7 +159,7 @@
       noAgents: "No agents yet — click + New.", noBots: "No bots configured.", online: "✅ Online",
       currentVersion: "Current version",
       helpTitle: "📖 Help", tipReload: "💡 Click [↻ Reload Fleet] after changes to apply them.",
-      wnIntro: "Recent highlights:",
+      wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →",
     },
     "zh-TW": {
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
@@ -175,7 +175,7 @@
       noAgents: "還沒有 agent — 點 + 新增。", noBots: "尚未設定機器人。", online: "✅ 上線",
       currentVersion: "目前版本",
       helpTitle: "📖 使用說明", tipReload: "💡 修改後點 [↻ 重新載入] 讓設定生效。",
-      wnIntro: "近期更新重點：",
+      wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →",
     },
   };
   const HELP = {
@@ -523,6 +523,10 @@
     const ul = el("ul", { style: "margin:0 0 0 18px" });
     for (const line of WHATSNEW) ul.append(el("li", { style: "font-size:13px;margin:4px 0" }, line));
     host.append(ul);
+    // Beta builds have no per-tag release page → link to the latest release.
+    const v = state.version || "";
+    const url = !v || v.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${v}`;
+    host.append(el("div", { style: "margin-top:10px" }, el("a", { href: url, target: "_blank", rel: "noopener", style: "color:var(--accent);font-size:13px;text-decoration:none" }, t("releaseNotes"))));
   }
 
   // ── Advanced (YAML/JSON) ──
