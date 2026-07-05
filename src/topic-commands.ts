@@ -108,26 +108,33 @@ export class TopicCommands {
     return false;
   }
 
-  /** Build the dashboard URL text (View / Settings / Web UI). Includes the web token. */
-  getDashboardText(): string {
+  /**
+   * Build the dashboard URL text (View / Settings / Web UI). The Settings/Web UI
+   * URLs carry the web token; when `htmlSpoiler` is set they're wrapped in a
+   * Telegram HTML spoiler (`<tg-spoiler>`) so the token isn't shown in the clear
+   * in a shared topic (the caller must send with format: "html"). /view is
+   * public, so it's never spoilered. DC uses the plain form (ephemeral reply).
+   */
+  getDashboardText(htmlSpoiler = false): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
     let token = "";
     try { token = readFileSync(join(getAgendHome(), "web.token"), "utf-8").trim(); } catch { /* not started yet */ }
     const base = `http://${host}:${port}`;
+    const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [
       "📊 AgEnD Dashboard",
       "",
       `• View:     ${base}/view`,
-      `• Settings: ${base}/settings?token=${token}`,
-      `• Web UI:   ${base}/ui?token=${token}`,
+      `• Settings: ${hide(`${base}/settings?token=${token}`)}`,
+      `• Web UI:   ${hide(`${base}/ui?token=${token}`)}`,
     ].join("\n");
   }
 
   /**
-   * /dashboard (TG): admin-only. The URLs carry the web token, so prefer a
-   * private DM to the caller; fall back to an in-thread reply only if the DM
-   * fails (e.g. the user hasn't opened a private chat with the bot).
+   * /dashboard (TG): admin-only. Replies directly in the topic; the token-
+   * bearing URLs are wrapped in a Telegram HTML spoiler so they aren't shown in
+   * the clear (the adapter supports plain/HTML, not MarkdownV2's `||…||`).
    */
   private async handleDashboardCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
@@ -138,10 +145,7 @@ export class TopicCommands {
     if (allowed.length === 0) { await adapter.sendText(chatId, "⛔ /dashboard disabled — no allowed_users configured", { threadId }); return; }
     if (!allowed.some(u => String(u) === String(msg.userId))) { await adapter.sendText(chatId, "⛔ Not authorized", { threadId }); return; }
 
-    const text = this.getDashboardText();
-    const dmOk = await adapter.sendText(String(msg.userId), text).then(() => true).catch(() => false);
-    if (dmOk) await adapter.sendText(chatId, "📊 Dashboard URLs sent to you privately.", { threadId });
-    else await adapter.sendText(chatId, text, { threadId }); // fallback: reply in the topic
+    await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
   }
 
   /** Handle /ctx or /compact in any instance topic — returns true if handled */
