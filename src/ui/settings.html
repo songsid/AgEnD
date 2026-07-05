@@ -108,6 +108,11 @@
     <div class="card" id="agents"></div>
   </section>
 
+  <section id="classicSection">
+    <div class="sec-head"><h2 data-i18n="classicChannels">🎮 ClassicBot Channels</h2></div>
+    <div class="card" id="classicList"></div>
+  </section>
+
   <section>
     <div class="sec-head"><h2 data-i18n="bots">🔌 Bots</h2><div class="grow"></div><button class="sm" id="newBotBtn" data-i18n="add">+ Add</button></div>
     <div id="newBot"></div>
@@ -146,7 +151,7 @@
   // ── i18n ──
   const I18N = {
     en: {
-      title: "⚙️ AgEnD Settings", reloadFleet: "↻ Reload Fleet", myAgents: "🤖 My Agents", bots: "🔌 Bots",
+      title: "⚙️ AgEnD Settings", reloadFleet: "↻ Reload Fleet", myAgents: "🤖 My Agents", bots: "🔌 Bots", classicChannels: "🎮 ClassicBot Channels", noClassic: "No ClassicBot channels — start one with /start in a chat.",
       general: "⚙️ General Settings", autoUpdate: "🔄 Auto Update", whatsNew: "🆕 What's New", advanced: "📋 Advanced",
       expand: "▶ Expand", collapse: "▼ Collapse", new: "+ New", add: "+ Add", searchPh: "🔍 Search…",
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
@@ -163,7 +168,7 @@
       wnIntro: "Recent highlights:",
     },
     "zh-TW": {
-      title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人",
+      title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
       general: "⚙️ 一般設定", autoUpdate: "🔄 自動更新", whatsNew: "🆕 更新重點", advanced: "📋 進階",
       expand: "▶ 展開", collapse: "▼ 收合", new: "+ 新增", add: "+ 加入", searchPh: "🔍 搜尋…",
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
@@ -257,7 +262,7 @@
   }
 
   // ── State ──
-  const state = { fleet: {}, classic: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), updateSchedule: null, version: "", newAgentOpen: false, newBotOpen: false };
+  const state = { fleet: {}, classic: {}, classicStatus: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), updateSchedule: null, version: "", newAgentOpen: false, newBotOpen: false };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -421,6 +426,34 @@
       host.append(item);
     });
   }
+
+  // ── ClassicBot Channels (read-only; created dynamically via /start /stop) ──
+  function renderClassic() {
+    const host = $("classicList"); if (!host) return; host.innerHTML = "";
+    const chans = Object.values(state.classic?.channels || {});
+    if (!chans.length) { host.className = "card empty"; host.textContent = t("noClassic"); return; }
+    const filter = ($("agentSearch")?.value || "").trim().toLowerCase();
+    let list = chans;
+    if (filter) list = list.filter(c => String(c.name || "").toLowerCase().includes(filter) || String(c.instanceName || "").toLowerCase().includes(filter));
+    if (!list.length) { host.className = "card empty"; host.textContent = "—"; return; }
+    host.className = "card";
+    list.sort((a, b) => {
+      const sa = STATUS_ORDER[state.classicStatus[a.instanceName] || "stopped"], sb = STATUS_ORDER[state.classicStatus[b.instanceName] || "stopped"];
+      return sa !== sb ? sa - sb : String(a.name || "").localeCompare(String(b.name || ""));
+    });
+    for (const c of list) {
+      const st = state.classicStatus[c.instanceName] || "stopped";
+      const adapter = c.adapterId || "discord";
+      host.append(el("div", { class: "item" }, el("div", { class: "item-row" },
+        el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
+        el("span", { class: "name", title: c.instanceName || "" }, c.name || c.instanceName || "?"),
+        el("span", { class: "sub", style: "margin:0" }, c.backend || state.classic?.defaults?.backend || "claude-code"),
+        el("span", { class: "tag" + (adapter !== "discord" ? " persona" : "") }, adapter),
+        c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
+      )));
+    }
+  }
+
   async function saveChannels(msgEl) {
     const res = await api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(channels()) });
     if (msgEl) resultMsg(msgEl, res);
@@ -575,12 +608,16 @@
   }
 
   // ── Load / render ──
-  function renderAll() { renderAgents(); renderBots(); renderGeneral(); renderAutoUpdate(); renderWhatsNew(); renderAdvanced(); applyStaticI18n(); }
+  function renderAll() { renderAgents(); renderClassic(); renderBots(); renderGeneral(); renderAutoUpdate(); renderWhatsNew(); renderAdvanced(); applyStaticI18n(); }
   async function reloadLive() {
     const f = await api("/api/fleet");
     state.fleetUp = f.ok;
     state.live = {}; if (f.ok && f.body?.instances) for (const i of f.body.instances) state.live[i.name] = { status: i.status };
-    renderAgents(); renderBots();
+    // /api/fleet is fleet-config only; classic instance statuses come from the
+    // merged roster (/api/profiles, open GET).
+    const pr = await api("/api/profiles");
+    state.classicStatus = {}; if (pr.ok && Array.isArray(pr.body)) for (const r of pr.body) state.classicStatus[r.instance_name] = r.status;
+    renderAgents(); renderBots(); renderClassic();
   }
   async function reload() {
     const f = await api("/api/settings/fleet");
@@ -598,7 +635,7 @@
   $("helpBackdrop").onclick = () => setHelp(false);
   $("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); renderAll(); };
   $("verBadge").onclick = () => { const b = $("wnBody"); b.classList.add("open"); $("wnToggle").textContent = t("collapse"); b.scrollIntoView({ behavior: "smooth" }); };
-  $("agentSearch").oninput = () => renderAgents();
+  $("agentSearch").oninput = () => { renderAgents(); renderClassic(); };
   $("newAgentBtn").onclick = () => { state.newAgentOpen = !state.newAgentOpen; $("newAgentBtn").textContent = state.newAgentOpen ? t("cancel") : t("new"); renderNewAgent(state.newAgentOpen); };
   $("newBotBtn").onclick = () => { state.newBotOpen = !state.newBotOpen; $("newBotBtn").textContent = state.newBotOpen ? t("cancel") : t("add"); renderNewBot(state.newBotOpen); };
   $("advToggle").onclick = () => { const b = $("advBody"); const open = !b.classList.contains("open"); b.classList.toggle("open", open); $("advToggle").textContent = open ? t("collapse") : t("expand"); };
