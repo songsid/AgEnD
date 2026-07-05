@@ -41,6 +41,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
+import { handleSettingsRequest } from "./settings-api.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager } from "./classic-channel-manager.js";
 
@@ -4368,6 +4369,7 @@ When users create specialized instances, suggest these configurations:
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
       if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+      if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
       if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
 
       res.writeHead(404);
