@@ -125,11 +125,6 @@
   </section>
 
   <section>
-    <div class="sec-head"><h2 data-i18n="autoUpdate">🔄 Auto Update</h2></div>
-    <div class="card" id="autoUpdate"></div>
-  </section>
-
-  <section>
     <div class="sec-head"><h2 data-i18n="whatsNew">🆕 What's New</h2><div class="grow"></div><button class="sm" id="wnToggle" data-i18n="expand">▶ Expand</button></div>
     <div class="card"><div class="adv-body" id="wnBody"></div></div>
   </section>
@@ -152,7 +147,7 @@
   const I18N = {
     en: {
       title: "⚙️ AgEnD Settings", reloadFleet: "↻ Reload Fleet", myAgents: "🤖 My Agents", bots: "🔌 Bots", classicChannels: "🎮 ClassicBot Channels", noClassic: "No ClassicBot channels — start one with /start in a chat.",
-      general: "⚙️ General Settings", autoUpdate: "🔄 Auto Update", whatsNew: "🆕 What's New", advanced: "📋 Advanced",
+      general: "⚙️ General Settings", whatsNew: "🆕 What's New", advanced: "📋 Advanced",
       expand: "▶ Expand", collapse: "▼ Collapse", new: "+ New", add: "+ Add", searchPh: "🔍 Search…",
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
@@ -162,14 +157,13 @@
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
       envHint: "Put the actual token in ~/.agend/.env under this env var, then Reload Fleet.",
       noAgents: "No agents yet — click + New.", noBots: "No bots configured.", online: "✅ Online",
-      enable: "Enabled", schedule: "Schedule", channel: "Channel", daily: "Daily", weekly: "Weekly", manual: "Manual (off)",
-      beta: "Beta", stable: "Stable", currentVersion: "Current version", lastChecked: "Last checked", never: "never",
+      currentVersion: "Current version",
       helpTitle: "📖 Help", tipReload: "💡 Click [↻ Reload Fleet] after changes to apply them.",
       wnIntro: "Recent highlights:",
     },
     "zh-TW": {
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
-      general: "⚙️ 一般設定", autoUpdate: "🔄 自動更新", whatsNew: "🆕 更新重點", advanced: "📋 進階",
+      general: "⚙️ 一般設定", whatsNew: "🆕 更新重點", advanced: "📋 進階",
       expand: "▶ 展開", collapse: "▼ 收合", new: "+ 新增", add: "+ 加入", searchPh: "🔍 搜尋…",
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
@@ -179,8 +173,7 @@
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
       envHint: "把實際 token 放到 ~/.agend/.env 的這個環境變數下，然後點重新載入。",
       noAgents: "還沒有 agent — 點 + 新增。", noBots: "尚未設定機器人。", online: "✅ 上線",
-      enable: "啟用", schedule: "排程", channel: "頻道", daily: "每日", weekly: "每週", manual: "手動（關閉）",
-      beta: "Beta", stable: "穩定版", currentVersion: "目前版本", lastChecked: "上次檢查", never: "從未",
+      currentVersion: "目前版本",
       helpTitle: "📖 使用說明", tipReload: "💡 修改後點 [↻ 重新載入] 讓設定生效。",
       wnIntro: "近期更新重點：",
     },
@@ -189,17 +182,15 @@
     en: [["🤖 My Agents", ["[+ New] add an agent (name, backend, working directory)", "[Edit] change settings (backend, model, tags, systemPrompt)", "[Start/Stop] run or stop an agent", "🗑️ delete an agent (shows on hover, needs confirm)", "🔍 search — live-filter the list"]],
          ["🔌 Bots", ["[+ Add] add a Discord/TG bot", "🗑️ remove a bot"]],
          ["⚙️ General Settings", ["Edit global backend/model, allowed users, ClassicBot admins", "Click [Save]"]],
-         ["🔄 Auto Update", ["Enable a scheduled `agend update` (daily/weekly)", "Pick beta or stable channel"]],
          ["📋 Advanced", ["Edit YAML/JSON directly", "[⬇ fleet.yaml] download a backup"]]],
     "zh-TW": [["🤖 我的 Agent", ["[+ 新增] 新增 agent（name、backend、working directory）", "[編輯] 修改設定（backend、model、tags、systemPrompt）", "[啟動/停止] 啟動或停止 agent", "🗑️ 刪除 agent（hover 顯示，需確認）", "🔍 搜尋 — 即時過濾列表"]],
               ["🔌 機器人", ["[+ 加入] 加入 Discord/TG bot", "🗑️ 移除 bot"]],
               ["⚙️ 一般設定", ["修改全域 backend/model、允許使用者、ClassicBot 管理員", "點 [儲存]"]],
-              ["🔄 自動更新", ["啟用排程 `agend update`（每日/每週）", "選 beta 或穩定版頻道"]],
               ["📋 進階", ["直接編輯 YAML/JSON", "[⬇ fleet.yaml] 下載備份"]]],
   };
   const WHATSNEW = [
     "Settings redesign — user-flow sections, white theme, i18n (EN / 繁中)",
-    "Auto Update scheduler + What's New + info help panel",
+    "What's New panel + info help panel + ClassicBot channels list",
     "Same-channel multi-bot ClassicBot; per-bot cancel-button + react fixes",
     "/view avatar & ctx% fixes; config validator + `agend validate` + validate_config MCP tool",
   ];
@@ -262,7 +253,7 @@
   }
 
   // ── State ──
-  const state = { fleet: {}, classic: {}, classicStatus: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), updateSchedule: null, version: "", newAgentOpen: false, newBotOpen: false };
+  const state = { fleet: {}, classic: {}, classicStatus: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -524,33 +515,6 @@
     );
   }
 
-  // ── Auto Update ──
-  function renderAutoUpdate() {
-    const host = $("autoUpdate"); host.innerHTML = "";
-    const u = state.updateSchedule || { enabled: false, cron: "0 4 * * *", channel: "stable" };
-    const CRON = { daily: "0 4 * * *", weekly: "0 4 * * 1" };
-    const fEnable = el("input", { type: "checkbox" }); fEnable.checked = !!u.enabled;
-    const schedVal = u.cron === CRON.weekly ? "weekly" : (u.enabled ? "daily" : "manual");
-    const fSched = select(schedVal, ["daily", "weekly", "manual"]); // labels localized below
-    [...fSched.children].forEach(o => { o._txt = ""; o.textContent = t(o.value === "manual" ? "manual" : o.value); });
-    const fChannel = select(u.channel === "beta" ? "beta" : "stable", ["stable", "beta"]);
-    [...fChannel.children].forEach(o => o.textContent = t(o.value));
-    const msg = el("span", { class: "msg" });
-    host.append(
-      el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fEnable, el("span", {}, t("enable")))),
-      el("div", { class: "field" }, el("label", {}, t("schedule")), fSched),
-      el("div", { class: "field" }, el("label", {}, t("channel")), fChannel),
-      el("div", { class: "field" }, el("div", { class: "sub", style: "margin:0" }, `${t("currentVersion")}: ${state.version || "?"}  ·  ${t("lastChecked")}: ${u.lastChecked ? new Date(u.lastChecked).toLocaleString() : t("never")}`)),
-      el("div", { class: "field" }, el("div", { class: "actions" }, el("button", { class: "primary", onclick: async () => {
-        const sched = fSched.value;
-        const enabled = fEnable.checked && sched !== "manual";
-        const cron = sched === "weekly" ? CRON.weekly : CRON.daily;
-        const res = await api("/api/settings/update-schedule", { method: "PUT", body: JSON.stringify({ enabled, cron, channel: fChannel.value }) });
-        resultMsg(msg, res); if (res.ok) { state.updateSchedule = { enabled, cron, channel: fChannel.value, lastChecked: u.lastChecked }; }
-      } }, t("save")), msg)),
-    );
-  }
-
   // ── What's New ──
   function renderWhatsNew() {
     const host = $("wnBody"); host.innerHTML = "";
@@ -608,7 +572,7 @@
   }
 
   // ── Load / render ──
-  function renderAll() { renderAgents(); renderClassic(); renderBots(); renderGeneral(); renderAutoUpdate(); renderWhatsNew(); renderAdvanced(); applyStaticI18n(); }
+  function renderAll() { renderAgents(); renderClassic(); renderBots(); renderGeneral(); renderWhatsNew(); renderAdvanced(); applyStaticI18n(); }
   async function reloadLive() {
     const f = await api("/api/fleet");
     state.fleetUp = f.ok;
@@ -617,6 +581,7 @@
     // merged roster (/api/profiles, open GET).
     const pr = await api("/api/profiles");
     state.classicStatus = {}; if (pr.ok && Array.isArray(pr.body)) for (const r of pr.body) state.classicStatus[r.instance_name] = r.status;
+    if (f.ok && f.body?.version) { state.version = f.body.version; $("verBadge").textContent = "v" + state.version; }
     renderAgents(); renderBots(); renderClassic();
   }
   async function reload() {
@@ -624,7 +589,6 @@
     if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = "Failed to load config — check the token in the URL."; return; }
     state.fleet = f.body || {};
     const c = await api("/api/settings/classic"); state.classic = c.body || {};
-    const u = await api("/api/settings/update-schedule"); if (u.ok) { state.updateSchedule = u.body; state.version = u.body.currentVersion || ""; $("verBadge").textContent = "v" + (state.version || "?"); }
     await reloadLive();
     renderAll();
   }
