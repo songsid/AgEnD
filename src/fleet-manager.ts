@@ -2756,7 +2756,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  notifyInstanceTopic(instanceName: string, text: string): void {
+  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): void {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
     const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
@@ -2765,7 +2765,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Fleet topic instance
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
     if (threadId != null && groupId) {
-      adapter.sendText(String(groupId), text, { threadId: String(threadId) })
+      adapter.sendText(String(groupId), text, { threadId: String(threadId), ...extraOpts })
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
       return;
     }
@@ -2773,14 +2773,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Classic instance: find its channelId from the classic manager
     const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
     if (classicChatId) {
-      adapter.sendText(classicChatId, text)
+      adapter.sendText(classicChatId, text, extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
       return;
     }
 
     // Fallback: send to group without threadId
     if (groupId) {
-      adapter.sendText(String(groupId), text)
+      adapter.sendText(String(groupId), text, extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
     }
   }
@@ -4149,7 +4149,8 @@ When users create specialized instances, suggest these configurations:
         if (generalId) {
           // Beta builds have no per-tag release page → link to the latest release.
           const releaseUrl = target.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${target}`;
-          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})\n📄 ${releaseUrl}`);
+          // Suppress the (large, ugly) GitHub release link preview on Telegram.
+          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})\n📄 ${releaseUrl}`, { disablePreview: true });
         }
       }
     } catch { /* silent — network issues */ }
