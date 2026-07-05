@@ -81,7 +81,7 @@ export class Scheduler {
     this.db.close();
   }
 
-  create(params: CreateScheduleParams, allowReserved = false): Schedule {
+  create(params: CreateScheduleParams): Schedule {
     const tz = params.timezone ?? this.config.default_timezone;
     validateTimezone(tz, "timezone");
     try {
@@ -90,13 +90,9 @@ export class Scheduler {
       throw new Error(`Invalid cron expression: ${(err as Error).message}`);
     }
 
-    // `__`-prefixed targets are reserved for fleet-internal schedules (e.g. the
-    // auto-update job). Only the sanctioned creator may use one; a user-driven
-    // create is rejected. Reserved targets aren't fleet instances, so they also
-    // skip the isValidInstance check.
-    if (params.target.startsWith("__")) {
-      if (!allowReserved) throw new Error("Reserved target name");
-    } else if (!this.isValidInstance(params.target)) {
+    // `__`-prefixed target names are reserved for fleet-internal use.
+    if (params.target.startsWith("__")) throw new Error("Reserved target name");
+    if (!this.isValidInstance(params.target)) {
       throw new Error(`Instance "${params.target}" not found in fleet config.`);
     }
 
