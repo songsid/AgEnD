@@ -77,7 +77,7 @@
 <div class="banner" id="banner"></div>
 <main>
   <section>
-    <div class="sec-head"><h2>🤖 My Agents</h2><div class="grow"></div><button class="sm" id="newAgentBtn">+ New</button></div>
+    <div class="sec-head"><h2>🤖 My Agents</h2><div class="grow"></div><input type="text" id="agentSearch" placeholder="🔍 Search…" style="width:180px;margin-right:8px"><button class="sm" id="newAgentBtn">+ New</button></div>
     <div id="newAgent"></div>
     <div class="card" id="agents"></div>
   </section>
@@ -170,21 +170,36 @@
     const ch = channels()[idx];
     return ch ? `${ch.type} (${chLabel(idx)})` : inst.channel_id;
   }
+  // Display name: profile display_name → else strip the -t<topicId> suffix.
+  const shortName = (name, inst) => (inst && inst.display_name) || name.replace(/-t\d+$/, "");
+  const STATUS_TEXT = { running: "🟢 Running", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
+  const STATUS_ORDER = { running: 0, crashed: 1, stopped: 2 };
   function renderAgents() {
     const host = $("agents"); host.innerHTML = "";
     const insts = state.fleet.instances || {};
-    const names = Object.keys(insts);
-    if (!names.length) { host.className = "card empty"; host.textContent = "No agents yet — click + New."; return; }
+    const filter = ($("agentSearch")?.value || "").trim().toLowerCase();
+    let names = Object.keys(insts);
+    if (filter) names = names.filter(n => n.toLowerCase().includes(filter) || shortName(n, insts[n]).toLowerCase().includes(filter));
+    // Group by status: Running first, then Crashed, then Stopped; name within.
+    names.sort((a, b) => {
+      const sa = STATUS_ORDER[state.live[a]?.status || "stopped"], sb = STATUS_ORDER[state.live[b]?.status || "stopped"];
+      return sa !== sb ? sa - sb : a.localeCompare(b);
+    });
+    if (!Object.keys(insts).length) { host.className = "card empty"; host.textContent = "No agents yet — click + New."; return; }
+    if (!names.length) { host.className = "card empty"; host.textContent = "No agents match \"" + filter + "\"."; return; }
     host.className = "card";
     for (const name of names) {
       const inst = insts[name];
       const st = state.live[name]?.status || "stopped";
       const running = st === "running";
+      const short = shortName(name, inst);
       const item = el("div", { class: "item" });
       const chTag = agentChannelLabel(inst);
       item.append(el("div", { class: "item-row" },
         el("span", { class: "dot " + st }),
-        el("span", { class: "name" }, name),
+        el("span", { class: "name", title: name }, short),
+        short !== name ? el("span", { class: "sub", style: "margin:0;font-size:11px" }, name) : null,
+        el("span", { style: "font-size:12px;color:var(--muted)" }, STATUS_TEXT[st] || st),
         chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
         el("span", { class: "sub", style: "margin:0" }, inst.backend || state.fleet.defaults?.backend || "claude-code"),
         el("span", { class: "spacer" }),
@@ -204,16 +219,30 @@
     const fWd = el("input", { type: "text", value: inst.working_directory || "" });
     const fChan = select(inst.channel_id || "", ["", ...channelIds()]);
     const fDesc = el("input", { type: "text", value: inst.description || "" });
+    const fSys = el("input", { type: "text", value: inst.systemPrompt || "", placeholder: "e.g. file:prompts/dev.md" });
+    const tags = [...(inst.tags || [])];
+    const fGeneral = el("input", { type: "checkbox" }); fGeneral.checked = !!inst.general_topic;
     const msg = el("span", { class: "msg" });
     box.append(
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, "Backend"), fBackend), el("div", {}, el("label", {}, "Model"), fModel)),
       el("label", {}, "Working directory"), fWd,
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, "Channel binding"), fChan), el("div", {}, el("label", {}, "Description"), fDesc)),
-      el("div", { class: "actions" }, el("button", { class: "primary sm", onclick: async () => {
-        const patch = { backend: fBackend.value, model: fModel.value || undefined, working_directory: fWd.value, channel_id: fChan.value || undefined, description: fDesc.value || undefined };
-        const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) });
-        resultMsg(msg, res); if (res.ok) await reload();
-      } }, "Save"), msg),
+      el("label", {}, "System prompt"), fSys,
+      el("label", {}, "Tags"), chipList(tags, null, "tag"),
+      el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, "General topic (fleet dispatcher)")),
+      el("div", { class: "actions" },
+        el("button", { class: "primary sm", onclick: async () => {
+          const patch = {
+            backend: fBackend.value, model: fModel.value || undefined,
+            working_directory: fWd.value, channel_id: fChan.value || undefined,
+            description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
+            tags: tags.length ? tags : undefined, general_topic: fGeneral.checked,
+          };
+          const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) });
+          resultMsg(msg, res); if (res.ok) await reload();
+        } }, "Save"),
+        el("button", { class: "sm ghost", onclick: () => { editing = null; renderAgents(); } }, "Cancel"),
+        msg),
     );
     return box;
   }
@@ -398,6 +427,7 @@
     renderAll();
   }
 
+  $("agentSearch").oninput = () => renderAgents();
   $("newAgentBtn").onclick = () => { const open = $("newAgentBtn").textContent === "+ New"; $("newAgentBtn").textContent = open ? "Cancel" : "+ New"; renderNewAgent(open); };
   $("newBotBtn").onclick = () => { const open = $("newBotBtn").textContent === "+ Add"; $("newBotBtn").textContent = open ? "Cancel" : "+ Add"; renderNewBot(open); };
   $("advToggle").onclick = () => { const b = $("advBody"); const open = !b.classList.contains("open"); b.classList.toggle("open", open); $("advToggle").textContent = open ? "▼ Collapse" : "▶ Expand"; };
