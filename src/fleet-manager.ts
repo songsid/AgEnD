@@ -1083,6 +1083,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         await data.respond(this.topicCommands.getSysInfoText());
+      } else if (data.command === "dashboard") {
+        // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
+        // the web-token-bearing URLs are only visible to the caller.
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length === 0) { await data.respond("⛔ /dashboard disabled — no allowed_users configured"); return; }
+        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond("⛔ Not authorized"); return; }
+        await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
@@ -1322,6 +1329,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(text);
       } else if (data.command === "sysinfo") {
         await data.respond(this.topicCommands.getSysInfoText());
+      } else if (data.command === "dashboard") {
+        // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
+        // the web-token-bearing URLs are only visible to the caller.
+        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+        if (allowed.length === 0) { await data.respond("⛔ /dashboard disabled — no allowed_users configured"); return; }
+        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond("⛔ Not authorized"); return; }
+        await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
