@@ -72,14 +72,56 @@
   textarea { width: 100%; min-height: 380px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; color: var(--fg); background: #fff; resize: vertical; }
   pre.preview { background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; overflow: auto; max-height: 480px; white-space: pre; min-height: 380px; }
   .banner { display: none; padding: 10px 24px; font-size: 13px; background: #ecfdf5; color: var(--green); border-bottom: 1px solid var(--border); }
+  .help-btn { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); background: #f3f4f6; cursor: pointer; font-size: 16px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .help-btn:hover { background: var(--accent); border-color: var(--accent); }
+  .help-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: none; z-index: 40; }
+  .help-backdrop.open { display: block; }
+  .help-panel { position: fixed; top: 0; right: 0; height: 100%; width: 380px; max-width: 90vw; background: var(--bg); border-left: 1px solid var(--border); box-shadow: -8px 0 24px rgba(0,0,0,.12); transform: translateX(100%); transition: transform .2s ease; z-index: 50; overflow-y: auto; padding: 20px 22px; }
+  .help-panel.open { transform: translateX(0); }
+  .help-panel h3 { font-size: 16px; margin-bottom: 8px; }
+  .help-panel h4 { font-size: 14px; margin: 16px 0 6px; color: var(--accent); }
+  .help-panel ul { margin: 0 0 8px 18px; }
+  .help-panel li { font-size: 13px; margin: 3px 0; }
+  .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--muted); font-size: 22px; line-height: 1; background: none; border: none; }
+  .help-panel .tip { margin-top: 16px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
 </style>
 </head>
 <body>
 <header>
   <h1>⚙️ AgEnD Settings</h1>
   <div class="grow"></div>
+  <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
   <button id="reloadBtn" class="primary" title="Apply saved config to running instances (SIGHUP)">↻ Reload Fleet</button>
 </header>
+<div class="help-backdrop" id="helpBackdrop"></div>
+<aside class="help-panel" id="helpPanel">
+  <button class="close" id="helpClose" title="Close">×</button>
+  <h3>📖 使用說明</h3>
+  <h4>🤖 My Agents</h4>
+  <ul>
+    <li>[+ New] 新增 agent（填 name、backend、working directory）</li>
+    <li>[Edit] 修改 agent 設定（backend、model、tags、systemPrompt）</li>
+    <li>[Start/Stop] 啟動或停止 agent</li>
+    <li>🗑️ 刪除 agent（hover 顯示，需確認）</li>
+    <li>🔍 搜尋 — 即時過濾 agent 列表</li>
+  </ul>
+  <h4>🔌 Bots</h4>
+  <ul>
+    <li>[+ Add] 加入新 Discord/TG bot</li>
+    <li>🗑️ 移除 bot</li>
+  </ul>
+  <h4>⚙️ General Settings</h4>
+  <ul>
+    <li>修改全域 backend/model、allowed users、ClassicBot admins</li>
+    <li>點 [Save] 存檔</li>
+  </ul>
+  <h4>📋 Advanced</h4>
+  <ul>
+    <li>直接編輯 YAML/JSON</li>
+    <li>[⬇ fleet.yaml] 下載備份</li>
+  </ul>
+  <div class="tip">💡 修改後點 [↻ Reload Fleet] 讓設定生效</div>
+</aside>
 <div class="banner" id="banner"></div>
 <main>
   <section>
@@ -444,6 +486,10 @@
     renderAll();
   }
 
+  const setHelp = (open) => { $("helpPanel").classList.toggle("open", open); $("helpBackdrop").classList.toggle("open", open); };
+  $("helpBtn").onclick = () => setHelp(!$("helpPanel").classList.contains("open"));
+  $("helpClose").onclick = () => setHelp(false);
+  $("helpBackdrop").onclick = () => setHelp(false);
   $("agentSearch").oninput = () => renderAgents();
   $("newAgentBtn").onclick = () => { const open = $("newAgentBtn").textContent === "+ New"; $("newAgentBtn").textContent = open ? "Cancel" : "+ New"; renderNewAgent(open); };
   $("newBotBtn").onclick = () => { const open = $("newBotBtn").textContent === "+ Add"; $("newBotBtn").textContent = open ? "Cancel" : "+ Add"; renderNewBot(open); };
