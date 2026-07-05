@@ -1,7 +1,9 @@
-import { resolve, sep } from "node:path";
-import { realpathSync, existsSync } from "node:fs";
+import { resolve, sep, join } from "node:path";
+import { realpathSync, existsSync, readFileSync } from "node:fs";
+import yaml from "js-yaml";
 import type { ChannelAdapter } from "./types.js";
 import { getAgendHome } from "../paths.js";
+import { validateFleetConfig, validateClassicBotConfig } from "../config-validator.js";
 
 const STATE_DIR = resolve(getAgendHome()) + sep;
 const INBOX_SEG = sep + "inbox" + sep;
@@ -77,6 +79,26 @@ export function routeToolCall(
         .then(path => respond(path))
         .catch(e => respond(null, e.message));
       return true;
+    case "validate_config": {
+      // Stateless — reads the on-disk config; no adapter needed. Any instance
+      // (incl. general) can call it to lint fleet.yaml + classicBot.yaml.
+      const home = getAgendHome();
+      const loadYaml = (p: string): unknown => {
+        if (!existsSync(p)) return undefined;
+        try { return yaml.load(readFileSync(p, "utf-8")); }
+        catch (e) { return { __parseError: (e as Error).message }; }
+      };
+      const fleetRaw = loadYaml(join(home, "fleet.yaml"));
+      const classicRaw = loadYaml(join(home, "classicBot.yaml"));
+      const fleet = (fleetRaw && typeof fleetRaw === "object" && "__parseError" in fleetRaw)
+        ? { valid: false, errors: [{ path: "fleet.yaml", message: `YAML parse error: ${(fleetRaw as { __parseError: string }).__parseError}` }], warnings: [] }
+        : validateFleetConfig(fleetRaw ?? {});
+      const classic = (classicRaw && typeof classicRaw === "object" && "__parseError" in classicRaw)
+        ? { valid: false, errors: [{ path: "classicBot.yaml", message: `YAML parse error: ${(classicRaw as { __parseError: string }).__parseError}` }], warnings: [] }
+        : validateClassicBotConfig(classicRaw);
+      respond({ fleet, classic });
+      return true;
+    }
     default:
       return false;
   }
