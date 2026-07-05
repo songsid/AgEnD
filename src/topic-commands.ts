@@ -143,8 +143,8 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length === 0) { await adapter.sendText(chatId, "⛔ /dashboard disabled — no allowed_users configured", { threadId }); return; }
-    if (!allowed.some(u => String(u) === String(msg.userId))) { await adapter.sendText(chatId, "⛔ Not authorized", { threadId }); return; }
+    if (allowed.length === 0) { await adapter.sendText(chatId, t("dashboard.disabled"), { threadId }); return; }
+    if (!allowed.some(u => String(u) === String(msg.userId))) { await adapter.sendText(chatId, t("not_authorized"), { threadId }); return; }
 
     await adapter.sendText(chatId, this.getDashboardText(true), { threadId, format: "html" });
   }
@@ -159,8 +159,8 @@ export class TopicCommands {
       if (!adapter) return false;
       const isCollab = this.ctx.toggleFleetCollab(instanceName);
       await adapter.sendText(msg.chatId, isCollab
-        ? "🤝 Collaboration mode **ON** — bot/webhook messages to this topic will reach the agent."
-        : "💬 Collaboration mode **OFF** — only user messages trigger the agent.",
+        ? t("collab.on")
+        : t("collab.off"),
         { threadId: msg.threadId });
       return true;
     }
@@ -177,7 +177,7 @@ export class TopicCommands {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
       const ok = this.ctx.cancelInstance(instanceName);
-      await adapter.sendText(msg.chatId, ok ? `🛑 已送出取消給 ${instanceName}。` : `❌ ${instanceName} 未在執行。`, { threadId: msg.threadId });
+      await adapter.sendText(msg.chatId, ok ? t("cancel.sent", instanceName) : t("cancel.not_running", instanceName), { threadId: msg.threadId });
       return true;
     }
 
@@ -186,11 +186,11 @@ export class TopicCommands {
       if (!adapter) return false;
       const filename = parseSaveFilename(text);
       if (!filename) {
-        await adapter.sendText(msg.chatId, "Usage: /save <filename>", { threadId: msg.threadId });
+        await adapter.sendText(msg.chatId, t("save.usage"), { threadId: msg.threadId });
         return true;
       }
       if (!SAVE_FILENAME_RE.test(filename)) {
-        await adapter.sendText(msg.chatId, "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.", { threadId: msg.threadId });
+        await adapter.sendText(msg.chatId, t("filename.invalid"), { threadId: msg.threadId });
         return true;
       }
       const result = await this.sendSave(instanceName, filename);
@@ -270,11 +270,11 @@ export class TopicCommands {
 
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
     if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
-      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }
 
-    await adapter.sendText(chatId, "🔄 Graceful restart — waiting for instances to idle...", { threadId });
+    await adapter.sendText(chatId, t("restart.graceful"), { threadId });
     process.kill(process.pid, "SIGUSR2");
   }
 
@@ -387,15 +387,15 @@ export class TopicCommands {
     // Access control — only allowed users can trigger update; empty = disabled
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
     if (allowed.length === 0) {
-      await adapter.sendText(chatId, "⛔ /update disabled — no allowed_users configured", { threadId });
+      await adapter.sendText(chatId, t("update.disabled"), { threadId });
       return;
     }
     if (!allowed.some(u => String(u) === String(msg.userId))) {
-      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }
 
-    await adapter.sendText(chatId, "📦 Updating AgEnD... Fleet will restart automatically.", { threadId });
+    await adapter.sendText(chatId, t("update.running"), { threadId });
 
     const currentVersion: string = createRequire(import.meta.url)("../package.json").version ?? "";
     const updateCmd = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
@@ -412,11 +412,11 @@ export class TopicCommands {
 
     const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
     if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
-      await adapter.sendText(chatId, "⛔ Not authorized", { threadId });
+      await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }
 
-    await adapter.sendText(chatId, "🩺 Running diagnostics...", { threadId });
+    await adapter.sendText(chatId, t("doctor.running"), { threadId });
     try {
       const { execSync } = await import("node:child_process");
       const backend = this.ctx.fleetConfig?.defaults?.backend || "claude-code";

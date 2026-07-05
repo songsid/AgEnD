@@ -998,10 +998,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(reply);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
-        if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
+        if (!text) { await data.respond(t("chat.usage")); return; }
         const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
         if (!name) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const replyMsgId = await data.respond("👀");
@@ -1021,18 +1021,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "load") {
         // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+          await data.respond(t("admin.required"));
           return;
         }
         const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
         if (!name) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const filename = data.options?.filename as string;
-        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
         this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
-        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
+        await data.respond(t("save.sent", `/chat load ${filename}`, name));
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -1058,32 +1058,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (collabTarget) {
           const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
           if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-            await data.respond("⛔ Not authorized");
+            await data.respond(t("not_authorized"));
             return;
           }
           const isCollab = this.toggleFleetCollab(collabTarget.name);
-          await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
+          await data.respond(isCollab ? t("collab.on") : t("collab.off"));
           return;
         }
         if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+          await data.respond(t("admin.required"));
           return;
         }
         if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
         await data.respond(newState
-          ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
-          : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
+          ? t("collab.on.classic")
+          : t("collab.off.classic"));
       } else if (data.command === "update") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
-        await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
+        await data.respond(t("update.running"));
         const { spawn } = await import("node:child_process");
         const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
         const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
@@ -1092,7 +1092,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "doctor") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
         try {
@@ -1114,16 +1114,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length === 0) { await data.respond("⛔ /dashboard disabled — no allowed_users configured"); return; }
-        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond("⛔ Not authorized"); return; }
+        if (allowed.length === 0) { await data.respond(t("dashboard.disabled")); return; }
+        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
-        await data.respond("🔄 Graceful restart — waiting for instances to idle...");
+        await data.respond(t("restart.graceful"));
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
@@ -1252,10 +1252,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(reply);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
-        if (!text) { await data.respond("Usage: `/chat <message>`"); return; }
+        if (!text) { await data.respond(t("chat.usage")); return; }
         const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
         if (!name) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const replyMsgId = await data.respond("👀");
@@ -1275,18 +1275,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "load") {
         // load is kiro-cli/classic only — no claude-code equivalent.
         if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+          await data.respond(t("admin.required"));
           return;
         }
         const name = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
         if (!name) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const filename = data.options?.filename as string;
-        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+        if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
         this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
-        await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
+        await data.respond(t("save.sent", `/chat load ${filename}`, name));
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -1304,32 +1304,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (collabTarget2) {
           const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
           if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-            await data.respond("⛔ Not authorized");
+            await data.respond(t("not_authorized"));
             return;
           }
           const isCollab = this.toggleFleetCollab(collabTarget2.name);
-          await data.respond(isCollab ? "🤝 Collaboration mode **ON** — bot/webhook messages reach the agent." : "💬 Collaboration mode **OFF**");
+          await data.respond(isCollab ? t("collab.on") : t("collab.off"));
           return;
         }
         if (!this.classicChannels?.isAdmin(data.userId)) {
-          await data.respond("⛔ This command requires admin access.");
+          await data.respond(t("admin.required"));
           return;
         }
         if (!this.classicChannels.isClassicChannel(data.channelId, adapterId)) {
-          await data.respond("No active agent in this channel. Use `/start` first.");
+          await data.respond(t("classic.no_agent_start"));
           return;
         }
         const newState = this.classicChannels.toggleCollab(data.channelId, adapterId);
         await data.respond(newState
-          ? "🤝 Collaboration mode **ON** — @mention this bot to trigger the agent. Other bot messages are visible."
-          : "💬 Collaboration mode **OFF** — use `/chat` to talk to the agent.");
+          ? t("collab.on.classic")
+          : t("collab.off.classic"));
       } else if (data.command === "update") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
-        await data.respond("📦 Updating AgEnD... Fleet will restart automatically.");
+        await data.respond(t("update.running"));
         const { spawn } = await import("node:child_process");
         const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
         const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
@@ -1338,7 +1338,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "doctor") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
         try {
@@ -1360,16 +1360,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length === 0) { await data.respond("⛔ /dashboard disabled — no allowed_users configured"); return; }
-        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond("⛔ Not authorized"); return; }
+        if (allowed.length === 0) { await data.respond(t("dashboard.disabled")); return; }
+        if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond("⛔ Not authorized");
+          await data.respond(t("not_authorized"));
           return;
         }
-        await data.respond("🔄 Graceful restart — waiting for instances to idle...");
+        await data.respond(t("restart.graceful"));
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
@@ -1693,7 +1693,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               if (generalId) {
                 this.notifyInstanceTopic(generalId, `🆕 Unauthorized user tried /start in private chat:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n\nTo allow: add \`${msg.userId}\` to classicBot.yaml \`allowed_users\``);
               }
-              await msgAdapter?.sendText(chatId, "⛔ You are not in the allowed users list.");
+              await msgAdapter?.sendText(chatId, t("classic.not_allowed_user"));
               return;
             }
           } else {
@@ -1705,11 +1705,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               if (generalId) {
                 this.notifyInstanceTopic(generalId, adminMsg);
               }
-              await msgAdapter?.sendText(chatId, "⏳ Access requested. Waiting for admin approval.");
+              await msgAdapter?.sendText(chatId, t("classic.access_requested"));
               return;
             }
             if (!this.classicChannels.isAdmin(msg.userId)) {
-              await msgAdapter?.sendText(chatId, "⛔ Only admins can start agents. Ask an admin to /start.");
+              await msgAdapter?.sendText(chatId, t("classic.admin_only_start"));
               const generalId = this.findGeneralInstance(msg.adapterId);
               if (generalId) {
                 this.notifyInstanceTopic(generalId, `🔑 User wants to /start but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
@@ -1727,7 +1727,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Handle /stop command
         if (text === "/stop" || text.startsWith("/stop ")) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
-            await msgAdapter?.sendText(chatId, "⛔ Only admins can stop agents.");
+            await msgAdapter?.sendText(chatId, t("classic.admin_only_stop"));
             const generalId = this.findGeneralInstance(msg.adapterId);
             if (generalId) {
               this.notifyInstanceTopic(generalId, `🔑 User wants to /stop but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
@@ -1742,12 +1742,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Handle /compact command (admin only)
         if (text === "/compact" || text.startsWith("/compact@")) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
-            await msgAdapter?.sendText(chatId, "⛔ /compact requires admin access.");
+            await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/compact"));
             return;
           }
           const compactName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
           if (!compactName) {
-            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
           const result = await this.topicCommands.sendCompact(compactName);
@@ -1759,7 +1759,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (text === "/cancel" || text.startsWith("/cancel@")) {
           const cancelName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
           if (!cancelName) {
-            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
           const ok = this.cancelInstance(cancelName);
@@ -1771,7 +1771,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (text === "/ctx" || text.startsWith("/ctx@")) {
           const ctxName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
           if (!ctxName) {
-            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
           const reply = await this.topicCommands.getCtxText(ctxName);
@@ -1782,22 +1782,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Handle /save command (admin only)
         if (text === "/save" || text.startsWith("/save ") || text.startsWith("/save@")) {
           if (!this.classicChannels.isAdmin(msg.userId)) {
-            await msgAdapter?.sendText(chatId, "⛔ /save requires admin access.");
+            await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/save"));
             return;
           }
           const saveName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
           if (!saveName) {
-            await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
           const filename = parseSaveFilename(text);
-          if (!filename) { await msgAdapter?.sendText(chatId, "Usage: /save <filename>"); return; }
-          if (!SAVE_FILENAME_RE.test(filename)) { await msgAdapter?.sendText(chatId, "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed."); return; }
+          if (!filename) { await msgAdapter?.sendText(chatId, t("save.usage")); return; }
+          if (!SAVE_FILENAME_RE.test(filename)) { await msgAdapter?.sendText(chatId, t("filename.invalid")); return; }
           const backend = this.classicChannels.getBackendByInstance(saveName, this.fleetConfig?.defaults?.backend);
           const cmd = saveCommandForBackend(backend, filename);
           if (!cmd) { await msgAdapter?.sendText(chatId, SAVE_UNSUPPORTED_MSG); return; }
           this.pasteRawToClassicInstance(saveName, cmd);
-          await msgAdapter?.sendText(chatId, `✅ Sent \`${cmd}\` to ${saveName}`);
+          await msgAdapter?.sendText(chatId, t("save.sent", cmd, saveName));
           return;
         }
 
@@ -1815,7 +1815,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // Strip @bot from text and forward as /chat
           const cleanText = botUser ? text.replace(new RegExp(`@${botUser}`, "gi"), "").trim() : text;
           if (cleanText.startsWith("/raw") && !this.classicChannels.isAdmin(msg.userId)) {
-            await msgAdapter?.sendText(chatId, "⛔ /raw requires admin access.");
+            await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/raw"));
             return;
           }
           const syntheticMsg = { ...msg, threadId: chatId, text: `/chat ${cleanText}` };
@@ -1825,7 +1825,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         // Handle @bot without active agent
         if (isBotMentioned) {
-          await msgAdapter?.sendText(chatId, "No active agent. Use /start first.");
+          await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
           return;
         }
 
@@ -2812,7 +2812,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async handleSlashSave(data: { channelId: string; userId: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }, adapterId?: string): Promise<void> {
     if (!this.classicChannels?.isAdmin(data.userId)) {
-      await data.respond("⛔ This command requires admin access.");
+      await data.respond(t("admin.required"));
       return;
     }
     // Classic resolves per-bot (same-channel multi-bot); otherwise a fleet topic.
@@ -2821,12 +2821,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ? { kind: "classic", name: classicName }
       : this.routing.resolve(data.channelId);
     if (!target) {
-      await data.respond("No active agent in this channel. Use `/start` first.");
+      await data.respond(t("classic.no_agent_start"));
       return;
     }
     const filename = (data.options?.filename as string) ?? "";
     if (!SAVE_FILENAME_RE.test(filename)) {
-      await data.respond("⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.");
+      await data.respond(t("filename.invalid"));
       return;
     }
     const backend = target.kind === "classic"
@@ -2844,7 +2844,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else {
       this.instanceIpcClients.get(target.name)?.send({ type: "raw_paste", content: cmd });
     }
-    await data.respond(`✅ Sent \`${cmd}\` to ${target.name}`);
+    await data.respond(t("save.sent", cmd, target.name));
   }
 
   /** Whether the instance currently has at least one live cancel button. */

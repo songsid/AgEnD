@@ -35,7 +35,7 @@ export const UPDATE_SCHEDULE_TARGET = "__fleet_update__";
 
 interface SchedulerLike {
   list(target?: string): Array<{ id: string; cron: string; message: string; enabled: boolean; last_triggered_at: string | null }>;
-  create(p: { cron: string; message: string; source: string; target: string; reply_chat_id: string; reply_thread_id: string | null; label?: string }): { id: string };
+  create(p: { cron: string; message: string; source: string; target: string; reply_chat_id: string; reply_thread_id: string | null; label?: string }, allowReserved?: boolean): { id: string };
   update(id: string, p: { cron?: string; message?: string; enabled?: boolean }): unknown;
 }
 
@@ -163,7 +163,7 @@ export function handleSettingsRequest(
         try {
           if (existing) ctx.scheduler!.update(existing.id, { cron, message: channel, enabled });
           else {
-            const created = ctx.scheduler!.create({ cron, message: channel, source: "system", target: UPDATE_SCHEDULE_TARGET, reply_chat_id: "", reply_thread_id: null, label: "Auto Update" });
+            const created = ctx.scheduler!.create({ cron, message: channel, source: "system", target: UPDATE_SCHEDULE_TARGET, reply_chat_id: "", reply_thread_id: null, label: "Auto Update" }, true);
             if (!enabled) ctx.scheduler!.update(created.id, { enabled: false });
           }
           json(res, 200, { ok: true, enabled, cron, channel });
