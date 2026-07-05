@@ -45,6 +45,7 @@ import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleSettingsRequest } from "./settings-api.js";
+import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager } from "./classic-channel-manager.js";
 
@@ -445,6 +446,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
 
     const fleet = this.loadConfig(configPath);
+    setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
     // Set tmux socket isolation for custom AGEND_HOME
@@ -1033,18 +1035,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         const ok = this.cancelInstance(name);
-        await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
+        await data.respond(ok ? t("cancel.sent", name) : t("cancel.not_running", name));
       } else if (data.command === "ctx") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) {
-          await data.respond("No active agent in this channel.");
+          await data.respond(t("classic.no_agent"));
           return;
         }
         // Single source of truth (statusline.json + robust tmux pane fallback).
@@ -1125,7 +1127,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       }
@@ -1287,12 +1289,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(`✅ Sent \`/chat load ${filename}\` to ${name}`);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         const ok = this.cancelInstance(name);
-        await data.respond(ok ? `🛑 Sent cancel to ${name}.` : `❌ ${name} not running.`);
+        await data.respond(ok ? t("cancel.sent", name) : t("cancel.not_running", name));
       } else if (data.command === "ctx") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         // Single source of truth (statusline.json + robust tmux pane fallback).
         await data.respond(await this.topicCommands.getCtxText(name));
       } else if (data.command === "collab") {
@@ -1371,7 +1373,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         process.kill(process.pid, "SIGUSR2");
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
-        if (!name) { await data.respond("No active agent in this channel."); return; }
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
       }
@@ -2884,7 +2886,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         type: "cancel",
         instanceName,
         message: "👀 處理中…",
-        choices: [{ id: `cancel:${instanceName}`, label: "🛑 取消" }],
+        choices: [{ id: `cancel:${instanceName}`, label: t("cancel.button") }],
       }, threadId ? { threadId } : undefined);
 
       // A concurrent sendCancelButton for the same instance may have posted its
@@ -3681,13 +3683,13 @@ When users create specialized instances, suggest these configurations:
       if (generalId) {
         this.notifyInstanceTopic(generalId, `🆕 Unauthorized guild tried /start:\n• Guild ID: ${guildId}\n• User: ${userId}\n• Platform: discord\n\nTo allow: add \`${guildId}\` to classicBot.yaml \`allowed_guilds\``);
       }
-      return "⛔ This server is not in the allowed guilds list.";
+      return t("classic.not_authorized_guild");
     }
     // Per-bot check: a second bot may /start in the same channel (own agent).
-    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return "This channel already has an active agent. Use /chat to talk.";
+    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t("classic.already_active");
     // Classic no longer lives in the routing engine, so this only guards against
     // a fleet topic-mode instance colliding with the channel.
-    if (this.routing.resolve(channelId)) return "This channel is already bound to a topic-mode instance.";
+    if (this.routing.resolve(channelId)) return t("classic.topic_bound");
 
     const instanceName = this.classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
     this.classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId);
@@ -3703,21 +3705,21 @@ When users create specialized instances, suggest these configurations:
       this.classicChannels.toggleCollab(channelId, adapterId);
     }
     this.logger.info({ channelId, adapterId, instanceName, userId }, "Classic channel started");
-    return `✅ Agent started in this channel. Use \`/chat <message>\` or @mention to talk.`;
+    return t("classic.started");
   }
 
   /** Handle /stop slash command — unregister classic channel */
   async handleClassicStop(channelId: string, adapterId?: string): Promise<string> {
     if (!this.classicChannels) return "Classic channel manager not initialized.";
     const ch = this.classicChannels.unregister(channelId, adapterId);
-    if (!ch) return "No active agent in this channel.";
+    if (!ch) return t("classic.no_agent");
 
     this.instanceWorldBinding.delete(ch.instanceName);
     await this.stopInstance(ch.instanceName).catch(err =>
       this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to stop classic instance"));
     this.reregisterClassicChannels();
     this.logger.info({ channelId, adapterId, instanceName: ch.instanceName }, "Classic channel stopped");
-    return `🛑 Agent stopped in this channel.`;
+    return t("classic.stopped");
   }
 
   async stopAll(): Promise<void> {
@@ -4160,7 +4162,7 @@ When users create specialized instances, suggest these configurations:
       if (target && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
-          this.notifyInstanceTopic(generalId, `🆕 AgEnD v${target} available (current: v${currentVersion}). Use \`/update\` to upgrade.`);
+          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})`);
         }
       }
     } catch { /* silent — network issues */ }
