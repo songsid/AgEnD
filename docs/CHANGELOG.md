@@ -4,6 +4,68 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.11] - Unreleased
+
+### Added
+- **`/dashboard` command** — admin-only, returns View/Settings/WebUI URLs. DC: ephemeral reply. TG: spoiler-wrapped token.
+- **Settings Web Page (`/settings`)** — structured config editor with form ↔ YAML dual-pane sync, validate-before-write.
+- **Config Validator** — `agend validate` CLI + `validate_config` MCP tool. Validates channels, instances, backends, access.
+- **Web View enhancements** — sidebar drag-sort (SQLite), group by tag, `agend view` CLI, open GET access (no token needed).
+- **Same-channel multi-bot ClassicBot** — composite key routing, owner-wins dedup, auto migration, restart rebind.
+- **Quickstart persona bot** — "Add persona bot (Discord)" option with 7-step flow.
+- **Multi-bot token adapter** — per-channel Discord bot identities.
+
+### Fixed
+- **DC general invalid topic_id** — skip + warn + unbind instead of crash loop.
+- **Channel missing access field** — defaults to open instead of crash.
+- **Avatar DB path** — stores filename (not absolute path); placeholder on missing avatar.
+- **`/view` ctx%** — hide when 0 or null.
+- **Auto-General** — only primary adapter creates/claims general.
+- **React per-adapter** — `reactMessageStatus` uses instance-bound adapter.
+- **Warmup false trigger** — skip on first run, defer when idle, add "do not reply".
+
+## [2.0.10] - 2026-07-03
+
+### Added
+- **Quickstart auto-installs system service** — asks at end of quickstart, one-step setup.
+
+### Fixed
+- **Double fleet race condition** — restart no longer falls back to detached spawn when systemd service exists.
+- **WSL Windows PATH filter** — systemd service `Environment=` filters Windows PATH entries.
+- **`IS_SANDBOX=1` for root** — systemd service adds env var for claude-code v2.1+ compatibility.
+
+### Changed
+- **Remove CI GitHub Release step** — leader writes release notes manually.
+
+## [2.0.9] - 2026-07-02
+
+### Fixed
+- **`/ctx` regex for Kiro CLI v3** — matches new λ prompt format (`26% λ !>`).
+
+## [2.0.8] - 2026-07-02
+
+### Added
+- **Cancel button** — inline 🛑 button on every inbound message. Track-all design (per-button Map), cross-instance cancel via `correlation_id`, 5-minute idle backstop.
+- **Delivery status UX** — 👀 received → ⏳ processing → ✅ done (or ❌ failed). Boolean delivery result with backoff.
+- **Discord built-in** — Discord adapter merged into core; no separate plugin install needed.
+- **`/save` for fleet topics** — kiro-cli uses `/chat save`, claude-code uses `/export`.
+- **`/cancel` command** — slash command alternative to inline button (TG + DC).
+- **Model pass-through** — unknown model names passed to CLI with warning instead of silently dropped.
+- **Log rotation** — `fleet.log` + inbox rotated via copytruncate on daily timer.
+
+### Fixed
+- **`--continue` crash loop** — break loop when resume fails + stop single instance without killing fleet.
+- **DC forum thread-aware** — editMessage, deleteMessage, and reactions find messages in forum-topic threads.
+- **Health-check null retry** — re-confirms null pane status before declaring crash.
+- **TG bare slash ignore** — bare `/` commands in Classic groups no longer trigger errors.
+- **DC adapter error isolation** — Discord errors no longer crash the fleet process.
+- **Classic collab image path** — surface saved image path as `image_path` on trigger.
+- **Cancel button async race** — bounded delete retry, retire by correlation_id.
+
+### Changed
+- **Fleet stop performance** — faster stop for large instance counts.
+- **`/ctx` scrollback** — robust tmux fallback for kiro-cli.
+
 ## [2.0.5] - 2026-06-24
 
 ### Added
