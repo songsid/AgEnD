@@ -44,18 +44,25 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   }
 
   // ── Channels ──────────────────────────────────────────────
-  // Accept either `channels: []` (multi) or a single `channel:`.
+  // `channels: []` (multi) takes precedence; the legacy singular `channel:` is
+  // used ONLY when `channels` is absent (matching fleet-manager's
+  // `channels ?? [channel]`). Counting both would double-count a shared id and
+  // wrongly flag a "duplicate channel id".
   const channelList: Record<string, unknown>[] = [];
-  if (Array.isArray(config.channels)) {
-    config.channels.forEach((ch, i) => {
+  const usingChannels = Array.isArray(config.channels);
+  if (usingChannels) {
+    (config.channels as unknown[]).forEach((ch, i) => {
       if (!isObj(ch)) { err(`channels[${i}]`, "must be a mapping"); return; }
       channelList.push(ch);
     });
+    if (config.channel !== undefined) warn("channel", "both `channel` (deprecated) and `channels` are set — `channel` is ignored");
   } else if (config.channels !== undefined) {
     err("channels", "must be a list");
+  } else if (isObj(config.channel)) {
+    channelList.push(config.channel);
+  } else if (config.channel !== undefined) {
+    err("channel", "must be a mapping");
   }
-  if (isObj(config.channel)) channelList.push(config.channel);
-  else if (config.channel !== undefined) err("channel", "must be a mapping");
 
   if (channelList.length === 0) {
     warn("channels", "no channel configured — the fleet has no Telegram/Discord adapter");
