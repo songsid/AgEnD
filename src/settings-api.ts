@@ -30,12 +30,23 @@ import { validateFleetConfig, validateClassicBotConfig, type ValidationResult } 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+/** Reserved schedule target for the fleet auto-update job (intercepted in handleScheduleTrigger). */
+export const UPDATE_SCHEDULE_TARGET = "__fleet_update__";
+
+interface SchedulerLike {
+  list(target?: string): Array<{ id: string; cron: string; message: string; enabled: boolean; last_triggered_at: string | null }>;
+  create(p: { cron: string; message: string; source: string; target: string; reply_chat_id: string; reply_thread_id: string | null; label?: string }): { id: string };
+  update(id: string, p: { cron?: string; message?: string; enabled?: boolean }): unknown;
+}
+
 export interface SettingsApiContext {
   fleetConfig: FleetConfig | null;
   configPath: string | null;
   dataDir: string;
   logger: Logger;
   saveFleetConfig(): void;
+  scheduler?: SchedulerLike;
+  currentVersion?: string;
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
@@ -126,6 +137,40 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/classic") {
     json(res, 200, readClassic(ctx));
     return true;
+  }
+
+  // ── Auto-update schedule (backed by schedules.db via a reserved target) ──
+  if (path === "/api/settings/update-schedule") {
+    const existing = ctx.scheduler?.list(UPDATE_SCHEDULE_TARGET)[0];
+    if (method === "GET") {
+      json(res, 200, {
+        enabled: existing?.enabled ?? false,
+        cron: existing?.cron ?? "0 4 * * *",
+        channel: existing?.message === "beta" ? "beta" : "stable",
+        currentVersion: ctx.currentVersion ?? null,
+        lastChecked: existing?.last_triggered_at ?? null,
+      });
+      return true;
+    }
+    if (method === "PUT") {
+      if (!ctx.scheduler) { json(res, 503, { error: "scheduler not available" }); return true; }
+      readBody(req, 64 * 1024).then(buf => {
+        let body: { enabled?: boolean; cron?: string; channel?: string };
+        try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
+        const cron = typeof body.cron === "string" && body.cron.trim() ? body.cron.trim() : "0 4 * * *";
+        const channel = body.channel === "beta" ? "beta" : "stable";
+        const enabled = body.enabled === true;
+        try {
+          if (existing) ctx.scheduler!.update(existing.id, { cron, message: channel, enabled });
+          else {
+            const created = ctx.scheduler!.create({ cron, message: channel, source: "system", target: UPDATE_SCHEDULE_TARGET, reply_chat_id: "", reply_thread_id: null, label: "Auto Update" });
+            if (!enabled) ctx.scheduler!.update(created.id, { enabled: false });
+          }
+          json(res, 200, { ok: true, enabled, cron, channel });
+        } catch (e) { json(res, 400, { error: (e as Error).message }); }
+      }).catch(() => json(res, 400, { error: "bad request" }));
+      return true;
+    }
   }
 
   // Everything below mutates — needs an in-memory fleet config.

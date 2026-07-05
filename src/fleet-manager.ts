@@ -254,6 +254,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return join(this.dataDir, "instances", name);
   }
 
+  /** AgEnD package version (for the Settings "current version" / What's New). */
+  get currentVersion(): string {
+    try { return JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version ?? "unknown"; }
+    catch { return "unknown"; }
+  }
+
   /**
    * Resolve a slash-command target in a channel. Classic channels are looked up
    * per-bot (same-channel multi-bot); a fleet-topic instance is found via the
@@ -2113,6 +2119,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleScheduleTrigger(schedule: Schedule): Promise<void> {
     const { target, reply_chat_id, reply_thread_id, message, label, id, source } = schedule;
+
+    // Reserved auto-update schedule: run `agend update` instead of delivering a
+    // message to an instance. message === "beta" selects the beta channel.
+    if (target === "__fleet_update__") {
+      const cmd = message === "beta" ? "agend update --beta" : "agend update";
+      this.logger.info({ cmd, scheduleId: id }, "Auto-update schedule fired");
+      try {
+        const { spawn } = await import("node:child_process");
+        spawn("sh", ["-c", `sleep 1 && ${cmd}`], { detached: true, stdio: "ignore" }).unref();
+        this.scheduler?.recordRun(id, "delivered", `ran ${cmd}`);
+      } catch (err) {
+        this.scheduler?.recordRun(id, "retry", `update spawn failed: ${(err as Error).message}`);
+      }
+      return;
+    }
 
     const RATE_LIMIT_DEFER_THRESHOLD = 85;
     const rl = this.statuslineWatcher.getRateLimits(target);
