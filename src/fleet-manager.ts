@@ -822,8 +822,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const agendVersion = _require("../package.json").version ?? "unknown";
       if (this.adapter && fleet.channel?.group_id) {
         const text = failedNames.length === 0
-          ? `Fleet ready. ${started}/${total} instances running. v${agendVersion}`
-          : `Fleet ready. ${started}/${total} instances running. v${agendVersion} | Failed: ${failedNames.join(", ")}`;
+          ? t("fleet.ready", started, total, agendVersion)
+          : t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "));
         this.adapter.sendText(String(fleet.channel.group_id), text, {
           threadId: generalThreadId != null ? String(generalThreadId) : undefined,
         }).catch(e => this.logger.warn({ err: e }, "Failed to send fleet start notification"));
@@ -4079,8 +4079,8 @@ When users create specialized instances, suggest these configurations:
       const _require2 = createRequire(import.meta.url);
       const agendVersion2 = _require2("../package.json").version ?? "unknown";
       const restartText = failedNames.length === 0
-        ? `Fleet ready. ${started}/${total} instances running. v${agendVersion2}`
-        : `Fleet ready. ${started}/${total} instances running. v${agendVersion2} | Failed: ${failedNames.join(", ")}`;
+        ? t("fleet.ready", started, total, agendVersion2)
+        : t("fleet.ready_with_failed", started, total, agendVersion2, failedNames.join(", "));
       await this.adapter.sendText(String(groupId), restartText, notifyOpts)
         .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
 
