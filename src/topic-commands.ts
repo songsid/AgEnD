@@ -12,6 +12,7 @@ import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
 import { getAgendHome } from "./paths.js";
+import { t } from "./locale.js";
 
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
 export function sanitizeInstanceName(name: string): string {
@@ -123,7 +124,7 @@ export class TopicCommands {
     const base = `http://${host}:${port}`;
     const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [
-      "📊 AgEnD Dashboard",
+      t("dashboard.title"),
       "",
       `• View:     ${base}/view`,
       `• Settings: ${hide(`${base}/settings?token=${token}`)}`,
@@ -233,8 +234,8 @@ export class TopicCommands {
       } catch { /* ignore */ }
     }
     return context != null
-      ? `📊 Context: ${context}% used\nBackend: ${backend}\nInstance: ${instanceName}`
-      : `Context info not available yet.\nBackend: ${backend}\nInstance: ${instanceName}`;
+      ? `${t("ctx.used", context)}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`
+      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`;
   }
 
   /** Send /compact to an instance's tmux pane */
