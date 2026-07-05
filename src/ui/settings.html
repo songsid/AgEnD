@@ -22,9 +22,15 @@
   .sec-head .grow { flex: 1; }
   .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .card.empty { padding: 16px; color: var(--muted); }
-  .item { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .item { padding: 9px 16px; border-bottom: 1px solid var(--border); }
   .item:last-child { border-bottom: none; }
-  .item-row { display: flex; align-items: center; gap: 10px; }
+  .item-row { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+  .group-head { display: flex; align-items: center; gap: 8px; padding: 7px 16px; cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .3px; background: #f3f4f6; border-bottom: 1px solid var(--border); user-select: none; }
+  .group-head:hover { color: var(--fg); }
+  .group-head .caret { width: 12px; flex: 0 0 12px; font-size: 10px; }
+  .group-head .gcount { color: var(--muted); font-weight: 400; }
+  .item .del-btn { visibility: hidden; }
+  .item:hover .del-btn { visibility: visible; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: #9ca3af; }
   .dot.running { background: var(--green); } .dot.crashed { background: var(--red); } .dot.stopped { background: #9ca3af; }
   .name { font-weight: 600; }
@@ -144,7 +150,7 @@
   }
 
   // ── State ──
-  const state = { fleet: {}, classic: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false };
+  const state = { fleet: {}, classic: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set() };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -174,42 +180,52 @@
   const shortName = (name, inst) => (inst && inst.display_name) || name.replace(/-t\d+$/, "");
   const STATUS_TEXT = { running: "🟢 Running", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
   const STATUS_ORDER = { running: 0, crashed: 1, stopped: 2 };
+  const groupOf = (inst) => (inst.tags && inst.tags[0]) || "Other";
+  function compactRow(name, inst) {
+    const st = state.live[name]?.status || "stopped";
+    const running = st === "running";
+    const short = shortName(name, inst);
+    const chTag = agentChannelLabel(inst);
+    const item = el("div", { class: "item" });
+    // Single fixed-height line: dot + short name + backend + channel tag + actions.
+    // Full ID lives in the tooltip and the Edit form; working dir only in Edit.
+    item.append(el("div", { class: "item-row" },
+      el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
+      el("span", { class: "name", title: name }, short),
+      el("span", { class: "sub", style: "margin:0" }, inst.backend || state.fleet.defaults?.backend || "claude-code"),
+      chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
+      el("span", { class: "spacer" }),
+      el("button", { class: "sm ghost", onclick: () => { editing = editing === name ? null : name; renderAgents(); } }, editing === name ? "Close" : "Edit"),
+      el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? "Stop" : "Start"),
+      el("button", { class: "sm danger del-btn", title: "Delete", onclick: () => delAgent(name) }, "🗑️"),
+    ));
+    if (editing === name) item.append(agentEditForm(name, inst));
+    return item;
+  }
   function renderAgents() {
     const host = $("agents"); host.innerHTML = "";
     const insts = state.fleet.instances || {};
+    if (!Object.keys(insts).length) { host.className = "card empty"; host.textContent = "No agents yet — click + New."; return; }
     const filter = ($("agentSearch")?.value || "").trim().toLowerCase();
     let names = Object.keys(insts);
     if (filter) names = names.filter(n => n.toLowerCase().includes(filter) || shortName(n, insts[n]).toLowerCase().includes(filter));
-    // Group by status: Running first, then Crashed, then Stopped; name within.
-    names.sort((a, b) => {
-      const sa = STATUS_ORDER[state.live[a]?.status || "stopped"], sb = STATUS_ORDER[state.live[b]?.status || "stopped"];
-      return sa !== sb ? sa - sb : a.localeCompare(b);
-    });
-    if (!Object.keys(insts).length) { host.className = "card empty"; host.textContent = "No agents yet — click + New."; return; }
     if (!names.length) { host.className = "card empty"; host.textContent = "No agents match \"" + filter + "\"."; return; }
     host.className = "card";
-    for (const name of names) {
-      const inst = insts[name];
-      const st = state.live[name]?.status || "stopped";
-      const running = st === "running";
-      const short = shortName(name, inst);
-      const item = el("div", { class: "item" });
-      const chTag = agentChannelLabel(inst);
-      item.append(el("div", { class: "item-row" },
-        el("span", { class: "dot " + st }),
-        el("span", { class: "name", title: name }, short),
-        short !== name ? el("span", { class: "sub", style: "margin:0;font-size:11px" }, name) : null,
-        el("span", { style: "font-size:12px;color:var(--muted)" }, STATUS_TEXT[st] || st),
-        chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
-        el("span", { class: "sub", style: "margin:0" }, inst.backend || state.fleet.defaults?.backend || "claude-code"),
-        el("span", { class: "spacer" }),
-        el("button", { class: "sm ghost", onclick: () => { editing = editing === name ? null : name; renderAgents(); } }, editing === name ? "Close" : "Edit"),
-        el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? "Stop" : "Start"),
-        el("button", { class: "sm danger", onclick: () => delAgent(name) }, "🗑️"),
-      ));
-      if (inst.working_directory) item.append(el("div", { class: "sub" }, inst.working_directory));
-      if (editing === name) item.append(agentEditForm(name, inst));
-      host.append(item);
+    // Group by first tag; "Other" sorts last. Within a group: Running → Crashed
+    // → Stopped, then name.
+    const groups = {};
+    for (const n of names) (groups[groupOf(insts[n])] ??= []).push(n);
+    const gnames = Object.keys(groups).sort((a, b) => a === "Other" ? 1 : b === "Other" ? -1 : a.localeCompare(b));
+    for (const g of gnames) {
+      const members = groups[g].sort((a, b) => {
+        const sa = STATUS_ORDER[state.live[a]?.status || "stopped"], sb = STATUS_ORDER[state.live[b]?.status || "stopped"];
+        return sa !== sb ? sa - sb : a.localeCompare(b);
+      });
+      const collapsed = state.collapsedGroups.has(g) && !filter; // searching expands all
+      host.append(el("div", { class: "group-head", onclick: () => { state.collapsedGroups.has(g) ? state.collapsedGroups.delete(g) : state.collapsedGroups.add(g); renderAgents(); } },
+        el("span", { class: "caret" }, collapsed ? "▶" : "▼"), el("span", {}, g), el("span", { class: "gcount" }, `(${members.length})`)));
+      if (collapsed) continue;
+      for (const name of members) host.append(compactRow(name, insts[name]));
     }
   }
   function agentEditForm(name, inst) {
@@ -224,6 +240,7 @@
     const fGeneral = el("input", { type: "checkbox" }); fGeneral.checked = !!inst.general_topic;
     const msg = el("span", { class: "msg" });
     box.append(
+      el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, "Backend"), fBackend), el("div", {}, el("label", {}, "Model"), fModel)),
       el("label", {}, "Working directory"), fWd,
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, "Channel binding"), fChan), el("div", {}, el("label", {}, "Description"), fDesc)),
