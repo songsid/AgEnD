@@ -8,35 +8,46 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root { --bg:#0d1117; --panel:#161b22; --border:#21262d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --err:#f85149; --warn:#d29922; --ok:#3fb950; }
   html, body { height: 100%; }
-  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0 0 60px; }
-  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0 0 40px; }
+  header { display: flex; align-items: center; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
   header h1 { font-size: 15px; color: var(--accent); font-weight: 600; letter-spacing: .5px; }
-  .tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .tabs { display: flex; gap: 4px; }
   .tab { padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--dim); border: 1px solid transparent; }
-  .tab:hover { color: var(--fg); }
-  .tab.active { background: var(--bg); color: var(--accent); border-color: var(--border); }
+  .tab:hover { color: var(--fg); } .tab.active { background: var(--bg); color: var(--accent); border-color: var(--border); }
   .spacer { flex: 1; }
   button { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-  button:hover { border-color: var(--accent); }
-  button.primary { background: var(--accent); color: #05070a; border-color: var(--accent); font-weight: 600; }
-  button.danger { color: var(--err); }
-  main { max-width: 900px; margin: 0 auto; padding: 20px; }
-  .panel { display: none; }
-  .panel.active { display: block; }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .card h2 { font-size: 13px; color: var(--accent); margin-bottom: 4px; }
-  .card .hint { font-size: 12px; color: var(--dim); margin-bottom: 10px; }
-  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-  .row .name { font-size: 14px; font-weight: 600; }
-  .row .meta { font-size: 12px; color: var(--dim); }
-  textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; resize: vertical; min-height: 90px; }
-  input[type=text] { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
-  .actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
-  .msg { font-size: 12px; margin-top: 6px; white-space: pre-wrap; }
-  .msg .e { color: var(--err); }
-  .msg .w { color: var(--warn); }
-  .msg .s { color: var(--ok); }
-  .banner { padding: 10px 20px; font-size: 13px; background: rgba(210,153,34,.12); border-bottom: 1px solid var(--border); color: var(--warn); display: none; }
+  button:hover { border-color: var(--accent); } button.primary { background: var(--accent); color: #05070a; border-color: var(--accent); font-weight: 600; }
+  button.sm { padding: 3px 8px; font-size: 12px; } button.danger { color: var(--err); }
+  main { max-width: 1200px; margin: 0 auto; padding: 18px; }
+  .panel { display: none; } .panel.active { display: block; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  .col { min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; color: var(--accent); margin-bottom: 10px; display:flex; align-items:center; gap:8px; }
+  .card h2 .grow { flex:1; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 8px 0 3px; }
+  input[type=text], input[type=number], select, textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; font-size: 13px; font-family: inherit; }
+  textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; resize: vertical; min-height: 420px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 3px 6px 3px 10px; font-size: 12px; }
+  .chip span.x { cursor: pointer; color: var(--dim); font-weight: 700; } .chip span.x:hover { color: var(--err); }
+  .chip-add { display: flex; gap: 6px; margin-top: 4px; } .chip-add input { flex: 1; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
+  tr.inst-row { cursor: pointer; } tr.inst-row:hover td { background: rgba(255,255,255,.02); }
+  .edit-row td { background: rgba(88,166,255,.05); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .right-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .right-toolbar .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .right-toolbar .seg button { border: none; border-radius: 0; }
+  .right-toolbar .seg button.on { background: var(--accent); color: #05070a; }
+  pre.preview { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; overflow: auto; max-height: 560px; white-space: pre; min-height: 420px; }
+  .msg { font-size: 12px; margin-top: 8px; white-space: pre-wrap; } .msg .e { color: var(--err); } .msg .w { color: var(--warn); } .msg .s { color: var(--ok); }
+  .row-actions { display: flex; gap: 6px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .banner { padding: 9px 20px; font-size: 13px; background: rgba(210,153,34,.12); border-bottom: 1px solid var(--border); color: var(--warn); display: none; }
+  code { background: var(--bg); padding: 1px 4px; border-radius: 4px; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -48,55 +59,119 @@
     <div class="tab" data-tab="classic">ClassicBot</div>
   </div>
   <div class="spacer"></div>
-  <button id="reloadBtn" title="Apply config changes to running instances (SIGHUP)">↻ Reload fleet</button>
+  <button id="reloadBtn" title="Apply saved config to running instances (SIGHUP)">↻ Reload fleet</button>
 </header>
 <div class="banner" id="banner"></div>
 <main>
-  <!-- Fleet -->
-  <section class="panel active" id="panel-fleet">
-    <div class="card">
-      <h2>Defaults</h2>
-      <div class="hint">Fleet-wide defaults (backend, model, cost_guard, …). Edited fields are merged.</div>
-      <textarea id="fleetDefaults"></textarea>
-      <div class="actions"><button class="primary" onclick="saveDefaults()">Save defaults</button><span class="msg" id="msg-defaults"></span></div>
-    </div>
-    <div class="card">
-      <h2>Channels</h2>
-      <div class="hint">Adapter list — each needs <code>type</code> + <code>bot_token_env</code>; give each an <code>id</code> when you run more than one. Full array is replaced on save.</div>
-      <textarea id="fleetChannels" style="min-height:160px"></textarea>
-      <div class="actions"><button class="primary" onclick="saveChannels()">Save channels</button><span class="msg" id="msg-channels"></span></div>
-    </div>
-  </section>
-
-  <!-- Instances -->
-  <section class="panel" id="panel-instances">
-    <div class="card">
-      <h2>Add instance</h2>
-      <div class="actions">
-        <input type="text" id="newInstName" placeholder="instance name" style="flex:0 0 220px">
-        <button class="primary" onclick="addInstance()">Create</button>
-        <span class="msg" id="msg-newinst"></span>
-      </div>
-    </div>
-    <div id="instList"></div>
-  </section>
-
-  <!-- ClassicBot -->
-  <section class="panel" id="panel-classic">
-    <div class="card">
-      <h2>ClassicBot defaults</h2>
-      <div class="hint">backend, admin_users, allowed_guilds, allowed_groups, allowed_users. Merged on save.</div>
-      <textarea id="classicDefaults" style="min-height:160px"></textarea>
-      <div class="actions"><button class="primary" onclick="saveClassicDefaults()">Save classic defaults</button><span class="msg" id="msg-classic"></span></div>
-    </div>
-  </section>
+  <section class="panel active" id="panel-fleet"><div class="split">
+    <div class="col" id="fleet-left"></div>
+    <div class="col" id="fleet-right"></div>
+  </div></section>
+  <section class="panel" id="panel-instances"><div class="split">
+    <div class="col" id="instances-left"></div>
+    <div class="col" id="instances-right"></div>
+  </div></section>
+  <section class="panel" id="panel-classic"><div class="split">
+    <div class="col" id="classic-left"></div>
+    <div class="col" id="classic-right"></div>
+  </div></section>
 </main>
+
 <script>
 (() => {
+  "use strict";
   const token = new URLSearchParams(location.search).get("token") || "";
-  const q = (id) => document.getElementById(id);
-  let fleet = {}, classic = {};
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) e.append(c); return e; };
+  const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
+  const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "gemini-cli", "antigravity"];
+  const CH_TYPES = ["telegram", "discord"];
 
+  // ── YAML dump/parse (config subset; round-trip verified) ──
+  function toYaml(value, indent = 0) {
+    const pad = "  ".repeat(indent);
+    const scalar = (v) => {
+      if (v === null || v === undefined) return "null";
+      if (typeof v === "boolean" || typeof v === "number") return String(v);
+      const s = String(v);
+      if (s === "") return '""';
+      if (/^(true|false|null|~|-?\d+(\.\d+)?)$/i.test(s) || /[:#\[\]{}&*!|>'"%@`]/.test(s) || /^[\s-]/.test(s) || /\s$/.test(s) || s.includes("\n"))
+        return '"' + s.replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '"';
+      return s;
+    };
+    if (Array.isArray(value)) {
+      if (value.length === 0) return "[]";
+      return value.map(item => {
+        if (item !== null && typeof item === "object") {
+          const dumped = toYaml(item, indent + 1); const lines = dumped.split("\n");
+          const first = lines[0].slice((indent + 1) * 2);
+          return pad + "- " + first + (lines.length > 1 ? "\n" + lines.slice(1).join("\n") : "");
+        }
+        return pad + "- " + scalar(item);
+      }).join("\n");
+    }
+    if (value !== null && typeof value === "object") {
+      const keys = Object.keys(value); if (keys.length === 0) return "{}";
+      return keys.map(k => {
+        const v = value[k];
+        if (v !== null && typeof v === "object" && (Array.isArray(v) ? v.length : Object.keys(v).length)) return pad + k + ":\n" + toYaml(v, indent + 1);
+        if (v !== null && typeof v === "object") return pad + k + ": " + (Array.isArray(v) ? "[]" : "{}");
+        return pad + k + ": " + scalar(v);
+      }).join("\n");
+    }
+    return pad + scalar(value);
+  }
+  function parseScalar(s) {
+    s = s.trim();
+    if (s === "" || s === "~" || s === "null") return null;
+    if (s === "true") return true; if (s === "false") return false;
+    if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+    if (/^-?\d+\.\d+$/.test(s)) return parseFloat(s);
+    if (s.startsWith('"') && s.endsWith('"')) return s.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1);
+    if (s === "[]") return []; if (s === "{}") return {};
+    return s;
+  }
+  function fromYaml(text) {
+    const lines = [];
+    for (const raw of text.replace(/\r/g, "").split("\n")) {
+      let inS = false, inD = false, out = "";
+      for (let i = 0; i < raw.length; i++) { const c = raw[i]; if (c === "'" && !inD) inS = !inS; else if (c === '"' && !inS) inD = !inD; else if (c === "#" && !inS && !inD) break; out += c; }
+      if (out.trim() === "") continue;
+      lines.push({ indent: out.match(/^ */)[0].length, text: out.trim() });
+    }
+    let pos = 0;
+    function parseBlock() {
+      if (pos >= lines.length) return null;
+      const first = lines[pos];
+      if (first.text.startsWith("- ")) {
+        const arr = [];
+        while (pos < lines.length && lines[pos].indent === first.indent && lines[pos].text.startsWith("- ")) {
+          const at = lines[pos].indent, rest = lines[pos].text.slice(2);
+          if (rest.includes(":") && !/^".*"$/.test(rest) && !rest.startsWith("[") && !rest.startsWith("{")) { lines[pos] = { indent: at + 2, text: rest }; arr.push(parseMap(at + 2)); }
+          else { arr.push(parseScalar(rest)); pos++; }
+        }
+        return arr;
+      }
+      return parseMap(first.indent);
+    }
+    function parseMap(indent) {
+      const obj = {};
+      while (pos < lines.length && lines[pos].indent === indent) {
+        const line = lines[pos].text, ci = line.indexOf(":");
+        if (ci < 0) { pos++; continue; }
+        const key = line.slice(0, ci).trim(), val = line.slice(ci + 1).trim();
+        if (val === "") { pos++; if (pos < lines.length && lines[pos].indent > indent) obj[key] = parseBlock(); else obj[key] = null; }
+        else { obj[key] = parseScalar(val); pos++; }
+      }
+      return obj;
+    }
+    return parseBlock();
+  }
+  const serialize = (obj, fmt) => fmt === "yaml" ? toYaml(obj) : JSON.stringify(obj, null, 2);
+  const deserialize = (text, fmt) => fmt === "yaml" ? fromYaml(text) : JSON.parse(text || "{}");
+
+  // ── API ──
   async function api(path, opts = {}) {
     const headers = Object.assign({ "X-Agend-Token": token }, opts.headers || {});
     if (opts.body) headers["Content-Type"] = "application/json";
@@ -104,113 +179,218 @@
     let body = null; try { body = await r.json(); } catch {}
     return { ok: r.ok, status: r.status, body };
   }
-
-  // Render a validation result into a message span.
-  function showMsg(el, res) {
-    const b = res.body || {};
-    let html = "";
-    if (b.errors && b.errors.length) html += b.errors.map(e => `<span class="e">✗ ${e.path ? e.path + ": " : ""}${escapeHtml(e.message)}</span>`).join("\n");
-    if (b.warnings && b.warnings.length) html += (html ? "\n" : "") + b.warnings.map(w => `<span class="w">⚠ ${w.path ? w.path + ": " : ""}${escapeHtml(w.message)}</span>`).join("\n");
-    if (res.ok && !(b.warnings && b.warnings.length)) html = `<span class="s">✓ Saved</span>`;
-    else if (res.ok && b.warnings && b.warnings.length) html = `<span class="s">✓ Saved</span>\n` + html;
-    else if (!res.ok && !html) html = `<span class="e">✗ ${escapeHtml((b && b.error) || ("HTTP " + res.status))}</span>`;
-    el.innerHTML = html;
+  function renderResult(msgEl, res) {
+    const b = res.body || {}; let html = "";
+    if (b.errors && b.errors.length) html += b.errors.map(e => `<span class="e">✗ ${e.path ? esc(e.path) + ": " : ""}${esc(e.message)}</span>`).join("\n");
+    if (b.warnings && b.warnings.length) html += (html ? "\n" : "") + b.warnings.map(w => `<span class="w">⚠ ${w.path ? esc(w.path) + ": " : ""}${esc(w.message)}</span>`).join("\n");
+    if (res.ok) html = `<span class="s">✓ Saved</span>` + (html ? "\n" + html : "");
+    else if (!html) html = `<span class="e">✗ ${esc((b && b.error) || ("HTTP " + res.status))}</span>`;
+    msgEl.innerHTML = html;
   }
-  const escapeHtml = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
-  const parseJson = (id) => { try { return { v: JSON.parse(q(id).value || "{}") }; } catch (e) { return { err: e.message }; } };
 
-  // ── Tabs ──
+  // ── State ──
+  const state = { fleet: {}, classic: {}, snap: "{}", tab: "fleet",
+    right: { fleet: { fmt: "yaml", edit: false }, instances: { fmt: "yaml", edit: false }, classic: { fmt: "yaml", edit: false } } };
+
+  // The object each tab's right-pane mirrors.
+  function modelOf(tab) {
+    if (tab === "fleet") return { defaults: state.fleet.defaults || {}, channels: state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []) };
+    if (tab === "instances") return state.fleet.instances || {};
+    return { defaults: state.classic.defaults || {} };
+  }
+  const channelIds = () => (state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : [])).map(c => c.id || c.type).filter(Boolean);
+
+  // ── Chip list widget ──
+  function chipList(arr, onChange, placeholder) {
+    const box = el("div"); const chips = el("div", { class: "chips" });
+    const redraw = () => { chips.innerHTML = ""; arr.forEach((v, i) => chips.append(el("span", { class: "chip" }, String(v), el("span", { class: "x", onclick: () => { arr.splice(i, 1); redraw(); onChange(); } }, "×")))); };
+    const inp = el("input", { type: "text", placeholder: placeholder || "add…" });
+    const add = () => { const v = inp.value.trim(); if (v) { arr.push(/^-?\d+$/.test(v) ? Number(v) : v); inp.value = ""; redraw(); onChange(); } };
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); add(); } });
+    box.append(chips, el("div", { class: "chip-add" }, inp, el("button", { class: "sm", onclick: add }, "+ Add")));
+    redraw(); return box;
+  }
+  function select(value, options, onChange) {
+    const s = el("select", { onchange: () => onChange(s.value) });
+    for (const o of options) { const opt = el("option", {}, o); opt.value = o; if (o === value) opt.selected = true; s.append(opt); }
+    return s;
+  }
+
+  // ── Right pane (shared) ──
+  function renderRight(tab) {
+    const host = $(tab + "-right"); host.innerHTML = "";
+    const rs = state.right[tab]; const model = modelOf(tab);
+    const msg = el("div", { class: "msg" });
+    const seg = el("div", { class: "seg" },
+      el("button", { class: "sm" + (rs.fmt === "yaml" ? " on" : ""), onclick: () => { rs.fmt = "yaml"; renderRight(tab); } }, "YAML"),
+      el("button", { class: "sm" + (rs.fmt === "json" ? " on" : ""), onclick: () => { rs.fmt = "json"; renderRight(tab); } }, "JSON"));
+    const editBtn = el("button", { class: "sm", onclick: () => { rs.edit = !rs.edit; renderRight(tab); } }, rs.edit ? "View" : "Edit");
+    const copyBtn = el("button", { class: "sm", onclick: () => { navigator.clipboard.writeText(serialize(model, rs.fmt)).then(() => { msg.innerHTML = `<span class="s">Copied</span>`; }); } }, "Copy");
+    const dlBtn = el("button", { class: "sm", onclick: () => download(tab, rs.fmt) }, "Download");
+    const toolbar = el("div", { class: "right-toolbar" }, seg, editBtn, copyBtn, dlBtn);
+    if (tab === "fleet") toolbar.append(el("button", { class: "sm", onclick: () => download("full", "yaml") }, "⬇ full fleet.yaml"));
+    host.append(el("div", { class: "card" }, el("h2", {}, "Config " + (rs.edit ? "(editing)" : "(preview)")), toolbar, (() => {
+      if (rs.edit) {
+        const ta = el("textarea"); ta.value = serialize(model, rs.fmt);
+        const apply = el("button", { class: "primary sm", onclick: () => {
+          let parsed; try { parsed = deserialize(ta.value, rs.fmt); } catch (e) { msg.innerHTML = `<span class="e">✗ ${esc(e.message)}</span>`; return; }
+          applyModel(tab, parsed); rs.edit = false; renderTab(tab); msg.innerHTML = `<span class="s">Applied to form (not yet saved)</span>`;
+        } }, "Apply → form");
+        const box = el("div"); box.append(ta, el("div", { class: "row-actions" }, apply, msg)); return box;
+      }
+      const pre = el("pre", { class: "preview" }); pre.textContent = serialize(model, rs.fmt);
+      const box = el("div"); box.append(pre, msg); return box;
+    })()));
+  }
+  // Parse from the right pane back into left-form state.
+  function applyModel(tab, parsed) {
+    if (!parsed || typeof parsed !== "object") return;
+    if (tab === "fleet") { if (parsed.defaults) state.fleet.defaults = parsed.defaults; if (parsed.channels) { state.fleet.channels = parsed.channels; delete state.fleet.channel; } }
+    else if (tab === "instances") { state.fleet.instances = parsed; }
+    else { if (parsed.defaults) state.classic.defaults = parsed.defaults; }
+  }
+  function download(which, fmt) {
+    let name, content;
+    if (which === "full") { name = "fleet.yaml"; content = toYaml(fleetForDownload()); }
+    else if (which === "fleet") { name = "fleet-section." + fmt; content = serialize(modelOf("fleet"), fmt); }
+    else if (which === "instances") { name = "instances." + fmt; content = serialize(modelOf("instances"), fmt); }
+    else { name = "classicBot." + fmt; content = serialize(modelOf("classic"), fmt); }
+    const blob = new Blob([content], { type: "text/plain" }); const a = el("a", { href: URL.createObjectURL(blob), download: name }); a.click(); URL.revokeObjectURL(a.href);
+  }
+  function fleetForDownload() {
+    const f = {};
+    if (state.fleet.channels || state.fleet.channel) f.channels = state.fleet.channels || [state.fleet.channel];
+    if (state.fleet.defaults) f.defaults = state.fleet.defaults;
+    if (state.fleet.instances) f.instances = state.fleet.instances;
+    return f;
+  }
+
+  // ── Fleet left ──
+  function renderFleetLeft() {
+    const host = $("fleet-left"); host.innerHTML = "";
+    state.fleet.defaults = state.fleet.defaults || {};
+    const d = state.fleet.defaults; d.startup = d.startup || {};
+    const sync = () => renderRight("fleet");
+
+    // Defaults card
+    const dc = el("div", { class: "card" }, el("h2", {}, "Fleet Defaults"));
+    dc.append(el("label", {}, "Backend"), select(d.backend || "claude-code", BACKENDS, v => { d.backend = v; sync(); }));
+    const model = el("input", { type: "text", value: d.model || "", placeholder: "e.g. opus, sonnet", oninput: e => { d.model = e.target.value || undefined; sync(); } });
+    dc.append(el("label", {}, "Model"), model);
+    const g2 = el("div", { class: "grid2" });
+    const conc = el("input", { type: "number", value: d.startup.concurrency ?? "", placeholder: "e.g. 3", oninput: e => { d.startup.concurrency = e.target.value === "" ? undefined : Number(e.target.value); sync(); } });
+    const stag = el("input", { type: "number", value: d.startup.stagger_delay_ms ?? "", placeholder: "ms", oninput: e => { d.startup.stagger_delay_ms = e.target.value === "" ? undefined : Number(e.target.value); sync(); } });
+    g2.append(el("div", {}, el("label", {}, "Startup concurrency"), conc), el("div", {}, el("label", {}, "Stagger delay (ms)"), stag));
+    dc.append(g2);
+    const dmsg = el("div", { class: "msg" });
+    dc.append(el("div", { class: "row-actions" }, el("button", { class: "primary", onclick: async () => { renderResult(dmsg, await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(d) })); } }, "Save defaults"), dmsg));
+    host.append(dc);
+
+    // Channels card
+    state.fleet.channels = state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
+    const cc = el("div", { class: "card" }, el("h2", {}, el("span", { class: "grow" }, "Channels"), el("button", { class: "sm", onclick: () => { state.fleet.channels.push({ type: "discord", bot_token_env: "" }); renderTab("fleet"); } }, "+ Add channel")));
+    state.fleet.channels.forEach((ch, i) => {
+      ch.access = ch.access || { mode: "locked", allowed_users: [] };
+      ch.access.allowed_users = ch.access.allowed_users || [];
+      const card = el("div", { class: "card", style: "background:var(--bg)" });
+      card.append(el("h2", {}, el("span", { class: "grow" }, "#" + (i + 1) + " " + esc(ch.id || ch.type || "channel")), el("button", { class: "sm danger", onclick: () => { state.fleet.channels.splice(i, 1); renderTab("fleet"); } }, "🗑 Delete")));
+      const gg = el("div", { class: "grid2" });
+      gg.append(el("div", {}, el("label", {}, "Type"), select(ch.type || "discord", CH_TYPES, v => { ch.type = v; renderTab("fleet"); })),
+        el("div", {}, el("label", {}, "id (adapter id)"), el("input", { type: "text", value: ch.id || "", placeholder: "optional", oninput: e => { ch.id = e.target.value || undefined; sync(); } })));
+      card.append(gg);
+      card.append(el("label", {}, "bot_token_env"), el("input", { type: "text", value: ch.bot_token_env || "", placeholder: "e.g. DISCORD_BOT_TOKEN", oninput: e => { ch.bot_token_env = e.target.value; sync(); } }));
+      card.append(el("label", {}, "group_id"), el("input", { type: "text", value: ch.group_id ?? "", placeholder: "guild / supergroup id", oninput: e => { ch.group_id = e.target.value || undefined; sync(); } }));
+      card.append(el("label", {}, "access.allowed_users"), chipList(ch.access.allowed_users, sync, "user id"));
+      cc.append(card);
+    });
+    const cmsg = el("div", { class: "msg" });
+    cc.append(el("div", { class: "row-actions" }, el("button", { class: "primary", onclick: async () => { const res = await api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(state.fleet.channels) }); renderResult(cmsg, res); if (res.ok) reload(); } }, "Save channels"), cmsg));
+    host.append(cc);
+  }
+
+  // ── Instances left ──
+  let expanded = null;
+  function renderInstancesLeft() {
+    const host = $("instances-left"); host.innerHTML = "";
+    state.fleet.instances = state.fleet.instances || {};
+    const insts = state.fleet.instances;
+    const card = el("div", { class: "card" }, el("h2", {}, el("span", { class: "grow" }, "Instances")));
+    const addName = el("input", { type: "text", placeholder: "new instance name", style: "flex:0 0 200px" });
+    const addMsg = el("div", { class: "msg" });
+    card.append(el("div", { class: "row-actions" }, addName, el("button", { class: "primary sm", onclick: async () => {
+      const name = addName.value.trim(); if (!name) { addMsg.innerHTML = `<span class="e">✗ name required</span>`; return; }
+      const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "POST", body: JSON.stringify({ working_directory: "" }) });
+      renderResult(addMsg, res); if (res.ok) { addName.value = ""; reload(); }
+    } }, "+ Add"), addMsg));
+    const tbl = el("table"); tbl.append(el("thead", {}, el("tr", {}, ...["Name", "Backend", "Channel", "General"].map(h => el("th", {}, h)))));
+    const tb = el("tbody");
+    for (const name of Object.keys(insts)) {
+      const inst = insts[name];
+      const row = el("tr", { class: "inst-row", onclick: () => { expanded = expanded === name ? null : name; renderInstancesLeft(); } },
+        el("td", {}, name), el("td", {}, inst.backend || "—"), el("td", {}, inst.channel_id || "—"), el("td", {}, inst.general_topic ? "✓" : ""));
+      tb.append(row);
+      if (expanded === name) tb.append(instEditRow(name, inst));
+    }
+    tbl.append(tb); card.append(tbl); host.append(card);
+  }
+  function instEditRow(name, inst) {
+    const td = el("td", { colspan: "4" });
+    const sync = () => renderRight("instances");
+    td.append(el("label", {}, "Backend"), select(inst.backend || "claude-code", BACKENDS, v => { inst.backend = v; sync(); }));
+    td.append(el("label", {}, "channel_id"), select(inst.channel_id || "", ["", ...channelIds()], v => { inst.channel_id = v || undefined; sync(); }));
+    td.append(el("label", {}, "working_directory"), el("input", { type: "text", value: inst.working_directory || "", oninput: e => { inst.working_directory = e.target.value; sync(); } }));
+    td.append(el("label", {}, "description"), el("input", { type: "text", value: inst.description || "", oninput: e => { inst.description = e.target.value || undefined; sync(); } }));
+    const msg = el("div", { class: "msg" });
+    td.append(el("div", { class: "row-actions" },
+      el("button", { class: "primary sm", onclick: async () => { renderResult(msg, await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(inst) })); } }, "Save"),
+      el("button", { class: "sm danger", onclick: async () => { if (!confirm(`Delete "${name}"?`)) return; const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "DELETE" }); if (res.ok) { expanded = null; reload(); } else renderResult(msg, res); } }, "🗑 Delete"), msg));
+    return el("tr", { class: "edit-row" }, td);
+  }
+
+  // ── ClassicBot left ──
+  function renderClassicLeft() {
+    const host = $("classic-left"); host.innerHTML = "";
+    state.classic.defaults = state.classic.defaults || {};
+    const d = state.classic.defaults;
+    d.admin_users = d.admin_users || []; d.allowed_guilds = d.allowed_guilds || [];
+    const sync = () => renderRight("classic");
+    const card = el("div", { class: "card" }, el("h2", {}, "ClassicBot Defaults"));
+    card.append(el("label", {}, "Default backend"), select(d.backend || "claude-code", BACKENDS, v => { d.backend = v; sync(); }));
+    card.append(el("label", {}, "Admin users"), chipList(d.admin_users, sync, "user id"));
+    card.append(el("label", {}, "Allowed guilds"), chipList(d.allowed_guilds, sync, "guild id"));
+    const msg = el("div", { class: "msg" });
+    card.append(el("div", { class: "row-actions" }, el("button", { class: "primary", onclick: async () => { renderResult(msg, await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(d) })); } }, "Save classic defaults"), msg));
+    host.append(card);
+  }
+
+  function renderTab(tab) {
+    if (tab === "fleet") renderFleetLeft();
+    else if (tab === "instances") renderInstancesLeft();
+    else renderClassicLeft();
+    renderRight(tab);
+  }
+
   document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    state.tab = t.dataset.tab;
     document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
-    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + t.dataset.tab));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + state.tab));
+    renderTab(state.tab);
   });
 
-  // ── Load ──
-  async function loadAll() {
+  async function reload() {
     const f = await api("/api/settings/fleet");
-    if (!f.ok) { q("banner").style.display = "block"; q("banner").textContent = "Failed to load fleet config (check the token in the URL)."; return; }
-    fleet = f.body || {};
-    q("fleetDefaults").value = JSON.stringify(fleet.defaults || {}, null, 2);
-    q("fleetChannels").value = JSON.stringify(fleet.channels || (fleet.channel ? [fleet.channel] : []), null, 2);
-    renderInstances();
-    const c = await api("/api/settings/classic");
-    classic = c.body || {};
-    q("classicDefaults").value = JSON.stringify(classic.defaults || {}, null, 2);
+    if (!f.ok) { $("banner").style.display = "block"; $("banner").textContent = "Failed to load fleet config (check the token in the URL)."; return; }
+    state.fleet = f.body || {};
+    const c = await api("/api/settings/classic"); state.classic = c.body || {};
+    renderTab(state.tab);
   }
-
-  function renderInstances() {
-    const list = q("instList");
-    list.innerHTML = "";
-    const insts = fleet.instances || {};
-    for (const name of Object.keys(insts)) {
-      const card = document.createElement("div");
-      card.className = "card";
-      const inst = insts[name];
-      const tags = [inst.general_topic ? "general" : null, inst.backend || null, inst.channel_id ? "→" + inst.channel_id : null].filter(Boolean).join(" · ");
-      card.innerHTML = `
-        <div class="row"><span class="name">${escapeHtml(name)}</span><span class="meta">${escapeHtml(tags)}</span></div>
-        <textarea id="inst-${cssId(name)}"></textarea>
-        <div class="actions">
-          <button class="primary" data-act="save" data-name="${escapeHtml(name)}">Save</button>
-          <button class="danger" data-act="del" data-name="${escapeHtml(name)}">Delete</button>
-          <span class="msg" id="msg-inst-${cssId(name)}"></span>
-        </div>`;
-      list.appendChild(card);
-      q("inst-" + cssId(name)).value = JSON.stringify(inst, null, 2);
-    }
-    list.querySelectorAll("button[data-act]").forEach(btn => {
-      const name = btn.dataset.name;
-      btn.onclick = () => btn.dataset.act === "save" ? saveInstance(name) : deleteInstance(name);
-    });
-  }
-  const cssId = (s) => s.replace(/[^a-zA-Z0-9_-]/g, "_");
-
-  // ── Saves ──
-  window.saveDefaults = async () => {
-    const p = parseJson("fleetDefaults");
-    if (p.err) return q("msg-defaults").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
-    showMsg(q("msg-defaults"), await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(p.v) }));
-  };
-  window.saveChannels = async () => {
-    const p = parseJson("fleetChannels");
-    if (p.err) return q("msg-channels").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
-    const res = await api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(p.v) });
-    showMsg(q("msg-channels"), res);
-    if (res.ok) loadAll();
-  };
-  window.saveClassicDefaults = async () => {
-    const p = parseJson("classicDefaults");
-    if (p.err) return q("msg-classic").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
-    showMsg(q("msg-classic"), await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(p.v) }));
-  };
-  window.saveInstance = async (name) => {
-    const p = parseJson("inst-" + cssId(name));
-    const el = q("msg-inst-" + cssId(name));
-    if (p.err) return el.innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
-    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(p.v) });
-    showMsg(el, res);
-    if (res.ok) { const f = await api("/api/settings/fleet"); fleet = f.body || fleet; }
-  };
-  window.deleteInstance = async (name) => {
-    if (!confirm(`Delete instance "${name}"? (does not stop a running daemon until you Reload)`)) return;
-    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "DELETE" });
-    if (res.ok) { await loadAll(); } else { q("msg-inst-" + cssId(name)).innerHTML = `<span class="e">✗ ${escapeHtml((res.body && res.body.error) || res.status)}</span>`; }
-  };
-  window.addInstance = async () => {
-    const name = q("newInstName").value.trim();
-    if (!name) return q("msg-newinst").innerHTML = `<span class="e">✗ name required</span>`;
-    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "POST", body: JSON.stringify({ working_directory: "" }) });
-    showMsg(q("msg-newinst"), res);
-    if (res.ok) { q("newInstName").value = ""; await loadAll(); }
-  };
-  q("reloadBtn").onclick = async () => {
+  $("reloadBtn").onclick = async () => {
     const res = await api("/api/settings/reload", { method: "POST" });
-    q("banner").style.display = "block";
-    q("banner").textContent = res.ok ? "✓ Reload signal sent — instances reconciling." : "Reload failed.";
-    setTimeout(() => q("banner").style.display = "none", 4000);
+    $("banner").style.display = "block"; $("banner").textContent = res.ok ? "✓ Reload signal sent — instances reconciling." : "Reload failed.";
+    setTimeout(() => $("banner").style.display = "none", 4000);
   };
 
-  loadAll();
+  reload();
 })();
 </script>
 </body>
