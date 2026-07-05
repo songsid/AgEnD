@@ -14,8 +14,8 @@
  * the (read-write) web.token. Instance names are whitelisted against fleet config
  * and tmux is invoked via execFile (no shell) to prevent command injection.
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -307,8 +307,12 @@ export function handleViewRequest(
     if (method === "GET") {
       const db = profileDb(ctx.dataDir);
       const row = db.prepare("SELECT avatar_path FROM instance_profile WHERE instance_name = ?").get(name) as { avatar_path: string | null } | undefined;
-      const file = row?.avatar_path;
-      if (!file || !existsSync(file)) { json(res, 404, { error: "no avatar" }); return true; }
+      if (!row?.avatar_path) { json(res, 404, { error: "no avatar" }); return true; }
+      // Resolve by filename under the current dataDir/avatars — robust to a
+      // stored ABSOLUTE path from a different dataDir resolution (the cause of
+      // "avatar gone after restart"). basename() handles legacy absolute paths.
+      const file = join(ctx.dataDir, "avatars", basename(row.avatar_path));
+      if (!existsSync(file)) { json(res, 404, { error: "no avatar" }); return true; }
       const ext = (file.match(/\.[^.]+$/)?.[0] ?? "").toLowerCase();
       try {
         const data = readFileSync(file);
@@ -326,18 +330,20 @@ export function handleViewRequest(
         if (buf.length === 0) { json(res, 400, { error: "empty body" }); return; }
         const dir = join(ctx.dataDir, "avatars");
         mkdirSync(dir, { recursive: true });
-        // Remove any prior avatar for this instance (different extension).
+        // Remove any prior avatar for this instance (incl. a different extension).
         for (const f of (existsSync(dir) ? readdirSync(dir) : [])) {
-          if (f.startsWith(`${name}.`)) { try { writeFileSync(join(dir, f), ""); } catch { /* best effort */ } }
+          if (f.startsWith(`${name}.`)) { try { unlinkSync(join(dir, f)); } catch { /* best effort */ } }
         }
-        const dest = join(dir, `${name}${ext}`);
-        writeFileSync(dest, buf, { mode: 0o600 });
+        const filename = `${name}${ext}`;
+        writeFileSync(join(dir, filename), buf, { mode: 0o600 });
         const db = profileDb(ctx.dataDir);
+        // Store the FILENAME only (not an absolute path) so it resolves against
+        // whatever dataDir the fleet runs under after a restart.
         db.prepare(`INSERT INTO instance_profile (instance_name, avatar_path, updated_at)
           VALUES (@n, @a, @t)
           ON CONFLICT(instance_name) DO UPDATE SET avatar_path = @a, updated_at = @t`)
-          .run({ n: name, a: dest, t: Date.now() });
-        json(res, 200, { ok: true, avatar_path: dest });
+          .run({ n: name, a: filename, t: Date.now() });
+        json(res, 200, { ok: true, avatar_path: filename });
       }).catch(err => json(res, 400, { error: (err as Error).message }));
       return true;
     }

@@ -339,7 +339,10 @@
     if (!it) return;
     q("dname").textContent = it.display_name || it.instance_name;
     q("role").textContent = it.role || "";
-    q("meta").textContent = `${it.instance_name} · ${it.backend}${it.model ? " · " + it.model : ""} · ctx ${Math.round(it.context_pct || 0)}% · ${it.status}`;
+    // Only show ctx% when we actually have a reading (>0); 0/null means the
+    // backend didn't report one, so hiding it avoids a misleading "0%".
+    const ctxPart = it.context_pct ? ` · ctx ${Math.round(it.context_pct)}%` : "";
+    q("meta").textContent = `${it.instance_name} · ${it.backend}${it.model ? " · " + it.model : ""}${ctxPart} · ${it.status}`;
     q("desc").textContent = it.description || "";
     const av = q("avatar");
     if (it.has_avatar) av.src = api(`/api/avatar/${encodeURIComponent(it.instance_name)}`) + "&t=" + Date.now();
