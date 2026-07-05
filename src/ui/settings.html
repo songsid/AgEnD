@@ -15,9 +15,13 @@
   .tab { padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--dim); border: 1px solid transparent; }
   .tab:hover { color: var(--fg); } .tab.active { background: var(--bg); color: var(--accent); border-color: var(--border); }
   .spacer { flex: 1; }
-  button { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-  button:hover { border-color: var(--accent); } button.primary { background: var(--accent); color: #ffffff; border-color: var(--accent); font-weight: 600; }
-  button.sm { padding: 3px 8px; font-size: 12px; } button.danger { color: var(--err); }
+  button { background: #f6f8fa; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { background: #eaeef2; border-color: #afb8c1; }
+  button.primary { background: var(--accent); color: #ffffff; border-color: var(--accent); font-weight: 600; }
+  button.primary:hover { background: #0860ca; border-color: #0860ca; }
+  button.sm { padding: 3px 8px; font-size: 12px; }
+  button.danger { background: var(--err); color: #ffffff; border-color: var(--err); }
+  button.danger:hover { background: #a40e26; border-color: #a40e26; }
   main { max-width: 1200px; margin: 0 auto; padding: 18px; }
   .panel { display: none; } .panel.active { display: block; }
   .split { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
@@ -36,8 +40,8 @@
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); }
   th { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .3px; }
-  tr.inst-row { cursor: pointer; } tr.inst-row:hover td { background: rgba(255,255,255,.02); }
-  .edit-row td { background: rgba(88,166,255,.05); }
+  tr.inst-row { cursor: pointer; } tr.inst-row:hover td { background: rgba(0,0,0,.03); }
+  .edit-row td { background: rgba(9,105,218,.06); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .right-toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
   .right-toolbar .seg { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
