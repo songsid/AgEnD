@@ -70,13 +70,30 @@ function readClassic(ctx: SettingsApiContext): Record<string, unknown> {
   catch (err) { ctx.logger.warn({ err }, "settings: failed to parse classicBot.yaml"); return {}; }
 }
 
-/** Reject write payloads whose validation fails; returns true if it responded 400. */
-function rejectIfInvalid(res: ServerResponse, result: ValidationResult): boolean {
-  if (!result.valid) {
-    json(res, 400, { ok: false, errors: result.errors, warnings: result.warnings });
+const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
+
+/**
+ * Reject a write only if it INTRODUCES new validation errors. Pre-existing
+ * errors elsewhere in the config (common while a fleet is being assembled)
+ * must not block an unrelated edit — otherwise one bad channel would lock the
+ * user out of saving anything, which reads as "save didn't persist".
+ * Returns true (and responds 400) when the edit adds errors.
+ */
+function rejectIfWorse(res: ServerResponse, before: ValidationResult, after: ValidationResult): boolean {
+  const had = new Set(before.errors.map(issueKey));
+  const introduced = after.errors.filter(e => !had.has(issueKey(e)));
+  if (introduced.length) {
+    json(res, 400, { ok: false, errors: introduced, warnings: after.warnings });
     return true;
   }
   return false;
+}
+
+/** Warnings to surface on a successful save: new warnings + any pre-existing errors (informational). */
+function saveWarnings(before: ValidationResult, after: ValidationResult): Array<{ path: string; message: string }> {
+  const had = new Set(before.errors.map(issueKey));
+  const preExisting = after.errors.filter(e => had.has(issueKey(e))).map(e => ({ path: e.path, message: "pre-existing: " + e.message }));
+  return [...after.warnings, ...preExisting];
 }
 
 export function handleSettingsRequest(
@@ -122,11 +139,12 @@ export function handleSettingsRequest(
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const merged = { ...cfg.defaults, ...body };
-      const result = validateFleetConfig({ ...cfg, defaults: merged });
-      if (rejectIfInvalid(res, result)) return;
+      const before = validateFleetConfig(cfg);
+      const after = validateFleetConfig({ ...cfg, defaults: merged });
+      if (rejectIfWorse(res, before, after)) return;
       cfg.defaults = merged as typeof cfg.defaults;
       ctx.saveFleetConfig();
-      json(res, 200, { ok: true, warnings: result.warnings });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -140,12 +158,13 @@ export function handleSettingsRequest(
       if (!Array.isArray(body)) return json(res, 400, { error: "expected an array of channels" });
       const next = { ...cfg, channels: body as FleetConfig["channels"] };
       delete (next as { channel?: unknown }).channel; // channels[] supersedes the legacy single channel
-      const result = validateFleetConfig(next);
-      if (rejectIfInvalid(res, result)) return;
+      const before = validateFleetConfig(cfg);
+      const after = validateFleetConfig(next);
+      if (rejectIfWorse(res, before, after)) return;
       cfg.channels = body as FleetConfig["channels"];
       delete (cfg as { channel?: unknown }).channel;
       ctx.saveFleetConfig();
-      json(res, 200, { ok: true, warnings: result.warnings });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -158,12 +177,13 @@ export function handleSettingsRequest(
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
       const classic = readClassic(ctx);
       const merged = { ...(classic.defaults as Record<string, unknown> ?? {}), ...body };
-      const result = validateClassicBotConfig({ ...classic, defaults: merged });
-      if (rejectIfInvalid(res, result)) return;
+      const before = validateClassicBotConfig(classic);
+      const after = validateClassicBotConfig({ ...classic, defaults: merged });
+      if (rejectIfWorse(res, before, after)) return;
       classic.defaults = merged;
       writeFileSync(classicPath(ctx), yaml.dump(classic, { lineWidth: -1 }));
       ctx.logger.info("settings: updated classicBot defaults");
-      json(res, 200, { ok: true, warnings: result.warnings });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -177,22 +197,49 @@ export function handleSettingsRequest(
   }
 
   // ── Instances (create / patch / delete) ──
+  const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
+  // Create-or-merge an instance, blocking only on newly-introduced errors.
+  const commitInstance = (name: string, exists: boolean, body: unknown): void => {
+    if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
+    const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
+    const mergedInst = { ...base, ...(body as Record<string, unknown>) };
+    const before = validateFleetConfig(cfg!);
+    const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
+    if (rejectIfWorse(res, before, after)) return;
+    cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
+    ctx.saveFleetConfig();
+    json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+  };
+
+  // POST /api/settings/fleet/instances  — create, name taken from the body.
+  if (method === "POST" && path === "/api/settings/fleet/instances") {
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    readBody(req, 512 * 1024).then(buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      if (!validName(name)) return json(res, 400, { error: "missing or invalid instance name (provide `name` in the body)" });
+      if (cfg.instances[name]) return json(res, 409, { error: "instance already exists" });
+      const { name: _n, ...instBody } = body;
+      commitInstance(name, false, instBody);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  // /api/settings/fleet/instances/:name  — create / patch / delete.
   const instPrefix = "/api/settings/fleet/instances/";
   if (path.startsWith(instPrefix)) {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     const name = decodeURIComponent(path.slice(instPrefix.length));
-    // Guard against path separators / empty names.
-    if (!name || !/^[^\\/\x00]+$/.test(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
+    if (!validName(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
 
     if (method === "DELETE") {
       if (!cfg.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
-      const next = { ...cfg, instances: { ...cfg.instances } };
-      delete next.instances[name];
-      const result = validateFleetConfig(next);
-      // DELETE never blocks on validation errors, but surface warnings.
+      // DELETE never blocks on validation; surface any resulting warnings.
       delete cfg.instances[name];
       ctx.saveFleetConfig();
-      json(res, 200, { ok: true, warnings: result.warnings });
+      json(res, 200, { ok: true, warnings: validateFleetConfig(cfg).warnings });
       return true;
     }
 
@@ -203,15 +250,7 @@ export function handleSettingsRequest(
       readBody(req, 512 * 1024).then(buf => {
         let body: Record<string, unknown>;
         try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
-        if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
-        const base = (exists ? cfg.instances[name] : {}) as Record<string, unknown>;
-        const mergedInst = { ...base, ...body };
-        const next = { ...cfg, instances: { ...cfg.instances, [name]: mergedInst } };
-        const result = validateFleetConfig(next);
-        if (rejectIfInvalid(res, result)) return;
-        cfg.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
-        ctx.saveFleetConfig();
-        json(res, 200, { ok: true, warnings: result.warnings });
+        commitInstance(name, exists, body);
       }).catch(() => json(res, 400, { error: "bad request" }));
       return true;
     }
