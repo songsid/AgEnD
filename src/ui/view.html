@@ -71,19 +71,14 @@
 </style>
 </head>
 <body>
+  <button class="help-btn" id="langBtn" title="Language" style="right:56px">🌐</button>
   <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
   <div class="help-backdrop" id="helpBackdrop"></div>
   <aside class="help-panel" id="helpPanel">
     <button class="close" id="helpClose" title="Close">×</button>
-    <h3>📖 使用說明</h3>
-    <ul>
-      <li>左側選 instance → 右側顯示即時 terminal 畫面</li>
-      <li>點 group header ▼/▶ 收合/展開</li>
-      <li>✏️ Edit 可修改 display name、role、description</li>
-      <li>拖曳可調整順序（需 web.token 權限）</li>
-    </ul>
+    <div id="helpContent"></div>
   </aside>
-  <div id="sidebar"><h1>AgEnD · View</h1><div id="list"></div></div>
+  <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
   <div id="main">
     <div id="term"><pre id="pre"></pre></div>
     <div id="card">
@@ -93,19 +88,19 @@
         <div class="meta" id="meta"></div>
         <div class="desc" id="desc"></div>
       </div>
-      <button id="editBtn">✏️ Edit</button>
+      <button id="editBtn" data-i18n="editProfile">✏️ Edit</button>
       <div id="edit">
-        <input id="fDisplay" placeholder="Display name">
-        <input id="fRole" placeholder="Role">
-        <textarea id="fDesc" placeholder="Description"></textarea>
+        <input id="fDisplay" data-i18n-ph="displayName" placeholder="Display name">
+        <input id="fRole" data-i18n-ph="role" placeholder="Role">
+        <textarea id="fDesc" data-i18n-ph="description" placeholder="Description"></textarea>
         <input id="fAvatar" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
-        <input id="fToken" type="password" placeholder="web.token (required to save)">
+        <input id="fToken" type="password" data-i18n-ph="tokenPh" placeholder="web.token (required to save)">
         <div class="actions">
-          <button id="saveBtn">Save</button>
-          <button id="cancelBtn">Cancel</button>
+          <button id="saveBtn" data-i18n="save">Save</button>
+          <button id="cancelBtn" data-i18n="cancel">Cancel</button>
           <span id="msg"></span>
         </div>
-        <div class="hint">Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).</div>
+        <div class="hint" data-i18n="saveHint">Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).</div>
       </div>
     </div>
   </div>
@@ -118,6 +113,33 @@
   const urlToken = new URLSearchParams(location.search).get("token") || "";
   const webToken = () => localStorage.getItem("agend_web_token") || urlToken;
   const q = (id) => document.getElementById(id);
+
+  // ── i18n ──
+  const I18N = {
+    en: { viewTitle: "AgEnD · View", editProfile: "✏️ Edit", save: "Save", cancel: "Cancel",
+      displayName: "Display name", role: "Role", description: "Description", tokenPh: "web.token (required to save)",
+      saveHint: "Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).", helpTitle: "📖 Help",
+      help1: "Pick an instance on the left → its live terminal shows on the right",
+      help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
+      help4: "Drag to reorder (needs web.token permission)" },
+    "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
+      displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
+      saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
+      help1: "左側選 instance → 右側顯示即時 terminal 畫面",
+      help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
+      help4: "拖曳可調整順序（需 web.token 權限）" },
+  };
+  let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
+  if (!I18N[lang]) lang = "en";
+  const T = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+  function applyI18n() {
+    document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = T(e.getAttribute("data-i18n")); });
+    document.querySelectorAll("[data-i18n-ph]").forEach(e => { e.setAttribute("placeholder", T(e.getAttribute("data-i18n-ph"))); });
+    const hc = q("helpContent");
+    if (hc) { hc.innerHTML = ""; const h3 = document.createElement("h3"); h3.textContent = T("helpTitle"); hc.append(h3);
+      const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
+  }
+
   let roster = [];
   let rosterByName = new Map();
   let current = null;
@@ -493,6 +515,8 @@
   q("helpBtn").onclick = () => setHelp(!q("helpPanel").classList.contains("open"));
   q("helpClose").onclick = () => setHelp(false);
   q("helpBackdrop").onclick = () => setHelp(false);
+  q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); };
+  applyI18n();
 
   // ── Boot ──────────────────────────────────────────────
   loadRoster().then(() => { refreshPane(); });
