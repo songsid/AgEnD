@@ -39,6 +39,8 @@ export const DownloadAttachmentArgs = z.object({
   file_id: NonEmptyString.describe("The attachment_file_id from inbound meta"),
 });
 
+export const ValidateConfigArgs = z.object({});
+
 // ── Schedules ───────────────────────────────────────────────────────────
 
 export const CreateScheduleArgs = z.object({

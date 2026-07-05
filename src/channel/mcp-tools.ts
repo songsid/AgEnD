@@ -46,6 +46,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Edit a message the bot previously sent. Useful for interim progress updates."],
   ["download_attachment", schemas.DownloadAttachmentArgs,
     "Download a file attachment from a channel message. Returns the local file path ready to Read."],
+  ["validate_config", schemas.ValidateConfigArgs,
+    "Validate the fleet's config. Reads fleet.yaml + classicBot.yaml and returns { fleet, classic } validation results, each with errors[] and warnings[]."],
   ["create_schedule", schemas.CreateScheduleArgs,
     "Create a cron-based schedule. When triggered, sends a message to the target instance."],
   ["list_schedules", schemas.ListSchedulesArgs,
@@ -123,6 +125,7 @@ export const TOOL_SETS: Record<string, string[]> = {
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
+    "validate_config",
   ],
   minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
 };
