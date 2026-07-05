@@ -547,12 +547,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     this.costGuard.on("warn", safeHandler((instance: string, totalCents: number, limitCents: number) => {
-      this.notifyInstanceTopic(instance, `⚠️ ${instance} cost: ${formatCents(totalCents)} / ${formatCents(limitCents)} (${Math.round(totalCents / limitCents * 100)}%)`);
+      this.notifyInstanceTopic(instance, t("cost.approaching", instance, formatCents(totalCents), formatCents(limitCents), Math.round(totalCents / limitCents * 100)));
       this.webhookEmitter?.emit("cost_warning", instance, { cost_cents: totalCents, limit_cents: limitCents });
     }, this.logger, "costGuard.warn"));
 
     this.costGuard.on("limit", safeHandler(async (instance: string, totalCents: number, limitCents: number) => {
-      this.notifyInstanceTopic(instance, `🛑 ${instance} daily limit ${formatCents(limitCents)} reached — pausing instance.`);
+      this.notifyInstanceTopic(instance, t("cost.limit_reached", instance, formatCents(limitCents)));
       this.eventLog?.insert(instance, "instance_paused", { reason: "cost_limit", cost_cents: totalCents });
       this.webhookEmitter?.emit("cost_limit", instance, { cost_cents: totalCents, limit_cents: limitCents });
       await this.stopInstance(instance);
@@ -719,7 +719,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (this.adapter && topicId) {
             const chatId = this.adapter.getChatId?.() ?? "";
             if (chatId) {
-              this.adapter.sendText(chatId, `⚠️ General instance "${name}" failed to start:\n${errorMsg}`, { threadId: topicId }).catch(() => {});
+              this.adapter.sendText(chatId, t("general.start_failed", name, errorMsg), { threadId: topicId }).catch(() => {});
             }
           }
         }
@@ -1157,7 +1157,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
 
     this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
-      const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
+      const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance();
       if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
     }, this.logger, "adapter.new_group_detected"));
@@ -1394,7 +1394,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].started`));
 
     adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
-      const adminMsg = `🆕 Bot added to new server:\n• Name: ${data.groupTitle}\n• ID: ${data.groupId}\n• Platform: ${data.source}\n\nTo allow: add \`${data.groupId}\` to classicBot.yaml \`allowed_guilds\``;
+      const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance(adapterId);
       if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
     }, this.logger, `adapter[${adapterId}].new_group_detected`));
@@ -1691,7 +1691,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             if (!this.classicChannels.isUserAllowed(msg.userId)) {
               const generalId = this.findGeneralInstance(msg.adapterId);
               if (generalId) {
-                this.notifyInstanceTopic(generalId, `🆕 Unauthorized user tried /start in private chat:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n\nTo allow: add \`${msg.userId}\` to classicBot.yaml \`allowed_users\``);
+                this.notifyInstanceTopic(generalId, t("alert.unauth_user_private", msg.username, msg.userId, msg.source));
               }
               await msgAdapter?.sendText(chatId, t("classic.not_allowed_user"));
               return;
@@ -1700,7 +1700,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             if (!this.classicChannels.isGroupAllowed(chatId)) {
               // Notify admin about new group wanting access
               const groupTitle = (msg as any).chatTitle || chatId;
-              const adminMsg = `🆕 New group detected:\n• Name: ${groupTitle}\n• ID: ${chatId}\n• User: ${msg.username} (${msg.userId})\n• Platform: ${msg.source}\n\nTo allow: add \`${chatId}\` to classicBot.yaml \`allowed_guilds\``;
+              const adminMsg = t("alert.new_group", groupTitle, chatId, msg.username, msg.userId, msg.source);
               const generalId = this.findGeneralInstance(msg.adapterId);
               if (generalId) {
                 this.notifyInstanceTopic(generalId, adminMsg);
@@ -1712,7 +1712,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               await msgAdapter?.sendText(chatId, t("classic.admin_only_start"));
               const generalId = this.findGeneralInstance(msg.adapterId);
               if (generalId) {
-                this.notifyInstanceTopic(generalId, `🔑 User wants to /start but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
+                this.notifyInstanceTopic(generalId, t("alert.start_not_admin", msg.username, msg.userId, msg.source, chatId));
               }
               return;
             }
@@ -1730,7 +1730,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, t("classic.admin_only_stop"));
             const generalId = this.findGeneralInstance(msg.adapterId);
             if (generalId) {
-              this.notifyInstanceTopic(generalId, `🔑 User wants to /stop but is not admin:\n• Name: ${msg.username}\n• ID: ${msg.userId}\n• Platform: ${msg.source}\n• Group: ${chatId}\n\nTo approve: add \`${msg.userId}\` to classicBot.yaml \`admin_users\``);
+              this.notifyInstanceTopic(generalId, t("alert.stop_not_admin", msg.username, msg.userId, msg.source, chatId));
             }
             return;
           }
@@ -2132,7 +2132,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         five_hour_pct: rl.five_hour_pct,
       });
       this.webhookEmitter?.emit("schedule_deferred", target, { schedule_id: id, label, five_hour_pct: rl.five_hour_pct });
-      this.notifyInstanceTopic(target, `⏳ Schedule "${label ?? id}" deferred — rate limit at ${rl.five_hour_pct}%`);
+      this.notifyInstanceTopic(target, t("schedule.deferred", label ?? id, rl.five_hour_pct));
       this.logger.info({ target, scheduleId: id, rateLimitPct: rl.five_hour_pct }, "Schedule deferred due to rate limit");
       return;
     }
@@ -3666,7 +3666,7 @@ When users create specialized instances, suggest these configurations:
     if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
       const generalId = this.findGeneralInstance();
       if (generalId) {
-        this.notifyInstanceTopic(generalId, `🆕 Unauthorized guild tried /start:\n• Guild ID: ${guildId}\n• User: ${userId}\n• Platform: discord\n\nTo allow: add \`${guildId}\` to classicBot.yaml \`allowed_guilds\``);
+        this.notifyInstanceTopic(generalId, t("alert.unauth_guild", guildId, userId));
       }
       return t("classic.not_authorized_guild");
     }
@@ -3847,7 +3847,7 @@ When users create specialized instances, suggest these configurations:
 
     const groupId = this.fleetConfig?.channel?.group_id;
     if (groupId && this.adapter) {
-      await this.adapter.sendText(String(groupId), `🔄 Full restart initiated — waiting for all instances to idle, then reloading process...`)
+      await this.adapter.sendText(String(groupId), t("restart.full_initiated"))
         .catch(e => this.logger.warn({ err: e }, "Failed to post full restart notification"));
     }
 
@@ -3970,7 +3970,7 @@ When users create specialized instances, suggest these configurations:
     const generalThreadId = generalName ? this.fleetConfig?.instances[generalName]?.topic_id : undefined;
     const notifyOpts = { threadId: generalThreadId != null ? String(generalThreadId) : undefined };
     if (groupId && this.adapter) {
-      await this.adapter.sendText(String(groupId), `🔄 Graceful restart initiated — waiting for all instances to idle...`, notifyOpts)
+      await this.adapter.sendText(String(groupId), t("restart.graceful_initiated"), notifyOpts)
         .catch(e => this.logger.warn({ err: e }, "Failed to post restart notification"));
     }
 
