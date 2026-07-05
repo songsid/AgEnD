@@ -1459,6 +1459,42 @@ program
     child.unref();
   });
 
+  program
+  .command("validate")
+  .description("Validate fleet.yaml and classicBot.yaml")
+  .action(async () => {
+    const { validateFleetConfig, validateClassicBotConfig } = await import("./config-validator.js");
+    const yaml = (await import("js-yaml")).default;
+    const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
+    const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
+    const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
+    const dim = (s: string) => `\x1b[90m${s}\x1b[0m`;
+    let totalErrors = 0, totalWarnings = 0;
+
+    const check = (label: string, path: string, validator: (c: unknown) => import("./config-validator.js").ValidationResult) => {
+      console.log(`\n${label} ${dim(path)}`);
+      if (!existsSync(path)) { console.log(`  ${dim("(not found — skipped)")}`); return; }
+      let parsed: unknown;
+      try { parsed = yaml.load(readFileSync(path, "utf-8")); }
+      catch (e) { totalErrors++; console.log(`  ${red("✗")} YAML parse error: ${(e as Error).message}`); return; }
+      const r = validator(parsed);
+      for (const err of r.errors) { totalErrors++; console.log(`  ${red("✗")} ${err.path ? dim(err.path + ": ") : ""}${err.message}`); }
+      for (const w of r.warnings) { totalWarnings++; console.log(`  ${yellow("⚠")} ${w.path ? dim(w.path + ": ") : ""}${w.message}`); }
+      if (r.errors.length === 0 && r.warnings.length === 0) console.log(`  ${green("✓ OK")}`);
+    };
+
+    check("Fleet", FLEET_CONFIG_PATH, validateFleetConfig);
+    check("ClassicBot", join(DATA_DIR, "classicBot.yaml"), validateClassicBotConfig);
+
+    console.log();
+    if (totalErrors > 0) {
+      console.log(red(`${totalErrors} error(s)`) + (totalWarnings ? `, ${yellow(`${totalWarnings} warning(s)`)}` : ""));
+      process.exit(1);
+    }
+    if (totalWarnings > 0) { console.log(yellow(`${totalWarnings} warning(s)`)); return; }
+    console.log(green("✓ All configs valid"));
+  });
+
 // === Schedule commands ===
 const schedule = program.command("schedule").description("Manage scheduled tasks");
 

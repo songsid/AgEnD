@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgEnD Settings</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  :root { --bg:#0d1117; --panel:#161b22; --border:#21262d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; --err:#f85149; --warn:#d29922; --ok:#3fb950; }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 0 0 60px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 20px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 15px; color: var(--accent); font-weight: 600; letter-spacing: .5px; }
+  .tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .tab { padding: 6px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; color: var(--dim); border: 1px solid transparent; }
+  .tab:hover { color: var(--fg); }
+  .tab.active { background: var(--bg); color: var(--accent); border-color: var(--border); }
+  .spacer { flex: 1; }
+  button { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #05070a; border-color: var(--accent); font-weight: 600; }
+  button.danger { color: var(--err); }
+  main { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; color: var(--accent); margin-bottom: 4px; }
+  .card .hint { font-size: 12px; color: var(--dim); margin-bottom: 10px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .row .name { font-size: 14px; font-weight: 600; }
+  .row .meta { font-size: 12px; color: var(--dim); }
+  textarea { width: 100%; background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.5; resize: vertical; min-height: 90px; }
+  input[type=text] { background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+  .actions { display: flex; gap: 8px; margin-top: 8px; align-items: center; }
+  .msg { font-size: 12px; margin-top: 6px; white-space: pre-wrap; }
+  .msg .e { color: var(--err); }
+  .msg .w { color: var(--warn); }
+  .msg .s { color: var(--ok); }
+  .banner { padding: 10px 20px; font-size: 13px; background: rgba(210,153,34,.12); border-bottom: 1px solid var(--border); color: var(--warn); display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚙ AgEnD Settings</h1>
+  <div class="tabs">
+    <div class="tab active" data-tab="fleet">Fleet</div>
+    <div class="tab" data-tab="instances">Instances</div>
+    <div class="tab" data-tab="classic">ClassicBot</div>
+  </div>
+  <div class="spacer"></div>
+  <button id="reloadBtn" title="Apply config changes to running instances (SIGHUP)">↻ Reload fleet</button>
+</header>
+<div class="banner" id="banner"></div>
+<main>
+  <!-- Fleet -->
+  <section class="panel active" id="panel-fleet">
+    <div class="card">
+      <h2>Defaults</h2>
+      <div class="hint">Fleet-wide defaults (backend, model, cost_guard, …). Edited fields are merged.</div>
+      <textarea id="fleetDefaults"></textarea>
+      <div class="actions"><button class="primary" onclick="saveDefaults()">Save defaults</button><span class="msg" id="msg-defaults"></span></div>
+    </div>
+    <div class="card">
+      <h2>Channels</h2>
+      <div class="hint">Adapter list — each needs <code>type</code> + <code>bot_token_env</code>; give each an <code>id</code> when you run more than one. Full array is replaced on save.</div>
+      <textarea id="fleetChannels" style="min-height:160px"></textarea>
+      <div class="actions"><button class="primary" onclick="saveChannels()">Save channels</button><span class="msg" id="msg-channels"></span></div>
+    </div>
+  </section>
+
+  <!-- Instances -->
+  <section class="panel" id="panel-instances">
+    <div class="card">
+      <h2>Add instance</h2>
+      <div class="actions">
+        <input type="text" id="newInstName" placeholder="instance name" style="flex:0 0 220px">
+        <button class="primary" onclick="addInstance()">Create</button>
+        <span class="msg" id="msg-newinst"></span>
+      </div>
+    </div>
+    <div id="instList"></div>
+  </section>
+
+  <!-- ClassicBot -->
+  <section class="panel" id="panel-classic">
+    <div class="card">
+      <h2>ClassicBot defaults</h2>
+      <div class="hint">backend, admin_users, allowed_guilds, allowed_groups, allowed_users. Merged on save.</div>
+      <textarea id="classicDefaults" style="min-height:160px"></textarea>
+      <div class="actions"><button class="primary" onclick="saveClassicDefaults()">Save classic defaults</button><span class="msg" id="msg-classic"></span></div>
+    </div>
+  </section>
+</main>
+<script>
+(() => {
+  const token = new URLSearchParams(location.search).get("token") || "";
+  const q = (id) => document.getElementById(id);
+  let fleet = {}, classic = {};
+
+  async function api(path, opts = {}) {
+    const headers = Object.assign({ "X-Agend-Token": token }, opts.headers || {});
+    if (opts.body) headers["Content-Type"] = "application/json";
+    const r = await fetch(path, Object.assign({}, opts, { headers }));
+    let body = null; try { body = await r.json(); } catch {}
+    return { ok: r.ok, status: r.status, body };
+  }
+
+  // Render a validation result into a message span.
+  function showMsg(el, res) {
+    const b = res.body || {};
+    let html = "";
+    if (b.errors && b.errors.length) html += b.errors.map(e => `<span class="e">✗ ${e.path ? e.path + ": " : ""}${escapeHtml(e.message)}</span>`).join("\n");
+    if (b.warnings && b.warnings.length) html += (html ? "\n" : "") + b.warnings.map(w => `<span class="w">⚠ ${w.path ? w.path + ": " : ""}${escapeHtml(w.message)}</span>`).join("\n");
+    if (res.ok && !(b.warnings && b.warnings.length)) html = `<span class="s">✓ Saved</span>`;
+    else if (res.ok && b.warnings && b.warnings.length) html = `<span class="s">✓ Saved</span>\n` + html;
+    else if (!res.ok && !html) html = `<span class="e">✗ ${escapeHtml((b && b.error) || ("HTTP " + res.status))}</span>`;
+    el.innerHTML = html;
+  }
+  const escapeHtml = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+  const parseJson = (id) => { try { return { v: JSON.parse(q(id).value || "{}") }; } catch (e) { return { err: e.message }; } };
+
+  // ── Tabs ──
+  document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === t));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + t.dataset.tab));
+  });
+
+  // ── Load ──
+  async function loadAll() {
+    const f = await api("/api/settings/fleet");
+    if (!f.ok) { q("banner").style.display = "block"; q("banner").textContent = "Failed to load fleet config (check the token in the URL)."; return; }
+    fleet = f.body || {};
+    q("fleetDefaults").value = JSON.stringify(fleet.defaults || {}, null, 2);
+    q("fleetChannels").value = JSON.stringify(fleet.channels || (fleet.channel ? [fleet.channel] : []), null, 2);
+    renderInstances();
+    const c = await api("/api/settings/classic");
+    classic = c.body || {};
+    q("classicDefaults").value = JSON.stringify(classic.defaults || {}, null, 2);
+  }
+
+  function renderInstances() {
+    const list = q("instList");
+    list.innerHTML = "";
+    const insts = fleet.instances || {};
+    for (const name of Object.keys(insts)) {
+      const card = document.createElement("div");
+      card.className = "card";
+      const inst = insts[name];
+      const tags = [inst.general_topic ? "general" : null, inst.backend || null, inst.channel_id ? "→" + inst.channel_id : null].filter(Boolean).join(" · ");
+      card.innerHTML = `
+        <div class="row"><span class="name">${escapeHtml(name)}</span><span class="meta">${escapeHtml(tags)}</span></div>
+        <textarea id="inst-${cssId(name)}"></textarea>
+        <div class="actions">
+          <button class="primary" data-act="save" data-name="${escapeHtml(name)}">Save</button>
+          <button class="danger" data-act="del" data-name="${escapeHtml(name)}">Delete</button>
+          <span class="msg" id="msg-inst-${cssId(name)}"></span>
+        </div>`;
+      list.appendChild(card);
+      q("inst-" + cssId(name)).value = JSON.stringify(inst, null, 2);
+    }
+    list.querySelectorAll("button[data-act]").forEach(btn => {
+      const name = btn.dataset.name;
+      btn.onclick = () => btn.dataset.act === "save" ? saveInstance(name) : deleteInstance(name);
+    });
+  }
+  const cssId = (s) => s.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+  // ── Saves ──
+  window.saveDefaults = async () => {
+    const p = parseJson("fleetDefaults");
+    if (p.err) return q("msg-defaults").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
+    showMsg(q("msg-defaults"), await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(p.v) }));
+  };
+  window.saveChannels = async () => {
+    const p = parseJson("fleetChannels");
+    if (p.err) return q("msg-channels").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
+    const res = await api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(p.v) });
+    showMsg(q("msg-channels"), res);
+    if (res.ok) loadAll();
+  };
+  window.saveClassicDefaults = async () => {
+    const p = parseJson("classicDefaults");
+    if (p.err) return q("msg-classic").innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
+    showMsg(q("msg-classic"), await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(p.v) }));
+  };
+  window.saveInstance = async (name) => {
+    const p = parseJson("inst-" + cssId(name));
+    const el = q("msg-inst-" + cssId(name));
+    if (p.err) return el.innerHTML = `<span class="e">✗ ${escapeHtml(p.err)}</span>`;
+    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(p.v) });
+    showMsg(el, res);
+    if (res.ok) { const f = await api("/api/settings/fleet"); fleet = f.body || fleet; }
+  };
+  window.deleteInstance = async (name) => {
+    if (!confirm(`Delete instance "${name}"? (does not stop a running daemon until you Reload)`)) return;
+    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (res.ok) { await loadAll(); } else { q("msg-inst-" + cssId(name)).innerHTML = `<span class="e">✗ ${escapeHtml((res.body && res.body.error) || res.status)}</span>`; }
+  };
+  window.addInstance = async () => {
+    const name = q("newInstName").value.trim();
+    if (!name) return q("msg-newinst").innerHTML = `<span class="e">✗ name required</span>`;
+    const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "POST", body: JSON.stringify({ working_directory: "" }) });
+    showMsg(q("msg-newinst"), res);
+    if (res.ok) { q("newInstName").value = ""; await loadAll(); }
+  };
+  q("reloadBtn").onclick = async () => {
+    const res = await api("/api/settings/reload", { method: "POST" });
+    q("banner").style.display = "block";
+    q("banner").textContent = res.ok ? "✓ Reload signal sent — instances reconciling." : "Reload failed.";
+    setTimeout(() => q("banner").style.display = "none", 4000);
+  };
+
+  loadAll();
+})();
+</script>
+</body>
+</html>
