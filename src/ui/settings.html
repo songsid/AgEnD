@@ -152,7 +152,7 @@
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
-      defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
+      language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
       envHint: "Put the actual token in ~/.agend/.env under this env var, then Reload Fleet.",
@@ -169,7 +169,7 @@
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
-      defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
+      language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
       envHint: "把實際 token 放到 ~/.agend/.env 的這個環境變數下，然後點重新載入。",
@@ -469,16 +469,19 @@
 
     const fBackend = select(d.backend || "claude-code", BACKENDS);
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
+    const fLocale = el("select");
+    [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]].forEach(([v, lbl]) => { const o = el("option", {}, lbl); o.value = v; if ((d.locale || "") === v) o.selected = true; fLocale.append(o); });
     const msg = el("span", { class: "msg" });
     host.append(
+      el("div", { class: "field" }, el("label", {}, t("language")), fLocale),
       el("div", { class: "field" }, el("label", {}, t("defaultBackend")), fBackend),
       el("div", { class: "field" }, el("label", {}, t("defaultModel")), fModel),
       el("div", { class: "field" }, el("label", {}, t("allowedUsers")), chipList(allowedUsers, null, "user id")),
       el("div", { class: "field" }, el("label", {}, t("classicAdmins")), chipList(c.admin_users, null, "user id")),
       el("div", { class: "field" }, el("label", {}, t("allowedGuilds")), chipList(c.allowed_guilds, null, "guild id")),
       el("div", { class: "field" }, el("div", { class: "actions" }, el("button", { class: "primary", onclick: async () => {
-        d.backend = fBackend.value; d.model = fModel.value || undefined;
-        const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify({ backend: d.backend, model: d.model }) });
+        d.backend = fBackend.value; d.model = fModel.value || undefined; d.locale = fLocale.value;
+        const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify({ backend: d.backend, model: d.model, locale: d.locale }) });
         let r2 = { ok: true, body: {} };
         if (primary) r2 = await saveChannels();
         const r3 = await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify({ backend: c.backend, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds }) });

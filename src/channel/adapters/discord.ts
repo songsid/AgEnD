@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
+import { t } from "../../locale.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -335,33 +336,33 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // a guild with the primary — only the primary owns the guild's commands).
       if (this.registerCommands) try {
         await this.client.application?.commands.set([
-          { name: "start", description: "Start an agent in this channel" },
-          { name: "stop", description: "Stop the agent in this channel" },
+          { name: "start", description: t("slash.start") },
+          { name: "stop", description: t("slash.stop") },
           {
-            name: "chat", description: "Send a message to the agent",
+            name: "chat", description: t("slash.chat"),
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
           },
-          { name: "status", description: "Show fleet status and costs" },
-          { name: "sysinfo", description: "System diagnostics" },
-          { name: "dashboard", description: "Get dashboard URLs (admin only)" },
-          { name: "ctx", description: "Show agent context usage" },
-          { name: "restart", description: "🔒 Graceful restart all instances" },
-          { name: "update", description: "🔒 Update AgEnD to latest version" },
-          { name: "doctor", description: "🔒 Run health diagnostics" },
-          { name: "compact", description: "🔒 Compact agent context window" },
-          { name: "collab", description: "🔒 Toggle bot/webhook collaboration mode" },
+          { name: "status", description: t("slash.status") },
+          { name: "sysinfo", description: t("slash.sysinfo") },
+          { name: "dashboard", description: t("slash.dashboard") },
+          { name: "ctx", description: t("slash.ctx") },
+          { name: "restart", description: "🔒 " + t("slash.restart") },
+          { name: "update", description: "🔒 " + t("slash.update") },
+          { name: "doctor", description: "🔒 " + t("slash.doctor") },
+          { name: "compact", description: "🔒 " + t("slash.compact") },
+          { name: "collab", description: "🔒 " + t("slash.collab") },
           {
-            name: "save", description: "🔒 Save the agent's conversation",
+            name: "save", description: "🔒 " + t("slash.save"),
             options: [
               { name: "filename", description: "File name to save as", type: 3, required: true },
               { name: "force", description: "Overwrite if file exists", type: 5, required: false },
             ],
           },
           {
-            name: "load", description: "🔒 Load a saved conversation",
+            name: "load", description: "🔒 " + t("slash.load"),
             options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
           },
-          { name: "cancel", description: "Interrupt the agent's current operation (sends Escape)" },
+          { name: "cancel", description: t("slash.cancel") },
         ]);
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
