@@ -13,6 +13,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  MessageFlags,
   type TextChannel,
   type Message,
   type Interaction,
@@ -388,7 +389,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const chunks = splitText(text, chunkLimit);
     if (chunks.length === 0) throw new Error("Empty text");
 
-    const first = await channel.send(chunks[0]);
+    // disablePreview → suppress the link embed(s) for this message.
+    const first = await channel.send(opts?.disablePreview
+      ? { content: chunks[0], flags: MessageFlags.SuppressEmbeds }
+      : chunks[0]);
 
     // Enqueue remaining chunks
     for (let i = 1; i < chunks.length; i++) {
