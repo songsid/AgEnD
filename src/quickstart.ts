@@ -423,10 +423,13 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
   }
 
   // Step 4: select instances to bind to this bot (multi-select).
-  const instanceNames = Object.keys(config.instances ?? {});
+  // Exclude general_topic instances: a general's adapter binding is managed by
+  // the fleet's auto-general logic, not hand-picked here. Binding a general to a
+  // persona would hijack the fleet's general topic to the wrong bot.
+  const instanceNames = Object.keys(config.instances ?? {}).filter(n => !config.instances[n]?.general_topic);
   const selected: string[] = [];
   if (instanceNames.length === 0) {
-    console.log(`  ${yellow("No instances in fleet.yaml to bind — the bot will start but answer for nobody until you set channel_id.")}`);
+    console.log(`  ${yellow("No bindable instances in fleet.yaml — the bot will start but answer for nobody until you set channel_id.")}`);
   } else {
     console.log(`\n  Bind which instances to ${botUser}? (comma-separated numbers, Enter for none)`);
     instanceNames.forEach((n, i) => console.log(`    ${i + 1}. ${n}${config.instances[n]?.channel_id ? dim(` (currently → ${config.instances[n].channel_id})`) : ""}`));
