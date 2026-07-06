@@ -511,20 +511,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         if (!this.classicChannels) return;
         const fleetBackend = this.fleetConfig?.defaults?.backend;
+        const fleetModel = this.fleetConfig?.defaults?.model;
         const oldBackends = new Map<string, string>();
+        const oldModels = new Map<string, string | undefined>();
         for (const ch of this.classicChannels.getAll()) {
           oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
+          oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
         }
         if (!this.classicChannels.checkReload()) return;
         this.reregisterClassicChannels();
         for (const ch of this.classicChannels.getAll()) {
           const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
-          if (this.daemons.has(ch.instanceName) && oldBackends.get(ch.instanceName) !== newBackend) {
-            this.logger.info({ instanceName: ch.instanceName, from: oldBackends.get(ch.instanceName), to: newBackend }, "Backend changed — restarting");
+          const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
+          const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
+          const modelChanged = oldModels.get(ch.instanceName) !== newModel;
+          if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged)) {
+            this.logger.info(
+              { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
+              "Backend/model changed — restarting",
+            );
             await this.stopInstance(ch.instanceName).catch(() => {});
             // Small delay to let tmux window clean up
             await new Promise(r => setTimeout(r, 2000));
-            await this.startClassicInstance(ch.instanceName, newBackend).catch(err =>
+            await this.startClassicInstance(
+              ch.instanceName,
+              newBackend,
+              this.classicChannels.getPreTaskCommand(ch.channelId, ch.adapterId),
+              newModel,
+            ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to restart classic instance"));
           }
         }
@@ -799,7 +813,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(ch =>
-            this.startClassicInstance(ch.instanceName, this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend)).catch(err =>
+            this.startClassicInstance(
+              ch.instanceName,
+              this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
+              this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+              this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+            ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
           ));
           idx += concurrency;
@@ -4058,7 +4077,12 @@ When users create specialized instances, suggest these configurations:
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(ch =>
-            this.startClassicInstance(ch.instanceName, this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend)).catch(err =>
+            this.startClassicInstance(
+              ch.instanceName,
+              this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
+              this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+              this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+            ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
           ));
           idx += concurrency;
