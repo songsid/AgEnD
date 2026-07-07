@@ -4172,10 +4172,9 @@ When users create specialized instances, suggest these configurations:
       if (target && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
-          // Beta builds have no per-tag release page → link to the latest release.
-          const releaseUrl = target.includes("-") ? "https://github.com/songsid/AgEnD/releases/latest" : `https://github.com/songsid/AgEnD/releases/tag/v${target}`;
-          // Suppress the (large, ugly) GitHub release link preview on Telegram.
-          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})\n📄 ${releaseUrl}`, { disablePreview: true });
+          // No release URL — Discord's SuppressEmbeds proved unreliable and the
+          // link preview looked bad. Version + /update instruction is enough.
+          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})`);
         }
       }
     } catch { /* silent — network issues */ }
