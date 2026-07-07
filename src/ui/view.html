@@ -425,6 +425,11 @@
   // ── Terminal ──────────────────────────────────────────
   async function refreshPane() {
     if (!current) return;
+    // If the user is selecting text inside the pane, skip this refresh so the
+    // 800ms poll doesn't wipe the selection mid-copy. Resumes on the next tick
+    // once the selection is released/collapsed.
+    const sel = window.getSelection();
+    if (sel && sel.toString().length > 0 && sel.anchorNode && q("pre").contains(sel.anchorNode)) return;
     const target = current;  // guard against a switch mid-fetch
     try {
       const r = await fetch(api(`/api/pane/${encodeURIComponent(target)}`));
