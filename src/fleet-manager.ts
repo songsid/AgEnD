@@ -2643,6 +2643,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
       // Preserve all optional user-configured fields so saveFleetConfig() never silently drops them
       if (inst.general_topic) serialized.general_topic = true;
+      if (inst.display_name) serialized.display_name = inst.display_name;
       if (inst.channel_id) serialized.channel_id = inst.channel_id;
       if (inst.description) serialized.description = inst.description;
       if (inst.tags?.length) serialized.tags = inst.tags;
