@@ -395,11 +395,25 @@
     const box = q("avatarBox");
     if (it.has_avatar) {
       const base = api(`/api/avatar/${encodeURIComponent(it.instance_name)}`);
-      const src = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now(); // cache-bust, correct query separator
-      box.innerHTML = `<img class="avatar-img" alt="" src="${src}">`;
+      // Only rebuild (and cache-bust) when the avatar's instance changed.
+      // Rebuilding every renderCard re-issued the <img> request each 5s
+      // loadRoster tick, which made the avatar flicker. Compare the raw src
+      // attribute (relative, as set) rather than img.src (resolved absolute).
+      const existingImg = box.querySelector("img");
+      const cur = existingImg ? (existingImg.getAttribute("src") || "") : "";
+      // The delimiter (base+"?" / base+"&") prevents a prefix collision between
+      // e.g. ".../foo" and ".../foobar".
+      const sameAvatar = existingImg && (cur.startsWith(base + "?") || cur.startsWith(base + "&"));
+      if (!sameAvatar) {
+        const src = base + (base.includes("?") ? "&" : "?") + "t=" + Date.now(); // cache-bust, correct query separator
+        box.innerHTML = `<img class="avatar-img" alt="" src="${src}">`;
+      }
     } else {
       const initial = (it.display_name || it.instance_name || "?").trim().charAt(0) || "?";
-      box.innerHTML = `<div class="avatar-ph">${esc(initial)}</div>`;
+      const ph = box.querySelector(".avatar-ph");
+      if (!ph || ph.textContent !== initial) {
+        box.innerHTML = `<div class="avatar-ph">${esc(initial)}</div>`;
+      }
     }
   }
 
