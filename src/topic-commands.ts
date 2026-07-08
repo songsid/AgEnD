@@ -127,6 +127,7 @@ export class TopicCommands {
       t("dashboard.title"),
       "",
       `• View:     ${base}/view`,
+      `• View (edit): ${hide(`${base}/view?token=${token}`)}`,
       `• Settings: ${hide(`${base}/settings?token=${token}`)}`,
       `• Web UI:   ${hide(`${base}/ui?token=${token}`)}`,
     ].join("\n");
