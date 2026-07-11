@@ -1,0 +1,199 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const locale = 'zh-tw' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const ps1 = `${base}install-agend.ps1`;
+const enHref = `${base}install-windows/`;
+const homeHref = `${base}zh-tw/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={homeHref} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; 回首頁</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Windows · 一鍵安裝腳本 v3.0</span>
+        <a href={enHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">English</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Windows 安裝指南</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        一支 PowerShell 腳本，自動幫你在 Windows 上完成 AgEnD 的所有安裝 ——
+        WSL 2 + Ubuntu、Kiro CLI、AgEnD 本體、串接 Discord／Telegram Bot，以及開機自動啟動。
+        裝好之後，你直接在 Discord 或 Telegram 跟 AI Agent 對話即可，不需要開啟任何程式。
+      </p>
+    </div>
+
+    <!-- Download -->
+    <div class="mb-14 rounded-2xl border border-border bg-surface p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div class="font-semibold text-text-primary">下載安裝腳本</div>
+          <div class="text-sm text-text-secondary mt-1"><code class="font-mono text-accent">install-agend.ps1</code> — PowerShell，需以系統管理員身分執行</div>
+        </div>
+        <a href={ps1} download
+           class="shrink-0 bg-accent text-bg font-semibold text-sm px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity text-center">
+          下載 install-agend.ps1
+        </a>
+      </div>
+    </div>
+
+    <!-- Prerequisites -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">事前準備</h2>
+    <div class="grid sm:grid-cols-2 gap-4 mb-14">
+      <div class="rounded-xl border border-border bg-surface p-5">
+        <div class="font-semibold text-text-primary mb-3">系統需求</div>
+        <ul class="space-y-2 text-sm text-text-secondary">
+          <li>• Windows 11（或 Windows 10 版本 2004 以上）</li>
+          <li>• 穩定的網路連線（需下載約 1–2 GB）</li>
+          <li>• 至少 5 GB 可用磁碟空間（建議 SSD）</li>
+          <li>• BIOS 虛擬化（VT-x / AMD-V）已啟用</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-border bg-surface p-5">
+        <div class="font-semibold text-text-primary mb-3">帳號與 Bot 資料</div>
+        <ul class="space-y-2 text-sm text-text-secondary">
+          <li>• AWS Builder ID（免費，至 <a href="https://profile.aws.amazon.com/" class="text-accent hover:underline">profile.aws.amazon.com</a> 註冊）供 Kiro 登入</li>
+          <li>• Discord 或 Telegram 帳號</li>
+          <li>• <b class="text-text-primary">Bot Token</b>（Discord：<a href="https://discord.com/developers/applications" class="text-accent hover:underline">Developer Portal</a>；Telegram：BotFather）</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">小提示：</b>事先把 Bot Token 記在記事本，安裝時可直接貼上比較順暢。
+      你的伺服器／頻道與管理員身分會在你從群組發送訊息時自動偵測，不需要手動填 Server ID 或 User ID。
+    </div>
+
+    <!-- Steps -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">安裝步驟</h2>
+    <div class="space-y-6 mb-14">
+      <!-- Step 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">放置腳本並以系統管理員開啟 PowerShell</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          把 <code class="font-mono text-accent">install-agend.ps1</code> 放到方便找到的位置（桌面、<code class="font-mono text-accent">D:\Tools</code> 等），
+          路徑盡量不要有中文或特殊符號。接著開啟<b class="text-text-primary">系統管理員</b> PowerShell：
+          在搜尋列輸入「PowerShell」→ 右鍵 →「以系統管理員身分執行」（或按 <kbd class="font-mono">Win+X</kbd> →「終端機（系統管理員）」）。
+        </p>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">允許執行腳本（首次需要）</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+Unblock-File .\install-agend.ps1</pre>
+        <p class="text-sm text-text-secondary mt-3">出現確認提示時輸入 <code class="font-mono text-accent">Y</code>，接著 <code class="font-mono text-accent">cd</code> 到腳本所在位置（例如 <code class="font-mono text-accent">cd ~/Desktop</code>）。</p>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">執行</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">.\install-agend.ps1</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          跟著畫面上的中文提示操作即可，全程約 10–20 分鐘（視網路速度而定）。腳本分成 5 個階段：
+        </p>
+        <ol class="mt-4 space-y-3 text-sm text-text-secondary">
+          <li><b class="text-text-primary">[1/5] 安裝 WSL 2 + Ubuntu</b> —— 選擇 Linux 版本（預設 Ubuntu-24.04）與安裝磁碟（選你的 SSD）。可能需要重開機一次；重開後再執行一次腳本即可自動接續。</li>
+          <li><b class="text-text-primary">[2/5] 安裝 Kiro CLI</b> —— 全自動，不需操作。</li>
+          <li><b class="text-text-primary">[3/5] 登入 Kiro CLI</b> —— 畫面會顯示一個網址，複製到任何瀏覽器，用 AWS Builder ID 登入並授權。完成後腳本自動繼續。</li>
+          <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
+          <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token，然後在群組發一則訊息讓 Bot 偵測頻道。腳本會自動產生設定、安裝服務並啟動。</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Interrupted -->
+    <div class="mb-14 rounded-xl border border-border bg-surface p-5 text-sm text-text-secondary">
+      <b class="text-text-primary">安裝中斷怎麼辦？</b>直接重新執行 <code class="font-mono text-accent">.\install-agend.ps1</code> 即可 —— 腳本會自動偵測已完成的步驟並從中斷處繼續。
+      若想完全重頭來過，執行 <code class="font-mono text-accent">.\install-agend.ps1 -Force</code>。
+    </div>
+
+    <!-- Auto-start -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">開機自動啟動機制</h2>
+    <p class="text-sm text-text-secondary mb-4">腳本已設定三道機制，讓 Bot 在每次重開機後自動上線，完全不需手動操作：</p>
+    <ul class="space-y-3 text-sm text-text-secondary mb-14">
+      <li>1. <b class="text-text-primary">Windows 登入後自動啟動 WSL</b>：透過 Startup 資料夾中的 <code class="font-mono text-accent">start-wsl.vbs</code>（位置 <code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>）。</li>
+      <li>2. <b class="text-text-primary">WSL 內 AgEnD 由 systemd 服務自動啟動</b>：只要 WSL 在運行，AgEnD 就會自動啟動。</li>
+      <li>3. <b class="text-text-primary">WSL 不會閒置自動關閉</b>：<code class="font-mono text-accent">.wslconfig</code> 讓它保持運行，關閉終端機視窗不影響服務。</li>
+    </ul>
+
+    <!-- Daily use -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">日常使用</h2>
+    <p class="text-sm text-text-secondary mb-4">平常直接在 Discord／Telegram 跟 Bot 對話即可，不需要開啟任何程式。若 Bot 沒有回應，開啟 PowerShell 或 CMD：</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl                                          # 進入 WSL（不論裝在哪個磁碟都一樣）
+
+agend ls                                     # 查看所有 Agent 狀態
+agend start                                  # 啟動所有 Agent 服務
+agend stop                                   # 停止所有 Agent 服務
+agend attach &lt;名稱&gt;                          # 進入某個 Agent 的操作畫面
+agend update                                 # 更新 AgEnD 到最新版
+kiro-cli                                     # 手動開啟 Kiro CLI
+exit                                         # 離開 WSL</pre>
+    <div class="mb-14 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">離開 Agent 操作畫面：</b>在 <code class="font-mono text-accent">agend attach</code> 裡按 <kbd class="font-mono">Ctrl+B</kbd>，放開，再按 <kbd class="font-mono">D</kbd>。
+      <b class="text-error">不要按 Ctrl+C</b>（會終止 Agent！）。
+    </div>
+
+    <!-- FAQ -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">常見問題</h2>
+    <div class="space-y-4 mb-14">
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">出現「此腳本需要以系統管理員身分執行」？</summary>
+        <p class="mt-3 text-sm text-text-secondary">請用右鍵 →「以系統管理員身分執行」開啟 PowerShell。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">出現「無法連線到網路」？</summary>
+        <p class="mt-3 text-sm text-text-secondary">確認電腦有網路。公司環境請先連 VPN，或確認防火牆沒擋住 GitHub / npm registry 的連線。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">WSL 安裝後要求重開機？</summary>
+        <p class="mt-3 text-sm text-text-secondary">正常現象。重開機後再執行一次腳本即可自動接續。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">Kiro CLI 登入時沒有顯示網址？</summary>
+        <p class="mt-3 text-sm text-text-secondary">等待 5–10 秒。如果仍然沒有，按 <kbd class="font-mono">Ctrl+C</kbd> 取消後重新執行腳本。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">電腦重開機後 Bot 不回覆了？</summary>
+        <p class="mt-3 text-sm text-text-secondary">通常會自動恢復（需等待 30–60 秒開機啟動）。如果超過 2 分鐘仍無回應：</p>
+        <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">wsl -u root -- bash -lc "agend start"</pre>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">公司電腦防毒軟體擋住 .vbs 啟動腳本？</summary>
+        <p class="mt-3 text-sm text-text-secondary">請聯繫 IT 將 <code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs</code> 加入白名單，或改為手動啟動（開機後執行一次 <code class="font-mono text-accent">wsl</code> 即可）。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">BIOS 虛擬化沒開怎麼辦？</summary>
+        <p class="mt-3 text-sm text-text-secondary">重開機進入 BIOS 設定（通常按 F2 / Del / F12），找到 <b class="text-text-primary">Intel VT-x</b> 或 <b class="text-text-primary">AMD-V（SVM Mode）</b>選項啟用。</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">如何更新 AgEnD？</summary>
+        <p class="mt-3 text-sm text-text-secondary">進入 WSL 後執行 <code class="font-mono text-accent">agend update</code>。</p>
+      </details>
+    </div>
+
+    <!-- Uninstall -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">完全移除方法</h2>
+    <p class="text-sm text-text-secondary mb-4">在 PowerShell 中依序執行：</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-24.04
+Remove-Item "$env:USERPROFILE\.wslconfig" -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
+    <p class="text-sm text-text-secondary mb-14">如需移除 WSL 功能本身：<i>設定 → 應用程式 → 選用功能</i>，關閉<b class="text-text-primary">「Windows 子系統 Linux 版」</b>。</p>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      使用 Linux 或 macOS？請改用首頁的<a href={homeHref} class="text-accent hover:underline">一行安裝指令</a>。
+    </div>
+  </section>
+</Base>
