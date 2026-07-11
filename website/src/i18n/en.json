@@ -7,9 +7,9 @@
     "langSwitch": "中文"
   },
   "hero": {
-    "tagline": "Stop staring at tmux.",
-    "taglineAccent": "Start shipping from Telegram.",
-    "subtitle": "Agent Engineering Daemon — manage a fleet of AI coding agents from your phone, from Telegram or Discord. 6 backends, fleet mode, agent collaboration, zero babysitting.",
+    "tagline": "Your AI fleet,",
+    "taglineAccent": "one chat away.",
+    "subtitle": "Agent Engineering Daemon — manage coding agents from Telegram or Discord. 6 backends, fleet mode, agent collaboration, zero babysitting.",
     "cta": "Get Started",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT License"
@@ -50,20 +50,76 @@
     "sectionLabel": "CAPABILITIES",
     "title": "Everything you need to run a fleet",
     "items": [
-      { "icon": "rocket", "name": "Fleet Mode", "desc": "N projects, each a Telegram Forum Topic. Independent sessions with crash recovery." },
-      { "icon": "shuffle", "name": "Multi-Backend", "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, OpenCode. Switch or mix freely." },
-      { "icon": "users", "name": "Agent Collaboration", "desc": "MCP tools for discovery, delegation, and result reporting between agents." },
-      { "icon": "smartphone", "name": "Mobile Control", "desc": "Approve tool use, restart sessions, manage your fleet from Telegram inline buttons." },
-      { "icon": "shield", "name": "Cost Guard", "desc": "Per-instance daily spending limits. Auto-pause and alerts before bill shock." },
-      { "icon": "clock", "name": "Persistent Schedules", "desc": "Cron-based tasks backed by SQLite. Survives restarts." },
-      { "icon": "monitor", "name": "Web View", "desc": "Real-time terminal streaming in the browser. Drag-sort, profiles, tag groups." },
-      { "icon": "settings", "name": "Settings UI", "desc": "Web-based fleet config. Agent-centric design, validate-before-write." },
-      { "icon": "users", "name": "Multi-Bot", "desc": "Multiple persona bots in the same Discord channel with owner-wins routing." },
-      { "icon": "globe", "name": "i18n", "desc": "Full EN/繁中 localization. Auto-detect from timezone or fleet.yaml." },
-      { "icon": "check-square", "name": "Config Validator", "desc": "agend validate — catch config errors before they crash your fleet." },
-      { "icon": "zap", "name": "Model Failover", "desc": "Auto-switch to backup model on rate limits with 5-minute cooldown." },
-      { "icon": "mic", "name": "Voice Messages", "desc": "Groq Whisper transcription — talk to your agents." },
-      { "icon": "file-text", "name": "HTML Export", "desc": "Export sessions as standalone HTML for sharing or archiving." }
+      {
+        "icon": "rocket",
+        "name": "Fleet Mode",
+        "desc": "N projects, each a Telegram Forum Topic. Independent sessions with crash recovery."
+      },
+      {
+        "icon": "shuffle",
+        "name": "Multi-Backend",
+        "desc": "Claude Code, Codex, Antigravity, Kiro CLI, Grok, OpenCode. Switch or mix freely."
+      },
+      {
+        "icon": "users",
+        "name": "Agent Collaboration",
+        "desc": "MCP tools for discovery, delegation, and result reporting between agents."
+      },
+      {
+        "icon": "smartphone",
+        "name": "Mobile Control",
+        "desc": "Approve tool use, restart sessions, manage your fleet from Telegram inline buttons."
+      },
+      {
+        "icon": "shield",
+        "name": "Cost Guard",
+        "desc": "Per-instance daily spending limits. Auto-pause and alerts before bill shock."
+      },
+      {
+        "icon": "clock",
+        "name": "Persistent Schedules",
+        "desc": "Cron-based tasks backed by SQLite. Survives restarts."
+      },
+      {
+        "icon": "monitor",
+        "name": "Web View",
+        "desc": "Real-time terminal streaming in the browser. Drag-sort, profiles, tag groups."
+      },
+      {
+        "icon": "settings",
+        "name": "Settings UI",
+        "desc": "Web-based fleet config. Agent-centric design, validate-before-write."
+      },
+      {
+        "icon": "users",
+        "name": "Multi-Bot",
+        "desc": "Multiple persona bots in the same Discord channel with owner-wins routing."
+      },
+      {
+        "icon": "globe",
+        "name": "i18n",
+        "desc": "Full EN/繁中 localization. Auto-detect from timezone or fleet.yaml."
+      },
+      {
+        "icon": "check-square",
+        "name": "Config Validator",
+        "desc": "agend validate — catch config errors before they crash your fleet."
+      },
+      {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "Auto-switch to backup model on rate limits with 5-minute cooldown."
+      },
+      {
+        "icon": "mic",
+        "name": "Voice Messages",
+        "desc": "Groq Whisper transcription — talk to your agents."
+      },
+      {
+        "icon": "file-text",
+        "name": "HTML Export",
+        "desc": "Export sessions as standalone HTML for sharing or archiving."
+      }
     ]
   },
   "quickstart": {
@@ -74,21 +130,54 @@
       "cmd": "curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash",
       "note": "Installs Node.js (via nvm), tmux, agend, then launches the wizard. Or step through manually below."
     },
-    "windows": { "label": "Windows?", "text": "See the Windows Installation Guide", "href": "/install-windows/" },
-    "step1": { "label": "Install", "cmd": "npm install -g @songsid/agend" },
-    "step2": { "label": "Setup", "cmd": "agend quickstart" },
-    "step3": { "label": "Launch", "cmd": "agend fleet start" },
+    "windows": {
+      "label": "Windows?",
+      "text": "See the Windows Installation Guide",
+      "href": "/install-windows/"
+    },
+    "step1": {
+      "label": "Install",
+      "cmd": "npm install -g @songsid/agend"
+    },
+    "step2": {
+      "label": "Setup",
+      "cmd": "agend quickstart"
+    },
+    "step3": {
+      "label": "Launch",
+      "cmd": "agend fleet start"
+    },
     "footer": "Open Telegram, send a message, start coding from your phone."
   },
   "howitworks": {
     "sectionLabel": "HOW IT WORKS",
     "title": "From your phone to your fleet",
     "steps": [
-      { "icon": "send", "label": "You", "desc": "Send a message to your Telegram or Discord bot" },
-      { "icon": "bot", "label": "General Topic", "desc": "Interprets natural language, routes to the right agent" },
-      { "icon": "cpu", "label": "Agent Fleet", "desc": "Isolated tmux sessions, each with its own project and backend" },
-      { "icon": "git-merge", "label": "Collaborate", "desc": "Agents delegate tasks, share context via MCP tools" },
-      { "icon": "check-circle", "label": "Results", "desc": "Flow back to your chat. Permissions arrive as inline buttons." }
+      {
+        "icon": "send",
+        "label": "You",
+        "desc": "Send a message to your Telegram or Discord bot"
+      },
+      {
+        "icon": "bot",
+        "label": "General Topic",
+        "desc": "Interprets natural language, routes to the right agent"
+      },
+      {
+        "icon": "cpu",
+        "label": "Agent Fleet",
+        "desc": "Isolated tmux sessions, each with its own project and backend"
+      },
+      {
+        "icon": "git-merge",
+        "label": "Collaborate",
+        "desc": "Agents delegate tasks, share context via MCP tools"
+      },
+      {
+        "icon": "check-circle",
+        "label": "Results",
+        "desc": "Flow back to your chat. Permissions arrive as inline buttons."
+      }
     ]
   },
   "backends": {
@@ -96,28 +185,76 @@
     "title": "Supported backends",
     "subtitle": "Any CLI that reads stdin/stdout. Extensible via the CliBackend interface.",
     "items": [
-      { "name": "Claude Code", "by": "Anthropic" },
-      { "name": "Codex", "by": "OpenAI" },
-      { "name": "Antigravity CLI", "by": "Google" },
-      { "name": "Kiro CLI", "by": "AWS" },
-      { "name": "Grok Build", "by": "xAI" },
-      { "name": "OpenCode", "by": "Community" }
+      {
+        "name": "Claude Code",
+        "by": "Anthropic"
+      },
+      {
+        "name": "Codex",
+        "by": "OpenAI"
+      },
+      {
+        "name": "Antigravity CLI",
+        "by": "Google"
+      },
+      {
+        "name": "Kiro CLI",
+        "by": "AWS"
+      },
+      {
+        "name": "Grok Build",
+        "by": "xAI"
+      },
+      {
+        "name": "OpenCode",
+        "by": "Community"
+      }
     ]
   },
   "faq": {
     "sectionLabel": "FAQ",
     "title": "Frequently asked questions",
     "items": [
-      { "q": "Is it free?", "a": "Yes. Open source, MIT license. You only pay for the AI API usage." },
-      { "q": "Which backends are supported?", "a": "Claude Code, OpenAI Codex, Antigravity CLI, Kiro CLI, Grok Build, and OpenCode. Add your own via the CliBackend interface." },
-      { "q": "Which messaging channels?", "a": "Telegram and Discord. Both support topic/channel-based fleet routing, plus ClassicBot mode — run /start in any channel to attach an agent — and Telegram forum topic mode for one topic per project." },
-      { "q": "Does it support Discord?", "a": "Yes. Full support including forum topics, slash commands, ClassicBot (/start in any channel), and multi-bot same-channel (several persona bots in one channel with owner-wins routing)." },
-      { "q": "Does it work on Windows?", "a": "Yes, via WSL. A one-click PowerShell installer sets up WSL 2, your AI backends, AgEnD, and auto-start — see the Windows Installation Guide." },
-      { "q": "Does it need a server?", "a": "No. Runs on any macOS, Linux, or Windows (WSL) machine with tmux. Install as a system service for auto-start on boot." },
-      { "q": "How do agents collaborate?", "a": "Via MCP tools: send_to_instance, delegate_task, report_result. Agents discover each other, delegate work, and report results — all peer-to-peer." },
-      { "q": "What is the General Topic?", "a": "A natural language dispatcher. Send any task to the General topic — it figures out which agent should handle it and delegates automatically." },
-      { "q": "How much does it cost to run?", "a": "AgEnD itself is free. Costs come from AI API usage. Use cost guards to set daily per-instance spending limits." },
-      { "q": "Can I connect my local Claude Code?", "a": "Yes. External sessions connect via IPC socket and appear as fleet members. See the docs for setup." }
+      {
+        "q": "Is it free?",
+        "a": "Yes. Open source, MIT license. You only pay for the AI API usage."
+      },
+      {
+        "q": "Which backends are supported?",
+        "a": "Claude Code, OpenAI Codex, Antigravity CLI, Kiro CLI, Grok Build, and OpenCode. Add your own via the CliBackend interface."
+      },
+      {
+        "q": "Which messaging channels?",
+        "a": "Telegram and Discord. Both support topic/channel-based fleet routing, plus ClassicBot mode — run /start in any channel to attach an agent — and Telegram forum topic mode for one topic per project."
+      },
+      {
+        "q": "Does it support Discord?",
+        "a": "Yes. Full support including forum topics, slash commands, ClassicBot (/start in any channel), and multi-bot same-channel (several persona bots in one channel with owner-wins routing)."
+      },
+      {
+        "q": "Does it work on Windows?",
+        "a": "Yes, via WSL. A one-click PowerShell installer sets up WSL 2, your AI backends, AgEnD, and auto-start — see the Windows Installation Guide."
+      },
+      {
+        "q": "Does it need a server?",
+        "a": "No. Runs on any macOS, Linux, or Windows (WSL) machine with tmux. Install as a system service for auto-start on boot."
+      },
+      {
+        "q": "How do agents collaborate?",
+        "a": "Via MCP tools: send_to_instance, delegate_task, report_result. Agents discover each other, delegate work, and report results — all peer-to-peer."
+      },
+      {
+        "q": "What is the General Topic?",
+        "a": "A natural language dispatcher. Send any task to the General topic — it figures out which agent should handle it and delegates automatically."
+      },
+      {
+        "q": "How much does it cost to run?",
+        "a": "AgEnD itself is free. Costs come from AI API usage. Use cost guards to set daily per-instance spending limits."
+      },
+      {
+        "q": "Can I connect my local Claude Code?",
+        "a": "Yes. External sessions connect via IPC socket and appear as fleet members. See the docs for setup."
+      }
     ]
   },
   "footer": {
