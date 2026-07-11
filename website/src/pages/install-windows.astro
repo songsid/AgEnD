@@ -1,0 +1,199 @@
+---
+import Base from '../layouts/Base.astro';
+
+const locale = 'en' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const ps1 = `${base}install-agend.ps1`;
+const zhHref = `${base}zh-tw/install-windows/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={base} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; Back to home</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Windows · One-click installer v3.0</span>
+        <a href={zhHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">中文</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Windows Installation Guide</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        A single PowerShell script installs everything you need to run AgEnD on Windows —
+        WSL 2 + Ubuntu, the Kiro CLI, AgEnD itself, your Discord/Telegram bot, and auto-start on boot.
+        Once it finishes, you just talk to your AI agents in Discord or Telegram — no app to keep open.
+      </p>
+    </div>
+
+    <!-- Download -->
+    <div class="mb-14 rounded-2xl border border-border bg-surface p-6">
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <div class="font-semibold text-text-primary">Download the installer</div>
+          <div class="text-sm text-text-secondary mt-1"><code class="font-mono text-accent">install-agend.ps1</code> — PowerShell, run as Administrator</div>
+        </div>
+        <a href={ps1} download
+           class="shrink-0 bg-accent text-bg font-semibold text-sm px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity text-center">
+          Download install-agend.ps1
+        </a>
+      </div>
+    </div>
+
+    <!-- Prerequisites -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Prerequisites</h2>
+    <div class="grid sm:grid-cols-2 gap-4 mb-14">
+      <div class="rounded-xl border border-border bg-surface p-5">
+        <div class="font-semibold text-text-primary mb-3">System requirements</div>
+        <ul class="space-y-2 text-sm text-text-secondary">
+          <li>• Windows 11 (or Windows 10, version 2004+)</li>
+          <li>• Stable internet (~1–2 GB download)</li>
+          <li>• At least 5 GB free disk space (SSD recommended)</li>
+          <li>• BIOS virtualization (VT-x / AMD-V) enabled</li>
+        </ul>
+      </div>
+      <div class="rounded-xl border border-border bg-surface p-5">
+        <div class="font-semibold text-text-primary mb-3">Accounts &amp; bot info</div>
+        <ul class="space-y-2 text-sm text-text-secondary">
+          <li>• AWS Builder ID (free — sign up at <a href="https://profile.aws.amazon.com/" class="text-accent hover:underline">profile.aws.amazon.com</a>) for Kiro login</li>
+          <li>• A Discord or Telegram account</li>
+          <li>• A <b class="text-text-primary">Bot Token</b> (Discord: <a href="https://discord.com/developers/applications" class="text-accent hover:underline">Developer Portal</a>; Telegram: BotFather)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">Tip:</b> keep your Bot Token handy in a notepad so you can paste it during setup.
+      Your server/channel and admin user are detected automatically when you send a message from the group — no manual IDs needed.
+    </div>
+
+    <!-- Steps -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">Step-by-step</h2>
+    <div class="space-y-6 mb-14">
+      <!-- Step 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">Place the script &amp; open PowerShell as Administrator</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          Put <code class="font-mono text-accent">install-agend.ps1</code> somewhere easy to find (Desktop, <code class="font-mono text-accent">D:\Tools</code>, …).
+          Avoid paths with non-ASCII characters. Then open an <b class="text-text-primary">Administrator</b> PowerShell:
+          search &ldquo;PowerShell&rdquo; → right-click → <i>Run as administrator</i> (or press <kbd class="font-mono">Win+X</kbd> → <i>Terminal (Admin)</i>).
+        </p>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">Allow the script to run (first time only)</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+Unblock-File .\install-agend.ps1</pre>
+        <p class="text-sm text-text-secondary mt-3">Enter <code class="font-mono text-accent">Y</code> when prompted, then <code class="font-mono text-accent">cd</code> to where the script is (e.g. <code class="font-mono text-accent">cd ~/Desktop</code>).</p>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">Run it</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">.\install-agend.ps1</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          Follow the on-screen prompts. The whole process takes about 10–20 minutes depending on your connection.
+          The script runs in 5 stages:
+        </p>
+        <ol class="mt-4 space-y-3 text-sm text-text-secondary">
+          <li><b class="text-text-primary">[1/5] Install WSL 2 + Ubuntu</b> — pick a Linux version (default: Ubuntu-24.04) and an install drive (choose your SSD). A reboot may be required; just re-run the script afterward and it continues where it left off.</li>
+          <li><b class="text-text-primary">[2/5] Install Kiro CLI</b> — fully automatic, no input needed.</li>
+          <li><b class="text-text-primary">[3/5] Log in to Kiro CLI</b> — the script shows a URL. Open it in any browser, sign in with your AWS Builder ID, and authorize. It continues automatically once you're done.</li>
+          <li><b class="text-text-primary">[4/5] Install AgEnD</b> — automatic (installs Node.js 22 LTS + tmux via the official installer).</li>
+          <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram, paste your Bot Token, then send a message in your group so the bot detects the channel. It generates the config, installs the service, and starts everything.</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Interrupted -->
+    <div class="mb-14 rounded-xl border border-border bg-surface p-5 text-sm text-text-secondary">
+      <b class="text-text-primary">Installation interrupted?</b> Just run <code class="font-mono text-accent">.\install-agend.ps1</code> again — it detects completed stages and resumes.
+      To start completely from scratch, run <code class="font-mono text-accent">.\install-agend.ps1 -Force</code>.
+    </div>
+
+    <!-- Auto-start -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Auto-start on boot</h2>
+    <p class="text-sm text-text-secondary mb-4">The installer wires up three mechanisms so your bot is online after every reboot with zero manual steps:</p>
+    <ul class="space-y-3 text-sm text-text-secondary mb-14">
+      <li>1. <b class="text-text-primary">WSL starts on Windows login</b> via <code class="font-mono text-accent">start-wsl.vbs</code> in the Startup folder (<code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\</code>).</li>
+      <li>2. <b class="text-text-primary">AgEnD starts inside WSL</b> via a systemd service — whenever WSL is running, AgEnD runs.</li>
+      <li>3. <b class="text-text-primary">WSL never idles out</b> — <code class="font-mono text-accent">.wslconfig</code> keeps it alive, so closing the terminal window doesn't stop the service.</li>
+    </ul>
+
+    <!-- Daily use -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Everyday use</h2>
+    <p class="text-sm text-text-secondary mb-4">Normally you just chat with the bot in Discord/Telegram — nothing to open. If the bot ever stops responding, open PowerShell or CMD:</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl                                          # enter WSL (works regardless of install drive)
+
+agend ls                                     # show all agent statuses
+agend start                                  # start all agent services
+agend stop                                   # stop all agent services
+agend attach &lt;name&gt;                          # open an agent's tmux screen
+agend update                                 # update AgEnD to the latest version
+kiro-cli                                     # open Kiro CLI manually
+exit                                         # leave WSL</pre>
+    <div class="mb-14 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">Leaving an agent screen:</b> inside <code class="font-mono text-accent">agend attach</code>, press <kbd class="font-mono">Ctrl+B</kbd>, release, then <kbd class="font-mono">D</kbd>.
+      <b class="text-error">Do not press Ctrl+C</b> — it terminates the agent.
+    </div>
+
+    <!-- FAQ -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">FAQ</h2>
+    <div class="space-y-4 mb-14">
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">&ldquo;This script must be run as Administrator&rdquo;</summary>
+        <p class="mt-3 text-sm text-text-secondary">Open PowerShell with right-click → <i>Run as administrator</i>.</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">&ldquo;Cannot connect to the network&rdquo;</summary>
+        <p class="mt-3 text-sm text-text-secondary">Check your connection. On a corporate network, connect to VPN first, and make sure the firewall isn't blocking GitHub / the npm registry.</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">WSL asked me to reboot after install</summary>
+        <p class="mt-3 text-sm text-text-secondary">That's normal. Reboot, then run the script again — it resumes automatically.</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">No URL appeared during Kiro login</summary>
+        <p class="mt-3 text-sm text-text-secondary">Wait 5–10 seconds. If it still doesn't show, press <kbd class="font-mono">Ctrl+C</kbd> to cancel and re-run the script.</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">Bot stopped replying after a reboot</summary>
+        <p class="mt-3 text-sm text-text-secondary">It usually recovers on its own within 30–60 seconds. If there's still no response after 2 minutes:</p>
+        <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">wsl -u root -- bash -lc "agend start"</pre>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">Antivirus blocks the .vbs startup script</summary>
+        <p class="mt-3 text-sm text-text-secondary">Ask your IT team to whitelist <code class="font-mono text-accent">%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs</code>, or start manually (run <code class="font-mono text-accent">wsl</code> once after boot).</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">BIOS virtualization isn't enabled</summary>
+        <p class="mt-3 text-sm text-text-secondary">Reboot into BIOS setup (usually F2 / Del / F12) and enable <b class="text-text-primary">Intel VT-x</b> or <b class="text-text-primary">AMD-V (SVM Mode)</b>.</p>
+      </details>
+      <details class="group rounded-xl border border-border bg-surface p-5">
+        <summary class="cursor-pointer font-medium text-text-primary">How do I update AgEnD?</summary>
+        <p class="mt-3 text-sm text-text-secondary">Enter WSL and run <code class="font-mono text-accent">agend update</code>.</p>
+      </details>
+    </div>
+
+    <!-- Uninstall -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Complete removal</h2>
+    <p class="text-sm text-text-secondary mb-4">Run these in PowerShell, in order:</p>
+    <pre class="bg-surface border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mb-4">wsl --unregister Ubuntu-24.04
+Remove-Item "$env:USERPROFILE\.wslconfig" -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILE\.agend-install-progress" -ErrorAction SilentlyContinue
+Remove-Item "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\start-wsl.vbs" -ErrorAction SilentlyContinue</pre>
+    <p class="text-sm text-text-secondary mb-14">To remove the WSL feature itself: <i>Settings → Apps → Optional features</i> and turn off <b class="text-text-primary">Windows Subsystem for Linux</b>.</p>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      Prefer Linux or macOS? Use the <a href={base} class="text-accent hover:underline">one-line installer</a> on the home page instead.
+    </div>
+  </section>
+</Base>
