@@ -7,9 +7,9 @@
     "langSwitch": "EN"
   },
   "hero": {
-    "tagline": "別再盯著 tmux。",
-    "taglineAccent": "從 Telegram 調度 fleet。",
-    "subtitle": "Agent Engineering Daemon — 用手機從 Telegram 或 Discord 管理一整個 AI coding agent 團隊。6 種 backend、fleet mode、agent 協作，不用顧。",
+    "tagline": "你的 AI 艦隊，",
+    "taglineAccent": "一則訊息掌控。",
+    "subtitle": "Agent Engineering Daemon — 從 Telegram 或 Discord 管理 AI 編碼 Agent。6 種後端、艦隊模式、Agent 協作、零維護。",
     "cta": "快速開始",
     "github": "GitHub",
     "badges": "macOS · Linux · Windows (WSL) · MIT 授權"
@@ -50,20 +50,76 @@
     "sectionLabel": "功能特色",
     "title": "管理 fleet 所需的一切",
     "items": [
-      { "icon": "rocket", "name": "Fleet Mode", "desc": "N 個專案，每個都是獨立的 Telegram Forum Topic。獨立 session，crash 自動恢復。" },
-      { "icon": "shuffle", "name": "多 Backend", "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、OpenCode，自由切換或混用。" },
-      { "icon": "users", "name": "Agent 協作", "desc": "MCP tools 互相發現、委派任務、回報結果。" },
-      { "icon": "smartphone", "name": "手機操控", "desc": "從 Telegram inline 按鈕核准工具、重啟 session、管理 fleet。" },
-      { "icon": "shield", "name": "花費守衛", "desc": "每個 instance 每日限額，超過自動暫停並通知。" },
-      { "icon": "clock", "name": "持久化排程", "desc": "Cron 排程任務，SQLite 儲存，重啟不遺失。" },
-      { "icon": "monitor", "name": "Web View", "desc": "瀏覽器即時串流終端機畫面。可拖曳排序、編輯 profile、依 tag 分組。" },
-      { "icon": "settings", "name": "設定介面", "desc": "網頁版 fleet 設定。以 agent 為中心設計，寫入前先驗證。" },
-      { "icon": "users", "name": "多 Bot", "desc": "同一個 Discord 頻道多個 persona bot，owner-wins 路由。" },
-      { "icon": "globe", "name": "多語系", "desc": "完整 EN／繁中 在地化。依時區或 fleet.yaml 自動偵測。" },
-      { "icon": "check-square", "name": "設定驗證器", "desc": "agend validate —— 在設定錯誤搞垮 fleet 之前先抓出來。" },
-      { "icon": "zap", "name": "Model Failover", "desc": "被限速時自動切換備用 model，5 分鐘冷卻期。" },
-      { "icon": "mic", "name": "語音訊息", "desc": "Groq Whisper 轉文字，用說的跟 agent 溝通。" },
-      { "icon": "file-text", "name": "HTML 匯出", "desc": "把 session 匯出成獨立 HTML 檔，方便分享或存檔。" }
+      {
+        "icon": "rocket",
+        "name": "Fleet Mode",
+        "desc": "N 個專案，每個都是獨立的 Telegram Forum Topic。獨立 session，crash 自動恢復。"
+      },
+      {
+        "icon": "shuffle",
+        "name": "多 Backend",
+        "desc": "Claude Code、Codex、Antigravity、Kiro CLI、Grok、OpenCode，自由切換或混用。"
+      },
+      {
+        "icon": "users",
+        "name": "Agent 協作",
+        "desc": "MCP tools 互相發現、委派任務、回報結果。"
+      },
+      {
+        "icon": "smartphone",
+        "name": "手機操控",
+        "desc": "從 Telegram inline 按鈕核准工具、重啟 session、管理 fleet。"
+      },
+      {
+        "icon": "shield",
+        "name": "花費守衛",
+        "desc": "每個 instance 每日限額，超過自動暫停並通知。"
+      },
+      {
+        "icon": "clock",
+        "name": "持久化排程",
+        "desc": "Cron 排程任務，SQLite 儲存，重啟不遺失。"
+      },
+      {
+        "icon": "monitor",
+        "name": "Web View",
+        "desc": "瀏覽器即時串流終端機畫面。可拖曳排序、編輯 profile、依 tag 分組。"
+      },
+      {
+        "icon": "settings",
+        "name": "設定介面",
+        "desc": "網頁版 fleet 設定。以 agent 為中心設計，寫入前先驗證。"
+      },
+      {
+        "icon": "users",
+        "name": "多 Bot",
+        "desc": "同一個 Discord 頻道多個 persona bot，owner-wins 路由。"
+      },
+      {
+        "icon": "globe",
+        "name": "多語系",
+        "desc": "完整 EN／繁中 在地化。依時區或 fleet.yaml 自動偵測。"
+      },
+      {
+        "icon": "check-square",
+        "name": "設定驗證器",
+        "desc": "agend validate —— 在設定錯誤搞垮 fleet 之前先抓出來。"
+      },
+      {
+        "icon": "zap",
+        "name": "Model Failover",
+        "desc": "被限速時自動切換備用 model，5 分鐘冷卻期。"
+      },
+      {
+        "icon": "mic",
+        "name": "語音訊息",
+        "desc": "Groq Whisper 轉文字，用說的跟 agent 溝通。"
+      },
+      {
+        "icon": "file-text",
+        "name": "HTML 匯出",
+        "desc": "把 session 匯出成獨立 HTML 檔，方便分享或存檔。"
+      }
     ]
   },
   "quickstart": {
@@ -74,21 +130,54 @@
       "cmd": "curl -fsSL https://songsid.github.io/AgEnD/install.sh | bash",
       "note": "會透過 nvm 裝 Node.js，再裝 tmux、agend，接著直接進設定精靈。或照下面三步手動設定。"
     },
-    "windows": { "label": "用 Windows？", "text": "參閱 Windows 安裝指南", "href": "/install-windows/" },
-    "step1": { "label": "安裝", "cmd": "npm install -g @songsid/agend" },
-    "step2": { "label": "設定", "cmd": "agend quickstart" },
-    "step3": { "label": "啟動", "cmd": "agend fleet start" },
+    "windows": {
+      "label": "用 Windows？",
+      "text": "參閱 Windows 安裝指南",
+      "href": "/install-windows/"
+    },
+    "step1": {
+      "label": "安裝",
+      "cmd": "npm install -g @songsid/agend"
+    },
+    "step2": {
+      "label": "設定",
+      "cmd": "agend quickstart"
+    },
+    "step3": {
+      "label": "啟動",
+      "cmd": "agend fleet start"
+    },
     "footer": "打開 Telegram，傳訊息，開始用手機寫 code。"
   },
   "howitworks": {
     "sectionLabel": "運作原理",
     "title": "從你的手機到 agent 團隊",
     "steps": [
-      { "icon": "send", "label": "你", "desc": "傳訊息給你的 Telegram 或 Discord bot" },
-      { "icon": "bot", "label": "General Topic", "desc": "解讀自然語言，路由到對的 agent" },
-      { "icon": "cpu", "label": "Agent Fleet", "desc": "獨立 tmux session，各有自己的專案和 backend" },
-      { "icon": "git-merge", "label": "協作", "desc": "Agent 之間透過 MCP tools 委派任務、分享 context" },
-      { "icon": "check-circle", "label": "結果", "desc": "回傳到你的聊天室。權限請求以 inline 按鈕呈現。" }
+      {
+        "icon": "send",
+        "label": "你",
+        "desc": "傳訊息給你的 Telegram 或 Discord bot"
+      },
+      {
+        "icon": "bot",
+        "label": "General Topic",
+        "desc": "解讀自然語言，路由到對的 agent"
+      },
+      {
+        "icon": "cpu",
+        "label": "Agent Fleet",
+        "desc": "獨立 tmux session，各有自己的專案和 backend"
+      },
+      {
+        "icon": "git-merge",
+        "label": "協作",
+        "desc": "Agent 之間透過 MCP tools 委派任務、分享 context"
+      },
+      {
+        "icon": "check-circle",
+        "label": "結果",
+        "desc": "回傳到你的聊天室。權限請求以 inline 按鈕呈現。"
+      }
     ]
   },
   "backends": {
@@ -96,28 +185,76 @@
     "title": "支援的 Backend",
     "subtitle": "任何讀 stdin/stdout 的 CLI 都能接。可透過 CliBackend interface 自行擴充。",
     "items": [
-      { "name": "Claude Code", "by": "Anthropic" },
-      { "name": "Codex", "by": "OpenAI" },
-      { "name": "Antigravity CLI", "by": "Google" },
-      { "name": "Kiro CLI", "by": "AWS" },
-      { "name": "Grok Build", "by": "xAI" },
-      { "name": "OpenCode", "by": "Community" }
+      {
+        "name": "Claude Code",
+        "by": "Anthropic"
+      },
+      {
+        "name": "Codex",
+        "by": "OpenAI"
+      },
+      {
+        "name": "Antigravity CLI",
+        "by": "Google"
+      },
+      {
+        "name": "Kiro CLI",
+        "by": "AWS"
+      },
+      {
+        "name": "Grok Build",
+        "by": "xAI"
+      },
+      {
+        "name": "OpenCode",
+        "by": "Community"
+      }
     ]
   },
   "faq": {
     "sectionLabel": "常見問題",
     "title": "FAQ",
     "items": [
-      { "q": "免費嗎？", "a": "是的，開源專案，MIT 授權。你只需要付 AI API 的使用費用。" },
-      { "q": "支援哪些 backend？", "a": "Claude Code、OpenAI Codex、Antigravity CLI、Kiro CLI、Grok Build、OpenCode。也可以透過 CliBackend interface 自行擴充。" },
-      { "q": "支援哪些通訊管道？", "a": "Telegram 和 Discord，兩者皆支援 topic/channel 模式的 fleet 路由，另有 ClassicBot 模式（在任何頻道打 /start 即可掛上一個 agent）以及 Telegram forum topic 模式（一個專案一個 topic）。" },
-      { "q": "支援 Discord 嗎？", "a": "支援，完整支援 forum topics、slash 指令、ClassicBot（在任何頻道打 /start），以及同頻道多 bot（同一頻道多個 persona bot，owner-wins 路由）。" },
-      { "q": "能在 Windows 上跑嗎？", "a": "可以，透過 WSL。一鍵 PowerShell 安裝腳本會裝好 WSL 2、你選的 AI 後端、AgEnD 及開機自動啟動 —— 詳見 Windows 安裝指南。" },
-      { "q": "需要伺服器嗎？", "a": "不需要，任何有 tmux 的 macOS、Linux 或 Windows（WSL）機器都能跑。可裝成系統服務開機自動啟動。" },
-      { "q": "Agent 怎麼協作？", "a": "透過 MCP tools：send_to_instance、delegate_task、report_result。Agent 互相發現、委派工作、回報結果，全部點對點。" },
-      { "q": "General Topic 是什麼？", "a": "自然語言調度器。把任何任務傳到 General topic，它會判斷哪個 agent 該處理，自動委派。" },
-      { "q": "跑起來要花多少錢？", "a": "AgEnD 本身免費。費用來自 AI API 使用量。用花費守衛設定每個 instance 的每日限額。" },
-      { "q": "可以連接本地的 Claude Code 嗎？", "a": "可以。外部 session 透過 IPC socket 連入，出現在 fleet 成員列表中。詳見文件。" }
+      {
+        "q": "免費嗎？",
+        "a": "是的，開源專案，MIT 授權。你只需要付 AI API 的使用費用。"
+      },
+      {
+        "q": "支援哪些 backend？",
+        "a": "Claude Code、OpenAI Codex、Antigravity CLI、Kiro CLI、Grok Build、OpenCode。也可以透過 CliBackend interface 自行擴充。"
+      },
+      {
+        "q": "支援哪些通訊管道？",
+        "a": "Telegram 和 Discord，兩者皆支援 topic/channel 模式的 fleet 路由，另有 ClassicBot 模式（在任何頻道打 /start 即可掛上一個 agent）以及 Telegram forum topic 模式（一個專案一個 topic）。"
+      },
+      {
+        "q": "支援 Discord 嗎？",
+        "a": "支援，完整支援 forum topics、slash 指令、ClassicBot（在任何頻道打 /start），以及同頻道多 bot（同一頻道多個 persona bot，owner-wins 路由）。"
+      },
+      {
+        "q": "能在 Windows 上跑嗎？",
+        "a": "可以，透過 WSL。一鍵 PowerShell 安裝腳本會裝好 WSL 2、你選的 AI 後端、AgEnD 及開機自動啟動 —— 詳見 Windows 安裝指南。"
+      },
+      {
+        "q": "需要伺服器嗎？",
+        "a": "不需要，任何有 tmux 的 macOS、Linux 或 Windows（WSL）機器都能跑。可裝成系統服務開機自動啟動。"
+      },
+      {
+        "q": "Agent 怎麼協作？",
+        "a": "透過 MCP tools：send_to_instance、delegate_task、report_result。Agent 互相發現、委派工作、回報結果，全部點對點。"
+      },
+      {
+        "q": "General Topic 是什麼？",
+        "a": "自然語言調度器。把任何任務傳到 General topic，它會判斷哪個 agent 該處理，自動委派。"
+      },
+      {
+        "q": "跑起來要花多少錢？",
+        "a": "AgEnD 本身免費。費用來自 AI API 使用量。用花費守衛設定每個 instance 的每日限額。"
+      },
+      {
+        "q": "可以連接本地的 Claude Code 嗎？",
+        "a": "可以。外部 session 透過 IPC socket 連入，出現在 fleet 成員列表中。詳見文件。"
+      }
     ]
   },
   "footer": {
