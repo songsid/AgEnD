@@ -20,7 +20,8 @@ const zhHref = `${base}zh-tw/install-windows/`;
       <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Windows Installation Guide</h1>
       <p class="mt-4 text-lg text-text-secondary leading-relaxed">
         A single PowerShell script installs everything you need to run AgEnD on Windows —
-        WSL 2 + Ubuntu, the Kiro CLI, AgEnD itself, your Discord/Telegram bot, and auto-start on boot.
+        WSL 2 + Ubuntu, your chosen AI backend(s) (Kiro CLI, Claude Code, Antigravity, Codex, Grok),
+        AgEnD itself, your Discord/Telegram bot, and auto-start on boot.
         Once it finishes, you just talk to your AI agents in Discord or Telegram — no app to keep open.
       </p>
     </div>
@@ -54,7 +55,7 @@ const zhHref = `${base}zh-tw/install-windows/`;
       <div class="rounded-xl border border-border bg-surface p-5">
         <div class="font-semibold text-text-primary mb-3">Accounts &amp; bot info</div>
         <ul class="space-y-2 text-sm text-text-secondary">
-          <li>• AWS Builder ID (free — sign up at <a href="https://profile.aws.amazon.com/" class="text-accent hover:underline">profile.aws.amazon.com</a>) for Kiro login</li>
+          <li>• An account for whichever AI backend you choose — e.g. a free <a href="https://profile.aws.amazon.com/" class="text-accent hover:underline">AWS Builder ID</a> for Kiro CLI, or an Anthropic / Google / OpenAI / xAI account for the others</li>
           <li>• A Discord or Telegram account</li>
           <li>• A <b class="text-text-primary">Bot Token</b> (Discord: <a href="https://discord.com/developers/applications" class="text-accent hover:underline">Developer Portal</a>; Telegram: BotFather)</li>
         </ul>
@@ -105,8 +106,16 @@ Unblock-File .\install-agend.ps1</pre>
         </p>
         <ol class="mt-4 space-y-3 text-sm text-text-secondary">
           <li><b class="text-text-primary">[1/5] Install WSL 2 + Ubuntu</b> — pick a Linux version (default: Ubuntu-24.04) and an install drive (choose your SSD). A reboot may be required; just re-run the script afterward and it continues where it left off.</li>
-          <li><b class="text-text-primary">[2/5] Install Kiro CLI</b> — fully automatic, no input needed.</li>
-          <li><b class="text-text-primary">[3/5] Log in to Kiro CLI</b> — the script shows a URL. Open it in any browser, sign in with your AWS Builder ID, and authorize. It continues automatically once you're done.</li>
+          <li><b class="text-text-primary">[2/5] Install AI backend(s)</b> — pick one or more (comma-separated; just press Enter for Kiro CLI only):
+            <ol class="mt-2 ml-4 space-y-1 list-decimal list-inside text-text-secondary/90">
+              <li>Kiro CLI (free — AWS Builder ID / GitHub / Google)</li>
+              <li>Claude Code (Anthropic account, Claude Pro $20/mo+)</li>
+              <li>Antigravity CLI (free — Google account)</li>
+              <li>OpenAI Codex (ChatGPT account or API key)</li>
+              <li>Grok Build (SuperGrok $30/mo+)</li>
+            </ol>
+          </li>
+          <li><b class="text-text-primary">[3/5] Log in to each backend</b> — the script walks you through logging in to every backend you picked. Kiro shows a URL to open in your browser (sign in with AWS Builder ID / GitHub / Google); Claude / Antigravity / Codex / Grok each launch and redirect you to their sign-in on first run. Complete the auth and it continues.</li>
           <li><b class="text-text-primary">[4/5] Install AgEnD</b> — automatic (installs Node.js 22 LTS + tmux via the official installer).</li>
           <li><b class="text-text-primary">[5/5] Connect your bot &amp; start</b> — runs <code class="font-mono text-accent">agend quickstart</code>: choose Discord or Telegram, paste your Bot Token, then send a message in your group so the bot detects the channel. It generates the config, installs the service, and starts everything.</li>
         </ol>
