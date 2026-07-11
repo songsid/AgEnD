@@ -1,5 +1,5 @@
 ﻿# ═══════════════════════════════════════════════════════════
-# AgEnD + Kiro CLI 一鍵安裝腳本 (Windows PowerShell 5)
+# AgEnD 一鍵安裝腳本（多 AI 後端可選）(Windows PowerShell 5)
 # 需以「系統管理員身分」執行
 # v3.0 - 全 root 安裝 + 官方 install.sh + systemd 服務
 # ═══════════════════════════════════════════════════════════
@@ -34,6 +34,32 @@ function Stage-Done($stage) {
 }
 function Mark-Stage($stage) { Add-Content -Path $ProgressFile -Value "STAGE_${stage}_DONE" }
 
+# ── AI 後端定義（可多選安裝）─────────────────────────────
+# Note/Install 用單引號避免 PowerShell 內插（$ 為字面）
+$ALL_BACKENDS = @(
+    [PSCustomObject]@{ Id=1; Key="kiro";        Name="Kiro CLI";        Note='免費，需 AWS Builder ID / GitHub / Google'; Install='curl -fsSL https://cli.kiro.dev/install | bash';                 Bin="kiro-cli"; NeedsNode=$false },
+    [PSCustomObject]@{ Id=2; Key="claude";      Name="Claude Code";     Note='需 Anthropic 帳號，Claude Pro $20/月+';       Install='curl -fsSL https://claude.ai/install.sh | bash';                  Bin="claude";   NeedsNode=$false },
+    [PSCustomObject]@{ Id=3; Key="antigravity"; Name="Antigravity CLI"; Note='免費，需 Google 帳號';                        Install='curl -fsSL https://antigravity.google/cli/install.sh | bash';     Bin="agy";      NeedsNode=$false },
+    [PSCustomObject]@{ Id=4; Key="codex";       Name="OpenAI Codex";    Note='需 ChatGPT 帳號或 API Key';                   Install='npm i -g @openai/codex';                                          Bin="codex";    NeedsNode=$true  },
+    [PSCustomObject]@{ Id=5; Key="grok";        Name="Grok Build";      Note='需 SuperGrok $30/月+';                        Install='curl -fsSL https://x.ai/cli/install.sh | bash';                   Bin="grok";     NeedsNode=$false }
+)
+# 統一 PATH：涵蓋所有後端二進位位置（.local/bin: kiro/codex-global 等；.claude/local: Claude Code）
+# 不加雙引號 —— 路徑無空白，且避免 PowerShell 5.1 傳參給 wsl 時的引號轉義問題
+$BACKEND_PATH = 'export PATH=/root/.local/bin:$HOME/.claude/local:$PATH'
+
+function Save-Backends($csv) { Add-Content -Path $ProgressFile -Value "BACKENDS=$csv" }
+function Get-SavedBackends {
+    if (Test-Path $ProgressFile) {
+        $m = [regex]::Match((Get-Content $ProgressFile -Raw), "BACKENDS=([\d,]+)")
+        if ($m.Success) { return $m.Groups[1].Value }
+    }
+    return "1"  # 向後相容：預設 Kiro CLI
+}
+function Resolve-Backends($csv) {
+    $ids = @($csv -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int]$_ })
+    return @($ALL_BACKENDS | Where-Object { $ids -contains $_.Id })
+}
+
 function Check-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
     $p = New-Object Security.Principal.WindowsPrincipal($id)
@@ -44,7 +70,7 @@ function Check-Admin {
 
 Clear-Host
 Write-Host "=" * 43 -ForegroundColor Magenta
-Write-Host "   AgEnD + Kiro CLI 自動安裝程式 v3.0" -ForegroundColor Magenta
+Write-Host "   AgEnD 自動安裝程式 v3.0（多 AI 後端）" -ForegroundColor Magenta
 Write-Host "=" * 43 -ForegroundColor Magenta
 Write-Host ""
 Write-Info "固定環境版本: $UBUNTU_DISTRO / Node.js $NODE_VERSION LTS"
@@ -362,109 +388,131 @@ ws.Run "wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'sleep infinity'", 0, False
 Write-Ok "開機啟動已設定（Windows 登入後自動啟動 WSL）"
 
 # ═══════════════════════════════════════════════════════════
-# 階段 2: 安裝 Kiro CLI + PATH 設定
+# 階段 2: 安裝 AI 後端（可多選）+ PATH 設定
 # ═══════════════════════════════════════════════════════════
 
-Write-Step 2 $TOTAL "安裝 Kiro CLI"
+Write-Step 2 $TOTAL "安裝 AI 後端"
 
 if (Stage-Done 2) {
-    Write-Ok "Kiro CLI 已安裝，跳過此步驟"
+    $selected = Resolve-Backends (Get-SavedBackends)
+    Write-Ok ("AI 後端已安裝，跳過此步驟（" + (($selected | ForEach-Object { $_.Name }) -join "、") + "）")
 } else {
-    Write-Info "正在 WSL 內安裝 Kiro CLI（以 root 安裝）..."
+    Write-Host ""
+    Write-Info "請選擇要安裝的 AI 後端（可多選，用逗號分隔）："
+    Write-Host ""
+    foreach ($b in $ALL_BACKENDS) {
+        Write-Info ("  {0}. {1,-16}（{2}）" -f $b.Id, $b.Name, $b.Note)
+    }
+    Write-Host ""
+    $sel = Read-Host "  請輸入數字（例：1,2 或直接 Enter 選 1）"
+    if ([string]::IsNullOrWhiteSpace($sel)) { $sel = "1" }  # 向後相容：預設 Kiro CLI
+    $selected = Resolve-Backends $sel
+    if (@($selected).Count -eq 0) {
+        Write-Warn "未選擇有效後端，預設安裝 Kiro CLI"
+        $selected = Resolve-Backends "1"
+    }
+    $selectedCsv = (($selected | ForEach-Object { $_.Id }) -join ',')
+    Write-Ok ("將安裝：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
+    Write-Host ""
 
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    Write-Info "（正在 WSL 內執行安裝，請等待...）"
-    Write-Host ""
 
     Write-Info "  [WSL] 安裝必要套件..."
     wsl -d $UBUNTU_DISTRO -u root -- bash -c 'apt-get install -y unzip curl git 2>/dev/null || true' 2>&1 | Out-Null
 
-    Write-Info "  [WSL] 移除舊版 Kiro CLI（如有）..."
-    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'rm -rf /root/.local/bin/kiro-cli /root/.local/bin/kiro-cli-chat /root/.local/bin/kiro-cli-term 2>/dev/null' 2>&1 | Out-Null
-
-    Write-Info "  [WSL] 下載並安裝 Kiro CLI..."
-    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'curl -fsSL https://cli.kiro.dev/install | bash' 2>&1 | ForEach-Object {
-        $line = $_.ToString().Trim()
-        if ($line -match "\S" -and $line -notmatch "RemoteException") {
-            Write-Info "    $line"
+    $failed = @()
+    foreach ($b in $selected) {
+        Write-Info ("  [WSL] 安裝 {0}..." -f $b.Name)
+        # 需要 Node 的後端（如 Codex）在 Stage 4 之前先用 nvm 引導 Node 22
+        $nodePrep = ""
+        if ($b.NeedsNode) {
+            $nodePrep = 'export NVM_DIR=/root/.nvm; [ -s $NVM_DIR/nvm.sh ] && . $NVM_DIR/nvm.sh; if ! command -v npm >/dev/null 2>&1; then curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash; export NVM_DIR=/root/.nvm; . $NVM_DIR/nvm.sh; nvm install 22 >/dev/null 2>&1; fi; '
         }
+        $cmd = "$BACKEND_PATH; $nodePrep$($b.Install)"
+        wsl -d $UBUNTU_DISTRO -u root -- bash -c $cmd 2>&1 | ForEach-Object {
+            $line = $_.ToString().Trim()
+            if ($line -match "\S" -and $line -notmatch "RemoteException") { Write-Info "    $line" }
+        }
+        $check = wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; if command -v $($b.Bin) >/dev/null 2>&1; then echo OK; else echo FAIL; fi" 2>&1 | Out-String
+        if ($check -match "OK") { Write-Ok ("{0} 安裝完成" -f $b.Name) }
+        else { Write-Warn ("{0} 安裝可能失敗（找不到 {1}）" -f $b.Name, $b.Bin); $failed += $b.Name }
     }
 
     Write-Info "  [WSL] 設定 PATH..."
-    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if ! grep -q "/root/.local/bin" /root/.bashrc 2>/dev/null; then echo "export PATH=\"/root/.local/bin:\$PATH\"" >> /root/.bashrc; fi' 2>&1 | Out-Null
-    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if ! grep -q "/root/.local/bin" /root/.profile 2>/dev/null; then echo "export PATH=\"/root/.local/bin:\$PATH\"" >> /root/.profile; fi' 2>&1 | Out-Null
-
-    Write-Info "  [WSL] 驗證安裝..."
-    $result = wsl -d $UBUNTU_DISTRO -u root -- bash -c 'export PATH="/root/.local/bin:$PATH"; if kiro-cli --version > /dev/null 2>&1; then echo "KIRO_VER=$(kiro-cli --version)"; echo "KIRO_INSTALL_OK"; else echo "KIRO_INSTALL_FAIL"; fi' 2>&1
+    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if ! grep -q ".claude/local" /root/.bashrc 2>/dev/null; then echo "export PATH=\"/root/.local/bin:\$HOME/.claude/local:\$PATH\"" >> /root/.bashrc; fi' 2>&1 | Out-Null
+    wsl -d $UBUNTU_DISTRO -u root -- bash -c 'if ! grep -q ".claude/local" /root/.profile 2>/dev/null; then echo "export PATH=\"/root/.local/bin:\$HOME/.claude/local:\$PATH\"" >> /root/.profile; fi' 2>&1 | Out-Null
 
     Write-Host ""
     $ErrorActionPreference = $prevEAP
 
-    if ($result -match "KIRO_INSTALL_OK") {
-        $ver = if ($result -match "KIRO_VER=(.+)") { $Matches[1] } else { "unknown" }
-        Write-Ok "Kiro CLI v$ver 安裝完成"
-        Write-Ok "PATH 已設定（/root/.bashrc + /root/.profile）"
-        Mark-Stage 2
-    } else {
-        Write-Err "Kiro CLI 安裝失敗"
-        Write-Info "錯誤訊息:"
-        $result | ForEach-Object { Write-Info "  $_" }
-        Write-Host ""
+    if ($failed.Count -gt 0 -and $failed.Count -eq @($selected).Count) {
+        Write-Err "所有選擇的後端都安裝失敗"
         Write-Info "可能原因："
         Write-Info "  - 網路連線問題（公司防火牆可能擋住下載）"
         Write-Info "  - 磁碟空間不足"
         Write-Info "解法：確認網路後重新執行腳本"
         Read-Host "按 Enter 結束"; exit 1
     }
+    if ($failed.Count -gt 0) {
+        Write-Warn ("部分後端安裝失敗：" + ($failed -join "、") + "（其餘已完成，可稍後手動補裝）")
+    }
+    Write-Ok "PATH 已設定（/root/.bashrc + /root/.profile）"
+    Save-Backends $selectedCsv
+    Mark-Stage 2
 }
 
 # ═══════════════════════════════════════════════════════════
-# 階段 3: Kiro CLI 登入（URL 方式）
+# 階段 3: 登入所選 AI 後端（瀏覽器授權）
 # ═══════════════════════════════════════════════════════════
 
-Write-Step 3 $TOTAL "登入 Kiro CLI"
+Write-Step 3 $TOTAL "登入 AI 後端"
 
 if (Stage-Done 3) {
-    Write-Ok "Kiro CLI 已登入，跳過此步驟"
+    Write-Ok "AI 後端已登入，跳過此步驟"
 } else {
-    Write-Host ""
-    Write-Warn "═══════════════════════════════════════════════════════"
-    Write-Warn "  接下來需要登入 Kiro CLI（使用瀏覽器授權）"
-    Write-Warn ""
-    Write-Warn "  操作步驟："
-    Write-Warn "  1. 畫面會顯示一個網址（URL）"
-    Write-Warn "  2. 複製該網址，貼到任何電腦的瀏覽器開啟"
-    Write-Warn "  3. 在瀏覽器中用 AWS Builder ID 登入"
-    Write-Warn "  4. 授權完成後，這裡會自動繼續"
-    Write-Warn ""
-    Write-Warn "  [!!] 如果沒有 AWS Builder ID，請先到以下網址註冊："
-    Write-Warn "  https://profile.aws.amazon.com/"
-    Write-Warn "═══════════════════════════════════════════════════════"
-    Write-Host ""
-    Read-Host "  準備好了嗎？按 Enter 開始登入"
-
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; kiro-cli login'
-    $ErrorActionPreference = $prevEAP
-
-    # 驗證登入
-    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-    $loginCheck = wsl -d $UBUNTU_DISTRO -u root -- bash -lc 'export PATH=/root/.local/bin:$PATH; kiro-cli profile 2>/dev/null; if [ $? -eq 0 ]; then echo LOGIN_OK; else echo LOGIN_FAIL; fi' 2>&1
-    $ErrorActionPreference = $prevEAP
-
-    if ($loginCheck -match "LOGIN_OK") {
-        Write-Ok "Kiro CLI 登入成功！"
-        Mark-Stage 3
-    } else {
-        Write-Warn "無法自動確認登入狀態"
-        Write-Info "如果剛才已在瀏覽器完成授權，通常是成功的"
-        $cont = Read-Host "  是否繼續？(Y/n)"
-        if ($cont -eq "n" -or $cont -eq "N") {
-            Write-Info "請重新執行腳本再試"; exit 0
+    foreach ($b in $selected) {
+        Write-Host ""
+        Write-Warn "═══════════════════════════════════════════════════════"
+        Write-Warn ("  登入 {0}（使用瀏覽器授權）" -f $b.Name)
+        Write-Warn ""
+        switch ($b.Key) {
+            "kiro" {
+                Write-Warn "  1. 畫面會顯示一個網址（URL）"
+                Write-Warn "  2. 複製該網址，貼到任何電腦的瀏覽器開啟"
+                Write-Warn "  3. 用 AWS Builder ID / GitHub / Google 登入授權"
+                Write-Warn "  4. 授權完成後，這裡會自動繼續"
+                Write-Warn ""
+                Write-Warn "  [!!] 沒有 AWS Builder ID？先到 https://profile.aws.amazon.com/ 註冊"
+            }
+            "claude"      { Write-Warn "  首次執行會導向 Anthropic OAuth 登入；完成後在畫面輸入 /quit 離開" }
+            "antigravity" { Write-Warn "  首次執行會導向 Google Sign-In；完成後離開 CLI（依畫面提示，或按 Ctrl+D）" }
+            "codex"       { Write-Warn "  首次執行會導向 ChatGPT 登入（或先設定 OPENAI_API_KEY）；完成後離開 CLI" }
+            "grok"        { Write-Warn "  首次執行會導向瀏覽器登入；完成後離開 CLI" }
         }
-        Mark-Stage 3
+        Write-Warn "═══════════════════════════════════════════════════════"
+        Write-Host ""
+        Read-Host ("  準備好了嗎？按 Enter 開始登入 {0}" -f $b.Name)
+
+        $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        switch ($b.Key) {
+            "kiro"        { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; kiro-cli login" }
+            "claude"      { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; claude" }
+            "antigravity" { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; agy" }
+            "codex"       { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; codex" }
+            "grok"        { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; grok" }
+        }
+        $ErrorActionPreference = $prevEAP
+
+        if ($b.Key -eq "kiro") {
+            $loginCheck = wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; kiro-cli profile 2>/dev/null; if [ `$? -eq 0 ]; then echo LOGIN_OK; else echo LOGIN_FAIL; fi" 2>&1
+            if ($loginCheck -match "LOGIN_OK") { Write-Ok "Kiro CLI 登入成功！" }
+            else { Write-Warn "無法自動確認 Kiro 登入狀態（若已在瀏覽器完成授權通常沒問題）" }
+        } else {
+            Write-Ok ("{0} 登入流程完成" -f $b.Name)
+        }
     }
+    Mark-Stage 3
 }
 
 # ═══════════════════════════════════════════════════════════
@@ -581,7 +629,7 @@ Write-Host "  全部安裝完成！" -ForegroundColor Green
 Write-Host "═══════════════════════════════════════════════════════" -ForegroundColor Green
 Write-Host ""
 Write-Info "  [OK] WSL ($UBUNTU_DISTRO) 已安裝"
-Write-Info "  [OK] Kiro CLI 已安裝並登入"
+Write-Info ("  [OK] AI 後端已安裝並登入：" + (($selected | ForEach-Object { $_.Name }) -join "、"))
 Write-Info "  [OK] AgEnD 已安裝並啟動（systemd 服務）"
 Write-Info "  [OK] 通訊軟體已串接"
 Write-Info "  [OK] 開機自動啟動已設定"
