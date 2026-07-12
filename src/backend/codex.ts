@@ -62,6 +62,8 @@ export class CodexBackend implements CliBackend {
     // Clean up old non-namespaced key if present (one-time migration)
     try { execFileSync(this.binaryPath, ["mcp", "remove", "agend"], { stdio: "ignore" }); } catch { /* may not exist */ }
 
+    this.enableContextStatusLine();
+
     // Write fleet instructions into AGENTS.md (additive via marker block)
     if (config.instructions) {
       try {
@@ -76,6 +78,43 @@ export class CodexBackend implements CliBackend {
         } catch { /* stat failed — skip size check */ }
       } catch { /* best effort */ }
     }
+  }
+
+  /**
+   * Ensure Codex's TUI status line shows context usage so /ctx can scrape it.
+   * Codex's `tui.status_line` defaults to ["spinner", "project"] (no context
+   * item), so we append the "context-remaining" item (renders "Context N% left")
+   * if no context item is already configured. Best-effort string/regex edit of
+   * ~/.codex/config.toml (no toml dependency); never clobbers other settings.
+   */
+  private enableContextStatusLine(): void {
+    const configPath = join(homedir(), ".codex", "config.toml");
+    let content = "";
+    try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
+
+    // Already has a context item (user- or previously-configured) → leave as-is.
+    if (/status_line\s*=\s*\[[^\]]*context-(remaining|used)[^\]]*\]/.test(content)) return;
+
+    const ITEM = "context-remaining";
+    const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
+    if (arr) {
+      // Append the context item to the existing (single-line) array.
+      const inner = arr[1].trim().replace(/,\s*$/, "");
+      const newInner = inner.length ? `${inner}, "${ITEM}"` : `"${ITEM}"`;
+      content = content.replace(arr[0], `status_line = [${newInner}]`);
+    } else {
+      if (content.length && !content.endsWith("\n")) content += "\n";
+      if (/^\[tui\]/m.test(content)) {
+        // [tui] exists but no status_line — insert right after the header line.
+        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["spinner", "project", "${ITEM}"]\n`);
+      } else {
+        content += `\n[tui]\nstatus_line = ["spinner", "project", "${ITEM}"]\n`;
+      }
+    }
+    try {
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, content);
+    } catch { /* best effort — never block launch on statusline config */ }
   }
 
   preTrust(workDir: string): void {
