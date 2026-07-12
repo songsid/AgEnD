@@ -1,8 +1,9 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, warnIfModelMismatch, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { getAgendHome } from "../paths.js";
 
 export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
@@ -56,13 +57,32 @@ export class AntigravityBackend implements CliBackend {
   }
 
   /**
-   * Turn on agy's status line so the TUI footer shows context usage, letting
-   * /ctx scrape a context %. Merges { statusLine: { enabled: true } } into the
-   * user's global ~/.gemini/antigravity-cli/settings.json WITHOUT clobbering any
-   * other fields (e.g. a custom statusLine.command). Best-effort.
+   * Make agy's TUI footer show context usage so /ctx can scrape it. agy has no
+   * native context-% element — its statusLine is a hook that runs a command
+   * script and renders whatever the script prints. So we (1) write a small
+   * script that turns agy's JSON telemetry into "Context N% used", and (2) point
+   * statusLine.command at it (+ enabled: true) in the user's global
+   * ~/.gemini/antigravity-cli/settings.json. A user's OWN statusLine.command is
+   * never overwritten. Best-effort — never blocks launch.
    */
   private enableStatusLine(): void {
     try {
+      // (Re)write our statusline script each launch so it stays current. agy
+      // pipes JSON telemetry on stdin; we emit "Context N% used" (matches
+      // parseContextPercent). Guarded so a missing jq fails silently (empty
+      // footer) rather than spamming errors.
+      const scriptPath = join(getAgendHome(), "agy-statusline.sh");
+      const script = `#!/bin/bash
+# AgEnD-generated agy statusline — prints "Context N% used" for /ctx to scrape.
+command -v jq >/dev/null 2>&1 || exit 0
+jq -r '"Context \\(.context_window.used_percentage // 0 | round)% used"'
+`;
+      try {
+        mkdirSync(getAgendHome(), { recursive: true });
+        writeFileSync(scriptPath, script, { mode: 0o755 });
+        chmodSync(scriptPath, 0o755);  // writeFileSync mode only applies on create
+      } catch { /* best effort — a bad script write shouldn't block settings */ }
+
       const agyDir = join(homedir(), ".gemini", "antigravity-cli");
       const settingsPath = join(agyDir, "settings.json");
       let settings: Record<string, unknown> = {};
@@ -71,8 +91,14 @@ export class AntigravityBackend implements CliBackend {
       const statusLine = (settings.statusLine && typeof settings.statusLine === "object" && !Array.isArray(settings.statusLine))
         ? settings.statusLine as Record<string, unknown>
         : {};
-      if (statusLine.enabled === true) return;  // already on — don't rewrite the user's file
-      statusLine.enabled = true;
+
+      let changed = false;
+      if (statusLine.enabled !== true) { statusLine.enabled = true; changed = true; }
+      // Only install our script if the user hasn't set their own command.
+      const hasUserCommand = typeof statusLine.command === "string" && statusLine.command.trim() !== "";
+      if (!hasUserCommand && statusLine.command !== scriptPath) { statusLine.command = scriptPath; changed = true; }
+
+      if (!changed) return;  // nothing to update — don't rewrite the user's file
       settings.statusLine = statusLine;
       mkdirSync(agyDir, { recursive: true });
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
