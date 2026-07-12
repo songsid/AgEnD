@@ -103,6 +103,14 @@ export class AntigravityBackend implements CliBackend {
 
   getQuitCommand(): string { return "/quit"; }
 
+  // agy has no summarizing /compact — "/clear" is the only manual context reset
+  // (full reset; agy also auto-summarizes at a token threshold).
+  getCompactCommand(): string { return "/clear"; }
+
+  // agy's documented interrupt is Ctrl+C (2-stage: 2nd press exits the CLI).
+  // Escape also stops streams and can't exit the app, so it's the safer cancel.
+  getCancelKey(): string { return "Escape"; }
+
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },
