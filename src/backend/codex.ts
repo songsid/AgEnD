@@ -82,33 +82,38 @@ export class CodexBackend implements CliBackend {
 
   /**
    * Ensure Codex's TUI status line shows context usage so /ctx can scrape it.
-   * Codex's `tui.status_line` defaults to ["spinner", "project"] (no context
-   * item), so we append the "context-remaining" item (renders "Context N% left")
-   * if no context item is already configured. Best-effort string/regex edit of
-   * ~/.codex/config.toml (no toml dependency); never clobbers other settings.
+   * Rules (never overwrites the user's status_line):
+   *   1. status_line already has a context item (context-remaining / -usage /
+   *      -used) → leave the whole config untouched (they already show context).
+   *   2. no context item:
+   *        - no status_line at all → write status_line = ["context-remaining"]
+   *        - status_line exists     → append "context-remaining" to it
+   * If a user's own status_line is long and truncates at 80 cols, that's their
+   * config — /ctx just reports context unavailable. Best-effort string edit of
+   * ~/.codex/config.toml (no toml dependency); other settings untouched.
    */
   private enableContextStatusLine(): void {
     const configPath = join(homedir(), ".codex", "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
-    // Already has a context item (user- or previously-configured) → leave as-is.
-    if (/status_line\s*=\s*\[[^\]]*context-(remaining|used)[^\]]*\]/.test(content)) return;
+    // Rule 1: any existing context item → don't touch anything.
+    if (/status_line\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
 
     const ITEM = "context-remaining";
     const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
     if (arr) {
-      // Append the context item to the existing (single-line) array.
+      // Rule 2b: append our item to the user's existing array (don't overwrite).
       const inner = arr[1].trim().replace(/,\s*$/, "");
       const newInner = inner.length ? `${inner}, "${ITEM}"` : `"${ITEM}"`;
       content = content.replace(arr[0], `status_line = [${newInner}]`);
     } else {
+      // Rule 2a: no status_line at all → add a minimal one.
       if (content.length && !content.endsWith("\n")) content += "\n";
       if (/^\[tui\]/m.test(content)) {
-        // [tui] exists but no status_line — insert right after the header line.
-        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["spinner", "project", "${ITEM}"]\n`);
+        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
       } else {
-        content += `\n[tui]\nstatus_line = ["spinner", "project", "${ITEM}"]\n`;
+        content += `\n[tui]\nstatus_line = ["${ITEM}"]\n`;
       }
     }
     try {
