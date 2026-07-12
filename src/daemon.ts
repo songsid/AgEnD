@@ -106,13 +106,14 @@ export class Daemon extends EventEmitter {
   private lastErrorNotifiedAt = new Map<string, number>(); // per-type cooldown for all actions
   private static ERROR_COOLDOWN_MS = 5 * 60_000;
 
-  /** Cheap hash for pane content dedup — not cryptographic, just identity check */
-  private static cheapPaneHash(pane: string): string {
-    return `${pane.length}:${pane.slice(-200)}`;
-  }
-  // Hash dedup: suppress stale error re-detection after recovery
-  private lastRecoveryPaneHash: string | null = null;
-  private lastRecoveredErrorType: string | null = null;
+  // Count-based dedup: per error type, the number of pattern occurrences already
+  // accounted for. A scan counts occurrences across the WHOLE pane; count > this
+  // baseline means a NEW error appeared. On recovery we absorb the current count
+  // (not reset to 0) so the just-handled error doesn't re-trigger, while a later
+  // new error still pushes the count higher. If occurrences scroll out of the
+  // capture buffer the count drops — we lower the baseline so a re-occurrence
+  // still registers as new (prevents the old hash-dedup's permanent suppression).
+  private lastErrorCount = new Map<string, number>();
   private lastDetectedErrorType: string | null = null;
 
   constructor(
@@ -658,14 +659,13 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
 
-        // Only scan text after the last prompt marker to avoid matching stale errors
-        // that remain in the capture-pane buffer after recovery.
-        let scanText = pane;
-        const rpg = new RegExp(readyPattern.source, readyPattern.flags.includes("g") ? readyPattern.flags : readyPattern.flags + "g");
-        let lastIdx = -1;
-        let m: RegExpExecArray | null;
-        while ((m = rpg.exec(pane)) !== null) lastIdx = m.index;
-        if (lastIdx >= 0) scanText = pane.slice(lastIdx);
+        // Count occurrences of a pattern across the WHOLE pane (not just the text
+        // after the last ready prompt — a fast recovery can put "ready" AFTER the
+        // error line, which the old scanText approach missed).
+        const countMatches = (pattern: RegExp): number => {
+          const g = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
+          return (pane.match(g) || []).length;
+        };
 
         // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
         for (const dialog of dialogs) {
@@ -687,9 +687,12 @@ export class Daemon extends EventEmitter {
         if (this.errorWaitingForRecovery) {
           if (readyPattern.test(pane)) {
             const downtime = Math.round((Date.now() - this.errorDetectedAt) / 1000);
-            // Record pane hash at recovery to suppress stale re-detection
-            this.lastRecoveryPaneHash = Daemon.cheapPaneHash(pane);
-            this.lastRecoveredErrorType = this.lastDetectedErrorType;
+            // Absorb the current count of the just-handled error type so it isn't
+            // re-triggered; a later NEW occurrence pushes the count higher again.
+            if (this.lastDetectedErrorType) {
+              const ep = patterns.find(p => p.type === this.lastDetectedErrorType);
+              if (ep) this.lastErrorCount.set(ep.type, countMatches(ep.pattern));
+            }
             this.errorWaitingForRecovery = false;
             this.errorDetectedAt = 0;
             this.logger.info({ downtime_s: downtime }, "PTY error recovered — agent is ready again");
@@ -698,22 +701,21 @@ export class Daemon extends EventEmitter {
           return; // Don't check for errors while waiting for recovery
         }
 
-        // State: monitoring — check for new errors
-        const currentPaneHash = Daemon.cheapPaneHash(pane);
+        // State: monitoring — count-based new-error detection over the full pane
         for (const ep of patterns) {
-          if (!ep.pattern.test(scanText)) continue;
+          const count = countMatches(ep.pattern);
+          const seen = this.lastErrorCount.get(ep.type) ?? 0;
 
-          // Dedup: suppress if same error on same screen as last recovery
-          if (this.lastRecoveryPaneHash && ep.type === this.lastRecoveredErrorType) {
-            if (currentPaneHash === this.lastRecoveryPaneHash) {
-              break; // same screen, same error → stale
-            }
-            // Screen changed — stop suppressing
-            this.lastRecoveryPaneHash = null;
-            this.lastRecoveredErrorType = null;
+          if (count <= seen) {
+            // Occurrences scrolled out of the capture buffer → lower the baseline
+            // so a future re-occurrence still counts as new (no permanent suppress).
+            if (count < seen) this.lastErrorCount.set(ep.type, count);
+            continue;
           }
 
-          // Cooldown: skip if same error type was recently notified
+          // count > seen → a NEW occurrence of this error appeared.
+          // Cooldown: 2nd-layer guard so the same type isn't re-notified within
+          // the window. Leave the count unconsumed so it fires once cooldown ends.
           const lastNotified = this.lastErrorNotifiedAt.get(ep.type) ?? 0;
           if (Date.now() - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
             this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
@@ -724,6 +726,7 @@ export class Daemon extends EventEmitter {
             break;
           }
 
+          this.lastErrorCount.set(ep.type, count);
           this.errorWaitingForRecovery = true;
           this.errorDetectedAt = Date.now();
           this.lastDetectedErrorType = ep.type;
@@ -732,7 +735,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
           this.emit("pty_error", { name: this.name, ...ep });
 
-          break; // Only handle first match per scan
+          break; // Only handle first new error per scan
         }
       } catch {
         // capturePane can fail if window is transitioning — ignore
