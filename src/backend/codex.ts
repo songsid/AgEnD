@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, warnIfModelMismatch, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
@@ -31,8 +31,11 @@ export class CodexBackend implements CliBackend {
       cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
     }
     if (config.model) {
-      warnIfModelMismatch("codex", config.model);
-      cmd += ` -c model="${validateModel(config.model)}"`;
+      if (isModelCompatible("codex", config.model)) {
+        cmd += ` -c model="${validateModel(config.model)}"`;
+      } else {
+        console.warn(`[agend] model "${config.model}" is not compatible with codex — skipping model override, using the CLI's default`);
+      }
     }
     return cmd;
   }

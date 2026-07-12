@@ -6,6 +6,7 @@ import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
+import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
@@ -555,6 +556,15 @@ export class InstanceLifecycle {
         ...(args.tags ? { tags: args.tags } : {}),
         ...(worktreePath ? { worktree_source: directory } : {}),
       } as InstanceConfig;
+      // defaults.model is inherited by every instance via the spread above, but
+      // a Claude model (etc.) must not be forced onto a backend that can't run
+      // it (e.g. codex/agy → CLI errors on --model claude-*). Drop an INHERITED
+      // (non-explicit) model that's incompatible with the resolved backend; an
+      // explicitly-passed args.model is always respected.
+      if (!args.model && instanceConfig.model && instanceConfig.backend
+          && !isModelCompatible(instanceConfig.backend, instanceConfig.model)) {
+        delete instanceConfig.model;
+      }
       this.ctx.fleetConfig!.instances[newInstanceName] = instanceConfig;
       this.ctx.routing.register(createdTopicId, { kind: "instance", name: newInstanceName });
       this.ctx.saveFleetConfig();
