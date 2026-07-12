@@ -132,6 +132,10 @@ export class ClaudeCodeBackend implements CliBackend {
 
   getQuitCommand(): string { return "/exit"; }
 
+  getCompactCommand(): string { return "/compact"; }
+
+  getCancelKey(): string { return "Escape"; }
+
   cleanup(_config: CliBackendConfig): void {
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
   }

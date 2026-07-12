@@ -115,6 +115,11 @@ export class GeminiCliBackend implements CliBackend {
 
   getQuitCommand(): string { return "/quit"; }
 
+  // Deprecated backend; preserve prior behavior (/compact + Escape).
+  getCompactCommand(): string { return "/compact"; }
+
+  getCancelKey(): string { return "Escape"; }
+
   cleanup(config: CliBackendConfig): void {
     // Only remove namespaced keys — non-namespaced keys may belong to
     // another instance sharing this working directory.

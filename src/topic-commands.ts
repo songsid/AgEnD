@@ -43,12 +43,26 @@ export function parseSaveFilename(text: string): string {
 export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this backend (only kiro-cli and claude-code)";
 
 /**
+ * The in-session compact/context-reset command for a backend NAME (the fleet
+ * process routes /compact via IPC and only has the backend string, not a
+ * CliBackend instance). Keep in sync with each backend's getCompactCommand().
+ * Most CLIs (claude-code, kiro-cli, codex, opencode, gemini-cli) use "/compact".
+ * Antigravity (agy) has NO summarizing compact — its only manual context-reset
+ * is "/clear" (a full reset; it also auto-summarizes at a token threshold).
+ */
+export function compactCommandForBackend(backend: string): string {
+  if (backend === "antigravity") return "/clear";
+  return "/compact";
+}
+
+/**
  * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
  * MOST RECENT prompt wins (a captured scrollback may hold several). Covers the
  * common CLI prompt formats:
  *   kiro-cli classic:  "6% !>"        kiro-cli TUI: "◔ 6%"
  *   bracketed:         "[6%]"         claude/others prompt: "6% ❯" / "6% >"
  *   codex TUI footer:  "Context 94% left" (remaining) or "Context 6% used"
+ *   opencode footer:   "1.2K (6%)"   (token count then parenthesized %)
  * All values returned are context USED (low % = fresh session); codex's
  * "N% left" is remaining, so it's inverted to 100 - N.
  */
@@ -62,7 +76,8 @@ export function parseContextPercent(pane: string): number | null {
     const m = line.match(/(\d+)%.*[!❯>]/)
       || line.match(/◔\s*(\d+)%/)
       || line.match(/\[(\d+)%\]/)
-      || line.match(/Context\s+(\d+)%\s+used/i);   // codex "context-used" variant
+      || line.match(/Context\s+(\d+)%\s+used/i)               // codex "context-used" variant
+      || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);        // opencode "1.2K (6%)"
     if (m) return parseInt(m[1], 10);
   }
   return null;
@@ -248,12 +263,15 @@ export class TopicCommands {
       : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`;
   }
 
-  /** Send /compact to an instance's tmux pane */
+  /** Send the backend-appropriate compact command to an instance's tmux pane */
   async sendCompact(instanceName: string): Promise<string> {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
-      ipc.send({ type: "raw_paste", content: "/compact" });
-      return "🗜️ Compact command sent.";
+      const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+        ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+      const cmd = compactCommandForBackend(backend);
+      ipc.send({ type: "raw_paste", content: cmd });
+      return `🗜️ Compact command sent (\`${cmd}\`).`;
     }
     return "❌ Instance not connected (IPC unavailable)";
   }

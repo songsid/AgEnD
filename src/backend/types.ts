@@ -96,6 +96,20 @@ export interface CliBackend {
   /** Command to gracefully quit the CLI (e.g. "/exit", "/quit"). */
   getQuitCommand(): string;
 
+  /**
+   * In-session command to compact/reset the conversation context. Most CLIs use
+   * "/compact"; some (e.g. Codex) use "/compact" too, OpenCode uses "/compact".
+   * Used by the /compact fleet command.
+   */
+  getCompactCommand(): string;
+
+  /**
+   * The tmux key that interrupts the CLI's current generation WITHOUT quitting —
+   * "Escape" for most, "C-c" (Ctrl+C) for kiro-cli. Used by the cancel button and
+   * /cancel. Values are tmux send-keys names.
+   */
+  getCancelKey(): string;
+
   /** Clean up config files on shutdown. */
   cleanup?(config: CliBackendConfig): void;
 }
