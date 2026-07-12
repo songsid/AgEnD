@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, warnIfModelMismatch, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -51,6 +51,32 @@ export class AntigravityBackend implements CliBackend {
       const agentsPath = join(agentsDir, "agents.md");
       appendWithMarker(agentsPath, config.instanceName, config.instructions);
     }
+
+    this.enableStatusLine();
+  }
+
+  /**
+   * Turn on agy's status line so the TUI footer shows context usage, letting
+   * /ctx scrape a context %. Merges { statusLine: { enabled: true } } into the
+   * user's global ~/.gemini/antigravity-cli/settings.json WITHOUT clobbering any
+   * other fields (e.g. a custom statusLine.command). Best-effort.
+   */
+  private enableStatusLine(): void {
+    try {
+      const agyDir = join(homedir(), ".gemini", "antigravity-cli");
+      const settingsPath = join(agyDir, "settings.json");
+      let settings: Record<string, unknown> = {};
+      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")) ?? {}; } catch { /* new/empty/corrupt → start fresh */ }
+      if (typeof settings !== "object" || settings === null || Array.isArray(settings)) settings = {};
+      const statusLine = (settings.statusLine && typeof settings.statusLine === "object" && !Array.isArray(settings.statusLine))
+        ? settings.statusLine as Record<string, unknown>
+        : {};
+      if (statusLine.enabled === true) return;  // already on — don't rewrite the user's file
+      statusLine.enabled = true;
+      settings.statusLine = statusLine;
+      mkdirSync(agyDir, { recursive: true });
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    } catch { /* best effort — never block launch on statusline config */ }
   }
 
   cleanup(config: CliBackendConfig): void {
