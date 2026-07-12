@@ -45,6 +45,8 @@ export interface LifecycleContext {
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }>;
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void;
   checkModelFailover(name: string, fiveHourPct: number): void;
+  /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
+  clearCancelButton(name: string): void;
   startStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
 }
@@ -201,6 +203,12 @@ export class InstanceLifecycle {
       const emoji = data.type === "rate_limit" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
       this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
+
+      // The CLI interrupted itself on this error, so any pending Cancel button is
+      // now useless — retire it. We only reach here when the error wasn't
+      // cooldown-suppressed (the daemon skips the emit during cooldown), so this
+      // won't fire on repeat errors within the 5-min window. No-op if no button.
+      this.ctx.clearCancelButton(name);
 
       if (data.action === "failover") {
         this.ctx.checkModelFailover(name, 100); // Force failover trigger
