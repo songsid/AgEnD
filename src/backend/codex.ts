@@ -135,6 +135,10 @@ export class CodexBackend implements CliBackend {
 
   getQuitCommand(): string { return "/quit"; }
 
+  getCompactCommand(): string { return "/compact"; }
+
+  getCancelKey(): string { return "Escape"; }
+
   cleanup(config: CliBackendConfig): void {
     for (const name of Object.keys(config.mcpServers)) {
       // Must match the sanitized name used in writeConfig, or removal misses it.
