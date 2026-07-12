@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 
 export class OpenCodeBackend implements CliBackend {
   readonly binaryName = "opencode";
@@ -26,7 +26,11 @@ export class OpenCodeBackend implements CliBackend {
     }
 
     if (config.model) {
-      cmd += ` --model ${validateModel(config.model)}`;
+      if (isModelCompatible("opencode", config.model)) {
+        cmd += ` --model ${validateModel(config.model)}`;
+      } else {
+        console.warn(`[agend] model "${config.model}" is not compatible with opencode — skipping --model, using the CLI's default`);
+      }
     }
 
     return cmd;
