@@ -48,12 +48,21 @@ export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this back
  * common CLI prompt formats:
  *   kiro-cli classic:  "6% !>"        kiro-cli TUI: "◔ 6%"
  *   bracketed:         "[6%]"         claude/others prompt: "6% ❯" / "6% >"
+ *   codex TUI footer:  "Context 94% left" (remaining) or "Context 6% used"
+ * All values returned are context USED (low % = fresh session); codex's
+ * "N% left" is remaining, so it's inverted to 100 - N.
  */
 export function parseContextPercent(pane: string): number | null {
   const lines = pane.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
     const line = lines[i];
-    const m = line.match(/(\d+)%.*[!❯>]/) || line.match(/◔\s*(\d+)%/) || line.match(/\[(\d+)%\]/);
+    // codex "context-remaining" item shows "Context N% left" (REMAINING) → used = 100 - N
+    const left = line.match(/Context\s+(\d+)%\s+left/i);
+    if (left) return 100 - parseInt(left[1], 10);
+    const m = line.match(/(\d+)%.*[!❯>]/)
+      || line.match(/◔\s*(\d+)%/)
+      || line.match(/\[(\d+)%\]/)
+      || line.match(/Context\s+(\d+)%\s+used/i);   // codex "context-used" variant
     if (m) return parseInt(m[1], 10);
   }
   return null;
