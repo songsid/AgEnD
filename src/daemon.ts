@@ -746,8 +746,8 @@ export class Daemon extends EventEmitter {
    * kiro-cli interrupts on Ctrl+C; the others (claude-code, codex, …) on Escape.
    */
   async sendEscape(): Promise<void> {
-    const cancelKey = this.backend?.binaryName === "kiro-cli" ? "C-c" : "Escape";
-    await this.tmux?.sendSpecialKey(cancelKey);
+    const cancelKey = this.backend?.getCancelKey() ?? "Escape";
+    await this.tmux?.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
   }
 
   async stop(): Promise<void> {

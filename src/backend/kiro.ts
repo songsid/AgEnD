@@ -138,6 +138,11 @@ export class KiroBackend implements CliBackend {
 
   getQuitCommand(): string { return "/quit"; }
 
+  getCompactCommand(): string { return "/compact"; }
+
+  // kiro-cli interrupts generation on Ctrl+C (others use Escape).
+  getCancelKey(): string { return "C-c"; }
+
   cleanup(config: CliBackendConfig): void {
     // Only remove namespaced keys — non-namespaced "agend" key may belong to
     // another instance sharing this working directory.
