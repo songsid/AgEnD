@@ -4167,9 +4167,18 @@ When users create specialized instances, suggest these configurations:
         target = beta || latest;
         if (latest && this.semverGt(latest, target)) target = latest;
       }
+      // A beta already at/ahead of its matching stable must NOT be told to
+      // "update" to that stable — e.g. 2.0.11-beta.41 already contains everything
+      // in stable 2.0.11, so semverGt(2.0.11, 2.0.11-beta.41) being true (a stable
+      // outranks a prerelease of the same core) is a false positive here. Suppress
+      // only that same-core stable-vs-my-beta case; a higher stable core (2.0.12)
+      // or a newer beta (2.0.11-beta.50) still notifies via semverGt below.
+      const core = (v: string) => v.replace(/^v/, "").split("-")[0];
+      const betaSupersedesStable =
+        currentVersion.includes("-") && !target.includes("-") && core(target) === core(currentVersion);
       // Only notify when target is genuinely newer (semver), so a beta user on
       // 2.0.8-beta.16 is never told that stable 2.0.7 is "available".
-      if (target && this.semverGt(target, currentVersion)) {
+      if (target && !betaSupersedesStable && this.semverGt(target, currentVersion)) {
         const generalId = this.findGeneralInstance();
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
