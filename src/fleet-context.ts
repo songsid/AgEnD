@@ -4,6 +4,7 @@ import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { Scheduler } from "./scheduler/index.js";
 import type { Logger } from "./logger.js";
 import type { CostGuard } from "./cost-guard.js";
+import type { ClassicChannelManager } from "./classic-channel-manager.js";
 
 export type RouteTarget =
   | { kind: "instance"; name: string }
@@ -36,6 +37,8 @@ export interface FleetContext {
   readonly logger: Logger;
   readonly dataDir: string;
   readonly costGuard: CostGuard | null;
+  /** Classic-bot channels (defined in classicBot.yaml, not fleet.yaml instances). */
+  readonly classicChannels: ClassicChannelManager | null;
 
   getSysInfo(): SysInfo;
   getInstanceStatus(name: string): "running" | "stopped" | "crashed";
