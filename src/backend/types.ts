@@ -35,6 +35,9 @@ export interface ErrorPattern {
   action: ErrorActionType;
   /** Human-readable description for notifications. */
   message: string;
+  /** Skip the 5-min per-type notification cooldown so every occurrence notifies
+   * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
+  skipCooldown?: boolean;
 }
 
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
