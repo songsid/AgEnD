@@ -716,10 +716,12 @@ export class Daemon extends EventEmitter {
           // count > seen → a NEW occurrence of this error appeared.
           // Cooldown: 2nd-layer guard so the same type isn't re-notified within
           // the window. Leave the count unconsumed so it fires once cooldown ends.
-          const lastNotified = this.lastErrorNotifiedAt.get(ep.type) ?? 0;
-          if (Date.now() - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
-            this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
-            break;
+          if (!ep.skipCooldown) {
+            const lastNotified = this.lastErrorNotifiedAt.get(ep.type) ?? 0;
+            if (Date.now() - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
+              this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
+              break;
+            }
           }
           if (ep.action === "failover" && Date.now() - this.lastFailoverAt < Daemon.FAILOVER_COOLDOWN_MS) {
             this.logger.debug({ errorType: ep.type }, "PTY error suppressed (failover cooldown active)");
