@@ -235,16 +235,30 @@ export class TopicCommands {
 
   /** Get context usage text for an instance (shared by TG + DC) */
   async getCtxText(instanceName: string): Promise<string> {
+    // Classic instances live in classicBot.yaml, not fleet.yaml → consult the
+    // classic channel manager for those so we don't mis-report defaults.backend.
+    // getBackendByInstance always returns a string (its own fallback), so only
+    // use it when the instance is ACTUALLY classic — otherwise a fleet instance
+    // that inherits its backend would wrongly pick up the classic default.
+    const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
+      ? this.ctx.classicChannels.getBackendByInstance(instanceName)
+      : undefined;
     const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+      ?? classicBackend
       ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     let context: number | null = null;
-    try {
-      const statusFile = join(this.ctx.dataDir, "instances", instanceName, "statusline.json");
-      if (existsSync(statusFile)) {
-        const d = JSON.parse(readFileSync(statusFile, "utf-8"));
-        context = d.context_window?.used_percentage ?? null;
-      }
-    } catch { /* ignore */ }
+    // Only claude-code writes statusline.json. Reading it for other backends
+    // risks a stale value left over from a previous backend (e.g. after
+    // switching claude-code → kiro-cli), so those go straight to capture-pane.
+    if (backend === "claude-code") {
+      try {
+        const statusFile = join(this.ctx.dataDir, "instances", instanceName, "statusline.json");
+        if (existsSync(statusFile)) {
+          const d = JSON.parse(readFileSync(statusFile, "utf-8"));
+          context = d.context_window?.used_percentage ?? null;
+        }
+      } catch { /* ignore */ }
+    }
     if (context == null) {
       try {
         const { execFileSync } = await import("node:child_process");
