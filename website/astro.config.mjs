@@ -5,6 +5,6 @@ export default defineConfig({
   vite: {
     plugins: [tailwindcss()],
   },
-  site: 'https://suzuke.github.io',
+  site: 'https://songsid.github.io',
   base: '/AgEnD',
 });
