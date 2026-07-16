@@ -106,9 +106,11 @@ export class CodexBackend implements CliBackend {
     const ITEM = "context-remaining";
     const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
     if (arr) {
-      // Rule 2b: append our item to the user's existing array (don't overwrite).
-      const inner = arr[1].trim().replace(/,\s*$/, "");
-      const newInner = inner.length ? `${inner}, "${ITEM}"` : `"${ITEM}"`;
+      // Rule 2b: prepend our item to the user's existing array (don't overwrite).
+      // First position keeps "Context N% left" at the far left of the footer so a
+      // long cwd/other items can't push it past 80 cols and truncate it.
+      const inner = arr[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
+      const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
       content = content.replace(arr[0], `status_line = [${newInner}]`);
     } else {
       // Rule 2a: no status_line at all → add a minimal one.
