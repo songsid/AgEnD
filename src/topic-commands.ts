@@ -327,6 +327,16 @@ export class TopicCommands {
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
 
+  /** Compact label for status/sysinfo tables: prefer display_name, else strip the
+   * `-t<topicId>` suffix (e.g. doupo-server-t1503381916525793300 → doupo-server).
+   * Keeps rows short so a large fleet's table fits Discord's 2000-char limit. The
+   * FULL name is still used for all lookups — only the displayed label changes. */
+  private shortInstanceName(name: string): string {
+    const dn = this.ctx.fleetConfig?.instances[name]?.display_name;
+    if (dn && dn.trim()) return dn.trim();
+    return name.replace(/-t\d+$/, "");
+  }
+
   /** Get fleet status as markdown text (shared by TG + DC) */
   async getStatusText(): Promise<string> {
     if (!this.ctx.fleetConfig) return "No fleet config loaded.";
@@ -353,7 +363,7 @@ export class TopicCommands {
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
 
-      rows.push(`| ${name} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} |`);
+      rows.push(`| ${this.shortInstanceName(name)} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} |`);
     }
 
     if (rows.length === 0) return "No instances configured.";
@@ -410,7 +420,7 @@ export class TopicCommands {
       const icon = inst.status === "running" ? "🟢" : inst.status === "crashed" ? "🔴" : "⚪";
       const ipc = inst.ipc ? "✓" : "✗";
       const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
-      lines.push(`| ${icon} ${inst.name} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
+      lines.push(`| ${icon} ${this.shortInstanceName(inst.name)} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
     }
 
     if (info.fleet_cost_limit_cents > 0) {
