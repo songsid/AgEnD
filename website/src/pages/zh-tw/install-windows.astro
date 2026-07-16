@@ -21,7 +21,7 @@ const homeHref = `${base}zh-tw/`;
       <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Windows 安裝指南</h1>
       <p class="mt-4 text-lg text-text-secondary leading-relaxed">
         一支 PowerShell 腳本，自動幫你在 Windows 上完成 AgEnD 的所有安裝 ——
-        WSL 2 + Ubuntu、你選擇的 AI 後端（Kiro CLI、Claude Code、Antigravity、Codex、Grok）、
+        WSL 2 + Ubuntu、你選擇的 AI 後端（Kiro CLI、Claude Code、Antigravity、Codex）、
         AgEnD 本體、串接 Discord／Telegram Bot，以及開機自動啟動。
         裝好之後，你直接在 Discord 或 Telegram 跟 AI Agent 對話即可，不需要開啟任何程式。
       </p>
@@ -112,10 +112,9 @@ Unblock-File .\install-agend.ps1</pre>
               <li>Claude Code（需 Anthropic 帳號，Claude Pro $20/月+）</li>
               <li>Antigravity CLI（免費，需 Google 帳號）</li>
               <li>OpenAI Codex（需 ChatGPT 帳號或 API Key）</li>
-              <li>Grok Build（需 SuperGrok $30/月+）</li>
             </ol>
           </li>
-          <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex / Grok 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
+          <li><b class="text-text-primary">[3/5] 登入各後端</b> —— 腳本會帶你依序登入所選的每個後端。Kiro 會顯示一個網址，複製到瀏覽器用 AWS Builder ID / GitHub / Google 授權；Claude / Antigravity / Codex 則在首次執行時各自導向對應的登入頁。完成授權後自動繼續。</li>
           <li><b class="text-text-primary">[4/5] 安裝 AgEnD</b> —— 全自動（透過官方安裝腳本裝 Node.js 22 LTS + tmux）。</li>
           <li><b class="text-text-primary">[5/5] 串接 Bot 並啟動</b> —— 執行 <code class="font-mono text-accent">agend quickstart</code>：選擇 Discord 或 Telegram，貼上 Bot Token，然後在群組發一則訊息讓 Bot 偵測頻道。腳本會自動產生設定、安裝服務並啟動。</li>
         </ol>
