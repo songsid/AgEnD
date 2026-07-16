@@ -40,8 +40,7 @@ $ALL_BACKENDS = @(
     [PSCustomObject]@{ Id=1; Key="kiro";        Name="Kiro CLI";        Note='免費，需 AWS Builder ID / GitHub / Google'; Install='curl -fsSL https://cli.kiro.dev/install | bash';                 Bin="kiro-cli"; NeedsNode=$false },
     [PSCustomObject]@{ Id=2; Key="claude";      Name="Claude Code";     Note='需 Anthropic 帳號，Claude Pro $20/月+';       Install='curl -fsSL https://claude.ai/install.sh | bash';                  Bin="claude";   NeedsNode=$false },
     [PSCustomObject]@{ Id=3; Key="antigravity"; Name="Antigravity CLI"; Note='免費，需 Google 帳號';                        Install='curl -fsSL https://antigravity.google/cli/install.sh | bash';     Bin="agy";      NeedsNode=$false },
-    [PSCustomObject]@{ Id=4; Key="codex";       Name="OpenAI Codex";    Note='需 ChatGPT 帳號或 API Key';                   Install='npm i -g @openai/codex';                                          Bin="codex";    NeedsNode=$true  },
-    [PSCustomObject]@{ Id=5; Key="grok";        Name="Grok Build";      Note='需 SuperGrok $30/月+';                        Install='curl -fsSL https://x.ai/cli/install.sh | bash';                   Bin="grok";     NeedsNode=$false }
+    [PSCustomObject]@{ Id=4; Key="codex";       Name="OpenAI Codex";    Note='需 ChatGPT 帳號或 API Key';                   Install='npm i -g @openai/codex';                                          Bin="codex";    NeedsNode=$true  }
 )
 # 統一 PATH：涵蓋所有後端二進位位置（.local/bin: kiro/codex-global 等；.claude/local: Claude Code）
 # 不加雙引號 —— 路徑無空白，且避免 PowerShell 5.1 傳參給 wsl 時的引號轉義問題
@@ -488,7 +487,6 @@ if (Stage-Done 3) {
             "claude"      { Write-Warn "  首次執行會導向 Anthropic OAuth 登入；完成後在畫面輸入 /quit 離開" }
             "antigravity" { Write-Warn "  首次執行會導向 Google Sign-In；完成後離開 CLI（依畫面提示，或按 Ctrl+D）" }
             "codex"       { Write-Warn "  首次執行會導向 ChatGPT 登入（或先設定 OPENAI_API_KEY）；完成後離開 CLI" }
-            "grok"        { Write-Warn "  首次執行會導向瀏覽器登入；完成後離開 CLI" }
         }
         Write-Warn "═══════════════════════════════════════════════════════"
         Write-Host ""
@@ -500,7 +498,6 @@ if (Stage-Done 3) {
             "claude"      { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; claude" }
             "antigravity" { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; agy" }
             "codex"       { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; codex" }
-            "grok"        { wsl -d $UBUNTU_DISTRO -u root -- bash -lc "$BACKEND_PATH; grok" }
         }
         $ErrorActionPreference = $prevEAP
 
