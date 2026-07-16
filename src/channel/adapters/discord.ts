@@ -17,6 +17,7 @@ import {
   type TextChannel,
   type Message,
   type Interaction,
+  type ChatInputCommandInteraction,
 } from "discord.js";
 import type {
   ChannelAdapter,
@@ -290,7 +291,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               userId: interaction.user.id,
               username,
               options,
-              respond: async (reply: string) => { try { await interaction.editReply(reply); } catch { /* expired */ } },
+              respond: async (reply: string) => { try { await this._editReplyLong(interaction, reply); } catch { /* expired */ } },
             });
           }
         }
@@ -380,6 +381,27 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   // ── Text / file sending ────────────────────────────────────────────────
+
+  /**
+   * Edit a deferred slash-command reply, handling text over Discord's 2000-char
+   * message limit. A large fleet's /status or /sysinfo table exceeds it, and a
+   * plain editReply would throw (DiscordAPIError) — leaving the ephemeral reply
+   * stuck on "thinking". Short text stays a plain message (keeps the monospace
+   * table readable); long text goes into embed(s) whose description allows 4096
+   * chars, with followUp embeds for anything beyond that.
+   */
+  private async _editReplyLong(interaction: ChatInputCommandInteraction, reply: string): Promise<void> {
+    const EMBED_MAX = 4096;
+    if (reply.length <= DISCORD_MAX_LENGTH) {
+      await interaction.editReply(reply);
+      return;
+    }
+    const chunks = splitText(reply, EMBED_MAX);
+    await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }] });
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({ ephemeral: true, embeds: [{ description: chunks[i] }] });
+    }
+  }
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const channelId = opts?.threadId ?? chatId;
