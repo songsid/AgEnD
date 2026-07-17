@@ -27,7 +27,7 @@ export interface CliBackendConfig {
 export type ErrorActionType = "notify" | "failover" | "restart" | "pause";
 
 /** Categorizes detected errors for logging and response. */
-export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota";
+export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout";
 
 export interface ErrorPattern {
   pattern: RegExp;
@@ -38,6 +38,11 @@ export interface ErrorPattern {
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;
+  /** Don't enter the "waiting for recovery" state after this error. Use for
+   * self-recovering errors (e.g. a timeout — the CLI is back at its prompt
+   * immediately) whose backend ready-pattern only matches the startup banner,
+   * so waiting would block ALL future error detection forever. */
+  skipRecoveryWait?: boolean;
 }
 
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
