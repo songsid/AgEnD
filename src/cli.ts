@@ -1837,14 +1837,34 @@ function formatTimeSince(isoStr: string): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-/** Backend-specific parsers for extracting context usage from tmux pane output. */
-const contextParsers: Record<string, (output: string) => number | null> = {
-  "kiro-cli": (output) => {
-    // Classic mode: "8% !>" | TUI mode: "◔ 1%" | Bracket: "[8%]" | Prompt: "8% ❯"
-    const m = output.match(/(\d+)%.*[!❯>]/m) || output.match(/◔\s*(\d+)%/) || output.match(/\[(\d+)%\]/);
-    return m ? parseInt(m[1], 10) : null;
-  },
+/**
+ * Universal context-% parser for `agend ls` (all backends). Kept in sync with
+ * parseContextPercent() in topic-commands.ts — same formats, bottom-up so the
+ * most recent prompt wins:
+ *   kiro classic "8% !>" / TUI "◔ 1%" / bracket "[8%]" / prompt "8% ❯"
+ *   codex "Context N% left" (remaining → 100-N) or "Context N% used"
+ *   opencode "1.2K (6%)"
+ * Duplicated (not imported) so this CLI entry point stays free of the daemon's
+ * dependency graph. All returned values are context USED (low % = fresh).
+ */
+const defaultParser = (output: string): number | null => {
+  const lines = output.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i];
+    const left = line.match(/Context\s+(\d+)%\s+left/i);
+    if (left) return 100 - parseInt(left[1], 10);
+    const m = line.match(/(\d+)%.*[!❯>]/)
+      || line.match(/◔\s*(\d+)%/)
+      || line.match(/\[(\d+)%\]/)
+      || line.match(/Context\s+(\d+)%\s+used/i)
+      || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);
+    if (m) return parseInt(m[1], 10);
+  }
+  return null;
 };
+
+/** Optional backend-specific overrides; none needed — defaultParser covers all. */
+const contextParsers: Record<string, (output: string) => number | null> = {};
 
 async function lsAction(opts: { json?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
@@ -1943,17 +1963,16 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         }
       } catch { /* ignore */ }
 
-      // Fallback: parse context from tmux pane using backend-specific parser
+      // Fallback: parse context from the tmux pane. Every backend gets a parser
+      // now (defaultParser), so codex/agy/opencode resolve too — not just kiro.
       if (context == null) {
-        const parser = contextParsers[backend];
-        if (parser) {
-          try {
-            const pane = execFileSync("tmux", tmuxArgs([
-              "capture-pane", "-t", `${sessionName}:${name}`, "-p"
-            ]), { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-            context = parser(pane);
-          } catch { /* tmux capture failed */ }
-        }
+        const parser = contextParsers[backend] ?? defaultParser;
+        try {
+          const pane = execFileSync("tmux", tmuxArgs([
+            "capture-pane", "-t", `${sessionName}:${name}`, "-p"
+          ]), { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
+          context = parser(pane);
+        } catch { /* tmux capture failed */ }
       }
 
       // Memory: sum RSS of pane process tree
