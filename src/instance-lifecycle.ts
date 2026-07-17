@@ -200,7 +200,7 @@ export class InstanceLifecycle {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
-      const emoji = data.type === "rate_limit" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
+      const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
       this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 

@@ -729,9 +729,16 @@ export class Daemon extends EventEmitter {
           }
 
           this.lastErrorCount.set(ep.type, count);
-          this.errorWaitingForRecovery = true;
-          this.errorDetectedAt = Date.now();
-          this.lastDetectedErrorType = ep.type;
+          // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
+          // back at its prompt immediately). Its ready-pattern only matches the
+          // startup banner, so entering "waiting for recovery" would never clear
+          // and would block ALL future error detection. Just absorb the baseline
+          // (done above) and keep monitoring so the next occurrence still fires.
+          if (!ep.skipRecoveryWait) {
+            this.errorWaitingForRecovery = true;
+            this.errorDetectedAt = Date.now();
+            this.lastDetectedErrorType = ep.type;
+          }
           this.lastErrorNotifiedAt.set(ep.type, Date.now());
           if (ep.action === "failover") this.lastFailoverAt = Date.now();
           this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
