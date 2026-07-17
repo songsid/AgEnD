@@ -1953,15 +1953,20 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         : ((inst as unknown as Record<string, unknown>)?.backend as string ?? config.defaults?.backend ?? "claude-code");
       const source = getSource(name, inst as unknown as Record<string, unknown>);
 
-      // Read statusline for context
+      // Read statusline for context. Only claude-code writes statusline.json;
+      // reading it for other backends risks a stale value left over from a
+      // previous backend (e.g. after switching claude-code → kiro-cli), so those
+      // skip straight to the capture-pane parser below.
       let context: number | null = null;
-      const statusFile = join(DATA_DIR, "instances", name, "statusline.json");
-      try {
-        if (existsSync(statusFile)) {
-          const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-          context = data.context_window?.used_percentage ?? null;
-        }
-      } catch { /* ignore */ }
+      if (backend === "claude-code") {
+        const statusFile = join(DATA_DIR, "instances", name, "statusline.json");
+        try {
+          if (existsSync(statusFile)) {
+            const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+            context = data.context_window?.used_percentage ?? null;
+          }
+        } catch { /* ignore */ }
+      }
 
       // Fallback: parse context from the tmux pane. Every backend gets a parser
       // now (defaultParser), so codex/agy/opencode resolve too — not just kiro.
