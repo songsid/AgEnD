@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
-import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetTemplate, InstanceConfig } from "./types.js";
+import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
 function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target } as Record<string, unknown>;
@@ -52,7 +52,7 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
 };
 
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
-  auto_pause_after: 0, // default: disabled (set minutes > 0 to enable)
+  auto_pause_after: 30, // minutes; set 0 to disable
   restart_policy: {
     max_retries: 10,
     backoff: "exponential",
@@ -153,4 +153,16 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     profiles: parsed.profiles,
     health_port: parsed.health_port,
   };
+}
+
+/** Read the user-authored config without applying defaults or normalization. */
+export function loadRawFleetConfig(configPath: string): RawFleetConfig {
+  if (!existsSync(configPath)) return {};
+  const raw = readFileSync(configPath, "utf-8");
+  // Match loadFleetConfig(): preserve platform IDs that exceed MAX_SAFE_INTEGER.
+  const safeRaw = raw.replace(/(?<=:\s+|[-]\s+)(\d{16,})(?=\s*$)/gm, (_, d) => `"${d}"`);
+  const parsed = yaml.load(safeRaw);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+    ? parsed as RawFleetConfig
+    : {};
 }
