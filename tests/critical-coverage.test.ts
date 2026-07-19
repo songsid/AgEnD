@@ -13,6 +13,8 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("❯")).toBe(true);
     expect(pattern.test("something ok")).toBe(true);
     expect(pattern.test("Loading...")).toBe(false);
+    // Live tmux capture (2026-07-20) uses a non-breaking space after the glyph.
+    expect(pattern.test("❯\u00a0")).toBe(true);
   });
 
   it("Codex matches startup, daily prompt, and statusline variants", async () => {
@@ -23,6 +25,7 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("context window · 23% used")).toBe(true);
     expect(pattern.test("OpenAI Codex (v0.117.0)")).toBe(true);
     expect(pattern.test("> Write unit tests")).toBe(true);
+    expect(pattern.test("› Summarize recent commits\n\nContext 36% left")).toBe(true);
     // Must NOT match trust dialog's ›
     expect(pattern.test("› 1. Yes, continue")).toBe(false);
   });
@@ -36,15 +39,18 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("8% ❯")).toBe(true);
     expect(pattern.test("◔ 31%")).toBe(true);
     expect(pattern.test("Generating response...")).toBe(false);
+    expect(pattern.test("33% !>")).toBe(true);
   });
 
-  it("Antigravity matches startup and daily context statusline", async () => {
+  it("Antigravity matches startup, context statusline, and standalone daily prompt", async () => {
     const { AntigravityBackend } = await import("../src/backend/antigravity.js");
     const backend = new AntigravityBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
     expect(pattern.test("? for shortcuts")).toBe(true);
     expect(pattern.test("Gemini 3.5 Flash")).toBe(true);
     expect(pattern.test("◔ 47%")).toBe(true);
+    // Live agy tmux capture (2026-07-20): separator, lone prompt, separator.
+    expect(pattern.test("────────\n>\n────────\nContext 16% used")).toBe(true);
     expect(pattern.test("Thinking...")).toBe(false);
   });
 
@@ -64,6 +70,8 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("Ask anything or type / for commands")).toBe(true);
     expect(pattern.test("ctrl+p commands")).toBe(true);
     expect(pattern.test("Connecting...")).toBe(false);
+    // Live OpenCode tmux capture (2026-07-20).
+    expect(pattern.test("tab agents  ctrl+p commands")).toBe(true);
   });
 });
 
