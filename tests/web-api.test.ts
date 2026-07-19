@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
@@ -56,6 +56,7 @@ function makeCtx(overrides: Partial<WebApiContext> = {}): WebApiContext {
     logger: { info() {}, debug() {}, error() {} },
     getInstanceDir: () => "/tmp",
     getInstanceStatus: () => "stopped" as const,
+    deliverToInstance: async () => {},
     getUiStatus: () => ({}),
     emitSseEvent: () => {},
     startInstance: async () => {},
@@ -144,5 +145,29 @@ describe("web-api zod validation", () => {
       ctx,
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe("web chat delivery", () => {
+  it("routes POST /ui/send through the wake-aware delivery facade", async () => {
+    const deliverToInstance = vi.fn(async () => {});
+    const ctx = makeCtx({
+      fleetConfig: {
+        channel: { group_id: 1 },
+        instances: { target: { working_directory: "/tmp", topic_id: 42 } },
+        teams: {},
+      },
+      instanceIpcClients: new Map([["target", { send: vi.fn() }]]),
+      deliverToInstance,
+    });
+
+    const res = await callAndWait("POST", "/ui/send", { instance: "target", message: "wake up" }, ctx);
+
+    expect(res.status).toBe(200);
+    expect(deliverToInstance).toHaveBeenCalledWith("target", expect.objectContaining({
+      type: "fleet_inbound",
+      content: "wake up",
+      targetSession: "target",
+    }));
   });
 });
