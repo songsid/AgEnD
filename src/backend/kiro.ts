@@ -95,8 +95,9 @@ export class KiroBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    // Kiro 1.x: "All tools are now trusted" / Kiro 2.x: "Trust All Tools active"
-    return /All tools are now trusted|Trust All Tools active|Credits:.*Time:|ask a question or describe a task/m;
+    // Startup: trust/banner text. Daily prompt: "22% !>" / "8% ❯".
+    // TUI statusline: "◔ 22%" context indicator shown while waiting for input.
+    return /All tools are now trusted|Trust All Tools active|Credits:.*Time:|ask a question or describe a task|\d+%\s*[!❯>]|◔\s*\d+%/m;
   }
 
   getErrorPatterns(): ErrorPattern[] {
