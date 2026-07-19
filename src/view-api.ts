@@ -40,7 +40,7 @@ export interface ViewApiContext {
     getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[];
     getBackendByInstance(name: string, fleetDefault?: string): string;
   } | null;
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   getUiStatus(): unknown;
 }
 

@@ -320,7 +320,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceWorldBinding.set(name, adapterId);
   }
 
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed" {
+  getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed" {
+    if (this.lifecycle.isPaused(name)) return "paused";
     const pidPath = join(this.getInstanceDir(name), "daemon.pid");
     if (!existsSync(pidPath)) return "stopped";
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -330,6 +331,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch {
       return "crashed";
     }
+  }
+
+  /** Single delivery facade: wake an auto-paused CLI before sending to daemon IPC. */
+  async deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+    if (this.lifecycle.isPaused(instanceName)) {
+      await this.lifecycle.wake(instanceName, 30_000);
+    }
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
+    ipc.send(payload);
   }
 
   async startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
@@ -1949,9 +1960,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         this.warnIfRateLimited(generalInstance, msg);
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
-        const ipc = this.instanceIpcClients.get(generalInstance);
-        if (ipc) {
-          ipc.send({
+        try {
+          await this.deliverToInstance(generalInstance, {
             type: "fleet_inbound",
             content: text,
             targetSession: generalInstance,
@@ -1976,6 +1986,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
           this.trackInboundMsg(generalInstance, msg);
           void this.sendCancelButton(generalInstance);
+        } catch (err) {
+          this.logger.warn({ err: (err as Error).message, instanceName: generalInstance }, "General wake/delivery failed");
         }
       }
       return;
@@ -2048,28 +2060,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
 
-    const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc) {
-      this.logger.warn({ instanceName }, "No IPC connection to instance");
+    try {
+      await this.deliverToInstance(instanceName, {
+        type: "fleet_inbound",
+        content: text,
+        targetSession: instanceName, // Channel messages → instance's own session
+        meta: {
+          chat_id: msg.chatId,
+          message_id: msg.messageId,
+          user: msg.username,
+          user_id: msg.userId,
+          ts: msg.timestamp.toISOString(),
+          thread_id: msg.threadId ?? "",
+          source: msg.source,
+          ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
+          ...extraMeta,
+        },
+      });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, instanceName }, "Wake/delivery failed");
+      if (msg.chatId && msg.messageId) {
+        const reactAdapter = this.getAdapterForInstance(instanceName) ?? inboundAdapter;
+        reactAdapter.react(this.reactTarget(msg), msg.messageId, "❌").catch(() => {});
+      }
       return;
     }
-
-    ipc.send({
-      type: "fleet_inbound",
-      content: text,
-      targetSession: instanceName, // Channel messages → instance's own session
-      meta: {
-        chat_id: msg.chatId,
-        message_id: msg.messageId,
-        user: msg.username,
-        user_id: msg.userId,
-        ts: msg.timestamp.toISOString(),
-        thread_id: msg.threadId ?? "",
-        source: msg.source,
-        ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
-        ...extraMeta,
-      },
-    });
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName}: ${(text ?? "").slice(0, 100)}`);
     this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), instanceName);
@@ -2235,21 +2250,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const retryCount = schedulerDefaults?.retry_count ?? 3;
     const retryInterval = schedulerDefaults?.retry_interval_ms ?? 30_000;
 
-    const deliver = (): boolean => {
-      const ipc = this.instanceIpcClients.get(target);
-      if (!ipc?.connected) return false;
-
-      ipc.send({
-        type: "fleet_schedule_trigger",
-        payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
-        meta: { chat_id: reply_chat_id, thread_id: reply_thread_id, user: "scheduler" },
-      });
-      // A scheduled trigger also puts the instance to work — show a cancel button.
-      void this.sendCancelButton(target);
-      return true;
+    const deliver = async (): Promise<boolean> => {
+      try {
+        await this.deliverToInstance(target, {
+          type: "fleet_schedule_trigger",
+          payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
+          meta: { chat_id: reply_chat_id, thread_id: reply_thread_id, user: "scheduler" },
+        });
+        // A scheduled trigger also puts the instance to work — show a cancel button.
+        void this.sendCancelButton(target);
+        return true;
+      } catch (err) {
+        this.logger.warn({ err: (err as Error).message, target }, "Scheduled wake/delivery attempt failed");
+        return false;
+      }
     };
 
-    if (deliver()) {
+    if (await deliver()) {
       this.scheduler!.recordRun(id, "delivered");
       if (source !== target) this.notifySourceTopic(schedule);
       return;
@@ -2257,7 +2274,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (let i = 0; i < retryCount; i++) {
       await new Promise((r) => setTimeout(r, retryInterval));
-      if (deliver()) {
+      if (await deliver()) {
         this.scheduler!.recordRun(id, "delivered");
         if (source !== target) this.notifySourceTopic(schedule);
         return;
@@ -3672,12 +3689,6 @@ When users create specialized instances, suggest these configurations:
       ? `[Chat log for context]\n${logContext}\n\n[User message]\n${text}`
       : text;
 
-    const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc) {
-      this.logger.warn({ instanceName }, "Classic channel instance IPC not connected");
-      return;
-    }
-
     const meta: Record<string, string> = {
       chat_id: msg.chatId,
       message_id: msg.messageId,
@@ -3701,12 +3712,17 @@ When users create specialized instances, suggest these configurations:
       }
     }
 
-    ipc.send({
-      type: "fleet_inbound",
-      content: fullText,
-      targetSession: instanceName,
-      meta,
-    });
+    try {
+      await this.deliverToInstance(instanceName, {
+        type: "fleet_inbound",
+        content: fullText,
+        targetSession: instanceName,
+        meta,
+      });
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");
+      return;
+    }
     this.lastInboundUser.set(instanceName, msg.username);
     this.logger.info(`${msg.username} → ${instanceName} (classic): ${text.slice(0, 100)}`);
     this.trackInboundMsg(instanceName, msg);

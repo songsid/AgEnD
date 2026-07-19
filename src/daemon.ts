@@ -33,6 +33,42 @@ const TASK_TOOL = "task";
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = 5_000;
 
+/** Headless idle timer used by the daemon and unit tests. */
+export class AutoPauseController {
+  private idleSince: number | null = null;
+  private pausedAt: number | null = null;
+
+  constructor(private readonly thresholdMs: number) {}
+
+  observe(state: InstanceState, now = Date.now()): boolean {
+    if (this.pausedAt !== null || this.thresholdMs <= 0) return false;
+    if (state !== "idle") {
+      this.idleSince = null;
+      return false;
+    }
+    this.idleSince ??= now;
+    return now - this.idleSince >= this.thresholdMs;
+  }
+
+  markPaused(now = Date.now()): void {
+    this.pausedAt = now;
+  }
+
+  markAwake(): void {
+    this.pausedAt = null;
+    this.idleSince = null;
+  }
+
+  async wakeOnDeliver(wake: () => Promise<void>): Promise<void> {
+    if (this.pausedAt === null) return;
+    await wake();
+    this.markAwake();
+  }
+
+  get isPaused(): boolean { return this.pausedAt !== null; }
+  get lastPausedAt(): number | null { return this.pausedAt; }
+}
+
 /**
  * Headless state machine for pane-based execution state detection.
  *
@@ -140,6 +176,10 @@ export class Daemon extends EventEmitter {
   private instanceStateMachine: PaneStateMachine | null = null;
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private statePollInFlight = false;
+  private autoPauseController: AutoPauseController;
+  private pauseRequested = false;
+  private pauseWakeState: "active" | "pausing" | "paused" | "waking" = "active";
+  private pauseWakeTransition: Promise<void> | null = null;
   // Model failover: override model on next spawn when rate-limited
   private modelOverride: string | undefined;
   // Context rotation v3: ring buffers for daemon-side snapshot
@@ -162,10 +202,13 @@ export class Daemon extends EventEmitter {
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
   private errorDetectedAt = 0;
 
-  /** Whether this instance is in an error state (rate-limited, paused, or crash loop). */
+  /** Whether this instance is in an abnormal error state (auto-pause is normal). */
   get isErrorState(): boolean {
-    return this.errorWaitingForRecovery || this.healthCheckPaused || Daemon.tmuxServerPaused;
+    return this.errorWaitingForRecovery || (this.healthCheckPaused && !this.isPaused) || Daemon.tmuxServerPaused;
   }
+  get isPaused(): boolean { return this.pauseWakeState !== "active"; }
+  get lastPausedAt(): number | null { return this.autoPauseController.lastPausedAt; }
+  private getPauseWakeState(): typeof this.pauseWakeState { return this.pauseWakeState; }
   /** Whether this instance is in a crash loop (3+ consecutive crashes). */
   get isCrashLoop(): boolean {
     return this.crashCount >= 3;
@@ -198,10 +241,15 @@ export class Daemon extends EventEmitter {
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
+    const autoPauseMinutes = typeof config.auto_pause_after === "number" ? config.auto_pause_after : 30;
+    this.autoPauseController = new AutoPauseController(Math.max(0, autoPauseMinutes) * 60_000);
   }
 
   async start(): Promise<void> {
     mkdirSync(this.instanceDir, { recursive: true });
+    // A daemon restart performs a normal CLI start, so any persisted auto-pause
+    // marker from the previous daemon is stale.
+    try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
 
@@ -303,12 +351,17 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
-        this.pushChannelMessage(msg.content as string, meta, targetSession);
+        void this.wake().then(() => {
+          this.pushChannelMessage(msg.content as string, meta, targetSession);
+        }).catch(err => {
+          this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
+        });
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
         if (this.tmux) {
           const rawText = msg.content as string;
           this.pasteLock = this.pasteLock.then(async () => {
+            await this.wake();
             await this.deliverMessage(rawText);
             this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
           }).catch(err => {
@@ -318,7 +371,9 @@ export class Daemon extends EventEmitter {
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
-        this.pushChannelMessage(payload.message as string, meta);
+        void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta)).catch(err => {
+          this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
+        });
       } else if (msg.type === "fleet_tool_status_ack") {
         // Fleet manager sent us the messageId for our tool status message
         this.toolStatusMessageId = msg.messageId as string;
@@ -329,6 +384,8 @@ export class Daemon extends EventEmitter {
           requestId: msg.requestId,
           instanceName: this.name,
           ...snapshot,
+          state: this.isPaused ? "paused" : snapshot.state,
+          pausedAt: this.lastPausedAt,
         });
       }
     });
@@ -497,6 +554,12 @@ export class Daemon extends EventEmitter {
         const cliLabel = this.backend?.binaryName ?? "CLI";
 
         let paneStatus = await this.tmux.getPaneStatus();
+        // Auto-pause intentionally exits the pane process. A health tick that
+        // began just before pause must not classify that exit as a crash.
+        if (this.isPaused || this.pauseWakeState === "waking") {
+          scheduleNext();
+          return;
+        }
         if (paneStatus?.alive) {
           scheduleNext();
           return;
@@ -905,14 +968,15 @@ export class Daemon extends EventEmitter {
     } catch (e) {
       this.logger.debug({ err: e }, "Failed to remove PID file");
     }
+    try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
   }
 
   getHangDetector(): HangDetector | null {
     return this.hangDetector;
   }
 
-  getInstanceState(): InstanceState {
-    return this.instanceState;
+  getInstanceState(): InstanceState | "paused" {
+    return this.isPaused ? "paused" : this.instanceState;
   }
 
   getInstanceStateSnapshot(): InstanceStateSnapshot {
@@ -922,6 +986,121 @@ export class Daemon extends EventEmitter {
       observedAt: Date.now(),
       stateChangedAt: Date.now(),
     };
+  }
+
+  /** Gracefully stop the CLI while keeping its remain-on-exit tmux window. */
+  async pause(): Promise<void> {
+    if (this.pauseWakeState === "paused") return;
+    if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
+      await this.pauseWakeTransition;
+      if (this.getPauseWakeState() !== "active") return;
+    }
+    if (this.instanceState !== "idle" || this.pasteQueueDepth > 0) {
+      this.pauseRequested = false;
+      return;
+    }
+
+    this.pauseWakeState = "pausing";
+    this.healthCheckPaused = true;
+    const transition = (async () => {
+      try {
+        this.saveSessionId();
+        const quitCmd = this.backend?.getQuitCommand();
+        if (quitCmd && this.tmux) {
+          await this.tmux.sendKeys(quitCmd);
+          await new Promise(r => setTimeout(r, 150));
+          await this.tmux.sendSpecialKey("Enter");
+        }
+
+        let exited = false;
+        for (let i = 0; i < 15; i++) {
+          await new Promise(r => setTimeout(r, 200));
+          const status = await this.tmux?.getPaneStatus();
+          if (status && !status.alive) { exited = true; break; }
+        }
+        if (!exited) {
+          await this.killProcessTree("SIGTERM");
+          await new Promise(r => setTimeout(r, 1_000));
+          const status = await this.tmux?.getPaneStatus();
+          if (status?.alive) {
+            await this.killProcessTree("SIGKILL");
+            await new Promise(r => setTimeout(r, 200));
+          }
+        }
+        const finalStatus = await this.tmux?.getPaneStatus();
+        if (!finalStatus || finalStatus.alive) {
+          throw new Error("Auto-pause could not stop the CLI while preserving its tmux window");
+        }
+
+        this.pauseWakeState = "paused";
+        this.autoPauseController.markPaused();
+        writeFileSync(join(this.instanceDir, "paused-state.json"), JSON.stringify({
+          paused_at: this.lastPausedAt,
+        }));
+        this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
+        this.ipcServer?.broadcast({
+          type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
+        });
+        this.emit("auto_paused", { name: this.name, pausedAt: this.lastPausedAt });
+      } catch (err) {
+        this.pauseWakeState = "active";
+        this.healthCheckPaused = false;
+        this.pauseRequested = false;
+        throw err;
+      }
+    })();
+    this.pauseWakeTransition = transition;
+    try { await transition; } finally {
+      if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
+    }
+  }
+
+  /** Respawn the CLI in the preserved window and block until its prompt is ready. */
+  async wake(timeoutMs = 30_000): Promise<void> {
+    if (this.pauseWakeState === "active") return;
+    if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
+    if (this.getPauseWakeState() === "active") return;
+    if (this.pauseWakeState === "waking") {
+      await this.pauseWakeTransition;
+      return;
+    }
+
+    this.pauseWakeState = "waking";
+    this.spawning = true;
+    const transition = this.autoPauseController.wakeOnDeliver(async () => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const ready = await Promise.race([
+          this.trySpawn(true, timeoutMs),
+          new Promise<false>(resolve => { timeout = setTimeout(() => resolve(false), timeoutMs); }),
+        ]);
+        if (!ready) throw new Error(`Wake timed out before CLI became ready (${timeoutMs}ms)`);
+      } finally {
+        if (timeout) clearTimeout(timeout);
+      }
+    });
+    this.pauseWakeTransition = transition;
+    try {
+      await transition;
+      this.pauseWakeState = "active";
+      this.healthCheckPaused = false;
+      this.pauseRequested = false;
+      try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
+      this.transcriptMonitor?.resetOffset();
+      this.logger.info("Instance auto-woke");
+      this.ipcServer?.broadcast({
+        type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
+      });
+      this.emit("auto_woke", { name: this.name });
+    } catch (err) {
+      this.pauseWakeState = "paused";
+      this.healthCheckPaused = true;
+      this.logger.error({ err: (err as Error).message }, "Instance wake failed");
+      throw err;
+    } finally {
+      this.spawning = false;
+      if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
+    }
   }
 
   private startInstanceStateMonitor(): void {
@@ -965,6 +1144,12 @@ export class Daemon extends EventEmitter {
           if (snapshot.state === "stuck") {
             this.hangDetector?.emit("hang");
           }
+        }
+
+        if (snapshot.state !== "idle") this.pauseRequested = false;
+        if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
+          this.pauseRequested = true;
+          this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
         }
       } catch (err) {
         // A pane can disappear between status and capture during restart. Keep
@@ -1628,13 +1813,13 @@ export class Daemon extends EventEmitter {
   }
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */
-  private async killProcessTree(): Promise<void> {
+  private async killProcessTree(signal: NodeJS.Signals = "SIGTERM"): Promise<void> {
     if (!this.tmux) return;
     try {
       const pid = await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux.getWindowId());
       if (pid) {
-        process.kill(-pid, "SIGTERM");
-        this.logger.debug({ pid }, "Killed process group");
+        process.kill(-pid, signal);
+        this.logger.debug({ pid, signal }, "Killed process group");
       }
     } catch { /* process group may not exist or already dead */ }
   }
@@ -1645,7 +1830,7 @@ export class Daemon extends EventEmitter {
    * Handles confirmation dialogs (trust folder, bypass permissions).
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
-  private async trySpawn(): Promise<boolean> {
+  private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
     const backendConfig = this.buildBackendConfig();
 
     // Compare freshly-built instructions against the last value the agent was
@@ -1705,18 +1890,30 @@ export class Daemon extends EventEmitter {
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
-    const windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
+    let windowId: string;
+    if (reuseWindow) {
+      this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
+      await this.tmux!.respawnWindow(cmd, resolvedCwd);
+      windowId = this.tmux!.getWindowId();
+    } else {
+      windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
+    }
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
     // Enable remain-on-exit to capture exit codes on crash
     await this.tmux!.setRemainOnExit().catch(err => {
       this.logger.warn({ err }, "Failed to set remain-on-exit — exit codes will not be captured");
     });
+    if (reuseWindow && !this.config.lightweight) {
+      await this.tmux!.pipeOutput(join(this.instanceDir, "output.log")).catch(err => {
+        this.logger.warn({ err }, "Failed to restore pipe-pane after wake");
+      });
+    }
 
     // Register with control client and wait for output + idle
     await this.controlClient?.registerWindow(windowId);
     if (this.controlClient) {
-      const total = this.config.startup_timeout_ms ?? 25_000;
+      const total = startupTimeoutMs ?? this.config.startup_timeout_ms ?? 25_000;
       const outputTimeout = Math.round(total * 0.6);
       const idleTimeout = total - outputTimeout;
       const hasOutput = await this.controlClient.waitForOutput(windowId, outputTimeout);

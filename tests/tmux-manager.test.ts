@@ -38,6 +38,14 @@ describe("TmuxManager", () => {
     expect(await tm.isWindowAlive()).toBe(false);
   });
 
+  it("respawns a process in the same window", async () => {
+    const tm = new TmuxManager(session, "");
+    const wid = await tm.createWindow("sleep 30", "/tmp", "respawn-test");
+    await tm.respawnWindow("sleep 30", "/tmp");
+    expect(tm.getWindowId()).toBe(wid);
+    expect(await tm.getPaneStatus()).toEqual({ alive: true });
+  });
+
   it("lists windows", async () => {
     const tm = new TmuxManager(session, "");
     await tm.createWindow("sleep 30", "/tmp", "test-win");
