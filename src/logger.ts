@@ -59,7 +59,7 @@ export function createLogger(level: string = "info") {
           options: {
             destination: LOG_FILE,
             colorize: false,
-            translateTime: "SYS:HH:MM:ss",
+            translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
             ignore: "pid,hostname",
           },
           level,
