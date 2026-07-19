@@ -52,7 +52,7 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
 };
 
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
-  auto_pause_after: 30, // minutes; set 0 to disable
+  auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
   restart_policy: {
     max_retries: 10,
     backoff: "exponential",
