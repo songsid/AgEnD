@@ -32,6 +32,37 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("crashed");
   });
 
+  it("reports an auto-paused daemon separately from running", () => {
+    const fm = new FleetManager(tmpDir);
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
+    expect(fm.getInstanceStatus("test")).toBe("paused");
+  });
+
+  it("wakes a paused instance before IPC delivery", async () => {
+    const fm = new FleetManager(tmpDir);
+    const order: string[] = [];
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
+    vi.spyOn(fm.lifecycle, "wake").mockImplementation(async () => { order.push("wake"); });
+    fm.instanceIpcClients.set("test", {
+      connected: true,
+      send: () => { order.push("send"); },
+    } as any);
+
+    await fm.deliverToInstance("test", { type: "fleet_inbound", content: "hello" });
+    expect(order).toEqual(["wake", "send"]);
+  });
+
+  it("reports wake failure without delivering", async () => {
+    const fm = new FleetManager(tmpDir);
+    const send = vi.fn();
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
+    vi.spyOn(fm.lifecycle, "wake").mockRejectedValue(new Error("wake ready timeout"));
+    fm.instanceIpcClients.set("test", { connected: true, send } as any);
+
+    await expect(fm.deliverToInstance("test", { type: "fleet_inbound" })).rejects.toThrow("wake ready timeout");
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("builds routing table from config", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");

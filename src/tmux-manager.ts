@@ -87,6 +87,15 @@ export class TmuxManager {
     return this.windowId;
   }
 
+  /** Restart the process inside the existing window, preserving its window id. */
+  async respawnWindow(command: string, cwd: string): Promise<void> {
+    if (!this.windowId) throw new Error("Cannot respawn tmux window without a window id");
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "respawn-window", "-k", "-t", `${this.sessionName}:${this.windowId}`,
+      "-c", cwd, command,
+    ]));
+  }
+
   async killWindow(): Promise<void> {
     if (!this.windowId) return;
     try {

@@ -174,6 +174,23 @@ export class InstanceLifecycle {
       }, this.ctx.logger, `hangDetector[${name}]`));
     }
 
+    daemon.on("auto_pause_requested", safeHandler(async () => {
+      await this.pause(name);
+    }, this.ctx.logger, `autoPause[${name}]`));
+
+    daemon.on("auto_paused", (data: { pausedAt: number }) => {
+      this.ctx.eventLog?.insert(name, "instance_paused", { reason: "idle", paused_at: data.pausedAt });
+      this.ctx.logger.info({ name, pausedAt: data.pausedAt }, "Instance auto-paused after idle timeout");
+      this.ctx.setTopicIcon(name, "remove");
+    });
+
+    daemon.on("auto_woke", () => {
+      this.ctx.eventLog?.insert(name, "instance_resumed", { reason: "message" });
+      this.ctx.logger.info({ name }, "Instance auto-woke for delivery");
+      this.ctx.setTopicIcon(name, "green");
+      this.ctx.touchActivity(name);
+    });
+
     daemon.on("crash_respawn", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_respawn", {});
       this.ctx.logger.warn({ name }, "Instance crashed and respawned");
@@ -243,6 +260,26 @@ export class InstanceLifecycle {
 
     this.ctx.setTopicIcon(name, "green");
     this.ctx.touchActivity(name);
+  }
+
+  isPaused(name: string): boolean {
+    return this.daemons.get(name)?.isPaused ?? false;
+  }
+
+  getLastPausedAt(name: string): number | null {
+    return this.daemons.get(name)?.lastPausedAt ?? null;
+  }
+
+  async pause(name: string): Promise<void> {
+    const daemon = this.daemons.get(name);
+    if (!daemon) throw new Error(`Cannot pause stopped instance '${name}'`);
+    await daemon.pause();
+  }
+
+  async wake(name: string, timeoutMs = 30_000): Promise<void> {
+    const daemon = this.daemons.get(name);
+    if (!daemon) throw new Error(`Cannot wake stopped instance '${name}'`);
+    await daemon.wake(timeoutMs);
   }
 
   async stop(name: string): Promise<void> {

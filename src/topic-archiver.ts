@@ -9,7 +9,7 @@ export interface ArchiverContext {
   readonly adapter: ChannelAdapter | null;
   readonly logger: Logger;
   readonly dataDir: string;
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   lastActivityMs(name: string): number;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   touchActivity(name: string): void;

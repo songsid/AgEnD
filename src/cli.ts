@@ -1798,12 +1798,13 @@ function getTreeRssKb(pid: number, depth = 0): number {
   return total;
 }
 
-function getInstanceStatusStandalone(name: string): "running" | "stopped" | "crashed" {
+function getInstanceStatusStandalone(name: string): "running" | "paused" | "stopped" | "crashed" {
   const pidPath = join(DATA_DIR, "instances", name, "daemon.pid");
   if (!existsSync(pidPath)) return "stopped";
   const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
   try {
     process.kill(pid, 0);
+    if (existsSync(join(DATA_DIR, "instances", name, "paused-state.json"))) return "paused";
     return "running";
   } catch {
     return "crashed";
@@ -2009,10 +2010,13 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     try {
       const port = (config as any).health_port ?? 19280;
       const resp = await fetch(`http://127.0.0.1:${port}/api/fleet`, { signal: AbortSignal.timeout(2000) });
-      const apiData = await resp.json() as { instances?: Array<{ name: string; idle?: boolean }> };
+      const apiData = await resp.json() as { instances?: Array<{ name: string; status?: "running" | "paused" | "stopped" | "crashed"; idle?: boolean }> };
       for (const inst of apiData.instances ?? []) {
         const row = rows.find(r => r.name === inst.name);
-        if (row) row.idle = inst.idle;
+        if (row) {
+          row.idle = inst.idle;
+          if (inst.status) row.status = inst.status;
+        }
       }
     } catch { /* fleet not running or API unreachable */ }
 
@@ -2023,9 +2027,9 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
 
     // Status icon
     const statusIcon = (s: string, idle?: boolean) =>
-      s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
+      s === "paused" ? "\x1b[33m⏸\x1b[0m" : s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
     const statusLabel = (s: string, idle?: boolean) =>
-      s === "running" ? (idle === false ? "Busy" : "Idle") : s === "crashed" ? "Crashed" : "Stopped";
+      s === "paused" ? "Paused" : s === "running" ? (idle === false ? "Busy" : "Idle") : s === "crashed" ? "Crashed" : "Stopped";
 
     /** Get display width accounting for fullwidth (CJK) characters */
     const displayWidth = (s: string): number => {
@@ -2079,9 +2083,10 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     // System memory footer
     const totalMemMb = rows.reduce((sum, r) => sum + (r.memMb ?? 0), 0);
     const runningCount = rows.filter(r => r.status === "running").length;
+    const pausedCount = rows.filter(r => r.status === "paused").length;
     const totalGB = totalmem() / (1024 ** 3);
     const usedGB = (totalmem() - freemem()) / (1024 ** 3);
-    console.log(`\nInstances: ${runningCount} running | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
+    console.log(`\nInstances: ${runningCount} running, ${pausedCount} paused | Fleet Mem: ${(totalMemMb / 1024).toFixed(1)} GB | System Memory: ${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB`);
 }
 
 program
