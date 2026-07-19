@@ -111,16 +111,46 @@ describe("paused status visibility", () => {
         instances: {
           sleeping: { backend: "codex" },
           active: { backend: "kiro-cli" },
+          ready: { backend: "claude-code" },
+          frozen: { backend: "gemini-cli" },
         },
       },
       dataDir: "/tmp/agend-auto-pause-status-test",
       getInstanceStatus: (name: string) => name === "sleeping" ? "paused" : "running",
+      getInstanceExecutionState: (name: string) => name === "active" ? "working"
+        : name === "ready" ? "idle"
+          : name === "frozen" ? "stuck" : null,
       costGuard: null,
       getAdapterStates: () => new Map(),
     } as any);
 
     const status = await commands.getStatusText();
     expect(status).toContain("Paused instances: 1");
-    expect(status).toContain("| sleeping | codex | - | $0.00 | ⏸ |");
+    expect(status).toContain("| sleeping | codex | - | $0.00 | ⏸ | ⏸ paused |");
+    expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working |");
+    expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle |");
+    expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck |");
+  });
+
+  it("renders execution state and distinguishes paused from stopped in /sysinfo", () => {
+    const commands = new TopicCommands({
+      fleetConfig: { defaults: {}, instances: {} },
+      getSysInfo: () => ({
+        uptime_seconds: 60,
+        memory_mb: { rss: 1, heapUsed: 1, heapTotal: 2 },
+        instances: [
+          { name: "busy", status: "running", state: "working", ipc: true, costCents: 0, rateLimits: null },
+          { name: "sleeping", status: "paused", state: null, ipc: true, costCents: 0, rateLimits: null },
+          { name: "off", status: "stopped", state: null, ipc: false, costCents: 0, rateLimits: null },
+        ],
+        fleet_cost_cents: 0,
+        fleet_cost_limit_cents: 0,
+      }),
+    } as any);
+
+    const sysinfo = commands.getSysInfoText();
+    expect(sysinfo).toContain("| 🔵 busy | working | ✓ |");
+    expect(sysinfo).toContain("| ⏸ sleeping | paused | ✓ |");
+    expect(sysinfo).toContain("| ⚪ off | stopped | ✗ |");
   });
 });

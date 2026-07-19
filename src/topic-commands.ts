@@ -14,6 +14,10 @@ import { detectPlatform } from "./service-installer.js";
 import { getAgendHome } from "./paths.js";
 import { t } from "./locale.js";
 
+type ExecutionFleetContext = FleetContext & {
+  getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
+};
+
 /** Sanitize a directory name into a valid instance name. Keeps Unicode letters (incl. CJK). */
 export function sanitizeInstanceName(name: string): string {
   const sanitized = name.toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -84,7 +88,7 @@ export function parseContextPercent(pane: string): number | null {
 }
 
 export class TopicCommands {
-  constructor(private ctx: FleetContext) {}
+  constructor(private ctx: ExecutionFleetContext) {}
 
   /** Get the adapter that should reply to a given inbound message */
   private getReplyAdapter(msg: InboundMessage): ChannelAdapter | null {
@@ -345,6 +349,9 @@ export class TopicCommands {
     let pausedCount = 0;
     for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
       const status = this.ctx.getInstanceStatus(name);
+      const executionState = status === "paused" ? "paused"
+        : status === "running" ? this.ctx.getInstanceExecutionState?.(name) ?? null
+          : null;
       const costPaused = this.ctx.costGuard?.isLimited(name);
       if (status === "paused") pausedCount++;
 
@@ -365,7 +372,12 @@ export class TopicCommands {
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
 
-      rows.push(`| ${this.shortInstanceName(name)} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} |`);
+      const stateLabel = executionState === "idle" ? "🟢 idle"
+        : executionState === "working" ? "🔵 working"
+          : executionState === "stuck" ? "🔴 stuck"
+            : executionState === "paused" ? "⏸ paused"
+              : "—";
+      rows.push(`| ${this.shortInstanceName(name)} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
     }
 
     if (rows.length === 0) return "No instances configured.";
@@ -373,8 +385,8 @@ export class TopicCommands {
     const lines = [
       "## Fleet Status",
       "",
-      "| Instance | Backend | Ctx | Cost | Status |",
-      "|----------|---------|-----|------|--------|",
+      "| Instance | Backend | Ctx | Cost | Status | State |",
+      "|----------|---------|-----|------|--------|-------|",
       ...rows,
       "",
       `Paused instances: ${pausedCount}`,
@@ -429,15 +441,23 @@ export class TopicCommands {
       "",
       "## Instances",
       "",
-      "| Name | IPC | Cost | Rate |",
-      "|------|-----|------|------|",
+      "| Name | State | IPC | Cost | Rate |",
+      "|------|-------|-----|------|------|",
     ];
 
     for (const inst of info.instances) {
-      const icon = inst.status === "running" ? "🟢" : inst.status === "crashed" ? "🔴" : "⚪";
+      const executionState = (inst as typeof inst & { state?: "idle" | "working" | "stuck" | null }).state;
+      const displayState = inst.status === "paused" ? "paused"
+        : inst.status === "stopped" || inst.status === "crashed" ? inst.status
+          : executionState ?? "running";
+      const icon = displayState === "idle" ? "🟢"
+        : displayState === "working" ? "🔵"
+          : displayState === "stuck" || displayState === "crashed" ? "🔴"
+            : displayState === "paused" ? "⏸"
+              : displayState === "stopped" ? "⚪" : "🟢";
       const ipc = inst.ipc ? "✓" : "✗";
       const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
-      lines.push(`| ${icon} ${this.shortInstanceName(inst.name)} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
+      lines.push(`| ${icon} ${this.shortInstanceName(inst.name)} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
     }
 
     if (info.fleet_cost_limit_cents > 0) {
