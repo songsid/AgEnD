@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Daemon } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import pino from "pino";
+import type { Logger } from "../src/logger.js";
+
+const rootLogger = pino({ level: "silent" }) as Logger;
 
 const makeConfig = (): InstanceConfig => ({
   working_directory: "/tmp/test",
@@ -15,15 +19,29 @@ const makeConfig = (): InstanceConfig => ({
 });
 
 describe("Daemon", () => {
+  it("creates transport-free children from one injected fleet logger", () => {
+    const child = vi.fn(() => pino({ level: "silent" }));
+    const sharedRoot = { child } as unknown as Logger;
+    const before = process.listenerCount("exit");
+
+    for (let i = 0; i < 30; i++) {
+      new Daemon(`shared-${i}`, makeConfig(), `/tmp/shared-${i}`, false, undefined, undefined, sharedRoot);
+    }
+
+    expect(child).toHaveBeenCalledTimes(30);
+    expect(child).toHaveBeenNthCalledWith(1, { instance: "shared-0" }, { level: "info" });
+    expect(process.listenerCount("exit")).toBe(before);
+  });
+
   it("constructs with valid config", () => {
     const backend = new ClaudeCodeBackend("/tmp/ccd-test-instance");
-    const daemon = new Daemon("test", makeConfig(), "/tmp/ccd-test-instance", false, backend);
+    const daemon = new Daemon("test", makeConfig(), "/tmp/ccd-test-instance", false, backend, undefined, rootLogger);
     expect(daemon).toBeDefined();
   });
 
   it("constructs with topic mode flag", () => {
     const backend = new ClaudeCodeBackend("/tmp/ccd-test-instance");
-    const daemon = new Daemon("test", makeConfig(), "/tmp/ccd-test-instance", true, backend);
+    const daemon = new Daemon("test", makeConfig(), "/tmp/ccd-test-instance", true, backend, undefined, rootLogger);
     expect(daemon).toBeDefined();
   });
 });
@@ -36,7 +54,7 @@ describe("Daemon snapshot", () => {
     tmpDir = join(tmpdir(), `ccd-daemon-snap-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
     const backend = new ClaudeCodeBackend(tmpDir);
-    daemon = new Daemon("test-snap", makeConfig(), tmpDir, false, backend);
+    daemon = new Daemon("test-snap", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
   });
 
   afterEach(() => {
@@ -104,7 +122,7 @@ describe("Daemon failover cooldown", () => {
     tmpDir = join(tmpdir(), `ccd-daemon-failover-${Date.now()}`);
     mkdirSync(tmpDir, { recursive: true });
     const backend = new ClaudeCodeBackend(tmpDir);
-    daemon = new Daemon("test-failover", makeConfig(), tmpDir, false, backend);
+    daemon = new Daemon("test-failover", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
   });
 
   afterEach(() => {

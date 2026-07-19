@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
-import { createLogger, type Logger } from "./logger.js";
+import type { Logger } from "./logger.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -199,6 +199,8 @@ export class Daemon extends EventEmitter {
   private pasteQueueDepth = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  /** Prevent in-flight monitor callbacks from re-arming after a pause. */
+  private runtimeMonitorsFrozen = false;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
   private errorDetectedAt = 0;
 
@@ -235,9 +237,11 @@ export class Daemon extends EventEmitter {
     private topicMode = false,
     private backend?: CliBackend,
     private controlClient?: TmuxControlClient,
+    rootLogger?: Logger,
   ) {
     super();
-    this.logger = createLogger(config.log_level);
+    if (!rootLogger) throw new Error("Daemon requires a shared root logger");
+    this.logger = rootLogger.child({ instance: name }, { level: config.log_level });
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
@@ -530,11 +534,15 @@ export class Daemon extends EventEmitter {
   }
 
   private startHealthCheck(): void {
+    if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
     const { max_retries, backoff, reset_after } = this.config.restart_policy;
     if (max_retries <= 0) return; // restart disabled
 
     const scheduleNext = () => {
+      if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
       this.healthCheckTimer = setTimeout(async () => {
+        this.healthCheckTimer = null;
+        if (this.runtimeMonitorsFrozen) return;
         // Instance directory removed externally (e.g. `rm -rf ~/.agend/instances/<name>`).
         // Stop the loop permanently — otherwise every tick triggers a respawn, whose
         // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
@@ -791,6 +799,7 @@ export class Daemon extends EventEmitter {
    * (ready pattern visible), it goes back to monitoring for new errors.
    */
   private startErrorMonitor(): void {
+    if (this.runtimeMonitorsFrozen || this.errorMonitorTimer) return;
     const patterns = this.backend?.getErrorPatterns?.() ?? [];
     const dialogs = this.backend?.getRuntimeDialogs?.() ?? [];
     if (!patterns.length && !dialogs.length) return;
@@ -911,14 +920,10 @@ export class Daemon extends EventEmitter {
 
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
-    if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
-    if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
-    if (this.instanceStateMonitorTimer) { clearInterval(this.instanceStateMonitorTimer); this.instanceStateMonitorTimer = null; }
+    this.freezeRuntimeMonitors();
     if (this.toolStatusDebounce) { clearTimeout(this.toolStatusDebounce); this.toolStatusDebounce = null; }
     this.pendingIpcRequests.clear();
     this.hangDetector?.stop();
-    this.transcriptMonitor?.stop();
-    this.guardian?.stop();
     if (this.adapter) await this.adapter.stop();
 
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
@@ -1002,6 +1007,7 @@ export class Daemon extends EventEmitter {
 
     this.pauseWakeState = "pausing";
     this.healthCheckPaused = true;
+    this.freezeRuntimeMonitors();
     const transition = (async () => {
       try {
         this.saveSessionId();
@@ -1046,6 +1052,7 @@ export class Daemon extends EventEmitter {
         this.pauseWakeState = "active";
         this.healthCheckPaused = false;
         this.pauseRequested = false;
+        this.resumeRuntimeMonitors();
         throw err;
       }
     })();
@@ -1087,6 +1094,7 @@ export class Daemon extends EventEmitter {
       this.pauseRequested = false;
       try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
       this.transcriptMonitor?.resetOffset();
+      this.resumeRuntimeMonitors();
       this.logger.info("Instance auto-woke");
       this.ipcServer?.broadcast({
         type: "instance_state", instanceName: this.name, state: this.instanceState, pausedAt: null,
@@ -1104,7 +1112,7 @@ export class Daemon extends EventEmitter {
   }
 
   private startInstanceStateMonitor(): void {
-    if (!this.tmux || !this.backend || this.instanceStateMonitorTimer) return;
+    if (this.runtimeMonitorsFrozen || !this.tmux || !this.backend || this.instanceStateMonitorTimer) return;
 
     const rawConfig = (this.config as InstanceConfig & {
       hang_detector?: { timeout_minutes?: number; poll_interval_ms?: number };
@@ -1162,6 +1170,29 @@ export class Daemon extends EventEmitter {
 
     void poll();
     this.instanceStateMonitorTimer = setInterval(() => { void poll(); }, pollIntervalMs);
+  }
+
+  /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
+  private freezeRuntimeMonitors(): void {
+    this.runtimeMonitorsFrozen = true;
+    if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
+    if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
+    if (this.instanceStateMonitorTimer) { clearInterval(this.instanceStateMonitorTimer); this.instanceStateMonitorTimer = null; }
+    this.transcriptMonitor?.stop();
+    this.guardian?.stop();
+  }
+
+  /** Restore the same monitor objects after wake without adding event listeners. */
+  private resumeRuntimeMonitors(): void {
+    if (!this.runtimeMonitorsFrozen) return;
+    this.runtimeMonitorsFrozen = false;
+    this.startHealthCheck();
+    if (!this.config.lightweight) {
+      this.transcriptMonitor?.startPolling();
+      this.guardian?.startWatching();
+      this.startErrorMonitor();
+    }
+    this.startInstanceStateMonitor();
   }
 
   getMessageBus(): MessageBus {
