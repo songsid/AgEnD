@@ -115,8 +115,9 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   }
 
   getReadyPattern(): RegExp {
-    // Startup/header: Gemini shortcut text. Daily idle statusline: "◔ 42%".
-    return /\? for shortcuts|Gemini|◔\s*\d+%/m;
+    // Startup/header: Gemini shortcut text. Daily prompts observed in the TUI
+    // are either "◔ 42%" or a standalone ">" line between separators.
+    return /\? for shortcuts|Gemini|◔\s*\d+%|^>\s*$/m;
   }
 
   getContextUsage(): number | null {

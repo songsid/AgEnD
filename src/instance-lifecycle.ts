@@ -39,7 +39,7 @@ export interface LifecycleContext {
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
   removeInstance(name: string): Promise<void>;
   touchActivity(name: string): void;
-  sendHangNotification(name: string): Promise<void>;
+  sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
   notifyInstanceTopic(name: string, text: string): void;
   /** List claimed tasks for an instance (from task board). Returns empty array if unavailable. */
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }>;
@@ -150,7 +150,7 @@ export class InstanceLifecycle {
 
     const hangDetector = daemon.getHangDetector();
     if (hangDetector) {
-      hangDetector.on("hang", safeHandler(async () => {
+      hangDetector.on("hang", safeHandler(async (data?: { unchangedForMs?: number }) => {
         this.ctx.eventLog?.insert(name, "hang_detected", {});
         this.ctx.logger.warn({ name }, "Instance appears hung");
 
@@ -170,7 +170,7 @@ export class InstanceLifecycle {
           }
         }
 
-        await this.ctx.sendHangNotification(name);
+        await this.ctx.sendHangNotification(name, data?.unchangedForMs);
         this.ctx.webhookEmit("hang", name);
       }, this.ctx.logger, `hangDetector[${name}]`));
     }

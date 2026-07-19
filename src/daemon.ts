@@ -131,6 +131,61 @@ export class PaneStateMachine {
   }
 }
 
+/** Tracks whether an inbound arrived after the most recent confirmed idle prompt. */
+export class PendingWorkTracker {
+  private lastInboundAt = 0;
+  private lastIdleAt: number;
+  private sequence = 0;
+  private lastInboundOrder = 0;
+  private lastIdleOrder = 0;
+
+  constructor(now = Date.now()) {
+    this.lastIdleAt = now;
+  }
+
+  recordInbound(now = Date.now()): void {
+    this.lastInboundAt = now;
+    this.lastInboundOrder = ++this.sequence;
+  }
+
+  recordIdle(now = Date.now()): void {
+    // An async pane poll can finish after a newer inbound. Do not let its stale
+    // observation clear work which had not arrived when the pane was captured.
+    if (now < this.lastInboundAt) return;
+    this.lastIdleAt = now;
+    this.lastIdleOrder = ++this.sequence;
+  }
+
+  hasPendingWork(): boolean {
+    return this.lastInboundOrder > this.lastIdleOrder;
+  }
+}
+
+/** Redact likely credentials and control sequences before pane text reaches logs. */
+export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
+  const secretAssignment = /\b(token|secret|password|passwd|api[_-]?key|authorization)\b\s*[:=]\s*\S+/gi;
+  const bearer = /\bBearer\s+\S+/gi;
+  const knownToken = /\b(?:sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16})\b/g;
+  const jwt = /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g;
+  const opaqueSecret = /\b[A-Za-z0-9_+/=-]{32,}\b/g;
+
+  const lines = pane
+    .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+    .split(/\r?\n/);
+  while (lines.length > 0 && /^\s*$/.test(lines[lines.length - 1])) lines.pop();
+
+  return lines
+    .slice(-lineCount)
+    .map(line => line
+      .replace(bearer, "Bearer [REDACTED]")
+      .replace(secretAssignment, "$1=[REDACTED]")
+      .replace(knownToken, "[REDACTED]")
+      .replace(jwt, "[REDACTED]")
+      .replace(opaqueSecret, "[REDACTED]")
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+      .slice(0, 200));
+}
+
 export class Daemon extends EventEmitter {
   private logger: Logger;
   private tmuxSessionName: string;
@@ -174,6 +229,7 @@ export class Daemon extends EventEmitter {
   private hangDetector: HangDetector | null = null;
   private instanceState: InstanceState = "idle";
   private instanceStateMachine: PaneStateMachine | null = null;
+  private pendingWork = new PendingWorkTracker();
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private statePollInFlight = false;
   private autoPauseController: AutoPauseController;
@@ -1125,7 +1181,8 @@ export class Daemon extends EventEmitter {
       ? rawConfig.poll_interval_ms
       : DEFAULT_STATE_POLL_INTERVAL_MS;
 
-    this.instanceStateMachine = new PaneStateMachine(this.backend.getReadyPattern(), stuckTimeoutMs);
+    const readyPattern = this.backend.getReadyPattern();
+    this.instanceStateMachine = new PaneStateMachine(readyPattern, stuckTimeoutMs);
 
     const poll = async () => {
       if (!this.tmux || this.spawning || this.statePollInFlight) return;
@@ -1137,6 +1194,12 @@ export class Daemon extends EventEmitter {
         const previous = this.instanceState;
         const snapshot = this.instanceStateMachine!.observe(pane);
         this.instanceState = snapshot.state;
+
+        // Only a transition back to idle completes pending work. Repeated idle
+        // polls between enqueue and paste must not clear a newly-recorded inbound.
+        if (snapshot.state === "idle" && previous !== "idle") {
+          this.pendingWork.recordIdle(snapshot.observedAt);
+        }
 
         if (snapshot.state !== previous) {
           this.logger.info({
@@ -1150,7 +1213,7 @@ export class Daemon extends EventEmitter {
           // Emit exactly once per transition into stuck. Further notifications
           // require observable progress (working) or a ready prompt (idle) first.
           if (snapshot.state === "stuck") {
-            this.hangDetector?.emit("hang");
+            this.handleStuckTransition(pane, snapshot, readyPattern);
           }
         }
 
@@ -1170,6 +1233,24 @@ export class Daemon extends EventEmitter {
 
     void poll();
     this.instanceStateMonitorTimer = setInterval(() => { void poll(); }, pollIntervalMs);
+  }
+
+  private handleStuckTransition(pane: string, snapshot: InstanceStateSnapshot, readyPattern: RegExp): void {
+    const deterministicReadyPattern = new RegExp(readyPattern.source, readyPattern.flags.replace(/[gy]/g, ""));
+    const diagnostic = {
+      backend: this.backend?.binaryName ?? this.config.backend ?? "unknown",
+      paneTail: sanitizePaneTail(pane),
+      readyPattern: readyPattern.toString(),
+      readyMatched: deterministicReadyPattern.test(pane),
+      unchangedForMs: snapshot.unchangedForMs,
+      pendingWork: this.pendingWork.hasPendingWork(),
+    };
+    if (!diagnostic.pendingWork) {
+      this.logger.debug(diagnostic, "Suppressing stuck notification without pending work");
+      return;
+    }
+    this.logger.warn(diagnostic, "Instance pane stuck with pending work");
+    this.hangDetector?.emit("hang", { unchangedForMs: snapshot.unchangedForMs });
   }
 
   /** Stop every runtime poller/watcher while preserving IPC and daemon state. */
@@ -1275,6 +1356,7 @@ export class Daemon extends EventEmitter {
       this.pendingInstructionsUpdate = undefined;
     }
     this.hangDetector?.recordInbound();
+    this.pendingWork.recordInbound();
     // v3: record user messages for rotation snapshot
     this.recordRecentUserMessage(content, meta);
 

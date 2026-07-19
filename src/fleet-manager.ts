@@ -3204,20 +3204,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return []; }
   }
 
-  async sendHangNotification(instanceName: string): Promise<void> {
+  async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
     const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
     const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const instanceHangConfig = (this.fleetConfig?.instances[instanceName] as (InstanceConfig & {
+      hang_detector?: { timeout_minutes?: number };
+    }) | undefined)?.hang_detector;
+    const configuredMinutes = instanceHangConfig?.timeout_minutes
+      ?? this.fleetConfig?.defaults?.hang_detector?.timeout_minutes
+      ?? 15;
+    const unchangedMinutes = unchangedForMs == null
+      ? configuredMinutes
+      : Math.max(1, Math.floor(unchangedForMs / 60_000));
 
     this.setTopicIcon(instanceName, "red");
 
     await adapter.notifyAlert(String(groupId), {
       type: "hang",
       instanceName,
-      message: `⚠️ ${instanceName} appears hung (no activity for 15+ minutes)`,
+      message: `⚠️ ${instanceName} may be stuck — pane unchanged for ${unchangedMinutes}min, ready prompt not recognized`,
       choices: [
         { id: `hang:restart:${instanceName}`, label: "🔄 Force restart" },
         { id: `hang:wait:${instanceName}`, label: "⏳ Keep waiting" },
