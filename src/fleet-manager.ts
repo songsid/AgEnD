@@ -315,12 +315,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
     const cfg = this.fleetConfig?.instances[name];
-    if (fromInbound && (cfg?.general_topic || cfg?.channel_id)) return;
-    // A classic instance is bound authoritatively at /start. Don't let an inbound
-    // (seen by every same-guild bot) override an existing binding — but if there
-    // is none yet (e.g. after a restart, before v2.1 persistence), allow inbound
-    // to re-establish it so replies don't fall back to the primary bot forever.
-    if (fromInbound && this.classicChannels?.getChannelIdByInstance(name) !== undefined && this.instanceWorldBinding.has(name)) return;
+    if (fromInbound) {
+      // Skip inbound-derived binding for any instance that doesn't have an
+      // explicit channel_id — those default to primary adapter deterministically.
+      // This prevents a non-deterministic race where whichever adapter delivers
+      // first after restart wins the binding.
+      if (cfg?.general_topic || cfg?.channel_id) return;
+      if (cfg && !cfg.channel_id) return; // fleet instance without explicit binding → use primary
+      // Classic instance: don't override an existing binding (authoritative from /start)
+      if (this.classicChannels?.getChannelIdByInstance(name) !== undefined && this.instanceWorldBinding.has(name)) return;
+    }
     this.instanceWorldBinding.set(name, adapterId);
   }
 
