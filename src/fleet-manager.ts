@@ -149,6 +149,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Adapter restart: prevents re-entrant restart attempts
   private adapterRestarting = new Set<string>();
+  // Adapter isolation: track state per adapter for retry + visibility
+  private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
   private collabInstances = new Set<string>();
 
   // Health endpoint
@@ -926,17 +928,89 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
     if (channelConfigs.length === 0) return;
 
-    // Start primary adapter (first channel) — this.adapter for backward compat.
-    await this.startSingleAdapter(fleet, channelConfigs[0]);
+    // Start ALL adapters in parallel — any single failure doesn't block others.
+    const results = await Promise.allSettled(
+      channelConfigs.map((cfg, i) =>
+        i === 0
+          ? this.startSingleAdapter(fleet, cfg)
+          : this.startAdditionalAdapter(cfg)
+      )
+    );
 
-    // Start additional adapters. Every bot registers its own slash commands —
-    // Discord slash commands are per-application, so a same-guild secondary bot's
-    // /start etc. are distinct entries (labelled with the bot name) and the
-    // interaction only reaches the invoked bot. This is how ClassicBot supports
-    // multiple bots in one guild: the user picks which bot from autocomplete.
-    for (let i = 1; i < channelConfigs.length; i++) {
-      await this.startAdditionalAdapter(channelConfigs[i]);
+    // Track state + schedule background retry for failures.
+    for (let i = 0; i < channelConfigs.length; i++) {
+      const adapterId = channelConfigs[i].id ?? channelConfigs[i].type;
+      if (results[i].status === "fulfilled") {
+        this.adapterState.set(adapterId, { status: "connected", retryCount: 0 });
+      } else {
+        const err = (results[i] as PromiseRejectedResult).reason;
+        this.logger.error({ adapterId, err: (err as Error)?.message ?? err }, "Adapter startup failed — scheduling background retry");
+        this.adapterState.set(adapterId, { status: "retrying", retryCount: 0, lastError: (err as Error)?.message ?? String(err) });
+        this.scheduleAdapterRetry(adapterId, channelConfigs[i], i === 0 ? fleet : undefined);
+        // Notify admin via whichever adapter is already up
+        this.notifyAdapterFailure(adapterId, (err as Error)?.message ?? String(err));
+      }
     }
+  }
+
+  /** Exponential backoff retry for a single failed adapter (background, non-blocking). */
+  private scheduleAdapterRetry(adapterId: string, channelConfig: ChannelConfig, fleet?: FleetConfig): void {
+    const MAX_RETRIES = 10;
+    const INITIAL_DELAY_MS = 5_000;
+    const MAX_DELAY_MS = 5 * 60_000;
+
+    const state = this.adapterState.get(adapterId);
+    if (!state || state.retryCount >= MAX_RETRIES) {
+      if (state) {
+        state.status = "failed";
+        this.logger.error({ adapterId, retries: state.retryCount }, "Adapter retry exhausted — giving up");
+        this.notifyAdapterFailure(adapterId, `Retry exhausted after ${state.retryCount} attempts. Check token/network and restart fleet.`);
+      }
+      return;
+    }
+
+    const delay = Math.min(INITIAL_DELAY_MS * Math.pow(2, state.retryCount), MAX_DELAY_MS);
+    this.logger.info({ adapterId, attempt: state.retryCount + 1, delay_ms: delay }, "Scheduling adapter retry");
+
+    state.retryTimer = setTimeout(async () => {
+      state.retryCount++;
+      try {
+        if (fleet) {
+          await this.startSingleAdapter(fleet, channelConfig);
+        } else {
+          await this.startAdditionalAdapter(channelConfig);
+        }
+        state.status = "connected";
+        state.lastError = undefined;
+        this.logger.info({ adapterId, attempts: state.retryCount }, "Adapter reconnected on retry");
+        this.notifyAdapterRecovery(adapterId, state.retryCount);
+      } catch (err) {
+        state.lastError = (err as Error)?.message ?? String(err);
+        this.logger.warn({ adapterId, attempt: state.retryCount, err: state.lastError }, "Adapter retry failed");
+        this.scheduleAdapterRetry(adapterId, channelConfig, fleet);
+      }
+    }, delay);
+  }
+
+  /** Notify admin about adapter failure (uses any available adapter). */
+  private notifyAdapterFailure(adapterId: string, error: string): void {
+    const generalId = this.findGeneralInstance();
+    if (generalId) {
+      this.notifyInstanceTopic(generalId, `⚠️ Adapter "${adapterId}" failed to start: ${error}\nRetrying in background. Other adapters unaffected.`);
+    }
+  }
+
+  /** Notify admin that a retried adapter reconnected. */
+  private notifyAdapterRecovery(adapterId: string, attempts: number): void {
+    const generalId = this.findGeneralInstance();
+    if (generalId) {
+      this.notifyInstanceTopic(generalId, `✅ Adapter "${adapterId}" reconnected (after ${attempts} ${attempts === 1 ? "retry" : "retries"}).`);
+    }
+  }
+
+  /** Get adapter states for /status visibility. */
+  getAdapterStates(): Map<string, { status: string; retryCount: number; lastError?: string }> {
+    return this.adapterState;
   }
 
   /** Start the primary adapter (backward-compatible, sets this.adapter) */
@@ -3731,6 +3805,10 @@ When users create specialized instances, suggest these configurations:
     this.ipcStoppingInstances.add("__fleet_stopping__");
     sdNotify("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+    // Cancel adapter retry timers
+    for (const state of this.adapterState.values()) {
+      if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }
+    }
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
