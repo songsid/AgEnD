@@ -133,6 +133,7 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   startPolling(intervalMs = 2000): void {
+    if (this.pollTimer) return;
     this.pollTimer = setInterval(() => this.pollIncrement(), intervalMs);
   }
 

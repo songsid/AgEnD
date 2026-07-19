@@ -52,7 +52,10 @@ export function createLogger(level: string = "info") {
             translateTime: "SYS:HH:MM:ss",
             ignore: "pid,hostname",
           },
-          level,
+          // The root/child logger level performs per-component filtering. Keep
+          // transports permissive so a debug-level daemon child is not filtered
+          // by an info-level fleet root before it reaches the shared worker.
+          level: "trace",
         },
         {
           target: "pino-pretty",
@@ -62,7 +65,7 @@ export function createLogger(level: string = "info") {
             translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
             ignore: "pid,hostname",
           },
-          level,
+          level: "trace",
         },
       ],
     },
