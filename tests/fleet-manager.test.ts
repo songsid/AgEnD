@@ -295,6 +295,62 @@ instances:
     expect(inst.working_directory).toBe("/tmp/my-proj");
     expect(inst.topic_id).toBe(10);
   });
+
+  it("losslessly patches a changed setting and preserves comments and unknown fields", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `# fleet header
+defaults:
+  model: fallback-model
+instances:
+  my-proj:
+    working_directory: /tmp/my-proj
+    model: old-model # model comment
+    auto_pause_after: 10 # keep this override
+    future_option: enabled
+`);
+
+    fm.loadConfig(configPath);
+    fm.fleetConfig!.instances["my-proj"].model = "new-model";
+    fm.saveFleetConfig();
+
+    const text = readFileSync(configPath, "utf8");
+    expect(text).toContain("# fleet header");
+    expect(text).toContain("# keep this override");
+    expect(text).toContain("# model comment");
+    const saved = yaml.load(text) as any;
+    expect(saved.instances["my-proj"].auto_pause_after).toBe(10);
+    expect(saved.instances["my-proj"].future_option).toBe("enabled");
+    expect(saved.instances["my-proj"].model).toBe("new-model");
+
+    const reloaded = new FleetManager(tmpDir);
+    reloaded.loadConfig(configPath);
+    expect(reloaded.fleetConfig!.instances["my-proj"].auto_pause_after).toBe(10);
+    expect(reloaded.fleetConfig!.instances["my-proj"].model).toBe("new-model");
+  });
+
+  it("keeps a legacy channel in its original shape when patching access", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `channel:
+  type: telegram
+  mode: topic
+  bot_token_env: BOT
+  custom_adapter_option: keep-me
+  access:
+    mode: locked
+    allowed_users: [1]
+instances: {}
+`);
+    fm.loadConfig(configPath);
+    fm.fleetConfig!.channel!.access.allowed_users.push(2);
+    fm.saveFleetConfig();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.channels).toBeUndefined();
+    expect(saved.channel.access.allowed_users).toEqual([1, 2]);
+    expect(saved.channel.custom_adapter_option).toBe("keep-me");
+  });
 });
 
 describe("TopicCommands", () => {

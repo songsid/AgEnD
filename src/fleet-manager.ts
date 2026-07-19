@@ -6,16 +6,16 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import { sdNotify } from "./sd-notify.js";
-import yaml from "js-yaml";
+import { isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-import type { FleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig } from "./types.js";
+import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig } from "./types.js";
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
-import { loadFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
 import { AdapterWorld } from "./adapter-world.js";
 import { CostGuard, formatCents } from "./cost-guard.js";
@@ -99,6 +99,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** @deprecated Use lifecycle.daemons — kept for backward compat */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
+  private rawFleetConfig: RawFleetConfig = {};
+  private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
+  private savedFleetConfigSnapshot: FleetConfig | null = null;
   adapter: ChannelAdapter | null = null;
   readonly worlds = new Map<string, AdapterWorld>();
   readonly adapters: Map<string, ChannelAdapter> = new Map(); // derived view for backward compat
@@ -221,8 +224,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Load fleet.yaml and build routing table */
   loadConfig(configPath: string): FleetConfig {
+    this.configPath = configPath;
+    const source = existsSync(configPath) ? readFileSync(configPath, "utf-8") : "{}\n";
+    this.rawFleetDocument = parseDocument(source, { keepSourceTokens: true });
+    if (this.rawFleetDocument.errors.length > 0) {
+      throw new Error(`Invalid fleet.yaml: ${this.rawFleetDocument.errors[0].message}`);
+    }
+    this.rawFleetConfig = loadRawFleetConfig(configPath);
     this.fleetConfig = loadFleetConfig(configPath);
+    this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     return this.fleetConfig;
+  }
+
+  /** User-authored fleet.yaml, before defaults are merged into instances. */
+  getRawFleetConfig(): RawFleetConfig {
+    return structuredClone(this.rawFleetConfig);
   }
 
   /** Build topic routing table: { topicId -> RouteTarget } */
@@ -2743,53 +2759,89 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, 5 * 60_000);
   }
 
-  /** Save fleet config back to fleet.yaml */
+  /**
+   * Patch only values changed in the effective config into the original YAML
+   * document. Unknown keys, explicit overrides and comments remain untouched.
+   */
   saveFleetConfig(): void {
     if (!this.fleetConfig || !this.configPath) return;
-    const toSave: Record<string, unknown> = {};
-    if (this.fleetConfig.project_roots) toSave.project_roots = this.fleetConfig.project_roots;
-    if (this.fleetConfig.channels && this.fleetConfig.channels.length > 0) {
-      toSave.channels = this.fleetConfig.channels;
-    } else if (this.fleetConfig.channel) {
-      toSave.channel = this.fleetConfig.channel;
+
+    if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+
+    // Re-read immediately before patching so an unrelated concurrent/manual
+    // edit is retained. Invalid concurrent YAML is never overwritten.
+    const source = existsSync(this.configPath) ? readFileSync(this.configPath, "utf-8") : "{}\n";
+    this.rawFleetDocument = parseDocument(source, { keepSourceTokens: true });
+    if (this.rawFleetDocument.errors.length > 0) {
+      throw new Error(`Refusing to overwrite invalid fleet.yaml: ${this.rawFleetDocument.errors[0].message}`);
     }
-    if (this.fleetConfig.health_port) toSave.health_port = this.fleetConfig.health_port;
-    if (Object.keys(this.fleetConfig.defaults).length > 0) toSave.defaults = this.fleetConfig.defaults;
-    if (this.fleetConfig.teams && Object.keys(this.fleetConfig.teams).length > 0) {
-      toSave.teams = this.fleetConfig.teams;
+    this.rawFleetConfig = loadRawFleetConfig(this.configPath);
+
+    this.patchFleetDocument(
+      this.rawFleetDocument,
+      [],
+      this.savedFleetConfigSnapshot,
+      this.fleetConfig,
+    );
+
+    const output = String(this.rawFleetDocument);
+    const tempPath = `${this.configPath}.tmp-${process.pid}`;
+    writeFileSync(tempPath, output, "utf-8");
+    if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
+    renameSync(tempPath, this.configPath);
+
+    this.rawFleetConfig = loadRawFleetConfig(this.configPath);
+    this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
+    this.logger.info({ path: this.configPath }, "Saved fleet config (lossless patch)");
+  }
+
+  private patchFleetDocument(
+    document: ReturnType<typeof parseDocument>,
+    path: Array<string | number>,
+    before: unknown,
+    after: unknown,
+  ): void {
+    if (Object.is(before, after)) return;
+
+    if (Array.isArray(before) && Array.isArray(after)) {
+      const shared = Math.min(before.length, after.length);
+      for (let i = 0; i < shared; i++) {
+        this.patchFleetDocument(document, [...path, i], before[i], after[i]);
+      }
+      // Remove from the end so YAML sequence indexes do not shift underneath us.
+      for (let i = before.length - 1; i >= after.length; i--) document.deleteIn([...path, i]);
+      for (let i = shared; i < after.length; i++) document.setIn([...path, i], after[i]);
+      return;
     }
-    if (this.fleetConfig.templates && Object.keys(this.fleetConfig.templates).length > 0) {
-      toSave.templates = this.fleetConfig.templates;
+
+    const isRecord = (value: unknown): value is Record<string, unknown> =>
+      typeof value === "object" && value !== null && !Array.isArray(value);
+    if (isRecord(before) && isRecord(after)) {
+      const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+      for (const key of keys) {
+        // `channel` is a derived alias when the raw file uses `channels`.
+        if (path.length === 0 && key === "channel" && this.rawFleetConfig.channels) continue;
+        // Conversely, `channels` is a normalized alias for a legacy `channel`.
+        // Keep the user's original shape unless the caller explicitly removed
+        // `channel` (the Settings channels endpoint intentionally migrates it).
+        if (path.length === 0 && key === "channels" && this.rawFleetConfig.channel && !this.rawFleetConfig.channels && after.channel !== undefined) continue;
+        this.patchFleetDocument(document, [...path, key], before[key], after[key]);
+      }
+      return;
     }
-    if (this.fleetConfig.profiles && Object.keys(this.fleetConfig.profiles).length > 0) {
-      toSave.profiles = this.fleetConfig.profiles;
+
+    if (after === undefined) {
+      document.deleteIn(path);
+    } else if (path.length === 0) {
+      document.contents = document.createNode(after);
+    } else {
+      const currentNode = document.getIn(path, true);
+      if (isScalar(currentNode) && (after === null || typeof after !== "object")) {
+        currentNode.value = after;
+      } else {
+        document.setIn(path, after);
+      }
     }
-    toSave.instances = {};
-    for (const [name, inst] of Object.entries(this.fleetConfig.instances)) {
-      const serialized: Record<string, unknown> = {
-        working_directory: inst.working_directory,
-        topic_id: inst.topic_id,
-      };
-      // Preserve all optional user-configured fields so saveFleetConfig() never silently drops them
-      if (inst.general_topic) serialized.general_topic = true;
-      if (inst.display_name) serialized.display_name = inst.display_name;
-      if (inst.channel_id) serialized.channel_id = inst.channel_id;
-      if (inst.description) serialized.description = inst.description;
-      if (inst.tags?.length) serialized.tags = inst.tags;
-      if (inst.model) serialized.model = inst.model;
-      if (inst.model_failover?.length) serialized.model_failover = inst.model_failover;
-      if (inst.worktree_source) serialized.worktree_source = inst.worktree_source;
-      if (inst.backend) serialized.backend = inst.backend;
-      if (inst.systemPrompt) serialized.systemPrompt = inst.systemPrompt;
-      if (inst.skipPermissions) serialized.skipPermissions = inst.skipPermissions;
-      if (inst.lightweight) serialized.lightweight = inst.lightweight;
-      if (inst.cost_guard) serialized.cost_guard = inst.cost_guard;
-      if (inst.workflow !== undefined) serialized.workflow = inst.workflow;
-      if (inst.agent_mode) serialized.agent_mode = inst.agent_mode;
-      (toSave.instances as Record<string, unknown>)[name] = serialized;
-    }
-    writeFileSync(this.configPath, yaml.dump(toSave, { lineWidth: 120 }));
-    this.logger.info({ path: this.configPath }, "Saved fleet config");
   }
 
   async removeInstance(name: string): Promise<void> {

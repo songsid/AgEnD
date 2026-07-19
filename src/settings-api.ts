@@ -25,7 +25,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import type { Logger } from "./logger.js";
-import type { FleetConfig } from "./types.js";
+import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -35,6 +35,7 @@ export interface SettingsApiContext {
   configPath: string | null;
   dataDir: string;
   logger: Logger;
+  getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(): void;
 }
 
@@ -123,6 +124,10 @@ export function handleSettingsRequest(
     json(res, 200, ctx.fleetConfig ?? {});
     return true;
   }
+  if (method === "GET" && path === "/api/settings/fleet/raw") {
+    json(res, 200, ctx.getRawFleetConfig());
+    return true;
+  }
   if (method === "GET" && path === "/api/settings/classic") {
     json(res, 200, readClassic(ctx));
     return true;
@@ -202,7 +207,11 @@ export function handleSettingsRequest(
   const commitInstance = (name: string, exists: boolean, body: unknown): void => {
     if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
-    const mergedInst = { ...base, ...(body as Record<string, unknown>) };
+    const patch = body as Record<string, unknown>;
+    const mergedInst = { ...base, ...patch };
+    // JSON has no `undefined`; null is the PATCH sentinel for removing an
+    // optional override so the instance inherits the fleet default again.
+    if (patch.auto_pause_after === null) delete mergedInst.auto_pause_after;
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
