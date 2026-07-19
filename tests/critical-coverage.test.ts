@@ -36,6 +36,7 @@ describe("Backend ready patterns", () => {
     const pattern = backend.getReadyPattern();
     expect(pattern.test("Trust All Tools active")).toBe(true);
     expect(pattern.test("22% !>")).toBe(true);
+    expect(pattern.test("20% λ !>")).toBe(true);
     expect(pattern.test("8% ❯")).toBe(true);
     expect(pattern.test("◔ 31%")).toBe(true);
     expect(pattern.test("Generating response...")).toBe(false);

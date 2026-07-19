@@ -95,9 +95,10 @@ export class KiroBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    // Startup: trust/banner text. Daily prompt: "22% !>" / "8% ❯".
+    // Startup: trust/banner text. Daily prompt: "22% !>" / "8% ❯";
+    // Kiro may insert mode glyphs between them, e.g. "20% λ !>".
     // TUI statusline: "◔ 22%" context indicator shown while waiting for input.
-    return /All tools are now trusted|Trust All Tools active|Credits:.*Time:|ask a question or describe a task|\d+%\s*[!❯>]|◔\s*\d+%/m;
+    return /All tools are now trusted|Trust All Tools active|Credits:.*Time:|ask a question or describe a task|\d+%.*[!❯>]|◔\s*\d+%/m;
   }
 
   getErrorPatterns(): ErrorPattern[] {
