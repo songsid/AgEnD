@@ -130,6 +130,7 @@ export interface WebApiContext {
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
+  deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void>;
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
@@ -634,7 +635,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
     }
     body += chunk.toString();
   });
-  req.on("end", () => {
+  req.on("end", async () => {
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -656,19 +657,25 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // a separate reply path for that case.
       const groupId = ctx.fleetConfig?.channel?.group_id;
       const topicId = ctx.fleetConfig?.instances[instance]?.topic_id;
-      ipc.send({
-        type: "fleet_inbound",
-        content: message,
-        targetSession: instance,
-        meta: {
-          chat_id: groupId ? String(groupId) : "",
-          message_id: `web-${Date.now()}`,
-          user: "web-user", user_id: "web-user",
-          ts,
-          thread_id: topicId != null ? String(topicId) : "",
-          source: "web",
-        },
-      });
+      try {
+        await ctx.deliverToInstance(instance, {
+          type: "fleet_inbound",
+          content: message,
+          targetSession: instance,
+          meta: {
+            chat_id: groupId ? String(groupId) : "",
+            message_id: `web-${Date.now()}`,
+            user: "web-user", user_id: "web-user",
+            ts,
+            thread_id: topicId != null ? String(topicId) : "",
+            source: "web",
+          },
+        });
+      } catch (err) {
+        ctx.logger.error({ err, instance }, "Web message delivery failed");
+        json(res, 503, { error: "Instance delivery failed" });
+        return;
+      }
       ctx.lastInboundUser.set(instance, "web-user");
       ctx.eventLog?.logActivity("message", "web-user", message.slice(0, 200), instance);
       ctx.emitSseEvent("message", { instance, sender: "web-user", text: message, ts });

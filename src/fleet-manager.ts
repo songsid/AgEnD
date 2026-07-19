@@ -48,6 +48,7 @@ import { handleSettingsRequest } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager } from "./classic-channel-manager.js";
+import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -128,6 +129,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // Topic icon + auto-archive state
   private topicIcons: { green?: string; blue?: string; red?: string } = {};
   private lastActivity = new Map<string, number>();
+  /** Latest pane-derived execution snapshot reported by each daemon. */
+  private instanceStateCache = new Map<string, InstanceStateSnapshot>();
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
   // Active "🛑 Cancel" buttons, tracked per button (keyed by messageId) rather
   // than one-per-instance. A button is retired (deleted, with bounded retry) on
@@ -202,6 +205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({
       name,
       status: this.getInstanceStatus(name),
+      state: this.getInstanceExecutionState(name),
       ipc: this.instanceIpcClients.has(name),
       costCents: this.costGuard?.getDailyCostCents(name) ?? 0,
       rateLimits: this.statuslineWatcher.getRateLimits(name) ?? null,
@@ -333,6 +337,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  getInstanceExecutionState(name: string): InstanceState | null {
+    if (this.lifecycle.isPaused(name)) return null;
+    return this.instanceStateCache.get(name)?.state ?? null;
+  }
+
+  private cacheInstanceExecutionState(name: string, msg: Record<string, unknown>): void {
+    const state = msg.state;
+    if (state !== "idle" && state !== "working" && state !== "stuck") return;
+
+    const previous = this.instanceStateCache.get(name);
+    const now = Date.now();
+    const numberOr = (value: unknown, fallback: number): number =>
+      typeof value === "number" && Number.isFinite(value) ? value : fallback;
+    this.instanceStateCache.set(name, {
+      state,
+      unchangedForMs: numberOr(msg.unchangedForMs, previous?.unchangedForMs ?? 0),
+      observedAt: numberOr(msg.observedAt, now),
+      stateChangedAt: numberOr(
+        msg.stateChangedAt,
+        previous?.state === state ? previous.stateChangedAt : now,
+      ),
+    });
+  }
+
   /** Single delivery facade: wake an auto-paused CLI before sending to daemon IPC. */
   async deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void> {
     if (this.lifecycle.isPaused(instanceName)) {
@@ -413,6 +441,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async stopInstance(name: string): Promise<void> {
     this.failoverActive.delete(name);
+    this.instanceStateCache.delete(name);
     return this.lifecycle.stop(name);
   }
 
@@ -1566,11 +1595,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.handleSetDisplayName(name, msg);
         } else if (msg.type === "fleet_set_description") {
           this.handleSetDescription(name, msg);
+        } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
+          this.cacheInstanceExecutionState(name, msg);
         }
       }, this.logger, `ipc.message[${name}]`));
       // Ask daemon for any sessions that registered before we connected
       // (fixes race condition where mcp_ready was broadcast before fleet manager connected)
       ipc.send({ type: "query_sessions" });
+      // The initial state transition may have happened before FleetManager
+      // connected, so seed the cache instead of waiting for another transition.
+      ipc.send({ type: "query_instance_state", requestId: `fleet-state-${Date.now()}` });
       this.logger.debug({ name }, "Connected to instance IPC");
       if (!this.statuslineWatcher.has(name)) {
         this.statuslineWatcher.watch(name);

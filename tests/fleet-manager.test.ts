@@ -38,6 +38,29 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("paused");
   });
 
+  it("caches daemon execution-state snapshots for status surfaces", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: {}, instances: { test: { working_directory: "/tmp" } } };
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(false);
+
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "working",
+      unchangedForMs: 250,
+      observedAt: 1_000,
+      stateChangedAt: 750,
+    });
+
+    expect(fm.getInstanceExecutionState("test")).toBe("working");
+    expect((fm.getSysInfo().instances.find(i => i.name === "test") as any)?.state).toBe("working");
+  });
+
+  it("does not expose a stale execution state while paused", () => {
+    const fm = new FleetManager(tmpDir);
+    (fm as any).cacheInstanceExecutionState("test", { state: "idle" });
+    vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
+    expect(fm.getInstanceExecutionState("test")).toBeNull();
+  });
+
   it("wakes a paused instance before IPC delivery", async () => {
     const fm = new FleetManager(tmpDir);
     const order: string[] = [];
