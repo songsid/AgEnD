@@ -140,7 +140,9 @@ export class CodexBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    return /% left|OpenAI Codex/m;
+    // Startup/header: "OpenAI Codex". Daily prompt: a line beginning with ">".
+    // Statusline variants report either "% left" or "% used" while idle.
+    return /% left|% used|OpenAI Codex|^>/m;
   }
 
   getErrorPatterns(): ErrorPattern[] {

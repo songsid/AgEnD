@@ -15,14 +15,37 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("Loading...")).toBe(false);
   });
 
-  it("Codex matches ready screen with % left", async () => {
+  it("Codex matches startup, daily prompt, and statusline variants", async () => {
     const { CodexBackend } = await import("../src/backend/codex.js");
     const backend = new CodexBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
     expect(pattern.test("gpt-5.4 default · 100% left · ~/Documents")).toBe(true);
+    expect(pattern.test("context window · 23% used")).toBe(true);
     expect(pattern.test("OpenAI Codex (v0.117.0)")).toBe(true);
+    expect(pattern.test("> Write unit tests")).toBe(true);
     // Must NOT match trust dialog's ›
     expect(pattern.test("› 1. Yes, continue")).toBe(false);
+  });
+
+  it("Kiro matches startup, daily prompt, and context statusline", async () => {
+    const { KiroBackend } = await import("../src/backend/kiro.js");
+    const backend = new KiroBackend("/tmp/test");
+    const pattern = backend.getReadyPattern();
+    expect(pattern.test("Trust All Tools active")).toBe(true);
+    expect(pattern.test("22% !>")).toBe(true);
+    expect(pattern.test("8% ❯")).toBe(true);
+    expect(pattern.test("◔ 31%")).toBe(true);
+    expect(pattern.test("Generating response...")).toBe(false);
+  });
+
+  it("Antigravity matches startup and daily context statusline", async () => {
+    const { AntigravityBackend } = await import("../src/backend/antigravity.js");
+    const backend = new AntigravityBackend("/tmp/test");
+    const pattern = backend.getReadyPattern();
+    expect(pattern.test("? for shortcuts")).toBe(true);
+    expect(pattern.test("Gemini 3.5 Flash")).toBe(true);
+    expect(pattern.test("◔ 47%")).toBe(true);
+    expect(pattern.test("Thinking...")).toBe(false);
   });
 
   it("Gemini matches YOLO mode prompt", async () => {
