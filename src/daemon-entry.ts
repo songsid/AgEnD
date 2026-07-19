@@ -1,5 +1,6 @@
 import { Daemon } from "./daemon.js";
 import type { InstanceConfig } from "./types.js";
+import { createLogger } from "./logger.js";
 
 const args = process.argv.slice(2);
 
@@ -19,7 +20,7 @@ try {
 }
 
 const topicMode = args.includes("--topic-mode");
-const daemon = new Daemon(name, config, instanceDir, topicMode);
+const daemon = new Daemon(name, config, instanceDir, topicMode, undefined, undefined, createLogger(config.log_level));
 
 daemon.start().catch((err) => {
   console.error("Daemon failed:", err);

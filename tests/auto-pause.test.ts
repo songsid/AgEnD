@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { AutoPauseController, Daemon } from "../src/daemon.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { TmuxManager } from "../src/tmux-manager.js";
+import pino from "pino";
+import type { Logger } from "../src/logger.js";
+
+const rootLogger = pino({ level: "silent" }) as Logger;
 
 describe("AutoPauseController", () => {
   it("requests pause only after a continuous idle threshold", () => {
@@ -84,7 +88,13 @@ describe("Daemon auto-pause lifecycle", () => {
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
       log_level: "error",
-    }, instanceDir, false, { getQuitCommand: () => "exit", getSessionId: () => null } as any);
+    }, instanceDir, false, {
+      getQuitCommand: () => "exit",
+      getSessionId: () => null,
+      getReadyPattern: () => /^>$/m,
+      getErrorPatterns: () => [{ pattern: /NEVER_MATCH/, type: "crash", action: "notify", message: "test" }],
+      getRuntimeDialogs: () => [],
+    } as any, undefined, rootLogger);
     (daemon as any).tmux = tmux;
 
     await daemon.pause();
@@ -100,7 +110,64 @@ describe("Daemon auto-pause lifecycle", () => {
     expect(trySpawn).toHaveBeenCalledWith(true, 1_000);
     expect(daemon.isPaused).toBe(false);
     expect(existsSync(join(instanceDir, "paused-state.json"))).toBe(false);
+    (daemon as any).freezeRuntimeMonitors();
   });
+
+  it("restores monitor timers without listener leaks across 10 pause/wake cycles", async () => {
+    const session = `agend-pause-soak-${process.pid}-${Date.now()}`;
+    const instanceDir = join(tmpdir(), session);
+    sessions.push(session);
+    dirs.push(instanceDir);
+    mkdirSync(instanceDir, { recursive: true });
+
+    await TmuxManager.ensureSession(session);
+    const tmux = new TmuxManager(session, "");
+    await tmux.createWindow("bash --noprofile --norc", "/tmp", "pause-soak");
+    await tmux.setRemainOnExit();
+
+    const backend = {
+      getQuitCommand: () => "exit",
+      getSessionId: () => null,
+      getReadyPattern: () => /^>$/m,
+      getErrorPatterns: () => [{ pattern: /NEVER_MATCH/, type: "crash", action: "notify", message: "test" }],
+      getRuntimeDialogs: () => [],
+    } as any;
+    const daemon = new Daemon("pause-soak", {
+      working_directory: "/tmp",
+      auto_pause_after: 30,
+      restart_policy: { max_retries: 1, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "error",
+    }, instanceDir, false, backend, undefined, rootLogger);
+    (daemon as any).tmux = tmux;
+
+    const transcript = {
+      stop: vi.fn(), startPolling: vi.fn(), resetOffset: vi.fn(),
+    };
+    const guardian = { stop: vi.fn(), startWatching: vi.fn() };
+    (daemon as any).transcriptMonitor = transcript;
+    (daemon as any).guardian = guardian;
+    vi.spyOn(daemon as any, "trySpawn").mockResolvedValue(true);
+    const listenerBaseline = daemon.eventNames().reduce((total, event) => total + daemon.listenerCount(event), 0);
+
+    for (let i = 0; i < 10; i++) {
+      await daemon.pause();
+      expect((daemon as any).instanceStateMonitorTimer).toBeNull();
+      expect((daemon as any).errorMonitorTimer).toBeNull();
+      expect((daemon as any).healthCheckTimer).toBeNull();
+      await daemon.wake(1_000);
+      expect((daemon as any).instanceStateMonitorTimer).not.toBeNull();
+      expect((daemon as any).errorMonitorTimer).not.toBeNull();
+      expect((daemon as any).healthCheckTimer).not.toBeNull();
+    }
+
+    expect(transcript.stop).toHaveBeenCalledTimes(10);
+    expect(transcript.startPolling).toHaveBeenCalledTimes(10);
+    expect(guardian.stop).toHaveBeenCalledTimes(10);
+    expect(guardian.startWatching).toHaveBeenCalledTimes(10);
+    expect(daemon.eventNames().reduce((total, event) => total + daemon.listenerCount(event), 0)).toBe(listenerBaseline);
+    (daemon as any).freezeRuntimeMonitors();
+  }, 20_000);
 });
 
 describe("paused status visibility", () => {
