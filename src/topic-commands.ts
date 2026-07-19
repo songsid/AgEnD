@@ -347,7 +347,15 @@ export class TopicCommands {
 
     const rows: string[] = [];
     let pausedCount = 0;
-    for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
+    const fleetNames = new Set(Object.keys(this.ctx.fleetConfig.instances));
+    const instances = [
+      ...Object.keys(this.ctx.fleetConfig.instances).map(name => ({ name, classic: false })),
+      ...(this.ctx.classicChannels?.getAll() ?? [])
+        .filter(ch => !fleetNames.has(ch.instanceName))
+        .map(ch => ({ name: ch.instanceName, classic: true })),
+    ];
+
+    for (const { name, classic } of instances) {
       const status = this.ctx.getInstanceStatus(name);
       const executionState = status === "paused" ? "paused"
         : status === "running" ? this.ctx.getInstanceExecutionState?.(name) ?? null
@@ -364,7 +372,9 @@ export class TopicCommands {
       } catch { /* file may not exist yet */ }
 
       const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
-      const backend = this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
+      const backend = classic
+        ? this.ctx.classicChannels?.getBackendByInstance(name, this.ctx.fleetConfig.defaults?.backend) ?? "-"
+        : this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
 
       let icon: string;
       if (costPaused || status === "paused") icon = "⏸";
@@ -377,7 +387,8 @@ export class TopicCommands {
           : executionState === "stuck" ? "🔴 stuck"
             : executionState === "paused" ? "⏸ paused"
               : "—";
-      rows.push(`| ${this.shortInstanceName(name)} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
+      const displayName = `${classic ? "[C] " : ""}${this.shortInstanceName(name)}`;
+      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
     }
 
     if (rows.length === 0) return "No instances configured.";
@@ -445,7 +456,24 @@ export class TopicCommands {
       "|------|-------|-----|------|------|",
     ];
 
-    for (const inst of info.instances) {
+    const fleetNames = new Set(info.instances.map(inst => inst.name));
+    const classicInstances = (this.ctx.classicChannels?.getAll() ?? [])
+      .filter(ch => !fleetNames.has(ch.instanceName))
+      .map(ch => ({
+        name: ch.instanceName,
+        status: this.ctx.getInstanceStatus(ch.instanceName),
+        state: this.ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
+        ipc: this.ctx.instanceIpcClients.has(ch.instanceName),
+        costCents: this.ctx.costGuard?.getDailyCostCents(ch.instanceName) ?? 0,
+        rateLimits: null,
+        classic: true,
+      }));
+    const instances = [
+      ...info.instances.map(inst => ({ ...inst, classic: false })),
+      ...classicInstances,
+    ];
+
+    for (const inst of instances) {
       const executionState = (inst as typeof inst & { state?: "idle" | "working" | "stuck" | null }).state;
       const displayState = inst.status === "paused" ? "paused"
         : inst.status === "stopped" || inst.status === "crashed" ? inst.status
@@ -457,7 +485,8 @@ export class TopicCommands {
               : displayState === "stopped" ? "⚪" : "🟢";
       const ipc = inst.ipc ? "✓" : "✗";
       const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
-      lines.push(`| ${icon} ${this.shortInstanceName(inst.name)} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
+      const displayName = `${inst.classic ? "[C] " : ""}${this.shortInstanceName(inst.name)}`;
+      lines.push(`| ${icon} ${displayName} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
     }
 
     if (info.fleet_cost_limit_cents > 0) {

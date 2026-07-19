@@ -119,9 +119,14 @@ describe("paused status visibility", () => {
       getInstanceStatus: (name: string) => name === "sleeping" ? "paused" : "running",
       getInstanceExecutionState: (name: string) => name === "active" ? "working"
         : name === "ready" ? "idle"
-          : name === "frozen" ? "stuck" : null,
+          : name === "frozen" ? "stuck"
+            : name === "classic-room-1234" ? "idle" : null,
       costGuard: null,
       getAdapterStates: () => new Map(),
+      classicChannels: {
+        getAll: () => [{ instanceName: "classic-room-1234", name: "room", channelId: "1234" }],
+        getBackendByInstance: () => "codex",
+      },
     } as any);
 
     const status = await commands.getStatusText();
@@ -130,6 +135,7 @@ describe("paused status visibility", () => {
     expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working |");
     expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle |");
     expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck |");
+    expect(status).toContain("| [C] classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle |");
   });
 
   it("renders execution state and distinguishes paused from stopped in /sysinfo", () => {
@@ -146,11 +152,19 @@ describe("paused status visibility", () => {
         fleet_cost_cents: 0,
         fleet_cost_limit_cents: 0,
       }),
+      getInstanceStatus: () => "running",
+      getInstanceExecutionState: () => "stuck",
+      instanceIpcClients: new Map([["classic-lab-5678", {}]]),
+      classicChannels: {
+        getAll: () => [{ instanceName: "classic-lab-5678", name: "lab", channelId: "5678" }],
+      },
+      costGuard: null,
     } as any);
 
     const sysinfo = commands.getSysInfoText();
     expect(sysinfo).toContain("| 🔵 busy | working | ✓ |");
     expect(sysinfo).toContain("| ⏸ sleeping | paused | ✓ |");
     expect(sysinfo).toContain("| ⚪ off | stopped | ✗ |");
+    expect(sysinfo).toContain("| 🔴 [C] classic-lab-5678 | stuck | ✓ |");
   });
 });
