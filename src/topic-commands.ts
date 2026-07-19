@@ -342,9 +342,11 @@ export class TopicCommands {
     if (!this.ctx.fleetConfig) return "No fleet config loaded.";
 
     const rows: string[] = [];
+    let pausedCount = 0;
     for (const [name] of Object.entries(this.ctx.fleetConfig.instances)) {
       const status = this.ctx.getInstanceStatus(name);
-      const paused = this.ctx.costGuard?.isLimited(name);
+      const costPaused = this.ctx.costGuard?.isLimited(name);
+      if (status === "paused") pausedCount++;
 
       let contextStr = "-";
       try {
@@ -358,7 +360,7 @@ export class TopicCommands {
       const backend = this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
 
       let icon: string;
-      if (paused) icon = "⏸";
+      if (costPaused || status === "paused") icon = "⏸";
       else if (status === "running") icon = "🟢";
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
@@ -374,6 +376,8 @@ export class TopicCommands {
       "| Instance | Backend | Ctx | Cost | Status |",
       "|----------|---------|-----|------|--------|",
       ...rows,
+      "",
+      `Paused instances: ${pausedCount}`,
     ];
 
     const limitCents = this.ctx.costGuard?.getLimitCents() ?? 0;

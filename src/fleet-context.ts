@@ -41,7 +41,7 @@ export interface FleetContext {
   readonly classicChannels: ClassicChannelManager | null;
 
   getSysInfo(): SysInfo;
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   toggleFleetCollab(instanceName: string): boolean;
   /** Interrupt an instance's current generation (cancel button / /cancel). */
   cancelInstance(instanceName: string): boolean;

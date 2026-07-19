@@ -129,7 +129,7 @@ export interface WebApiContext {
   readonly eventLog: { logActivity(event: string, sender: string, summary: string, receiver?: string, detail?: string): void; listActivity(opts?: { since?: string; limit?: number }): unknown[] } | null;
   readonly logger: { info(obj: unknown, msg?: string): void; debug(obj: unknown, msg?: string): void; error(obj: unknown, msg?: string): void };
   getInstanceDir(name: string): string;
-  getInstanceStatus(name: string): "running" | "stopped" | "crashed";
+  getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   getUiStatus(): unknown;
   emitSseEvent(event: string, data: unknown): void;
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
