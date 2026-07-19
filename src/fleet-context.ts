@@ -52,4 +52,5 @@ export interface FleetContext {
   getInstanceDir(name: string): string;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   removeInstance(name: string): Promise<void>;
+  getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
 }

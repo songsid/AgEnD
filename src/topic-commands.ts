@@ -382,6 +382,19 @@ export class TopicCommands {
       lines.push("", `Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
     }
 
+    // Adapter states (only show if any are not connected)
+    const adapterStates = this.ctx.getAdapterStates?.();
+    if (adapterStates && adapterStates.size > 0) {
+      const issues = [...adapterStates.entries()].filter(([, s]) => s.status !== "connected");
+      if (issues.length > 0) {
+        lines.push("", "**Adapters:**");
+        for (const [id, s] of adapterStates) {
+          const icon = s.status === "connected" ? "✅" : s.status === "retrying" ? "🔄" : "❌";
+          lines.push(`  ${icon} ${id}: ${s.status}${s.lastError ? ` (${s.lastError.slice(0, 60)})` : ""}`);
+        }
+      }
+    }
+
     return lines.join("\n");
   }
 
