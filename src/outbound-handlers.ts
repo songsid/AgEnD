@@ -42,7 +42,7 @@ export interface OutboundContext {
   readonly lifecycle: InstanceLifecycle;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
-  readonly classicChannels: { getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[] } | null;
+  readonly classicChannels: { getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[]; getChannelIdByInstance?(name: string): string | undefined; getBackendByInstance?(name: string, fleetDefault?: string): string } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
@@ -58,6 +58,7 @@ export interface OutboundContext {
   sendCancelButton?(instanceName: string, correlationId?: string): Promise<void>;
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
+  getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -244,6 +245,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
       name,
       type: "instance" as const,
       status: ctx.lifecycle.isPaused(name) ? "paused" : ctx.lifecycle.daemons.has(name) ? "running" : "stopped",
+      instance_state: ctx.getInstanceExecutionState?.(name) ?? null,
       working_directory: config.working_directory,
       topic_id: config.topic_id ?? null,
       display_name: config.display_name ?? null,
@@ -264,6 +266,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         name: ch.instanceName,
         type: "instance" as const,
         status: ctx.lifecycle.daemons.has(ch.instanceName) ? "running" : "stopped",
+        instance_state: ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
         working_directory: "",
         topic_id: ch.channelId as any,
         display_name: `classic: ${ch.name}`,
@@ -293,6 +296,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       tags: config.tags ?? [],
       working_directory: config.working_directory,
       status: ctx.lifecycle.isPaused(targetName) ? "paused" : ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
+      instance_state: ctx.getInstanceExecutionState?.(targetName) ?? null,
       last_paused_at: ctx.lifecycle.getLastPausedAt(targetName)
         ? new Date(ctx.lifecycle.getLastPausedAt(targetName)!).toISOString()
         : null,
@@ -303,6 +307,28 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       worktree_source: config.worktree_source ?? null,
     });
     return;
+  }
+  // Classic instance lookup
+  if (ctx.classicChannels) {
+    const channelId = ctx.classicChannels.getChannelIdByInstance?.(targetName);
+    if (channelId) {
+      respond({
+        name: targetName,
+        type: "instance",
+        description: `ClassicBot channel`,
+        tags: ["classic"],
+        working_directory: "",
+        status: ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
+        instance_state: ctx.getInstanceExecutionState?.(targetName) ?? null,
+        last_paused_at: null,
+        topic_id: channelId,
+        backend: ctx.classicChannels.getBackendByInstance?.(targetName) ?? "claude-code",
+        model: null,
+        last_activity: ctx.lastActivityMs(targetName) ? new Date(ctx.lastActivityMs(targetName)).toISOString() : null,
+        worktree_source: null,
+      });
+      return;
+    }
   }
   const hostInstance = ctx.sessionRegistry.get(targetName);
   if (hostInstance) {
