@@ -83,10 +83,24 @@ instances:
     expect(existsSync(expectedDir)).toBe(true);
   });
 
+  it("defaults auto-pause to 30 minutes and supports per-instance disable", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(fleetPath, `instances:
+  default-pause:
+    working_directory: /tmp/default-pause
+  never-pause:
+    working_directory: /tmp/never-pause
+    auto_pause_after: 0
+`);
+
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.instances["default-pause"].auto_pause_after).toBe(30);
+    expect(fleet.instances["never-pause"].auto_pause_after).toBe(0);
+  });
+
   it("returns empty instances when no fleet.yaml exists", () => {
     const fleet = loadFleetConfig(join(tmpDir, "nonexistent-fleet.yaml"));
     expect(fleet.instances).toEqual({});
     expect(fleet.defaults).toEqual({});
   });
 });
-

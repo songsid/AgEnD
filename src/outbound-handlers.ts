@@ -47,6 +47,8 @@ export interface OutboundContext {
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
+  /** FleetManager facade that wakes paused instances before delivery. */
+  deliverToInstance?(instanceName: string, payload: Record<string, unknown>): Promise<void>;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
@@ -86,9 +88,28 @@ function sanitizeError(err: unknown, ctx: OutboundContext, operation: string): s
   return msg;
 }
 
+/**
+ * Route through FleetManager when available so paused instances are woken.
+ * The fallback keeps standalone handler harnesses/backward-compatible embedders
+ * working; FleetManager always supplies the facade in production.
+ */
+async function deliverToInstance(
+  ctx: OutboundContext,
+  instanceName: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  if (ctx.deliverToInstance) {
+    await ctx.deliverToInstance(instanceName, payload);
+    return;
+  }
+  const ipc = ctx.instanceIpcClients.get(instanceName);
+  if (!ipc) throw new Error(`Instance '${instanceName}' is not connected`);
+  ipc.send(payload);
+}
+
 // ── Handler implementations ─────────────────────────────────────────────
 
-const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
+const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(SendToInstanceArgs, rawArgs, "send_to_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const { instance_name: targetName, message, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
@@ -135,7 +156,12 @@ const sendToInstance: Handler = (ctx, rawArgs, respond, meta) => {
   if (working_directory) ipcMeta.working_directory = working_directory;
   if (branch) ipcMeta.branch = branch;
 
-  targetIpc.send({ type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
+  try {
+    await deliverToInstance(ctx, targetInstanceName, { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
+  } catch (err) {
+    respond(null, sanitizeError(err, ctx, `wake/deliver to ${targetName}`));
+    return;
+  }
   // Show a cancel button on the target's topic so a watching user can interrupt
   // work started by another instance — but only for messages that actually put
   // the recipient to work (task/query). Informational report/update messages
@@ -217,7 +243,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     .map(([name, config]) => ({
       name,
       type: "instance" as const,
-      status: ctx.lifecycle.daemons.has(name) ? "running" : "stopped",
+      status: ctx.lifecycle.isPaused(name) ? "paused" : ctx.lifecycle.daemons.has(name) ? "running" : "stopped",
       working_directory: config.working_directory,
       topic_id: config.topic_id ?? null,
       display_name: config.display_name ?? null,
@@ -266,7 +292,10 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       description: config.description ?? null,
       tags: config.tags ?? [],
       working_directory: config.working_directory,
-      status: ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
+      status: ctx.lifecycle.isPaused(targetName) ? "paused" : ctx.lifecycle.daemons.has(targetName) ? "running" : "stopped",
+      last_paused_at: ctx.lifecycle.getLastPausedAt(targetName)
+        ? new Date(ctx.lifecycle.getLastPausedAt(targetName)!).toISOString()
+        : null,
       topic_id: config.topic_id ?? null,
       backend: config.backend ?? "claude-code",
       model: config.model ?? null,
@@ -421,7 +450,7 @@ const replaceInstance: Handler = async (ctx, rawArgs, respond) => {
   await ctx.lifecycle.handleReplace(v.data, respond);
 };
 
-const broadcast: Handler = (ctx, rawArgs, respond, meta) => {
+const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(BroadcastArgs, rawArgs, "broadcast");
   if (!v.ok) { respond(null, v.error); return; }
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
@@ -447,11 +476,9 @@ const broadcast: Handler = (ctx, rawArgs, respond, meta) => {
     targetNames = [...ctx.instanceIpcClients.keys()].filter(n => n !== meta.instanceName && n !== senderLabel);
   }
 
-  const sentTo: string[] = [];
-  const failed: string[] = [];
-  for (const targetName of targetNames) {
-    const targetIpc = ctx.instanceIpcClients.get(targetName) ?? ctx.instanceIpcClients.get(ctx.sessionRegistry.get(targetName) ?? "");
-    if (!targetIpc) { failed.push(targetName); continue; }
+  const deliveryResults = await Promise.all(targetNames.map(async targetName => {
+    const hostInstance = ctx.instanceIpcClients.has(targetName) ? targetName : ctx.sessionRegistry.get(targetName);
+    if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) return { targetName, sent: false };
 
     const correlationId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const ipcMeta: Record<string, string> = {
@@ -463,9 +490,15 @@ const broadcast: Handler = (ctx, rawArgs, respond, meta) => {
     if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
     if (task_summary) ipcMeta.task_summary = task_summary;
 
-    targetIpc.send({ type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta });
-    sentTo.push(targetName);
-  }
+    try {
+      await deliverToInstance(ctx, hostInstance, { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta });
+      return { targetName, sent: true };
+    } catch {
+      return { targetName, sent: false };
+    }
+  }));
+  const sentTo = deliveryResults.filter(result => result.sent).map(result => result.targetName);
+  const failed = deliveryResults.filter(result => !result.sent).map(result => result.targetName);
 
   ctx.logger.info(`📢 ${senderLabel} broadcast to ${sentTo.length} instances: ${(message).slice(0, 80)}`);
   const summary = task_summary || message.slice(0, 200);
