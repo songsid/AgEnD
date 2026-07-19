@@ -38,6 +38,11 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
   const warn = (path: string, message: string) => warnings.push({ path, message });
+  const validateAutoPause = (value: unknown, path: string) => {
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+      err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
+    }
+  };
 
   if (!isObj(config)) {
     return { valid: false, errors: [{ path: "", message: "config must be a mapping" }], warnings: [] };
@@ -96,6 +101,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
+    validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
   }
 
   // ── Instances ─────────────────────────────────────────────
@@ -120,6 +126,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (inst.working_directory !== undefined && typeof inst.working_directory !== "string") {
         err(`instances.${name}.working_directory`, "must be a string path");
       }
+      validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
     }
   }
   if (generalCount === 0) {

@@ -152,6 +152,7 @@
       edit: "Edit", close: "Close", save: "Save", cancel: "Cancel", create: "Create", start: "Start", stop: "Stop",
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
+      runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -168,6 +169,7 @@
       edit: "編輯", close: "關閉", save: "儲存", cancel: "取消", create: "建立", start: "啟動", stop: "停止",
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
+      runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -341,6 +343,11 @@
     const fSys = el("input", { type: "text", value: inst.systemPrompt || "", placeholder: "e.g. file:prompts/dev.md" });
     const tags = [...(inst.tags || [])];
     const fGeneral = el("input", { type: "checkbox" }); fGeneral.checked = !!inst.general_topic;
+    const hasAutoPauseOverride = Object.prototype.hasOwnProperty.call(inst, "auto_pause_after");
+    const fAutoPauseInherit = el("input", { type: "checkbox" }); fAutoPauseInherit.checked = !hasAutoPauseOverride;
+    const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: hasAutoPauseOverride ? inst.auto_pause_after : (state.fleet.defaults?.auto_pause_after ?? 0), placeholder: "0 = disabled" });
+    fAutoPause.disabled = fAutoPauseInherit.checked;
+    fAutoPauseInherit.onchange = () => { fAutoPause.disabled = fAutoPauseInherit.checked; };
     const msg = el("span", { class: "msg" });
     box.append(
       el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
@@ -350,13 +357,22 @@
       el("label", {}, t("systemPrompt")), fSys,
       el("label", {}, t("tags")), chipList(tags, null, "tag"),
       el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField"))),
+      el("div", { class: "sub", style: "margin:14px 0 6px;font-weight:600" }, t("runtimeResources")),
+      el("div", { class: "grid2" },
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`), fAutoPause),
+        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:25px" }, fAutoPauseInherit, el("span", {}, t("inheritDefault")))),
       el("div", { class: "actions" },
         el("button", { class: "primary sm", onclick: async () => {
+          const autoPause = Number(fAutoPause.value);
+          if (!fAutoPauseInherit.checked && (!Number.isFinite(autoPause) || autoPause < 0)) {
+            msg.innerHTML = `<span class="e">✗ ${esc(t("autoPause"))}: ≥ 0</span>`; return;
+          }
           const patch = {
             backend: fBackend.value, model: fModel.value || undefined,
             working_directory: fWd.value, channel_id: fChan.value || undefined,
             description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
             tags: tags.length ? tags : undefined, general_topic: fGeneral.checked,
+            auto_pause_after: fAutoPauseInherit.checked ? null : autoPause,
           };
           const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) });
           resultMsg(msg, res); if (res.ok) await reload();
@@ -494,18 +510,23 @@
     const fBackend = select(d.backend || "claude-code", BACKENDS);
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
     const fLocale = el("select");
+    const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: d.auto_pause_after ?? 0, placeholder: "0 = disabled" });
     [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]].forEach(([v, lbl]) => { const o = el("option", {}, lbl); o.value = v; if ((d.locale || "") === v) o.selected = true; fLocale.append(o); });
     const msg = el("span", { class: "msg" });
     host.append(
       el("div", { class: "field" }, el("label", {}, t("language")), fLocale),
       el("div", { class: "field" }, el("label", {}, t("defaultBackend")), fBackend),
       el("div", { class: "field" }, el("label", {}, t("defaultModel")), fModel),
+      el("div", { class: "sub", style: "padding:14px 14px 0;font-weight:600" }, t("runtimeResources")),
+      el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`), fAutoPause, el("div", { class: "hint" }, "0 = disabled; Reload Fleet restarts affected daemons")),
       el("div", { class: "field" }, el("label", {}, t("allowedUsers")), chipList(allowedUsers, null, "user id")),
       el("div", { class: "field" }, el("label", {}, t("classicAdmins")), chipList(c.admin_users, null, "user id")),
       el("div", { class: "field" }, el("label", {}, t("allowedGuilds")), chipList(c.allowed_guilds, null, "guild id")),
       el("div", { class: "field" }, el("div", { class: "actions" }, el("button", { class: "primary", onclick: async () => {
-        d.backend = fBackend.value; d.model = fModel.value || undefined; d.locale = fLocale.value;
-        const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify({ backend: d.backend, model: d.model, locale: d.locale }) });
+        const autoPause = Number(fAutoPause.value);
+        if (!Number.isFinite(autoPause) || autoPause < 0) { msg.innerHTML = `<span class="e">✗ ${esc(t("autoPause"))}: ≥ 0</span>`; return; }
+        d.backend = fBackend.value; d.model = fModel.value || undefined; d.locale = fLocale.value; d.auto_pause_after = autoPause;
+        const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify({ backend: d.backend, model: d.model, locale: d.locale, auto_pause_after: autoPause }) });
         let r2 = { ok: true, body: {} };
         if (primary) r2 = await saveChannels();
         const r3 = await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify({ backend: c.backend, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds }) });
@@ -589,7 +610,8 @@
     renderAgents(); renderBots(); renderClassic();
   }
   async function reload() {
-    const f = await api("/api/settings/fleet");
+    // Forms edit the user-authored config, not defaults-expanded runtime values.
+    const f = await api("/api/settings/fleet/raw");
     if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = "Failed to load config — check the token in the URL."; return; }
     state.fleet = f.body || {};
     const c = await api("/api/settings/classic"); state.classic = c.body || {};

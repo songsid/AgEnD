@@ -212,3 +212,17 @@ export interface FleetConfig {
   profiles?: Record<string, ProfileConfig>;
   health_port?: number;
 }
+
+/**
+ * User-authored fleet.yaml before defaults are merged into instances.
+ *
+ * Keep this deliberately open: settings persistence must preserve config keys
+ * introduced by newer AgEnD versions or third-party adapters even when this
+ * runtime does not know their shape yet.
+ */
+export type RawFleetConfig = Record<string, unknown> & {
+  channel?: ChannelConfig;
+  channels?: ChannelConfig[];
+  defaults?: FleetDefaults;
+  instances?: Record<string, Partial<InstanceConfig> & Record<string, unknown>>;
+};
