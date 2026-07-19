@@ -48,6 +48,7 @@ export interface LifecycleContext {
   /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
   clearCancelButton(name: string): void;
   startStatuslineWatcher(name: string): void;
+  stopStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
 }
 
@@ -139,7 +140,7 @@ export class InstanceLifecycle {
     }
 
     const backend = createBackend(backendName, instanceDir);
-    const daemon = new Daemon(name, config, instanceDir, topicMode, backend, this.ctx.controlClient ?? undefined);
+    const daemon = new Daemon(name, config, instanceDir, topicMode, backend, this.ctx.controlClient ?? undefined, this.ctx.logger);
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
@@ -273,13 +274,21 @@ export class InstanceLifecycle {
   async pause(name: string): Promise<void> {
     const daemon = this.daemons.get(name);
     if (!daemon) throw new Error(`Cannot pause stopped instance '${name}'`);
-    await daemon.pause();
+    this.ctx.stopStatuslineWatcher(name);
+    try {
+      await daemon.pause();
+    } finally {
+      // A rejected/no-op pause leaves the instance active and must not strand
+      // its fleet-level statusline watcher in the frozen state.
+      if (!daemon.isPaused) this.ctx.startStatuslineWatcher(name);
+    }
   }
 
   async wake(name: string, timeoutMs = 30_000): Promise<void> {
     const daemon = this.daemons.get(name);
     if (!daemon) throw new Error(`Cannot wake stopped instance '${name}'`);
     await daemon.wake(timeoutMs);
+    this.ctx.startStatuslineWatcher(name);
   }
 
   async stop(name: string): Promise<void> {

@@ -19,6 +19,8 @@ type GuardianConfig = InstanceConfig["context_guardian"];
 export class ContextGuardian extends EventEmitter {
   private statusFilePath: string;
   private consecutiveReadFailures = 0;
+  private watching = false;
+  private readonly onStatusFileChange = () => this.readAndCheck();
 
   constructor(
     private _config: GuardianConfig,
@@ -30,8 +32,10 @@ export class ContextGuardian extends EventEmitter {
   }
 
   startWatching(): void {
+    if (this.watching) return;
+    this.watching = true;
     this.logger.debug({ path: this.statusFilePath }, "Watching status line file");
-    watchFile(this.statusFilePath, { interval: 2000 }, () => this.readAndCheck());
+    watchFile(this.statusFilePath, { interval: 2000 }, this.onStatusFileChange);
   }
 
   private readAndCheck(): void {
@@ -73,6 +77,8 @@ export class ContextGuardian extends EventEmitter {
   }
 
   stop(): void {
-    unwatchFile(this.statusFilePath);
+    if (!this.watching) return;
+    unwatchFile(this.statusFilePath, this.onStatusFileChange);
+    this.watching = false;
   }
 }

@@ -2833,6 +2833,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.watch(name);
   }
 
+  stopStatuslineWatcher(name: string): void {
+    // Pausing stops I/O but retains the last observed limits for status views.
+    this.statuslineWatcher.unwatch(name, true);
+  }
+
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void {
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
