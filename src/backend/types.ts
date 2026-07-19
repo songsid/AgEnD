@@ -1,5 +1,19 @@
 import { execFileSync } from "node:child_process";
 
+/** Observable execution state derived from the active CLI pane. */
+export type InstanceState = "idle" | "working" | "stuck";
+
+/** Point-in-time state returned by the daemon's IPC state query. */
+export interface InstanceStateSnapshot {
+  state: InstanceState;
+  /** Milliseconds since the pane content last changed. */
+  unchangedForMs: number;
+  /** Unix timestamp of the most recent successful pane observation. */
+  observedAt: number;
+  /** Unix timestamp of the most recent state transition. */
+  stateChangedAt: number;
+}
+
 export interface McpServerEntry {
   command: string;
   args: string[];

@@ -2,7 +2,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { createLogger, type Logger } from "./logger.js";
@@ -12,7 +12,7 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, StartupDialog } from "./backend/types.js";
 import { shellQuote } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
@@ -29,6 +29,71 @@ const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "sta
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
+
+export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
+export const DEFAULT_STATE_POLL_INTERVAL_MS = 5_000;
+
+/**
+ * Headless state machine for pane-based execution state detection.
+ *
+ * Pane motion wins over a ready match because several backends keep their ready
+ * marker in a persistent header/footer while generating. A stable ready pane is
+ * idle; changing content is working; stable non-ready content eventually sticks.
+ */
+export class PaneStateMachine {
+  private readonly readyPattern: RegExp;
+  private lastPaneHash: string | null = null;
+  private lastPaneChangeAt: number;
+  private lastObservedAt: number;
+  private stateChangedAt: number;
+  private currentState: InstanceState = "idle";
+
+  constructor(readyPattern: RegExp, private readonly stuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS, now = Date.now()) {
+    // Stateful g/y regexes mutate lastIndex and can alternate true/false across
+    // polls. State detection must be deterministic for identical pane content.
+    this.readyPattern = new RegExp(readyPattern.source, readyPattern.flags.replace(/[gy]/g, ""));
+    this.lastPaneChangeAt = now;
+    this.lastObservedAt = now;
+    this.stateChangedAt = now;
+  }
+
+  observe(pane: string, now = Date.now()): InstanceStateSnapshot {
+    const paneHash = createHash("sha256").update(pane).digest("hex");
+    const firstObservation = this.lastPaneHash === null;
+    const paneChanged = this.lastPaneHash !== paneHash;
+    if (paneChanged) {
+      this.lastPaneHash = paneHash;
+      this.lastPaneChangeAt = now;
+    }
+    this.lastObservedAt = now;
+
+    const ready = this.readyPattern.test(pane);
+    const nextState: InstanceState = firstObservation
+      ? ready ? "idle" : "working"
+      : paneChanged
+        ? "working"
+        : ready
+          ? "idle"
+          : now - this.lastPaneChangeAt >= this.stuckTimeoutMs
+            ? "stuck"
+            : "working";
+
+    if (nextState !== this.currentState) {
+      this.currentState = nextState;
+      this.stateChangedAt = now;
+    }
+    return this.snapshot(now);
+  }
+
+  snapshot(now = Date.now()): InstanceStateSnapshot {
+    return {
+      state: this.currentState,
+      unchangedForMs: Math.max(0, now - this.lastPaneChangeAt),
+      observedAt: this.lastObservedAt,
+      stateChangedAt: this.stateChangedAt,
+    };
+  }
+}
 
 export class Daemon extends EventEmitter {
   private logger: Logger;
@@ -71,6 +136,10 @@ export class Daemon extends EventEmitter {
   private rotationStartedAt = 0;
   private preRotationContextPct = 0;
   private hangDetector: HangDetector | null = null;
+  private instanceState: InstanceState = "idle";
+  private instanceStateMachine: PaneStateMachine | null = null;
+  private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  private statePollInFlight = false;
   // Model failover: override model on next spawn when rate-limited
   private modelOverride: string | undefined;
   // Context rotation v3: ring buffers for daemon-side snapshot
@@ -253,6 +322,14 @@ export class Daemon extends EventEmitter {
       } else if (msg.type === "fleet_tool_status_ack") {
         // Fleet manager sent us the messageId for our tool status message
         this.toolStatusMessageId = msg.messageId as string;
+      } else if (msg.type === "query_instance_state") {
+        const snapshot = this.getInstanceStateSnapshot();
+        this.ipcServer?.send(socket, {
+          type: "instance_state_response",
+          requestId: msg.requestId,
+          instanceName: this.name,
+          ...snapshot,
+        });
       }
     });
 
@@ -353,9 +430,15 @@ export class Daemon extends EventEmitter {
       });
       this.transcriptMonitor.startPolling();
 
-      // Hang detector
-      this.hangDetector = new HangDetector(15);
-      this.hangDetector.start();
+      // HangDetector remains the fleet-manager notification event bridge. Its
+      // legacy silence timer is intentionally not started: pane state transitions
+      // below are now the sole source of hang events.
+      const hangConfig = (this.config as InstanceConfig & {
+        hang_detector?: { enabled?: boolean; timeout_minutes?: number };
+      }).hang_detector;
+      if (hangConfig?.enabled !== false) {
+        this.hangDetector = new HangDetector(hangConfig?.timeout_minutes ?? 10);
+      }
 
       // 8. Context guardian
       const statusFile = join(this.instanceDir, "statusline.json");
@@ -384,6 +467,7 @@ export class Daemon extends EventEmitter {
     if (!this.config.lightweight) {
       this.startErrorMonitor();
     }
+    this.startInstanceStateMonitor();
 
     this.logger.info(`${this.name} ready`);
   }
@@ -766,6 +850,7 @@ export class Daemon extends EventEmitter {
     this.logger.info("Stopping daemon instance");
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
+    if (this.instanceStateMonitorTimer) { clearInterval(this.instanceStateMonitorTimer); this.instanceStateMonitorTimer = null; }
     if (this.toolStatusDebounce) { clearTimeout(this.toolStatusDebounce); this.toolStatusDebounce = null; }
     this.pendingIpcRequests.clear();
     this.hangDetector?.stop();
@@ -824,6 +909,74 @@ export class Daemon extends EventEmitter {
 
   getHangDetector(): HangDetector | null {
     return this.hangDetector;
+  }
+
+  getInstanceState(): InstanceState {
+    return this.instanceState;
+  }
+
+  getInstanceStateSnapshot(): InstanceStateSnapshot {
+    return this.instanceStateMachine?.snapshot() ?? {
+      state: this.instanceState,
+      unchangedForMs: 0,
+      observedAt: Date.now(),
+      stateChangedAt: Date.now(),
+    };
+  }
+
+  private startInstanceStateMonitor(): void {
+    if (!this.tmux || !this.backend || this.instanceStateMonitorTimer) return;
+
+    const rawConfig = (this.config as InstanceConfig & {
+      hang_detector?: { timeout_minutes?: number; poll_interval_ms?: number };
+    }).hang_detector;
+    const timeoutMinutes = rawConfig?.timeout_minutes;
+    const stuckTimeoutMs = typeof timeoutMinutes === "number" && timeoutMinutes > 0
+      ? timeoutMinutes * 60_000
+      : DEFAULT_STUCK_TIMEOUT_MS;
+    const pollIntervalMs = typeof rawConfig?.poll_interval_ms === "number" && rawConfig.poll_interval_ms > 0
+      ? rawConfig.poll_interval_ms
+      : DEFAULT_STATE_POLL_INTERVAL_MS;
+
+    this.instanceStateMachine = new PaneStateMachine(this.backend.getReadyPattern(), stuckTimeoutMs);
+
+    const poll = async () => {
+      if (!this.tmux || this.spawning || this.statePollInFlight) return;
+      this.statePollInFlight = true;
+      try {
+        const paneStatus = await this.tmux.getPaneStatus();
+        if (!paneStatus?.alive) return;
+        const pane = await this.tmux.capturePane();
+        const previous = this.instanceState;
+        const snapshot = this.instanceStateMachine!.observe(pane);
+        this.instanceState = snapshot.state;
+
+        if (snapshot.state !== previous) {
+          this.logger.info({
+            previousState: previous,
+            state: snapshot.state,
+            unchangedForMs: snapshot.unchangedForMs,
+          }, "Instance execution state changed");
+          this.emit("instance_state", { name: this.name, ...snapshot });
+          this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
+
+          // Emit exactly once per transition into stuck. Further notifications
+          // require observable progress (working) or a ready prompt (idle) first.
+          if (snapshot.state === "stuck") {
+            this.hangDetector?.emit("hang");
+          }
+        }
+      } catch (err) {
+        // A pane can disappear between status and capture during restart. Keep
+        // the last known state and retry on the next poll.
+        this.logger.debug({ err: (err as Error).message }, "Instance state poll failed");
+      } finally {
+        this.statePollInFlight = false;
+      }
+    };
+
+    void poll();
+    this.instanceStateMonitorTimer = setInterval(() => { void poll(); }, pollIntervalMs);
   }
 
   getMessageBus(): MessageBus {
