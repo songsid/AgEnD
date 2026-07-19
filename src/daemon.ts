@@ -241,7 +241,7 @@ export class Daemon extends EventEmitter {
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
-    const autoPauseMinutes = typeof config.auto_pause_after === "number" ? config.auto_pause_after : 10080; // default: 1 week
+    const autoPauseMinutes = typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0; // default: disabled
     this.autoPauseController = new AutoPauseController(Math.max(0, autoPauseMinutes) * 60_000);
   }
 
