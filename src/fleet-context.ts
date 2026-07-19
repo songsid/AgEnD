@@ -53,4 +53,5 @@ export interface FleetContext {
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   removeInstance(name: string): Promise<void>;
   getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
+  getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
 }

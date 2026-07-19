@@ -2010,12 +2010,13 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     try {
       const port = (config as any).health_port ?? 19280;
       const resp = await fetch(`http://127.0.0.1:${port}/api/fleet`, { signal: AbortSignal.timeout(2000) });
-      const apiData = await resp.json() as { instances?: Array<{ name: string; status?: "running" | "paused" | "stopped" | "crashed"; idle?: boolean }> };
+      const apiData = await resp.json() as { instances?: Array<{ name: string; status?: "running" | "paused" | "stopped" | "crashed"; idle?: boolean; state?: "idle" | "working" | "stuck" | "paused" | null }> };
       for (const inst of apiData.instances ?? []) {
         const row = rows.find(r => r.name === inst.name);
         if (row) {
           row.idle = inst.idle;
           if (inst.status) row.status = inst.status;
+          if (inst.state) (row as any).state = inst.state;
         }
       }
     } catch { /* fleet not running or API unreachable */ }
@@ -2025,11 +2026,26 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       return;
     }
 
-    // Status icon
-    const statusIcon = (s: string, idle?: boolean) =>
-      s === "paused" ? "\x1b[33m⏸\x1b[0m" : s === "running" ? (idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m") : s === "crashed" ? "\x1b[31m●\x1b[0m" : "\x1b[90m○\x1b[0m";
-    const statusLabel = (s: string, idle?: boolean) =>
-      s === "paused" ? "Paused" : s === "running" ? (idle === false ? "Busy" : "Idle") : s === "crashed" ? "Crashed" : "Stopped";
+    // Status icon — prefer tri-state 'state' field, fall back to idle boolean
+    const statusIcon = (s: string, idle?: boolean, state?: string | null) => {
+      if (state === "stuck") return "\x1b[31m●\x1b[0m";
+      if (state === "paused" || s === "paused") return "\x1b[33m⏸\x1b[0m";
+      if (state === "working") return "\x1b[34m●\x1b[0m";
+      if (state === "idle") return "\x1b[32m●\x1b[0m";
+      // Fallback for when API is unreachable
+      if (s === "running") return idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m";
+      if (s === "crashed") return "\x1b[31m●\x1b[0m";
+      return "\x1b[90m○\x1b[0m";
+    };
+    const statusLabel = (s: string, idle?: boolean, state?: string | null) => {
+      if (state === "stuck") return "Stuck";
+      if (state === "paused" || s === "paused") return "Paused";
+      if (state === "working") return "Working";
+      if (state === "idle") return "Idle";
+      if (s === "running") return idle === false ? "Busy" : "Idle";
+      if (s === "crashed") return "Crashed";
+      return "Stopped";
+    };
 
     /** Get display width accounting for fullwidth (CJK) characters */
     const displayWidth = (s: string): number => {
@@ -2071,7 +2087,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       console.log(
         padDisplay(r.name, nameW) +
         r.backend.padEnd(backendW) +
-        statusIcon(r.status, r.idle) + " " + statusLabel(r.status, r.idle).padEnd(statusW - 2) +
+        statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
         r.source.padEnd(srcW) +
         ctxStr.padEnd(ctxW) +

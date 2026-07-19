@@ -193,6 +193,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch { return true; }
   }
 
+  /**
+   * Get tri-state execution state for an instance.
+   * Returns: 'idle' | 'working' | 'stuck' | 'paused' | null (unknown/stopped).
+   * Placeholder — Sol's P0 will replace this with a cache-backed version.
+   */
+  getInstanceExecutionState(name: string): "idle" | "working" | "stuck" | "paused" | null {
+    if (this.lifecycle.isPaused(name)) return "paused";
+    if (!this.lifecycle.daemons.has(name)) return null;
+    const idle = this.getInstanceIdle(name);
+    return idle ? "idle" : "working";
+  }
+
   // ── LifecycleContext bridge methods ──────────────────────────────────────
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void {
     this.webhookEmitter?.emit(event, name, data);
@@ -4456,6 +4468,7 @@ When users create specialized instances, suggest these configurations:
             lastActivity: this.lastActivityMs(inst.name) || null,
             currentTask,
             idle: this.getInstanceIdle(inst.name),
+            state: this.getInstanceExecutionState(inst.name),
           };
         });
         res.setHeader("Access-Control-Allow-Origin", "*");
