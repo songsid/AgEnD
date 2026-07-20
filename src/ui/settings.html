@@ -8,7 +8,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root {
     --bg:#ffffff; --card:#f9fafb; --border:#e5e7eb; --fg:#111827; --muted:#6b7280;
-    --accent:#2563eb; --accent-hover:#1d4ed8; --green:#059669; --red:#dc2626;
+    --accent:#2563eb; --accent-hover:#1d4ed8; --green:#059669; --red:#dc2626; --yellow:#b45309;
     --radius:8px; --radius-sm:6px;
   }
   body { background: var(--bg); color: var(--fg); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; padding-bottom: 60px; }
@@ -32,7 +32,7 @@
   .item .del-btn { visibility: hidden; }
   .item:hover .del-btn { visibility: visible; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: #9ca3af; }
-  .dot.running { background: var(--green); } .dot.crashed { background: var(--red); } .dot.stopped { background: #9ca3af; }
+  .dot.running { background: var(--green); } .dot.paused { background:#f59e0b; } .dot.crashed { background: var(--red); } .dot.stopped { background: #9ca3af; }
   .name { font-weight: 600; }
   .tag { font-size: 12px; color: var(--muted); background: #eef2ff; color: #3730a3; padding: 1px 7px; border-radius: 10px; }
   .tag.persona { background: #fdf2f8; color: #9d174d; }
@@ -49,7 +49,7 @@
   button.danger:hover { background: #fef2f2; }
   button.sm { padding: 4px 9px; font-size: 12px; }
   label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin: 10px 0 4px; }
-  input[type=text], select { width: 100%; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--fg); }
+  input[type=text], input[type=number], select { width: 100%; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--fg); }
   input:focus, select:focus { outline: 2px solid #bfdbfe; border-color: var(--accent); }
   .edit { padding: 14px 16px; background: #fff; border-top: 1px solid var(--border); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -63,6 +63,19 @@
   .msg { font-size: 12px; margin-left: 4px; }
   .msg .e { color: var(--red); } .msg .w { color: #b45309; } .msg .s { color: var(--green); }
   .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .impact { display:inline-block; font-size:11px; color:var(--muted); margin-left:6px; font-weight:400; }
+  .feedback { min-height:17px; font-size:12px; margin-top:3px; }
+  .feedback.error { color:var(--red); } .feedback.warning { color:var(--yellow); }
+  input.invalid, select.invalid { border-color:var(--red); background:#fef2f2; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .settings-section { border-bottom:1px solid var(--border); background:#fff; }
+  .settings-section:last-child { border-bottom:none; }
+  .settings-section > summary { cursor:pointer; list-style:none; padding:12px 16px; font-weight:650; background:#f9fafb; }
+  .settings-section > summary::-webkit-details-marker { display:none; }
+  .settings-section > summary::before { content:"▶"; display:inline-block; width:18px; color:var(--muted); font-size:10px; }
+  .settings-section[open] > summary::before { content:"▼"; }
+  .section-body { padding:0 0 2px; }
+  .inherit-row { display:flex; gap:8px; align-items:center; margin-top:6px; color:var(--muted); font-size:12px; }
   .adv-body { display: none; padding: 14px 16px; }
   .adv-body.open { display: block; }
   .toolbar { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
@@ -84,6 +97,16 @@
   .help-panel li { font-size: 13px; margin: 3px 0; }
   .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--muted); font-size: 22px; line-height: 1; background: none; border: none; }
   .help-panel .tip { margin-top: 16px; padding: 10px 12px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; }
+  @media (max-width: 640px) {
+    header { padding:10px 12px; flex-wrap:wrap; } header h1 { font-size:16px; }
+    main { padding:12px 10px; } section { margin-bottom:18px; }
+    .grid2 { grid-template-columns:1fr; gap:0; }
+    .item { padding:9px 10px; } .item-row { flex-wrap:wrap; }
+    .item-row .spacer { flex-basis:100%; height:0; }
+    .sub { margin-left:0; } .field { padding:10px 12px; }
+    #agentSearch { width:130px !important; margin-right:0 !important; }
+    button { min-height:36px; } button.sm { min-height:32px; }
+  }
 </style>
 </head>
 <body>
@@ -153,6 +176,7 @@
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
       runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
+      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -170,6 +194,7 @@
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
+      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -253,6 +278,14 @@
     else if (!html) html = `<span class="e">✗ ${esc((b && b.error) || ("HTTP " + res.status))}</span>`;
     elm.innerHTML = html;
   }
+  function showBanner(text, error = false) {
+    const b = $("banner");
+    b.style.display = "block";
+    b.style.background = error ? "#fef2f2" : "#ecfdf5";
+    b.style.color = error ? "var(--red)" : "var(--green)";
+    b.textContent = text;
+    setTimeout(() => { b.style.display = "none"; }, 6000);
+  }
 
   // ── State ──
   const state = { fleet: {}, classic: {}, classicStatus: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false };
@@ -271,6 +304,25 @@
     redraw(); return box;
   }
   function select(value, options) { const s = el("select"); for (const o of options) { const opt = el("option", {}, o); opt.value = o; if (o === value) opt.selected = true; s.append(opt); } return s; }
+  const impact = (kind) => el("span", { class: "impact" }, kind === "now" ? "⚡ immediate" : kind === "fleet" ? "🔄🔄 restart fleet" : "🔄 restart instance");
+  const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
+  function overrideControl(inst, key, input, inheritedValue, impactKind = "instance") {
+    const inherited = !hasOwn(inst, key);
+    const toggle = el("input", { type: "checkbox" }); toggle.checked = inherited;
+    input.disabled = inherited;
+    if (inherited && inheritedValue !== undefined) {
+      if (input.type === "checkbox") input.checked = !!inheritedValue;
+      else input.value = inheritedValue;
+    }
+    toggle.onchange = () => { input.disabled = toggle.checked; };
+    return { input, toggle, row: el("div", {}, input, el("label", { class: "inherit-row" }, toggle, el("span", {}, t("inheritDefault")), impact(impactKind))) };
+  }
+  function setValidation(input, feedback, error, warning) {
+    input.classList.toggle("invalid", !!error);
+    feedback.className = "feedback" + (error ? " error" : warning ? " warning" : "");
+    feedback.textContent = error ? `✗ ${error}` : warning ? `⚠ ${warning}` : "";
+    return !error;
+  }
 
   // ── My Agents ──
   let editing = null;
@@ -283,12 +335,13 @@
   }
   // Display name: profile display_name → else strip the -t<topicId> suffix.
   const shortName = (name, inst) => (inst && inst.display_name) || name.replace(/-t\d+$/, "");
-  const STATUS_TEXT = { running: "🟢 Running", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
-  const STATUS_ORDER = { running: 0, crashed: 1, stopped: 2 };
+  const STATUS_TEXT = { running: "🟢 Running", paused: "⏸ Paused", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
+  const STATUS_ORDER = { running: 0, paused: 1, crashed: 2, stopped: 3 };
   const groupOf = (inst) => (inst.tags && inst.tags[0]) || "Other";
   function compactRow(name, inst) {
     const st = state.live[name]?.status || "stopped";
     const running = st === "running";
+    const paused = st === "paused";
     const short = shortName(name, inst);
     const chTag = agentChannelLabel(inst);
     const item = el("div", { class: "item" });
@@ -301,7 +354,9 @@
       chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
       el("span", { class: "spacer" }),
       el("button", { class: "sm ghost", onclick: () => { editing = editing === name ? null : name; renderAgents(); } }, editing === name ? t("close") : t("edit")),
-      el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? t("stop") : t("start")),
+      running ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "pause") }, t("pause")) : null,
+      paused ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "wake") }, t("wake")) : null,
+      !paused ? el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? t("stop") : t("start")) : null,
       el("button", { class: "sm danger del-btn", title: t("close"), onclick: () => delAgent(name) }, "🗑️"),
     ));
     if (editing === name) item.append(agentEditForm(name, inst));
@@ -335,6 +390,7 @@
   }
   function agentEditForm(name, inst) {
     const box = el("div", { class: "edit" });
+    const defaults = state.fleet.defaults || {};
     const fBackend = select(inst.backend || state.fleet.defaults?.backend || "claude-code", BACKENDS);
     const fModel = el("input", { type: "text", value: inst.model || "", placeholder: "(inherit default)" });
     const fWd = el("input", { type: "text", value: inst.working_directory || "" });
@@ -343,49 +399,88 @@
     const fSys = el("input", { type: "text", value: inst.systemPrompt || "", placeholder: "e.g. file:prompts/dev.md" });
     const tags = [...(inst.tags || [])];
     const fGeneral = el("input", { type: "checkbox" }); fGeneral.checked = !!inst.general_topic;
-    const hasAutoPauseOverride = Object.prototype.hasOwnProperty.call(inst, "auto_pause_after");
-    const fAutoPauseInherit = el("input", { type: "checkbox" }); fAutoPauseInherit.checked = !hasAutoPauseOverride;
-    const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: hasAutoPauseOverride ? inst.auto_pause_after : (state.fleet.defaults?.auto_pause_after ?? 0), placeholder: "0 = disabled" });
-    fAutoPause.disabled = fAutoPauseInherit.checked;
-    fAutoPauseInherit.onchange = () => { fAutoPause.disabled = fAutoPauseInherit.checked; };
+    const auto = overrideControl(inst, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: inst.auto_pause_after ?? defaults.auto_pause_after ?? 0, placeholder: "0 = disabled" }), defaults.auto_pause_after ?? 0);
+    const hangRaw = inst.hang_detector || {};
+    const hangHolder = hasOwn(hangRaw, "timeout_minutes") ? { value: hangRaw.timeout_minutes } : {};
+    const hang = overrideControl(hangHolder, "value", el("input", { type: "number", min: "0.1", step: "0.5", value: hangRaw.timeout_minutes ?? defaults.hang_detector?.timeout_minutes ?? 15 }), defaults.hang_detector?.timeout_minutes ?? 15);
+    const agentMode = overrideControl(inst, "agent_mode", select(inst.agent_mode || defaults.agent_mode || "mcp", ["mcp", "cli"]), defaults.agent_mode || "mcp");
+    const toolSet = overrideControl(inst, "tool_set", select(inst.tool_set || defaults.tool_set || "full", ["full", "standard", "minimal"]), defaults.tool_set || "full");
+    const logLevel = overrideControl(inst, "log_level", select(inst.log_level || defaults.log_level || "info", ["trace", "debug", "info", "warn", "error"]), defaults.log_level || "info");
+    const fLightweight = el("input", { type: "checkbox" }); fLightweight.checked = inst.lightweight ?? defaults.lightweight ?? false;
+    const lightweight = overrideControl(inst, "lightweight", fLightweight, defaults.lightweight ?? false);
+    const fallbackValue = Array.isArray(inst.model_failover) ? (inst.model_failover[0] || "") : (defaults.model_failover?.[0] || "");
+    const failover = overrideControl(inst, "model_failover", el("input", { type: "text", value: fallbackValue, placeholder: "e.g. sonnet" }), defaults.model_failover?.[0] || "");
+    const displayName = overrideControl(inst, "display_name", el("input", { type: "text", value: inst.display_name ?? defaults.display_name ?? "", placeholder: name }), defaults.display_name || "");
+    const autoFeedback = el("div", { class: "feedback" });
+    const hangFeedback = el("div", { class: "feedback" });
+    const failoverFeedback = el("div", { class: "feedback" });
     const msg = el("span", { class: "msg" });
+    const saveBtn = el("button", { class: "primary sm" }, t("save"));
+    const validate = () => {
+      const autoValue = Number(auto.input.value), hangValue = Number(hang.input.value);
+      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? "Must be 0 or greater" : "");
+      const validHang = setValidation(hang.input, hangFeedback, !hang.toggle.checked && (!Number.isFinite(hangValue) || hangValue <= 0) ? "Must be greater than 0" : "");
+      setValidation(failover.input, failoverFeedback, "", !failover.toggle.checked && !failover.input.value.trim() ? "Empty list disables failover" : "");
+      saveBtn.disabled = !(validAuto && validHang);
+      return !saveBtn.disabled;
+    };
+    for (const ctl of [auto, hang, agentMode, toolSet, logLevel, lightweight, failover, displayName]) {
+      ctl.input.addEventListener("input", validate); ctl.input.addEventListener("change", validate); ctl.toggle.addEventListener("change", validate);
+    }
+    saveBtn.onclick = async () => {
+      if (!validate()) return;
+      const patch = {
+        backend: fBackend.value, model: fModel.value || undefined,
+        working_directory: fWd.value, channel_id: fChan.value || undefined,
+        description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
+        tags: tags.length ? tags : undefined, general_topic: fGeneral.checked,
+        auto_pause_after: auto.toggle.checked ? null : Number(auto.input.value),
+        hang_detector: { timeout_minutes: hang.toggle.checked ? null : Number(hang.input.value) },
+        agent_mode: agentMode.toggle.checked ? null : agentMode.input.value,
+        tool_set: toolSet.toggle.checked ? null : toolSet.input.value,
+        log_level: logLevel.toggle.checked ? null : logLevel.input.value,
+        lightweight: lightweight.toggle.checked ? null : lightweight.input.checked,
+        model_failover: failover.toggle.checked ? null : (failover.input.value.trim() ? [failover.input.value.trim()] : []),
+        display_name: displayName.toggle.checked ? null : displayName.input.value.trim(),
+      };
+      const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) });
+      resultMsg(msg, res); if (res.ok) { await reload(); showBanner(`✓ ${t("affected")}: ${name} — 🔄 restart instance`); }
+    };
     box.append(
       el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
-      el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("backend")), fBackend), el("div", {}, el("label", {}, t("model")), fModel)),
-      el("label", {}, t("workingDir")), fWd,
-      el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("channelBinding")), fChan), el("div", {}, el("label", {}, t("description")), fDesc)),
-      el("label", {}, t("systemPrompt")), fSys,
-      el("label", {}, t("tags")), chipList(tags, null, "tag"),
-      el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField"))),
+      el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("backend"), impact("instance")), fBackend), el("div", {}, el("label", {}, t("model"), impact("instance")), fModel)),
+      el("label", {}, t("workingDir"), impact("instance")), fWd,
+      el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("channelBinding"), impact("fleet")), fChan), el("div", {}, el("label", {}, t("description"), impact("now")), fDesc)),
+      el("label", {}, t("systemPrompt"), impact("instance")), fSys,
+      el("label", {}, t("tags"), impact("now")), chipList(tags, null, "tag"),
+      el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("fleet")),
       el("div", { class: "sub", style: "margin:14px 0 6px;font-weight:600" }, t("runtimeResources")),
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`), fAutoPause),
-        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:25px" }, fAutoPauseInherit, el("span", {}, t("inheritDefault")))),
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`), auto.row, autoFeedback),
+        el("div", {}, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`), hang.row, hangFeedback),
+        el("div", {}, el("label", {}, t("agentMode")), agentMode.row),
+        el("div", {}, el("label", {}, t("toolSet")), toolSet.row),
+        el("div", {}, el("label", {}, t("logLevel")), logLevel.row),
+        el("div", {}, el("label", {}, t("lightweight")), lightweight.row),
+        el("div", {}, el("label", {}, t("modelFailover")), failover.row, failoverFeedback),
+        el("div", {}, el("label", {}, t("displayName")), displayName.row)),
       el("div", { class: "actions" },
-        el("button", { class: "primary sm", onclick: async () => {
-          const autoPause = Number(fAutoPause.value);
-          if (!fAutoPauseInherit.checked && (!Number.isFinite(autoPause) || autoPause < 0)) {
-            msg.innerHTML = `<span class="e">✗ ${esc(t("autoPause"))}: ≥ 0</span>`; return;
-          }
-          const patch = {
-            backend: fBackend.value, model: fModel.value || undefined,
-            working_directory: fWd.value, channel_id: fChan.value || undefined,
-            description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
-            tags: tags.length ? tags : undefined, general_topic: fGeneral.checked,
-            auto_pause_after: fAutoPauseInherit.checked ? null : autoPause,
-          };
-          const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) });
-          resultMsg(msg, res); if (res.ok) await reload();
-        } }, t("save")),
+        saveBtn,
         el("button", { class: "sm ghost", onclick: () => { editing = null; renderAgents(); } }, t("cancel")),
         msg),
     );
+    validate();
     return box;
   }
   async function toggleAgent(name, running) {
     if (running) await api(`/stop/${encodeURIComponent(name)}`, { method: "POST" });
     else await api(`/api/instance/${encodeURIComponent(name)}/start`, { method: "POST" });
     setTimeout(reloadLive, 800);
+  }
+  async function pauseWakeAgent(name, action) {
+    const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${action}`, { method: "POST" });
+    if (!res.ok) alert(res.body?.error || `${action} failed`);
+    await reloadLive();
   }
   async function delAgent(name) {
     if (!confirm(`Delete agent "${name}"? (config removed; running daemon stops on next Reload)`)) return;
@@ -415,6 +510,7 @@
   }
 
   // ── Bots ──
+  let editingBot = null;
   function renderBots() {
     const host = $("bots"); host.innerHTML = ""; const chs = channels();
     if (!chs.length) { host.className = "card empty"; host.textContent = t("noBots"); return; }
@@ -428,10 +524,39 @@
         el("span", { class: "sub", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
         el("span", { class: "spacer" }),
         el("span", { style: "color:var(--green);font-size:13px" }, state.fleetUp ? t("online") : "—"),
+        el("button", { class: "sm ghost", onclick: () => { editingBot = editingBot === i ? null : i; renderBots(); } }, editingBot === i ? t("close") : t("edit")),
         el("button", { class: "sm danger", onclick: () => delBot(i) }, "🗑️"),
       ));
+      if (editingBot === i) item.append(botEditForm(ch, i));
       host.append(item);
     });
+  }
+
+  function botEditForm(ch, i) {
+    ch.access = ch.access || { mode: "locked", allowed_users: [] };
+    ch.access.allowed_users = ch.access.allowed_users || [];
+    const box = el("div", { class: "edit" });
+    const fMode = select(ch.access.mode || "locked", ["open", "locked", "pairing"]);
+    const users = [...ch.access.allowed_users];
+    const msg = el("span", { class: "msg" });
+    box.append(
+      el("div", { class: "grid2" },
+        el("div", {}, el("label", {}, t("accessMode"), impact("fleet")), fMode),
+        el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(users, null, "user id"))),
+      el("div", { class: "actions" },
+        el("button", { class: "primary sm", onclick: async () => {
+          const chs = channels();
+          chs[i] = { ...chs[i], access: { ...chs[i].access, mode: fMode.value, allowed_users: users } };
+          const res = await saveChannels(msg);
+          if (res.ok) {
+            const affected = Object.keys(state.fleet.instances || {});
+            editingBot = null; await reload();
+            showBanner(`✓ ${t("affected")}: ${affected.length ? affected.join(", ") : chLabel(i) + " bot"} — 🔄🔄 restart fleet`);
+          }
+        } }, t("save")),
+        el("button", { class: "sm ghost", onclick: () => { editingBot = null; renderBots(); } }, t("cancel")), msg),
+    );
+    return box;
   }
 
   // ── ClassicBot Channels (read-only; created dynamically via /start /stop) ──
@@ -502,6 +627,8 @@
     state.fleet.defaults = state.fleet.defaults || {};
     state.classic.defaults = state.classic.defaults || {};
     const d = state.fleet.defaults, c = state.classic.defaults;
+    const hang = d.hang_detector || {};
+    const startup = d.startup || {};
     const primary = channels()[0];
     if (primary) primary.access = primary.access || { mode: "locked", allowed_users: [] };
     const allowedUsers = primary ? (primary.access.allowed_users = primary.access.allowed_users || []) : [];
@@ -509,31 +636,93 @@
 
     const fBackend = select(d.backend || "claude-code", BACKENDS);
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
+    const fAgentMode = select(d.agent_mode || "mcp", ["mcp", "cli"]);
+    const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
+    const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
     const fLocale = el("select");
     const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: d.auto_pause_after ?? 0, placeholder: "0 = disabled" });
+    const fHangEnabled = el("input", { type: "checkbox" }); fHangEnabled.checked = hang.enabled !== false;
+    const fHangTimeout = el("input", { type: "number", min: "0.1", step: "0.5", value: hang.timeout_minutes ?? 15 });
+    const fConcurrency = el("input", { type: "number", min: "1", max: "20", step: "1", value: startup.concurrency ?? 10 });
+    const fStagger = el("input", { type: "number", min: "0", max: "30000", step: "100", value: startup.stagger_delay_ms ?? 500 });
     [["en", "English"], ["zh-TW", "繁體中文 (zh-TW)"]].forEach(([v, lbl]) => { const o = el("option", {}, lbl); o.value = v; if ((d.locale || "") === v) o.selected = true; fLocale.append(o); });
     const msg = el("span", { class: "msg" });
+    const autoFeedback = el("div", { class: "feedback" });
+    const hangFeedback = el("div", { class: "feedback" });
+    const concurrencyFeedback = el("div", { class: "feedback" });
+    const staggerFeedback = el("div", { class: "feedback" });
+    const saveBtn = el("button", { class: "primary" }, t("save"));
+    const validate = () => {
+      const auto = Number(fAutoPause.value), timeout = Number(fHangTimeout.value);
+      const concurrency = Number(fConcurrency.value), stagger = Number(fStagger.value);
+      const validAuto = setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? "Must be 0 or greater" : "");
+      const validHang = setValidation(fHangTimeout, hangFeedback, !Number.isFinite(timeout) || timeout <= 0 ? "Must be greater than 0" : "");
+      const validConcurrency = setValidation(fConcurrency, concurrencyFeedback, !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 20 ? "Must be an integer from 1 to 20" : "", concurrency > 4 ? "May exceed CPU capacity on smaller hosts" : "");
+      const validStagger = setValidation(fStagger, staggerFeedback, !Number.isFinite(stagger) || stagger < 0 || stagger > 30000 ? "Must be between 0 and 30000" : "", stagger < 100 ? "Very low values can cause startup spikes" : "");
+      saveBtn.disabled = !(validAuto && validHang && validConcurrency && validStagger);
+      return !saveBtn.disabled;
+    };
+    for (const input of [fAutoPause, fHangTimeout, fConcurrency, fStagger]) {
+      input.addEventListener("input", validate); input.addEventListener("change", validate);
+    }
+    saveBtn.onclick = async () => {
+      if (!validate()) return;
+      const defaultsPatch = {
+        backend: fBackend.value,
+        model: fModel.value || undefined,
+        locale: fLocale.value,
+        auto_pause_after: Number(fAutoPause.value),
+        agent_mode: fAgentMode.value,
+        tool_set: fToolSet.value,
+        log_level: fLogLevel.value,
+        hang_detector: { enabled: fHangEnabled.checked, timeout_minutes: Number(fHangTimeout.value) },
+        startup: { concurrency: Number(fConcurrency.value), stagger_delay_ms: Number(fStagger.value) },
+      };
+      const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) });
+      let r2 = { ok: true, body: {} };
+      if (primary) r2 = await saveChannels();
+      const r3 = await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify({ backend: c.backend, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds }) });
+      const bad = [r1, r2, r3].find(r => !r.ok);
+      resultMsg(msg, bad || { ok: true, body: { warnings: [...(r1.body?.warnings || []), ...(r3.body?.warnings || [])] } });
+      if (!bad) {
+        const affected = Object.keys(state.fleet.instances || {});
+        await reload();
+        showBanner(`✓ ${t("affected")}: ${affected.length ? affected.join(", ") : "none"} — 🔄 restart instances; startup changes 🔄🔄 restart fleet`);
+      }
+    };
+
+    const section = (title, open, ...children) => {
+      const details = el("details", { class: "settings-section" }); details.open = open;
+      details.append(el("summary", {}, title), el("div", { class: "section-body" }, ...children));
+      return details;
+    };
     host.append(
-      el("div", { class: "field" }, el("label", {}, t("language")), fLocale),
-      el("div", { class: "field" }, el("label", {}, t("defaultBackend")), fBackend),
-      el("div", { class: "field" }, el("label", {}, t("defaultModel")), fModel),
-      el("div", { class: "sub", style: "padding:14px 14px 0;font-weight:600" }, t("runtimeResources")),
-      el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`), fAutoPause, el("div", { class: "hint" }, "0 = disabled; Reload Fleet restarts affected daemons")),
-      el("div", { class: "field" }, el("label", {}, t("allowedUsers")), chipList(allowedUsers, null, "user id")),
-      el("div", { class: "field" }, el("label", {}, t("classicAdmins")), chipList(c.admin_users, null, "user id")),
-      el("div", { class: "field" }, el("label", {}, t("allowedGuilds")), chipList(c.allowed_guilds, null, "guild id")),
-      el("div", { class: "field" }, el("div", { class: "actions" }, el("button", { class: "primary", onclick: async () => {
-        const autoPause = Number(fAutoPause.value);
-        if (!Number.isFinite(autoPause) || autoPause < 0) { msg.innerHTML = `<span class="e">✗ ${esc(t("autoPause"))}: ≥ 0</span>`; return; }
-        d.backend = fBackend.value; d.model = fModel.value || undefined; d.locale = fLocale.value; d.auto_pause_after = autoPause;
-        const r1 = await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify({ backend: d.backend, model: d.model, locale: d.locale, auto_pause_after: autoPause }) });
-        let r2 = { ok: true, body: {} };
-        if (primary) r2 = await saveChannels();
-        const r3 = await api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify({ backend: c.backend, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds }) });
-        const bad = [r1, r2, r3].find(r => !r.ok);
-        resultMsg(msg, bad || { ok: true, body: { warnings: [...(r1.body?.warnings || []), ...(r3.body?.warnings || [])] } });
-      } }, t("save")), msg)),
+      section(t("runtimeResources"), true,
+        el("div", { class: "grid2" },
+          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), fAutoPause, autoFeedback),
+          el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("instance")), fToolSet),
+          el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("instance")), fLogLevel))),
+      section(t("backendSection"), true,
+        el("div", { class: "grid2" },
+          el("div", { class: "field" }, el("label", {}, t("defaultBackend"), impact("instance")), fBackend),
+          el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("instance")), fModel),
+          el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("instance")), fAgentMode))),
+      section(t("detection"), false,
+        el("div", { class: "grid2" },
+          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("instance"))),
+          el("div", { class: "field" }, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("instance")), fHangTimeout, hangFeedback))),
+      section(t("startup"), false,
+        el("div", { class: "grid2" },
+          el("div", { class: "field" }, el("label", {}, t("concurrency"), impact("fleet")), fConcurrency, concurrencyFeedback),
+          el("div", { class: "field" }, el("label", {}, `${t("staggerDelay")} (ms)`, impact("fleet")), fStagger, staggerFeedback))),
+      section(t("advancedSection"), false,
+        el("div", { class: "field" }, el("label", {}, t("language"), impact("now")), fLocale),
+        el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(allowedUsers, null, "user id")),
+        el("div", { class: "field" }, el("label", {}, t("classicAdmins"), impact("fleet")), chipList(c.admin_users, null, "user id")),
+        el("div", { class: "field" }, el("label", {}, t("allowedGuilds"), impact("fleet")), chipList(c.allowed_guilds, null, "guild id"))),
+      el("div", { class: "field" }, el("div", { class: "actions" }, saveBtn, msg)),
     );
+    validate();
   }
 
   // ── What's New ──
