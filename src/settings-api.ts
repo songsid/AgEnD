@@ -11,6 +11,8 @@
  *   DELETE /api/settings/fleet/instances/:name  → remove instance
  *   PUT  /api/settings/classic/defaults         → merge classic defaults
  *   POST /api/settings/reload                   → SIGHUP hot-reload
+ *   POST /api/settings/instances/:name/pause    → manually pause a running instance
+ *   POST /api/settings/instances/:name/wake     → manually wake a paused instance
  *
  * Auth: all routes require the web.token — enforced by the global web-token gate
  * in fleet-manager BEFORE this handler runs (settings paths are not exempt), so
@@ -37,6 +39,11 @@ export interface SettingsApiContext {
   logger: Logger;
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(): void;
+  lifecycle: {
+    isPaused(name: string): boolean;
+    pause(name: string): Promise<void>;
+    wake(name: string, timeoutMs?: number): Promise<void>;
+  };
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
@@ -136,6 +143,19 @@ export function handleSettingsRequest(
   // Everything below mutates — needs an in-memory fleet config.
   const cfg = ctx.fleetConfig;
 
+  // ── Manual pause / wake ──
+  const actionMatch = path.match(/^\/api\/settings\/instances\/([^/]+)\/(pause|wake)$/);
+  if (method === "POST" && actionMatch) {
+    const name = decodeURIComponent(actionMatch[1]);
+    if (!name || !/^[^\\/\x00]+$/.test(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
+    if (!cfg?.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
+    const action = actionMatch[2];
+    const operation = action === "pause" ? ctx.lifecycle.pause(name) : ctx.lifecycle.wake(name, 30_000);
+    operation.then(() => json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }))
+      .catch(err => json(res, 409, { error: (err as Error).message }));
+    return true;
+  }
+
   // ── Fleet defaults ──
   if (method === "PUT" && path === "/api/settings/fleet/defaults") {
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
@@ -209,9 +229,20 @@ export function handleSettingsRequest(
     const base = (exists ? cfg!.instances[name] : {}) as Record<string, unknown>;
     const patch = body as Record<string, unknown>;
     const mergedInst = { ...base, ...patch };
+    if (patch.hang_detector && typeof patch.hang_detector === "object" && !Array.isArray(patch.hang_detector)) {
+      const hangPatch = patch.hang_detector as Record<string, unknown>;
+      const mergedHang = { ...((base.hang_detector as Record<string, unknown>) ?? {}), ...hangPatch };
+      // Nested null removes only the timeout override while preserving any
+      // independently configured `enabled` override.
+      if (hangPatch.timeout_minutes === null) delete mergedHang.timeout_minutes;
+      if (Object.keys(mergedHang).length) mergedInst.hang_detector = mergedHang;
+      else delete mergedInst.hang_detector;
+    }
     // JSON has no `undefined`; null is the PATCH sentinel for removing an
     // optional override so the instance inherits the fleet default again.
-    if (patch.auto_pause_after === null) delete mergedInst.auto_pause_after;
+    for (const key of ["auto_pause_after", "hang_detector", "agent_mode", "tool_set", "log_level", "lightweight", "model_failover", "display_name"]) {
+      if (patch[key] === null) delete mergedInst[key];
+    }
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
