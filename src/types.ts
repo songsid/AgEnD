@@ -88,7 +88,7 @@ export interface InstanceConfig {
     grace_period_ms: number;
     max_age_hours: number;
   };
-  log_level: "debug" | "info" | "warn" | "error";
+  log_level: "trace" | "debug" | "info" | "warn" | "error";
   /** CLI backend to use. Default: "claude-code" */
   backend?: string;
   /** MCP tool profile: "full" (20 tools), "standard" (8), "minimal" (3). Default: "full" */
@@ -113,6 +113,8 @@ export interface InstanceConfig {
   startup_timeout_ms?: number;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint, no MCP server). */
   agent_mode?: "mcp" | "cli";
+  /** Hang detector override for this instance. */
+  hang_detector?: HangDetectorConfig;
   /** Command to paste raw before each user message (e.g. "/chat load base.json") */
   pre_task_command?: string;
 }
