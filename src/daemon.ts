@@ -200,6 +200,7 @@ export class Daemon extends EventEmitter {
   // Track chatId/threadId from inbound messages for automatic outbound routing
   private lastChatId: string | undefined;
   private lastThreadId: string | undefined;
+  private lastAdapterId: string | undefined;
   // Pending ack: react 🫡 on first transcript activity after receiving a message
   private pendingAckMessage: { chatId: string; messageId: string } | null = null;
   // Tool status tracking for channel adapter
@@ -336,6 +337,7 @@ export class Daemon extends EventEmitter {
         if (saved.chatId) {
           this.lastChatId = saved.chatId;
           this.lastThreadId = saved.threadId || undefined;
+          this.lastAdapterId = saved.adapterId || undefined;
         }
       }
     } catch { /* corrupt/missing — ignore */ }
@@ -1350,7 +1352,7 @@ export class Daemon extends EventEmitter {
     // Remember (and persist) the reply target. Only real channel messages have a
     // non-empty chat_id; cross-instance messages have chat_id="" and must NOT
     // overwrite it (their reply would otherwise go nowhere).
-    this.updateLastChat(meta.chat_id, meta.thread_id);
+    this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     if (this.pendingInstructionsUpdate) {
       writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
       this.pendingInstructionsUpdate = undefined;
@@ -2112,13 +2114,16 @@ export class Daemon extends EventEmitter {
    * messages) so it never overwrites a real channel target. Persisted to
    * last-chat.json so the reply target survives a restart (see start()).
    */
-  private updateLastChat(chatId?: string, threadId?: string): void {
+  private updateLastChat(chatId?: string, threadId?: string, adapterId?: string): void {
     if (!chatId) return;
     this.lastChatId = chatId;
-    if (threadId) this.lastThreadId = threadId;
+    // An unthreaded inbound must clear a previous topic rather than leaking it
+    // into the next reply target.
+    this.lastThreadId = threadId || undefined;
+    if (adapterId) this.lastAdapterId = adapterId;
     try {
       writeFileSync(join(this.instanceDir, "last-chat.json"),
-        JSON.stringify({ chatId: this.lastChatId, threadId: this.lastThreadId }));
+        JSON.stringify({ chatId: this.lastChatId, threadId: this.lastThreadId, adapterId: this.lastAdapterId }));
     } catch { /* best effort */ }
   }
 
