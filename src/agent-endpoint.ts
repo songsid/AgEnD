@@ -19,6 +19,28 @@ import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
 
+export interface PersistedReplyContext {
+  chatId: string;
+  threadId?: string;
+  adapterId?: string;
+}
+
+/** Read the last real channel target persisted by the instance daemon. */
+export function readPersistedReplyContext(dataDir: string, instance: string): PersistedReplyContext | null {
+  if (!/^[A-Za-z0-9._-]+$/.test(instance)) return null;
+  try {
+    const raw = JSON.parse(readFileSync(join(dataDir, "instances", instance, "last-chat.json"), "utf-8")) as Record<string, unknown>;
+    if (typeof raw.chatId !== "string" || !raw.chatId) return null;
+    return {
+      chatId: raw.chatId,
+      ...(typeof raw.threadId === "string" && raw.threadId ? { threadId: raw.threadId } : {}),
+      ...(typeof raw.adapterId === "string" && raw.adapterId ? { adapterId: raw.adapterId } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Op name mapping: CLI command → internal tool name */
 const OP_MAP: Record<string, string> = {
   // Channel
@@ -133,7 +155,7 @@ export function handleAgentRequest(
         return;
       }
 
-      const result = await dispatch(ctx, instance, op, args);
+      const result = await dispatchAgentOperation(ctx, instance, op, args);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (err) {
@@ -143,7 +165,7 @@ export function handleAgentRequest(
   });
 }
 
-async function dispatch(
+export async function dispatchAgentOperation(
   ctx: AgentEndpointContext,
   instance: string,
   op: string,
@@ -184,14 +206,23 @@ async function dispatch(
   const channelTools = new Set(["reply", "react", "edit_message", "download_attachment"]);
   if (channelTools.has(tool)) {
     return new Promise((resolve) => {
-      const threadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
+      const persisted = readPersistedReplyContext(ctx.dataDir, instance);
+      const configuredThreadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
         ? String(ctx.fleetConfig.instances[instance].topic_id)
         : undefined;
-      const chatId = ctx.getGroupIdForInstance?.(instance) ?? (ctx.fleetConfig?.channel?.group_id
+      const configuredChatId = ctx.getGroupIdForInstance?.(instance) ?? (ctx.fleetConfig?.channel?.group_id
         ? String(ctx.fleetConfig.channel.group_id)
         : "");
-      const fullArgs = { ...args, chat_id: chatId, thread_id: threadId };
-      const adapter = ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
+      const classicChannelId = ctx.classicChannels?.getChannelIdByInstance?.(instance);
+      const chatId = classicChannelId ?? persisted?.chatId ?? configuredChatId;
+      const threadId = classicChannelId ? undefined : (persisted?.threadId ?? configuredThreadId);
+      if (tool !== "download_attachment" && !chatId) {
+        resolve({ error: "No active chat context — awaiting inbound message" });
+        return;
+      }
+      const fullArgs = { ...args, chat_id: chatId, ...(threadId ? { thread_id: threadId } : {}) };
+      const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
+        ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
       const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
         // A successful reply retires the instance's cancel button — mirroring the
         // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,

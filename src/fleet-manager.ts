@@ -2026,6 +2026,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               user_id: msg.userId,
               ts: msg.timestamp.toISOString(),
               thread_id: "",
+              adapter_id: msg.adapterId,
               source: msg.source,
               ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
               ...extraMeta,
@@ -2126,6 +2127,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           user_id: msg.userId,
           ts: msg.timestamp.toISOString(),
           thread_id: msg.threadId ?? "",
+          adapter_id: msg.adapterId,
           source: msg.source,
           ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
           ...extraMeta,
@@ -3780,7 +3782,7 @@ When users create specialized instances, suggest these configurations:
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string },
+    msg: { chatId: string; threadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
     // Resolve the channel/adapter from the instance itself so per-channel context
@@ -3800,6 +3802,7 @@ When users create specialized instances, suggest these configurations:
       user_id: msg.userId,
       ts: msg.timestamp.toISOString(),
       thread_id: msg.threadId ?? "",
+      ...(msg.adapterId ? { adapter_id: msg.adapterId } : {}),
       source: msg.source,
       ...extraMeta,
       ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
