@@ -27,7 +27,8 @@ export interface PersistedReplyContext {
 
 /** Read the last real channel target persisted by the instance daemon. */
 export function readPersistedReplyContext(dataDir: string, instance: string): PersistedReplyContext | null {
-  if (!/^[A-Za-z0-9._-]+$/.test(instance)) return null;
+  // Prevent path traversal; allow Unicode (e.g. Chinese instance names)
+  if (!instance || instance.includes("/") || instance.includes("\\") || instance.includes("..")) return null;
   try {
     const raw = JSON.parse(readFileSync(join(dataDir, "instances", instance, "last-chat.json"), "utf-8")) as Record<string, unknown>;
     if (typeof raw.chatId !== "string" || !raw.chatId) return null;
@@ -98,8 +99,8 @@ function verifyInstanceToken(
   provided: string | undefined,
 ): boolean {
   if (!provided) return false;
-  // instance name must be a safe filename component
-  if (!/^[A-Za-z0-9._-]+$/.test(instance)) return false;
+  // instance name must be a safe filename component (allow Unicode, block traversal)
+  if (!instance || instance.includes("/") || instance.includes("\\") || instance.includes("..")) return false;
   const tokenPath = join(ctx.dataDir, "instances", instance, "agent.token");
   let expected: string;
   try {
