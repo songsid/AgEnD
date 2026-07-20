@@ -43,6 +43,22 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
     }
   };
+  const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
+    if (value.agent_mode !== undefined && value.agent_mode !== "mcp" && value.agent_mode !== "cli") err(`${path}.agent_mode`, "must be mcp or cli");
+    if (value.tool_set !== undefined && !["full", "standard", "minimal"].includes(String(value.tool_set))) err(`${path}.tool_set`, "must be full, standard, or minimal");
+    if (value.log_level !== undefined && !["trace", "debug", "info", "warn", "error"].includes(String(value.log_level))) err(`${path}.log_level`, "must be trace, debug, info, warn, or error");
+    if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
+    if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");
+    if (value.model_failover !== undefined && (!Array.isArray(value.model_failover) || !value.model_failover.every(v => typeof v === "string" && v.length > 0))) err(`${path}.model_failover`, "must be a list of non-empty model names");
+    if (value.hang_detector !== undefined) {
+      if (!isObj(value.hang_detector)) err(`${path}.hang_detector`, "must be a mapping");
+      else {
+        if (value.hang_detector.enabled !== undefined && typeof value.hang_detector.enabled !== "boolean") err(`${path}.hang_detector.enabled`, "must be a boolean");
+        const timeout = value.hang_detector.timeout_minutes;
+        if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) err(`${path}.hang_detector.timeout_minutes`, "must be a positive finite number");
+      }
+    }
+  };
 
   if (!isObj(config)) {
     return { valid: false, errors: [{ path: "", message: "config must be a mapping" }], warnings: [] };
@@ -91,6 +107,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (isObj(ch.access) && ch.access.allowed_users !== undefined && !isIdArray(ch.access.allowed_users)) {
       err(`${at}.access.allowed_users`, "must be an array of strings/numbers");
     }
+    if (isObj(ch.access) && ch.access.mode !== undefined && !["open", "locked", "pairing"].includes(String(ch.access.mode))) {
+      err(`${at}.access.mode`, "must be open, locked, or pairing");
+    }
   });
 
   // ── Defaults ──────────────────────────────────────────────
@@ -102,6 +121,16 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
+    validateInstanceOptions(config.defaults, "defaults");
+    if (config.defaults.startup !== undefined) {
+      if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");
+      else {
+        const concurrency = config.defaults.startup.concurrency;
+        if (concurrency !== undefined && (!Number.isInteger(concurrency) || (concurrency as number) < 1 || (concurrency as number) > 20)) err("defaults.startup.concurrency", "must be an integer from 1 to 20");
+        const stagger = config.defaults.startup.stagger_delay_ms;
+        if (stagger !== undefined && (typeof stagger !== "number" || !Number.isFinite(stagger) || stagger < 0 || stagger > 30_000)) err("defaults.startup.stagger_delay_ms", "must be between 0 and 30000 ms");
+      }
+    }
   }
 
   // ── Instances ─────────────────────────────────────────────
@@ -127,6 +156,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         err(`instances.${name}.working_directory`, "must be a string path");
       }
       validateAutoPause(inst.auto_pause_after, `instances.${name}.auto_pause_after`);
+      validateInstanceOptions(inst, `instances.${name}`);
     }
   }
   if (generalCount === 0) {
