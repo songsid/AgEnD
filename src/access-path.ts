@@ -10,11 +10,11 @@ import { join } from "node:path";
  * entry points and the consequence of a traversal here is reading or writing
  * an attacker-supplied file path.
  */
-const VALID_INSTANCE_NAME = /^[A-Za-z0-9._-]+$/;
+const SAFE_INSTANCE_NAME = /^[^/\\]+$/;
 
 function assertSafeInstanceName(instance: string): void {
-  if (!VALID_INSTANCE_NAME.test(instance) || instance === "." || instance === "..") {
-    throw new Error(`Invalid instance name "${instance}" — must match ${VALID_INSTANCE_NAME}`);
+  if (!instance || !SAFE_INSTANCE_NAME.test(instance) || instance === "." || instance === ".." || instance.includes("..")) {
+    throw new Error(`Invalid instance name "${instance}" — must not contain path separators or traversal`);
   }
 }
 
