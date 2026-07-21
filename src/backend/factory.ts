@@ -24,6 +24,7 @@ export function createBackend(name: string, instanceDir: string): CliBackend {
     case "antigravity":
       return new AntigravityBackend(instanceDir);
     case "grok":
+      console.warn("⚠️ grok backend is experimental — some patterns may need tuning.");
       return new GrokBackend(instanceDir);
     case "mock":
       return new MockBackend(instanceDir);

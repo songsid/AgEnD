@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 /**
@@ -16,13 +16,10 @@ import { appendWithMarker, removeMarker } from "./marker-utils.js";
  * interface does not map onto it. The interactive TUI is the correct surface,
  * the same choice made for codex/opencode/kiro.
  *
- * ⚠️ PHASE 1 — patterns marked "UNVERIFIED" below are best-effort: the grok
- * binary is not installed in this environment, so the exact ready banner, error
- * strings, slash commands, and cancel key could not be observed live. They must
- * be confirmed against a real `grok` session before this backend is trusted in
- * production (three-state detection depends on getReadyPattern being correct).
- * The launch flags, MCP config path, and model names ARE confirmed from the
- * official docs (docs.x.ai/build/cli) and released documentation.
+ * Phase 2: ready pattern, cancel/quit keys, /compact, context format, and the
+ * device-flow login dialog were confirmed against a live grok session. Error
+ * strings beyond the cancellation notice are still best-effort and may need
+ * tuning — the backend is registered as experimental (see factory.ts).
  */
 export class GrokBackend implements CliBackend {
   readonly binaryName = "grok";
@@ -91,14 +88,15 @@ export class GrokBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    // ⚠️ UNVERIFIED — needs confirmation against a live grok TUI. Matches the
-    // likely input-ready hints (prompt glyph / "esc to interrupt" / help hint).
-    // If wrong, three-state detection will misfire; verify before production use.
-    return /[›❯]|esc to interrupt|\/help for|Ask Grok/im;
+    // Verified: `❯` is the idle input prompt inside the TUI box; the Grok Build
+    // header ("Grok Build" / "Grok <n>") also identifies the ready screen.
+    return /❯|Grok \d|Grok Build/m;
   }
 
   getErrorPatterns(): ErrorPattern[] {
-    // ⚠️ UNVERIFIED error strings — generic API-error shapes, low risk but needs tuning.
+    // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
+    // error — none of the patterns below match it, and none should be added that do.
+    // Error strings below are best-effort generic API shapes; tune once observed live.
     return [
       { pattern: /rate.?limit|too many requests|\b429\b/i, type: "rate_limit", action: "failover", message: "Grok rate limit reached" },
       { pattern: /unauthorized|authentication (failed|error)|\b401\b/i, type: "auth_error", action: "pause", message: "Grok authentication error" },
@@ -106,15 +104,22 @@ export class GrokBackend implements CliBackend {
     ];
   }
 
-  getRuntimeDialogs(): RuntimeDialog[] {
-    // ⚠️ UNVERIFIED — with --always-approve, tool-approval prompts should not
-    // appear. Placeholder for any residual confirm prompt; confirm keys live.
-    return [];
+  getStartupDialogs(): StartupDialog[] {
+    return [
+      // Device-flow login is BLOCKING and cannot be auto-dismissed — the user must
+      // approve externally. Empty keys => the daemon sends nothing but treats the
+      // screen as "not ready yet" and keeps polling, so the login screen is never
+      // mistaken for the idle prompt. (The "[Click here to Upgrade]" banner is
+      // non-blocking and is intentionally NOT listed — nothing to dismiss.)
+      { pattern: /Waiting for approval|Log in to continue|device.*approval/i, keys: [], description: "Grok device-flow login — wait for user authorization (no auto-dismiss)" },
+    ];
   }
 
   getContextUsage(): number | null {
-    // No known file-based context source yet; statusline/parse support is a
-    // later checklist phase (/ctx + agend ls %).
+    // Grok shows context as "12K / 500K" (used / total) in the TUI, not in a file.
+    // getContextUsage() has no pane access, so parsing lives in the pane scanners
+    // (parseContextPercent in topic-commands.ts + defaultParser in cli.ts), which
+    // is what /ctx and `agend ls` use. Nothing file-based to report here.
     return null;
   }
 
@@ -124,12 +129,14 @@ export class GrokBackend implements CliBackend {
     return null;
   }
 
-  getQuitCommand(): string { return "/exit"; }   // ⚠️ UNVERIFIED
+  // grok has no slash quit command — it quits via the Ctrl+Q key chord (getQuitKey).
+  getQuitCommand(): string | null { return null; }
+  getQuitKey(): string { return "C-q"; }
 
-  getCompactCommand(): string { return "/compact"; }   // ⚠️ UNVERIFIED
+  getCompactCommand(): string { return "/compact"; }   // verified present
 
-  // ⚠️ UNVERIFIED — most coding TUIs interrupt generation on Escape (Ctrl+C exits).
-  getCancelKey(): string { return "Escape"; }
+  // Verified: grok interrupts generation on Ctrl+C.
+  getCancelKey(): string { return "C-c"; }
 
   cleanup(config: CliBackendConfig): void {
     // Remove only this instance's namespaced MCP entries — a non-namespaced key

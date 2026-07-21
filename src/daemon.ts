@@ -994,12 +994,18 @@ export class Daemon extends EventEmitter {
       this.healthCheckPaused = true;
       let killed = false;
       const quitCmd = this.backend?.getQuitCommand();
+      const quitKey = this.backend?.getQuitKey?.();
       if (quitCmd) {
         await this.tmux.sendKeys(quitCmd);
         // Delay before Enter to prevent tmux server race when multiple
         // instances stop in parallel (same pattern as pasteText).
         await new Promise(r => setTimeout(r, 150));
         await this.tmux.sendSpecialKey("Enter");
+      } else if (quitKey) {
+        // Some CLIs quit via a key chord (e.g. grok Ctrl+Q), not a typed command.
+        await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q");
+      }
+      if (quitCmd || quitKey) {
         // Wait up to 3s for graceful exit, polling every 200ms. A healthy CLI
         // exits within ~1s; a longer wait just delays the force-kill fallback.
         for (let i = 0; i < 15; i++) {
@@ -1070,10 +1076,16 @@ export class Daemon extends EventEmitter {
       try {
         this.saveSessionId();
         const quitCmd = this.backend?.getQuitCommand();
-        if (quitCmd && this.tmux) {
-          await this.tmux.sendKeys(quitCmd);
-          await new Promise(r => setTimeout(r, 150));
-          await this.tmux.sendSpecialKey("Enter");
+        const quitKey = this.backend?.getQuitKey?.();
+        if (this.tmux) {
+          if (quitCmd) {
+            await this.tmux.sendKeys(quitCmd);
+            await new Promise(r => setTimeout(r, 150));
+            await this.tmux.sendSpecialKey("Enter");
+          } else if (quitKey) {
+            // Key-chord quit (e.g. grok Ctrl+Q) — no typed command to send.
+            await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q");
+          }
         }
 
         let exited = false;
