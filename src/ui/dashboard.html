@@ -468,7 +468,7 @@ async function showCreateInstance() {
       const label = b.installed ? b.name : `${b.name} (not installed)`;
       return `<option value="${b.name}" ${b.installed ? "" : "disabled"} ${b.name === first?.name ? "selected" : ""}>${label}</option>`;
     }).join("");
-  } catch { backendOpts += ["claude-code","codex","gemini-cli","opencode","kiro-cli"].map(b => `<option value="${b}">${b}</option>`).join(""); }
+  } catch { backendOpts += ["claude-code","codex","gemini-cli","opencode","kiro-cli","antigravity","grok"].map(b => `<option value="${b}">${b}</option>`).join(""); }
   ov.innerHTML = `<div class="form-card"><h2>Create Instance</h2>
     <div class="form-field"><label>Directory</label><input id="ci-dir" placeholder="Optional — auto-creates workspace if empty"></div>
     <div class="form-field"><label id="ci-topic-label">Topic Name</label><input id="ci-topic" placeholder="Auto from directory name"></div>
@@ -689,7 +689,7 @@ async function loadConfig() {
       <div class="card"><h3>Defaults</h3>
         <div class="form-field"><label>Backend</label>
           <select id="cfg-backend">
-            ${["claude-code","codex","gemini-cli","opencode","kiro-cli"].map(b => `<option value="${b}" ${defs.backend===b?"selected":""}>${b}</option>`).join("")}
+            ${["claude-code","codex","gemini-cli","opencode","kiro-cli","antigravity","grok"].map(b => `<option value="${b}" ${defs.backend===b?"selected":""}>${b}</option>`).join("")}
           </select></div>
       </div>
       <div class="card"><h3>Project Roots</h3>
