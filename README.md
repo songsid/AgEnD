@@ -121,7 +121,7 @@ graph LR
 | OpenCode | `curl -fsSL https://opencode.ai/install \| bash` | `opencode` (configure provider) |
 | Kiro CLI | `curl -fsSL https://cli.kiro.dev/install | bash` | `kiro-cli login` (AWS Builder ID) |
 | Antigravity CLI | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `agy` (Google Sign-In) |
-| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (Google OAuth device flow) ⚠️ Experimental |
+| Grok Build | `curl -fsSL https://x.ai/cli/install.sh \| bash` | `grok` (x.ai OAuth device flow) ⚠️ Experimental |
 
 ## Requirements
 
