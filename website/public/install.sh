@@ -262,7 +262,7 @@ fi
 
 step 5 "Detecting AI backend"
 
-BACKENDS=("claude:Claude Code" "codex:OpenAI Codex" "gemini:Gemini CLI" "opencode:OpenCode" "kiro-cli:Kiro CLI")
+BACKENDS=("claude:Claude Code" "codex:OpenAI Codex" "gemini:Gemini CLI" "opencode:OpenCode" "kiro-cli:Kiro CLI" "agy:Antigravity CLI" "grok:Grok Build")
 FOUND=0
 
 for entry in "${BACKENDS[@]}"; do
