@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -62,6 +63,23 @@ export class GrokBackend implements CliBackend {
     return cmd;
   }
 
+  /**
+   * Build an ASCII-only, per-instance MCP server key. Grok Build's MCP client has
+   * a bug where a non-ASCII (e.g. CJK) server name connects but drops ALL tools
+   * (tool_count=0, misreported as "connection failed"). Instance names can be CJK
+   * (persona ClassicBot channels), so sanitize: pure-ASCII names pass through
+   * unchanged (readable + already unique); names with non-ASCII are stripped to an
+   * ASCII slug plus a short hash of the ORIGINAL name, so two distinct CJK names
+   * sharing a working directory can't collide to the same key.
+   */
+  private mcpKey(mcpName: string, instanceName: string): string {
+    const ascii = instanceName.replace(/[^\x20-\x7E]/g, "");
+    if (ascii === instanceName) return `${mcpName}-${instanceName}`;
+    const slug = ascii.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    const hash = createHash("md5").update(instanceName).digest("hex").slice(0, 8);
+    return slug ? `${mcpName}-${slug}-${hash}` : `${mcpName}-${hash}`;
+  }
+
   /** The daemon's persisted session id (written from getSessionId()), for --resume. */
   private storedSessionId(): string | null {
     try {
@@ -80,16 +98,21 @@ export class GrokBackend implements CliBackend {
     try { root = JSON.parse(readFileSync(mcpPath, "utf-8")); } catch { /* new file */ }
 
     const servers = (root.mcpServers ?? {}) as Record<string, unknown>;
-    // Drop stale agend entries whose wrapper script no longer exists.
+    // Drop stale agend entries whose wrapper script no longer exists, plus any
+    // legacy non-ASCII key (grok drops all tools on a CJK key — we now always
+    // write ASCII keys, so a lingering CJK entry is dead weight to remove).
     for (const [key, val] of Object.entries(servers)) {
       if (key.startsWith("agend-")) {
         const cmd = (val as Record<string, unknown>)?.command;
-        if (typeof cmd === "string" && !existsSync(cmd)) delete servers[key];
+        if ((typeof cmd === "string" && !existsSync(cmd)) || /[^\x20-\x7E]/.test(key)) {
+          delete servers[key];
+        }
       }
     }
-    // Namespace each server by instance so multiple instances can share a working dir.
+    // Namespace each server by instance so multiple instances can share a working
+    // dir. Key is ASCII-sanitized (grok's MCP client drops tools on a CJK key).
     for (const [name, entry] of Object.entries(config.mcpServers)) {
-      const instanceKey = `${name}-${config.instanceName}`;
+      const instanceKey = this.mcpKey(name, config.instanceName);
       const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
 
       // WORKAROUND (same as kiro-cli): grok does not reliably pass the mcp.json
@@ -229,6 +252,8 @@ export class GrokBackend implements CliBackend {
         const root = JSON.parse(readFileSync(mcpPath, "utf-8"));
         if (root.mcpServers) {
           for (const name of Object.keys(config.mcpServers)) {
+            delete root.mcpServers[this.mcpKey(name, config.instanceName)];
+            // Also drop any legacy raw (pre-sanitize) key for this instance.
             delete root.mcpServers[`${name}-${config.instanceName}`];
           }
           writeFileSync(mcpPath, JSON.stringify(root, null, 2));
