@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync } from "node:fs";
+import { formatContextUsageLine, parseContextPercent, parseTokenContextRatio } from "../src/topic-commands.js";
 
 // ── 1. Backend ready patterns ───────────────────────────────────────────
 
@@ -73,6 +74,26 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("Connecting...")).toBe(false);
     // Live OpenCode tmux capture (2026-07-20).
     expect(pattern.test("tab agents  ctrl+p commands")).toBe(true);
+  });
+});
+
+describe("Grok context ratio", () => {
+  it.each([
+    ["12K / 500K", 2.4],
+    ["1.5M / 2M", 75],
+    ["500 / 2k", 25],
+  ])("parses %s as used context percentage", (status, expected) => {
+    expect(parseContextPercent(`branch ~/repo ${status}`)).toBeCloseTo(expected);
+  });
+
+  it("preserves the Grok token labels for /ctx output", () => {
+    const ratio = parseTokenContextRatio("[Click here to Upgrade] 12K / 500K");
+    expect(ratio).toEqual({
+      usedLabel: "12K",
+      totalLabel: "500K",
+      percentage: 2.4,
+    });
+    expect(formatContextUsageLine(ratio!.percentage, ratio)).toBe("📊 Context: 12K / 500K (2%) used");
   });
 });
 
