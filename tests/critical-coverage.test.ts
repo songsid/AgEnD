@@ -75,6 +75,27 @@ describe("Backend ready patterns", () => {
     // Live OpenCode tmux capture (2026-07-20).
     expect(pattern.test("tab agents  ctrl+p commands")).toBe(true);
   });
+
+  it("Grok distinguishes idle prompts from active and approval states", async () => {
+    const { GrokBackend } = await import("../src/backend/grok.js");
+    const { PaneStateMachine } = await import("../src/daemon.js");
+    const backend = new GrokBackend("/tmp/test");
+    const pattern = backend.getReadyPattern();
+    expect(pattern.test("❯")).toBe(true);
+    expect(pattern.test("Grok 4.5 (high)")).toBe(true);
+    expect(pattern.test("⠹ Responding… 3.0s")).toBe(false);
+    expect(pattern.test("Waiting for approval...")).toBe(false);
+
+    const liveIdlePane = "[Click here to Upgrade] 12K / 500K\n│ ❯ │\nGrok 4.5 (high)";
+    const machine = new PaneStateMachine(pattern, 15_000, 0);
+    expect(machine.observe(liveIdlePane, 0).state).toBe("idle");
+    expect(machine.observe(`${liveIdlePane}\n⠹ Responding… 1.0s`, 1_000).state).toBe("working");
+    expect(machine.observe(`${liveIdlePane}\n⠸ Responding… 2.0s`, 2_000).state).toBe("working");
+
+    const stuck = new PaneStateMachine(pattern, 15_000, 0);
+    expect(stuck.observe("⠹ Responding… 3.0s", 0).state).toBe("working");
+    expect(stuck.observe("⠹ Responding… 3.0s", 15_000).state).toBe("stuck");
+  });
 });
 
 describe("Grok context ratio", () => {
