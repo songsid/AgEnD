@@ -5,6 +5,8 @@ import { join, basename } from "node:path";
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import yaml from "js-yaml";
+import { ClassicChannelManager, getClassicBackendChoices } from "../src/classic-channel-manager.js";
+import { KNOWN_BACKENDS } from "../src/config-validator.js";
 
 describe("FleetManager", () => {
   let tmpDir: string;
@@ -59,6 +61,98 @@ describe("FleetManager", () => {
     (fm as any).cacheInstanceExecutionState("test", { state: "idle" });
     vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
     expect(fm.getInstanceExecutionState("test")).toBeNull();
+  });
+
+  it("builds ClassicBot backend choices dynamically without the mock backend", () => {
+    const choices = getClassicBackendChoices();
+    expect(choices.map(choice => choice.id)).toEqual(KNOWN_BACKENDS.filter(backend => backend !== "mock"));
+    expect(choices.find(choice => choice.id === "grok")?.label).toBe("grok ⚠️");
+    expect(choices.some(choice => choice.id === "mock")).toBe(false);
+  });
+
+  it("persists a directly selected ClassicBot backend before starting", async () => {
+    const fm = new FleetManager(tmpDir);
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("telegram");
+    fm.classicChannels = classicChannels;
+    const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+
+    await fm.handleClassicStart("12345", "test-room", "user-1", undefined, "telegram", "grok");
+
+    expect(classicChannels.get("12345", "telegram")?.backend).toBe("grok");
+    expect(start).toHaveBeenCalledWith(expect.any(String), "grok", undefined, undefined);
+    expect(readFileSync(join(tmpDir, "classicBot.yaml"), "utf8")).toContain("backend: grok");
+  });
+
+  it("accepts a pending backend choice only from the user who issued /start", async () => {
+    const fm = new FleetManager(tmpDir);
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("telegram");
+    fm.classicChannels = classicChannels;
+    const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+    const promptUser = vi.fn().mockResolvedValue("menu-1");
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const adapter = { id: "telegram", type: "telegram", promptUser, editMessageRemoveButtons } as any;
+
+    await (fm as any).beginClassicBackendSelection({
+      command: "start",
+      channelId: "12345",
+      channelName: "test-room",
+      userId: "owner",
+      respond: vi.fn().mockResolvedValue(undefined),
+    }, adapter);
+    const codex = promptUser.mock.calls[0][2].find((choice: { label: string }) => choice.label === "codex");
+
+    await (fm as any).handleClassicBackendSelection({
+      callbackData: codex.id,
+      chatId: "12345",
+      messageId: "menu-1",
+      userId: "someone-else",
+    });
+    expect(start).not.toHaveBeenCalled();
+
+    await (fm as any).handleClassicBackendSelection({
+      callbackData: codex.id,
+      chatId: "12345",
+      messageId: "menu-1",
+      userId: "owner",
+    });
+    expect(classicChannels.get("12345", "telegram")?.backend).toBe("codex");
+    expect(start).toHaveBeenCalledOnce();
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith("12345", "menu-1", expect.any(String));
+  });
+
+  it("falls back to the configured backend when the selection times out", async () => {
+    vi.useFakeTimers();
+    try {
+      const fm = new FleetManager(tmpDir);
+      fm.fleetConfig = { defaults: { backend: "kiro-cli" }, instances: {} };
+      const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+      classicChannels.setPrimaryAdapterId("telegram");
+      fm.classicChannels = classicChannels;
+      const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+      const adapter = {
+        id: "telegram",
+        type: "telegram",
+        promptUser: vi.fn().mockResolvedValue("menu-1"),
+        editMessageRemoveButtons: vi.fn().mockResolvedValue(undefined),
+      } as any;
+
+      await (fm as any).beginClassicBackendSelection({
+        command: "start",
+        channelId: "12345",
+        channelName: "test-room",
+        userId: "owner",
+        respond: vi.fn().mockResolvedValue(undefined),
+      }, adapter);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      expect(start).toHaveBeenCalledWith(expect.any(String), "kiro-cli", undefined, undefined);
+      expect(classicChannels.get("12345", "telegram")?.backend).toBeUndefined();
+      expect(adapter.editMessageRemoveButtons).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("wakes a paused instance before IPC delivery", async () => {

@@ -22,7 +22,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
+import type { ChannelAdapter, InboundMessage, Choice } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { createLogger, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
@@ -47,7 +47,7 @@ import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager } from "./classic-channel-manager.js";
+import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend } from "./classic-channel-manager.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 
 import { getTmuxSession } from "./config.js";
@@ -92,6 +92,41 @@ interface CancelButtonEntry {
   idleCheckTimer?: ReturnType<typeof setInterval>;
   retiring?: boolean;
 }
+
+interface AdapterCallbackData {
+  callbackData: string;
+  chatId: string;
+  threadId?: string;
+  messageId: string;
+  userId?: string;
+}
+
+interface ClassicStartSlashData {
+  command: string;
+  channelId: string;
+  channelName: string;
+  guildId?: string;
+  userId: string;
+  username?: string;
+  text?: string;
+  options?: Record<string, string | boolean>;
+  respond: (text: string) => Promise<string | undefined>;
+  respondChoices?: (text: string, choices: Choice[]) => Promise<string | undefined>;
+}
+
+interface PendingClassicStart {
+  channelId: string;
+  channelName: string;
+  userId: string;
+  guildId?: string;
+  adapterId?: string;
+  messageId?: string;
+  timer: ReturnType<typeof setTimeout>;
+  complete: (text: string, messageId?: string) => Promise<void>;
+}
+
+const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
+const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
@@ -146,6 +181,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   controlClient: TmuxControlClient | null = null;
   classicChannels: ClassicChannelManager | null = null;
+  private pendingClassicStarts = new Map<string, PendingClassicStart>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -1106,7 +1142,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleInboundMessage(msg);
     }, this.logger, "adapter.message"));
 
-    this.adapter.on("callback_query", safeHandler(async (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
+    this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleClassicBackendSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -1142,10 +1179,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.topic_closed"));
 
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
-    this.adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
+    this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
-        await data.respond(reply);
+        const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
+        if (requestedBackend) {
+          const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId, requestedBackend);
+          await data.respond(reply);
+        } else {
+          await this.beginClassicBackendSelection(data, this.adapter!);
+        }
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -1364,7 +1406,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleInboundMessage(msg);
     }, this.logger, `adapter[${adapterId}].message`));
 
-    adapter.on("callback_query", safeHandler(async (data: { callbackData: string; chatId: string; threadId?: string; messageId: string }) => {
+    adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleClassicBackendSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -1396,10 +1439,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].topic_closed`));
 
     // Slash commands: classic bot + admin commands
-    adapter.on("slash_command", safeHandler(async (data: { command: string; channelId: string; channelName: string; guildId?: string; userId: string; username?: string; text?: string; options?: Record<string, string | boolean>; respond: (text: string) => Promise<string | undefined> }) => {
+    adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId);
-        await data.respond(reply);
+        const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
+        if (requestedBackend) {
+          const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId, requestedBackend);
+          await data.respond(reply);
+        } else {
+          await this.beginClassicBackendSelection(data, adapter);
+        }
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -1876,9 +1924,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             }
           }
           const channelName = msg.username || chatId;
-          // handleClassicStart binds the instance to this adapter authoritatively.
-          const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId);
-          await msgAdapter?.sendText(chatId, reply);
+          const requestedBackend = text.slice("/start".length).trim().split(/\s+/, 1)[0] || undefined;
+          if (requestedBackend) {
+            // handleClassicStart binds the instance to this adapter authoritatively.
+            const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);
+            await msgAdapter?.sendText(chatId, reply);
+          } else if (msgAdapter) {
+            await this.beginClassicBackendSelection({
+              command: "start",
+              channelId: chatId,
+              channelName,
+              userId: msg.userId,
+              respond: async (reply: string) => (await msgAdapter.sendText(chatId, reply)).messageId,
+            }, msgAdapter);
+          }
           return;
         }
 
@@ -3871,6 +3930,109 @@ When users create specialized instances, suggest these configurations:
     } catch { return undefined; }
   }
 
+  /** Return a user-facing blocker without mutating ClassicBot state. */
+  private validateClassicStart(channelId: string, userId: string, guildId?: string, adapterId?: string): string | undefined {
+    if (!this.classicChannels) return "Classic channel manager not initialized.";
+    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
+      const generalId = this.findGeneralInstance(adapterId);
+      if (generalId) this.notifyInstanceTopic(generalId, t("alert.unauth_guild", guildId, userId));
+      return t("classic.not_authorized_guild");
+    }
+    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t("classic.already_active");
+    if (this.routing.resolve(channelId)) return t("classic.topic_bound");
+    return undefined;
+  }
+
+  /** Present platform-native backend choices, then start on selection or timeout. */
+  private async beginClassicBackendSelection(data: ClassicStartSlashData, adapter: ChannelAdapter): Promise<void> {
+    const adapterId = adapter.id;
+    const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
+    if (blocker) {
+      await data.respond(blocker);
+      return;
+    }
+
+    const nonce = randomBytes(6).toString("hex");
+    const choices = getClassicBackendChoices().map(choice => ({
+      id: `${CLASSIC_BACKEND_CALLBACK_PREFIX}${nonce}:${choice.id}`,
+      label: choice.label,
+    }));
+    const complete = data.respondChoices
+      ? async (text: string) => { await data.respond(text); }
+      : async (text: string, messageId?: string) => {
+          if (messageId && adapter.editMessageRemoveButtons) {
+            try {
+              await adapter.editMessageRemoveButtons(data.channelId, messageId, text);
+              return;
+            } catch { /* fall back to a new message */ }
+          }
+          await data.respond(text);
+        };
+
+    const timer = setTimeout(() => {
+      void this.finishClassicBackendSelection(nonce).catch(err =>
+        this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend selection timeout fallback failed"));
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    const pending: PendingClassicStart = {
+      channelId: data.channelId,
+      channelName: data.channelName,
+      userId: data.userId,
+      guildId: data.guildId,
+      adapterId,
+      timer,
+      complete,
+    };
+    this.pendingClassicStarts.set(nonce, pending);
+
+    try {
+      pending.messageId = data.respondChoices
+        ? await data.respondChoices(t("classic.choose_backend"), choices)
+        : await adapter.promptUser(data.channelId, t("classic.choose_backend"), choices);
+    } catch (err) {
+      // A menu transport failure should not make /start unusable: consume the
+      // pending request and immediately use the configured default.
+      this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend menu failed; using default");
+      await this.finishClassicBackendSelection(nonce);
+    }
+  }
+
+  /** Consume a selection callback. Returns true for all ClassicBot callback IDs, including stale ones. */
+  private async handleClassicBackendSelection(data: AdapterCallbackData): Promise<boolean> {
+    if (!data.callbackData.startsWith(CLASSIC_BACKEND_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^classic-backend:([0-9a-f]+):(.+)$/);
+    if (!match) return true;
+    const pending = this.pendingClassicStarts.get(match[1]);
+    if (!pending) return true;
+
+    // Telegram keyboards are visible to everyone in a group. Only the user who
+    // issued /start may consume the pending selection.
+    if (data.userId && data.userId !== pending.userId) return true;
+    const callbackChannelId = data.threadId ?? data.chatId;
+    if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
+
+    await this.finishClassicBackendSelection(match[1], match[2]);
+    return true;
+  }
+
+  /** Atomically claim one pending request so timeout/click races create at most one instance. */
+  private async finishClassicBackendSelection(nonce: string, backend?: string): Promise<void> {
+    const pending = this.pendingClassicStarts.get(nonce);
+    if (!pending) return;
+    this.pendingClassicStarts.delete(nonce);
+    clearTimeout(pending.timer);
+    const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
+    const reply = await this.handleClassicStart(
+      pending.channelId,
+      pending.channelName,
+      pending.userId,
+      pending.guildId,
+      pending.adapterId,
+      selectedBackend,
+    );
+    await pending.complete(reply, pending.messageId);
+  }
+
   /** Start a classic channel instance with lightweight config */
   private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string, model?: string): Promise<void> {
     if (this.daemons.has(instanceName)) return;
@@ -3890,33 +4052,25 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Handle /start slash command — register classic channel */
-  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string): Promise<string> {
-    if (!this.classicChannels) return "Classic channel manager not initialized.";
-    if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
-      const generalId = this.findGeneralInstance();
-      if (generalId) {
-        this.notifyInstanceTopic(generalId, t("alert.unauth_guild", guildId, userId));
-      }
-      return t("classic.not_authorized_guild");
-    }
-    // Per-bot check: a second bot may /start in the same channel (own agent).
-    if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t("classic.already_active");
-    // Classic no longer lives in the routing engine, so this only guards against
-    // a fleet topic-mode instance colliding with the channel.
-    if (this.routing.resolve(channelId)) return t("classic.topic_bound");
+  async handleClassicStart(channelId: string, channelName: string, userId: string, guildId?: string, adapterId?: string, backend?: string): Promise<string> {
+    const blocker = this.validateClassicStart(channelId, userId, guildId, adapterId);
+    if (blocker) return blocker;
+    const classicChannels = this.classicChannels;
+    if (!classicChannels) return "Classic channel manager not initialized.";
 
-    const instanceName = this.classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
-    this.classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId);
+    const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
+    const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
+    classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend);
     // Bind this classic instance to the bot that started it (authoritative), so
     // replies/cancel go out through that bot even though every same-guild bot
     // also sees the channel's messages.
     if (adapterId) this.bindInstanceAdapter(instanceName, adapterId);
 
-    await this.startClassicInstance(instanceName, this.classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend), this.classicChannels.getPreTaskCommand(channelId, adapterId), this.classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model));
+    await this.startClassicInstance(instanceName, classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend), classicChannels.getPreTaskCommand(channelId, adapterId), classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model));
     this.reregisterClassicChannels();
     // Auto-enable collab for Discord classic channels (TG uses @mention directly without collab mode)
-    if (guildId && !this.classicChannels.isCollab(channelId, adapterId)) {
-      this.classicChannels.toggleCollab(channelId, adapterId);
+    if (guildId && !classicChannels.isCollab(channelId, adapterId)) {
+      classicChannels.toggleCollab(channelId, adapterId);
     }
     this.logger.info({ channelId, adapterId, instanceName, userId }, "Classic channel started");
     return t("classic.started");
@@ -3966,6 +4120,8 @@ When users create specialized instances, suggest these configurations:
       clearInterval(this.classicReloadTimer);
       this.classicReloadTimer = null;
     }
+    for (const pending of this.pendingClassicStarts.values()) clearTimeout(pending.timer);
+    this.pendingClassicStarts.clear();
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
