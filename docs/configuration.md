@@ -90,7 +90,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `topic_id` | number \| string | auto-created | Telegram topic ID or Discord thread ID |
 | `channel_id` | string | — | Bound channel adapter ID (for multi-channel) |
 | `general_topic` | boolean | `false` | Mark as General dispatcher instance |
-| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `gemini-cli` (⚠️ deprecated) |
+| `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok` (⚠️ experimental), `gemini-cli` (⚠️ deprecated) |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |

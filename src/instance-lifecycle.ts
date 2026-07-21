@@ -120,6 +120,7 @@ export class InstanceLifecycle {
     const binaryMap: Record<string, string> = {
       "claude-code": "claude", "codex": "codex", "gemini-cli": "gemini",
       "opencode": "opencode", "kiro-cli": "kiro-cli", "antigravity": "agy",
+      "grok": "grok",
     };
     const bin = binaryMap[backendName];
     if (bin) {
