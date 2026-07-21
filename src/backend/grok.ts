@@ -28,12 +28,16 @@ const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
 export class GrokBackend implements CliBackend {
   readonly binaryName = "grok";
   private binaryPath: string;
+  // Cached from buildCommand/writeConfig so getSessionId() (which takes no args)
+  // can scope to grok's per-cwd session directory.
+  private workingDirectory?: string;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("grok");
   }
 
   buildCommand(config: CliBackendConfig): string {
+    this.workingDirectory = config.workingDirectory;
     // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
     let cmd = `${this.binaryPath} --no-auto-update`;
@@ -67,6 +71,7 @@ export class GrokBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.workingDirectory = config.workingDirectory;
     // Grok Build merges MCP servers from a project-level .mcp.json (loaded below
     // ~/.grok/config.toml in priority). Using the project file means we never
     // clobber the user's global config. Standard mcpServers format: { command, args, env }.
@@ -142,24 +147,35 @@ export class GrokBackend implements CliBackend {
   }
 
   getSessionId(): string | null {
-    // grok stores sessions under ~/.grok/sessions/ (verified). Return the id of
-    // the most-recently-modified session so the daemon can persist it for
-    // --resume. The daemon calls this at stop/pause, right after the active
-    // session was last written, so "newest" is normally this instance's session.
-    //
-    // ⚠️ CAVEAT: ~/.grok/sessions/ is GLOBAL, not per-working-directory. If the
-    // fleet runs multiple grok instances concurrently, "newest" could belong to
-    // another instance. Correct scoping needs either per-project session storage
-    // from grok or capturing the printed "grok --resume <id>" line — see report.
+    // grok stores sessions per working directory (verified):
+    //   ~/.grok/sessions/<encodeURIComponent(cwd)>/<session-uuid>/{events.jsonl,…}
+    // Scoping by cwd means multiple concurrent grok instances (distinct cwds)
+    // never pick up each other's session. Return the UUID of the most-recently
+    // ACTIVE session in this instance's cwd for the daemon to persist (--resume).
+    if (!this.workingDirectory) return null;
     try {
-      const dir = join(homedir(), ".grok", "sessions");
+      const base = join(homedir(), ".grok", "sessions", encodeURIComponent(this.workingDirectory));
       let newestId: string | null = null;
       let newestMtime = -1;
-      for (const name of readdirSync(dir)) {
-        const id = name.replace(/\.[^.]+$/, ""); // strip extension if any
-        if (!SESSION_ID_RE.test(id) || id.length < 8) continue;
-        const mtime = statSync(join(dir, name)).mtimeMs;
-        if (mtime > newestMtime) { newestMtime = mtime; newestId = id; }
+      for (const name of readdirSync(base)) {
+        // Session dirs are named by UUID; skip prompt_history.jsonl etc.
+        if (!SESSION_ID_RE.test(name) || name.length < 8) continue;
+        const sessionDir = join(base, name);
+        let st;
+        try { st = statSync(sessionDir); } catch { continue; }
+        if (!st.isDirectory()) continue;
+        // Activity = latest INNER-file mtime. The dir's own mtime doesn't move on
+        // append AND is misleadingly recent for a just-created dir, so it must NOT
+        // outweigh a resumed older session whose logs were just appended. Only fall
+        // back to dir mtime when the session has no inner files yet.
+        let activity = -1;
+        try {
+          for (const f of readdirSync(sessionDir)) {
+            try { const m = statSync(join(sessionDir, f)).mtimeMs; if (m > activity) activity = m; } catch { /* skip */ }
+          }
+        } catch { /* unreadable dir */ }
+        if (activity < 0) activity = st.mtimeMs;
+        if (activity > newestMtime) { newestMtime = activity; newestId = name; }
       }
       return newestId;
     } catch { return null; }
