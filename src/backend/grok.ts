@@ -1,7 +1,11 @@
 import { join } from "node:path";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+
+/** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
+const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
 
 /**
  * Grok Build (xAI) — https://docs.x.ai/build/cli
@@ -30,14 +34,20 @@ export class GrokBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
-    // Confirmed flags (docs.x.ai/build/cli): -m/--model, --always-approve,
-    // -c/--continue, -r/--resume <ID>, -p/--single, --no-auto-update.
+    // Flags: -m/--model, --always-approve, -r/--resume <ID>, -p/--single, --no-auto-update.
     // --no-auto-update: an auto-update prompt on launch would corrupt ready detection.
     let cmd = `${this.binaryPath} --no-auto-update`;
-    // --always-approve auto-approves tool executions (AgEnD's skipPermissions default).
+    // --always-approve auto-approves tool executions (documented flag). If a grok
+    // build ignores it, getRuntimeDialogs() auto-approves the prompt as a net.
     if (config.skipPermissions !== false) cmd += " --always-approve";
-    // --continue resumes the most recent session for this working directory.
-    if (!config.skipResume) cmd += " --continue";
+    // Resume by explicit session id (verified: grok prints
+    // "Resume this session with: grok --resume <uuid>" on exit — there is no
+    // bare --continue that reliably resumes). The id is persisted by the daemon
+    // from getSessionId(); skip on crash recovery (skipResume) for a clean start.
+    if (!config.skipResume) {
+      const sid = this.storedSessionId();
+      if (sid) cmd += ` --resume ${sid}`;
+    }
     if (config.model) {
       if (isModelCompatible("grok", config.model)) {
         cmd += ` --model ${validateModel(config.model)}`;
@@ -46,6 +56,14 @@ export class GrokBackend implements CliBackend {
       }
     }
     return cmd;
+  }
+
+  /** The daemon's persisted session id (written from getSessionId()), for --resume. */
+  private storedSessionId(): string | null {
+    try {
+      const sid = readFileSync(join(this.instanceDir, "session-id"), "utf-8").trim();
+      return SESSION_ID_RE.test(sid) ? sid : null;
+    } catch { return null; }
   }
 
   writeConfig(config: CliBackendConfig): void {
@@ -124,9 +142,38 @@ export class GrokBackend implements CliBackend {
   }
 
   getSessionId(): string | null {
-    // Sessions live in ~/.grok/sessions and are resumed via --continue; no
-    // external session ID is threaded through AgEnD.
-    return null;
+    // grok stores sessions under ~/.grok/sessions/ (verified). Return the id of
+    // the most-recently-modified session so the daemon can persist it for
+    // --resume. The daemon calls this at stop/pause, right after the active
+    // session was last written, so "newest" is normally this instance's session.
+    //
+    // ⚠️ CAVEAT: ~/.grok/sessions/ is GLOBAL, not per-working-directory. If the
+    // fleet runs multiple grok instances concurrently, "newest" could belong to
+    // another instance. Correct scoping needs either per-project session storage
+    // from grok or capturing the printed "grok --resume <id>" line — see report.
+    try {
+      const dir = join(homedir(), ".grok", "sessions");
+      let newestId: string | null = null;
+      let newestMtime = -1;
+      for (const name of readdirSync(dir)) {
+        const id = name.replace(/\.[^.]+$/, ""); // strip extension if any
+        if (!SESSION_ID_RE.test(id) || id.length < 8) continue;
+        const mtime = statSync(join(dir, name)).mtimeMs;
+        if (mtime > newestMtime) { newestMtime = mtime; newestId = id; }
+      }
+      return newestId;
+    } catch { return null; }
+  }
+
+  getRuntimeDialogs(): RuntimeDialog[] {
+    return [
+      // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
+      // option 1 so the fleet runs unattended. Primary mechanism is
+      // --always-approve at launch; this is the net if that flag is absent/ignored.
+      // ⚠️ key needs live confirmation — assumes a numeric hotkey (types "1"+Enter);
+      // if grok uses an arrow-select cursor instead, switch to ["Enter"] or nav keys.
+      { pattern: /1\.\s*Yes,?\s*always|Yes,?\s*always[\s\S]{0,40}\bNo\b/i, keys: ["1"], description: "Grok tool-approval prompt — select 'Yes, always'" },
+    ];
   }
 
   // grok has no slash quit command — it quits via the Ctrl+Q key chord (getQuitKey).
