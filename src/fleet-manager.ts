@@ -44,7 +44,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
-import { handleSettingsRequest } from "./settings-api.js";
+import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager } from "./classic-channel-manager.js";
@@ -2765,7 +2765,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * Patch only values changed in the effective config into the original YAML
    * document. Unknown keys, explicit overrides and comments remain untouched.
    */
-  saveFleetConfig(): void {
+  saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
     if (!this.fleetConfig || !this.configPath) return;
 
     if (!this.savedFleetConfigSnapshot) this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
@@ -2785,6 +2785,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.savedFleetConfigSnapshot,
       this.fleetConfig,
     );
+
+    // Settings edits are expressed against the raw config. Persist them even
+    // when the chosen override equals the inherited effective value, a case
+    // the before/after runtime diff cannot observe.
+    for (const patch of explicitPatches) {
+      if (patch.remove) {
+        this.rawFleetDocument.deleteIn(patch.path);
+      } else {
+        const before = this.rawFleetDocument.getIn(patch.path);
+        this.patchFleetDocument(this.rawFleetDocument, patch.path, before, patch.value);
+      }
+    }
 
     const output = String(this.rawFleetDocument);
     const tempPath = `${this.configPath}.tmp-${process.pid}`;

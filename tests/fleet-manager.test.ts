@@ -329,6 +329,43 @@ instances:
     expect(reloaded.fleetConfig!.instances["my-proj"].model).toBe("new-model");
   });
 
+  it("persists explicit instance overrides even when they equal inherited defaults", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `defaults:
+  auto_pause_after: 30
+  hang_detector:
+    enabled: true
+    timeout_minutes: 15
+  tool_set: full
+  log_level: info
+instances:
+  worker:
+    working_directory: /tmp/worker
+`);
+    fm.loadConfig(configPath);
+
+    fm.saveFleetConfig([
+      { path: ["instances", "worker", "auto_pause_after"], value: 30 },
+      { path: ["instances", "worker", "hang_detector", "timeout_minutes"], value: 15 },
+      { path: ["instances", "worker", "tool_set"], value: "full" },
+      { path: ["instances", "worker", "log_level"], value: "info" },
+    ]);
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.instances.worker.auto_pause_after).toBe(30);
+    expect(saved.instances.worker.hang_detector.timeout_minutes).toBe(15);
+    expect(saved.instances.worker.tool_set).toBe("full");
+    expect(saved.instances.worker.log_level).toBe("info");
+
+    const reloaded = new FleetManager(tmpDir);
+    reloaded.loadConfig(configPath);
+    expect(reloaded.fleetConfig!.instances.worker.auto_pause_after).toBe(30);
+    expect(reloaded.fleetConfig!.instances.worker.hang_detector.timeout_minutes).toBe(15);
+    expect(reloaded.fleetConfig!.instances.worker.tool_set).toBe("full");
+    expect(reloaded.fleetConfig!.instances.worker.log_level).toBe("info");
+  });
+
   it("keeps a legacy channel in its original shape when patching access", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");
