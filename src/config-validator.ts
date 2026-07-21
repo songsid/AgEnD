@@ -18,7 +18,7 @@ export interface ValidationResult {
 }
 
 /** Backends the factory can instantiate (keep in sync with backend/factory.ts). */
-export const KNOWN_BACKENDS = ["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "mock"];
+export const KNOWN_BACKENDS = ["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "mock"];
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
