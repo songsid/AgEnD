@@ -1845,7 +1845,7 @@ function formatTimeSince(isoStr: string): string {
  *   kiro classic "8% !>" / TUI "◔ 1%" / bracket "[8%]" / prompt "8% ❯"
  *   codex "Context N% left" (remaining → 100-N) or "Context N% used"
  *   opencode "1.2K (6%)"
- *   grok "12K / 500K" (used / total → used/total*100)
+ *   grok "12K / 500K" (used tokens / context window)
  * Duplicated (not imported) so this CLI entry point stays free of the daemon's
  * dependency graph. All returned values are context USED (low % = fresh).
  */
@@ -1855,20 +1855,23 @@ const defaultParser = (output: string): number | null => {
     const line = lines[i];
     const left = line.match(/Context\s+(\d+)%\s+left/i);
     if (left) return 100 - parseInt(left[1], 10);
+    const ratio = line.match(/(\d+\.?\d*[KkMm]?)\s*\/\s*(\d+\.?\d*[KkMm]?)/);
+    if (ratio) {
+      const tokenCount = (value: string): number => {
+        const suffix = value.at(-1)?.toLowerCase();
+        const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : 1;
+        return parseFloat(value) * multiplier;
+      };
+      const used = tokenCount(ratio[1]);
+      const total = tokenCount(ratio[2]);
+      if (Number.isFinite(used) && Number.isFinite(total) && total > 0) return used / total * 100;
+    }
     const m = line.match(/(\d+)%.*[!❯>]/)
       || line.match(/◔\s*(\d+)%/)
       || line.match(/\[(\d+)%\]/)
       || line.match(/Context\s+(\d+)%\s+used/i)
       || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);
     if (m) return parseInt(m[1], 10);
-    // grok "12K / 500K" (used / total) — both sides require a K/M unit.
-    const ratio = line.match(/(\d+(?:\.\d+)?)\s*([KM])\s*\/\s*(\d+(?:\.\d+)?)\s*([KM])/i);
-    if (ratio) {
-      const scale = (u: string) => (u.toUpperCase() === "M" ? 1e6 : 1e3);
-      const used = parseFloat(ratio[1]) * scale(ratio[2]);
-      const total = parseFloat(ratio[3]) * scale(ratio[4]);
-      if (total > 0) return Math.round((used / total) * 100);
-    }
   }
   return null;
 };
