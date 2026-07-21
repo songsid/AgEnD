@@ -63,9 +63,11 @@ describe("FleetManager", () => {
     expect(fm.getInstanceExecutionState("test")).toBeNull();
   });
 
-  it("builds ClassicBot backend choices dynamically without the mock backend", () => {
+  it("builds ClassicBot backend choices without deprecated or test-only backends", () => {
     const choices = getClassicBackendChoices();
-    expect(choices.map(choice => choice.id)).toEqual(KNOWN_BACKENDS.filter(backend => backend !== "mock"));
+    expect(choices.map(choice => choice.id)).toEqual(
+      KNOWN_BACKENDS.filter(backend => backend !== "mock" && backend !== "gemini-cli"),
+    );
     expect(choices.find(choice => choice.id === "grok")?.label).toBe("grok ⚠️");
     expect(choices.some(choice => choice.id === "mock")).toBe(false);
   });
