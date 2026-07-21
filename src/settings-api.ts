@@ -22,7 +22,8 @@
  * written; warnings are non-blocking and returned alongside the result.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from "node:fs";
+import { randomBytes } from "node:crypto";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
@@ -38,12 +39,20 @@ export interface SettingsApiContext {
   dataDir: string;
   logger: Logger;
   getRawFleetConfig(): RawFleetConfig;
-  saveFleetConfig(): void;
+  saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
   lifecycle: {
     isPaused(name: string): boolean;
     pause(name: string): Promise<void>;
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
+}
+
+/** An explicit user-authored YAML mutation that must be persisted even when
+ * its value equals the defaults-expanded runtime snapshot. */
+export interface RawConfigPatch {
+  path: Array<string | number>;
+  value?: unknown;
+  remove?: boolean;
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
@@ -71,11 +80,33 @@ export function isSettingsPath(path: string): boolean {
 
 const classicPath = (ctx: SettingsApiContext) => join(ctx.dataDir, "classicBot.yaml");
 
+class ClassicConfigParseError extends Error {}
+
 function readClassic(ctx: SettingsApiContext): Record<string, unknown> {
   const p = classicPath(ctx);
   if (!existsSync(p)) return {};
-  try { return (yaml.load(readFileSync(p, "utf-8")) as Record<string, unknown>) ?? {}; }
-  catch (err) { ctx.logger.warn({ err }, "settings: failed to parse classicBot.yaml"); return {}; }
+  try {
+    const parsed = yaml.load(readFileSync(p, "utf-8"));
+    if (parsed == null) return {};
+    if (typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("root must be a mapping");
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    ctx.logger.warn({ err }, "settings: failed to parse classicBot.yaml");
+    throw new ClassicConfigParseError(`classicBot.yaml is invalid: ${(err as Error).message}`);
+  }
+}
+
+function writeClassicAtomic(ctx: SettingsApiContext, classic: Record<string, unknown>): void {
+  const target = classicPath(ctx);
+  const temp = `${target}.tmp-${process.pid}-${randomBytes(6).toString("hex")}`;
+  const mode = existsSync(target) ? statSync(target).mode : 0o600;
+  try {
+    writeFileSync(temp, yaml.dump(classic, { lineWidth: -1 }), { encoding: "utf-8", mode });
+    renameSync(temp, target);
+  } catch (err) {
+    try { unlinkSync(temp); } catch { /* temp may not have been created */ }
+    throw err;
+  }
 }
 
 const issueKey = (i: { path: string; message: string }) => i.path + "\u0000" + i.message;
@@ -136,7 +167,8 @@ export function handleSettingsRequest(
     return true;
   }
   if (method === "GET" && path === "/api/settings/classic") {
-    json(res, 200, readClassic(ctx));
+    try { json(res, 200, readClassic(ctx)); }
+    catch (err) { json(res, 409, { error: (err as Error).message }); }
     return true;
   }
 
@@ -200,13 +232,19 @@ export function handleSettingsRequest(
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
-      const classic = readClassic(ctx);
+      let classic: Record<string, unknown>;
+      try { classic = readClassic(ctx); }
+      catch (err) { return json(res, 409, { error: (err as Error).message }); }
       const merged = { ...(classic.defaults as Record<string, unknown> ?? {}), ...body };
       const before = validateClassicBotConfig(classic);
       const after = validateClassicBotConfig({ ...classic, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
       classic.defaults = merged;
-      writeFileSync(classicPath(ctx), yaml.dump(classic, { lineWidth: -1 }));
+      try { writeClassicAtomic(ctx, classic); }
+      catch (err) {
+        ctx.logger.warn({ err }, "settings: failed to atomically update classicBot.yaml");
+        return json(res, 500, { error: "failed to write classicBot.yaml" });
+      }
       ctx.logger.info("settings: updated classicBot defaults");
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
     }).catch(() => json(res, 400, { error: "bad request" }));
@@ -223,6 +261,20 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
+  const nullableInstanceOverrides = new Set(["auto_pause_after", "hang_detector", "agent_mode", "tool_set", "log_level", "lightweight", "model_failover", "display_name"]);
+  const rawInstancePatches = (name: string, patch: Record<string, unknown>): RawConfigPatch[] => {
+    const changes: RawConfigPatch[] = [];
+    for (const [key, value] of Object.entries(patch)) {
+      if (key === "hang_detector" && value && typeof value === "object" && !Array.isArray(value)) {
+        for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+          changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
+        }
+      } else {
+        changes.push({ path: ["instances", name, key], value, remove: value === null && nullableInstanceOverrides.has(key) });
+      }
+    }
+    return changes;
+  };
   // Create-or-merge an instance, blocking only on newly-introduced errors.
   const commitInstance = (name: string, exists: boolean, body: unknown): void => {
     if (typeof body !== "object" || body === null || Array.isArray(body)) { json(res, 400, { error: "expected an object" }); return; }
@@ -240,14 +292,14 @@ export function handleSettingsRequest(
     }
     // JSON has no `undefined`; null is the PATCH sentinel for removing an
     // optional override so the instance inherits the fleet default again.
-    for (const key of ["auto_pause_after", "hang_detector", "agent_mode", "tool_set", "log_level", "lightweight", "model_failover", "display_name"]) {
+    for (const key of nullableInstanceOverrides) {
       if (patch[key] === null) delete mergedInst[key];
     }
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
     cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
-    ctx.saveFleetConfig();
+    ctx.saveFleetConfig(rawInstancePatches(name, patch));
     json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
   };
 
