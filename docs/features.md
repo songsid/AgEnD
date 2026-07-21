@@ -573,12 +573,12 @@ AgEnD supports xAI's Grok Build CLI as a backend.
 ```yaml
 instances:
   my-grok:
-    backend: grok-build
+    backend: grok
 ```
 
 ### Authentication
 
-Grok uses Google OAuth device flow. On first launch:
+Grok uses x.ai OAuth device flow. On first launch:
 1. TUI displays a device code (e.g., `5M6B-584D`)
 2. User opens the URL in browser and enters the code
 3. Credentials persist in `~/.grok/` across restarts
@@ -589,9 +589,9 @@ In headless environments (SSH, Docker), the URL must be opened manually on anoth
 
 - **Git awareness** — displays branch + worktree on startup
 - **TUI mode** — full-screen terminal UI (not bare prompt)
-- **Context display** — shows token count (not percentage)
-- **Cancel key** — Escape (same as Claude Code/Codex)
-- **Session resume** — `--continue` for session persistence
+- **Context display** — shows `used / total` tokens (e.g. `12K / 500K`); AgEnD's `/ctx` and `agend ls` parse this to a percentage
+- **Cancel key** — Ctrl+C (interrupts generation; verified against the live CLI)
+- **Session resume** — `--resume <session-id>` (auto-managed: AgEnD persists the id per working directory). `--continue` is deliberately NOT used — it exits when there is no prior session
 
 ### Slash commands
 

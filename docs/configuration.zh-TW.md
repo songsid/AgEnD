@@ -168,7 +168,7 @@ teams:
 | `description` | string | — | 角色描述。透過 MCP server instructions 注入為 `## Role` |
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
-| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity` |
+| `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity`、`grok`（⚠️ experimental） |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
 | `tool_set` | string | `"full"` | MCP tool 設定：`full`（全部）、`standard`（10 個）、`minimal`（4 個） |
@@ -280,7 +280,7 @@ ClassicBot 模式使用獨立設定檔 `~/.agend/classicBot.yaml`。首次在 Di
 
 ```yaml
 # ClassicBot 設定
-# 可用 backends: claude-code, gemini-cli, codex, opencode, kiro-cli
+# 可用 backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok
 defaults:
   backend: claude-code          # 所有 classic channel 的預設 backend
 
