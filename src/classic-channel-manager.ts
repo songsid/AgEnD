@@ -12,7 +12,7 @@ const EXPERIMENTAL_BACKENDS = new Set(["grok"]);
 /** Backends offered by ClassicBot onboarding. `mock` is test-only. */
 export function getClassicBackendChoices(): Choice[] {
   return KNOWN_BACKENDS
-    .filter(backend => backend !== "mock")
+    .filter(backend => backend !== "mock" && backend !== "gemini-cli")
     .map(backend => ({
       id: backend,
       label: EXPERIMENTAL_BACKENDS.has(backend) ? `${backend} ⚠️` : backend,
