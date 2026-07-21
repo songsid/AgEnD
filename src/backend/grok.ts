@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
@@ -80,7 +80,7 @@ export class GrokBackend implements CliBackend {
     try { root = JSON.parse(readFileSync(mcpPath, "utf-8")); } catch { /* new file */ }
 
     const servers = (root.mcpServers ?? {}) as Record<string, unknown>;
-    // Drop stale agend entries whose command binary no longer exists.
+    // Drop stale agend entries whose wrapper script no longer exists.
     for (const [key, val] of Object.entries(servers)) {
       if (key.startsWith("agend-")) {
         const cmd = (val as Record<string, unknown>)?.command;
@@ -90,11 +90,27 @@ export class GrokBackend implements CliBackend {
     // Namespace each server by instance so multiple instances can share a working dir.
     for (const [name, entry] of Object.entries(config.mcpServers)) {
       const instanceKey = `${name}-${config.instanceName}`;
-      servers[instanceKey] = {
-        command: entry.command,
-        args: entry.args,
-        env: { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName },
-      };
+      const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
+
+      // WORKAROUND (same as kiro-cli): grok does not reliably pass the mcp.json
+      // "env" block to the MCP server subprocess — the process would inherit grok's
+      // env, which has NO AGEND_SOCKET_PATH (the daemon keeps it out of process.env),
+      // so the server can't connect and every MCP tool (reply/react/…) fails. Emit a
+      // wrapper that exports the env explicitly, waits for the IPC socket, then execs
+      // the real server. This is env-delivery-independent and works either way.
+      const wrapperPath = join(this.instanceDir, `mcp-wrapper-${name}.sh`);
+      const envExports = Object.entries(allEnv)
+        .map(([k, v]) => `export ${k}='${String(v).replace(/'/g, "'\\''")}'`)
+        .join("\n");
+      // 0o700: wrapper inlines sensitive env (tokens, socket paths) — owner-only.
+      writeFileSync(
+        wrapperPath,
+        `#!/bin/bash\n${envExports}\n# Wait for IPC socket to be ready (up to 10s)\nfor i in $(seq 1 20); do [ -S "$AGEND_SOCKET_PATH" ] && break; sleep 0.5; done\nexec ${entry.command} ${entry.args.map((a: string) => JSON.stringify(a)).join(" ")}\n`,
+        { mode: 0o700 },
+      );
+      chmodSync(wrapperPath, 0o700);
+
+      servers[instanceKey] = { command: wrapperPath, args: [] };
     }
     // Clean up any legacy non-namespaced key.
     delete servers["agend"];
