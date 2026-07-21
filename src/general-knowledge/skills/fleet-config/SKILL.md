@@ -45,7 +45,7 @@ node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs
 - Missing `channel.mode` field → error on start
 - Wrong indentation (YAML is indent-sensitive)
 - `topic_id` as string vs number (both work, but be consistent)
-- `backend` typo (valid: `claude-code`, `gemini-cli`, `codex`, `opencode`, `kiro-cli`, `antigravity`)
+- `backend` typo (valid: `claude-code`, `gemini-cli`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`)
 - `model` using wrong format for the backend
 
 **classicBot.yaml validation:**

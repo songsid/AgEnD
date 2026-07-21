@@ -14,6 +14,7 @@ Models are specified in fleet.yaml `defaults.model` or per-instance `model` fiel
 | **antigravity** | Run `agy models` to see available models | Gemini 3.5 Flash (Medium) |
 | **codex** | `gpt-4o`, `o3`, `o4-mini` | gpt-4o |
 | **opencode** | `opencode models` | depends on provider |
+| **grok** ⚠️ experimental | `grok-4.5`, `grok-4.3`, `grok-code`, `grok-build-0.1` | grok default |
 
 **To discover available models for a backend, run the CLI's model listing command:**
 - `agy models` — lists all available models for antigravity
