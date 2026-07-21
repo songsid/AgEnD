@@ -13,6 +13,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  ApplicationCommandOptionType,
   ChannelType,
   MessageFlags,
   type TextChannel,
@@ -33,6 +34,16 @@ import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 
 const DISCORD_MAX_LENGTH = 2000;
+
+/** Curated ClassicBot backends for Discord's native slash-option dropdown. */
+export const DISCORD_START_BACKEND_CHOICES = [
+  { name: "Claude Code", value: "claude-code" },
+  { name: "Kiro CLI", value: "kiro-cli" },
+  { name: "Codex", value: "codex" },
+  { name: "OpenCode", value: "opencode" },
+  { name: "Antigravity", value: "antigravity" },
+  { name: "Grok Build ⚠️", value: "grok" },
+] as const;
 
 export interface DiscordAdapterOptions {
   id: string;
@@ -375,7 +386,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         await this.client.application?.commands.set([
           {
             name: "start", description: t("slash.start"),
-            options: [{ name: "backend", description: "Backend to start (optional)", type: 3, required: false }],
+            options: [{
+              name: "backend",
+              description: "Backend to start",
+              type: ApplicationCommandOptionType.String,
+              required: false,
+              choices: DISCORD_START_BACKEND_CHOICES,
+            }],
           },
           { name: "stop", description: t("slash.stop") },
           {
