@@ -129,6 +129,9 @@ export class GrokBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      // Workspace trust confirmation ("Do you trust the contents of this directory?")
+      // appears BEFORE the login screen — auto-approve with the 'y' hotkey.
+      { pattern: /Do you trust the contents|trust.*directory/i, keys: ["y"], description: "Grok workspace trust — auto-approve" },
       // Device-flow login is BLOCKING and cannot be auto-dismissed — the user must
       // approve externally. Empty keys => the daemon sends nothing but treats the
       // screen as "not ready yet" and keeps polling, so the login screen is never
