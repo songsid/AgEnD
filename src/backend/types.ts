@@ -172,6 +172,7 @@ const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
   "antigravity": / /,  // agy models always contain spaces (display names like "Gemini 3.5 Flash (High)")
+  "grok": /^grok/i,  // grok-4.5, grok-4.3, grok-code, grok-build-0.1
 };
 
 /** Check if a model name is compatible with the given backend. */
