@@ -67,9 +67,44 @@ export function compactCommandForBackend(backend: string): string {
  *   bracketed:         "[6%]"         claude/others prompt: "6% ❯" / "6% >"
  *   codex TUI footer:  "Context 94% left" (remaining) or "Context 6% used"
  *   opencode footer:   "1.2K (6%)"   (token count then parenthesized %)
+ *   grok title bar:     "12K / 500K" (used tokens / context window)
  * All values returned are context USED (low % = fresh session); codex's
  * "N% left" is remaining, so it's inverted to 100 - N.
  */
+export interface TokenContextRatio {
+  usedLabel: string;
+  totalLabel: string;
+  percentage: number;
+}
+
+/** Parse Grok's used/total token title-bar indicator, newest line first. */
+export function parseTokenContextRatio(pane: string): TokenContextRatio | null {
+  const lines = pane.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const match = lines[i].match(/(\d+\.?\d*[KkMm]?)\s*\/\s*(\d+\.?\d*[KkMm]?)/);
+    if (!match) continue;
+    const tokenCount = (value: string): number => {
+      const suffix = value.at(-1)?.toLowerCase();
+      const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : 1;
+      return parseFloat(value) * multiplier;
+    };
+    const used = tokenCount(match[1]);
+    const total = tokenCount(match[2]);
+    if (Number.isFinite(used) && Number.isFinite(total) && total > 0) {
+      return { usedLabel: match[1], totalLabel: match[2], percentage: used / total * 100 };
+    }
+  }
+  return null;
+}
+
+export function formatContextUsageLine(context: number, tokenRatio: TokenContextRatio | null = null): string {
+  const rounded = Math.round(context);
+  const localized = t("ctx.used", rounded);
+  return tokenRatio
+    ? localized.replace(`${rounded}%`, `${tokenRatio.usedLabel} / ${tokenRatio.totalLabel} (${rounded}%)`)
+    : localized;
+}
+
 export function parseContextPercent(pane: string): number | null {
   const lines = pane.split("\n");
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -77,21 +112,14 @@ export function parseContextPercent(pane: string): number | null {
     // codex "context-remaining" item shows "Context N% left" (REMAINING) → used = 100 - N
     const left = line.match(/Context\s+(\d+)%\s+left/i);
     if (left) return 100 - parseInt(left[1], 10);
+    const ratio = parseTokenContextRatio(line);
+    if (ratio) return ratio.percentage;
     const m = line.match(/(\d+)%.*[!❯>]/)
       || line.match(/◔\s*(\d+)%/)
       || line.match(/\[(\d+)%\]/)
       || line.match(/Context\s+(\d+)%\s+used/i)               // codex "context-used" variant
       || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);        // opencode "1.2K (6%)"
     if (m) return parseInt(m[1], 10);
-    // grok "12K / 500K" (used / total, top-right). Both sides require a K/M unit
-    // so a bare "3 / 10" elsewhere in a pane can't be misread as context.
-    const ratio = line.match(/(\d+(?:\.\d+)?)\s*([KM])\s*\/\s*(\d+(?:\.\d+)?)\s*([KM])/i);
-    if (ratio) {
-      const scale = (u: string) => (u.toUpperCase() === "M" ? 1e6 : 1e3);
-      const used = parseFloat(ratio[1]) * scale(ratio[2]);
-      const total = parseFloat(ratio[3]) * scale(ratio[4]);
-      if (total > 0) return Math.round((used / total) * 100);
-    }
   }
   return null;
 }
@@ -260,6 +288,7 @@ export class TopicCommands {
       ?? classicBackend
       ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     let context: number | null = null;
+    let tokenRatio: TokenContextRatio | null = null;
     // Only claude-code writes statusline.json. Reading it for other backends
     // risks a stale value left over from a previous backend (e.g. after
     // switching claude-code → kiro-cli), so those go straight to capture-pane.
@@ -282,11 +311,13 @@ export class TopicCommands {
         const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
         const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
         const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-        context = parseContextPercent(pane);
+        if (backend === "grok") tokenRatio = parseTokenContextRatio(pane);
+        context = tokenRatio?.percentage ?? parseContextPercent(pane);
       } catch { /* ignore */ }
     }
+    const contextLine = context == null ? null : formatContextUsageLine(context, tokenRatio);
     return context != null
-      ? `${t("ctx.used", context)}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`
+      ? `${contextLine}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`
       : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`;
   }
 
