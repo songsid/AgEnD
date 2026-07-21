@@ -238,6 +238,8 @@ export function handleWebRequest(
       { name: "gemini-cli", binary: "gemini" },
       { name: "opencode", binary: "opencode" },
       { name: "kiro-cli", binary: "kiro-cli" },
+      { name: "antigravity", binary: "agy" },
+      { name: "grok", binary: "grok" },
     ];
     const backends = BACKENDS.map(b => {
       let installed = false;
