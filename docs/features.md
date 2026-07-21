@@ -564,6 +564,53 @@ Agy rejects working directories under hidden paths (dot-prefixed ancestors like 
 
 Agy's "Do you trust this folder?" prompt is automatically dismissed on startup.
 
+## Grok Build backend
+
+⚠️ **Experimental** — Grok Build (`grok`) support is new. Report issues.
+
+AgEnD supports xAI's Grok Build CLI as a backend.
+
+```yaml
+instances:
+  my-grok:
+    backend: grok-build
+```
+
+### Authentication
+
+Grok uses Google OAuth device flow. On first launch:
+1. TUI displays a device code (e.g., `5M6B-584D`)
+2. User opens the URL in browser and enters the code
+3. Credentials persist in `~/.grok/` across restarts
+
+In headless environments (SSH, Docker), the URL must be opened manually on another machine.
+
+### Known features
+
+- **Git awareness** — displays branch + worktree on startup
+- **TUI mode** — full-screen terminal UI (not bare prompt)
+- **Context display** — shows token count (not percentage)
+- **Cancel key** — Escape (same as Claude Code/Codex)
+- **Session resume** — `--continue` for session persistence
+
+### Slash commands
+
+| Command | Description |
+|---------|-------------|
+| `/dashboard` | Open web dashboard |
+| `/home` | Go to home screen |
+| `/resume` | Resume previous session |
+| `/rename` | Rename current session |
+| `/session-info` | Show session details |
+| `/feedback` | Send feedback |
+
+### Known limitations
+
+- Login requires device flow — headless environments need manual browser access
+- Upgrade prompts are non-blocking but occupy TUI space
+- Context shows token count (e.g., "12K tokens") rather than percentage — `agend ls` parser handles this
+- `ctrl+q` quits (not Escape) — AgEnD uses Escape for cancel, not quit
+
 ## IPC + adapter auto-reconnect
 
 When network interruptions cause IPC connections or Telegram/Discord adapters to drop, AgEnD automatically recovers:
