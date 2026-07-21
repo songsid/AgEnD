@@ -254,6 +254,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           ? String(ctx.callbackQuery.message.message_thread_id)
           : undefined,
         messageId: String(ctx.callbackQuery.message?.message_id ?? ""),
+        userId: String(ctx.callbackQuery.from.id),
       });
     });
 
@@ -528,7 +529,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   /** Edit text and drop the inline keyboard (omitting reply_markup clears it). */
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string): Promise<void> {
-    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text);
+    await this.bot.api.editMessageText(Number(chatId), Number(messageId), text, {
+      reply_markup: { inline_keyboard: [] },
+    });
   }
 
   async deleteMessage(chatId: string, messageId: string): Promise<void> {

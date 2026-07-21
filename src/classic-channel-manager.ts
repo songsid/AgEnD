@@ -4,6 +4,25 @@ import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
 import { sanitizeInstanceName } from "./topic-commands.js";
 import type { Logger } from "./logger.js";
+import { KNOWN_BACKENDS } from "./config-validator.js";
+import type { Choice } from "./channel/types.js";
+
+const EXPERIMENTAL_BACKENDS = new Set(["grok"]);
+
+/** Backends offered by ClassicBot onboarding. `mock` is test-only. */
+export function getClassicBackendChoices(): Choice[] {
+  return KNOWN_BACKENDS
+    .filter(backend => backend !== "mock")
+    .map(backend => ({
+      id: backend,
+      label: EXPERIMENTAL_BACKENDS.has(backend) ? `${backend} ⚠️` : backend,
+    }));
+}
+
+/** Reject test-only/unknown values supplied through `/start <backend>`. */
+export function isSelectableClassicBackend(backend: string | undefined): backend is string {
+  return !!backend && KNOWN_BACKENDS.includes(backend) && backend !== "mock";
+}
 
 export interface ClassicChannel {
   channelId: string;
@@ -306,8 +325,16 @@ export class ClassicChannelManager {
   get(channelId: string, adapterId?: string): ClassicChannel | undefined { return this.find(channelId, adapterId); }
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }
 
-  register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string): ClassicChannel {
-    const ch: ClassicChannel = { channelId, adapterId, name: channelName, instanceName, createdAt: new Date().toISOString(), createdBy: userId };
+  register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string, backend?: string): ClassicChannel {
+    const ch: ClassicChannel = {
+      channelId,
+      adapterId,
+      name: channelName,
+      instanceName,
+      ...(backend ? { backend } : {}),
+      createdAt: new Date().toISOString(),
+      createdBy: userId,
+    };
     this.channels.set(this.compositeKey(channelId, adapterId), ch);
     this.rebuildChannelIds();
     this.save();
