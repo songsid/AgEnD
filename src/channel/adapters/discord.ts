@@ -12,6 +12,7 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  StringSelectMenuBuilder,
   ChannelType,
   MessageFlags,
   type TextChannel,
@@ -251,6 +252,24 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             chatId: this.guildId,
             threadId: interaction.channelId,
             messageId: interaction.message.id,
+            userId: interaction.user.id,
+          });
+          return;
+        }
+
+        // Select menus use the selected option value as the callback payload.
+        // Acknowledge before routing for the same 3-second constraint as buttons.
+        if (interaction.isStringSelectMenu()) {
+          try { await interaction.deferUpdate(); } catch { /* already acknowledged / unknown interaction */ }
+          if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")) return;
+          const callbackData = interaction.values[0];
+          if (!callbackData) return;
+          this.emit("callback_query", {
+            callbackData,
+            chatId: this.guildId,
+            threadId: interaction.channelId,
+            messageId: interaction.message.id,
+            userId: interaction.user.id,
           });
           return;
         }
@@ -292,6 +311,22 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               options,
               respond: async (reply: string) => { try { await this._editReplyLong(interaction, reply); } catch { /* expired */ } },
+              respondChoices: async (text: string, choices: Choice[]) => {
+                const select = new StringSelectMenuBuilder()
+                  .setCustomId("classic-start-backend")
+                  .setPlaceholder("Choose a backend")
+                  .addOptions(choices.map(choice => ({
+                    label: choice.label.slice(0, 100),
+                    value: choice.id.slice(0, 100),
+                  })));
+                const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
+                try {
+                  const message = await interaction.editReply({ content: text, components: [row] });
+                  return message.id;
+                } catch {
+                  return undefined;
+                }
+              },
             });
           }
         }
@@ -338,7 +373,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       // a guild with the primary — only the primary owns the guild's commands).
       if (this.registerCommands) try {
         await this.client.application?.commands.set([
-          { name: "start", description: t("slash.start") },
+          {
+            name: "start", description: t("slash.start"),
+            options: [{ name: "backend", description: "Backend to start (optional)", type: 3, required: false }],
+          },
           { name: "stop", description: t("slash.stop") },
           {
             name: "chat", description: t("slash.chat"),
@@ -393,11 +431,11 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   private async _editReplyLong(interaction: ChatInputCommandInteraction, reply: string): Promise<void> {
     const EMBED_MAX = 4096;
     if (reply.length <= DISCORD_MAX_LENGTH) {
-      await interaction.editReply(reply);
+      await interaction.editReply({ content: reply, components: [] });
       return;
     }
     const chunks = splitText(reply, EMBED_MAX);
-    await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }] });
+    await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
     for (let i = 1; i < chunks.length; i++) {
       await interaction.followUp({ ephemeral: true, embeds: [{ description: chunks[i] }] });
     }
@@ -648,15 +686,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const channelId = opts?.threadId ?? chatId;
     const channel = await this._fetchTextChannel(channelId);
 
-    const row = new ActionRowBuilder<ButtonBuilder>();
-    for (const choice of choices) {
-      row.addComponents(
-        new ButtonBuilder()
-          .setCustomId(choice.id)
-          .setLabel(choice.label.slice(0, 80)) // Discord button label max 80 chars
-          .setStyle(ButtonStyle.Primary),
-      );
-    }
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`prompt-${randomBytes(6).toString("hex")}`)
+      .setPlaceholder("Choose an option")
+      .addOptions(choices.map(choice => ({
+        label: choice.label.slice(0, 100),
+        value: choice.id.slice(0, 100),
+      })));
+    const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select);
 
     const msg = await channel.send({ content: text, components: [row] });
     return msg.id;
