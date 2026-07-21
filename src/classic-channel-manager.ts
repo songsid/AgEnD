@@ -47,7 +47,7 @@ interface ClassicBotYaml {
 }
 
 const YAML_HEADER = `# ClassicBot Configuration
-# Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli
+# Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok
 `;
 
 /**
