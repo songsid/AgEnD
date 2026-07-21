@@ -5,6 +5,7 @@ import { CodexBackend } from "./codex.js";
 import { OpenCodeBackend } from "./opencode.js";
 import { KiroBackend } from "./kiro.js";
 import { AntigravityBackend } from "./antigravity.js";
+import { GrokBackend } from "./grok.js";
 import { MockBackend } from "./mock.js";
 
 export function createBackend(name: string, instanceDir: string): CliBackend {
@@ -22,9 +23,12 @@ export function createBackend(name: string, instanceDir: string): CliBackend {
       return new KiroBackend(instanceDir);
     case "antigravity":
       return new AntigravityBackend(instanceDir);
+    case "grok":
+      console.warn("⚠️ grok backend is experimental — some patterns may need tuning.");
+      return new GrokBackend(instanceDir);
     case "mock":
       return new MockBackend(instanceDir);
     default:
-      throw new Error(`Unknown backend: ${name}. Available: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, mock`);
+      throw new Error(`Unknown backend: ${name}. Available: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok, mock`);
   }
 }

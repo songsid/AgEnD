@@ -115,8 +115,19 @@ export interface CliBackend {
   /** Resolve working directory (e.g. create symlink to avoid hidden paths). Returns resolved path. */
   resolveWorkingDirectory?(workingDirectory: string, instanceName?: string): string;
 
-  /** Command to gracefully quit the CLI (e.g. "/exit", "/quit"). */
-  getQuitCommand(): string;
+  /**
+   * Slash/text command to gracefully quit the CLI (e.g. "/exit", "/quit"),
+   * typed then followed by Enter. Return null when the CLI has no quit command
+   * and quits via a key chord instead — implement getQuitKey() in that case.
+   */
+  getQuitCommand(): string | null;
+
+  /**
+   * The tmux key chord that quits the CLI, for backends whose quit is a keypress
+   * rather than a typed command (e.g. grok Ctrl+Q). Consulted only when
+   * getQuitCommand() returns null. Values are tmux send-keys names (e.g. "C-q").
+   */
+  getQuitKey?(): string;
 
   /**
    * In-session command to compact/reset the conversation context. Most CLIs use
@@ -172,6 +183,7 @@ const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
   "antigravity": / /,  // agy models always contain spaces (display names like "Gemini 3.5 Flash (High)")
+  "grok": /^grok/i,  // grok-4.5, grok-4.3, grok-code, grok-build-0.1
 };
 
 /** Check if a model name is compatible with the given backend. */

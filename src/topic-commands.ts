@@ -83,6 +83,15 @@ export function parseContextPercent(pane: string): number | null {
       || line.match(/Context\s+(\d+)%\s+used/i)               // codex "context-used" variant
       || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);        // opencode "1.2K (6%)"
     if (m) return parseInt(m[1], 10);
+    // grok "12K / 500K" (used / total, top-right). Both sides require a K/M unit
+    // so a bare "3 / 10" elsewhere in a pane can't be misread as context.
+    const ratio = line.match(/(\d+(?:\.\d+)?)\s*([KM])\s*\/\s*(\d+(?:\.\d+)?)\s*([KM])/i);
+    if (ratio) {
+      const scale = (u: string) => (u.toUpperCase() === "M" ? 1e6 : 1e3);
+      const used = parseFloat(ratio[1]) * scale(ratio[2]);
+      const total = parseFloat(ratio[3]) * scale(ratio[4]);
+      if (total > 0) return Math.round((used / total) * 100);
+    }
   }
   return null;
 }

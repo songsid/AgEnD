@@ -164,7 +164,7 @@
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
-  const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "gemini-cli", "antigravity"];
+  const BACKENDS = ["claude-code", "kiro-cli", "codex", "opencode", "gemini-cli", "antigravity", { value: "grok", label: "grok (experimental)" }];
 
   // ── i18n ──
   const I18N = {
@@ -303,7 +303,7 @@
     box.append(chips, el("div", { class: "chip-add" }, inp, el("button", { class: "sm", onclick: add }, "+ Add")));
     redraw(); return box;
   }
-  function select(value, options) { const s = el("select"); for (const o of options) { const opt = el("option", {}, o); opt.value = o; if (o === value) opt.selected = true; s.append(opt); } return s; }
+  function select(value, options) { const s = el("select"); for (const o of options) { const val = typeof o === "string" ? o : o.value; const label = typeof o === "string" ? o : o.label; const opt = el("option", {}, label); opt.value = val; if (val === value) opt.selected = true; s.append(opt); } return s; }
   const impact = (kind) => el("span", { class: "impact" }, kind === "now" ? "⚡ immediate" : kind === "fleet" ? "🔄🔄 restart fleet" : "🔄 restart instance");
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
   function overrideControl(inst, key, input, inheritedValue, impactKind = "instance") {
