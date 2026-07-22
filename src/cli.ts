@@ -21,6 +21,7 @@ import { homedir, totalmem, freemem } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
+import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -2003,16 +2004,35 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         } catch { /* ignore */ }
       }
 
-      // Last activity: prefer statusline.json mtime (updated on real agent activity)
+      // Classic activity is channel-driven. Lightweight Classic daemons often
+      // have no statusline/output log, so prefer the persisted inbound timestamp
+      // and fall back to their durable chat-log mtime for pre-migration history.
       let lastActivity: string | null = null;
-      for (const probe of ["statusline.json", "daemon.log", "output.log"]) {
-        const p = join(DATA_DIR, "instances", name, probe);
+      if (isClassic) {
+        let classicActivity = readClassicLastActivityAt(DATA_DIR, name) ?? 0;
         try {
-          if (existsSync(p)) {
-            lastActivity = formatTimeSince(statSync(p).mtime.toISOString());
-            break;
+          const inboundPath = join(DATA_DIR, "instances", name, "last-inbound-at");
+          if (existsSync(inboundPath)) {
+            const inboundAt = Number(readFileSync(inboundPath, "utf-8").trim());
+            if (Number.isFinite(inboundAt) && inboundAt >= 0 && inboundAt <= Date.now()) {
+              classicActivity = Math.max(classicActivity, inboundAt);
+            }
           }
         } catch { /* ignore */ }
+        if (classicActivity) {
+          lastActivity = formatTimeSince(new Date(classicActivity).toISOString());
+        }
+      } else {
+        // Fleet activity: prefer statusline.json mtime (updated on real agent activity).
+        for (const probe of ["statusline.json", "daemon.log", "output.log"]) {
+          const p = join(DATA_DIR, "instances", name, probe);
+          try {
+            if (existsSync(p)) {
+              lastActivity = formatTimeSince(statSync(p).mtime.toISOString());
+              break;
+            }
+          } catch { /* ignore */ }
+        }
       }
 
       return { name, backend, status, teams, source, context, memMb, lastActivity, classic: isClassic, idle: undefined as boolean | undefined, state: undefined as "idle" | "working" | "stuck" | "paused" | null | undefined };

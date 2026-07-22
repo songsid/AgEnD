@@ -52,7 +52,7 @@ import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
-import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend } from "./classic-channel-manager.js";
+import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 
@@ -4804,6 +4804,10 @@ When users create specialized instances, suggest these configurations:
           }));
         const enriched = [...fleetInstances, ...classicInstances].map(inst => {
           const config = this.fleetConfig?.instances[inst.name];
+          const persistedInboundAt = readLastInboundAt(this.getInstanceDir(inst.name));
+          const lastActivity = inst.classic
+            ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
+            : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
           const backend = inst.classic
             ? this.classicChannels?.getBackendByInstance(inst.name, this.fleetConfig?.defaults.backend) ?? "claude-code"
             : config?.backend ?? "claude-code";
@@ -4823,7 +4827,7 @@ When users create specialized instances, suggest these configurations:
             general_topic: config?.general_topic ?? false,
             // User activity is persisted by the daemon, so both the board and
             // auto-pause retain an accurate age across fleet restarts.
-            lastActivity: (readLastInboundAt(this.getInstanceDir(inst.name)) ?? this.lastActivityMs(inst.name)) || null,
+            lastActivity,
             currentTask,
             idle: this.getInstanceIdle(inst.name),
             state: this.getInstanceExecutionState(inst.name),
