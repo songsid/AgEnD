@@ -10,6 +10,7 @@
  *   PATCH/api/settings/fleet/instances/:name    → merge into instance
  *   DELETE /api/settings/fleet/instances/:name  → remove instance
  *   PUT  /api/settings/classic/defaults         → merge classic defaults
+ *   PATCH/api/settings/classic/channels/:key    → update + restart a Classic channel
  *   POST /api/settings/reload                   → SIGHUP hot-reload
  *   POST /api/settings/instances/:name/pause    → manually pause a running instance
  *   POST /api/settings/instances/:name/wake     → manually wake a paused instance
@@ -29,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
-import { validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
+import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -45,6 +46,7 @@ export interface SettingsApiContext {
     pause(name: string): Promise<void>;
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
+  restartClassicInstanceFromSettings?(instanceName: string): Promise<void>;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -247,6 +249,69 @@ export function handleSettingsRequest(
       }
       ctx.logger.info("settings: updated classicBot defaults");
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  // ── Classic channel settings ──
+  const classicChannelMatch = path.match(/^\/api\/settings\/classic\/channels\/([^/]+)$/);
+  if (method === "PATCH" && classicChannelMatch) {
+    let key: string;
+    try { key = decodeURIComponent(classicChannelMatch[1]); }
+    catch { json(res, 400, { error: "invalid channel key" }); return true; }
+    if (!key || /[\\/\x00]/.test(key)) { json(res, 400, { error: "invalid channel key" }); return true; }
+    readBody(req, 512 * 1024).then(async buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
+      const allowed = new Set(["backend", "model", "collab", "context_lines"]);
+      const unknown = Object.keys(body).filter(field => !allowed.has(field));
+      if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
+      if (body.backend !== undefined && (typeof body.backend !== "string" || !KNOWN_BACKENDS.includes(body.backend))) {
+        return json(res, 400, { error: "backend must be a known backend" });
+      }
+      if (body.model !== undefined && body.model !== null && typeof body.model !== "string") return json(res, 400, { error: "model must be a string" });
+      if (body.collab !== undefined && typeof body.collab !== "boolean") return json(res, 400, { error: "collab must be a boolean" });
+      if (body.context_lines !== undefined && (!Number.isInteger(body.context_lines) || (body.context_lines as number) < 0)) {
+        return json(res, 400, { error: "context_lines must be a non-negative integer" });
+      }
+
+      let classic: Record<string, unknown>;
+      try { classic = readClassic(ctx); }
+      catch (err) { return json(res, 409, { error: (err as Error).message }); }
+      const channels = classic.channels;
+      if (!channels || typeof channels !== "object" || Array.isArray(channels)) return json(res, 404, { error: "classic channel not found" });
+      const current = (channels as Record<string, unknown>)[key];
+      if (!current || typeof current !== "object" || Array.isArray(current)) return json(res, 404, { error: "classic channel not found" });
+      const previous = structuredClone(classic);
+      const merged = { ...(current as Record<string, unknown>), ...body };
+      if (body.model === null || body.model === "") delete merged.model;
+      (channels as Record<string, unknown>)[key] = merged;
+      const before = validateClassicBotConfig(previous);
+      const after = validateClassicBotConfig(classic);
+      if (rejectIfWorse(res, before, after)) return;
+      try { writeClassicAtomic(ctx, classic); }
+      catch (err) {
+        ctx.logger.warn({ err, key }, "settings: failed to atomically update classic channel");
+        return json(res, 500, { error: "failed to write classicBot.yaml" });
+      }
+      const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
+      try {
+        if (instanceName && ctx.restartClassicInstanceFromSettings) await ctx.restartClassicInstanceFromSettings(instanceName);
+      } catch (err) {
+        // Keep disk and runtime consistent if the requested restart fails.
+        try { writeClassicAtomic(ctx, previous); } catch (rollbackErr) {
+          ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
+        }
+        if (instanceName && ctx.restartClassicInstanceFromSettings) {
+          try { await ctx.restartClassicInstanceFromSettings(instanceName); }
+          catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
+        }
+        ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
+        return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
+      }
+      ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after), restarted: !!instanceName });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

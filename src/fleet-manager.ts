@@ -485,6 +485,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lifecycle.isPaused(name) ? "paused" : "not_idle";
   }
 
+  /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
+  async restartClassicInstanceFromSettings(instanceName: string): Promise<void> {
+    if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
+    const wasRunning = this.daemons.has(instanceName);
+    this.classicChannels.reloadFromDisk();
+    this.reregisterClassicChannels();
+    const channel = this.classicChannels.getAll().find(item => item.instanceName === instanceName);
+    if (!channel) throw new Error("Classic channel not found after reload");
+    if (!wasRunning) return;
+    await this.stopInstance(instanceName);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await this.startClassicInstance(
+      instanceName,
+      this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend),
+      this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+    );
+  }
+
   async startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
     if (config.general_topic) {
       this.ensureGeneralInstructions(config.working_directory, config.backend);
