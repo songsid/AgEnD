@@ -30,6 +30,20 @@ const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_sch
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
 
+/** Point a resumed CLI at its one backend-native instruction source. */
+export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
+  const source = binaryName === "codex" || binaryName === "grok"
+    ? "AGENTS.md"
+    : binaryName === "kiro-cli"
+      ? `.kiro/steering/agend-${instanceName}.md`
+      : binaryName === "agy"
+        ? ".agents/agents.md"
+        : binaryName === "gemini"
+          ? "GEMINI.md"
+          : join(instanceDir, "fleet-instructions.md");
+  return `[system] Your AgEnD instructions have been updated. Reload only ${source}; do not scan other instruction directories. Do not reply to this message.`;
+}
+
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = 5_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
@@ -539,7 +553,7 @@ export class Daemon extends EventEmitter {
         } else {
           await new Promise(r => setTimeout(r, 5000));
         }
-        await this.tmux?.pasteText("[system] Your instructions/steering files have been updated. Re-read your steering files. Do not reply to this message.");
+        await this.tmux?.pasteText(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
         // Record the value the agent has now been told about so the next
         // unchanged restart skips the reload.
         try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
@@ -1468,7 +1482,7 @@ export class Daemon extends EventEmitter {
         }
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
-          await this.deliverMessage("[system] Your instructions/steering files have been updated. Re-read your steering files. Do not reply to this message.");
+          await this.deliverMessage(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
         }
         const status = (chatId && messageId)
           ? { chatId: meta.thread_id || chatId, messageId }
