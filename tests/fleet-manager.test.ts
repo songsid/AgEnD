@@ -201,7 +201,7 @@ describe("FleetManager", () => {
       expect(respond.mock.calls[0][0]).toContain("curl -fsSL https://opencode.ai/install | bash");
       expect(respond).toHaveBeenCalledTimes(2);
       expect(respond.mock.calls.at(-1)?.[0]).toContain("opencode");
-      expect(start).toHaveBeenCalledWith(expect.any(String), "opencode", undefined, undefined);
+      expect(start).toHaveBeenCalledWith(expect.any(String), "opencode", undefined, undefined, undefined);
     } finally {
       process.env.PATH = originalPath;
     }
@@ -217,7 +217,7 @@ describe("FleetManager", () => {
     await fm.handleClassicStart("12345", "test-room", "user-1", undefined, "telegram", "grok");
 
     expect(classicChannels.get("12345", "telegram")?.backend).toBe("grok");
-    expect(start).toHaveBeenCalledWith(expect.any(String), "grok", undefined, undefined);
+    expect(start).toHaveBeenCalledWith(expect.any(String), "grok", undefined, undefined, undefined);
     expect(readFileSync(join(tmpDir, "classicBot.yaml"), "utf8")).toContain("backend: grok");
   });
 
@@ -284,7 +284,7 @@ describe("FleetManager", () => {
       }, adapter);
       await vi.advanceTimersByTimeAsync(60_000);
 
-      expect(start).toHaveBeenCalledWith(expect.any(String), "kiro-cli", undefined, undefined);
+      expect(start).toHaveBeenCalledWith(expect.any(String), "kiro-cli", undefined, undefined, undefined);
       expect(classicChannels.get("12345", "telegram")?.backend).toBeUndefined();
       expect(adapter.editMessageRemoveButtons).toHaveBeenCalledOnce();
     } finally {

@@ -457,6 +457,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.instanceStateCache.get(name)?.state ?? null;
   }
 
+  isClassicInstance(name: string): boolean {
+    return this.classicChannels?.getAll().some(channel => channel.instanceName === name) ?? false;
+  }
+
   private cacheInstanceExecutionState(name: string, msg: Record<string, unknown>): void {
     const state = msg.state;
     if (state !== "idle" && state !== "working" && state !== "stuck") return;
@@ -612,6 +616,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
       this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
     );
   }
 
@@ -644,6 +649,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
       this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
     );
   }
 
@@ -824,18 +830,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const fleetModel = this.fleetConfig?.defaults?.model;
         const oldBackends = new Map<string, string>();
         const oldModels = new Map<string, string | undefined>();
+        const oldAutoPause = new Map<string, number | undefined>();
         for (const ch of this.classicChannels.getAll()) {
           oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
           oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
+          oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
         }
         if (!this.classicChannels.checkReload()) return;
         this.reregisterClassicChannels();
         for (const ch of this.classicChannels.getAll()) {
           const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
           const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
+          const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
           const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
           const modelChanged = oldModels.get(ch.instanceName) !== newModel;
-          if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged)) {
+          const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
+          if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
             this.logger.info(
               { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
               "Backend/model changed — restarting",
@@ -848,6 +858,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               newBackend,
               this.classicChannels.getPreTaskCommand(ch.channelId, ch.adapterId),
               newModel,
+              newAutoPause,
             ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to restart classic instance"));
           }
@@ -1128,6 +1139,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
               this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
               this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+              this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
             ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
           ));
@@ -4297,7 +4309,13 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Start a classic channel instance with lightweight config */
-  private async startClassicInstance(instanceName: string, backend?: string, preTaskCommand?: string, model?: string): Promise<void> {
+  private async startClassicInstance(
+    instanceName: string,
+    backend?: string,
+    preTaskCommand?: string,
+    model?: string,
+    autoPauseAfter?: number,
+  ): Promise<void> {
     if (this.daemons.has(instanceName)) return;
     const workDir = join(getAgendHome(), "workspaces", instanceName);
     ensureWorkspaceGit(workDir);
@@ -4308,6 +4326,7 @@ When users create specialized instances, suggest these configurations:
       lightweight: true,
       ...(backend ? { backend } : {}),
       ...(model ? { model } : {}),
+      ...(autoPauseAfter !== undefined ? { auto_pause_after: autoPauseAfter } : {}),
       ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
@@ -4330,7 +4349,13 @@ When users create specialized instances, suggest these configurations:
     // also sees the channel's messages.
     if (adapterId) this.bindInstanceAdapter(instanceName, adapterId);
 
-    await this.startClassicInstance(instanceName, classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend), classicChannels.getPreTaskCommand(channelId, adapterId), classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model));
+    await this.startClassicInstance(
+      instanceName,
+      classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend),
+      classicChannels.getPreTaskCommand(channelId, adapterId),
+      classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
+      classicChannels.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+    );
     this.reregisterClassicChannels();
     // Auto-enable collab for Discord classic channels (TG uses @mention directly without collab mode)
     if (guildId && !classicChannels.isCollab(channelId, adapterId)) {
@@ -4717,6 +4742,7 @@ When users create specialized instances, suggest these configurations:
               this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
               this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
               this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+              this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
             ).catch(err =>
               this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
           ));
