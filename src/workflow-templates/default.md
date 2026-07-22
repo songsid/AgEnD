@@ -28,7 +28,3 @@ Use the **Task Board** (`task` tool) for multi-step work:
 - **Large searches**: use subagents (Agent tool) instead of reading many files directly
 - **Big codebases**: glob/grep for specific targets, don't read entire directories
 - **Long conversations**: summarize decisions into Shared Decisions before context fills up
-
-## On Startup
-
-- **Read all steering files first**: On startup, immediately read all files in `.kiro/steering/` (or equivalent) to load your full skill set and role context. Do not wait for a task to trigger reading them — proactively load all available knowledge before responding to any message.
