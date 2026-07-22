@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { AutoPauseController, Daemon } from "../src/daemon.js";
+import { AutoPauseController, Daemon, readLastInboundAt, writeLastInboundAt } from "../src/daemon.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import pino from "pino";
@@ -11,8 +11,8 @@ import type { Logger } from "../src/logger.js";
 const rootLogger = pino({ level: "silent" }) as Logger;
 
 describe("AutoPauseController", () => {
-  it("requests pause only after a continuous idle threshold", () => {
-    const controller = new AutoPauseController(15_000);
+  it("requests pause after the user-inactivity threshold while idle", () => {
+    const controller = new AutoPauseController(15_000, 1_000);
 
     expect(controller.observe("idle", 1_000)).toBe(false);
     expect(controller.observe("idle", 15_999)).toBe(false);
@@ -24,13 +24,35 @@ describe("AutoPauseController", () => {
     expect(controller.observe("idle", 60_000)).toBe(false);
   });
 
-  it("resets the idle timer when the instance works", () => {
-    const controller = new AutoPauseController(10_000);
+  it("does not reset inactivity while working, but only pauses once idle", () => {
+    const controller = new AutoPauseController(10_000, 0);
 
-    controller.observe("idle", 0);
     expect(controller.observe("working", 9_000)).toBe(false);
-    expect(controller.observe("idle", 10_000)).toBe(false);
+    expect(controller.observe("working", 20_000)).toBe(false);
     expect(controller.observe("idle", 20_000)).toBe(true);
+  });
+
+  it("resets inactivity when a new channel message arrives", () => {
+    const controller = new AutoPauseController(10_000, 0);
+    controller.recordActivity(15_000);
+
+    expect(controller.observe("idle", 20_000)).toBe(false);
+    expect(controller.observe("idle", 25_000)).toBe(true);
+  });
+
+  it("persists the last inbound time across controller recreation", () => {
+    const instanceDir = join(tmpdir(), `agend-last-inbound-${process.pid}-${Date.now()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    try {
+      writeLastInboundAt(instanceDir, 1_000);
+      const restored = readLastInboundAt(instanceDir, 20_000);
+      expect(restored).toBe(1_000);
+
+      const restartedController = new AutoPauseController(10_000, restored!);
+      expect(restartedController.observe("idle", 20_000)).toBe(true);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
   });
 
   it("disables auto-pause when threshold is zero", () => {

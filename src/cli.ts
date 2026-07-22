@@ -2015,20 +2015,51 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
         } catch { /* ignore */ }
       }
 
-      return { name, backend, status, teams, source, context, memMb, lastActivity, idle: undefined as boolean | undefined };
+      return { name, backend, status, teams, source, context, memMb, lastActivity, classic: isClassic, idle: undefined as boolean | undefined, state: undefined as "idle" | "working" | "stuck" | "paused" | null | undefined };
     });
 
     // Enrich with idle state from fleet API (if fleet is running)
     try {
       const port = (config as any).health_port ?? 19280;
       const resp = await fetch(`http://127.0.0.1:${port}/api/fleet`, { signal: AbortSignal.timeout(2000) });
-      const apiData = await resp.json() as { instances?: Array<{ name: string; status?: "running" | "paused" | "stopped" | "crashed"; idle?: boolean; state?: "idle" | "working" | "stuck" | "paused" | null }> };
+      const apiData = await resp.json() as { instances?: Array<{
+        name: string;
+        backend?: string;
+        status?: "running" | "paused" | "stopped" | "crashed";
+        idle?: boolean;
+        state?: "idle" | "working" | "stuck" | "paused" | null;
+        classic?: boolean;
+        channelId?: string;
+        adapterId?: string | null;
+        lastActivity?: number | null;
+      }> };
       for (const inst of apiData.instances ?? []) {
-        const row = rows.find(r => r.name === inst.name);
+        let row = rows.find(r => r.name === inst.name);
+        if (!row && inst.classic) {
+          classicNames.add(inst.name);
+          const channelId = inst.channelId ?? "";
+          row = {
+            name: inst.name,
+            backend: inst.backend ?? "claude-code",
+            status: inst.status ?? "stopped",
+            teams: ["(classic)"],
+            source: inst.adapterId?.toLowerCase().includes("telegram") || channelId.startsWith("-") || (channelId.length > 0 && channelId.length < 17) ? "TG" : "DC",
+            context: null,
+            memMb: null,
+            lastActivity: inst.lastActivity ? formatTimeSince(new Date(inst.lastActivity).toISOString()) : null,
+            classic: true,
+            idle: inst.idle,
+            state: inst.state,
+          };
+          rows.push(row);
+        }
         if (row) {
           row.idle = inst.idle;
           if (inst.status) row.status = inst.status;
-          if (inst.state) (row as any).state = inst.state;
+          if (inst.backend) row.backend = inst.backend;
+          if (inst.classic) row.classic = true;
+          if (inst.state) row.state = inst.state;
+          if (inst.lastActivity) row.lastActivity = formatTimeSince(new Date(inst.lastActivity).toISOString());
         }
       }
     } catch { /* fleet not running or API unreachable */ }
@@ -2070,7 +2101,8 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     };
     const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
 
-    const nameW = Math.max(20, ...rows.map(r => displayWidth(r.name) + 2));
+    const displayName = (row: { name: string; classic: boolean }): string => row.classic ? `[C] ${row.name}` : row.name;
+    const nameW = Math.max(20, ...rows.map(r => displayWidth(displayName(r)) + 2));
     const backendW = 14;
     const statusW = 12;
     const teamW = 20;
@@ -2097,7 +2129,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
       const actStr = r.lastActivity ?? "-";
 
       console.log(
-        padDisplay(r.name, nameW) +
+        padDisplay(displayName(r), nameW) +
         r.backend.padEnd(backendW) +
         statusIcon(r.status, r.idle, (r as any).state) + " " + statusLabel(r.status, r.idle, (r as any).state).padEnd(statusW - 2) +
         padDisplay(teamStr, teamW) +
