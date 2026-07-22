@@ -566,7 +566,7 @@ Agy's "Do you trust this folder?" prompt is automatically dismissed on startup.
 
 ## Grok Build backend
 
-⚠️ **Experimental** — Grok Build (`grok`) support is new. Report issues.
+Grok Build (`grok`) is supported as a backend.
 
 AgEnD supports xAI's Grok Build CLI as a backend.
 

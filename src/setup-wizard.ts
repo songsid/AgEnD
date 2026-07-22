@@ -252,7 +252,7 @@ export const BACKENDS = [
     installUrl: "https://antigravity.google/cli",
     install: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
     auth: "agy (Google Sign-In)" },
-  { id: "grok", binary: "grok", label: "Grok Build (experimental)",
+  { id: "grok", binary: "grok", label: "Grok Build",
     installUrl: "https://docs.x.ai/build/cli",
     install: "curl -fsSL https://x.ai/cli/install.sh | bash",
     auth: "grok (x.ai OAuth device flow)" },
