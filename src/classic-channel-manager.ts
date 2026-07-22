@@ -237,7 +237,7 @@ export class ClassicChannelManager {
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
   isAdmin(userId: string): boolean {
     const list = this.defaults.admin_users;
-    return !!list && list.length > 0 && list.includes(userId);
+    return !!list && list.length > 0 && list.some(id => String(id) === String(userId));
   }
 
   /** Toggle collab mode for a channel. Returns new state. */
