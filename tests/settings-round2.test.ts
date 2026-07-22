@@ -34,6 +34,7 @@ function request(
 function context(dataDir = "/tmp") {
   const pause = vi.fn(async () => undefined);
   const wake = vi.fn(async () => undefined);
+  const restartClassicInstanceFromSettings = vi.fn(async () => undefined);
   const ctx = {
     fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/worker" } } },
     configPath: "/tmp/fleet.yaml",
@@ -42,8 +43,9 @@ function context(dataDir = "/tmp") {
     getRawFleetConfig: () => ({}),
     saveFleetConfig: vi.fn(),
     lifecycle: { isPaused: vi.fn(() => false), pause, wake },
+    restartClassicInstanceFromSettings,
   } as unknown as SettingsApiContext;
-  return { ctx, pause, wake };
+  return { ctx, pause, wake, restartClassicInstanceFromSettings };
 }
 
 describe("Settings manual lifecycle API", () => {
@@ -144,5 +146,55 @@ describe("Settings classicBot persistence", () => {
     expect(saved.channels.keep).toBe(true);
     expect(statSync(path).mode & 0o777).toBe(0o640);
     expect(readdirSync(dir).filter(name => name.includes(".tmp-"))).toEqual([]);
+  });
+
+  it("patches a Classic channel and restarts its running instance", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    writeFileSync(path, yaml.dump({
+      defaults: { backend: "claude-code" },
+      channels: { "123#discord": { instanceName: "classic-demo-0123", backend: "codex", collab: false } },
+    }));
+    const { ctx, restartClassicInstanceFromSettings } = context(dir);
+
+    const response = await request(
+      "/api/settings/classic/channels/123%23discord",
+      ctx,
+      "PATCH",
+      { backend: "opencode", model: "test-model", collab: true, context_lines: 8 },
+    );
+
+    expect(response.status).toBe(200);
+    const saved = yaml.load(readFileSync(path, "utf8")) as any;
+    expect(saved.channels["123#discord"]).toMatchObject({ backend: "opencode", model: "test-model", collab: true, context_lines: 8 });
+    expect(restartClassicInstanceFromSettings).toHaveBeenCalledWith("classic-demo-0123");
+  });
+
+  it("rejects invalid Classic channel fields without writing", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    const original = "channels:\n  channel-one:\n    instanceName: classic-one\n    backend: codex\n";
+    writeFileSync(path, original);
+    const { ctx, restartClassicInstanceFromSettings } = context(dir);
+
+    const response = await request("/api/settings/classic/channels/channel-one", ctx, "PATCH", { backend: "unknown" });
+
+    expect(response.status).toBe(400);
+    expect(readFileSync(path, "utf8")).toBe(original);
+    expect(restartClassicInstanceFromSettings).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the Classic channel config when restart fails", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    const initial = { channels: { one: { instanceName: "classic-one", backend: "codex" } } };
+    writeFileSync(path, yaml.dump(initial));
+    const { ctx, restartClassicInstanceFromSettings } = context(dir);
+    restartClassicInstanceFromSettings.mockRejectedValueOnce(new Error("startup failed"));
+
+    const response = await request("/api/settings/classic/channels/one", ctx, "PATCH", { backend: "opencode" });
+
+    expect(response.status).toBe(409);
+    expect(yaml.load(readFileSync(path, "utf8"))).toEqual(initial);
   });
 });
