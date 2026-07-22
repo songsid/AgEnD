@@ -1392,7 +1392,10 @@ export class Daemon extends EventEmitter {
 
     let formatted: string;
     if (fromInstance) {
-      formatted = `[from:${fromInstance}] ${content}\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)`;
+      // #77: show the sender's display name for readability, keeping the machine
+      // instance name in parens so the recipient's send_to_instance target is valid.
+      const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
+      formatted = `[from:${fromLabel}] ${content}\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)`;
     } else {
       const via = meta.source ? ` via ${meta.source}` : "";
       const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
