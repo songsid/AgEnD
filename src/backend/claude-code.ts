@@ -114,7 +114,7 @@ export class ClaudeCodeBackend implements CliBackend {
     return [
       // Session resume prompt must be checked BEFORE ready pattern, because ❯ in
       // "❯ 1. Resume from summary" would falsely match the ready pattern /❯/.
-      { pattern: /Resume from summary \(recommended\)/, keys: ["Enter"], description: "Claude session resume prompt — auto-select 'Resume from summary'" },
+      { pattern: /Resume from summary \(recommended\)/, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'" },
       { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Claude 'No, exit' confirmation — navigate to Yes" },
       { pattern: /I accept|I trust/i, keys: ["Enter"], description: "Claude 'Yes, I accept' trust dialog" },
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Claude resume session picker — start fresh" },
@@ -125,10 +125,10 @@ export class ClaudeCodeBackend implements CliBackend {
     return [
       {
         // Claude Code shows a session resume prompt when session is old/large.
-        // Default cursor is on "1. Resume from summary (recommended)" — press Enter.
+        // Default cursor is on summary; move down to preserve the full context.
         pattern: /Resume from summary \(recommended\)/,
-        keys: ["Enter"],
-        description: "Claude session resume prompt — auto-select 'Resume from summary'",
+        keys: ["Down", "Enter"],
+        description: "Claude session resume prompt — select 'Resume full session as-is'",
       },
     ];
   }
