@@ -2,11 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, resolveReplyThreadId } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { join, basename } from "node:path";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, symlinkSync, chmodSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, symlinkSync, chmodSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import yaml from "js-yaml";
-import { ClassicChannelManager, getClassicBackendChoices } from "../src/classic-channel-manager.js";
+import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivityAt } from "../src/classic-channel-manager.js";
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
 
 describe("FleetManager", () => {
@@ -25,6 +25,21 @@ describe("FleetManager", () => {
     const fm = new FleetManager(tmpDir);
     mkdirSync(join(tmpDir, "instances/test"), { recursive: true });
     expect(fm.getInstanceStatus("test")).toBe("stopped");
+  });
+
+  it("reads the newest ClassicBot chat-log activity and leaves unused instances empty", () => {
+    expect(readClassicLastActivityAt(tmpDir, "classic-unused")).toBeNull();
+
+    const logDir = join(tmpDir, "workspaces", "classic-active", "chat-logs");
+    mkdirSync(logDir, { recursive: true });
+    const oldLog = join(logDir, "2026-07-20.log");
+    const newLog = join(logDir, "2026-07-21.log");
+    writeFileSync(oldLog, "old\n");
+    writeFileSync(newLog, "new\n");
+    utimesSync(oldLog, new Date(1_000), new Date(1_000));
+    utimesSync(newLog, new Date(2_000), new Date(2_000));
+
+    expect(readClassicLastActivityAt(tmpDir, "classic-active")).toBe(2_000);
   });
 
   it("detects crashed instance (stale PID)", () => {
