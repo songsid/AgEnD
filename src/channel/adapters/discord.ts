@@ -42,7 +42,7 @@ export const DISCORD_START_BACKEND_CHOICES = [
   { name: "Codex", value: "codex" },
   { name: "OpenCode", value: "opencode" },
   { name: "Antigravity", value: "antigravity" },
-  { name: "Grok Build ⚠️", value: "grok" },
+  { name: "Grok Build", value: "grok" },
 ] as const;
 
 export interface DiscordAdapterOptions {
