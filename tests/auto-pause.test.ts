@@ -125,13 +125,13 @@ describe("Daemon auto-pause lifecycle", () => {
     expect(tmux.getWindowId()).toBe(windowId);
     expect(await tmux.isWindowAlive()).toBe(true);
     expect(await tmux.getPaneStatus()).toMatchObject({ alive: false });
-    expect(existsSync(join(instanceDir, "paused-state.json"))).toBe(true);
+    expect(existsSync(join(instanceDir, "paused"))).toBe(true);
 
     const trySpawn = vi.spyOn(daemon as any, "trySpawn").mockResolvedValue(true);
     await daemon.wake(1_000);
     expect(trySpawn).toHaveBeenCalledWith(true, 1_000);
     expect(daemon.isPaused).toBe(false);
-    expect(existsSync(join(instanceDir, "paused-state.json"))).toBe(false);
+    expect(existsSync(join(instanceDir, "paused"))).toBe(false);
     (daemon as any).freezeRuntimeMonitors();
   });
 

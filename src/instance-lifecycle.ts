@@ -14,6 +14,7 @@ import type { Logger } from "./logger.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
+import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
 
 export interface BackendInstallationInfo {
   binary: string;
@@ -76,6 +77,7 @@ export interface LifecycleContext {
   startStatuslineWatcher(name: string): void;
   stopStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
+  startPersistedPausedInstance(name: string): Promise<void>;
 }
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
@@ -285,16 +287,19 @@ export class InstanceLifecycle {
   }
 
   isPaused(name: string): boolean {
-    return this.daemons.get(name)?.isPaused ?? false;
+    return this.daemons.get(name)?.isPaused ?? hasPausedMarker(this.ctx.getInstanceDir(name));
   }
 
   getLastPausedAt(name: string): number | null {
-    return this.daemons.get(name)?.lastPausedAt ?? null;
+    return this.daemons.get(name)?.lastPausedAt ?? readPausedAt(this.ctx.getInstanceDir(name));
   }
 
   async pause(name: string): Promise<void> {
     const daemon = this.daemons.get(name);
-    if (!daemon) throw new Error(`Cannot pause stopped instance '${name}'`);
+    if (!daemon) {
+      if (hasPausedMarker(this.ctx.getInstanceDir(name))) return;
+      throw new Error(`Cannot pause stopped instance '${name}'`);
+    }
     this.ctx.stopStatuslineWatcher(name);
     try {
       await daemon.pause();
@@ -307,8 +312,20 @@ export class InstanceLifecycle {
 
   async wake(name: string, timeoutMs = 30_000): Promise<void> {
     const daemon = this.daemons.get(name);
-    if (!daemon) throw new Error(`Cannot wake stopped instance '${name}'`);
-    await daemon.wake(timeoutMs);
+    if (daemon) {
+      await daemon.wake(timeoutMs);
+    } else {
+      const instanceDir = this.ctx.getInstanceDir(name);
+      if (!hasPausedMarker(instanceDir)) throw new Error(`Cannot wake stopped instance '${name}'`);
+      const pausedAt = readPausedAt(instanceDir) ?? Date.now();
+      clearPausedMarker(instanceDir);
+      try {
+        await this.ctx.startPersistedPausedInstance(name);
+      } catch (err) {
+        writePausedMarker(instanceDir, pausedAt);
+        throw err;
+      }
+    }
     this.ctx.startStatuslineWatcher(name);
   }
 
@@ -448,6 +465,7 @@ export class InstanceLifecycle {
     // Remove from fleet config and save
     delete this.ctx.fleetConfig!.instances[name];
     this.ctx.saveFleetConfig();
+    clearPausedMarker(this.ctx.getInstanceDir(name));
 
     this.ctx.logger.info({ name }, "Instance removed");
   }
@@ -606,6 +624,8 @@ export class InstanceLifecycle {
       const explicitTopicName = args.topic_name;
       const nameBase = explicitTopicName ?? (worktreePath ? topicName! : (directory ? basename(workDir) : topicName!));
       newInstanceName = `${sanitizeInstanceName(nameBase)}-t${createdTopicId}`;
+      // A recycled name must never inherit a stale pause marker.
+      clearPausedMarker(this.ctx.getInstanceDir(newInstanceName));
 
       // If no directory was provided, auto-create default workspace
       if (!directory) {
