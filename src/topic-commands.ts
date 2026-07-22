@@ -46,6 +46,12 @@ export function parseSaveFilename(text: string): string {
 /** Shared message when a backend doesn't support /save. */
 export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this backend (only kiro-cli and claude-code)";
 
+export function parsePauseWakeCommand(text: string): { action: "pause" | "wake"; instance?: string } | null {
+  const match = text.match(/^\/(pause|wake)(?:@\S+)?(?:\s+(\S+))?$/);
+  if (!match) return null;
+  return { action: match[1] as "pause" | "wake", instance: match[2] };
+}
+
 /**
  * The in-session compact/context-reset command for a backend NAME (the fleet
  * process routes /compact via IPC and only has the backend string, not a
@@ -220,6 +226,29 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
 
+    const pauseWake = parsePauseWakeCommand(text);
+    if (pauseWake) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
+
+      const isGeneral = !!this.ctx.fleetConfig?.instances[instanceName]?.general_topic;
+      if (isGeneral && !pauseWake.instance) {
+        await adapter.sendText(msg.chatId, t(`${pauseWake.action}.usage`), { threadId: msg.threadId });
+        return true;
+      }
+      const target = isGeneral ? pauseWake.instance! : instanceName;
+      if (!this.ctx.fleetConfig?.instances[target]) {
+        await adapter.sendText(msg.chatId, t("instance.not_found", target), { threadId: msg.threadId });
+        return true;
+      }
+      await adapter.sendText(msg.chatId, await this.runPauseWake(target, pauseWake.action), { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/collab" || text.startsWith("/collab@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -272,6 +301,16 @@ export class TopicCommands {
     const reply = await this.getCtxText(instanceName);
     await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
     return true;
+  }
+
+  async runPauseWake(instanceName: string, action: "pause" | "wake"): Promise<string> {
+    try {
+      const result = await this.ctx.changeInstancePauseState(instanceName, action);
+      if (result === "not_idle") return t("pause.not_idle", instanceName);
+      return t(result === "paused" ? "pause.success" : "wake.success", instanceName);
+    } catch (err) {
+      return t(`${action}.failed`, instanceName, (err as Error).message);
+    }
   }
 
   /** Get context usage text for an instance (shared by TG + DC) */
@@ -719,6 +758,8 @@ export class TopicCommands {
                 { command: "dashboard", description: "🔒 Get dashboard URLs" },
                 { command: "ctx", description: "Show context usage" },
                 { command: "compact", description: "Compact agent context" },
+                { command: "pause", description: "🔒 Pause an idle instance" },
+                { command: "wake", description: "🔒 Wake a paused instance" },
                 { command: "restart", description: "🔒 Graceful restart all instances" },
                 { command: "collab", description: "🔒 Toggle bot/webhook mode" },
                 { command: "update", description: "🔒 Update AgEnD to latest" },
@@ -740,6 +781,8 @@ export class TopicCommands {
                 { command: "start", description: "🔒 Start an agent in this chat" },
                 { command: "stop", description: "🔒 Stop the agent" },
                 { command: "compact", description: "🔒 Compact agent context" },
+                { command: "pause", description: "🔒 Pause the agent" },
+                { command: "wake", description: "🔒 Wake the agent" },
                 { command: "ctx", description: "Show context usage" },
               ],
               scope: { type: "default" },

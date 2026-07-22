@@ -64,6 +64,45 @@ describe("FleetManager", () => {
     expect(fm.getInstanceExecutionState("test")).toBeNull();
   });
 
+  it("treats only explicit channel allowed_users as fleet admins", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: {},
+      channel: {
+        type: "discord",
+        bot_token_env: "BOT_TOKEN",
+        access: { mode: "open", allowed_users: ["admin"], max_pending_codes: 2, code_expiry_minutes: 10 },
+      },
+    } as any;
+    expect(fm.isFleetAdmin("admin", "discord")).toBe(true);
+    expect(fm.isFleetAdmin("open-mode-user", "discord")).toBe(false);
+  });
+
+  it("enforces Classic admin_users for Discord pause/wake", async () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), "defaults:\n  admin_users: [12345]\nchannels: {}\n");
+    const fm = new FleetManager(tmpDir);
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    classicChannels.register("channel-1", "discord", "classic-test", "test", "owner");
+    fm.classicChannels = classicChannels;
+    const runPauseWake = vi.spyOn((fm as any).topicCommands, "runPauseWake").mockResolvedValue("paused");
+    const deniedRespond = vi.fn().mockResolvedValue(undefined);
+
+    await (fm as any).handlePauseWakeSlash({
+      command: "pause", channelId: "channel-1", channelName: "test", userId: "regular", respond: deniedRespond,
+    }, "discord");
+    expect(runPauseWake).not.toHaveBeenCalled();
+    expect(deniedRespond.mock.calls[0][0]).toContain("Permission denied");
+
+    const adminRespond = vi.fn().mockResolvedValue(undefined);
+    await (fm as any).handlePauseWakeSlash({
+      command: "wake", channelId: "channel-1", channelName: "test", userId: "12345", respond: adminRespond,
+    }, "discord");
+    expect(runPauseWake).toHaveBeenCalledWith("classic-test", "wake");
+    expect(adminRespond).toHaveBeenCalledWith("paused");
+  });
+
   it("builds ClassicBot backend choices without deprecated or test-only backends", () => {
     const choices = getClassicBackendChoices();
     expect(choices.map(choice => choice.id)).toEqual(
