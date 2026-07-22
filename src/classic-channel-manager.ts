@@ -226,6 +226,11 @@ export class ClassicChannelManager {
     return true;
   }
 
+  /** Reload immediately after an authenticated settings write. */
+  reloadFromDisk(): void {
+    this.load();
+  }
+
   getDefaults(): { backend?: string } { return this.defaults; }
 
   /** Check if a guild is allowed. Empty/unset/non-array allowed_guilds = allow all (backward compat). */
