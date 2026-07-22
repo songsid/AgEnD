@@ -24,7 +24,7 @@ const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
  * Phase 2: ready pattern, cancel/quit keys, /compact, context format, and the
  * device-flow login dialog were confirmed against a live grok session. Error
  * strings beyond the cancellation notice are still best-effort and may need
- * tuning — the backend is registered as experimental (see factory.ts).
+ * tuning.
  */
 export class GrokBackend implements CliBackend {
   readonly binaryName = "grok";
