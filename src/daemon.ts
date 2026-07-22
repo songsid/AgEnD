@@ -272,6 +272,10 @@ export class Daemon extends EventEmitter {
   get isCrashLoop(): boolean {
     return this.crashCount >= 3;
   }
+  /** The most recent error type detected by the error monitor (e.g. "rate_limit", "auth_error"). */
+  get lastErrorType(): string | null {
+    return this.lastDetectedErrorType;
+  }
   private lastFailoverAt = 0; // cooldown: prevent repeated failover triggers
   private static FAILOVER_COOLDOWN_MS = 5 * 60_000; // 5 minutes
   private lastErrorNotifiedAt = new Map<string, number>(); // per-type cooldown for all actions
