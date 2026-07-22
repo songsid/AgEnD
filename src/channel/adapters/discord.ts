@@ -396,6 +396,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "stop", description: t("slash.stop") },
           {
+            name: "pause", description: "🔒 Pause an idle instance",
+            options: [{ name: "instance", description: "Instance name (required in General)", type: ApplicationCommandOptionType.String, required: false }],
+          },
+          {
+            name: "wake", description: "🔒 Wake a paused instance",
+            options: [{ name: "instance", description: "Instance name (required in General)", type: ApplicationCommandOptionType.String, required: false }],
+          },
+          {
             name: "chat", description: t("slash.chat"),
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
           },

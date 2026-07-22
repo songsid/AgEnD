@@ -31,7 +31,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -335,6 +335,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? this.routing.resolve(channelId)?.name;
   }
 
+  private async handlePauseWakeSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    const action = data.command as "pause" | "wake";
+    const classicName = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
+    if (classicName) {
+      if (!this.classicChannels?.isAdmin(data.userId)) {
+        await data.respond(t("permission.denied"));
+        return;
+      }
+      await data.respond(await this.topicCommands.runPauseWake(classicName, action));
+      return;
+    }
+
+    if (!this.isFleetAdmin(data.userId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    const route = this.routing.resolve(data.channelId);
+    if (!route) {
+      await data.respond(t("classic.no_agent"));
+      return;
+    }
+    let target = route.name;
+    if (route.kind === "general") {
+      const requested = typeof data.options?.instance === "string" ? data.options.instance : undefined;
+      if (!requested) {
+        await data.respond(t(`${action}.usage`));
+        return;
+      }
+      if (!this.fleetConfig?.instances[requested]) {
+        await data.respond(t("instance.not_found", requested));
+        return;
+      }
+      target = requested;
+    }
+    await data.respond(await this.topicCommands.runPauseWake(target, action));
+  }
+
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
     const worldId = this.instanceWorldBinding.get(name);
@@ -430,6 +467,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
     ipc.send(payload);
+  }
+
+  /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. */
+  isFleetAdmin(userId: string, adapterId?: string): boolean {
+    const allowed = this.getChannelConfig(adapterId)?.access?.allowed_users ?? [];
+    return allowed.some(entry => String(entry) === String(userId));
+  }
+
+  async changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle"> {
+    if (action === "wake") {
+      await this.lifecycle.wake(name, 30_000);
+      return "awake";
+    }
+    await this.lifecycle.pause(name);
+    return this.lifecycle.isPaused(name) ? "paused" : "not_idle";
   }
 
   async startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
@@ -1190,6 +1242,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
+      } else if (data.command === "pause" || data.command === "wake") {
+        await this.handlePauseWakeSlash(data, adapterId);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
         if (!text) { await data.respond(t("chat.usage")); return; }
@@ -1444,6 +1498,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
+      } else if (data.command === "pause" || data.command === "wake") {
+        await this.handlePauseWakeSlash(data, adapterId);
       } else if (data.command === "chat") {
         const text = data.text ?? "";
         if (!text) { await data.respond(t("chat.usage")); return; }
@@ -1946,6 +2002,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           const reply = await this.handleClassicStop(chatId, msg.adapterId);
           await msgAdapter?.sendText(chatId, reply);
+          return;
+        }
+
+        const pauseWake = parsePauseWakeCommand(text);
+        if (pauseWake) {
+          if (!this.classicChannels.isAdmin(msg.userId)) {
+            await msgAdapter?.sendText(chatId, t("permission.denied"));
+            return;
+          }
+          const name = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!name) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          await msgAdapter?.sendText(chatId, await this.topicCommands.runPauseWake(name, pauseWake.action));
           return;
         }
 
