@@ -201,6 +201,33 @@ export class PendingWorkTracker {
   }
 }
 
+const NORMAL_ENTER_SETTLE_MS = 500;
+const FIRST_ENTER_SETTLE_MS = 1_750;
+const FIRST_DELIVERY_WINDOW_MS = 5_000;
+
+/**
+ * One-shot timing gate for the first paste after a CLI reaches its ready
+ * prompt. Recent tmux versions expose a short interval where the prompt is
+ * visible but the TUI can still swallow Enter while completing its redraw.
+ */
+export class FirstDeliveryDelay {
+  private readyAt = 0;
+  private pending = false;
+
+  recordReady(now = Date.now()): void {
+    this.readyAt = now;
+    this.pending = true;
+  }
+
+  consume(now = Date.now()): number {
+    if (!this.pending) return NORMAL_ENTER_SETTLE_MS;
+    this.pending = false;
+    return this.readyAt > 0 && now - this.readyAt < FIRST_DELIVERY_WINDOW_MS
+      ? FIRST_ENTER_SETTLE_MS
+      : NORMAL_ENTER_SETTLE_MS;
+  }
+}
+
 /** Redact likely credentials and control sequences before pane text reaches logs. */
 export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
   const secretAssignment = /\b(token|secret|password|passwd|api[_-]?key|authorization)\b\s*[:=]\s*\S+/gi;
@@ -294,6 +321,7 @@ export class Daemon extends EventEmitter {
   private warmupNeeded = false;
   private lastBuiltInstructions = "";
   private pasteQueueDepth = 0;
+  private firstDeliveryDelay = new FirstDeliveryDelay();
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
   /** Prevent in-flight monitor callbacks from re-arming after a pause. */
@@ -1541,8 +1569,14 @@ export class Daemon extends EventEmitter {
         continue;
       }
 
-      // Settle the bracketed paste, then submit.
-      await new Promise(r => setTimeout(r, 500));
+      // Settle the bracketed paste, then submit. The first delivery immediately
+      // after ready gets a longer one-shot delay because the TUI may still be
+      // completing its final redraw even though the prompt already matched.
+      const enterSettleMs = this.firstDeliveryDelay.consume();
+      if (enterSettleMs > NORMAL_ENTER_SETTLE_MS) {
+        this.logger.debug({ enterSettleMs }, "First delivery after ready — extending Enter settle delay");
+      }
+      await new Promise(r => setTimeout(r, enterSettleMs));
       const enterAt = Date.now();
       await this.tmux!.sendSpecialKey("Enter");
       if (status) this.emit("message_delivered", status); // 👀
@@ -2119,7 +2153,9 @@ export class Daemon extends EventEmitter {
     // With remain-on-exit, isWindowAlive() returns true even for dead panes,
     // but a startup crash would already be caught by waitForOutput/waitForIdle above.
     if (!await this.tmux!.isWindowAlive()) return false;
-    return this.dismissDialogsUntilReady(3);
+    const ready = await this.dismissDialogsUntilReady(3);
+    if (ready) this.firstDeliveryDelay.recordReady();
+    return ready;
   }
 
   /**
