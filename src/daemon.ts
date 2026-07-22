@@ -1,5 +1,5 @@
 import { join, dirname, basename, resolve } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
@@ -32,31 +32,57 @@ const TASK_TOOL = "task";
 
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = 5_000;
+const LAST_INBOUND_FILE = "last-inbound-at";
 
-/** Headless idle timer used by the daemon and unit tests. */
+/** Read the last real channel inbound timestamp persisted across daemon restarts. */
+export function readLastInboundAt(instanceDir: string, now = Date.now()): number | null {
+  try {
+    const value = Number(readFileSync(join(instanceDir, LAST_INBOUND_FILE), "utf-8").trim());
+    return Number.isFinite(value) && value >= 0 && value <= now ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Atomically persist the last real channel inbound timestamp. */
+export function writeLastInboundAt(instanceDir: string, timestamp: number): void {
+  mkdirSync(instanceDir, { recursive: true });
+  const target = join(instanceDir, LAST_INBOUND_FILE);
+  const temp = `${target}.${process.pid}.tmp`;
+  writeFileSync(temp, String(timestamp));
+  renameSync(temp, target);
+}
+
+/** Headless inactivity timer used by the daemon and unit tests. */
 export class AutoPauseController {
-  private idleSince: number | null = null;
   private pausedAt: number | null = null;
 
-  constructor(private readonly thresholdMs: number) {}
+  constructor(
+    private readonly thresholdMs: number,
+    private lastActivityAt = Date.now(),
+  ) {}
+
+  recordActivity(now = Date.now()): void {
+    this.lastActivityAt = now;
+  }
 
   observe(state: InstanceState, now = Date.now()): boolean {
     if (this.pausedAt !== null || this.thresholdMs <= 0) return false;
-    if (state !== "idle") {
-      this.idleSince = null;
-      return false;
-    }
-    this.idleSince ??= now;
-    return now - this.idleSince >= this.thresholdMs;
+    // Inactivity is based on the last user inbound, not on how long this daemon
+    // has observed the idle pane. This preserves pause eligibility across fleet
+    // restarts while still ensuring an actively working instance is never paused.
+    return state === "idle" && now - this.lastActivityAt >= this.thresholdMs;
   }
 
   markPaused(now = Date.now()): void {
     this.pausedAt = now;
   }
 
-  markAwake(): void {
+  markAwake(now = Date.now()): void {
     this.pausedAt = null;
-    this.idleSince = null;
+    // A deliberate wake is activity in its own right and must provide a fresh
+    // window for the wake-before-deliver facade to enqueue its inbound message.
+    this.lastActivityAt = now;
   }
 
   async wakeOnDeliver(wake: () => Promise<void>): Promise<void> {
@@ -307,7 +333,10 @@ export class Daemon extends EventEmitter {
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
     const autoPauseMinutes = typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0; // default: disabled
-    this.autoPauseController = new AutoPauseController(Math.max(0, autoPauseMinutes) * 60_000);
+    this.autoPauseController = new AutoPauseController(
+      Math.max(0, autoPauseMinutes) * 60_000,
+      readLastInboundAt(instanceDir) ?? Date.now(),
+    );
   }
 
   async start(): Promise<void> {
@@ -1369,6 +1398,15 @@ export class Daemon extends EventEmitter {
     // non-empty chat_id; cross-instance messages have chat_id="" and must NOT
     // overwrite it (their reply would otherwise go nowhere).
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
+    if (meta.chat_id) {
+      const inboundAt = Date.now();
+      this.autoPauseController.recordActivity(inboundAt);
+      try {
+        writeLastInboundAt(this.instanceDir, inboundAt);
+      } catch (err) {
+        this.logger.warn({ err: (err as Error).message }, "Failed to persist last inbound timestamp");
+      }
+    }
     if (this.pendingInstructionsUpdate) {
       writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
       this.pendingInstructionsUpdate = undefined;
