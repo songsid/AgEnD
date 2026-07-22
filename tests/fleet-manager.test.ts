@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, resolveReplyThreadId } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { join, basename } from "node:path";
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, symlinkSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import yaml from "js-yaml";
 import { ClassicChannelManager, getClassicBackendChoices } from "../src/classic-channel-manager.js";
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
@@ -72,6 +73,86 @@ describe("FleetManager", () => {
     expect(choices.some(choice => choice.id === "mock")).toBe(false);
   });
 
+  it("marks backend menu labels from the fleet process PATH", async () => {
+    const originalPath = process.env.PATH;
+    const binDir = join(tmpDir, "test-bin");
+    mkdirSync(binDir);
+    symlinkSync(execFileSync("which", ["which"], { encoding: "utf8" }).trim(), join(binDir, "which"));
+    writeFileSync(join(binDir, "codex"), "#!/bin/sh\nexit 0\n");
+    chmodSync(join(binDir, "codex"), 0o755);
+    process.env.PATH = binDir;
+    try {
+      const fm = new FleetManager(tmpDir);
+      const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+      classicChannels.setPrimaryAdapterId("telegram");
+      fm.classicChannels = classicChannels;
+      vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+      const promptUser = vi.fn().mockResolvedValue("menu-1");
+      const adapter = {
+        id: "telegram",
+        type: "telegram",
+        promptUser,
+        editMessageRemoveButtons: vi.fn().mockResolvedValue(undefined),
+      } as any;
+
+      await (fm as any).beginClassicBackendSelection({
+        command: "start",
+        channelId: "12345",
+        channelName: "test-room",
+        userId: "owner",
+        respond: vi.fn().mockResolvedValue(undefined),
+      }, adapter);
+      const choices = promptUser.mock.calls[0][2] as Array<{ id: string; label: string }>;
+      expect(choices.find(choice => choice.id.endsWith(":codex"))?.label).toBe("✅ codex");
+      expect(choices.find(choice => choice.id.endsWith(":claude-code"))?.label).toBe("❌ claude-code");
+
+      const codex = choices.find(choice => choice.id.endsWith(":codex"))!;
+      await (fm as any).handleClassicBackendSelection({
+        callbackData: codex.id,
+        chatId: "12345",
+        messageId: "menu-1",
+        userId: "owner",
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
+  it("warns for a missing Discord slash-choice backend but still attempts startup", async () => {
+    const originalPath = process.env.PATH;
+    const binDir = join(tmpDir, "empty-test-bin");
+    mkdirSync(binDir);
+    symlinkSync(execFileSync("which", ["which"], { encoding: "utf8" }).trim(), join(binDir, "which"));
+    process.env.PATH = binDir;
+    try {
+      const fm = new FleetManager(tmpDir);
+      const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+      classicChannels.setPrimaryAdapterId("discord");
+      fm.classicChannels = classicChannels;
+      const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+      const respond = vi.fn().mockResolvedValue(undefined);
+      const adapter = { id: "discord", type: "discord" } as any;
+
+      await (fm as any).handleClassicStartSlash({
+        command: "start",
+        channelId: "channel-1",
+        channelName: "test-room",
+        guildId: "guild-1",
+        userId: "owner",
+        options: { backend: "opencode" },
+        respond,
+      }, "discord", adapter);
+
+      expect(respond.mock.calls[0][0]).toContain("opencode");
+      expect(respond.mock.calls[0][0]).toContain("curl -fsSL https://opencode.ai/install | bash");
+      expect(respond).toHaveBeenCalledTimes(2);
+      expect(respond.mock.calls.at(-1)?.[0]).toContain("opencode");
+      expect(start).toHaveBeenCalledWith(expect.any(String), "opencode", undefined, undefined);
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+
   it("persists a directly selected ClassicBot backend before starting", async () => {
     const fm = new FleetManager(tmpDir);
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
@@ -103,7 +184,7 @@ describe("FleetManager", () => {
       userId: "owner",
       respond: vi.fn().mockResolvedValue(undefined),
     }, adapter);
-    const codex = promptUser.mock.calls[0][2].find((choice: { label: string }) => choice.label === "codex");
+    const codex = promptUser.mock.calls[0][2].find((choice: { id: string }) => choice.id.endsWith(":codex"));
 
     await (fm as any).handleClassicBackendSelection({
       callbackData: codex.id,
