@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { hasPausedMarker } from "./pause-marker.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -1800,12 +1801,12 @@ function getTreeRssKb(pid: number, depth = 0): number {
 }
 
 function getInstanceStatusStandalone(name: string): "running" | "paused" | "stopped" | "crashed" {
+  if (hasPausedMarker(join(DATA_DIR, "instances", name))) return "paused";
   const pidPath = join(DATA_DIR, "instances", name, "daemon.pid");
   if (!existsSync(pidPath)) return "stopped";
   const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
   try {
     process.kill(pid, 0);
-    if (existsSync(join(DATA_DIR, "instances", name, "paused-state.json"))) return "paused";
     return "running";
   } catch {
     return "crashed";

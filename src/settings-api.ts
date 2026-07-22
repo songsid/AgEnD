@@ -31,6 +31,7 @@ import yaml from "js-yaml";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
+import { clearPausedMarker } from "./pause-marker.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -364,6 +365,7 @@ export function handleSettingsRequest(
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
     if (rejectIfWorse(res, before, after)) return;
     cfg!.instances[name] = mergedInst as unknown as FleetConfig["instances"][string];
+    if (!exists) clearPausedMarker(join(ctx.dataDir, "instances", name));
     ctx.saveFleetConfig(rawInstancePatches(name, patch));
     json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
   };
@@ -395,6 +397,7 @@ export function handleSettingsRequest(
       if (!cfg.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
       // DELETE never blocks on validation; surface any resulting warnings.
       delete cfg.instances[name];
+      clearPausedMarker(join(ctx.dataDir, "instances", name));
       ctx.saveFleetConfig();
       json(res, 200, { ok: true, warnings: validateFleetConfig(cfg).warnings });
       return true;
