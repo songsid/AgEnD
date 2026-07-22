@@ -317,6 +317,103 @@ describe("FleetManager", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("holds cross-instance delivery while working and releases it on idle", async () => {
+    const fm = new FleetManager(tmpDir);
+    const send = vi.fn();
+    fm.instanceIpcClients.set("test", { connected: true, send } as any);
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "working", observedAt: 1_000, stateChangedAt: 1_000,
+    });
+
+    const delivery = fm.deliverToInstance("test", {
+      type: "fleet_inbound",
+      content: "agent message",
+      meta: { from_instance: "sender" },
+    }, { idleTimeoutMs: 5_000 });
+    await Promise.resolve();
+    expect(send.mock.calls.some(([msg]) => msg.type === "fleet_inbound")).toBe(false);
+
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "idle", observedAt: 2_000, stateChangedAt: 2_000,
+    });
+    await delivery;
+    expect(send.mock.calls.filter(([msg]) => msg.type === "fleet_inbound")).toHaveLength(1);
+  });
+
+  it("delivers user inbound immediately even while the instance is working", async () => {
+    const fm = new FleetManager(tmpDir);
+    const send = vi.fn();
+    fm.instanceIpcClients.set("test", { connected: true, send } as any);
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "working", observedAt: 1_000, stateChangedAt: 1_000,
+    });
+
+    await fm.deliverToInstance("test", {
+      type: "fleet_inbound", content: "user message", meta: { user: "han" },
+    });
+
+    expect(send).toHaveBeenCalledOnce();
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ content: "user message" }));
+  });
+
+  it("forces cross-instance delivery after the idle timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const fm = new FleetManager(tmpDir);
+      const send = vi.fn();
+      fm.instanceIpcClients.set("test", { connected: true, send } as any);
+      (fm as any).cacheInstanceExecutionState("test", {
+        state: "working", observedAt: 1_000, stateChangedAt: 1_000,
+      });
+
+      const delivery = fm.deliverToInstance("test", {
+        type: "fleet_inbound", content: "forced", meta: { from_instance: "sender" },
+      }, { idleTimeoutMs: 60_000 });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await delivery;
+
+      expect(send.mock.calls.filter(([msg]) => msg.type === "fleet_inbound")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("serializes cross-instance messages until a fresh idle observation", async () => {
+    const fm = new FleetManager(tmpDir);
+    const delivered: string[] = [];
+    fm.instanceIpcClients.set("test", {
+      connected: true,
+      send: (msg: Record<string, unknown>) => {
+        if (msg.type === "fleet_inbound") delivered.push(String(msg.content));
+      },
+    } as any);
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "idle", observedAt: 1_000, stateChangedAt: 1_000,
+    });
+
+    const first = fm.deliverToInstance("test", {
+      type: "fleet_inbound", content: "first", meta: { from_instance: "a" },
+    }, { idleTimeoutMs: 5_000 });
+    const second = fm.deliverToInstance("test", {
+      type: "fleet_inbound", content: "second", meta: { from_instance: "b" },
+    }, { idleTimeoutMs: 5_000 });
+
+    await first;
+    await Promise.resolve();
+    expect(delivered).toEqual(["first"]);
+
+    const nextIdleAt = Date.now() + 10;
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "working", observedAt: nextIdleAt - 1, stateChangedAt: nextIdleAt - 1,
+    });
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "idle", observedAt: nextIdleAt, stateChangedAt: nextIdleAt,
+    });
+    await second;
+
+    expect(delivered).toEqual(["first", "second"]);
+  });
+
   it("builds routing table from config", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");
