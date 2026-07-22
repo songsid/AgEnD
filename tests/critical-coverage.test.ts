@@ -81,6 +81,7 @@ describe("Backend ready patterns", () => {
     const { PaneStateMachine } = await import("../src/daemon.js");
     const backend = new GrokBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
+    expect(backend.getCompactCommand()).toBe("/compact ");
     expect(pattern.test("❯")).toBe(true);
     expect(pattern.test("Grok 4.5 (high)")).toBe(true);
     expect(pattern.test("⠹ Responding… 3.0s")).toBe(false);
