@@ -170,6 +170,11 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
   const err = (path: string, message: string) => errors.push({ path, message });
+  const validateAutoPause = (value: unknown, path: string) => {
+    if (value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0)) {
+      err(path, "must be a non-negative finite number of minutes (0 disables auto-pause)");
+    }
+  };
 
   // An empty / absent classicBot.yaml is valid (classic bot is optional).
   if (config === null || config === undefined) return { valid: true, errors, warnings };
@@ -185,6 +190,7 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
     if (b !== undefined && (typeof b !== "string" || !KNOWN_BACKENDS.includes(b))) {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
+    validateAutoPause(d.auto_pause_after, "defaults.auto_pause_after");
     for (const key of ["allowed_guilds", "admin_users", "allowed_groups", "allowed_users"]) {
       if (d[key] !== undefined && !isIdArray(d[key])) {
         err(`defaults.${key}`, "must be an array of strings/numbers");
@@ -194,6 +200,11 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
 
   if (config.channels !== undefined && !isObj(config.channels)) {
     err("channels", "must be a mapping (keyed by channelId or channelId#adapterId)");
+  } else if (isObj(config.channels)) {
+    for (const [key, channel] of Object.entries(config.channels)) {
+      if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
+      validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
+    }
   }
 
   return { valid: errors.length === 0, errors, warnings };

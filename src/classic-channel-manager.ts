@@ -53,6 +53,7 @@ export interface ClassicChannel {
   instanceName: string;
   backend?: string;
   model?: string;
+  autoPauseAfter?: number;
   collab?: boolean;
   preTaskCommand?: string;
   contextLines?: number;
@@ -61,7 +62,7 @@ export interface ClassicChannel {
 }
 
 interface ClassicBotYaml {
-  defaults?: { backend?: string; model?: string; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
+  defaults?: { backend?: string; model?: string; auto_pause_after?: number; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
   channels?: Record<string, {
     // New format persists channelId/adapterId/instanceName explicitly so the
     // yaml key is just a unique id and naming never drifts. Old format omitted
@@ -72,6 +73,7 @@ interface ClassicBotYaml {
     name?: string;
     backend?: string;
     model?: string;
+    auto_pause_after?: number;
     context_lines?: number;
     collab?: boolean;
     pre_task_command?: string;
@@ -107,7 +109,7 @@ export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
   /** Distinct channelIds across all adapters — makes hasChannel() O(1) (hot path: every inbound). */
   private channelIds = new Set<string>();
-  private defaults: { backend?: string; model?: string; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
+  private defaults: { backend?: string; model?: string; auto_pause_after?: number; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
   /** The primary (channels[0]) adapter id. Legacy entries migrate to it; it also names without a suffix. */
@@ -177,6 +179,7 @@ export class ClassicChannelManager {
             instanceName,
             backend: val.backend,
             model: val.model,
+            autoPauseAfter: val.auto_pause_after,
             collab: val.collab,
             preTaskCommand: val.pre_task_command,
             contextLines: val.context_lines,
@@ -207,6 +210,7 @@ export class ClassicChannelManager {
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
+      if (ch.autoPauseAfter !== undefined) entry.auto_pause_after = ch.autoPauseAfter;
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
@@ -295,6 +299,19 @@ export class ClassicChannelManager {
   getModel(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined {
     const ch = this.find(channelId, adapterId);
     return ch?.model || this.defaults.model || fleetDefault;
+  }
+
+  /** Auto-pause fallback: per-channel → Classic defaults → fleet default. */
+  getAutoPauseAfter(channelId: string, adapterId?: string, fleetDefault?: number): number | undefined {
+    const ch = this.find(channelId, adapterId);
+    return ch?.autoPauseAfter ?? this.defaults.auto_pause_after ?? fleetDefault;
+  }
+
+  getAutoPauseAfterByInstance(instanceName: string, fleetDefault?: number): number | undefined {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) return this.getAutoPauseAfter(ch.channelId, ch.adapterId, fleetDefault);
+    }
+    return this.defaults.auto_pause_after ?? fleetDefault;
   }
 
   /** Get backend for an instance by name */
