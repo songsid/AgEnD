@@ -45,6 +45,8 @@ export const DISCORD_START_BACKEND_CHOICES = [
   { name: "Grok Build", value: "grok" },
 ] as const;
 
+const CLASSIC_START_BACKEND_SELECT_ID = "classic-start-backend";
+
 export interface DiscordAdapterOptions {
   id: string;
   botToken: string;
@@ -272,7 +274,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         // Acknowledge before routing for the same 3-second constraint as buttons.
         if (interaction.isStringSelectMenu()) {
           try { await interaction.deferUpdate(); } catch { /* already acknowledged / unknown interaction */ }
-          if (interaction.guildId !== this.guildId && !this.openChannels.has(interaction.channelId ?? "")) return;
+          // `/start` is allowed in configured secondary guilds, but its channel
+          // is not in openChannels until AFTER the selection creates a Classic
+          // instance. Let this one coordinator-owned menu through; fleet-manager
+          // still validates its nonce, channel and initiating user. Other select
+          // menus retain the normal primary/open-channel boundary.
+          if (interaction.customId !== CLASSIC_START_BACKEND_SELECT_ID
+            && interaction.guildId !== this.guildId
+            && !this.openChannels.has(interaction.channelId ?? "")) return;
           const callbackData = interaction.values[0];
           if (!callbackData) return;
           this.emit("callback_query", {
@@ -324,7 +333,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respond: async (reply: string) => { try { await this._editReplyLong(interaction, reply); } catch { /* expired */ } },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
-                  .setCustomId("classic-start-backend")
+                  .setCustomId(CLASSIC_START_BACKEND_SELECT_ID)
                   .setPlaceholder("Choose a backend")
                   .addOptions(choices.map(choice => ({
                     label: choice.label.slice(0, 100),
