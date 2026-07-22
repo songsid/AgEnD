@@ -436,7 +436,7 @@ Agy 的「Do you trust this folder?」提示會在啟動時自動 dismiss。
 
 ## Grok Build 後端
 
-⚠️ **Experimental** — Grok Build（`grok`）後端為新增功能，歡迎回報問題。
+Grok Build（`grok`）已作為正式後端支援。
 
 AgEnD 支援 xAI 的 Grok Build CLI 作為後端。
 
