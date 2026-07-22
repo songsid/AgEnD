@@ -47,6 +47,7 @@ export interface SettingsApiContext {
     pause(name: string): Promise<void>;
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
+  isClassicInstance?(name: string): boolean;
   restartClassicInstanceFromSettings?(instanceName: string): Promise<void>;
 }
 
@@ -183,7 +184,7 @@ export function handleSettingsRequest(
   if (method === "POST" && actionMatch) {
     const name = decodeURIComponent(actionMatch[1]);
     if (!name || !/^[^\\/\x00]+$/.test(name)) { json(res, 400, { error: "invalid instance name" }); return true; }
-    if (!cfg?.instances[name]) { json(res, 404, { error: "instance not found" }); return true; }
+    if (!cfg?.instances[name] && !ctx.isClassicInstance?.(name)) { json(res, 404, { error: "instance not found" }); return true; }
     const action = actionMatch[2];
     const operation = action === "pause" ? ctx.lifecycle.pause(name) : ctx.lifecycle.wake(name, 30_000);
     operation.then(() => json(res, 200, { ok: true, name, status: action === "pause" ? "paused" : "running" }))
@@ -265,13 +266,17 @@ export function handleSettingsRequest(
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
-      const allowed = new Set(["backend", "model", "collab", "context_lines"]);
+      const allowed = new Set(["backend", "model", "auto_pause_after", "collab", "context_lines"]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
       if (body.backend !== undefined && (typeof body.backend !== "string" || !KNOWN_BACKENDS.includes(body.backend))) {
         return json(res, 400, { error: "backend must be a known backend" });
       }
       if (body.model !== undefined && body.model !== null && typeof body.model !== "string") return json(res, 400, { error: "model must be a string" });
+      if (body.auto_pause_after !== undefined && body.auto_pause_after !== null
+        && (typeof body.auto_pause_after !== "number" || !Number.isFinite(body.auto_pause_after) || body.auto_pause_after < 0)) {
+        return json(res, 400, { error: "auto_pause_after must be a non-negative finite number" });
+      }
       if (body.collab !== undefined && typeof body.collab !== "boolean") return json(res, 400, { error: "collab must be a boolean" });
       if (body.context_lines !== undefined && (!Number.isInteger(body.context_lines) || (body.context_lines as number) < 0)) {
         return json(res, 400, { error: "context_lines must be a non-negative integer" });
@@ -287,6 +292,7 @@ export function handleSettingsRequest(
       const previous = structuredClone(classic);
       const merged = { ...(current as Record<string, unknown>), ...body };
       if (body.model === null || body.model === "") delete merged.model;
+      if (body.auto_pause_after === null) delete merged.auto_pause_after;
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
