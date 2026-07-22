@@ -9,6 +9,21 @@ import type { Choice } from "./channel/types.js";
 
 const EXPERIMENTAL_BACKENDS = new Set(["grok"]);
 
+/** Last real channel activity recorded in a ClassicBot chat log. */
+export function readClassicLastActivityAt(dataDir: string, instanceName: string): number | null {
+  const logDir = join(dataDir, "workspaces", instanceName, "chat-logs");
+  try {
+    let latest = 0;
+    for (const file of readdirSync(logDir)) {
+      if (!file.endsWith(".log")) continue;
+      try { latest = Math.max(latest, statSync(join(logDir, file)).mtimeMs); } catch { /* skip unreadable log */ }
+    }
+    return latest || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Backends offered by ClassicBot onboarding. `mock` is test-only. */
 export function getClassicBackendChoices(): Choice[] {
   return KNOWN_BACKENDS
