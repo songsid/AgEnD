@@ -48,11 +48,12 @@ describe("ClaudeCodeBackend", () => {
       expect(cmd).not.toContain("--dangerously-load-development-channels");
     });
 
-    it("includes --resume when session-id file exists", () => {
+    it("uses --continue when session-id file exists to bypass the session picker", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "sess-123");
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
-      expect(cmd).toContain("--resume sess-123");
+      expect(cmd).toContain("--continue");
+      expect(cmd).not.toContain("--resume");
     });
 
     it("does not include --system-prompt (prompt injected via MCP instructions)", () => {
@@ -148,6 +149,26 @@ describe("ClaudeCodeBackend", () => {
       }));
       const backend = new ClaudeCodeBackend(TEST_DIR);
       expect(backend.getSessionId()).toBe("sess-abc");
+    });
+  });
+
+  describe("session resume dialog", () => {
+    it("selects the full session at startup instead of the summary", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const dialog = backend.getStartupDialogs().find(({ pattern }) =>
+        pattern.test("1. Resume from summary (recommended)"));
+
+      expect(dialog?.keys).toEqual(["Down", "Enter"]);
+      expect(dialog?.description).toContain("Resume full session as-is");
+    });
+
+    it("selects the full session when the prompt appears at runtime", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const dialog = backend.getRuntimeDialogs().find(({ pattern }) =>
+        pattern.test("1. Resume from summary (recommended)"));
+
+      expect(dialog?.keys).toEqual(["Down", "Enter"]);
+      expect(dialog?.description).toContain("Resume full session as-is");
     });
   });
 });
