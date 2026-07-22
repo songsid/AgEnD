@@ -156,6 +156,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (task_summary) ipcMeta.task_summary = task_summary;
   if (working_directory) ipcMeta.working_directory = working_directory;
   if (branch) ipcMeta.branch = branch;
+  // #77: surface the sender's display name in the recipient's [from:…] header
+  // (keeps from_instance as the machine name so the reply-back target stays valid).
+  const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
+  if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
 
   try {
     await deliverToInstance(ctx, targetInstanceName, { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
@@ -482,6 +486,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
+  const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
 
   // Resolve target list: team, explicit targets, tag filter, or all running
   let targetNames: string[];
@@ -515,6 +520,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     if (request_kind) ipcMeta.request_kind = request_kind;
     if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
     if (task_summary) ipcMeta.task_summary = task_summary;
+    if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
 
     try {
       await deliverToInstance(ctx, hostInstance, { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta });
