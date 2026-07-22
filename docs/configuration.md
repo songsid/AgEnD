@@ -93,6 +93,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `gemini-cli` (⚠️ deprecated) |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
+| `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |
 | `tool_set` | string | `"full"` | MCP tool profile: `"full"` (20), `"standard"` (8), `"minimal"` (3) |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
