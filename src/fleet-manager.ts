@@ -55,6 +55,7 @@ import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
+import { clearPausedMarker } from "./pause-marker.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -505,12 +506,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
+    if (this.lifecycle.isPaused(name)) {
+      this.logger.info({ name }, "Persisted paused instance — skipping startup");
+      return;
+    }
     if (config.general_topic) {
       this.ensureGeneralInstructions(config.working_directory, config.backend);
     }
     await this.lifecycle.start(name, config, topicMode);
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
+  }
+
+  /** Recreate a daemon for a marker-only paused instance after an explicit wake/delivery. */
+  async startPersistedPausedInstance(name: string): Promise<void> {
+    const topicMode = this.fleetConfig?.channel?.mode === "topic"
+      || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    const fleetConfig = this.fleetConfig?.instances[name];
+    if (fleetConfig) {
+      await this.startInstance(name, fleetConfig, topicMode);
+      return;
+    }
+    const channel = this.classicChannels?.getAll().find(item => item.instanceName === name);
+    if (!channel || !this.classicChannels) throw new Error(`Paused instance '${name}' is no longer configured`);
+    await this.startClassicInstance(
+      name,
+      this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
+      this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+    );
   }
 
   /**
@@ -3043,6 +3067,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   startStatuslineWatcher(name: string): void {
+    if (this.lifecycle.isPaused(name)) return;
     this.statuslineWatcher.watch(name);
   }
 
@@ -4186,6 +4211,7 @@ When users create specialized instances, suggest these configurations:
     if (!classicChannels) return "Classic channel manager not initialized.";
 
     const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
+    clearPausedMarker(this.getInstanceDir(instanceName));
     const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
     classicChannels.register(channelId, adapterId, instanceName, channelName || channelId, userId, selectedBackend);
     // Bind this classic instance to the bot that started it (authoritative), so
@@ -4212,6 +4238,7 @@ When users create specialized instances, suggest these configurations:
     this.instanceWorldBinding.delete(ch.instanceName);
     await this.stopInstance(ch.instanceName).catch(err =>
       this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to stop classic instance"));
+    clearPausedMarker(this.getInstanceDir(ch.instanceName));
     this.reregisterClassicChannels();
     this.logger.info({ channelId, adapterId, instanceName: ch.instanceName }, "Classic channel stopped");
     return t("classic.stopped");

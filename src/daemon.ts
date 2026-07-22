@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import type { Logger } from "./logger.js";
+import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -383,9 +384,6 @@ export class Daemon extends EventEmitter {
 
   async start(): Promise<void> {
     mkdirSync(this.instanceDir, { recursive: true });
-    // A daemon restart performs a normal CLI start, so any persisted auto-pause
-    // marker from the previous daemon is stale.
-    try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
 
@@ -1112,7 +1110,6 @@ export class Daemon extends EventEmitter {
     } catch (e) {
       this.logger.debug({ err: e }, "Failed to remove PID file");
     }
-    try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
   }
 
   getHangDetector(): HangDetector | null {
@@ -1185,9 +1182,7 @@ export class Daemon extends EventEmitter {
 
         this.pauseWakeState = "paused";
         this.autoPauseController.markPaused();
-        writeFileSync(join(this.instanceDir, "paused-state.json"), JSON.stringify({
-          paused_at: this.lastPausedAt,
-        }));
+        writePausedMarker(this.instanceDir, this.lastPausedAt ?? Date.now());
         this.logger.info({ pausedAt: this.lastPausedAt }, "Instance auto-paused");
         this.ipcServer?.broadcast({
           type: "instance_state", instanceName: this.name, state: "paused", pausedAt: this.lastPausedAt,
@@ -1237,7 +1232,7 @@ export class Daemon extends EventEmitter {
       this.pauseWakeState = "active";
       this.healthCheckPaused = false;
       this.pauseRequested = false;
-      try { unlinkSync(join(this.instanceDir, "paused-state.json")); } catch {}
+      clearPausedMarker(this.instanceDir);
       this.transcriptMonitor?.resetOffset();
       this.resumeRuntimeMonitors();
       this.logger.info("Instance auto-woke");
