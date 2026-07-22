@@ -32,7 +32,7 @@
   .item .del-btn { visibility: hidden; }
   .item:hover .del-btn { visibility: visible; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: #9ca3af; }
-  .dot.running { background: var(--green); } .dot.paused { background:#f59e0b; } .dot.crashed { background: var(--red); } .dot.stopped { background: #9ca3af; }
+  .dot.running, .dot.idle { background: var(--green); } .dot.working { background:var(--accent); } .dot.paused { background:#f59e0b; } .dot.crashed, .dot.stuck { background: var(--red); } .dot.stopped { background: #9ca3af; }
   .name { font-weight: 600; }
   .tag { font-size: 12px; color: var(--muted); background: #eef2ff; color: #3730a3; padding: 1px 7px; border-radius: 10px; }
   .tag.persona { background: #fdf2f8; color: #9d174d; }
@@ -306,7 +306,7 @@
   }
 
   // ── State ──
-  const state = { fleet: {}, classic: {}, classicStatus: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
+  const state = { fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -383,6 +383,7 @@
   // Display name: profile display_name → else strip the -t<topicId> suffix.
   const shortName = (name, inst) => (inst && inst.display_name) || name.replace(/-t\d+$/, "");
   const STATUS_TEXT = { running: "🟢 Running", paused: "⏸ Paused", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
+  const EXECUTION_TEXT = { idle: "🟢 Idle", working: "🔵 Working", stuck: "🔴 Stuck", paused: "⏸ Paused", crashed: "🔴 Crashed", stopped: "⚪ Stopped", running: "🟢 Running" };
   const STATUS_ORDER = { running: 0, paused: 1, crashed: 2, stopped: 3 };
   const groupOf = (inst) => (inst.tags && inst.tags[0]) || "Other";
   function compactRow(name, inst) {
@@ -628,6 +629,78 @@
   }
 
   // ── ClassicBot Channels ──
+  let editingClassic = null;
+  function classicRuntime(instanceName) {
+    const live = state.classicLive[instanceName] || {};
+    const status = live.status || state.classicStatus[instanceName] || "stopped";
+    const execution = status === "paused" ? "paused" : (live.state || status);
+    return { status, execution };
+  }
+  function classicEditForm(c) {
+    const box = el("div", { class: "edit" });
+    const classicDefaults = state.classic?.defaults || {};
+    const fleetDefaults = state.fleet?.defaults || {};
+    const inheritedBackend = classicDefaults.backend || fleetDefaults.backend || "claude-code";
+    const inheritedModel = classicDefaults.model || fleetDefaults.model || "";
+    const inheritedAutoPause = classicDefaults.auto_pause_after ?? fleetDefaults.auto_pause_after ?? 0;
+    const runtime = classicRuntime(c.instanceName);
+    const fBackend = select(c.backend || inheritedBackend, BACKENDS.filter(value => value !== "gemini-cli"));
+    const fModel = el("input", { type: "text", value: c.model || "", placeholder: inheritedModel || "(inherit default)" });
+    const auto = overrideControl(c, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: c.auto_pause_after ?? inheritedAutoPause, placeholder: "0 = disabled" }), inheritedAutoPause);
+    const fCollab = el("input", { type: "checkbox" }); fCollab.checked = !!c.collab;
+    const fContext = el("input", { type: "number", min: "0", step: "1", value: c.context_lines ?? classicDefaults.context_lines ?? 5 });
+    const autoFeedback = el("div", { class: "feedback" });
+    const contextFeedback = el("div", { class: "feedback" });
+    const saveBtn = el("button", { class: "primary sm" }, t("save"));
+    const validate = () => {
+      const autoValue = Number(auto.input.value);
+      const contextValue = Number(fContext.value);
+      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? "Must be 0 or greater" : "");
+      const validContext = setValidation(fContext, contextFeedback, !Number.isInteger(contextValue) || contextValue < 0 ? "Must be a non-negative integer" : "");
+      saveBtn.disabled = !(validAuto && validContext);
+      return !saveBtn.disabled;
+    };
+    for (const input of [fBackend, fModel, auto.input, auto.toggle, fCollab, fContext]) {
+      input.addEventListener("input", validate); input.addEventListener("change", validate);
+    }
+    saveBtn.onclick = () => {
+      if (!validate()) return;
+      const patch = {
+        backend: fBackend.value,
+        model: fModel.value.trim() || null,
+        auto_pause_after: auto.toggle.checked ? null : Number(auto.input.value),
+        collab: fCollab.checked,
+        context_lines: Number(fContext.value),
+      };
+      state.classic.channels[c.key] = { ...state.classic.channels[c.key], ...patch };
+      if (patch.model === null) delete state.classic.channels[c.key].model;
+      if (patch.auto_pause_after === null) delete state.classic.channels[c.key].auto_pause_after;
+      stageChange(`classic:${c.key}`, {
+        label: `Update ${c.name || c.instanceName}`,
+        impact: "instance",
+        apply: () => api(`/api/settings/classic/channels/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
+      });
+      editingClassic = null;
+      renderClassic();
+    };
+    box.append(
+      el("div", { class: "sub", style: "margin:0 0 8px" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
+      el("div", { class: "grid2" },
+        el("div", {}, el("label", {}, t("backend"), impact("instance")), fBackend),
+        el("div", {}, el("label", {}, t("model"), impact("instance")), fModel),
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), auto.row, autoFeedback),
+        el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("instance")))),
+      el("div", { class: "advanced-only" },
+        el("label", {}, "Context lines", impact("instance")), fContext, contextFeedback),
+      el("div", { class: "actions" },
+        saveBtn,
+        runtime.status === "running" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "pause") }, t("pause")) : null,
+        runtime.status === "paused" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "wake") }, t("wake")) : null,
+        el("button", { class: "sm ghost", onclick: () => { editingClassic = null; renderClassic(); } }, t("cancel"))),
+    );
+    validate();
+    return box;
+  }
   function renderClassic() {
     const host = $("classicList"); if (!host) return; host.innerHTML = "";
     const chans = Object.entries(state.classic?.channels || {}).map(([key, channel]) => ({ key, ...channel }));
@@ -638,29 +711,29 @@
     if (!list.length) { host.className = "card empty"; host.textContent = "—"; return; }
     host.className = "card";
     list.sort((a, b) => {
-      const sa = STATUS_ORDER[state.classicStatus[a.instanceName] || "stopped"], sb = STATUS_ORDER[state.classicStatus[b.instanceName] || "stopped"];
+      const sa = STATUS_ORDER[classicRuntime(a.instanceName).status] ?? 9;
+      const sb = STATUS_ORDER[classicRuntime(b.instanceName).status] ?? 9;
       return sa !== sb ? sa - sb : String(a.name || "").localeCompare(String(b.name || ""));
     });
     for (const c of list) {
-      const st = state.classicStatus[c.instanceName] || "stopped";
+      const runtime = classicRuntime(c.instanceName);
+      const st = runtime.status;
       const adapter = c.adapterId || "discord";
-      const backend = select(c.backend || state.classic?.defaults?.backend || "claude-code", BACKENDS.filter(value => value !== "gemini-cli"));
-      backend.style.width = "150px";
-      backend.onchange = () => {
-        const value = backend.value;
-        state.classic.channels[c.key].backend = value;
-        stageChange(`classic:${c.key}`, {
-          label: `Change ${c.name || c.instanceName} backend`, impact: "instance",
-          apply: () => api(`/api/settings/classic/channels/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify({ backend: value }) }),
-        });
-      };
-      host.append(el("div", { class: "item" }, el("div", { class: "item-row" },
-        el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
+      const item = el("div", { class: "item" });
+      item.append(el("div", { class: "item-row" },
+        el("span", { class: "dot " + runtime.execution, title: EXECUTION_TEXT[runtime.execution] || runtime.execution }),
         el("span", { class: "name", title: c.instanceName || "" }, c.name || c.instanceName || "?"),
-        backend,
+        el("span", { class: "sub", style: "margin:0" }, c.backend || state.classic?.defaults?.backend || state.fleet?.defaults?.backend || "claude-code"),
         el("span", { class: "tag" + (adapter !== "discord" ? " persona" : "") }, adapter),
         c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
-      )));
+        el("span", { class: "spacer" }),
+        el("span", { class: "tag", title: STATUS_TEXT[st] || st }, EXECUTION_TEXT[runtime.execution] || runtime.execution),
+        el("button", { class: "sm ghost", onclick: () => { editingClassic = editingClassic === c.key ? null : c.key; renderClassic(); } }, editingClassic === c.key ? t("close") : t("edit")),
+        st === "running" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "pause") }, t("pause")) : null,
+        st === "paused" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "wake") }, t("wake")) : null,
+      ));
+      if (editingClassic === c.key) item.append(classicEditForm(c));
+      host.append(item);
     }
   }
 
@@ -872,9 +945,13 @@
   async function reloadLive() {
     const f = await api("/api/fleet");
     state.fleetUp = f.ok;
-    state.live = {}; if (f.ok && f.body?.instances) for (const i of f.body.instances) state.live[i.name] = { status: i.status };
-    // /api/fleet is fleet-config only; classic instance statuses come from the
-    // merged roster (/api/profiles, open GET).
+    state.live = {}; state.classicLive = {};
+    if (f.ok && f.body?.instances) for (const i of f.body.instances) {
+      state.live[i.name] = { status: i.status, state: i.state };
+      if (i.classic) state.classicLive[i.name] = { status: i.status, state: i.state };
+    }
+    // /api/fleet carries live tri-state for Classic instances. Profiles remain
+    // a fallback roster for a daemon that has not yet appeared in live status.
     const pr = await api("/api/profiles");
     state.classicStatus = {}; if (pr.ok && Array.isArray(pr.body)) for (const r of pr.body) state.classicStatus[r.instance_name] = r.status;
     if (f.ok && f.body?.version) { state.version = f.body.version; $("verBadge").textContent = "v" + state.version; }

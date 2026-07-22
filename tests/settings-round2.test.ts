@@ -5,6 +5,7 @@ import { join } from "node:path";
 import yaml from "js-yaml";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 
 function request(
   path: string,
@@ -43,6 +44,7 @@ function context(dataDir = "/tmp") {
     getRawFleetConfig: () => ({}),
     saveFleetConfig: vi.fn(),
     lifecycle: { isPaused: vi.fn(() => false), pause, wake },
+    isClassicInstance: vi.fn((name: string) => name === "classic-demo-0123"),
     restartClassicInstanceFromSettings,
   } as unknown as SettingsApiContext;
   return { ctx, pause, wake, restartClassicInstanceFromSettings };
@@ -68,6 +70,18 @@ describe("Settings manual lifecycle API", () => {
     const response = await request("/api/settings/instances/missing/pause", ctx);
     expect(response.status).toBe(404);
     expect(pause).not.toHaveBeenCalled();
+  });
+
+  it("uses the same pause/wake API for ClassicBot instances", async () => {
+    const { ctx, pause, wake } = context();
+
+    const paused = await request("/api/settings/instances/classic-demo-0123/pause", ctx);
+    const awake = await request("/api/settings/instances/classic-demo-0123/wake", ctx);
+
+    expect(paused.status).toBe(200);
+    expect(awake.status).toBe(200);
+    expect(pause).toHaveBeenCalledWith("classic-demo-0123");
+    expect(wake).toHaveBeenCalledWith("classic-demo-0123", 30_000);
   });
 
   it("merges nested hang settings and removes inherited override sent as null", async () => {
@@ -161,12 +175,14 @@ describe("Settings classicBot persistence", () => {
       "/api/settings/classic/channels/123%23discord",
       ctx,
       "PATCH",
-      { backend: "opencode", model: "test-model", collab: true, context_lines: 8 },
+      { backend: "opencode", model: "test-model", auto_pause_after: 12, collab: true, context_lines: 8 },
     );
 
     expect(response.status).toBe(200);
     const saved = yaml.load(readFileSync(path, "utf8")) as any;
-    expect(saved.channels["123#discord"]).toMatchObject({ backend: "opencode", model: "test-model", collab: true, context_lines: 8 });
+    expect(saved.channels["123#discord"]).toMatchObject({ backend: "opencode", model: "test-model", auto_pause_after: 12, collab: true, context_lines: 8 });
+    const manager = new ClassicChannelManager(dir, ctx.logger);
+    expect(manager.getAutoPauseAfterByInstance("classic-demo-0123", 30)).toBe(12);
     expect(restartClassicInstanceFromSettings).toHaveBeenCalledWith("classic-demo-0123");
   });
 
@@ -182,6 +198,19 @@ describe("Settings classicBot persistence", () => {
     expect(response.status).toBe(400);
     expect(readFileSync(path, "utf8")).toBe(original);
     expect(restartClassicInstanceFromSettings).not.toHaveBeenCalled();
+  });
+
+  it("rejects a negative Classic auto-pause override without writing", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    const original = "channels:\n  channel-one:\n    instanceName: classic-one\n";
+    writeFileSync(path, original);
+    const { ctx } = context(dir);
+
+    const response = await request("/api/settings/classic/channels/channel-one", ctx, "PATCH", { auto_pause_after: -1 });
+
+    expect(response.status).toBe(400);
+    expect(readFileSync(path, "utf8")).toBe(original);
   });
 
   it("rolls back the Classic channel config when restart fails", async () => {

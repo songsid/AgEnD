@@ -89,7 +89,7 @@ describe("persisted pause markers", () => {
 
     await fm.lifecycle.wake("classic-one");
 
-    expect(start).toHaveBeenCalledWith("classic-one", "codex", undefined, undefined);
+    expect(start).toHaveBeenCalledWith("classic-one", "codex", undefined, undefined, undefined);
     expect(hasPausedMarker(fm.getInstanceDir("classic-one"))).toBe(false);
   });
 });
