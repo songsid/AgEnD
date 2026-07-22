@@ -232,7 +232,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       warning: (() => {
         const daemon = ctx.lifecycle.daemons.get(targetInstanceName)!;
         if (daemon.isCrashLoop) return `${targetName} is in a crash loop — restart or replace required. Message delivered but may not be processed.`;
-        return `${targetName} is in an error state (rate-limited or paused). Message delivered but may not be processed.`;
+        const errType = daemon.lastErrorType;
+        if (errType === "rate_limit" || errType === "timeout") return `${targetName} is rate-limited by provider — paused. Message delivered but may be delayed.`;
+        if (errType === "auth_error") return `${targetName} has an authentication error — paused. Check credentials. Message delivered but may not be processed.`;
+        return `${targetName} is in an error state (paused due to repeated errors). Message delivered but may not be processed.`;
       })(),
     }),
   });
