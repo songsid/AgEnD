@@ -169,6 +169,7 @@ teams:
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
 | `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity`、`grok` |
+| `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
 | `tool_set` | string | `"full"` | MCP tool 設定：`full`（全部）、`standard`（10 個）、`minimal`（4 個） |
