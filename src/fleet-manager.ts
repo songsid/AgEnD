@@ -132,6 +132,15 @@ interface PendingClassicStart {
   complete: (text: string, messageId?: string) => Promise<void>;
 }
 
+export interface DeliveryOptions {
+  /** Explicitly identify agent-to-agent delivery when metadata is unavailable. */
+  isCrossInstance?: boolean;
+  /** Force or bypass the idle gate. Schedules set this explicitly. */
+  waitForIdle?: boolean;
+  /** Test/operational override; normal deliveries use the 60 second backstop. */
+  idleTimeoutMs?: number;
+}
+
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 
@@ -176,6 +185,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private lastActivity = new Map<string, number>();
   /** Latest pane-derived execution snapshot reported by each daemon. */
   private instanceStateCache = new Map<string, InstanceStateSnapshot>();
+  /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
+  private idleGatedDeliveryTails = new Map<string, Promise<void>>();
+  /** Non-user work must observe a fresh idle snapshot after the latest delivery. */
+  private lastDeliveryAt = new Map<string, number>();
+  /** State-cache updates wake event-driven idle waiters without busy polling. */
+  private instanceIdleWaiters = new Map<string, Set<() => void>>();
   private lastInboundUser = new Map<string, string>(); // instanceName → last username
   // Active "🛑 Cancel" buttons, tracked per button (keyed by messageId) rather
   // than one-per-instance. A button is retired (deleted, with bounded retry) on
@@ -459,16 +474,111 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         previous?.state === state ? previous.stateChangedAt : now,
       ),
     });
+    for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
   }
 
-  /** Single delivery facade: wake an auto-paused CLI before sending to daemon IPC. */
-  async deliverToInstance(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+  private waitForInstanceIdle(instanceName: string, timeoutMs: number, idleObservedAfter = 0): Promise<boolean> {
+    const isReady = (): boolean => {
+      const snapshot = this.instanceStateCache.get(instanceName);
+      return snapshot?.state === "idle"
+        && (idleObservedAfter === 0 || snapshot.observedAt > idleObservedAfter);
+    };
+    if (isReady()) return Promise.resolve(true);
+
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (idle: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        clearInterval(queryTimer);
+        const waiters = this.instanceIdleWaiters.get(instanceName);
+        waiters?.delete(check);
+        if (waiters?.size === 0) this.instanceIdleWaiters.delete(instanceName);
+        resolve(idle);
+      };
+      const check = () => { if (isReady()) finish(true); };
+      const query = () => {
+        const ipc = this.instanceIpcClients.get(instanceName);
+        if (ipc?.connected) {
+          ipc.send({ type: "query_instance_state", requestId: `idle-gate-${Date.now()}` });
+        }
+        check();
+      };
+      const waiters = this.instanceIdleWaiters.get(instanceName) ?? new Set<() => void>();
+      waiters.add(check);
+      this.instanceIdleWaiters.set(instanceName, waiters);
+      const timeout = setTimeout(() => finish(false), timeoutMs);
+      const queryTimer = setInterval(query, 1_000);
+      query();
+    });
+  }
+
+  private async deliverWithIdleGate(
+    instanceName: string,
+    payload: Record<string, unknown>,
+    timeoutMs: number,
+  ): Promise<void> {
+    let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName)) {
+      const wakeStartedAt = Date.now();
       await this.lifecycle.wake(instanceName, 30_000);
+      // Never satisfy a post-wake gate from a stale pre-pause cache entry.
+      idleObservedAfter = Math.max(idleObservedAfter, wakeStartedAt);
+    }
+
+    const idle = await this.waitForInstanceIdle(instanceName, timeoutMs, idleObservedAfter);
+    if (!idle) {
+      this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
     ipc.send(payload);
+    this.lastDeliveryAt.set(instanceName, Date.now());
+  }
+
+  /** Single delivery facade: wake paused CLIs and serialize non-user work behind idle. */
+  async deliverToInstance(
+    instanceName: string,
+    payload: Record<string, unknown>,
+    options: DeliveryOptions = {},
+  ): Promise<void> {
+    const meta = payload.meta && typeof payload.meta === "object"
+      ? payload.meta as Record<string, unknown>
+      : undefined;
+    const inferredCrossInstance = (typeof meta?.from_instance === "string" && meta.from_instance.length > 0)
+      || meta?.is_cross_instance === true
+      || payload.is_cross_instance === true;
+    const waitForIdle = options.waitForIdle
+      ?? ((options.isCrossInstance ?? inferredCrossInstance) || payload.type === "fleet_schedule_trigger");
+
+    if (!waitForIdle) {
+      if (this.lifecycle.isPaused(instanceName)) {
+        await this.lifecycle.wake(instanceName, 30_000);
+      }
+      const ipc = this.instanceIpcClients.get(instanceName);
+      if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
+      ipc.send(payload);
+      // A cross-instance item arriving before the daemon observes this turn as
+      // working must not trust the stale idle snapshot from before the send.
+      this.lastDeliveryAt.set(instanceName, Date.now());
+      return;
+    }
+
+    const previous = this.idleGatedDeliveryTails.get(instanceName) ?? Promise.resolve();
+    const delivery = previous.catch(() => {}).then(() => this.deliverWithIdleGate(
+      instanceName,
+      payload,
+      options.idleTimeoutMs ?? 60_000,
+    ));
+    this.idleGatedDeliveryTails.set(instanceName, delivery);
+    try {
+      await delivery;
+    } finally {
+      if (this.idleGatedDeliveryTails.get(instanceName) === delivery) {
+        this.idleGatedDeliveryTails.delete(instanceName);
+      }
+    }
   }
 
   /** Fleet admin is an explicit config allowlist entry, not merely an open/paired user. */
@@ -599,6 +709,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async stopInstance(name: string): Promise<void> {
     this.failoverActive.delete(name);
     this.instanceStateCache.delete(name);
+    this.lastDeliveryAt.delete(name);
     return this.lifecycle.stop(name);
   }
 
@@ -2479,7 +2590,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           type: "fleet_schedule_trigger",
           payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
           meta: { chat_id: reply_chat_id, thread_id: reply_thread_id, user: "scheduler" },
-        });
+        }, { waitForIdle: true });
         // A scheduled trigger also puts the instance to work — show a cancel button.
         void this.sendCancelButton(target);
         return true;
