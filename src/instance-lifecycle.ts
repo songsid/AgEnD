@@ -15,6 +15,32 @@ import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 
+export interface BackendInstallationInfo {
+  binary: string;
+  install: string;
+}
+
+/** Shared CLI metadata used by startup validation and ClassicBot onboarding. */
+export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
+  "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" },
+  "gemini-cli": { binary: "gemini", install: "npm i -g @google/gemini-cli" },
+  "kiro-cli": { binary: "kiro-cli", install: "brew install --cask kiro-cli" },
+  codex: { binary: "codex", install: "npm i -g @openai/codex" },
+  opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
+  antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
+  grok: { binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
+};
+
+/** Check one executable using the same PATH visible to the fleet process. */
+export function checkBinaryInstalled(binary: string): boolean {
+  try {
+    execFileSync("which", [binary], { stdio: "pipe", timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Context interface for instance lifecycle operations.
  * FleetManager implements this.
@@ -117,18 +143,12 @@ export class InstanceLifecycle {
     const backendName = config.backend ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
 
     // Verify backend binary is in PATH before spawning
-    const binaryMap: Record<string, string> = {
-      "claude-code": "claude", "codex": "codex", "gemini-cli": "gemini",
-      "opencode": "opencode", "kiro-cli": "kiro-cli", "antigravity": "agy",
-      "grok": "grok",
-    };
-    const bin = binaryMap[backendName];
-    if (bin) {
-      try {
-        execFileSync("which", [bin], { stdio: "pipe", timeout: 2000 });
-      } catch {
-        this.ctx.logger.error({ binary: bin, backend: backendName, instance: name }, `Backend binary "${bin}" not found in PATH`);
-      }
+    const installation = BACKEND_INSTALLATION_INFO[backendName];
+    if (installation && !checkBinaryInstalled(installation.binary)) {
+      this.ctx.logger.error(
+        { binary: installation.binary, backend: backendName, instance: name },
+        `Backend binary "${installation.binary}" not found in PATH`,
+      );
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast

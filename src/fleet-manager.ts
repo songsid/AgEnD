@@ -38,7 +38,12 @@ import { WebhookEmitter } from "./webhook-emitter.js";
 import { TmuxControlClient } from "./tmux-control.js";
 import { safeHandler } from "./safe-async.js";
 import { RoutingEngine } from "./routing-engine.js";
-import { InstanceLifecycle, type LifecycleContext } from "./instance-lifecycle.js";
+import {
+  InstanceLifecycle,
+  BACKEND_INSTALLATION_INFO,
+  checkBinaryInstalled,
+  type LifecycleContext,
+} from "./instance-lifecycle.js";
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
@@ -1181,13 +1186,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
-        if (requestedBackend) {
-          const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId, requestedBackend);
-          await data.respond(reply);
-        } else {
-          await this.beginClassicBackendSelection(data, this.adapter!);
-        }
+        await this.handleClassicStartSlash(data, adapterId, this.adapter!);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -1441,13 +1440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
-        if (requestedBackend) {
-          const reply = await this.handleClassicStart(data.channelId, data.channelName, data.userId, data.guildId, adapterId, requestedBackend);
-          await data.respond(reply);
-        } else {
-          await this.beginClassicBackendSelection(data, adapter);
-        }
+        await this.handleClassicStartSlash(data, adapterId, adapter);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -3943,6 +3936,41 @@ When users create specialized instances, suggest these configurations:
     return undefined;
   }
 
+  private isBackendInstalled(backend: string): boolean {
+    const installation = BACKEND_INSTALLATION_INFO[backend];
+    return !!installation && checkBinaryInstalled(installation.binary);
+  }
+
+  private getMissingBackendWarning(backend: string | undefined): string | undefined {
+    if (!backend) return undefined;
+    const installation = BACKEND_INSTALLATION_INFO[backend];
+    if (!installation || this.isBackendInstalled(backend)) return undefined;
+    return t("classic.backend_not_installed", backend, installation.binary, installation.install);
+  }
+
+  /** Handle Discord's optional static slash choice, warning before a likely startup failure. */
+  private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+    const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
+    if (!requestedBackend) {
+      await this.beginClassicBackendSelection(data, adapter);
+      return;
+    }
+
+    const warning = this.getMissingBackendWarning(requestedBackend);
+    // Keep the deferred ephemeral response useful even if daemon startup later
+    // fails because the executable is absent. This is advisory, not a gate.
+    if (warning) await data.respond(warning);
+    const reply = await this.handleClassicStart(
+      data.channelId,
+      data.channelName,
+      data.userId,
+      data.guildId,
+      adapterId,
+      requestedBackend,
+    );
+    await data.respond(warning ? `${warning}\n\n${reply}` : reply);
+  }
+
   /** Present platform-native backend choices, then start on selection or timeout. */
   private async beginClassicBackendSelection(data: ClassicStartSlashData, adapter: ChannelAdapter): Promise<void> {
     const adapterId = adapter.id;
@@ -3955,7 +3983,7 @@ When users create specialized instances, suggest these configurations:
     const nonce = randomBytes(6).toString("hex");
     const choices = getClassicBackendChoices().map(choice => ({
       id: `${CLASSIC_BACKEND_CALLBACK_PREFIX}${nonce}:${choice.id}`,
-      label: choice.label,
+      label: `${this.isBackendInstalled(choice.id) ? "✅" : "❌"} ${choice.label}`,
     }));
     const complete = data.respondChoices
       ? async (text: string) => { await data.respond(text); }
@@ -4022,6 +4050,14 @@ When users create specialized instances, suggest these configurations:
     this.pendingClassicStarts.delete(nonce);
     clearTimeout(pending.timer);
     const selectedBackend = isSelectableClassicBackend(backend) ? backend : undefined;
+    const effectiveBackend = selectedBackend
+      ?? this.classicChannels?.getDefaults().backend
+      ?? this.fleetConfig?.defaults?.backend
+      ?? "claude-code";
+    const warning = this.getMissingBackendWarning(effectiveBackend);
+    // Show the warning before starting so it survives a missing-binary startup
+    // failure. The selected backend is still attempted as requested.
+    if (warning) await pending.complete(warning, pending.messageId);
     const reply = await this.handleClassicStart(
       pending.channelId,
       pending.channelName,
@@ -4030,7 +4066,7 @@ When users create specialized instances, suggest these configurations:
       pending.adapterId,
       selectedBackend,
     );
-    await pending.complete(reply, pending.messageId);
+    await pending.complete(warning ? `${warning}\n\n${reply}` : reply, pending.messageId);
   }
 
   /** Start a classic channel instance with lightweight config */
