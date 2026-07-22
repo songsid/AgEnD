@@ -238,7 +238,9 @@ export class GrokBackend implements CliBackend {
   getQuitCommand(): string | null { return null; }
   getQuitKey(): string { return "C-q"; }
 
-  getCompactCommand(): string { return "/compact"; }   // verified present
+  // Trailing space commits the exact slash command before Grok's autocomplete
+  // can expand the partial token to `/compact-mode`.
+  getCompactCommand(): string { return "/compact "; }
 
   // Verified: grok interrupts generation on Ctrl+C.
   getCancelKey(): string { return "C-c"; }
