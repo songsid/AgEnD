@@ -8,6 +8,8 @@
 | `/restart` | In-process restart all instances (no process exit) |
 | `/upgrade` | Exit process to apply new code (requires launchd/systemd auto-restart) |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status) |
+| `/pause` | Manually pause an instance (admin only) |
+| `/wake` | Wake a paused instance (admin only) |
 
 All other operations (create/delete/start instances, delegate tasks) are handled by the General instance through natural language.
 

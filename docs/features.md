@@ -611,6 +611,60 @@ In headless environments (SSH, Docker), the URL must be opened manually on anoth
 - Context shows token count (e.g., "12K tokens") rather than percentage — `agend ls` parser handles this
 - `ctrl+q` quits (not Escape) — AgEnD uses Escape for cancel, not quit
 
+## Auto-Pause & Wake
+
+Idle instances can be automatically paused to save resources, and automatically woken when a message arrives.
+
+### How it works
+
+- **Auto-pause**: when an instance has no activity for `auto_pause_after` minutes, it's paused (tmux window kept, CLI suspended)
+- **Auto-wake**: when a user sends a message to a paused instance, it wakes automatically (~30 seconds to resume)
+- **Working protection**: instances actively generating responses are never paused
+
+### Configuration
+
+```yaml
+defaults:
+  auto_pause_after: 0    # 0 = disabled (default). Set minutes > 0 to enable.
+
+instances:
+  my-agent:
+    auto_pause_after: 30  # per-instance override: pause after 30 min idle
+```
+
+Also configurable via the Settings web page: **Runtime & Resources → auto_pause_after**.
+
+### Manual control
+
+| Command | Platform | Description |
+|---------|----------|-------------|
+| `/pause` | DC slash / TG command | Manually pause an instance (admin only) |
+| `/wake` | DC slash / TG command | Manually wake a paused instance (admin only) |
+
+### Status visibility
+
+- `agend ls` → Status column shows "Paused" with ⏸ icon
+- `/status` → ⏸ icon next to paused instances
+- Settings page → "Wake" button (instead of "Start") for paused instances
+- MCP `list_instances` → `status: "paused"`
+
+### Behavior notes
+
+- Paused instances do not consume CPU or RAM (CLI is suspended)
+- Messages to paused instances trigger auto-wake — users don't need to manually wake
+- Cross-instance messages (`send_to_instance`) also trigger auto-wake
+- Schedule triggers wake the instance before delivery
+- Wake takes ~30 seconds (CLI resumes session context)
+
+### Recommended values
+
+| Scenario | Suggested value |
+|----------|----------------|
+| Solo developer (few instances) | `0` (disabled) — keep always-on |
+| Team fleet (10+ instances) | `30` (30 min) — saves resources |
+| Large fleet (cost-sensitive) | `10` — aggressive pause |
+| Always-on requirement | `0` or omit |
+
 ## IPC + adapter auto-reconnect
 
 When network interruptions cause IPC connections or Telegram/Discord adapters to drop, AgEnD automatically recovers:
