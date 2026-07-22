@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { buildFleetInstructions } from "../src/instructions.js";
+import { buildInstructionReloadNotice } from "../src/daemon.js";
 
 describe("buildFleetInstructions", () => {
   const base = { instanceName: "test-inst", workingDirectory: "/home/user/project" };
@@ -16,6 +17,12 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("[from:");
     expect(result).toContain("`reply` tool");
     expect(result).toContain("send_to_instance");
+  });
+
+  it("does not tell backends to scan Kiro steering at startup", () => {
+    const result = buildFleetInstructions(base);
+    expect(result).not.toContain("Read all steering files");
+    expect(result).not.toContain("find .kiro/steering");
   });
 
   it("includes display name when provided", () => {
@@ -72,5 +79,22 @@ describe("buildFleetInstructions", () => {
   it("omits decisions section when empty", () => {
     const result = buildFleetInstructions({ ...base, decisions: [] });
     expect(result).not.toContain("## Active Decisions");
+  });
+});
+
+describe("buildInstructionReloadNotice", () => {
+  it("targets the backend-native file instead of a directory scan", () => {
+    expect(buildInstructionReloadNotice("codex", "worker", "/tmp/worker"))
+      .toContain("Reload only AGENTS.md");
+    expect(buildInstructionReloadNotice("grok", "worker", "/tmp/worker"))
+      .toContain("Reload only AGENTS.md");
+    expect(buildInstructionReloadNotice("kiro-cli", "worker", "/tmp/worker"))
+      .toContain("Reload only .kiro/steering/agend-worker.md");
+  });
+
+  it("never requests a broad steering scan", () => {
+    const notice = buildInstructionReloadNotice("codex", "worker", "/tmp/worker");
+    expect(notice).not.toContain("Re-read your steering files");
+    expect(notice).toContain("do not scan other instruction directories");
   });
 });
