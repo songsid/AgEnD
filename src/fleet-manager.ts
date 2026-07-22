@@ -54,6 +54,7 @@ import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend } from "./classic-channel-manager.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
+import { readLastInboundAt } from "./daemon.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -4785,8 +4786,27 @@ When users create specialized instances, suggest these configurations:
       // Fleet API (enriched for agent board)
       if (req.method === "GET" && req.url === "/api/fleet") {
         const sysInfo = this.getSysInfo();
-        const enriched = sysInfo.instances.map(inst => {
+        const fleetInstances = sysInfo.instances.map(inst => ({ ...inst, classic: false }));
+        const fleetNames = new Set(fleetInstances.map(inst => inst.name));
+        const classicInstances = (this.classicChannels?.getAll() ?? [])
+          .filter(channel => !fleetNames.has(channel.instanceName))
+          .map(channel => ({
+            name: channel.instanceName,
+            status: this.getInstanceStatus(channel.instanceName),
+            state: this.getInstanceExecutionState(channel.instanceName),
+            ipc: this.instanceIpcClients.has(channel.instanceName),
+            costCents: this.costGuard?.getDailyCostCents(channel.instanceName) ?? 0,
+            rateLimits: this.statuslineWatcher.getRateLimits(channel.instanceName) ?? null,
+            classic: true,
+            classicName: channel.name,
+            channelId: channel.channelId,
+            adapterId: channel.adapterId ?? null,
+          }));
+        const enriched = [...fleetInstances, ...classicInstances].map(inst => {
           const config = this.fleetConfig?.instances[inst.name];
+          const backend = inst.classic
+            ? this.classicChannels?.getBackendByInstance(inst.name, this.fleetConfig?.defaults.backend) ?? "claude-code"
+            : config?.backend ?? "claude-code";
           // Find claimed tasks for this instance
           let currentTask: string | null = null;
           try {
@@ -4797,11 +4817,13 @@ When users create specialized instances, suggest these configurations:
           }
           return {
             ...inst,
-            description: config?.description ?? null,
-            backend: config?.backend ?? "claude-code",
+            description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
+            backend,
             tool_set: config?.tool_set ?? "full",
             general_topic: config?.general_topic ?? false,
-            lastActivity: this.lastActivityMs(inst.name) || null,
+            // User activity is persisted by the daemon, so both the board and
+            // auto-pause retain an accurate age across fleet restarts.
+            lastActivity: (readLastInboundAt(this.getInstanceDir(inst.name)) ?? this.lastActivityMs(inst.name)) || null,
             currentTask,
             idle: this.getInstanceIdle(inst.name),
             state: this.getInstanceExecutionState(inst.name),
