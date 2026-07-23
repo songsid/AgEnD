@@ -121,6 +121,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
     validateAutoPause(config.defaults.auto_pause_after, "defaults.auto_pause_after");
+    if (config.defaults.warm_cap !== undefined && (!Number.isInteger(config.defaults.warm_cap) || (config.defaults.warm_cap as number) < 0)) {
+      err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
+    }
     validateInstanceOptions(config.defaults, "defaults");
     if (config.defaults.startup !== undefined) {
       if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");
