@@ -19,7 +19,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
-import type { TmuxControlClient } from "./tmux-control.js";
+import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,7 +46,10 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
 }
 
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
-export const DEFAULT_STATE_POLL_INTERVAL_MS = 5_000;
+export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
+export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
+/** @deprecated State detection is event-driven; this now aliases the safety sweep. */
+export const DEFAULT_STATE_POLL_INTERVAL_MS = DEFAULT_STATE_SAFETY_SWEEP_MS;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
 /** Read the last real channel inbound timestamp persisted across daemon restarts. */
@@ -157,6 +160,17 @@ export class PaneStateMachine {
 
     if (nextState !== this.currentState) {
       this.currentState = nextState;
+      this.stateChangedAt = now;
+    }
+    return this.snapshot(now);
+  }
+
+  /** Record pane motion from tmux control mode without capturing pane content. */
+  recordOutput(now = Date.now()): InstanceStateSnapshot {
+    this.lastPaneChangeAt = now;
+    this.lastObservedAt = now;
+    if (this.currentState !== "working") {
+      this.currentState = "working";
       this.stateChangedAt = now;
     }
     return this.snapshot(now);
@@ -299,7 +313,18 @@ export class Daemon extends EventEmitter {
   private instanceState: InstanceState = "idle";
   private instanceStateMachine: PaneStateMachine | null = null;
   private pendingWork = new PendingWorkTracker();
+  /** Fallback safety sweep used only when no shared tmux control client exists. */
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  private instanceStateIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
+  private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
+  private instanceStateOutputEventName: string | null = null;
+  private instanceStateSafetyListener: (() => void) | null = null;
+  private instanceStateLastOutputAt = 0;
+  private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
+  private instanceStateStuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS;
+  private instanceStateReadyPattern: RegExp | null = null;
+  private instanceStateMonitorActive = false;
   private statePollInFlight = false;
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
@@ -1251,72 +1276,185 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  private applyInstanceStateSnapshot(snapshot: InstanceStateSnapshot, pane?: string): void {
+    const previous = this.instanceState;
+    this.instanceState = snapshot.state;
+
+    // Only a transition back to idle completes pending work. Repeated idle
+    // observations between enqueue and paste must not clear a newer inbound.
+    if (snapshot.state === "idle" && previous !== "idle") {
+      this.pendingWork.recordIdle(snapshot.observedAt);
+    }
+
+    if (snapshot.state !== previous) {
+      this.logger.info({
+        previousState: previous,
+        state: snapshot.state,
+        unchangedForMs: snapshot.unchangedForMs,
+      }, "Instance execution state changed");
+      this.emit("instance_state", { name: this.name, ...snapshot });
+      this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
+      if (snapshot.state === "stuck" && pane && this.instanceStateReadyPattern) {
+        this.handleStuckTransition(pane, snapshot, this.instanceStateReadyPattern);
+      }
+    }
+
+    if (snapshot.state !== "idle") this.pauseRequested = false;
+    if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
+      this.pauseRequested = true;
+      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
+    }
+  }
+
+  private clearInstanceStateIdleTimer(): void {
+    if (this.instanceStateIdleTimer) clearTimeout(this.instanceStateIdleTimer);
+    this.instanceStateIdleTimer = null;
+  }
+
+  private clearInstanceStateStuckTimer(): void {
+    if (this.instanceStateStuckTimer) clearTimeout(this.instanceStateStuckTimer);
+    this.instanceStateStuckTimer = null;
+  }
+
+  private scheduleInstanceStateStuckDeadline(changeAt: number): void {
+    // Keep one deadline timer per instance. High-volume TUIs can emit hundreds
+    // of %output records per second; replacing a long timeout for every chunk
+    // would trade tmux subprocess CPU for timer churn.
+    if (this.instanceStateStuckTimer) return;
+    const delay = Math.max(0, changeAt + this.instanceStateStuckTimeoutMs - Date.now());
+    this.instanceStateStuckTimer = setTimeout(() => {
+      this.instanceStateStuckTimer = null;
+      const latestChangeAt = this.instanceStateLastOutputAt || changeAt;
+      if (latestChangeAt + this.instanceStateStuckTimeoutMs > Date.now()) {
+        this.scheduleInstanceStateStuckDeadline(latestChangeAt);
+        return;
+      }
+      void this.captureAndEvaluateInstanceState("stuck_deadline", this.instanceStateLastOutputAt);
+    }, delay);
+  }
+
+  private scheduleInstanceStateIdleCapture(): void {
+    if (this.instanceStateIdleTimer) return;
+    const expectedOutputAt = this.instanceStateLastOutputAt;
+    const delay = Math.max(0, expectedOutputAt + this.instanceStateIdleDebounceMs - Date.now());
+    this.instanceStateIdleTimer = setTimeout(() => {
+      this.instanceStateIdleTimer = null;
+      const latestOutputAt = this.instanceStateLastOutputAt;
+      if (latestOutputAt > expectedOutputAt
+        && latestOutputAt + this.instanceStateIdleDebounceMs > Date.now()) {
+        this.scheduleInstanceStateIdleCapture();
+        return;
+      }
+      void this.captureAndEvaluateInstanceState("idle_debounce", latestOutputAt);
+    }, delay);
+  }
+
+  private async captureAndEvaluateInstanceState(reason: string, expectedOutputAt = 0): Promise<void> {
+    if (!this.instanceStateMonitorActive || this.runtimeMonitorsFrozen || !this.tmux || !this.instanceStateMachine || this.spawning) return;
+    if (this.statePollInFlight) {
+      if (reason === "idle_debounce") this.scheduleInstanceStateIdleCapture();
+      return;
+    }
+    this.statePollInFlight = true;
+    const captureStartedAt = Date.now();
+    try {
+      const pane = await this.tmux.capturePane();
+      // Output received while capture-pane was in flight makes this snapshot
+      // stale. Its output handler has already armed a new debounce.
+      if ((expectedOutputAt > 0 && this.instanceStateLastOutputAt > expectedOutputAt)
+        || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt)) return;
+
+      const observedChangeAt = expectedOutputAt || captureStartedAt;
+      this.instanceStateMachine.observe(pane, observedChangeAt);
+      const snapshot = this.instanceStateMachine.observe(pane, Date.now());
+      this.applyInstanceStateSnapshot(snapshot, pane);
+
+      if (snapshot.state === "idle") {
+        this.clearInstanceStateStuckTimer();
+      } else if (snapshot.state === "working") {
+        // If control mode missed the pane change, the safety capture becomes
+        // the new progress timestamp and re-arms both deadlines.
+        if (!expectedOutputAt) this.instanceStateLastOutputAt = captureStartedAt;
+        this.scheduleInstanceStateStuckDeadline(this.instanceStateLastOutputAt || captureStartedAt);
+      }
+    } catch (err) {
+      this.logger.debug({ err: (err as Error).message, reason }, "Instance state capture failed");
+    } finally {
+      this.statePollInFlight = false;
+    }
+  }
+
+  private handleInstancePaneOutput(event: TmuxPaneOutputEvent): void {
+    if (!this.instanceStateMonitorActive || this.runtimeMonitorsFrozen) return;
+    const windowId = this.tmux?.getWindowId();
+    if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
+    this.instanceStateLastOutputAt = event.at;
+    const snapshot = this.instanceStateMachine.recordOutput(event.at);
+    this.applyInstanceStateSnapshot(snapshot);
+    this.scheduleInstanceStateIdleCapture();
+    this.scheduleInstanceStateStuckDeadline(event.at);
+  }
+
+  private bindInstanceStateOutputListener(windowId: string): void {
+    if (!this.controlClient || !this.instanceStateMonitorActive) return;
+    if (!this.instanceStateOutputListener) {
+      this.instanceStateOutputListener = event => this.handleInstancePaneOutput(event);
+    }
+    if (this.instanceStateOutputEventName) {
+      this.controlClient.removeListener(this.instanceStateOutputEventName, this.instanceStateOutputListener);
+    }
+    this.instanceStateOutputEventName = `output:${windowId}`;
+    this.controlClient.on(this.instanceStateOutputEventName, this.instanceStateOutputListener);
+  }
+
   private startInstanceStateMonitor(): void {
-    if (this.runtimeMonitorsFrozen || !this.tmux || !this.backend || this.instanceStateMonitorTimer) return;
+    if (this.runtimeMonitorsFrozen || !this.tmux || !this.backend || this.instanceStateMonitorActive) return;
 
     const rawConfig = (this.config as InstanceConfig & {
-      hang_detector?: { timeout_minutes?: number; poll_interval_ms?: number };
+      hang_detector?: { timeout_minutes?: number; idle_debounce_ms?: number };
     }).hang_detector;
     const timeoutMinutes = rawConfig?.timeout_minutes;
-    const stuckTimeoutMs = typeof timeoutMinutes === "number" && timeoutMinutes > 0
+    this.instanceStateStuckTimeoutMs = typeof timeoutMinutes === "number" && timeoutMinutes > 0
       ? timeoutMinutes * 60_000
       : DEFAULT_STUCK_TIMEOUT_MS;
-    const pollIntervalMs = typeof rawConfig?.poll_interval_ms === "number" && rawConfig.poll_interval_ms > 0
-      ? rawConfig.poll_interval_ms
-      : DEFAULT_STATE_POLL_INTERVAL_MS;
+    this.instanceStateIdleDebounceMs = typeof rawConfig?.idle_debounce_ms === "number" && rawConfig.idle_debounce_ms >= 0
+      ? rawConfig.idle_debounce_ms
+      : DEFAULT_STATE_IDLE_DEBOUNCE_MS;
+    this.instanceStateReadyPattern = this.backend.getReadyPattern();
+    this.instanceStateMachine = new PaneStateMachine(this.instanceStateReadyPattern, this.instanceStateStuckTimeoutMs);
+    this.instanceStateLastOutputAt = 0;
+    this.instanceStateMonitorActive = true;
 
-    const readyPattern = this.backend.getReadyPattern();
-    this.instanceStateMachine = new PaneStateMachine(readyPattern, stuckTimeoutMs);
+    if (this.controlClient) {
+      this.instanceStateSafetyListener = () => { void this.captureAndEvaluateInstanceState("safety_sweep"); };
+      this.bindInstanceStateOutputListener(this.tmux.getWindowId());
+      this.controlClient.on("safety_sweep", this.instanceStateSafetyListener);
+    } else {
+      // Standalone/test fallback. Fleet production uses the one shared control
+      // client and therefore one fleet-level safety sweep instead of N timers.
+      this.instanceStateMonitorTimer = setInterval(() => {
+        void this.captureAndEvaluateInstanceState("safety_sweep");
+      }, DEFAULT_STATE_SAFETY_SWEEP_MS);
+    }
 
-    const poll = async () => {
-      if (!this.tmux || this.spawning || this.statePollInFlight) return;
-      this.statePollInFlight = true;
-      try {
-        const paneStatus = await this.tmux.getPaneStatus();
-        if (!paneStatus?.alive) return;
-        const pane = await this.tmux.capturePane();
-        const previous = this.instanceState;
-        const snapshot = this.instanceStateMachine!.observe(pane);
-        this.instanceState = snapshot.state;
+    void this.captureAndEvaluateInstanceState("initial");
+  }
 
-        // Only a transition back to idle completes pending work. Repeated idle
-        // polls between enqueue and paste must not clear a newly-recorded inbound.
-        if (snapshot.state === "idle" && previous !== "idle") {
-          this.pendingWork.recordIdle(snapshot.observedAt);
-        }
-
-        if (snapshot.state !== previous) {
-          this.logger.info({
-            previousState: previous,
-            state: snapshot.state,
-            unchangedForMs: snapshot.unchangedForMs,
-          }, "Instance execution state changed");
-          this.emit("instance_state", { name: this.name, ...snapshot });
-          this.ipcServer?.broadcast({ type: "instance_state", instanceName: this.name, ...snapshot });
-
-          // Emit exactly once per transition into stuck. Further notifications
-          // require observable progress (working) or a ready prompt (idle) first.
-          if (snapshot.state === "stuck") {
-            this.handleStuckTransition(pane, snapshot, readyPattern);
-          }
-        }
-
-        if (snapshot.state !== "idle") this.pauseRequested = false;
-        if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
-          this.pauseRequested = true;
-          this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
-        }
-      } catch (err) {
-        // A pane can disappear between status and capture during restart. Keep
-        // the last known state and retry on the next poll.
-        this.logger.debug({ err: (err as Error).message }, "Instance state poll failed");
-      } finally {
-        this.statePollInFlight = false;
-      }
-    };
-
-    void poll();
-    this.instanceStateMonitorTimer = setInterval(() => { void poll(); }, pollIntervalMs);
+  private stopInstanceStateMonitor(): void {
+    this.instanceStateMonitorActive = false;
+    this.clearInstanceStateIdleTimer();
+    this.clearInstanceStateStuckTimer();
+    if (this.instanceStateMonitorTimer) clearInterval(this.instanceStateMonitorTimer);
+    this.instanceStateMonitorTimer = null;
+    if (this.controlClient && this.instanceStateOutputListener && this.instanceStateOutputEventName) {
+      this.controlClient.removeListener(this.instanceStateOutputEventName, this.instanceStateOutputListener);
+    }
+    if (this.controlClient && this.instanceStateSafetyListener) {
+      this.controlClient.removeListener("safety_sweep", this.instanceStateSafetyListener);
+    }
+    this.instanceStateOutputListener = null;
+    this.instanceStateOutputEventName = null;
+    this.instanceStateSafetyListener = null;
   }
 
   private handleStuckTransition(pane: string, snapshot: InstanceStateSnapshot, readyPattern: RegExp): void {
@@ -1342,7 +1480,7 @@ export class Daemon extends EventEmitter {
     this.runtimeMonitorsFrozen = true;
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
-    if (this.instanceStateMonitorTimer) { clearInterval(this.instanceStateMonitorTimer); this.instanceStateMonitorTimer = null; }
+    this.stopInstanceStateMonitor();
     this.transcriptMonitor?.stop();
     this.guardian?.stop();
   }
@@ -1611,6 +1749,7 @@ export class Daemon extends EventEmitter {
       this.tmux = new TmuxManager(this.tmuxSessionName, match.id);
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
       await this.controlClient?.registerWindow(match.id);
+      this.bindInstanceStateOutputListener(match.id);
       this.logger.info({ windowId: match.id }, "Recovered window ID for message delivery");
       return match.id;
     } catch (retryErr) {
@@ -2127,6 +2266,7 @@ export class Daemon extends EventEmitter {
 
     // Register with control client and wait for output + idle
     await this.controlClient?.registerWindow(windowId);
+    this.bindInstanceStateOutputListener(windowId);
     if (this.controlClient) {
       const total = startupTimeoutMs ?? this.config.startup_timeout_ms ?? 25_000;
       const outputTimeout = Math.round(total * 0.6);
