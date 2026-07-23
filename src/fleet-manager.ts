@@ -834,10 +834,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.reregisterClassicChannels();
     }
     const config = this.fleetConfig?.instances[name];
-    if (!config) throw new Error(`Instance not found: ${name}`);
-    await this.stopInstance(name);
-    const topicMode = this.fleetConfig?.channel?.mode === "topic";
-    await this.startInstance(name, config, topicMode ?? false);
+    if (config) {
+      await this.stopInstance(name);
+      const topicMode = this.fleetConfig?.channel?.mode === "topic";
+      await this.startInstance(name, config, topicMode ?? false);
+      return;
+    }
+    // Classic instance fallback
+    const channelId = this.classicChannels?.getChannelIdByInstance(name);
+    if (channelId) {
+      const fleetBackend = this.fleetConfig?.defaults?.backend;
+      const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
+      await this.stopInstance(name);
+      await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
+      await this.startClassicInstance(
+        name,
+        this.classicChannels!.getBackendByInstance(name, fleetBackend),
+        this.classicChannels!.getPreTaskCommand(channelId, adapterId),
+        this.classicChannels!.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
+        this.classicChannels!.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+      );
+      return;
+    }
+    throw new Error(`Instance not found: ${name}`);
   }
 
   /** Load .env file from data dir into process.env */
