@@ -846,7 +846,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
-  async restartSingleInstance(name: string): Promise<void> {
+  async restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);
@@ -855,6 +855,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const config = this.fleetConfig?.instances[name];
     if (config) {
       await this.stopInstance(name);
+      if (opts?.freshStart) this.writeFreshStartMarker(name);
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startInstance(name, config, topicMode ?? false);
       return;
@@ -866,6 +867,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.classicChannels!.getAdapterIdByInstance(name);
       await this.stopInstance(name);
       await new Promise(r => setTimeout(r, 1000)); // let tmux clean up
+      if (opts?.freshStart) this.writeFreshStartMarker(name);
       await this.startClassicInstance(
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
@@ -876,6 +878,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     throw new Error(`Instance not found: ${name}`);
+  }
+
+  /**
+   * Mark an instance so its next daemon start skips session resume. Written AFTER
+   * stop (survives the old daemon's cleanup) and BEFORE start so the respawn reads
+   * it — reuses the crash-state → resumeDisabled path from crash-loop recovery.
+   * One-shot: the daemon deletes it on startup.
+   */
+  private writeFreshStartMarker(name: string): void {
+    try {
+      writeFileSync(join(this.getInstanceDir(name), "crash-state.json"), JSON.stringify({ resumeDisabled: true, reason: "pty_error_restart" }));
+    } catch (err) {
+      this.logger.warn({ err, name }, "freshStart: failed to write crash-state marker");
+    }
   }
 
   /** Load .env file from data dir into process.env */
