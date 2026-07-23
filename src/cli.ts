@@ -2122,7 +2122,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     };
     const padDisplay = (s: string, width: number): string => s + " ".repeat(Math.max(0, width - displayWidth(s)));
 
-    const displayName = (row: { name: string; classic: boolean }): string => row.classic ? `[C] ${row.name}` : row.name;
+    const displayName = (row: { name: string; classic: boolean }): string => row.name;
     const nameW = Math.max(20, ...rows.map(r => displayWidth(displayName(r)) + 2));
     const backendW = 14;
     const statusW = 12;
