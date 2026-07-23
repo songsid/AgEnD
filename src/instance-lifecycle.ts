@@ -59,6 +59,8 @@ export interface LifecycleContext {
 
   getInstanceDir(name: string): string;
   saveFleetConfig(): void;
+  /** Full stop+start. freshStart forces the respawn to skip session resume. */
+  restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
   deleteForumTopic(topicId: number | string): Promise<void>;
@@ -253,6 +255,13 @@ export class InstanceLifecycle {
 
       if (data.action === "failover") {
         this.ctx.checkModelFailover(name, 100); // Force failover trigger
+      } else if (data.action === "restart") {
+        // A broken *resumed* session (e.g. agy pinned to a dead model) can't
+        // self-recover; a plain restart would --continue back into it. freshStart
+        // makes the respawn skip resume so the CLI starts a clean session on its
+        // default (valid) model.
+        this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
+          this.ctx.logger.error({ err, name }, "pty_error restart failed"));
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
 

@@ -145,6 +145,12 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     return [
       { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },
       { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "restart", message: "Authentication error" },
+      // Model generation change pins the resumed session to a dead model placeholder
+      // (e.g. MODEL_PLACEHOLDER_M264) → every message returns "unknown model key".
+      // The CLI stays up, so this never self-recovers — force a fresh restart
+      // (skipRecoveryWait) that abandons the session so agy falls back to a valid
+      // model. skipRecoveryWait: the CLI is still at its prompt, not crashed.
+      { pattern: /unknown model key|failed to construct executor/i, type: "model_error", action: "restart", message: "Model no longer available — restarting with a fresh session", skipRecoveryWait: true },
     ];
   }
 
