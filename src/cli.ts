@@ -2093,7 +2093,7 @@ async function lsAction(opts: { json?: boolean }): Promise<void> {
     // Status icon — prefer tri-state 'state' field, fall back to idle boolean
     const statusIcon = (s: string, idle?: boolean, state?: string | null) => {
       if (state === "stuck") return "\x1b[31m●\x1b[0m";
-      if (state === "paused" || s === "paused") return "\x1b[33m⏸\x1b[0m";
+      if (state === "paused" || s === "paused") return "\x1b[2;33m●\x1b[0m";
       if (state === "working") return "\x1b[34m●\x1b[0m";
       if (state === "idle") return "\x1b[32m●\x1b[0m";
       // Fallback for when API is unreachable
