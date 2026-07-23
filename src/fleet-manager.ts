@@ -671,8 +671,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     topicMode: boolean,
   ): Promise<void> {
     const raw = this.fleetConfig?.defaults?.startup;
-    const concurrency = Math.max(1, Math.min(20, raw?.concurrency ?? 10));
+    const explicitConcurrency = raw?.concurrency;
     const staggerMs = Math.max(0, Math.min(30_000, raw?.stagger_delay_ms ?? 500));
+
+    // Adaptive concurrency: if not explicitly set, estimate from available RAM.
+    // Each instance uses ~300MB (tmux + CLI process + model overhead).
+    const ESTIMATED_MB_PER_INSTANCE = 300;
+    const { freemem } = await import("node:os");
+    let concurrency: number;
+    if (explicitConcurrency != null) {
+      concurrency = Math.max(1, Math.min(20, explicitConcurrency));
+    } else {
+      const freeMemMB = Math.round(freemem() / (1024 * 1024));
+      concurrency = Math.max(2, Math.min(10, Math.floor(freeMemMB / ESTIMATED_MB_PER_INSTANCE)));
+      this.logger.info({ concurrency, freeMemMB: freeMemMB, totalInstances: entries.length }, "Adaptive startup concurrency");
+    }
 
     const byWorkDir = new Map<string, [string, InstanceConfig][]>();
     for (const [name, config] of entries) {
@@ -692,6 +705,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const startNext = () => {
         if (pendingTimer) return;
         while (running < concurrency && idx < groups.length) {
+          // Re-check memory if adaptive (no explicit concurrency set)
+          if (explicitConcurrency == null && running > 0) {
+            const nowFreeMB = Math.round(freemem() / (1024 * 1024));
+            if (nowFreeMB < ESTIMATED_MB_PER_INSTANCE) {
+              this.logger.warn({ freeMemMB: nowFreeMB, remaining: groups.length - idx }, "Low memory — pausing instance startup");
+              // Wait and retry in 5s
+              pendingTimer = true;
+              setTimeout(() => { pendingTimer = false; startNext(); }, 5000);
+              return;
+            }
+          }
           const now = Date.now();
           const elapsed = now - lastStartAt;
           if (lastStartAt > 0 && elapsed < staggerMs) {
