@@ -626,6 +626,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     if (config.general_topic) {
+      // antigravity (agy) does not read MCP instructions — fleet context and
+      // routing instructions are not injected, so it cannot act as a dispatcher.
+      const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      if (backend === "antigravity") {
+        this.logger.warn({ name }, "antigravity backend does not support MCP instructions — general dispatcher will not work correctly");
+        this.notifyInstanceTopic(name, "⚠️ antigravity backend is not supported for General instances (no MCP instructions injection). Switch to claude-code or kiro-cli.");
+      }
       this.ensureGeneralInstructions(config.working_directory, config.backend);
     }
     await this.lifecycle.start(name, config, topicMode);
