@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 
   switch (op) {
     // Channel
-    case "reply": args = { text: rest[0] ?? "" }; break;
+    case "reply": args = { text: rest[0] ?? "", ...(rest.length > 1 ? { files: rest.slice(1) } : {}) }; break;
     case "react": args = { emoji: rest[0] ?? "", message_id: rest[1] }; break;
     case "edit": args = { message_id: rest[0], text: rest[1] ?? "" }; break;
     case "download": args = { file_id: rest[0] ?? "" }; break;

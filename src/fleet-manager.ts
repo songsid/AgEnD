@@ -1155,16 +1155,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const classicCount = this.classicChannels?.getAll().length ?? 0;
       const total = Object.keys(fleet.instances).length + classicCount;
       const started = this.daemons.size;
-      const failedNames = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const allNotRunning = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const pausedNames = allNotRunning.filter(n => this.lifecycle.isPaused(n));
+      const failedNames = allNotRunning.filter(n => !this.lifecycle.isPaused(n));
       const generalName = this.findGeneralInstance();
       const generalThreadId = generalName ? fleet.instances[generalName]?.topic_id : undefined;
       const { createRequire } = await import("node:module");
       const _require = createRequire(import.meta.url);
       const agendVersion = _require("../package.json").version ?? "unknown";
       if (this.adapter && fleet.channel?.group_id) {
-        const text = failedNames.length === 0
-          ? t("fleet.ready", started, total, agendVersion)
-          : t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "));
+        let text: string;
+        if (failedNames.length === 0 && pausedNames.length === 0) {
+          text = t("fleet.ready", started, total, agendVersion);
+        } else if (failedNames.length === 0) {
+          text = t("fleet.ready", started, total, agendVersion) + `\n⏸ Paused: ${pausedNames.join(", ")}`;
+        } else {
+          text = t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "))
+            + (pausedNames.length > 0 ? `\n⏸ Paused: ${pausedNames.join(", ")}` : "");
+        }
         this.adapter.sendText(String(fleet.channel.group_id), text, {
           threadId: generalThreadId != null ? String(generalThreadId) : undefined,
         }).catch(e => this.logger.warn({ err: e }, "Failed to send fleet start notification"));
@@ -4759,13 +4767,21 @@ When users create specialized instances, suggest these configurations:
     if (groupId && this.adapter) {
       const total = Object.keys(fleet.instances).length;
       const started = this.daemons.size;
-      const failedNames = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const allNotRunning2 = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const pausedNames2 = allNotRunning2.filter(n => this.lifecycle.isPaused(n));
+      const failedNames = allNotRunning2.filter(n => !this.lifecycle.isPaused(n));
       const { createRequire } = await import("node:module");
       const _require2 = createRequire(import.meta.url);
       const agendVersion2 = _require2("../package.json").version ?? "unknown";
-      const restartText = failedNames.length === 0
-        ? t("fleet.ready", started, total, agendVersion2)
-        : t("fleet.ready_with_failed", started, total, agendVersion2, failedNames.join(", "));
+      let restartText: string;
+      if (failedNames.length === 0 && pausedNames2.length === 0) {
+        restartText = t("fleet.ready", started, total, agendVersion2);
+      } else if (failedNames.length === 0) {
+        restartText = t("fleet.ready", started, total, agendVersion2) + `\n⏸ Paused: ${pausedNames2.join(", ")}`;
+      } else {
+        restartText = t("fleet.ready_with_failed", started, total, agendVersion2, failedNames.join(", "))
+          + (pausedNames2.length > 0 ? `\n⏸ Paused: ${pausedNames2.join(", ")}` : "");
+      }
       await this.adapter.sendText(String(groupId), restartText, notifyOpts)
         .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
 
