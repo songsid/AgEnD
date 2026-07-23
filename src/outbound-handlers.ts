@@ -31,6 +31,8 @@ import {
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
   GetFleetConfigArgs,
+  UpdateInstanceConfigArgs,
+  UpdateFleetDefaultsArgs,
   StartInstanceArgs,
   TeardownDeploymentArgs,
   UpdateTeamArgs,
@@ -457,6 +459,43 @@ const getFleetConfig: Handler = (ctx, rawArgs, respond) => {
     respond({ name: v.data.name, config: cfg });
   } else {
     respond({ defaults: ctx.fleetConfig?.defaults ?? {} });
+  }
+};
+
+const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
+  if (!v.ok) { respond(null, v.error); return; }
+  const inst = ctx.fleetConfig?.instances[v.data.name];
+  if (!inst) { respond(null, `Instance '${v.data.name}' not found in fleet config`); return; }
+  const patch = v.data.config;
+  if (patch.backend !== undefined) (inst as any).backend = patch.backend;
+  if (patch.model !== undefined) (inst as any).model = patch.model;
+  if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
+  if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
+  if (patch.description !== undefined) (inst as any).description = patch.description;
+  try {
+    ctx.saveFleetConfig();
+    respond({ success: true, name: v.data.name, applied: patch });
+  } catch (err) {
+    respond(null, `Failed to save config: ${(err as Error).message}`);
+  }
+};
+
+const updateFleetDefaults: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(UpdateFleetDefaultsArgs, rawArgs, "update_fleet_defaults");
+  if (!v.ok) { respond(null, v.error); return; }
+  if (!ctx.fleetConfig) { respond(null, "No fleet config loaded"); return; }
+  const defaults = ctx.fleetConfig.defaults ?? {};
+  const patch = v.data.defaults;
+  if (patch.backend !== undefined) (defaults as any).backend = patch.backend;
+  if (patch.model !== undefined) (defaults as any).model = patch.model;
+  if (patch.auto_pause_after !== undefined) (defaults as any).auto_pause_after = patch.auto_pause_after;
+  (ctx.fleetConfig as any).defaults = defaults;
+  try {
+    ctx.saveFleetConfig();
+    respond({ success: true, applied: patch });
+  } catch (err) {
+    respond(null, `Failed to save config: ${(err as Error).message}`);
   }
 };
 
@@ -951,6 +990,8 @@ export const outboundHandlers = new Map<string, Handler>([
   ["get_fleet_status", getFleetStatus],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
+  ["update_instance_config", updateInstanceConfig],
+  ["update_fleet_defaults", updateFleetDefaults],
   ["create_instance", createInstance],
   ["delete_instance", deleteInstance],
   ["replace_instance", replaceInstance],
