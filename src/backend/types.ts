@@ -41,7 +41,7 @@ export interface CliBackendConfig {
 export type ErrorActionType = "notify" | "failover" | "restart" | "pause";
 
 /** Categorizes detected errors for logging and response. */
-export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout";
+export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error";
 
 export interface ErrorPattern {
   pattern: RegExp;
