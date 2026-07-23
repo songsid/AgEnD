@@ -4352,8 +4352,12 @@ When users create specialized instances, suggest these configurations:
         };
 
     const timer = setTimeout(() => {
-      void this.finishClassicBackendSelection(nonce).catch(err =>
-        this.logger.warn({ err, channelId: data.channelId, adapterId }, "Classic backend selection timeout fallback failed"));
+      // Timeout: cancel the selection — do NOT fall back to default.
+      const p = this.pendingClassicStarts.get(nonce);
+      if (p) {
+        this.pendingClassicStarts.delete(nonce);
+        p.complete(t("classic.selection_expired"), p.messageId).catch(() => {});
+      }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
     const pending: PendingClassicStart = {
