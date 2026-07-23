@@ -399,7 +399,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               name: "backend",
               description: "Backend to start",
               type: ApplicationCommandOptionType.String,
-              required: false,
+              required: true,
               choices: DISCORD_START_BACKEND_CHOICES,
             }],
           },
