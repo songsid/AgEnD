@@ -362,17 +362,28 @@ const startInstance: Handler = async (ctx, rawArgs, respond) => {
     return;
   }
   const targetConfig = ctx.fleetConfig?.instances[targetName];
-  if (!targetConfig) {
-    respond(null, `Instance '${targetName}' not found in fleet config`);
+  if (targetConfig) {
+    try {
+      await ctx.startInstance(targetName, targetConfig, true);
+      await ctx.connectIpcToInstance(targetName);
+      respond({ success: true, status: "started" });
+    } catch (err) {
+      respond(null, `Failed to start instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
+    }
     return;
   }
-  try {
-    await ctx.startInstance(targetName, targetConfig, true);
-    await ctx.connectIpcToInstance(targetName);
-    respond({ success: true, status: "started" });
-  } catch (err) {
-    respond(null, `Failed to start instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
+  // Classic instance fallback — restart re-creates it
+  const channelId = ctx.classicChannels?.getChannelIdByInstance?.(targetName);
+  if (channelId) {
+    try {
+      await ctx.restartSingleInstance(targetName);
+      respond({ success: true, status: "started" });
+    } catch (err) {
+      respond(null, `Failed to start classic instance '${targetName}': ${(err as Error).message}`);
+    }
+    return;
   }
+  respond(null, `Instance '${targetName}' not found in fleet or classic config`);
 };
 
 const restartInstance: Handler = async (ctx, rawArgs, respond) => {
