@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail } from "../src/daemon.js";
 import { HangDetector } from "../src/hang-detector.js";
 
@@ -51,6 +55,17 @@ describe("PaneStateMachine", () => {
     expect(machine.observe("READY", 1).state).toBe("idle");
     expect(machine.observe("READY", 2).state).toBe("idle");
   });
+
+  it("marks working immediately from a control-mode output event", () => {
+    const machine = new PaneStateMachine(/READY/, timeoutMs, 0);
+    machine.observe("READY", 1);
+
+    const moving = machine.recordOutput(50);
+
+    expect(moving.state).toBe("working");
+    expect(moving.unchangedForMs).toBe(0);
+    expect(moving.observedAt).toBe(50);
+  });
 });
 
 describe("PendingWorkTracker", () => {
@@ -76,6 +91,68 @@ describe("PendingWorkTracker", () => {
     pending.recordInbound(300);
     pending.recordIdle(200);
     expect(pending.hasPendingWork()).toBe(true);
+  });
+});
+
+describe("Daemon event-driven pane monitor", () => {
+  it("uses output events for working, debounce capture for idle, and a stuck deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-events-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const control = new EventEmitter();
+    let pane = "READY";
+    const tmux = { getWindowId: () => "@1", capturePane: vi.fn(async () => pane) };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("event-test", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: true, timeout_minutes: 0.001, idle_debounce_ms: 10 },
+      log_level: "silent",
+    } as any, instanceDir, false, { getReadyPattern: () => /READY/ } as any, control as any,
+      { child: () => logger } as any);
+    (daemon as any).tmux = tmux;
+
+    try {
+      (daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(daemon.getInstanceState()).toBe("idle");
+      expect(control.listenerCount("output:@1")).toBe(1);
+      expect(tmux.capturePane).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(tmux.capturePane).toHaveBeenCalledOnce();
+
+      pane = "thinking";
+      control.emit("output:@1", { paneId: "%1", windowId: "@1", at: Date.now() });
+      expect(daemon.getInstanceState()).toBe("working");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(daemon.getInstanceState()).toBe("working");
+      await vi.advanceTimersByTimeAsync(50);
+      expect(daemon.getInstanceState()).toBe("stuck");
+
+      pane = "READY";
+      control.emit("output:@1", { paneId: "%1", windowId: "@1", at: Date.now() });
+      expect(daemon.getInstanceState()).toBe("working");
+      await vi.advanceTimersByTimeAsync(10);
+      expect(daemon.getInstanceState()).toBe("idle");
+
+      for (let i = 0; i < 3; i++) {
+        (daemon as any).stopInstanceStateMonitor();
+        expect(control.listenerCount("output:@1")).toBe(0);
+        (daemon as any).startInstanceStateMonitor();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(control.listenerCount("output:@1")).toBe(1);
+        expect(control.listenerCount("safety_sweep")).toBe(1);
+      }
+
+      (daemon as any).freezeRuntimeMonitors();
+      expect(control.listenerCount("output:@1")).toBe(0);
+      expect(control.listenerCount("safety_sweep")).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
   });
 });
 
