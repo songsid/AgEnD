@@ -4,6 +4,14 @@ import { createInterface, type Interface } from "node:readline";
 import type { Logger } from "./logger.js";
 import { getTmuxSocketName } from "./paths.js";
 
+export interface TmuxPaneOutputEvent {
+  paneId: string;
+  windowId?: string;
+  at: number;
+}
+
+export const CONTROL_SAFETY_SWEEP_MS = 60_000;
+
 function tmuxArgs(args: string[]): string[] {
   const socket = getTmuxSocketName();
   return socket ? ["-L", socket, ...args] : args;
@@ -36,6 +44,7 @@ export class TmuxControlClient extends EventEmitter {
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
     private sessionName: string,
@@ -43,10 +52,17 @@ export class TmuxControlClient extends EventEmitter {
     private logger?: Logger,
   ) {
     super();
+    // One shared control client intentionally has one listener per daemon.
+    this.setMaxListeners(0);
   }
 
   start(): void {
     this.stopped = false;
+    if (!this.safetySweepTimer) {
+      this.safetySweepTimer = setInterval(() => {
+        this.emit("safety_sweep", { at: Date.now() });
+      }, CONTROL_SAFETY_SWEEP_MS);
+    }
     this.connect();
   }
 
@@ -57,6 +73,10 @@ export class TmuxControlClient extends EventEmitter {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.safetySweepTimer) {
+      clearInterval(this.safetySweepTimer);
+      this.safetySweepTimer = null;
     }
     this.cleanup();
   }
@@ -238,7 +258,15 @@ export class TmuxControlClient extends EventEmitter {
     if (line.startsWith("%output ")) {
       const match = line.match(/^%output (%\d+) /);
       if (match) {
-        this.lastOutputAt.set(match[1], Date.now());
+        const at = Date.now();
+        const paneId = match[1];
+        const windowId = this.paneToWindow.get(paneId);
+        this.lastOutputAt.set(paneId, at);
+        if (windowId) {
+          // Scope hot-path output events by window so one active TUI does not
+          // wake every daemon listener in a large fleet.
+          this.emit(`output:${windowId}`, { paneId, windowId, at } satisfies TmuxPaneOutputEvent);
+        }
       }
     }
   }

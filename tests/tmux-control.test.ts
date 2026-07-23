@@ -14,7 +14,7 @@ vi.mock("node:readline", () => ({
   createInterface: vi.fn(() => ({ on: vi.fn(), close: vi.fn() })),
 }));
 
-import { TmuxControlClient } from "../src/tmux-control.js";
+import { CONTROL_SAFETY_SWEEP_MS, TmuxControlClient } from "../src/tmux-control.js";
 
 interface FakeProc extends EventEmitter {
   stdout: EventEmitter;
@@ -37,6 +37,7 @@ interface ClientInternals {
   lastOutputAt: Map<string, number>;
   registeredWindows: Set<string>;
   connect: () => void;
+  parseLine: (line: string) => void;
 }
 
 describe("TmuxControlClient reconnect", () => {
@@ -107,5 +108,37 @@ describe("TmuxControlClient reconnect", () => {
 
     expect(seen.some(s => s.includes("@5"))).toBe(true);
     expect(seen.some(s => s.includes("@7"))).toBe(true);
+  });
+
+  it("emits a window-scoped output event from tmux control mode", () => {
+    const client = new TmuxControlClient("s", 100);
+    const internal = client as unknown as ClientInternals;
+    internal.paneToWindow.set("%3", "@7");
+    const output = vi.fn();
+    client.on("output:@7", output);
+
+    internal.parseLine("%output %3 hello");
+
+    expect(output).toHaveBeenCalledWith(expect.objectContaining({ paneId: "%3", windowId: "@7" }));
+    expect(internal.lastOutputAt.get("%3")).toEqual(expect.any(Number));
+  });
+
+  it("runs one shared 60s safety sweep and clears it on stop", async () => {
+    vi.useFakeTimers();
+    try {
+      const client = new TmuxControlClient("s", 100);
+      const sweep = vi.fn();
+      client.on("safety_sweep", sweep);
+      client.start();
+
+      await vi.advanceTimersByTimeAsync(CONTROL_SAFETY_SWEEP_MS);
+      expect(sweep).toHaveBeenCalledOnce();
+
+      client.stop();
+      await vi.advanceTimersByTimeAsync(CONTROL_SAFETY_SWEEP_MS);
+      expect(sweep).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
