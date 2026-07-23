@@ -25,6 +25,12 @@ import {
   RequestInformationArgs,
   RestartInstanceArgs,
   SendToInstanceArgs,
+  PauseInstanceArgs,
+  WakeInstanceArgs,
+  StopInstanceArgs,
+  GetFleetStatusArgs,
+  GetInstanceLogsArgs,
+  GetFleetConfigArgs,
   StartInstanceArgs,
   TeardownDeploymentArgs,
   UpdateTeamArgs,
@@ -376,6 +382,81 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
     respond({ success: true, status: "restarted" });
   } catch (err) {
     respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `restart_instance(${targetName})`)}`);
+  }
+};
+
+const pauseInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(PauseInstanceArgs, rawArgs, "pause_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  try {
+    await ctx.lifecycle.pause(v.data.name);
+    respond({ success: true, status: "paused" });
+  } catch (err) {
+    respond(null, `Failed to pause '${v.data.name}': ${(err as Error).message}`);
+  }
+};
+
+const wakeInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(WakeInstanceArgs, rawArgs, "wake_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  try {
+    await ctx.lifecycle.wake(v.data.name);
+    respond({ success: true, status: "waking" });
+  } catch (err) {
+    respond(null, `Failed to wake '${v.data.name}': ${(err as Error).message}`);
+  }
+};
+
+const stopInstance: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(StopInstanceArgs, rawArgs, "stop_instance");
+  if (!v.ok) { respond(null, v.error); return; }
+  try {
+    const daemon = ctx.lifecycle.daemons.get(v.data.name);
+    if (!daemon) { respond(null, `Instance '${v.data.name}' is not running`); return; }
+    await daemon.stop();
+    ctx.lifecycle.daemons.delete(v.data.name);
+    respond({ success: true, status: "stopped" });
+  } catch (err) {
+    respond(null, `Failed to stop '${v.data.name}': ${(err as Error).message}`);
+  }
+};
+
+const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
+  const instances = ctx.fleetConfig?.instances ?? {};
+  const names = Object.keys(instances);
+  const running = names.filter(n => ctx.lifecycle.daemons.has(n) && !ctx.lifecycle.isPaused(n)).length;
+  const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
+  const stopped = names.length - running - paused;
+  respond({ total: names.length, running, paused, stopped });
+};
+
+const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(GetInstanceLogsArgs, rawArgs, "get_instance_logs");
+  if (!v.ok) { respond(null, v.error); return; }
+  const lines = v.data.lines ?? 50;
+  try {
+    const { readFileSync } = await import("node:fs");
+    const { join: joinPath } = await import("node:path");
+    const instanceDir = joinPath((ctx as any).dataDir ?? "", "instances", v.data.name);
+    const file = joinPath(instanceDir, "output.log");
+    const content = readFileSync(file, "utf-8");
+    const allLines = content.split("\n");
+    respond({ lines: allLines.slice(-lines).join("\n"), total_lines: allLines.length });
+  } catch (err) {
+    respond(null, `Cannot read logs for '${v.data.name}': ${(err as Error).message}`);
+  }
+};
+
+const getFleetConfig: Handler = (ctx, rawArgs, respond) => {
+  const v = validateArgs(GetFleetConfigArgs, rawArgs, "get_fleet_config");
+  if (!v.ok) { respond(null, v.error); return; }
+  if (v.data.scope === "instance") {
+    if (!v.data.name) { respond(null, "name is required when scope='instance'"); return; }
+    const cfg = ctx.fleetConfig?.instances[v.data.name];
+    if (!cfg) { respond(null, `Instance '${v.data.name}' not found`); return; }
+    respond({ name: v.data.name, config: cfg });
+  } else {
+    respond({ defaults: ctx.fleetConfig?.defaults ?? {} });
   }
 };
 
@@ -864,6 +945,12 @@ export const outboundHandlers = new Map<string, Handler>([
   ["describe_instance", describeInstance],
   ["start_instance", startInstance],
   ["restart_instance", restartInstance],
+  ["pause_instance", pauseInstance],
+  ["wake_instance", wakeInstance],
+  ["stop_instance", stopInstance],
+  ["get_fleet_status", getFleetStatus],
+  ["get_instance_logs", getInstanceLogs],
+  ["get_fleet_config", getFleetConfig],
   ["create_instance", createInstance],
   ["delete_instance", deleteInstance],
   ["replace_instance", replaceInstance],
