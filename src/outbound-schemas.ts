@@ -185,6 +185,25 @@ export const GetFleetConfigArgs = z.object({
   name: z.string().optional().describe("Instance name (required when scope='instance')"),
 });
 
+export const UpdateInstanceConfigArgs = z.object({
+  name: NonEmptyString.describe("Instance name to update"),
+  config: z.object({
+    backend: z.string().optional().describe("CLI backend"),
+    model: z.string().optional().describe("Model override"),
+    auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
+    display_name: z.string().optional().describe("Display name"),
+    description: z.string().optional().describe("Role description"),
+  }).describe("Fields to merge-patch into the instance config"),
+});
+
+export const UpdateFleetDefaultsArgs = z.object({
+  defaults: z.object({
+    backend: z.string().optional().describe("Default CLI backend"),
+    model: z.string().optional().describe("Default model"),
+    auto_pause_after: z.number().optional().describe("Default auto-pause minutes (0 = disabled)"),
+  }).describe("Fields to merge-patch into fleet defaults"),
+});
+
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
