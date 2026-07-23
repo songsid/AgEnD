@@ -72,6 +72,36 @@ export function resolveReplyThreadId(
   return instanceConfig?.topic_id != null ? String(instanceConfig.topic_id) : undefined;
 }
 
+/**
+ * Pure warm-cap victim selection (extracted for testability). Given the current
+ * warm (running) instance names and a cap, return the LRU idle instances to evict
+ * so the running count returns to the cap. Skips: the `exclude` instance, any
+ * already-evicting, general instances (never evicted), and non-idle instances
+ * (working/stuck can't be evicted). Oldest last-inbound is evicted first; a
+ * missing timestamp (0) sorts oldest. cap <= 0 (or non-integer) = unlimited → [].
+ */
+export function selectLruEvictions(
+  warm: string[],
+  cap: number,
+  opts: {
+    exclude?: string;
+    isEvicting: (name: string) => boolean;
+    isGeneral: (name: string) => boolean;
+    isIdle: (name: string) => boolean;
+    lastInboundAt: (name: string) => number;
+  },
+): string[] {
+  if (!Number.isInteger(cap) || cap <= 0) return [];
+  if (warm.length <= cap) return [];
+  const candidates = warm.filter(name =>
+    name !== opts.exclude
+    && !opts.isEvicting(name)
+    && !opts.isGeneral(name)
+    && opts.isIdle(name));
+  candidates.sort((a, b) => opts.lastInboundAt(a) - opts.lastInboundAt(b));
+  return candidates.slice(0, warm.length - cap);
+}
+
 /** Retry cadence for retiring a cancel button whose delete failed (e.g. a DC
  * forum thread the bot momentarily can't reach). 3 retries × 5min = 15min. */
 const CANCEL_BTN_RETRY_INTERVAL_MS = 5 * 60_000;
@@ -185,6 +215,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private lastActivity = new Map<string, number>();
   /** Latest pane-derived execution snapshot reported by each daemon. */
   private instanceStateCache = new Map<string, InstanceStateSnapshot>();
+  /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
+  private warmCapEvicting = new Set<string>();
   /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
   private idleGatedDeliveryTails = new Map<string, Promise<void>>();
   /** Non-user work must observe a fresh idle snapshot after the latest delivery. */
@@ -479,6 +511,45 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ),
     });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
+    // warm_cap: a fresh transition into idle may free this instance for eviction,
+    // or (more usefully) reveal that the fleet is now over cap. Only fire on the
+    // edge into idle, not on every idle heartbeat.
+    if (state === "idle" && previous?.state !== "idle") this.enforceWarmCap();
+  }
+
+  /**
+   * Fleet-wide warm cap: if more than `defaults.warm_cap` instances are running,
+   * auto-pause the least-recently-active idle instances until back at the cap.
+   * Never evicts general instances (must stay warm) or working/stuck instances
+   * (only idle). 0/unset = unlimited. wake-before-deliver re-warms any evicted
+   * instance when a message next arrives.
+   *
+   * @param exclude instance to spare (e.g. one just woken to receive a delivery).
+   */
+  private enforceWarmCap(exclude?: string): void {
+    const cap = this.fleetConfig?.defaults?.warm_cap ?? 0;
+    if (!Number.isInteger(cap) || cap <= 0) return; // 0/invalid = unlimited
+
+    const warm: string[] = [];
+    for (const name of this.daemons.keys()) {
+      if (this.getInstanceStatus(name) === "running") warm.push(name);
+    }
+    if (warm.length <= cap) return;
+
+    const victims = selectLruEvictions(warm, cap, {
+      exclude,
+      isEvicting: name => this.warmCapEvicting.has(name),
+      isGeneral: name => this.fleetConfig?.instances[name]?.general_topic === true,
+      isIdle: name => this.getInstanceExecutionState(name) === "idle",
+      lastInboundAt: name => readLastInboundAt(this.getInstanceDir(name)) ?? 0,
+    });
+    for (const victim of victims) {
+      this.warmCapEvicting.add(victim);
+      this.logger.info({ instance: victim, warm: warm.length, cap }, "warm_cap exceeded — auto-pausing LRU idle instance");
+      this.lifecycle.pause(victim)
+        .catch(err => this.logger.warn({ err, instance: victim }, "warm_cap auto-pause failed"))
+        .finally(() => this.warmCapEvicting.delete(victim));
+    }
   }
 
   private waitForInstanceIdle(instanceName: string, timeoutMs: number, idleObservedAfter = 0): Promise<boolean> {
@@ -527,6 +598,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.lifecycle.wake(instanceName, 30_000);
+      // Waking added one to the warm count — make room by evicting a different
+      // LRU idle instance (never this one; it's about to work).
+      this.enforceWarmCap(instanceName);
       // Never satisfy a post-wake gate from a stale pre-pause cache entry.
       idleObservedAfter = Math.max(idleObservedAfter, wakeStartedAt);
     }
@@ -559,6 +633,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
         await this.lifecycle.wake(instanceName, 30_000);
+        this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
       const ipc = this.instanceIpcClients.get(instanceName);
       if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
@@ -594,6 +669,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async changeInstancePauseState(name: string, action: "pause" | "wake"): Promise<"paused" | "awake" | "not_idle"> {
     if (action === "wake") {
       await this.lifecycle.wake(name, 30_000);
+      this.enforceWarmCap(name); // manual wake still respects the fleet warm cap
       return "awake";
     }
     await this.lifecycle.pause(name);

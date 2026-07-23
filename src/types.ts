@@ -67,6 +67,13 @@ export interface InstanceConfig {
   working_directory: string;
   /** Minutes an idle CLI may remain resident before auto-pause. 0 disables it. */
   auto_pause_after?: number;
+  /**
+   * Fleet-wide cap on simultaneously warm (running) instances. Read from
+   * `defaults.warm_cap`; when the running count exceeds it, the least-recently
+   * active idle instance is auto-paused (general instances are never evicted).
+   * 0 = unlimited (default). Complementary to auto_pause_after (time-based).
+   */
+  warm_cap?: number;
   /** Agent display name (e.g. "Kuro", "Luna") — chosen by the agent itself */
   display_name?: string;
   /** Human-readable description of what this instance does */
