@@ -301,6 +301,8 @@ export class Daemon extends EventEmitter {
   private lastSpawnAt = 0;
   private crashTimestamps: number[] = [];
   private healthCheckPaused = false;
+  /** CLI pane availability, independent from the daemon process and tri-state. */
+  private processStatus: "running" | "crashed" | "stopped" = "running";
   private spawning = false;
   private skipResume = false;
   private backgroundSessionRecoveryAttempted = false;
@@ -545,6 +547,7 @@ export class Daemon extends EventEmitter {
           instanceName: this.name,
           ...snapshot,
           state: this.isPaused ? "paused" : snapshot.state,
+          processStatus: this.processStatus,
           pausedAt: this.lastPausedAt,
         });
       }
@@ -692,7 +695,13 @@ export class Daemon extends EventEmitter {
   private startHealthCheck(): void {
     if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
     const { max_retries, backoff, reset_after } = this.config.restart_policy;
-    if (max_retries <= 0) return; // restart disabled
+    // Liveness monitoring remains active when automatic restart is disabled;
+    // otherwise a dead pane leaves its last idle snapshot cached forever.
+    const configuredInterval = this.config.restart_policy.health_check_interval_ms ?? 30_000;
+    const healthCheckIntervalMs = Math.min(
+      60_000,
+      configuredInterval > 0 ? configuredInterval : 30_000,
+    );
 
     const scheduleNext = () => {
       if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
@@ -751,11 +760,13 @@ export class Daemon extends EventEmitter {
 
         // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
         if (paneStatus && exitCode === 0) {
+          this.setProcessStatus("stopped");
           this.logger.info("CLI exited normally (code 0) — pausing health check");
           await this.tmux.killWindow();
           this.healthCheckPaused = true;
           return;
         }
+        this.setProcessStatus("crashed");
 
         // Distinguish tmux server crash from single window crash.
         // nullReason records *why* getPaneStatus returned null (for diagnosing
@@ -829,6 +840,7 @@ export class Daemon extends EventEmitter {
             await new Promise(r => setTimeout(r, 2_000));
             try {
               await this.spawnClaudeWindow();
+              this.setProcessStatus("running");
               this.logger.info("Recovered from background session conflict");
               this.emit("crash_respawn", this.name);
             } catch (err) {
@@ -852,6 +864,12 @@ export class Daemon extends EventEmitter {
 
         // Append to crash history
         this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
+
+        if (max_retries <= 0) {
+          this.healthCheckPaused = true;
+          this.logger.warn(`${cliLabel} window died — automatic restart is disabled`);
+          return;
+        }
 
         // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
         this.crashTimestamps.push(Date.now());
@@ -932,6 +950,7 @@ export class Daemon extends EventEmitter {
             // Clean up stale snapshot — resume restored full context
             try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
           }
+          this.setProcessStatus("running");
           this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
           this.emit("crash_respawn", this.name);
         } catch (err) {
@@ -939,10 +958,34 @@ export class Daemon extends EventEmitter {
         }
 
         scheduleNext();
-      }, this.config.restart_policy.health_check_interval_ms ?? 30_000);
+      }, healthCheckIntervalMs);
     };
 
     scheduleNext();
+  }
+
+  /**
+   * Publish pane-process availability separately from idle/working/stuck.
+   * A dead remain-on-exit pane still contains the old ready prompt, so allowing
+   * the pane monitor to capture it would re-create a false idle state.
+   */
+  private setProcessStatus(status: "running" | "crashed" | "stopped"): void {
+    if (this.processStatus === status) return;
+    this.processStatus = status;
+    if (status === "running") {
+      this.startInstanceStateMonitor();
+    } else {
+      this.stopInstanceStateMonitor();
+      // Force the next ready capture to emit a fresh transition after respawn.
+      this.instanceState = "working";
+    }
+    this.ipcServer?.broadcast({
+      type: "instance_process_state",
+      instanceName: this.name,
+      status,
+      observedAt: Date.now(),
+    });
+    this.emit("instance_process_state", { name: this.name, status });
   }
 
   /**
