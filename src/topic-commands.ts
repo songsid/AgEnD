@@ -466,7 +466,7 @@ export class TopicCommands {
           : executionState === "stuck" ? "🔴 stuck"
             : executionState === "paused" ? "⏸ paused"
               : "—";
-      const displayName = `${classic ? "[C] " : ""}${this.shortInstanceName(name)}`;
+      const displayName = this.shortInstanceName(name);
       rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
     }
 
@@ -564,7 +564,7 @@ export class TopicCommands {
               : displayState === "stopped" ? "⚪" : "🟢";
       const ipc = inst.ipc ? "✓" : "✗";
       const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
-      const displayName = `${inst.classic ? "[C] " : ""}${this.shortInstanceName(inst.name)}`;
+      const displayName = this.shortInstanceName(inst.name);
       lines.push(`| ${icon} ${displayName} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
     }
 
