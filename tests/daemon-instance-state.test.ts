@@ -156,6 +156,49 @@ describe("Daemon event-driven pane monitor", () => {
   });
 });
 
+describe("Daemon process liveness", () => {
+  it("detects a dead pane even when automatic restart is disabled", async () => {
+    vi.useFakeTimers();
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-dead-pane-"));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("dead-test", {
+      working_directory: "/tmp",
+      restart_policy: {
+        max_retries: 0,
+        backoff: "linear",
+        reset_after: 0,
+        health_check_interval_ms: 25,
+      },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "silent",
+    } as any, instanceDir, false, { binaryName: "test" } as any, undefined,
+      { child: () => logger } as any);
+    const tmux = {
+      getPaneStatus: vi.fn(async () => ({ alive: false, exitCode: 137 })),
+      capturePaneWithHistory: vi.fn(async () => "old output\nREADY"),
+      killWindow: vi.fn(async () => {}),
+    };
+    (daemon as any).tmux = tmux;
+    (daemon as any).stopInstanceStateMonitor = vi.fn();
+    const processState = vi.fn();
+    daemon.on("instance_process_state", processState);
+
+    try {
+      (daemon as any).startHealthCheck();
+      await vi.advanceTimersByTimeAsync(25);
+
+      expect(processState).toHaveBeenCalledWith({ name: "dead-test", status: "crashed" });
+      expect((daemon as any).stopInstanceStateMonitor).toHaveBeenCalledOnce();
+      expect((daemon as any).healthCheckPaused).toBe(true);
+      expect(tmux.killWindow).toHaveBeenCalledOnce();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("Daemon stuck notification gate", () => {
   it("suppresses idle false positives and emits only with pending inbound", () => {
     const testLogger = {

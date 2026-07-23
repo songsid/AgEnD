@@ -27,6 +27,32 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("stopped");
   });
 
+  it("clears stale idle state and reports crashed when the CLI pane dies", () => {
+    const fm = new FleetManager(tmpDir);
+    const instanceDir = fm.getInstanceDir("test");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "daemon.pid"), String(process.pid));
+
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "idle",
+      observedAt: Date.now(),
+      stateChangedAt: Date.now(),
+      unchangedForMs: 5_000,
+    });
+    expect(fm.getInstanceExecutionState("test")).toBe("idle");
+    expect(fm.getInstanceStatus("test")).toBe("running");
+
+    (fm as any).cacheInstanceProcessStatus("test", "crashed");
+
+    expect(fm.getInstanceExecutionState("test")).toBeNull();
+    expect(fm.getInstanceStatus("test")).toBe("crashed");
+
+    (fm as any).cacheInstanceProcessStatus("test", "running");
+    expect(fm.getInstanceStatus("test")).toBe("running");
+    // A recovered process remains state-less until its new pane is observed.
+    expect(fm.getInstanceExecutionState("test")).toBeNull();
+  });
+
   it("reads the newest ClassicBot chat-log activity and leaves unused instances empty", () => {
     expect(readClassicLastActivityAt(tmpDir, "classic-unused")).toBeNull();
 
