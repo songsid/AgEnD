@@ -215,6 +215,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private lastActivity = new Map<string, number>();
   /** Latest pane-derived execution snapshot reported by each daemon. */
   private instanceStateCache = new Map<string, InstanceStateSnapshot>();
+  /** CLI pane status overrides; daemon.pid alone only proves FleetManager lives. */
+  private instanceProcessStatus = new Map<string, "crashed" | "stopped">();
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
   private warmCapEvicting = new Set<string>();
   /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
@@ -473,6 +475,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed" {
     if (this.lifecycle.isPaused(name)) return "paused";
+    const processStatus = this.instanceProcessStatus.get(name);
+    if (processStatus) return processStatus;
     const pidPath = join(this.getInstanceDir(name), "daemon.pid");
     if (!existsSync(pidPath)) return "stopped";
     const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -515,6 +519,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // or (more usefully) reveal that the fleet is now over cap. Only fire on the
     // edge into idle, not on every idle heartbeat.
     if (state === "idle" && previous?.state !== "idle") this.enforceWarmCap();
+  }
+
+  private cacheInstanceProcessStatus(name: string, status: unknown): void {
+    if (status === "running") {
+      this.instanceProcessStatus.delete(name);
+      return;
+    }
+    if (status !== "crashed" && status !== "stopped") return;
+    this.instanceProcessStatus.set(name, status);
+    // Never display the last ready prompt as current execution state after its
+    // owning CLI process has exited.
+    this.instanceStateCache.delete(name);
+    for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
   }
 
   /**
@@ -711,6 +728,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       this.ensureGeneralInstructions(config.working_directory, config.backend);
     }
+    this.instanceProcessStatus.delete(name);
     await this.lifecycle.start(name, config, topicMode);
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
@@ -822,6 +840,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async stopInstance(name: string): Promise<void> {
     this.failoverActive.delete(name);
     this.instanceStateCache.delete(name);
+    this.instanceProcessStatus.delete(name);
     this.lastDeliveryAt.delete(name);
     return this.lifecycle.stop(name);
   }
@@ -2013,8 +2032,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.handleSetDisplayName(name, msg);
         } else if (msg.type === "fleet_set_description") {
           this.handleSetDescription(name, msg);
+        } else if (msg.type === "instance_process_state") {
+          this.cacheInstanceProcessStatus(name, msg.status);
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
+          if (msg.type === "instance_state_response") {
+            this.cacheInstanceProcessStatus(name, msg.processStatus);
+          }
         }
       }, this.logger, `ipc.message[${name}]`));
       // Ask daemon for any sessions that registered before we connected
