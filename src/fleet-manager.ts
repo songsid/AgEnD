@@ -1520,7 +1520,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        await this.handleClassicStartSlash(data, adapterId, this.adapter!);
+        await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -1776,7 +1776,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
       if (data.command === "start") {
-        await this.handleClassicStartSlash(data, adapterId, adapter);
+        await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
         const reply = await this.handleClassicStop(data.channelId, adapterId);
         await data.respond(reply);
@@ -4302,11 +4302,16 @@ When users create specialized instances, suggest these configurations:
     return t("classic.backend_not_installed", backend, installation.binary, installation.install);
   }
 
-  /** Handle Discord's optional static slash choice, warning before a likely startup failure. */
-  private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+  /** Handle Discord's required static slash choice, warning before a likely startup failure. */
+  private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     const requestedBackend = typeof data.options?.backend === "string" ? data.options.backend : undefined;
     if (!requestedBackend) {
-      await this.beginClassicBackendSelection(data, adapter);
+      // beta.31 made this option required. Discord can briefly retain the old
+      // command schema client-side, however, so stale clients may still submit
+      // `/start` without it. Do not resurrect the legacy 60-second component
+      // menu in that case: fail immediately and make the user invoke the newly
+      // registered command, which guarantees an explicit backend choice.
+      await data.respond(t("classic.backend_required"));
       return;
     }
 

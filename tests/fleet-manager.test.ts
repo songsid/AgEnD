@@ -185,7 +185,6 @@ describe("FleetManager", () => {
       fm.classicChannels = classicChannels;
       const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
       const respond = vi.fn().mockResolvedValue(undefined);
-      const adapter = { id: "discord", type: "discord" } as any;
 
       await (fm as any).handleClassicStartSlash({
         command: "start",
@@ -195,7 +194,7 @@ describe("FleetManager", () => {
         userId: "owner",
         options: { backend: "opencode" },
         respond,
-      }, "discord", adapter);
+      }, "discord");
 
       expect(respond.mock.calls[0][0]).toContain("opencode");
       expect(respond.mock.calls[0][0]).toContain("curl -fsSL https://opencode.ai/install | bash");
@@ -205,6 +204,31 @@ describe("FleetManager", () => {
     } finally {
       process.env.PATH = originalPath;
     }
+  });
+
+  it("rejects a stale Discord /start without backend immediately instead of opening the legacy selector", async () => {
+    const fm = new FleetManager(tmpDir);
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    fm.classicChannels = classicChannels;
+    const beginSelection = vi.spyOn(fm as any, "beginClassicBackendSelection");
+    const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+    const respond = vi.fn().mockResolvedValue(undefined);
+
+    await (fm as any).handleClassicStartSlash({
+      command: "start",
+      channelId: "channel-1",
+      channelName: "test-room",
+      guildId: "guild-1",
+      userId: "owner",
+      options: {},
+      respond,
+    }, "discord");
+
+    expect(respond).toHaveBeenCalledTimes(1);
+    expect(respond.mock.calls[0][0]).toContain("backend");
+    expect(beginSelection).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
   });
 
   it("persists a directly selected ClassicBot backend before starting", async () => {
@@ -259,7 +283,7 @@ describe("FleetManager", () => {
     expect(editMessageRemoveButtons).toHaveBeenCalledWith("12345", "menu-1", expect.any(String));
   });
 
-  it("falls back to the configured backend when the selection times out", async () => {
+  it("expires backend selection without starting a default backend", async () => {
     vi.useFakeTimers();
     try {
       const fm = new FleetManager(tmpDir);
@@ -284,9 +308,13 @@ describe("FleetManager", () => {
       }, adapter);
       await vi.advanceTimersByTimeAsync(60_000);
 
-      expect(start).toHaveBeenCalledWith(expect.any(String), "kiro-cli", undefined, undefined, undefined);
-      expect(classicChannels.get("12345", "telegram")?.backend).toBeUndefined();
-      expect(adapter.editMessageRemoveButtons).toHaveBeenCalledOnce();
+      expect(start).not.toHaveBeenCalled();
+      expect(classicChannels.get("12345", "telegram")).toBeUndefined();
+      expect(adapter.editMessageRemoveButtons).toHaveBeenCalledWith(
+        "12345",
+        "menu-1",
+        expect.stringContaining("expired"),
+      );
     } finally {
       vi.useRealTimers();
     }
