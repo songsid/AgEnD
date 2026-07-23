@@ -161,6 +161,30 @@ export const RestartInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to restart"),
 });
 
+export const PauseInstanceArgs = z.object({
+  name: NonEmptyString.describe("The instance name to pause"),
+});
+
+export const WakeInstanceArgs = z.object({
+  name: NonEmptyString.describe("The instance name to wake"),
+});
+
+export const StopInstanceArgs = z.object({
+  name: NonEmptyString.describe("The instance name to stop"),
+});
+
+export const GetFleetStatusArgs = z.object({});
+
+export const GetInstanceLogsArgs = z.object({
+  name: NonEmptyString.describe("The instance name to get logs for"),
+  lines: z.number().optional().describe("Number of lines to return (default: 50)"),
+});
+
+export const GetFleetConfigArgs = z.object({
+  scope: z.enum(["defaults", "instance"]).optional().describe("Config scope: 'defaults' for fleet defaults, 'instance' for a specific instance"),
+  name: z.string().optional().describe("Instance name (required when scope='instance')"),
+});
+
 export const DeleteInstanceArgs = z.object({
   name: NonEmptyString.describe("The instance name to delete (from list_instances)"),
   delete_topic: z.boolean().optional()
