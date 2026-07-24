@@ -4242,7 +4242,18 @@ When users create specialized instances, suggest these configurations:
         const inboxDir = join(getAgendHome(), "workspaces", instanceName, "inbox");
         mkdirSync(inboxDir, { recursive: true });
         const dest = join(inboxDir, basename(tmpPath));
-        try { renameSync(tmpPath, dest); } catch { copyFileSync(tmpPath, dest); unlinkSync(tmpPath); }
+        // Copy to destination — failure means this attachment is skipped
+        try {
+          copyFileSync(tmpPath, dest);
+        } catch (copyErr) {
+          try { unlinkSync(dest); } catch {} // clean partial
+          this.logger.warn({ err: (copyErr as Error).message, instanceName, dest }, "Attachment copy failed — skipping");
+          continue;
+        }
+        // Cleanup source — failure is non-fatal (dest already valid)
+        try { unlinkSync(tmpPath); } catch (cleanupErr) {
+          this.logger.debug({ tmpPath, err: (cleanupErr as Error).message }, "Orphan tmp not cleaned");
+        }
         const savedKind = att.kind === "sticker" ? "photo" : att.kind;
         paths.push(dest);
         if (paths.length === 1) kind = savedKind as "photo" | "document";
