@@ -402,7 +402,10 @@ export class Daemon extends EventEmitter {
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
     this.messageBus.setLogger(this.logger);
-    const autoPauseMinutes = typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0; // default: disabled
+    // General is the dispatcher — it must stay warm to route messages, so it is
+    // never auto-paused regardless of auto_pause_after.
+    const isGeneral = config.general_topic === true || name === "general";
+    const autoPauseMinutes = isGeneral ? 0 : (typeof config.auto_pause_after === "number" ? config.auto_pause_after : 0); // default: disabled
     this.autoPauseController = new AutoPauseController(
       Math.max(0, autoPauseMinutes) * 60_000,
       readLastInboundAt(instanceDir) ?? Date.now(),
