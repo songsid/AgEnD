@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
+import { utcDbToLocal } from "./tz-utils.js";
 
 interface ActivityRow {
   id: number;
@@ -65,8 +66,10 @@ function generateHtml(rows: ActivityRow[], emptyMsg?: string): string {
   const colorMap = new Map<string, string>();
   const messages = rows.map(row => {
     const senderColor = agentColor(row.sender, colorMap);
-    const time = row.timestamp.slice(11, 16); // HH:MM
-    const date = row.timestamp.slice(0, 10);
+    // event-db stores UTC — show local (matches chat-log / fleet.log convention).
+    const localTs = utcDbToLocal(row.timestamp);
+    const time = localTs.slice(11, 16); // HH:MM
+    const date = localTs.slice(0, 10);
     const content = escapeHtml(row.summary);
     const eventIcon = row.event === "tool_call" ? "🔧" : row.event === "task_update" ? "📋" : "";
     const receiver = row.receiver ? ` → <span style="color:${agentColor(row.receiver, colorMap)}">${escapeHtml(row.receiver)}</span>` : "";

@@ -425,7 +425,7 @@ async function loadDetail() {
       <div class="detail-row"><span class="detail-label">Rate 7d</span><span>${Math.round(rl7)}% <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(rl7,100)}%;background:${rl7>90?'var(--error)':rl7>70?'var(--warn)':'var(--accent)'}"></span></span></span></div></div>`;
     if (d.recent_activity?.length) {
       h += `<div class="card"><h3>Recent Activity</h3>`;
-      for (const a of d.recent_activity) { const t=a.timestamp?a.timestamp.slice(11,16):""; h+=`<div class="activity-item"><span class="act-time">${t}</span><span class="act-event">${esc(a.event)}</span>${esc(a.summary||"")}</div>`; }
+      for (const a of d.recent_activity) { const t=a.timestamp?new Date(a.timestamp.replace(" ","T")+"Z").toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""; h+=`<div class="activity-item"><span class="act-time">${t}</span><span class="act-event">${esc(a.event)}</span>${esc(a.summary||"")}</div>`; }
       h += `</div>`;
     }
     el.innerHTML = h;
