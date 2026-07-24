@@ -2,6 +2,7 @@ import { Cron } from "croner";
 import type { EventLog } from "./event-log.js";
 import type { DailySummaryConfig } from "./types.js";
 import { formatCents } from "./cost-guard.js";
+import { resolveTz, localWallToUtcDb, localTodayDate } from "./tz-utils.js";
 
 export class DailySummary {
   private job: Cron | null = null;
@@ -33,8 +34,12 @@ export class DailySummary {
     costCentsMap: Map<string, number>,
     fleetTotalCents: number,
   ): string {
-    const today = new Date().toISOString().split("T")[0];
-    const todayEvents = eventLog.query({ since: today, limit: 1000 });
+    // Local day boundary: events since LOCAL midnight today, converted to the
+    // UTC string event-db stores (matches chat-log / fleet.log local convention).
+    const tz = resolveTz();
+    const today = localTodayDate(tz);
+    const since = localWallToUtcDb(`${today} 00:00:00`, tz);
+    const todayEvents = eventLog.query({ since, limit: 1000 });
 
     const lines: string[] = [`📊 Daily Report — ${today}`, ""];
 

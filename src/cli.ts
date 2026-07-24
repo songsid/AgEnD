@@ -1672,13 +1672,18 @@ program
   .action(async (opts: { from?: string; to?: string; output?: string }) => {
     const { exportChat } = await import("./chat-export.js");
 
-    // Resolve HH:MM shorthand to full ISO date (today)
+    // Resolve --from/--to to the UTC "YYYY-MM-DD HH:MM:SS" format the event-db
+    // stores. HH:MM shorthand is LOCAL time today; a full date/datetime is parsed
+    // per its own form (bare = local, Z/offset = as given) then normalized to UTC.
+    const { resolveTz, localWallToUtcDb, localTodayDate } = await import("./tz-utils.js");
+    const tz = resolveTz();
     const resolveTime = (t?: string) => {
       if (!t) return undefined;
       if (/^\d{2}:\d{2}$/.test(t)) {
-        return new Date().toISOString().slice(0, 10) + " " + t + ":00";
+        return localWallToUtcDb(`${localTodayDate(tz)} ${t}:00`, tz);
       }
-      return t;
+      const d = new Date(t);
+      return Number.isNaN(d.getTime()) ? t : d.toISOString().slice(0, 19).replace("T", " ");
     };
 
     const dbPath = join(DATA_DIR, "events.db");
