@@ -4338,7 +4338,9 @@ When users create specialized instances, suggest these configurations:
   /** Read recent chat log for agent context */
   private getRecentChatLog(instanceName: string, maxLines = 10): string | undefined {
     const logDir = ClassicChannelManager.chatLogDir(instanceName);
-    const today = new Date().toISOString().slice(0, 10);
+    // Use local timezone for date — must match logMessage's write path
+    const tz = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const today = new Date().toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10);
     const logFile = join(logDir, `${today}.log`);
     try {
       if (!existsSync(logFile)) return undefined;
