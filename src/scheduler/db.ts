@@ -12,7 +12,8 @@ export class SchedulerDb {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS schedules (
         id              TEXT PRIMARY KEY,
-        cron            TEXT NOT NULL,
+        cron            TEXT,
+        at              TEXT,
         message         TEXT NOT NULL,
         source          TEXT NOT NULL,
         target          TEXT NOT NULL,
@@ -51,6 +52,8 @@ export class SchedulerDb {
       CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
     `);
 
+    this.migrateScheduleTimingColumns();
+
     // Migration: add scope column to existing decisions tables that lack it
     const cols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
     if (cols.length > 0 && !cols.some(c => c.name === "scope")) {
@@ -78,10 +81,69 @@ export class SchedulerDb {
     `);
   }
 
+  /**
+   * v2.1 migration: legacy databases have `cron TEXT NOT NULL`, which cannot
+   * represent one-shot schedules. SQLite cannot drop a NOT NULL constraint in
+   * place, so rebuild only the parent table while foreign-key enforcement is
+   * temporarily disabled. `schedule_runs` keeps referencing the final
+   * `schedules` table and all existing rows are preserved.
+   */
+  private migrateScheduleTimingColumns(): void {
+    const columns = this.db.prepare("PRAGMA table_info(schedules)").all() as Array<{
+      name: string;
+      notnull: number;
+    }>;
+    const cron = columns.find(column => column.name === "cron");
+    const hasAt = columns.some(column => column.name === "at");
+
+    if (cron?.notnull !== 1) {
+      if (!hasAt) this.db.exec("ALTER TABLE schedules ADD COLUMN at TEXT");
+      return;
+    }
+
+    this.db.pragma("foreign_keys = OFF");
+    try {
+      this.db.transaction(() => {
+        this.db.exec(`
+          DROP TABLE IF EXISTS schedules_timing_migration;
+          CREATE TABLE schedules_timing_migration (
+            id                TEXT PRIMARY KEY,
+            cron              TEXT,
+            at                TEXT,
+            message           TEXT NOT NULL,
+            source            TEXT NOT NULL,
+            target            TEXT NOT NULL,
+            reply_chat_id     TEXT NOT NULL,
+            reply_thread_id   TEXT,
+            label             TEXT,
+            enabled           INTEGER DEFAULT 1,
+            timezone          TEXT DEFAULT 'Asia/Taipei',
+            created_at        TEXT NOT NULL,
+            last_triggered_at TEXT,
+            last_status       TEXT
+          );
+          INSERT INTO schedules_timing_migration
+            (id, cron, at, message, source, target, reply_chat_id, reply_thread_id,
+             label, enabled, timezone, created_at, last_triggered_at, last_status)
+          SELECT
+            id, cron, ${hasAt ? "at" : "NULL"}, message, source, target, reply_chat_id,
+            reply_thread_id, label, enabled, timezone, created_at,
+            last_triggered_at, last_status
+          FROM schedules;
+          DROP TABLE schedules;
+          ALTER TABLE schedules_timing_migration RENAME TO schedules;
+        `);
+      })();
+    } finally {
+      this.db.pragma("foreign_keys = ON");
+    }
+  }
+
   private rowToSchedule(row: Record<string, unknown>): Schedule {
     return {
       id: row.id as string,
-      cron: row.cron as string,
+      cron: row.cron as string | null,
+      at: row.at as string | null,
       message: row.message as string,
       source: row.source as string,
       target: row.target as string,
@@ -105,9 +167,9 @@ export class SchedulerDb {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO schedules (id, cron, message, source, target, reply_chat_id, reply_thread_id, label, timezone, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.cron, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.label ?? null, params.timezone ?? "Asia/Taipei", now);
+      INSERT INTO schedules (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, label, timezone, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, params.cron ?? null, params.at ?? null, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.label ?? null, params.timezone ?? "Asia/Taipei", now);
 
     return this.get(id)!;
   }
@@ -135,7 +197,14 @@ export class SchedulerDb {
       const sets: string[] = [];
       const values: unknown[] = [];
 
-      if (params.cron !== undefined) { sets.push("cron = ?"); values.push(params.cron); }
+      if (params.cron !== undefined) {
+        sets.push("cron = ?", "at = NULL");
+        values.push(params.cron);
+      }
+      if (params.at !== undefined) {
+        sets.push("at = ?", "cron = NULL");
+        values.push(params.at);
+      }
       if (params.message !== undefined) { sets.push("message = ?"); values.push(params.message); }
       if (params.target !== undefined) { sets.push("target = ?"); values.push(params.target); }
       if (params.label !== undefined) { sets.push("label = ?"); values.push(params.label); }

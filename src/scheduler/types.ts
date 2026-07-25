@@ -1,6 +1,8 @@
 export interface Schedule {
   id: string;
-  cron: string;
+  cron: string | null;
+  /** ISO-8601 timestamp for a one-shot schedule. Mutually exclusive with cron. */
+  at: string | null;
   message: string;
   source: string;
   target: string;
@@ -23,7 +25,8 @@ export interface ScheduleRun {
 }
 
 export interface CreateScheduleParams {
-  cron: string;
+  cron?: string | null;
+  at?: string | null;
   message: string;
   source: string;
   target: string;
@@ -34,7 +37,8 @@ export interface CreateScheduleParams {
 }
 
 export interface UpdateScheduleParams {
-  cron?: string;
+  cron?: string | null;
+  at?: string | null;
   message?: string;
   target?: string;
   label?: string;

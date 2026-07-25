@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 import { SchedulerDb } from "./db.js";
 
 describe("SchedulerDb", () => {
@@ -41,6 +42,60 @@ describe("SchedulerDb", () => {
 
     const fetched = db.get(s.id);
     expect(fetched).toEqual(s);
+  });
+
+  it("creates and lists a one-shot schedule with nullable cron", () => {
+    const at = "2026-07-26T14:00:00+08:00";
+    const schedule = db.create({
+      at,
+      message: "one time",
+      source: "proj-a",
+      target: "proj-a",
+      reply_chat_id: "1",
+      reply_thread_id: null,
+    });
+
+    expect(schedule.cron).toBeNull();
+    expect(schedule.at).toBe(at);
+    expect(db.list()).toEqual([schedule]);
+  });
+
+  it("migrates legacy NOT NULL cron tables without losing schedules or runs", () => {
+    const dbPath = join(dir, "scheduler.db");
+    db.close();
+    const legacy = new Database(dbPath);
+    legacy.exec(`
+      DROP TABLE schedule_runs;
+      DROP TABLE schedules;
+      CREATE TABLE schedules (
+        id TEXT PRIMARY KEY, cron TEXT NOT NULL, message TEXT NOT NULL,
+        source TEXT NOT NULL, target TEXT NOT NULL, reply_chat_id TEXT NOT NULL,
+        reply_thread_id TEXT, label TEXT, enabled INTEGER DEFAULT 1,
+        timezone TEXT DEFAULT 'Asia/Taipei', created_at TEXT NOT NULL,
+        last_triggered_at TEXT, last_status TEXT
+      );
+      CREATE TABLE schedule_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        schedule_id TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+        triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+        status TEXT NOT NULL, detail TEXT
+      );
+      INSERT INTO schedules
+        (id, cron, message, source, target, reply_chat_id, created_at)
+      VALUES ('legacy', '0 7 * * *', 'hello', 'a', 'a', '1', '2026-01-01T00:00:00.000Z');
+      INSERT INTO schedule_runs (schedule_id, status) VALUES ('legacy', 'delivered');
+    `);
+    legacy.close();
+
+    db = new SchedulerDb(dbPath);
+    const columns = db["db"].prepare("PRAGMA table_info(schedules)").all() as Array<{ name: string; notnull: number }>;
+    expect(columns.find(column => column.name === "cron")?.notnull).toBe(0);
+    expect(columns.some(column => column.name === "at")).toBe(true);
+    expect(db.get("legacy")).toMatchObject({ cron: "0 7 * * *", at: null });
+    expect(db.getRuns("legacy")).toHaveLength(1);
+
+    db.delete("legacy");
+    expect(db.getRuns("legacy")).toHaveLength(0);
   });
 
   it("lists schedules with optional target filter", () => {

@@ -49,7 +49,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["validate_config", schemas.ValidateConfigArgs,
     "Validate the fleet's config. Reads fleet.yaml + classicBot.yaml and returns { fleet, classic } validation results, each with errors[] and warnings[]."],
   ["create_schedule", schemas.CreateScheduleArgs,
-    "Create a cron-based schedule. When triggered, sends a message to the target instance."],
+    "Create a recurring cron schedule or a one-shot ISO datetime schedule. When triggered, sends a message to the target instance."],
   ["list_schedules", schemas.ListSchedulesArgs,
     "List all schedules. Optionally filter by target instance."],
   ["update_schedule", schemas.UpdateScheduleArgs,
