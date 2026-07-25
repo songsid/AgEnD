@@ -2836,7 +2836,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       switch (msg.type) {
         case "fleet_schedule_create": {
           const params = {
-            cron: payload.cron as string,
+            cron: payload.cron as string | undefined,
+            at: payload.at as string | undefined,
             message: payload.message as string,
             source: instanceName,
             target: (payload.target as string) || instanceName,
@@ -2972,7 +2973,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     switch (op) {
       case "create":
         return this.scheduler.create({
-          cron: args.cron as string, message: args.message as string,
+          cron: args.cron as string | undefined,
+          at: args.at as string | undefined,
+          message: args.message as string,
           source: instance, target: (args.target as string) || instance,
           reply_chat_id: "", reply_thread_id: null,
           label: args.label as string | undefined,

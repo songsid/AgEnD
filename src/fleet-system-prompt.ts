@@ -50,7 +50,7 @@ User messages arrive as text in your prompt with a prefix:
 ### Scheduling
 | Tool | Purpose |
 |------|---------|
-| \`create_schedule\` | Create a cron-based scheduled task |
+| \`create_schedule\` | Create a recurring cron or one-shot scheduled task |
 | \`list_schedules\` | List all schedules |
 | \`update_schedule\` | Update a schedule |
 | \`delete_schedule\` | Delete a schedule |
