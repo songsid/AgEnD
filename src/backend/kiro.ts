@@ -104,6 +104,7 @@ export class KiroBackend implements CliBackend {
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /having trouble responding/i, type: "rate_limit", action: "notify", message: "Rate limit (having trouble responding)" },
+      { pattern: /model.*not available|Please use '\/model'/i, type: "model_error", action: "notify", message: "Model unavailable — use /model to switch" },
       { pattern: /Response timed out/i, type: "timeout", action: "notify", message: "Kiro response timed out (generation too long) — please try again", skipCooldown: true, skipRecoveryWait: true },
     ];
   }

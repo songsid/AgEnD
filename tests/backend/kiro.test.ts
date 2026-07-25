@@ -146,4 +146,20 @@ describe("KiroBackend", () => {
       expect(backend.getContextUsage()).toBeNull();
     });
   });
+
+  describe("getErrorPatterns", () => {
+    it.each([
+      "The selected model is not available",
+      "Please use '/model' to choose another model",
+    ])("notifies when Kiro requires a model switch: %s", (output) => {
+      const backend = new KiroBackend(TEST_DIR);
+      const error = backend.getErrorPatterns().find(({ pattern }) => pattern.test(output));
+
+      expect(error).toMatchObject({
+        type: "model_error",
+        action: "notify",
+        message: "Model unavailable — use /model to switch",
+      });
+    });
+  });
 });
