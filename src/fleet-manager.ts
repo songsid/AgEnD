@@ -4345,7 +4345,19 @@ When users create specialized instances, suggest these configurations:
     try {
       if (!existsSync(logFile)) return undefined;
       const lines = readFileSync(logFile, "utf-8").trim().split("\n");
-      return lines.slice(-maxLines).join("\n");
+      // The triggering message is written before forwardToClassicInstance runs
+      // and is included separately under [User message]. Exclude that newest
+      // log entry so the agent does not receive the same message twice. A chat
+      // message may span physical lines, so remove from its timestamped entry
+      // header rather than blindly dropping only the final continuation line.
+      const entryHeader = /^\[\d{4}-\d{2}-\d{2}T[^\]]+\] <.*> /;
+      let currentEntryStart = lines.length - 1;
+      while (currentEntryStart > 0 && !entryHeader.test(lines[currentEntryStart])) {
+        currentEntryStart--;
+      }
+      lines.splice(currentEntryStart);
+      if (lines.length === 0 || maxLines <= 0) return undefined;
+      return lines.slice(-maxLines).join("\n") || undefined;
     } catch { return undefined; }
   }
 

@@ -68,6 +68,56 @@ describe("FleetManager", () => {
     expect(readClassicLastActivityAt(tmpDir, "classic-active")).toBe(2_000);
   });
 
+  it("excludes the triggering ClassicBot message from forwarded chat-log context", async () => {
+    const previousHome = process.env.AGEND_HOME;
+    process.env.AGEND_HOME = tmpDir;
+    try {
+      const fm = new FleetManager(tmpDir);
+      fm.classicChannels = {
+        getAdapterIdByInstance: () => "discord",
+        getChannelIdByInstance: () => "classic-channel",
+        getContextLines: () => 5,
+      } as any;
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue();
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+
+      const tz = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const today = new Date().toLocaleString("sv-SE", { timeZone: tz, hour12: false }).slice(0, 10);
+      const logDir = join(tmpDir, "workspaces", "classic-dedup", "chat-logs");
+      mkdirSync(logDir, { recursive: true });
+      const logFile = join(logDir, `${today}.log`);
+      const priorLine = `[${today}T09:00:00] <alice> earlier background message`;
+      const currentLine = `[${today}T09:01:00] <bob> /chat current message\nsecond current line`;
+      writeFileSync(logFile, `${priorLine}\n${currentLine}\n`);
+
+      const msg = {
+        chatId: "classic-channel",
+        messageId: "message-1",
+        userId: "user-1",
+        username: "bob",
+        source: "discord",
+        timestamp: new Date(),
+        adapterId: "discord",
+      };
+      await (fm as any).forwardToClassicInstance("classic-dedup", "current message\nsecond current line", msg);
+
+      const firstContent = deliver.mock.calls[0][1].content as string;
+      expect(firstContent).toContain(`[Chat log for context]\n${priorLine}`);
+      expect(firstContent).not.toContain(currentLine);
+      expect(firstContent.match(/current message/g)).toHaveLength(1);
+      expect(firstContent.match(/second current line/g)).toHaveLength(1);
+
+      deliver.mockClear();
+      writeFileSync(logFile, `${currentLine}\n`);
+      await (fm as any).forwardToClassicInstance("classic-dedup", "current message\nsecond current line", msg);
+
+      expect(deliver.mock.calls[0][1].content).toBe("current message\nsecond current line");
+    } finally {
+      if (previousHome === undefined) delete process.env.AGEND_HOME;
+      else process.env.AGEND_HOME = previousHome;
+    }
+  });
+
   it("detects crashed instance (stale PID)", () => {
     const fm = new FleetManager(tmpDir);
     const dir = join(tmpDir, "instances/test");
