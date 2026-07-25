@@ -151,3 +151,108 @@ describe("Daemon failover cooldown", () => {
     expect((daemon as any).lastFailoverAt).toBe(0);
   });
 });
+
+describe("Daemon error monitor recovery", () => {
+  let tmpDir: string;
+  let daemon: Daemon;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `agend-error-monitor-${process.pid}-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    const backend = new ClaudeCodeBackend(tmpDir);
+    daemon = new Daemon("test-errors", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("re-notifies after the recovery deadline when ready never matches", () => {
+    const errors: unknown[] = [];
+    daemon.on("pty_error", error => errors.push(error));
+    const pattern = {
+      pattern: /AUTH_EXPIRED/,
+      type: "auth_error",
+      action: "notify",
+      message: "login required",
+    };
+    const now = 1_000_000;
+    const timeout = (Daemon as any).ERROR_RECOVERY_TIMEOUT_MS;
+
+    (daemon as any).evaluateErrorPatterns("AUTH_EXPIRED", [pattern], /READY/, now);
+    expect(errors).toHaveLength(1);
+    expect((daemon as any).errorWaitingForRecovery).toBe(true);
+
+    (daemon as any).evaluateErrorPatterns("AUTH_EXPIRED", [pattern], /READY/, now + timeout);
+    expect(errors).toHaveLength(1);
+
+    (daemon as any).evaluateErrorPatterns("AUTH_EXPIRED", [pattern], /READY/, now + timeout + 1);
+    expect(errors).toHaveLength(2);
+    expect((daemon as any).errorRecoveryDeadlineAt).toBe(now + 2 * timeout + 1);
+  });
+
+  it("tracks count and cooldown independently for patterns with the same type", () => {
+    const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const patterns = [
+      { pattern: /LOGIN_EXPIRED/, type: "auth_error", action: "notify", message: "login", skipRecoveryWait: true },
+      { pattern: /API_UNAUTHORIZED/, type: "auth_error", action: "notify", message: "api", skipRecoveryWait: true },
+    ];
+    const now = 1_000_000;
+
+    (daemon as any).evaluateErrorPatterns("LOGIN_EXPIRED", patterns, /READY/, now);
+    (daemon as any).evaluateErrorPatterns("API_UNAUTHORIZED", patterns, /READY/, now + 1);
+
+    expect(messages).toEqual(["login", "api"]);
+    expect((daemon as any).lastErrorCount.size).toBe(2);
+    expect((daemon as any).lastErrorNotifiedAt.size).toBe(2);
+  });
+
+  it("absorbs the exact active pattern on recovery when types are shared", () => {
+    const patterns = [
+      { pattern: /LOGIN_EXPIRED/, type: "auth_error", action: "notify", message: "login" },
+      { pattern: /API_UNAUTHORIZED/, type: "auth_error", action: "notify", message: "api" },
+    ];
+    const now = 1_000_000;
+    const loginKey = (Daemon as any).errorPatternKey(patterns[0]);
+    const apiKey = (Daemon as any).errorPatternKey(patterns[1]);
+
+    (daemon as any).evaluateErrorPatterns("API_UNAUTHORIZED", patterns, /READY/, now);
+    (daemon as any).evaluateErrorPatterns("API_UNAUTHORIZED\nREADY", patterns, /READY/, now + 1);
+
+    expect((daemon as any).lastErrorCount.get(apiKey)).toBe(1);
+    expect((daemon as any).lastErrorCount.has(loginKey)).toBe(false);
+    expect((daemon as any).errorWaitingForRecovery).toBe(false);
+  });
+
+  it("continues to later patterns when the first is in cooldown", () => {
+    const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const patterns = [
+      { pattern: /FIRST_ERROR/, type: "auth_error", action: "notify", message: "first", skipRecoveryWait: true },
+      { pattern: /SECOND_ERROR/, type: "model_error", action: "notify", message: "second", skipRecoveryWait: true },
+    ];
+    const now = 1_000_000;
+    const firstKey = (Daemon as any).errorPatternKey(patterns[0]);
+    (daemon as any).lastErrorNotifiedAt.set(firstKey, now);
+
+    (daemon as any).evaluateErrorPatterns("FIRST_ERROR\nSECOND_ERROR", patterns, /READY/, now + 1);
+
+    expect(messages).toEqual(["second"]);
+    expect((daemon as any).lastErrorCount.has(firstKey)).toBe(false);
+  });
+
+  it("clears the recovery gate after a crash respawn reaches running", () => {
+    (daemon as any).errorWaitingForRecovery = true;
+    (daemon as any).errorDetectedAt = 100;
+    (daemon as any).errorRecoveryDeadlineAt = 200;
+    (daemon as any).activeErrorPatternKey = "auth_error:AUTH";
+
+    (daemon as any).setProcessStatus("crashed");
+    (daemon as any).setProcessStatus("running");
+
+    expect((daemon as any).errorWaitingForRecovery).toBe(false);
+    expect((daemon as any).errorRecoveryDeadlineAt).toBe(0);
+    expect((daemon as any).activeErrorPatternKey).toBeNull();
+  });
+});
