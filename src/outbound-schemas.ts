@@ -44,13 +44,19 @@ export const ValidateConfigArgs = z.object({});
 // ── Schedules ───────────────────────────────────────────────────────────
 
 export const CreateScheduleArgs = z.object({
-  cron: NonEmptyString.describe("Cron expression, e.g. '0 7 * * *' (every day at 7 AM)"),
+  cron: NonEmptyString.optional()
+    .describe("Recurring cron expression, e.g. '0 7 * * *'. Mutually exclusive with at."),
+  at: z.string().datetime({ offset: true }).optional()
+    .describe("One-shot ISO-8601 datetime with offset, e.g. '2026-07-26T14:00:00+08:00'. Mutually exclusive with cron."),
   message: NonEmptyString.describe("Message to inject when triggered"),
   target: z.string().optional()
     .describe("Target instance name. Defaults to this instance if omitted."),
   label: z.string().optional().describe("Human-readable name for this schedule"),
   timezone: z.string().optional()
     .describe("IANA timezone, e.g. 'Asia/Taipei'. Defaults to Asia/Taipei."),
+}).refine(data => (data.cron ? 1 : 0) + (data.at ? 1 : 0) === 1, {
+  message: "Exactly one of cron or at is required",
+  path: ["cron"],
 });
 
 export const ListSchedulesArgs = z.object({
@@ -59,12 +65,16 @@ export const ListSchedulesArgs = z.object({
 
 export const UpdateScheduleArgs = z.object({
   id: NonEmptyString.describe("Schedule ID"),
-  cron: z.string().optional().describe("New cron expression"),
+  cron: NonEmptyString.optional().describe("New recurring cron expression; clears at"),
+  at: z.string().datetime({ offset: true }).optional().describe("New one-shot ISO datetime; clears cron"),
   message: z.string().optional().describe("New message"),
   target: z.string().optional().describe("New target instance"),
   label: z.string().optional().describe("New label"),
   timezone: z.string().optional().describe("New timezone"),
   enabled: z.boolean().optional().describe("Enable/disable the schedule"),
+}).refine(data => !(data.cron && data.at), {
+  message: "cron and at are mutually exclusive",
+  path: ["cron"],
 });
 
 export const DeleteScheduleArgs = z.object({

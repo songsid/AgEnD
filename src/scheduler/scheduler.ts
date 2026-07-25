@@ -1,7 +1,6 @@
 import { Cron } from "croner";
 import { SchedulerDb } from "./db.js";
 import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun } from "./types.js";
-import type { Logger } from "../logger.js";
 import { validateTimezone } from "../config.js";
 
 export class Scheduler {
@@ -9,9 +8,12 @@ export class Scheduler {
    * dozens of "morning standup" pings on the user after a long outage,
    * while still recovering from short crashes/restarts. */
   private static readonly CATCHUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+  /** Node clamps larger setTimeout delays to 1ms. Re-arm long schedules in chunks. */
+  private static readonly MAX_TIMEOUT_MS = 2_147_000_000;
 
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
+  private oneShotTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
   private onTrigger: (schedule: Schedule) => void | Promise<void>;
   private config: SchedulerConfig;
   private isValidInstance: (name: string) => boolean;
@@ -49,6 +51,7 @@ export class Scheduler {
     const cutoff = now - Scheduler.CATCHUP_WINDOW_MS;
     for (const schedule of this.db.list()) {
       if (!schedule.enabled) continue;
+      if (schedule.at) continue; // one-shots are registered directly below
 
       const refIso = schedule.last_triggered_at ?? schedule.created_at;
       // SQLite datetime('now') stores UTC without 'Z' suffix — append it for correct parsing
@@ -56,6 +59,7 @@ export class Scheduler {
       if (Number.isNaN(refMs)) continue;
 
       try {
+        if (!schedule.cron) continue;
         const cron = new Cron(schedule.cron, { timezone: schedule.timezone });
         const next = cron.nextRun(new Date(refMs));
         if (!next) continue;
@@ -84,11 +88,7 @@ export class Scheduler {
   create(params: CreateScheduleParams): Schedule {
     const tz = params.timezone ?? this.config.default_timezone;
     validateTimezone(tz, "timezone");
-    try {
-      new Cron(params.cron, { timezone: tz });
-    } catch (err) {
-      throw new Error(`Invalid cron expression: ${(err as Error).message}`);
-    }
+    this.validateTiming(params.cron, params.at, tz);
 
     // `__`-prefixed target names are reserved for fleet-internal use.
     if (params.target.startsWith("__")) throw new Error("Reserved target name");
@@ -110,16 +110,17 @@ export class Scheduler {
   }
 
   update(id: string, params: UpdateScheduleParams): Schedule {
+    const existing = this.db.get(id);
+    if (!existing) throw new Error(`Schedule "${id}" not found`);
     if (params.timezone !== undefined) {
       validateTimezone(params.timezone, "timezone");
     }
-    if (params.cron !== undefined) {
-      try {
-        new Cron(params.cron, { timezone: params.timezone ?? this.db.get(id)?.timezone ?? this.config.default_timezone });
-      } catch (err) {
-        throw new Error(`Invalid cron expression: ${(err as Error).message}`);
-      }
+    if (params.cron !== undefined && params.at !== undefined) {
+      throw new Error("cron and at are mutually exclusive");
     }
+    const nextCron = params.cron !== undefined ? params.cron : params.at !== undefined ? null : existing.cron;
+    const nextAt = params.at !== undefined ? params.at : params.cron !== undefined ? null : existing.at;
+    this.validateTiming(nextCron, nextAt, params.timezone ?? existing.timezone);
 
     if (params.target !== undefined) {
       if (params.target.startsWith("__")) throw new Error("Reserved target name");
@@ -152,17 +153,26 @@ export class Scheduler {
    * the callback returns synchronously, throws, or settles a returned Promise. */
   private runWithLock(schedule: Schedule): void {
     this.executing.add(schedule.id);
+    const finish = () => {
+      this.executing.delete(schedule.id);
+      if (schedule.at) {
+        // A one-shot is consumed after the delivery attempt settles, so
+        // onTrigger can still record its run while the parent row exists.
+        this.stopJob(schedule.id);
+        try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+      }
+    };
     let result: void | Promise<void>;
     try {
       result = this.onTrigger(schedule);
     } catch (err) {
-      this.executing.delete(schedule.id);
+      finish();
       throw err;
     }
     if (result && typeof (result as Promise<void>).then === "function") {
-      (result as Promise<void>).finally(() => this.executing.delete(schedule.id));
+      void (result as Promise<void>).then(finish, finish);
     } else {
-      this.executing.delete(schedule.id);
+      finish();
     }
   }
 
@@ -193,6 +203,11 @@ export class Scheduler {
   }
 
   private registerJob(schedule: Schedule): void {
+    if (schedule.at) {
+      this.registerOneShot(schedule);
+      return;
+    }
+    if (!schedule.cron) return;
     const job = new Cron(schedule.cron, { timezone: schedule.timezone }, () => {
       const current = this.db.get(schedule.id);
       if (!current || !current.enabled) return;
@@ -210,6 +225,11 @@ export class Scheduler {
       job.stop();
       this.jobs.delete(id);
     }
+    const timer = this.oneShotTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.oneShotTimers.delete(id);
+    }
   }
 
   private stopAllJobs(): void {
@@ -217,5 +237,62 @@ export class Scheduler {
       job.stop();
     }
     this.jobs.clear();
+    for (const timer of this.oneShotTimers.values()) clearTimeout(timer);
+    this.oneShotTimers.clear();
+  }
+
+  private registerOneShot(schedule: Schedule): void {
+    const atMs = this.parseAt(schedule.at!);
+    const arm = () => {
+      const current = this.db.get(schedule.id);
+      if (!current || !current.enabled || !current.at) {
+        this.oneShotTimers.delete(schedule.id);
+        return;
+      }
+      const remaining = atMs - Date.now();
+      if (remaining > Scheduler.MAX_TIMEOUT_MS) {
+        const timer = setTimeout(arm, Scheduler.MAX_TIMEOUT_MS);
+        this.oneShotTimers.set(schedule.id, timer);
+        return;
+      }
+      const timer = setTimeout(() => {
+        this.oneShotTimers.delete(schedule.id);
+        const due = this.db.get(schedule.id);
+        if (!due || !due.enabled || !due.at || this.executing.has(due.id)) return;
+        this.runWithLock(due);
+      }, Math.max(0, remaining));
+      this.oneShotTimers.set(schedule.id, timer);
+    };
+    arm();
+  }
+
+  private validateTiming(cron: string | null | undefined, at: string | null | undefined, timezone: string): void {
+    const hasCron = typeof cron === "string" && cron.trim().length > 0;
+    const hasAt = typeof at === "string" && at.trim().length > 0;
+    if (hasCron === hasAt) {
+      throw new Error("Exactly one of cron or at is required");
+    }
+    if (hasCron) {
+      try {
+        new Cron(cron!, { timezone });
+      } catch (err) {
+        throw new Error(`Invalid cron expression: ${(err as Error).message}`);
+      }
+      return;
+    }
+    this.parseAt(at!);
+  }
+
+  private parseAt(at: string): number {
+    // Require an explicit UTC offset (or Z) so a fleet restart on a host with a
+    // different local timezone cannot silently move the scheduled instant.
+    if (!/T.*(?:Z|[+-]\d{2}:\d{2})$/i.test(at)) {
+      throw new Error("Invalid at datetime: use ISO-8601 with timezone offset");
+    }
+    const timestamp = Date.parse(at);
+    if (!Number.isFinite(timestamp)) {
+      throw new Error("Invalid at datetime: use ISO-8601 with timezone offset");
+    }
+    return timestamp;
   }
 }
