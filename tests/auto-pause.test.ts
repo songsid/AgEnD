@@ -128,9 +128,16 @@ describe("Daemon auto-pause lifecycle", () => {
     expect(existsSync(join(instanceDir, "paused"))).toBe(true);
 
     const trySpawn = vi.spyOn(daemon as any, "trySpawn").mockResolvedValue(true);
+    (daemon as any).errorWaitingForRecovery = true;
+    (daemon as any).errorDetectedAt = 100;
+    (daemon as any).errorRecoveryDeadlineAt = 200;
+    (daemon as any).activeErrorPatternKey = "auth_error:AUTH";
     await daemon.wake(1_000);
     expect(trySpawn).toHaveBeenCalledWith(true, 1_000);
     expect(daemon.isPaused).toBe(false);
+    expect((daemon as any).errorWaitingForRecovery).toBe(false);
+    expect((daemon as any).errorRecoveryDeadlineAt).toBe(0);
+    expect((daemon as any).activeErrorPatternKey).toBeNull();
     expect(existsSync(join(instanceDir, "paused"))).toBe(false);
     (daemon as any).freezeRuntimeMonitors();
   });

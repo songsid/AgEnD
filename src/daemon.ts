@@ -356,6 +356,8 @@ export class Daemon extends EventEmitter {
   private runtimeMonitorsFrozen = false;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
   private errorDetectedAt = 0;
+  private errorRecoveryDeadlineAt = 0;
+  private activeErrorPatternKey: string | null = null;
 
   /** Whether this instance is in an abnormal error state (auto-pause is normal). */
   get isErrorState(): boolean {
@@ -374,10 +376,11 @@ export class Daemon extends EventEmitter {
   }
   private lastFailoverAt = 0; // cooldown: prevent repeated failover triggers
   private static FAILOVER_COOLDOWN_MS = 5 * 60_000; // 5 minutes
-  private lastErrorNotifiedAt = new Map<string, number>(); // per-type cooldown for all actions
+  private lastErrorNotifiedAt = new Map<string, number>(); // per-pattern cooldown for all actions
   private static ERROR_COOLDOWN_MS = 5 * 60_000;
+  private static ERROR_RECOVERY_TIMEOUT_MS = 5 * 60_000;
 
-  // Count-based dedup: per error type, the number of pattern occurrences already
+  // Count-based dedup: per error pattern, the number of occurrences already
   // accounted for. A scan counts occurrences across the WHOLE pane; count > this
   // baseline means a NEW error appeared. On recovery we absorb the current count
   // (not reset to 0) so the just-handled error doesn't re-trigger, while a later
@@ -386,6 +389,17 @@ export class Daemon extends EventEmitter {
   // still registers as new (prevents the old hash-dedup's permanent suppression).
   private lastErrorCount = new Map<string, number>();
   private lastDetectedErrorType: string | null = null;
+
+  private static errorPatternKey(ep: ErrorPattern): string {
+    return `${ep.type}:${ep.pattern.source}`;
+  }
+
+  private clearErrorRecoveryGate(): void {
+    this.errorWaitingForRecovery = false;
+    this.errorDetectedAt = 0;
+    this.errorRecoveryDeadlineAt = 0;
+    this.activeErrorPatternKey = null;
+  }
 
   constructor(
     private name: string,
@@ -976,6 +990,10 @@ export class Daemon extends EventEmitter {
     if (this.processStatus === status) return;
     this.processStatus = status;
     if (status === "running") {
+      // A successful crash respawn is a new pane generation. It is ready by
+      // this point, so an error gate inherited from the dead pane must not keep
+      // the new process from being monitored.
+      this.clearErrorRecoveryGate();
       this.startInstanceStateMonitor();
     } else {
       this.stopInstanceStateMonitor();
@@ -1017,14 +1035,6 @@ export class Daemon extends EventEmitter {
 
         const pane = await this.tmux.capturePane();
 
-        // Count occurrences of a pattern across the WHOLE pane (not just the text
-        // after the last ready prompt — a fast recovery can put "ready" AFTER the
-        // error line, which the old scanText approach missed).
-        const countMatches = (pattern: RegExp): number => {
-          const g = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g");
-          return (pane.match(g) || []).length;
-        };
-
         // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
         for (const dialog of dialogs) {
           if (!dialog.pattern.test(pane)) continue;
@@ -1041,73 +1051,103 @@ export class Daemon extends EventEmitter {
           return; // Dialog dismissed, skip error checks this cycle
         }
 
-        // State: waiting for recovery — check if agent is back to ready
-        if (this.errorWaitingForRecovery) {
-          if (readyPattern.test(pane)) {
-            const downtime = Math.round((Date.now() - this.errorDetectedAt) / 1000);
-            // Absorb the current count of the just-handled error type so it isn't
-            // re-triggered; a later NEW occurrence pushes the count higher again.
-            if (this.lastDetectedErrorType) {
-              const ep = patterns.find(p => p.type === this.lastDetectedErrorType);
-              if (ep) this.lastErrorCount.set(ep.type, countMatches(ep.pattern));
-            }
-            this.errorWaitingForRecovery = false;
-            this.errorDetectedAt = 0;
-            this.logger.info({ downtime_s: downtime }, "PTY error recovered — agent is ready again");
-            this.emit("pty_recovered", { name: this.name, downtime_s: downtime });
-          }
-          return; // Don't check for errors while waiting for recovery
-        }
-
-        // State: monitoring — count-based new-error detection over the full pane
-        for (const ep of patterns) {
-          const count = countMatches(ep.pattern);
-          const seen = this.lastErrorCount.get(ep.type) ?? 0;
-
-          if (count <= seen) {
-            // Occurrences scrolled out of the capture buffer → lower the baseline
-            // so a future re-occurrence still counts as new (no permanent suppress).
-            if (count < seen) this.lastErrorCount.set(ep.type, count);
-            continue;
-          }
-
-          // count > seen → a NEW occurrence of this error appeared.
-          // Cooldown: 2nd-layer guard so the same type isn't re-notified within
-          // the window. Leave the count unconsumed so it fires once cooldown ends.
-          if (!ep.skipCooldown) {
-            const lastNotified = this.lastErrorNotifiedAt.get(ep.type) ?? 0;
-            if (Date.now() - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
-              this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
-              break;
-            }
-          }
-          if (ep.action === "failover" && Date.now() - this.lastFailoverAt < Daemon.FAILOVER_COOLDOWN_MS) {
-            this.logger.debug({ errorType: ep.type }, "PTY error suppressed (failover cooldown active)");
-            break;
-          }
-
-          this.lastErrorCount.set(ep.type, count);
-          // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
-          // back at its prompt immediately). Its ready-pattern only matches the
-          // startup banner, so entering "waiting for recovery" would never clear
-          // and would block ALL future error detection. Just absorb the baseline
-          // (done above) and keep monitoring so the next occurrence still fires.
-          if (!ep.skipRecoveryWait) {
-            this.errorWaitingForRecovery = true;
-            this.errorDetectedAt = Date.now();
-            this.lastDetectedErrorType = ep.type;
-          }
-          this.lastErrorNotifiedAt.set(ep.type, Date.now());
-          if (ep.action === "failover") this.lastFailoverAt = Date.now();
-          this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
-          this.emit("pty_error", { name: this.name, ...ep });
-
-          break; // Only handle first new error per scan
-        }
+        this.evaluateErrorPatterns(pane, patterns, readyPattern);
       } catch {
         // capturePane can fail if window is transitioning — ignore
       }
     }, 5_000); // Check every 5 seconds (runtime dialogs need fast response)
+  }
+
+  /** Evaluate one pane snapshot. Kept synchronous so state-machine edges are unit-testable. */
+  private evaluateErrorPatterns(
+    pane: string,
+    patterns: ErrorPattern[],
+    readyPattern: RegExp,
+    now = Date.now(),
+  ): void {
+    // Count occurrences across the WHOLE pane (not just text after the last
+    // ready prompt). Clone with `g` so stateful backend regexes cannot leak
+    // lastIndex between monitor cycles.
+    const countMatches = (pattern: RegExp): number => {
+      const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
+      return (pane.match(new RegExp(pattern.source, flags)) || []).length;
+    };
+
+    // State: waiting for recovery. A missing/outdated ready pattern must not
+    // suppress every future error forever, so the gate has a hard deadline.
+    if (this.errorWaitingForRecovery) {
+      if (readyPattern.test(pane)) {
+        const downtime = Math.round((now - this.errorDetectedAt) / 1000);
+        const active = patterns.find(ep => Daemon.errorPatternKey(ep) === this.activeErrorPatternKey);
+        if (active) {
+          this.lastErrorCount.set(Daemon.errorPatternKey(active), countMatches(active.pattern));
+        }
+        this.clearErrorRecoveryGate();
+        this.logger.info({ downtime_s: downtime }, "PTY error recovered — agent is ready again");
+        this.emit("pty_recovered", { name: this.name, downtime_s: downtime });
+        return;
+      }
+      if (now <= this.errorRecoveryDeadlineAt) return;
+
+      // Re-arm the active occurrence as a reminder. Without lowering its
+      // baseline, clearing the gate alone would still leave count === seen and
+      // could never satisfy the promised post-timeout re-notification.
+      const active = patterns.find(ep => Daemon.errorPatternKey(ep) === this.activeErrorPatternKey);
+      if (active) {
+        const key = Daemon.errorPatternKey(active);
+        const count = countMatches(active.pattern);
+        if (count > 0) this.lastErrorCount.set(key, count - 1);
+      }
+      this.logger.warn({ errorType: this.lastDetectedErrorType }, "PTY error recovery deadline expired — resuming error scan");
+      this.clearErrorRecoveryGate();
+    }
+
+    // State: monitoring — count-based new-error detection over the full pane.
+    for (const ep of patterns) {
+      const key = Daemon.errorPatternKey(ep);
+      const count = countMatches(ep.pattern);
+      const seen = this.lastErrorCount.get(key) ?? 0;
+
+      if (count <= seen) {
+        // Occurrences scrolled out of the capture buffer → lower the baseline
+        // so a future re-occurrence still counts as new (no permanent suppress).
+        if (count < seen) this.lastErrorCount.set(key, count);
+        continue;
+      }
+
+      // count > seen → a NEW occurrence of this exact pattern appeared.
+      // Leave a cooldown-suppressed count unconsumed so it can fire once the
+      // cooldown expires, but continue scanning unrelated patterns this cycle.
+      if (!ep.skipCooldown) {
+        const lastNotified = this.lastErrorNotifiedAt.get(key) ?? 0;
+        if (now - lastNotified < Daemon.ERROR_COOLDOWN_MS) {
+          this.logger.debug({ errorType: ep.type }, "PTY error suppressed (cooldown active)");
+          continue;
+        }
+      }
+      if (ep.action === "failover" && now - this.lastFailoverAt < Daemon.FAILOVER_COOLDOWN_MS) {
+        this.logger.debug({ errorType: ep.type }, "PTY error suppressed (failover cooldown active)");
+        continue;
+      }
+
+      this.lastErrorCount.set(key, count);
+      // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
+      // back at its prompt immediately). Keep monitoring so the next occurrence
+      // can fire without waiting for a possibly startup-only ready pattern.
+      if (!ep.skipRecoveryWait) {
+        this.errorWaitingForRecovery = true;
+        this.errorDetectedAt = now;
+        this.errorRecoveryDeadlineAt = now + Daemon.ERROR_RECOVERY_TIMEOUT_MS;
+        this.activeErrorPatternKey = key;
+        this.lastDetectedErrorType = ep.type;
+      }
+      this.lastErrorNotifiedAt.set(key, now);
+      if (ep.action === "failover") this.lastFailoverAt = now;
+      this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
+      this.emit("pty_error", { name: this.name, ...ep });
+
+      break; // Only handle first unsuppressed new error per scan
+    }
   }
 
   /**
@@ -1303,6 +1343,9 @@ export class Daemon extends EventEmitter {
       this.pauseWakeState = "active";
       this.healthCheckPaused = false;
       this.pauseRequested = false;
+      // trySpawn resolved only after the new CLI reached its ready prompt.
+      // Discard any recovery gate retained while monitors were frozen.
+      this.clearErrorRecoveryGate();
       clearPausedMarker(this.instanceDir);
       this.transcriptMonitor?.resetOffset();
       this.resumeRuntimeMonitors();
