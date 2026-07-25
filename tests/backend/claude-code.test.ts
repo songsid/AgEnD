@@ -152,6 +152,23 @@ describe("ClaudeCodeBackend", () => {
     });
   });
 
+  describe("getErrorPatterns", () => {
+    it.each([
+      "Login expired",
+      "Not logged in",
+      "Please run /login to continue",
+    ])("notifies when Claude requires re-login: %s", (output) => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const error = backend.getErrorPatterns().find(({ pattern }) => pattern.test(output));
+
+      expect(error).toMatchObject({
+        type: "auth_error",
+        action: "notify",
+        message: "Claude login expired — needs re-login (/login)",
+      });
+    });
+  });
+
   describe("session resume dialog", () => {
     it("selects the full session at startup instead of the summary", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);

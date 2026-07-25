@@ -104,6 +104,7 @@ export class ClaudeCodeBackend implements CliBackend {
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
+      { pattern: /Login expired|Not logged in|Please run \/login/i, type: "auth_error", action: "notify", message: "Claude login expired — needs re-login (/login)" },
       { pattern: /API Error: Authentication/i, type: "auth_error", action: "pause", message: "Authentication error" },
       { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
       { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },
