@@ -56,6 +56,19 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("Thinking...")).toBe(false);
   });
 
+  it("Antigravity notifies instead of restarting on authentication errors", async () => {
+    const { AntigravityBackend } = await import("../src/backend/antigravity.js");
+    const backend = new AntigravityBackend("/tmp/test");
+    const error = backend.getErrorPatterns().find(({ pattern }) =>
+      pattern.test("UNAUTHENTICATED"));
+
+    expect(error).toMatchObject({
+      type: "auth_error",
+      action: "notify",
+      message: "Antigravity authentication error — needs re-login",
+    });
+  });
+
   it("Gemini matches YOLO mode prompt", async () => {
     const { GeminiCliBackend } = await import("../src/backend/gemini-cli.js");
     const backend = new GeminiCliBackend("/tmp/test");
