@@ -4392,6 +4392,36 @@ When users create specialized instances, suggest these configurations:
     return null;
   }
 
+  /** Resolve the model currently configured for a fleet or ClassicBot instance. */
+  private currentModelForInstance(instanceName: string): string {
+    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    if (fleetInstance) {
+      const fleetModel = fleetInstance.model ?? this.fleetConfig?.defaults?.model;
+      if (fleetModel?.trim()) return fleetModel.trim();
+    }
+
+    const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
+    if (classic) {
+      const classicModel = this.classicChannels?.getModel(
+        classic.channelId,
+        classic.adapterId,
+        this.fleetConfig?.defaults?.model,
+      );
+      if (classicModel?.trim()) return classicModel.trim();
+    }
+
+    const cachedModel = this.readCliEnv(this.backendNameForInstance(instanceName))?.currentModel;
+    return cachedModel?.trim() || "default";
+  }
+
+  private modelChoiceLabel(
+    option: import("./backend/types.js").ModelOption,
+    currentModel: string,
+  ): string {
+    const label = option.description ? `${option.label} — ${option.description}` : option.label;
+    return option.id === currentModel ? `✓ ${label}` : label;
+  }
+
   /** Probe one backend's CLI env and cache it. Best-effort; never throws. */
   private async probeBackend(backend: string): Promise<import("./backend/types.js").CliEnv | null> {
     try {
@@ -4447,16 +4477,17 @@ When users create specialized instances, suggest these configurations:
     const options = await this.getModelOptions(name, isRefresh);
     if (options.length === 0) { await data.respond(`No model list available for ${name}. Type \`/model <name>\` to set one directly.`); return; }
 
+    const currentModel = this.currentModelForInstance(name);
     const nonce = randomBytes(6).toString("hex");
     const choices = options.slice(0, 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
-      label: o.description ? `${o.label} — ${o.description}` : o.label,
+      label: this.modelChoiceLabel(o, currentModel),
     }));
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
     this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
     try {
-      await data.respondChoices(`Choose a model for ${name}:`, choices);
+      await data.respondChoices(`Current model: **${currentModel}**\nSelect a new model:`, choices);
     } catch (err) {
       this.pendingModelSelects.delete(nonce);
       clearTimeout(timer);
@@ -4483,10 +4514,11 @@ When users create specialized instances, suggest these configurations:
       return `No model list available for ${instanceName}. Use \`/model <name>\` to set one directly.`;
     }
 
+    const currentModel = this.currentModelForInstance(instanceName);
     const nonce = randomBytes(6).toString("hex");
     const choices = options.slice(0, 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
-      label: o.description ? `${o.label} — ${o.description}` : o.label,
+      label: this.modelChoiceLabel(o, currentModel),
     }));
 
     const respond = async (text: string): Promise<string | undefined> => {
@@ -4506,7 +4538,7 @@ When users create specialized instances, suggest these configurations:
     this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
-      await adapter.promptUser(chatId, `Choose a model for ${instanceName}:`, choices, { threadId });
+      await adapter.promptUser(chatId, `Current model: ${currentModel}\nSelect a new model:`, choices, { threadId });
       return null; // menu shown
     } catch (err) {
       this.pendingModelSelects.delete(nonce);
