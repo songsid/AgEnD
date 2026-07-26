@@ -264,6 +264,14 @@ export class ClassicChannelManager {
     return !!list && list.length > 0 && list.some(id => String(id) === String(userId));
   }
 
+  /** Set the model override for the channel owning `instanceName` and persist. Returns true if found. */
+  setModelByInstance(instanceName: string, model: string): boolean {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) { ch.model = model; this.save(); return true; }
+    }
+    return false;
+  }
+
   /** Toggle collab mode for a channel. Returns new state. */
   toggleCollab(channelId: string, adapterId?: string): boolean {
     const ch = this.find(channelId, adapterId);

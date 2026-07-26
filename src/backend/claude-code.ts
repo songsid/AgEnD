@@ -140,6 +140,19 @@ export class ClaudeCodeBackend implements CliBackend {
 
   getCancelKey(): string { return "Escape"; }
 
+  // claude-code has a clean one-shot in-session `/model <name>` → runtime switch.
+  getModelSwitchStrategy(): "runtime" | "restart" { return "runtime"; }
+
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    return [
+      { id: "default", label: "default", description: "account default" },
+      { id: "sonnet", label: "sonnet" },
+      { id: "opus", label: "opus" },
+      { id: "haiku", label: "haiku" },
+      { id: "opusplan", label: "opusplan", description: "opus plans, sonnet executes" },
+    ];
+  }
+
   cleanup(_config: CliBackendConfig): void {
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
   }
