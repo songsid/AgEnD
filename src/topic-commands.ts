@@ -268,10 +268,18 @@ export class TopicCommands {
         return true;
       }
       const name = text.replace(/^\/model(@\S+)?/, "").trim();
-      const reply = name
-        ? await this.ctx.applyModel(instanceName, name)
-        : "Usage: /model <name> — e.g. /model sonnet";
-      await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      if (name) {
+        const reply = await this.ctx.applyModel(instanceName, name);
+        await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      } else if (this.ctx.promptModelMenu) {
+        // No arg → inline keyboard menu (TG)
+        const fallback = await this.ctx.promptModelMenu(
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+        );
+        if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
+      } else {
+        await adapter.sendText(msg.chatId, "Usage: /model <name> — e.g. /model sonnet", { threadId: msg.threadId });
+      }
       return true;
     }
 
