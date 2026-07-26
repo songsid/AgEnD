@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, isModelCompatible, resolveBinary } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
@@ -140,6 +141,25 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   // agy's documented interrupt is Ctrl+C (2-stage: 2nd press exits the CLI).
   // Escape also stops streams and can't exit the app, so it's the safer cancel.
   getCancelKey(): string { return "Escape"; }
+
+  // agy's model switch is an interactive TUI change → restart to apply reliably.
+  getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
+
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    // ⚠️ UNVERIFIED `agy models` format — best-effort. Strips the effort suffix
+    // (Medium/High/Low/Thinking) so the base name matches what fleet.yaml wants.
+    try {
+      const out = execFileSync(this.binaryPath, ["models"],
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const bases = new Set<string>();
+      for (const line of out.split("\n")) {
+        const base = line.trim().replace(/\s*\((Medium|High|Low|Thinking)\)\s*$/i, "").trim();
+        if (/[A-Za-z]/.test(base)) bases.add(base);
+      }
+      if (bases.size) return [...bases].map(id => ({ id, label: id }));
+    } catch { /* unknown format — fall back to free-text */ }
+    return [];
+  }
 
   getErrorPatterns(): ErrorPattern[] {
     return [

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
@@ -244,6 +245,26 @@ export class GrokBackend implements CliBackend {
 
   // Verified: grok interrupts generation on Ctrl+C.
   getCancelKey(): string { return "C-c"; }
+
+  // grok's in-session model switch is a picker → restart to apply reliably.
+  getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
+
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    // ⚠️ UNVERIFIED `grok models` format — best-effort; falls back to documented ids.
+    try {
+      const out = execFileSync(this.binaryPath, ["models"],
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const ids = [...new Set(out.split("\n")
+        .map(l => l.trim().split(/\s+/)[0])
+        .filter(id => /^grok[\w.-]*$/i.test(id)))];
+      if (ids.length) return ids.map(id => ({ id, label: id }));
+    } catch { /* fall back to documented set */ }
+    return [
+      { id: "grok-4.5", label: "grok-4.5" },
+      { id: "grok-4.3", label: "grok-4.3" },
+      { id: "grok-code", label: "grok-code" },
+    ];
+  }
 
   cleanup(config: CliBackendConfig): void {
     // Remove only this instance's namespaced MCP entries — a non-namespaced key
