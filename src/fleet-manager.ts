@@ -392,6 +392,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? this.routing.resolve(channelId)?.name;
   }
 
+  /**
+   * Model switching is privileged. Fleet allowlisted admins retain authority in
+   * ClassicBot channels, while ClassicBot's own admin_users may also switch the
+   * model of the channel they administer.
+   */
+  private isModelAdmin(userId: string, channelId: string, adapterId?: string): boolean {
+    if (this.isFleetAdmin(userId, adapterId)) return true;
+    const isClassic = !!this.classicChannels?.getInstanceByChannel(channelId, adapterId);
+    return isClassic && !!this.classicChannels?.isAdmin(userId);
+  }
+
   private async handlePauseWakeSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     const action = data.command as "pause" | "wake";
     const classicName = this.classicChannels?.getInstanceByChannel(data.channelId, adapterId);
@@ -2374,6 +2385,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return;
           }
           await msgAdapter?.sendText(chatId, await this.topicCommands.runPauseWake(name, pauseWake.action));
+          return;
+        }
+
+        // Handle /model command (admin only)
+        if (text === "/model" || text.startsWith("/model ") || text.startsWith("/model@")) {
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
+            await msgAdapter?.sendText(chatId, t("permission.denied"));
+            return;
+          }
+          const modelName = text.replace(/^\/model(@\S+)?/, "").trim();
+          const modelInstance = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!modelInstance) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          if (modelName) {
+            await msgAdapter?.sendText(chatId, await this.applyModel(modelInstance, modelName));
+          } else if (msgAdapter) {
+            const fallback = await this.promptModelMenu(
+              modelInstance,
+              msg.userId,
+              chatId,
+              msgAdapter,
+              chatId,
+            );
+            if (fallback) await msgAdapter.sendText(chatId, fallback);
+          }
           return;
         }
 
@@ -4463,7 +4501,10 @@ When users create specialized instances, suggest these configurations:
 
   /** `/model` slash handler (admin only). No arg → DC menu; `/model <name>` → apply directly. */
   private async handleModelSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
-    if (!this.isFleetAdmin(data.userId, adapterId)) { await data.respond(t("admin.required")); return; }
+    if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
     const name = this.resolveSlashTarget(data.channelId, adapterId);
     if (!name) { await data.respond(t("classic.no_agent")); return; }
 
