@@ -24,6 +24,8 @@ import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import type { ChannelAdapter, InboundMessage, Choice } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
+import { createBackend } from "./backend/factory.js";
+import { isModelCompatible } from "./backend/types.js";
 import { createLogger, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -173,6 +175,7 @@ export interface DeliveryOptions {
 
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
+const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
@@ -238,6 +241,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   controlClient: TmuxControlClient | null = null;
   classicChannels: ClassicChannelManager | null = null;
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
+  /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
+  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; }>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -1537,6 +1542,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
+      if (await this.handleModelSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -1622,6 +1628,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
+      } else if (data.command === "model") {
+        await this.handleModelSlash(data, adapterId);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -1797,6 +1805,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
+      if (await this.handleModelSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -1873,6 +1882,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!SAVE_FILENAME_RE.test(filename ?? "")) { await data.respond(t("filename.invalid")); return; }
         this.pasteRawToClassicInstance(name, `/chat load ${filename}`);
         await data.respond(t("save.sent", `/chat load ${filename}`, name));
+      } else if (data.command === "model") {
+        await this.handleModelSlash(data, adapterId);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -4351,6 +4362,113 @@ When users create specialized instances, suggest these configurations:
     }
     ipc.send({ type: "raw_paste", content: text });
     this.logger.info({ instanceName, text: text.slice(0, 100) }, "Raw paste sent to classic instance");
+  }
+
+  /** Resolve the backend name configured for an instance (fleet or classic). */
+  private backendNameForInstance(instanceName: string): string {
+    const fleetCfg = this.fleetConfig?.instances[instanceName];
+    if (fleetCfg?.backend) return fleetCfg.backend;
+    const classic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined
+      ? this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend)
+      : undefined;
+    return classic ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+  }
+
+  /** Best-effort model list for `/model` (empty ⇒ caller falls back to free-text). Never throws. */
+  private async getModelOptions(instanceName: string): Promise<import("./backend/types.js").ModelOption[]> {
+    try {
+      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      if (!backend.listModels) return [];
+      return (await backend.listModels({
+        workingDirectory: this.fleetConfig?.instances[instanceName]?.working_directory ?? "",
+        instanceDir: this.getInstanceDir(instanceName),
+        instanceName,
+        mcpServers: {},
+      })) ?? [];
+    } catch (err) {
+      this.logger.warn({ err, instanceName }, "listModels failed");
+      return [];
+    }
+  }
+
+  /** `/model` slash handler (admin only). No arg → DC menu; `/model <name>` → apply directly. */
+  private async handleModelSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.isFleetAdmin(data.userId, adapterId)) { await data.respond(t("admin.required")); return; }
+    const name = this.resolveSlashTarget(data.channelId, adapterId);
+    if (!name) { await data.respond(t("classic.no_agent")); return; }
+
+    const requested = (typeof data.options?.name === "string" ? data.options.name.trim() : "")
+      || (data.text?.trim() ?? "");
+    if (requested) { await data.respond(await this.applyModel(name, requested)); return; }
+
+    // No arg → menu. Menu is DC-only this round (respondChoices); TG uses `/model <name>`.
+    if (!data.respondChoices) { await data.respond("Usage: /model <name> — e.g. /model sonnet"); return; }
+    const options = await this.getModelOptions(name);
+    if (options.length === 0) { await data.respond(`No model list available for ${name}. Type \`/model <name>\` to set one directly.`); return; }
+
+    const nonce = randomBytes(6).toString("hex");
+    const choices = options.slice(0, 25).map(o => ({
+      id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
+      label: o.description ? `${o.label} — ${o.description}` : o.label,
+    }));
+    const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
+    try {
+      await data.respondChoices(`Choose a model for ${name}:`, choices);
+    } catch (err) {
+      this.pendingModelSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName: name }, "model menu failed");
+      await data.respond("Usage: /model <name> — e.g. /model sonnet");
+    }
+  }
+
+  /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */
+  private async handleModelSelection(data: AdapterCallbackData): Promise<boolean> {
+    if (!data.callbackData.startsWith(MODEL_SELECT_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^model-select:([0-9a-f]+):(.+)$/);
+    if (!match) return true;
+    const pending = this.pendingModelSelects.get(match[1]);
+    if (!pending) return true;
+    // Only the admin who opened the menu, in the same channel, may consume it.
+    if (data.userId && data.userId !== pending.userId) return true;
+    const cbChannel = data.threadId ?? data.chatId;
+    if (cbChannel !== pending.channelId && data.chatId !== pending.channelId) return true;
+    this.pendingModelSelects.delete(match[1]);
+    clearTimeout(pending.timer);
+    const result = await this.applyModel(pending.instanceName, match[2]);
+    await pending.respond(result).catch(() => {});
+    return true;
+  }
+
+  /** Apply a model to an instance: runtime paste (claude-code) or persist + restart (others). */
+  async applyModel(instanceName: string, model: string): Promise<string> {
+    const backendName = this.backendNameForInstance(instanceName);
+    let strategy: "runtime" | "restart" = "restart";
+    try {
+      strategy = createBackend(backendName, this.getInstanceDir(instanceName)).getModelSwitchStrategy?.(model) ?? "restart";
+    } catch { /* default restart */ }
+    const warn = isModelCompatible(backendName, model) ? "" : `⚠️ "${model}" doesn't match ${backendName}'s usual pattern — passing through anyway.\n`;
+
+    if (strategy === "runtime") {
+      if (!this.instanceIpcClients.get(instanceName)) return `${warn}❌ ${instanceName} is not running.`;
+      this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
+      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).`;
+    }
+
+    // restart: persist the model so the respawned CLI launches with it.
+    let persisted = false;
+    if (this.fleetConfig?.instances[instanceName]) {
+      this.fleetConfig.instances[instanceName].model = model;
+      this.saveFleetConfig();
+      persisted = true;
+    } else if (this.classicChannels?.setModelByInstance(instanceName, model)) {
+      persisted = true;
+    }
+    if (!persisted) return `${warn}❌ Could not set model for ${instanceName}.`;
+    await this.restartSingleInstance(instanceName);
+    return `${warn}✅ Set ${instanceName} to \`${model}\` and restarted.`;
   }
 
   /** Read recent chat log for agent context */

@@ -43,6 +43,8 @@ export interface FleetContext {
   getSysInfo(): SysInfo;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   toggleFleetCollab(instanceName: string): boolean;
+  /** Apply a model to an instance (runtime paste or persist + restart). Returns a status string. */
+  applyModel(instanceName: string, model: string): Promise<string>;
   /** Interrupt an instance's current generation (cancel button / /cancel). */
   cancelInstance(instanceName: string): boolean;
   /** Explicit YAML allowlist entries are fleet administrators. Runtime-paired/open users are not. */
