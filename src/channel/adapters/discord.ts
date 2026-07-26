@@ -425,8 +425,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           { name: "doctor", description: "🔒 " + t("slash.doctor") },
           { name: "compact", description: "🔒 " + t("slash.compact") },
           {
-            name: "model", description: "🔒 Show or set the agent's model",
-            options: [{ name: "name", description: "Model to switch to (omit to pick from a menu)", type: 3, required: false }],
+            name: "model", description: "Switch model — shows available models for this instance",
           },
           { name: "collab", description: "🔒 " + t("slash.collab") },
           {
