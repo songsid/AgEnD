@@ -2,10 +2,20 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type ModelOption, type RuntimeDialog, type StartupDialog, isModelCompatible, probeCliVersion, resolveBinary, validateModel } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
+const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
+const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
+
+// Account-aware models_cache.json is preferred. These documented Codex models
+// are only a last-resort menu when the TUI has not populated its cache yet.
+const CODEX_FALLBACK_MODELS: ModelOption[] = [
+  { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", description: "frontier agentic coding" },
+  { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", description: "balanced agentic coding" },
+  { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", description: "fast, efficient agentic coding" },
+];
 
 export class CodexBackend implements CliBackend {
   readonly binaryName = "codex";
@@ -190,10 +200,48 @@ export class CodexBackend implements CliBackend {
 
   getCancelKey(): string { return "Escape"; }
 
-  // No model-list source (codex model lives in config.toml) → version only; /model falls back to free-text.
-  async probeCLIEnv(): Promise<{ version?: string; models: import("./types.js").ModelOption[] }> {
-    const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: [] };
+  /**
+   * Codex has no `codex models` command. Its TUI/app-server maintains an
+   * account-aware model catalog in $CODEX_HOME/models_cache.json, so consume
+   * that cache best-effort and hide internal-only entries. A small documented
+   * fallback keeps `/model` usable before the first TUI catalog refresh.
+   */
+  async listModels(): Promise<ModelOption[]> {
+    try {
+      const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
+      const cachePath = join(codexHome, "models_cache.json");
+      if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) {
+        return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
+      }
+
+      const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
+      if (!Array.isArray(parsed.models)) throw new Error("missing models array");
+
+      const seen = new Set<string>();
+      const models: ModelOption[] = [];
+      for (const raw of parsed.models) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const item = raw as Record<string, unknown>;
+        if (item.visibility === "hide" || item.hidden === true) continue;
+        const id = typeof item.slug === "string" ? item.slug.trim() : "";
+        if (!id || !SAFE_MODEL_ID_RE.test(id) || seen.has(id)) continue;
+        seen.add(id);
+        const label = typeof item.display_name === "string" && item.display_name.trim()
+          ? item.display_name.trim()
+          : id;
+        const description = typeof item.description === "string" && item.description.trim()
+          ? item.description.trim()
+          : undefined;
+        models.push(description ? { id, label, description } : { id, label });
+      }
+      if (models.length > 0) return models;
+    } catch { /* missing/stale/unknown cache format — use documented fallback */ }
+
+    return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
+  }
+
+  async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[] }> {
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
   }
 
   cleanup(config: CliBackendConfig): void {

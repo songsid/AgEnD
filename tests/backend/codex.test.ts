@@ -25,11 +25,16 @@ function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
 }
 
 describe("CodexBackend", () => {
+  const originalCodexHome = process.env.CODEX_HOME;
+
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
+    process.env.CODEX_HOME = join(TEST_DIR, "codex-home");
   });
   afterEach(() => {
+    if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = originalCodexHome;
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(WORK_DIR, { recursive: true, force: true });
   });
@@ -62,6 +67,46 @@ describe("CodexBackend", () => {
       const backend = new CodexBackend(TEST_DIR);
       expect(backend.getSessionId()).toBeNull();
     });
+  });
+
+  describe("listModels", () => {
+    it("reads visible account models from the Codex TUI cache", async () => {
+      const codexHome = process.env.CODEX_HOME!;
+      mkdirSync(codexHome, { recursive: true });
+      writeFileSync(join(codexHome, "models_cache.json"), JSON.stringify({
+        models: [
+          { slug: "gpt-5.6-sol", display_name: "GPT-5.6-Sol", description: "Frontier", visibility: "list" },
+          { slug: "codex-auto-review", display_name: "Auto Review", visibility: "hide" },
+          { slug: "gpt-5.6-terra", display_name: "GPT-5.6-Terra", visibility: "list" },
+          { slug: "gpt-5.6-sol", display_name: "Duplicate", visibility: "list" },
+          { slug: "unsafe model", display_name: "Unsafe", visibility: "list" },
+        ],
+      }));
+
+      const backend = new CodexBackend(TEST_DIR);
+      expect(await backend.listModels()).toEqual([
+        { id: "gpt-5.6-sol", label: "GPT-5.6-Sol", description: "Frontier" },
+        { id: "gpt-5.6-terra", label: "GPT-5.6-Terra" },
+      ]);
+    });
+
+    it.each(["missing", "malformed", "unknown-shape"])(
+      "returns documented fallback models for a %s cache",
+      async (kind) => {
+        const codexHome = process.env.CODEX_HOME!;
+        mkdirSync(codexHome, { recursive: true });
+        if (kind === "malformed") writeFileSync(join(codexHome, "models_cache.json"), "{");
+        if (kind === "unknown-shape") writeFileSync(join(codexHome, "models_cache.json"), "{}");
+
+        const backend = new CodexBackend(TEST_DIR);
+        const models = await backend.listModels();
+        expect(models.map(model => model.id)).toEqual([
+          "gpt-5.6-sol",
+          "gpt-5.6-terra",
+          "gpt-5.6-luna",
+        ]);
+      },
+    );
   });
 
   describe("cleanup — AGENTS.md", () => {
