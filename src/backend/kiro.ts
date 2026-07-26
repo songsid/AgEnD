@@ -155,19 +155,21 @@ export class KiroBackend implements CliBackend {
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {
-    // ⚠️ UNVERIFIED subcommand/format — best-effort, never throws; [] ⇒ free-text.
+    // Verified format: { "models": [{ model_name, model_id, description, ... }],
+    //   "default_model": "auto" }. Older/other shapes (bare array) also tolerated.
     try {
       const out = execFileSync(this.binaryPath, ["chat", "--list-models", "--format", "json"],
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
-      const arr = JSON.parse(out);
-      if (Array.isArray(arr)) {
-        return arr.map((m: unknown) => {
-          if (typeof m === "string") return { id: m, label: m };
-          const o = m as Record<string, unknown>;
-          const id = String(o.id ?? o.name ?? o.model ?? "");
-          return { id, label: String(o.label ?? o.name ?? id) };
-        }).filter(o => o.id);
-      }
+      const parsed = JSON.parse(out);
+      const arr: unknown[] = Array.isArray(parsed) ? parsed : (parsed?.models ?? []);
+      return arr.map((m: unknown) => {
+        if (typeof m === "string") return { id: m, label: m };
+        const o = m as Record<string, unknown>;
+        const id = String(o.model_id ?? o.id ?? o.name ?? o.model ?? "");
+        const label = String(o.model_name ?? o.name ?? o.label ?? id);
+        const desc = typeof o.description === "string" ? o.description : undefined;
+        return desc ? { id, label, description: desc } : { id, label };
+      }).filter(o => o.id);
     } catch { /* unknown flag/format — fall back to free-text */ }
     return [];
   }
