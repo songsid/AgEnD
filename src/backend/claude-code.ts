@@ -153,6 +153,11 @@ export class ClaudeCodeBackend implements CliBackend {
     ];
   }
 
+  async probeCLIEnv() {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+  }
+
   cleanup(_config: CliBackendConfig): void {
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
   }
