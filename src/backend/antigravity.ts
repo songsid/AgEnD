@@ -161,6 +161,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     return [];
   }
 
+  async probeCLIEnv() {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },

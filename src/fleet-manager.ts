@@ -176,6 +176,7 @@ export interface DeliveryOptions {
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
+const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
@@ -1727,6 +1728,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     await this.topicCommands.registerBotCommands().catch(e =>
       this.logger.warn({ err: e }, "registerBotCommands failed (non-fatal)"));
+
+    // Background-probe each backend's CLI env (version/models) → cli-env cache.
+    // Non-blocking: /model & status views read the cache; never delays startup.
+    this.probeCliEnvs();
 
     this.adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
@@ -4374,21 +4379,56 @@ When users create specialized instances, suggest these configurations:
     return classic ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
   }
 
-  /** Best-effort model list for `/model` (empty ⇒ caller falls back to free-text). Never throws. */
-  private async getModelOptions(instanceName: string): Promise<import("./backend/types.js").ModelOption[]> {
+  private cliEnvPath(backend: string): string {
+    return join(getAgendHome(), "cli-env", `${backend.replace(/[^A-Za-z0-9._-]/g, "_")}.json`);
+  }
+
+  /** Read the cached CLI env for a backend, or null if missing/stale/unparseable. */
+  private readCliEnv(backend: string): import("./backend/types.js").CliEnv | null {
     try {
-      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
-      if (!backend.listModels) return [];
-      return (await backend.listModels({
-        workingDirectory: this.fleetConfig?.instances[instanceName]?.working_directory ?? "",
-        instanceDir: this.getInstanceDir(instanceName),
-        instanceName,
-        mcpServers: {},
-      })) ?? [];
+      const env = JSON.parse(readFileSync(this.cliEnvPath(backend), "utf-8")) as import("./backend/types.js").CliEnv;
+      if (typeof env?.probedAt === "number" && Date.now() - env.probedAt < CLI_ENV_TTL_MS) return env;
+    } catch { /* missing / stale / corrupt */ }
+    return null;
+  }
+
+  /** Probe one backend's CLI env and cache it. Best-effort; never throws. */
+  private async probeBackend(backend: string): Promise<import("./backend/types.js").CliEnv | null> {
+    try {
+      const be = createBackend(backend, join(getAgendHome(), "cli-env"));
+      if (!be.probeCLIEnv) return null;
+      const probed = await be.probeCLIEnv({ workingDirectory: "", instanceDir: join(getAgendHome(), "cli-env"), instanceName: `probe-${backend}`, mcpServers: {} });
+      const env: import("./backend/types.js").CliEnv = { backend, probedAt: Date.now(), ...probed };
+      const path = this.cliEnvPath(backend);
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, JSON.stringify(env, null, 2));
+      return env;
     } catch (err) {
-      this.logger.warn({ err, instanceName }, "listModels failed");
-      return [];
+      this.logger.warn({ err, backend }, "CLI env probe failed");
+      return null;
     }
+  }
+
+  /** Background-probe every distinct backend in use at startup (non-blocking). */
+  private probeCliEnvs(): void {
+    const backends = new Set<string>();
+    if (this.fleetConfig?.defaults?.backend) backends.add(this.fleetConfig.defaults.backend);
+    for (const inst of Object.values(this.fleetConfig?.instances ?? {})) if (inst.backend) backends.add(inst.backend);
+    for (const ch of this.classicChannels?.getAll() ?? []) if (ch.backend) backends.add(ch.backend);
+    if (backends.size === 0) backends.add("claude-code");
+    for (const b of backends) void this.probeBackend(b);
+  }
+
+  /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
+  private async getModelOptions(instanceName: string, refresh = false): Promise<import("./backend/types.js").ModelOption[]> {
+    const backendName = this.backendNameForInstance(instanceName);
+    if (!refresh) {
+      const cached = this.readCliEnv(backendName);
+      if (cached && cached.models.length) return cached.models;
+    }
+    // Cache miss / stale / forced refresh → probe live (also refreshes the cache).
+    const env = await this.probeBackend(backendName);
+    return env?.models ?? [];
   }
 
   /** `/model` slash handler (admin only). No arg → DC menu; `/model <name>` → apply directly. */
@@ -4399,11 +4439,12 @@ When users create specialized instances, suggest these configurations:
 
     const requested = (typeof data.options?.name === "string" ? data.options.name.trim() : "")
       || (data.text?.trim() ?? "");
-    if (requested) { await data.respond(await this.applyModel(name, requested)); return; }
+    const isRefresh = requested === "--refresh" || requested === "refresh";
+    if (requested && !isRefresh) { await data.respond(await this.applyModel(name, requested)); return; }
 
-    // No arg → menu. Menu is DC-only this round (respondChoices); TG uses `/model <name>`.
+    // No arg (or --refresh) → menu. Menu is DC-only this round (respondChoices); TG uses `/model <name>`.
     if (!data.respondChoices) { await data.respond("Usage: /model <name> — e.g. /model sonnet"); return; }
-    const options = await this.getModelOptions(name);
+    const options = await this.getModelOptions(name, isRefresh);
     if (options.length === 0) { await data.respond(`No model list available for ${name}. Type \`/model <name>\` to set one directly.`); return; }
 
     const nonce = randomBytes(6).toString("hex");

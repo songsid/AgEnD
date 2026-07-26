@@ -108,6 +108,12 @@ export class OpenCodeBackend implements CliBackend {
   // OpenCode's default session_interrupt keybinding is Escape (Ctrl+C exits).
   getCancelKey(): string { return "Escape"; }
 
+  // Provider-dependent models → version only; /model falls back to free-text.
+  async probeCLIEnv(): Promise<{ version?: string; models: import("./types.js").ModelOption[] }> {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: [] };
+  }
+
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       { pattern: /Permission required/i, keys: ["Right", "Enter"], description: "OpenCode permission prompt — Allow always" },
