@@ -74,3 +74,28 @@ describe("validateFleetConfig Settings Round 2 fields", () => {
     expect(result.errors.some(e => e.path === "channels[0].access.mode")).toBe(true);
   });
 });
+
+describe("validateFleetConfig kiro_ui", () => {
+  const base = {
+    instances: { worker: { working_directory: "/tmp/worker", backend: "kiro-cli" } },
+  };
+
+  it.each(["legacy", "tui", "v3"])("accepts %s for defaults and instances", (kiro_ui) => {
+    expect(validateFleetConfig({ ...base, defaults: { kiro_ui } }).errors).toEqual([]);
+    expect(validateFleetConfig({
+      ...base,
+      instances: { worker: { ...base.instances.worker, kiro_ui } },
+    }).errors).toEqual([]);
+  });
+
+  it("rejects an unknown Kiro UI mode", () => {
+    const result = validateFleetConfig({
+      ...base,
+      instances: { worker: { ...base.instances.worker, kiro_ui: "modern" } },
+    });
+    expect(result.errors).toContainEqual({
+      path: "instances.worker.kiro_ui",
+      message: "must be legacy, tui, or v3",
+    });
+  });
+});

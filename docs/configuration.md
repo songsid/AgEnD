@@ -91,6 +91,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `channel_id` | string | — | Bound channel adapter ID (for multi-channel) |
 | `general_topic` | boolean | `false` | Mark as General dispatcher instance |
 | `backend` | string | `"claude-code"` | CLI backend: `claude-code`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`, `gemini-cli` (⚠️ deprecated) |
+| `kiro_ui` | `"legacy"` \| `"tui"` \| `"v3"` | `"legacy"` | Kiro-only launch mode. `tui` uses Kiro's current default UI; `v3` opts into the experimental v3 agent. |
 | `model` | string | — | Model override (format depends on backend) |
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |

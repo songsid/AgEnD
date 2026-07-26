@@ -169,6 +169,7 @@ teams:
 | `topic_id` | number\|string | 自動 | 頻道 topic/thread ID。建立時自動分配 |
 | `general_topic` | boolean | `false` | 標記為 General Topic（接收未路由的訊息） |
 | `backend` | string | `"claude-code"` | CLI backend：`claude-code`、`codex`、`gemini-cli`、`opencode`、`kiro-cli`、`antigravity`、`grok` |
+| `kiro_ui` | `"legacy"` \| `"tui"` \| `"v3"` | `"legacy"` | 僅供 Kiro 使用的啟動模式。`tui` 使用 Kiro 目前的預設 UI；`v3` 啟用實驗中的 v3 agent。 |
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
