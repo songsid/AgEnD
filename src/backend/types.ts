@@ -68,6 +68,25 @@ export interface ModelOption {
   description?: string;
 }
 
+/** Result of probing a CLI backend's environment at startup (cached to disk). */
+export interface CliEnv {
+  backend: string;
+  version?: string;
+  authenticated?: boolean;
+  currentModel?: string;
+  models: ModelOption[];
+  /** Epoch ms the probe ran (drives the cache TTL). */
+  probedAt: number;
+}
+
+/** Best-effort `<binary> --version` (first line, trimmed). Never throws. */
+export function probeCliVersion(binaryPath: string): string | undefined {
+  try {
+    const out = execFileSync(binaryPath, ["--version"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    return out.trim().split("\n")[0].slice(0, 80) || undefined;
+  } catch { return undefined; }
+}
+
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
 export interface RuntimeDialog {
   /** Pattern to detect the dialog in PTY output. */
@@ -171,6 +190,13 @@ export interface CliBackend {
    * Absent ⇒ treated as "restart".
    */
   getModelSwitchStrategy?(model: string): "runtime" | "restart";
+
+  /**
+   * Probe the CLI environment at startup: version, available models, and
+   * (best-effort) auth/current model. Result is cached to disk so `/model` and
+   * status views read it without re-running the CLI. Must never throw.
+   */
+  probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[] }>;
 }
 
 /**

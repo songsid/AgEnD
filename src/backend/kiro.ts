@@ -172,6 +172,11 @@ export class KiroBackend implements CliBackend {
     return [];
   }
 
+  async probeCLIEnv() {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+  }
+
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).
   getCancelKey(): string { return "C-c"; }
 
