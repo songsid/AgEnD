@@ -2748,7 +2748,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // ===================== Scheduler =====================
 
   private async handleScheduleTrigger(schedule: Schedule): Promise<void> {
-    const { target, reply_chat_id, reply_thread_id, message, label, id, source } = schedule;
+    const { target, reply_chat_id, reply_thread_id, message, label, id, source, silent } = schedule;
 
     const RATE_LIMIT_DEFER_THRESHOLD = 85;
     const rl = this.statuslineWatcher.getRateLimits(target);
@@ -2762,6 +2762,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.webhookEmitter?.emit("schedule_deferred", target, { schedule_id: id, label, five_hour_pct: rl.five_hour_pct });
       this.notifyInstanceTopic(target, t("schedule.deferred", label ?? id, rl.five_hour_pct));
       this.logger.info({ target, scheduleId: id, rateLimitPct: rl.five_hour_pct }, "Schedule deferred due to rate limit");
+      return;
+    }
+
+    // Silent mode: paste directly to tmux pane — no channel message.
+    if (silent) {
+      const ipc = this.instanceIpcClients.get(target);
+      if (ipc) {
+        ipc.send({ type: "raw_paste", content: message });
+        this.scheduler!.recordRun(id, "delivered");
+        this.logger.info({ target, scheduleId: id, label }, "Silent schedule injected via raw_paste");
+      } else {
+        this.scheduler!.recordRun(id, "instance_offline", "IPC not connected");
+        this.logger.warn({ target, scheduleId: id }, "Silent schedule: IPC not connected, skipping");
+      }
       return;
     }
 
@@ -2845,6 +2859,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             reply_thread_id: meta.thread_id || null,
             label: payload.label as string | undefined,
             timezone: payload.timezone as string | undefined,
+            silent: !!(payload.silent),
           };
           result = this.scheduler!.create(params);
           break;

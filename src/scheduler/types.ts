@@ -11,6 +11,7 @@ export interface Schedule {
   label: string | null;
   enabled: boolean;
   timezone: string;
+  silent: boolean;
   created_at: string;
   last_triggered_at: string | null;
   last_status: string | null;
@@ -34,6 +35,7 @@ export interface CreateScheduleParams {
   reply_thread_id: string | null;
   label?: string;
   timezone?: string;
+  silent?: boolean;
 }
 
 export interface UpdateScheduleParams {

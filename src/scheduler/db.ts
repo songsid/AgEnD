@@ -54,6 +54,14 @@ export class SchedulerDb {
 
     this.migrateScheduleTimingColumns();
 
+    // Migration: add silent column to existing schedules tables
+    {
+      const scheduleCols = this.db.prepare("PRAGMA table_info(schedules)").all() as { name: string }[];
+      if (scheduleCols.length > 0 && !scheduleCols.some(c => c.name === "silent")) {
+        this.db.exec("ALTER TABLE schedules ADD COLUMN silent INTEGER DEFAULT 0");
+      }
+    }
+
     // Migration: add scope column to existing decisions tables that lack it
     const cols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
     if (cols.length > 0 && !cols.some(c => c.name === "scope")) {
@@ -152,6 +160,7 @@ export class SchedulerDb {
       label: row.label as string | null,
       enabled: row.enabled === 1,
       timezone: row.timezone as string,
+      silent: row.silent === 1,
       created_at: row.created_at as string,
       last_triggered_at: row.last_triggered_at as string | null,
       last_status: row.last_status as string | null,
@@ -167,9 +176,9 @@ export class SchedulerDb {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO schedules (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, label, timezone, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.cron ?? null, params.at ?? null, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.label ?? null, params.timezone ?? "Asia/Taipei", now);
+      INSERT INTO schedules (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, label, timezone, silent, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, params.cron ?? null, params.at ?? null, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.label ?? null, params.timezone ?? "Asia/Taipei", params.silent ? 1 : 0, now);
 
     return this.get(id)!;
   }
