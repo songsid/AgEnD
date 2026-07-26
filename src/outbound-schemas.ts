@@ -54,6 +54,8 @@ export const CreateScheduleArgs = z.object({
   label: z.string().optional().describe("Human-readable name for this schedule"),
   timezone: z.string().optional()
     .describe("IANA timezone, e.g. 'Asia/Taipei'. Defaults to Asia/Taipei."),
+  silent: z.boolean().optional()
+    .describe("Silent mode: inject directly into the agent's tmux pane without posting to the channel. Useful for heartbeat or background tasks."),
 }).refine(data => (data.cron ? 1 : 0) + (data.at ? 1 : 0) === 1, {
   message: "Exactly one of cron or at is required",
   path: ["cron"],
