@@ -4465,6 +4465,57 @@ When users create specialized instances, suggest these configurations:
     }
   }
 
+  /**
+   * Show a TG inline-keyboard model-selection menu. Reuses the same
+   * pendingModelSelects coordinator as the DC Select Menu path.
+   * Returns null on success (menu shown), or a fallback string to send.
+   */
+  async promptModelMenu(
+    instanceName: string,
+    userId: string,
+    channelId: string,
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null> {
+    const options = await this.getModelOptions(instanceName);
+    if (options.length === 0) {
+      return `No model list available for ${instanceName}. Use \`/model <name>\` to set one directly.`;
+    }
+
+    const nonce = randomBytes(6).toString("hex");
+    const choices = options.slice(0, 25).map(o => ({
+      id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
+      label: o.description ? `${o.label} — ${o.description}` : o.label,
+    }));
+
+    const respond = async (text: string): Promise<string | undefined> => {
+      await adapter.sendText(chatId, text, { threadId });
+      return undefined;
+    };
+
+    const timer = setTimeout(() => {
+      const p = this.pendingModelSelects.get(nonce);
+      if (p) {
+        this.pendingModelSelects.delete(nonce);
+        p.respond("⏰ Model selection expired.").catch(() => {});
+      }
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+
+    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, timer, respond });
+
+    try {
+      await adapter.promptUser(chatId, `Choose a model for ${instanceName}:`, choices, { threadId });
+      return null; // menu shown
+    } catch (err) {
+      this.pendingModelSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName }, "TG model menu failed");
+      return `Usage: /model <name> — e.g. /model sonnet`;
+    }
+  }
+
   /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */
   private async handleModelSelection(data: AdapterCallbackData): Promise<boolean> {
     if (!data.callbackData.startsWith(MODEL_SELECT_CALLBACK_PREFIX)) return false;

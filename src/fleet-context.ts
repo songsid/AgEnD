@@ -59,4 +59,17 @@ export interface FleetContext {
   removeInstance(name: string): Promise<void>;
   getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  /**
+   * Show a model-selection inline keyboard for the given instance in a TG topic.
+   * Returns a fallback text message if no model list is available (caller should send it).
+   * Returns null if the menu was shown successfully.
+   */
+  promptModelMenu?(
+    instanceName: string,
+    userId: string,
+    channelId: string,
+    adapter: import("./channel/types.js").ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null>;
 }
