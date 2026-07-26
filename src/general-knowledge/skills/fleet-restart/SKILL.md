@@ -26,7 +26,7 @@ description: Fleet restart types, recovery from tmux crash, rate limit handling,
 **Update AgEnD to latest version:**
 ```bash
 agend update              # update to latest
-agend update --version 0.0.6  # pin specific version
+agend update --version 2.1.0  # pin a specific version
 ```
 
 The `agend update` command automatically:
