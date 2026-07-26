@@ -170,6 +170,47 @@ describe("FleetManager", () => {
     expect(fm.isFleetAdmin("open-mode-user", "discord")).toBe(false);
   });
 
+  it("allows ClassicBot /model for either a Classic admin or a fleet allowlisted admin", () => {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), "defaults:\n  admin_users: [classic-admin]\nchannels: {}\n");
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: {},
+      channel: {
+        type: "discord",
+        bot_token_env: "BOT_TOKEN",
+        access: { mode: "locked", allowed_users: ["fleet-admin"] },
+      },
+    } as any;
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    classicChannels.register("channel-1", "discord", "classic-test", "test", "owner");
+    fm.classicChannels = classicChannels;
+
+    expect((fm as any).isModelAdmin("fleet-admin", "channel-1", "discord")).toBe(true);
+    expect((fm as any).isModelAdmin("classic-admin", "channel-1", "discord")).toBe(true);
+    expect((fm as any).isModelAdmin("regular-user", "channel-1", "discord")).toBe(false);
+  });
+
+  it("denies /model before probing or applying when the user is not an admin", async () => {
+    const fm = new FleetManager(tmpDir);
+    vi.spyOn(fm as any, "resolveSlashTarget").mockReturnValue("worker");
+    const getModelOptions = vi.spyOn(fm as any, "getModelOptions");
+    const applyModel = vi.spyOn(fm, "applyModel");
+    const respond = vi.fn().mockResolvedValue(undefined);
+
+    await (fm as any).handleModelSlash({
+      channelId: "topic-1",
+      userId: "regular-user",
+      options: {},
+      respond,
+    }, "discord");
+
+    expect(respond.mock.calls[0][0]).toContain("Permission denied");
+    expect(getModelOptions).not.toHaveBeenCalled();
+    expect(applyModel).not.toHaveBeenCalled();
+  });
+
   it("enforces Classic admin_users for Discord pause/wake", async () => {
     writeFileSync(join(tmpDir, "classicBot.yaml"), "defaults:\n  admin_users: [12345]\nchannels: {}\n");
     const fm = new FleetManager(tmpDir);
