@@ -243,7 +243,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   classicChannels: ClassicChannelManager | null = null;
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; }>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -4503,7 +4503,7 @@ When users create specialized instances, suggest these configurations:
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
 
-    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, timer, respond });
+    this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
       await adapter.promptUser(chatId, `Choose a model for ${instanceName}:`, choices, { threadId });
@@ -4529,8 +4529,39 @@ When users create specialized instances, suggest these configurations:
     if (cbChannel !== pending.channelId && data.chatId !== pending.channelId) return true;
     this.pendingModelSelects.delete(match[1]);
     clearTimeout(pending.timer);
-    const result = await this.applyModel(pending.instanceName, match[2]);
-    await pending.respond(result).catch(() => {});
+
+    const model = match[2];
+
+    // Send immediate "⏳ Switching..." feedback, then apply in background.
+    const progressText = `⏳ Switching ${pending.instanceName} to \`${model}\`…`;
+    let progressMsgId: string | undefined;
+    if (pending.adapter && pending.adapterChatId) {
+      // TG path: send a new message and capture messageId for later edit
+      try {
+        const sent = await pending.adapter.sendText(pending.adapterChatId, progressText, { threadId: pending.adapterThreadId });
+        progressMsgId = sent.messageId;
+      } catch { /* non-fatal */ }
+    } else {
+      // DC path: respond immediately with progress text
+      await pending.respond(progressText).catch(() => {});
+    }
+
+    // Apply model in background — don't await here (keeps callback handler fast)
+    void (async () => {
+      const result = await this.applyModel(pending.instanceName, model);
+      if (pending.adapter && pending.adapterChatId) {
+        if (progressMsgId) {
+          pending.adapter.editMessage(pending.adapterChatId, progressMsgId, result, pending.adapterThreadId).catch(() => {
+            pending.adapter!.sendText(pending.adapterChatId!, result, { threadId: pending.adapterThreadId }).catch(() => {});
+          });
+        } else {
+          pending.adapter.sendText(pending.adapterChatId, result, { threadId: pending.adapterThreadId }).catch(() => {});
+        }
+      } else {
+        await pending.respond(result).catch(() => {});
+      }
+    })();
+
     return true;
   }
 
