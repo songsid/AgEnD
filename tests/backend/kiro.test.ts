@@ -38,9 +38,24 @@ describe("KiroBackend", () => {
       const backend = new KiroBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain("chat");
+      expect(cmd).toContain("--legacy-ui");
       expect(cmd).toContain("--trust-all-tools");
       expect(cmd).toContain("--resume");
       expect(cmd).toContain("--require-mcp-startup");
+    });
+
+    it("uses Kiro's default TUI without a UI override flag", () => {
+      const backend = new KiroBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig({ kiroUi: "tui" }));
+      expect(cmd).not.toContain("--legacy-ui");
+      expect(cmd).not.toContain("--v3");
+    });
+
+    it("opts into the next-generation agent with --v3", () => {
+      const backend = new KiroBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig({ kiroUi: "v3" }));
+      expect(cmd).toContain("chat --v3");
+      expect(cmd).not.toContain("--legacy-ui");
     });
 
     it("always includes --resume (boolean flag, resumes latest session for CWD)", () => {

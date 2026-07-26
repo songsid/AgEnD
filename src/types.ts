@@ -98,6 +98,12 @@ export interface InstanceConfig {
   log_level: "trace" | "debug" | "info" | "warn" | "error";
   /** CLI backend to use. Default: "claude-code" */
   backend?: string;
+  /**
+   * Kiro CLI interface/engine profile. Only used when backend is "kiro-cli".
+   * "legacy" preserves AgEnD's current --legacy-ui launch; "tui" uses Kiro's
+   * default UI; "v3" opts into the experimental next-generation agent.
+   */
+  kiro_ui?: "legacy" | "tui" | "v3";
   /** MCP tool profile: "full" (20 tools), "standard" (8), "minimal" (3). Default: "full" */
   tool_set?: string;
   /** Skip non-essential subsystems (transcript monitor, context guardian, approval server, prompt detector) */

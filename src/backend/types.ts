@@ -27,6 +27,8 @@ export interface CliBackendConfig {
   mcpServers: Record<string, McpServerEntry>;
   skipPermissions?: boolean;
   model?: string;
+  /** Kiro-only UI/agent profile. Defaults to "legacy". */
+  kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
   skipResume?: boolean;
   /** Fleet instructions content to inject into the CLI's additive system prompt mechanism. */
