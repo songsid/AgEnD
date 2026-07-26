@@ -61,6 +61,13 @@ export interface ErrorPattern {
   skipRecoveryWait?: boolean;
 }
 
+/** A selectable model, surfaced by `/model` (id is what gets applied). */
+export interface ModelOption {
+  id: string;
+  label: string;
+  description?: string;
+}
+
 /** A dialog that may appear at runtime and needs auto-dismissal via key sequences. */
 export interface RuntimeDialog {
   /** Pattern to detect the dialog in PTY output. */
@@ -147,6 +154,23 @@ export interface CliBackend {
 
   /** Clean up config files on shutdown. */
   cleanup?(config: CliBackendConfig): void;
+
+  /**
+   * List selectable models for `/model`. Best-effort — may exec the CLI's own
+   * model-listing subcommand (formats vary and are UNVERIFIED for some CLIs) or
+   * return a static alias set. Return [] when unknown; callers fall back to
+   * free-text `/model <name>`. Must never throw.
+   */
+  listModels?(config: CliBackendConfig): Promise<ModelOption[]>;
+
+  /**
+   * How a model switch takes effect for this backend:
+   * "runtime" — paste the CLI's in-session `/model <name>` (only clean for CLIs
+   * with a one-shot command, e.g. claude-code); "restart" — persist + respawn
+   * (universal; use for picker-style CLIs like kiro/opencode/antigravity).
+   * Absent ⇒ treated as "restart".
+   */
+  getModelSwitchStrategy?(model: string): "runtime" | "restart";
 }
 
 /**

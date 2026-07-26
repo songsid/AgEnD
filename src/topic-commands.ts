@@ -260,6 +260,21 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/model" || text.startsWith("/model ") || text.startsWith("/model@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
+      const name = text.replace(/^\/model(@\S+)?/, "").trim();
+      const reply = name
+        ? await this.ctx.applyModel(instanceName, name)
+        : "Usage: /model <name> — e.g. /model sonnet";
+      await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/compact" || text.startsWith("/compact@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -758,6 +773,7 @@ export class TopicCommands {
                 { command: "dashboard", description: "🔒 Get dashboard URLs" },
                 { command: "ctx", description: "Show context usage" },
                 { command: "compact", description: "Compact agent context" },
+                { command: "model", description: "🔒 Set the agent's model (/model <name>)" },
                 { command: "pause", description: "🔒 Pause an idle instance" },
                 { command: "wake", description: "🔒 Wake a paused instance" },
                 { command: "restart", description: "🔒 Graceful restart all instances" },

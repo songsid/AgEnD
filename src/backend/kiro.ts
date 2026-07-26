@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 
@@ -148,6 +149,28 @@ export class KiroBackend implements CliBackend {
   getQuitCommand(): string { return "/quit"; }
 
   getCompactCommand(): string { return "/compact"; }
+
+  // kiro's in-session `/model` opens an interactive picker (not a one-shot
+  // command), so a runtime paste can't select a specific model — use restart.
+  getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
+
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    // ⚠️ UNVERIFIED subcommand/format — best-effort, never throws; [] ⇒ free-text.
+    try {
+      const out = execFileSync(this.binaryPath, ["chat", "--list-models", "--format", "json"],
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const arr = JSON.parse(out);
+      if (Array.isArray(arr)) {
+        return arr.map((m: unknown) => {
+          if (typeof m === "string") return { id: m, label: m };
+          const o = m as Record<string, unknown>;
+          const id = String(o.id ?? o.name ?? o.model ?? "");
+          return { id, label: String(o.label ?? o.name ?? id) };
+        }).filter(o => o.id);
+      }
+    } catch { /* unknown flag/format — fall back to free-text */ }
+    return [];
+  }
 
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).
   getCancelKey(): string { return "C-c"; }
