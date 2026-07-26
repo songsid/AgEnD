@@ -6,6 +6,23 @@ import { type CliBackend, type CliBackendConfig, type ErrorPattern, type Startup
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 
+/** Parse `agy models`, which may emit slugs or human-readable display names. */
+export function parseAntigravityModelsOutput(output: string): import("./types.js").ModelOption[] {
+  const models: import("./types.js").ModelOption[] = [];
+  const seen = new Set<string>();
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const id = rawLine.trim().replace(/^(?:[*•-]|\d+\.)\s*/, "").trim();
+    if (!id
+      || /^(?:Available models|Default model):/i.test(id)
+      || !/^[A-Za-z0-9][A-Za-z0-9 ._:/()+-]*$/.test(id)
+      || seen.has(id)) continue;
+    seen.add(id);
+    models.push({ id, label: id });
+  }
+  return models;
+}
+
 export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
   private binaryPath: string;
@@ -146,17 +163,14 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {
-    // ⚠️ UNVERIFIED `agy models` format — best-effort. Strips the effort suffix
-    // (Medium/High/Low/Thinking) so the base name matches what fleet.yaml wants.
+    // Verified current format is one model slug per line. Older releases emitted
+    // display names such as "Gemini 3.5 Flash (Medium)", which must remain intact
+    // because the effort suffix is part of the selectable model name.
     try {
       const out = execFileSync(this.binaryPath, ["models"],
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
-      const bases = new Set<string>();
-      for (const line of out.split("\n")) {
-        const base = line.trim().replace(/\s*\((Medium|High|Low|Thinking)\)\s*$/i, "").trim();
-        if (/[A-Za-z]/.test(base)) bases.add(base);
-      }
-      if (bases.size) return [...bases].map(id => ({ id, label: id }));
+      const models = parseAntigravityModelsOutput(out);
+      if (models.length) return models;
     } catch { /* unknown format — fall back to free-text */ }
     return [];
   }

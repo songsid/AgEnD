@@ -8,6 +8,32 @@ import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
 const SESSION_ID_RE = /^[A-Za-z0-9-]+$/;
+const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/;
+
+/** Parse the text format emitted by `grok models`. */
+export function parseGrokModelsOutput(output: string): import("./types.js").ModelOption[] {
+  const models: import("./types.js").ModelOption[] = [];
+  const seen = new Set<string>();
+  let inModelList = false;
+
+  for (const rawLine of output.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (/^Available models:\s*$/i.test(trimmed)) {
+      inModelList = true;
+      continue;
+    }
+    if (!inModelList || !trimmed) continue;
+
+    const id = trimmed
+      .replace(/^(?:[*•-]|\d+\.)\s*/, "")
+      .replace(/\s+\(default\)\s*$/i, "")
+      .trim();
+    if (!MODEL_ID_RE.test(id) || !/^grok/i.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    models.push({ id, label: id });
+  }
+  return models;
+}
 
 /**
  * Grok Build (xAI) — https://docs.x.ai/build/cli
@@ -250,19 +276,17 @@ export class GrokBackend implements CliBackend {
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {
-    // ⚠️ UNVERIFIED `grok models` format — best-effort; falls back to documented ids.
+    // Verified format:
+    //   Available models:
+    //     * grok-4.5 (default)
     try {
       const out = execFileSync(this.binaryPath, ["models"],
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
-      const ids = [...new Set(out.split("\n")
-        .map(l => l.trim().split(/\s+/)[0])
-        .filter(id => /^grok[\w.-]*$/i.test(id)))];
-      if (ids.length) return ids.map(id => ({ id, label: id }));
+      const models = parseGrokModelsOutput(out);
+      if (models.length) return models;
     } catch { /* fall back to documented set */ }
     return [
       { id: "grok-4.5", label: "grok-4.5" },
-      { id: "grok-4.3", label: "grok-4.3" },
-      { id: "grok-code", label: "grok-code" },
     ];
   }
 

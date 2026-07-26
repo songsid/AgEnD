@@ -234,7 +234,9 @@ const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "codex": /^(gpt|o[0-9]|chatgpt)/i,
   "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
-  "antigravity": / /,  // agy models always contain spaces (display names like "Gemini 3.5 Flash (High)")
+  // Current agy emits slugs (gemini-3.6-flash-high); older versions emitted
+  // display names (Gemini 3.5 Flash (High)). Accept both forms.
+  "antigravity": /^(gemini|claude|gpt[- ])/i,
   "grok": /^grok/i,  // grok-4.5, grok-4.3, grok-code, grok-build-0.1
 };
 
