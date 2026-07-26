@@ -16,11 +16,6 @@ Models are specified in fleet.yaml `defaults.model` or per-instance `model` fiel
 | **opencode** | `opencode models` | depends on provider |
 | **grok** | `grok-4.5`, `grok-4.3`, `grok-code`, `grok-build-0.1` | grok default |
 
-**To discover available models for a backend, run the CLI's model listing command:**
-- `agy models` — lists all available models for antigravity
-- `opencode models` — lists all available models for opencode
-- `codex` — check config.toml
-
 **Important for antigravity (agy):**
 - `agy models` shows names like `Gemini 3.5 Flash (Medium)` — the parenthetical suffix (Medium/High/Low/Thinking) is the **effort level**, NOT part of the model name.
 - When setting model in fleet.yaml, use only the base name WITHOUT the effort suffix.

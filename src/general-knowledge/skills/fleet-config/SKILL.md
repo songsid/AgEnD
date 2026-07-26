@@ -32,14 +32,12 @@ templates:        # Reusable fleet deployment templates
 
 ## Config Validation
 
-**Before editing fleet.yaml or classicBot.yaml, always validate after:**
+**After editing fleet.yaml or classicBot.yaml, validate before reloading:**
+- `validate_config` MCP tool (preferred) — checks channels, instances, backends,
+  access, and both yaml files. Reports errors **and** warnings.
+- CLI equivalent: `agend validate`
 
-```bash
-# Validate fleet.yaml syntax
-agend fleet start --dry-run 2>&1 | head -5
-# Or simply:
-node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs.readFileSync('$HOME/.agend/fleet.yaml', 'utf-8')); console.log('✓ valid YAML')"
-```
+Fix all errors before `agend reload`; warnings are advisory.
 
 **Common fleet.yaml mistakes:**
 - Missing `channel.mode` field → error on start
@@ -47,11 +45,6 @@ node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs
 - `topic_id` as string vs number (both work, but be consistent)
 - `backend` typo (valid: `claude-code`, `gemini-cli`, `codex`, `opencode`, `kiro-cli`, `antigravity`, `grok`)
 - `model` using wrong format for the backend
-
-**classicBot.yaml validation:**
-```bash
-node -e "const yaml = require('js-yaml'); const fs = require('fs'); yaml.load(fs.readFileSync('$HOME/.agend/classicBot.yaml', 'utf-8')); console.log('✓ valid YAML')"
-```
 
 **Common classicBot.yaml mistakes:**
 - `allowed_guilds` values must be strings (Discord IDs are too large for YAML integers)
