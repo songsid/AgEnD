@@ -266,6 +266,11 @@ export class GrokBackend implements CliBackend {
     ];
   }
 
+  async probeCLIEnv() {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+  }
+
   cleanup(config: CliBackendConfig): void {
     // Remove only this instance's namespaced MCP entries — a non-namespaced key
     // may belong to another instance sharing the working directory.

@@ -190,6 +190,12 @@ export class CodexBackend implements CliBackend {
 
   getCancelKey(): string { return "Escape"; }
 
+  // No model-list source (codex model lives in config.toml) → version only; /model falls back to free-text.
+  async probeCLIEnv(): Promise<{ version?: string; models: import("./types.js").ModelOption[] }> {
+    const { probeCliVersion } = await import("./types.js");
+    return { version: probeCliVersion(this.binaryPath), models: [] };
+  }
+
   cleanup(config: CliBackendConfig): void {
     for (const name of Object.keys(config.mcpServers)) {
       // Must match the sanitized name used in writeConfig, or removal misses it.
