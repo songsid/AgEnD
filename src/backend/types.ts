@@ -230,7 +230,7 @@ export function validateModel(model: string): string {
 /** Known model prefixes/patterns per backend. Model is skipped if it doesn't match the target backend. */
 const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "claude-code": /^(sonnet|opus|haiku|opusplan|best|claude)/i,
-  "kiro-cli": /^(claude|sonnet|opus|haiku)/i,
+  "kiro-cli": /^(claude|sonnet|opus|haiku|auto)/i,
   "codex": /^(gpt|o[0-9]|chatgpt)/i,
   "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
