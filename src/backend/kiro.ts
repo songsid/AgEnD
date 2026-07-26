@@ -11,7 +11,10 @@ export class KiroBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
-    let cmd = `${this.binaryPath} chat --legacy-ui`;
+    const ui = config.kiroUi ?? "legacy";
+    let cmd = `${this.binaryPath} chat`;
+    if (ui === "legacy") cmd += " --legacy-ui";
+    else if (ui === "v3") cmd += " --v3";
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
     if (!config.skipResume) cmd += " --resume";
