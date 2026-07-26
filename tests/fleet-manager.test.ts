@@ -761,6 +761,76 @@ instances:
     expect(reloaded.fleetConfig!.instances["my-proj"].model).toBe("new-model");
   });
 
+  it("shows and marks the effective current model in Discord's /model menu", async () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { model: "claude-sonnet-4-6" },
+      instances: { worker: { working_directory: "/tmp/worker" } },
+    };
+    vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
+    vi.spyOn(fm as any, "resolveSlashTarget").mockReturnValue("worker");
+    vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
+      { id: "claude-sonnet-4-6", label: "Sonnet 4.6" },
+      { id: "claude-opus-4-6", label: "Opus 4.6" },
+    ]);
+    const respondChoices = vi.fn().mockResolvedValue("message-id");
+
+    await (fm as any).handleModelSlash({
+      channelId: "topic-1",
+      userId: "admin",
+      options: {},
+      respond: vi.fn().mockResolvedValue(undefined),
+      respondChoices,
+    }, "discord");
+
+    expect(respondChoices).toHaveBeenCalledWith(
+      "Current model: **claude-sonnet-4-6**\nSelect a new model:",
+      expect.arrayContaining([
+        expect.objectContaining({ label: "✓ Sonnet 4.6" }),
+        expect.objectContaining({ label: "Opus 4.6" }),
+      ]),
+    );
+  });
+
+  it("shows and marks the current model in Telegram's /model menu", async () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: { worker: { working_directory: "/tmp/worker", model: "gpt-5.6" } },
+    };
+    vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
+      { id: "gpt-5.6", label: "GPT-5.6" },
+      { id: "gpt-5.4", label: "GPT-5.4" },
+    ]);
+    const promptUser = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      promptUser,
+      sendText: vi.fn().mockResolvedValue({ messageId: "message-id" }),
+    } as any;
+
+    expect(await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1")).toBeNull();
+    expect(promptUser).toHaveBeenCalledWith(
+      "chat-1",
+      "Current model: gpt-5.6\nSelect a new model:",
+      expect.arrayContaining([
+        expect.objectContaining({ label: "✓ GPT-5.6" }),
+        expect.objectContaining({ label: "GPT-5.4" }),
+      ]),
+      { threadId: "topic-1" },
+    );
+  });
+
+  it("uses a ClassicBot channel model before the fleet default", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { model: "fleet-default" }, instances: {} };
+    fm.classicChannels = {
+      getAll: () => [{ instanceName: "classic-worker", channelId: "channel-1", adapterId: "discord" }],
+      getModel: () => "classic-model",
+    } as any;
+
+    expect((fm as any).currentModelForInstance("classic-worker")).toBe("classic-model");
+  });
+
   it("persists explicit instance overrides even when they equal inherited defaults", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");
