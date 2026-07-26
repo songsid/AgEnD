@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
 
@@ -108,10 +109,22 @@ export class OpenCodeBackend implements CliBackend {
   // OpenCode's default session_interrupt keybinding is Escape (Ctrl+C exits).
   getCancelKey(): string { return "Escape"; }
 
-  // Provider-dependent models → version only; /model falls back to free-text.
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    // Verified: `opencode models` prints one `provider/model` id per line.
+    try {
+      const out = execFileSync(this.binaryPath, ["models"],
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      const ids = [...new Set(out.split("\n")
+        .map(l => l.trim().split(/\s+/)[0])
+        .filter(id => /^[\w.-]+\/[\w.-]+$/.test(id)))];
+      if (ids.length) return ids.map(id => ({ id, label: id }));
+    } catch { /* fall back to free-text */ }
+    return [];
+  }
+
   async probeCLIEnv(): Promise<{ version?: string; models: import("./types.js").ModelOption[] }> {
     const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: [] };
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
