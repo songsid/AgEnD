@@ -30,6 +30,19 @@ templates:        # Reusable fleet deployment templates
 - Instance logs: `~/.agend/instances/<name>/output.log`
 - Fleet log: `~/.agend/fleet.log`
 
+## kiro-cli UI mode (kiro_ui)
+
+For `backend: kiro-cli` instances, `kiro_ui` selects the CLI's UI/agent profile:
+```yaml
+instances:
+  my-kiro:
+    backend: kiro-cli
+    kiro_ui: legacy    # default — current stable behavior
+    # kiro_ui: tui     # try the newer TUI
+    # kiro_ui: v3      # try the v3 profile
+```
+Leave unset (or `legacy`) unless testing a newer profile. Ignored by other backends.
+
 ## Config Validation
 
 **After editing fleet.yaml or classicBot.yaml, validate before reloading:**
