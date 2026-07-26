@@ -83,6 +83,28 @@ instances:
     expect(existsSync(expectedDir)).toBe(true);
   });
 
+  it("defaults Kiro UI to legacy and supports per-instance TUI/v3 overrides", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(fleetPath, `instances:
+  legacy:
+    working_directory: /tmp/kiro-legacy
+    backend: kiro-cli
+  tui:
+    working_directory: /tmp/kiro-tui
+    backend: kiro-cli
+    kiro_ui: tui
+  v3:
+    working_directory: /tmp/kiro-v3
+    backend: kiro-cli
+    kiro_ui: v3
+`);
+
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.instances.legacy.kiro_ui).toBe("legacy");
+    expect(fleet.instances.tui.kiro_ui).toBe("tui");
+    expect(fleet.instances.v3.kiro_ui).toBe("v3");
+  });
+
   it("defaults auto-pause to 30 minutes and supports per-instance disable", () => {
     const fleetPath = join(tmpDir, "fleet.yaml");
     writeFileSync(fleetPath, `instances:

@@ -44,6 +44,7 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
+    if (value.kiro_ui !== undefined && !["legacy", "tui", "v3"].includes(String(value.kiro_ui))) err(`${path}.kiro_ui`, "must be legacy, tui, or v3");
     if (value.agent_mode !== undefined && value.agent_mode !== "mcp" && value.agent_mode !== "cli") err(`${path}.agent_mode`, "must be mcp or cli");
     if (value.tool_set !== undefined && !["full", "standard", "minimal"].includes(String(value.tool_set))) err(`${path}.tool_set`, "must be full, standard, or minimal");
     if (value.log_level !== undefined && !["trace", "debug", "info", "warn", "error"].includes(String(value.log_level))) err(`${path}.log_level`, "must be trace, debug, info, warn, or error");

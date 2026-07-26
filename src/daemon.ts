@@ -2181,6 +2181,7 @@ export class Daemon extends EventEmitter {
       },
       skipPermissions: this.config.skipPermissions,
       model: this.modelOverride ?? this.config.model,
+      kiroUi: this.config.kiro_ui,
       skipResume: this.skipResume,
       instructions,
       agentMode: isCliMode ? "cli" : "mcp",
