@@ -1,55 +1,34 @@
 ---
 name: fleet-health
-description: Check instance health via tmux, detect stuck agents, fleet-wide health scan
+description: Check instance health and what an agent is doing; recover a stuck instance
 ---
 
-## Instance Health Check via tmux
+## Check health
 
-When user asks to check an instance's status or what it's doing:
-- Use `execute_bash` to run: `tmux capture-pane -t agend:<instance-name> -p | tail -20`
-- This shows the actual CLI screen (what the agent sees right now)
-- More useful than just "running/stopped" status
-- If the instance appears stuck, suggest `/raw /compact` or restart
+Prefer the fleet tools — they already know each instance's state:
+- `get_fleet_status` — status + execution state (idle / working / stuck) for every instance.
+- `describe_instance("<name>")` — one instance's status, last activity, description.
+- `list_instances` — quick roster.
 
-## Fleet Health Check
+The daemon derives idle/working/stuck itself (per-backend), so you do **not** need to
+scrape prompts. Don't hand-write pane-text checks like `X% !>` — that prompt is
+kiro-specific and wrong for claude-code / codex / grok / antigravity.
 
-Check all instances for stuck/error state:
+## See what an agent is actually doing
 
-```bash
-for win in $(tmux list-windows -t agend -F '#{window_name}' | grep -v bash); do
-  last=$(tmux capture-pane -t "agend:$win" -p | tail -3 | tr '\n' ' ')
-  if echo "$last" | grep -q "!>"; then
-    echo "✅ $win — idle"
-  elif echo "$last" | grep -q "error:"; then
-    echo "❌ $win — ERROR"
-  else
-    echo "⏳ $win — busy"
-  fi
-done
-```
+When the user wants the live screen (not just a status word):
+- `get_instance_logs("<name>")` — recent output.
+- Raw terminal (last resort, no tool for the live pane):
+  `tmux capture-pane -t agend:<name> -p | tail -20`
 
-States:
-- ✅ idle — prompt visible (X% !>), ready for input
-- ⏳ busy — processing a task, wait for it to finish
-- ❌ error — check tmux pane for details, may need restart
+## Recover a stuck instance
 
-If an instance is stuck (busy for >10 minutes with no output), restart it:
-- `restart_instance("<instance-name>")`
+Do this when the user asks, or confirm first — don't silently restart others' work.
+- `restart_instance("<name>")` — reloads config, keeps the session. First choice for a
+  dead/looping instance.
+- `replace_instance("<name>")` — fresh instance with handover context, when the session
+  itself is the problem (see instance-lifecycle skill).
 
-## Unsticking a Frozen Instance via tmux
-
-If an instance is frozen (not responding, no output, no prompt):
-1. Send Ctrl+C via tmux to interrupt the current operation:
-   ```bash
-   tmux send-keys -t agend:<instance-name> C-c
-   ```
-2. Wait a few seconds, then check if it returned to idle:
-   ```bash
-   tmux capture-pane -t agend:<instance-name> -p | tail -5
-   ```
-3. If it shows the prompt (`X% !>` or `(To exit the CLI...)`) — it's unstuck. Resend the task.
-4. If still frozen after Ctrl+C, use `restart_instance("<instance-name>")`
-
-**When to use Ctrl+C vs restart:**
-- Ctrl+C: instance is alive but stuck on a long operation (API timeout, large file read, infinite loop)
-- restart: instance is completely dead (no tmux pane, crash loop, or Ctrl+C doesn't help)
+A genuinely wedged CLI can sometimes be freed without a restart by interrupting it —
+that is the cancel key, exposed to users as the Cancel button / `/cancel`. Only drop to
+`tmux send-keys -t agend:<name> C-c` (kiro) / `Escape` (others) if the tools aren't enough.
