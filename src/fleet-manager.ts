@@ -55,6 +55,7 @@ import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
@@ -179,6 +180,9 @@ const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
+  private static signalTarget: FleetManager | null = null;
+  private static sighupHandlerInstalled = false;
+
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
   /** @deprecated Use lifecycle.daemons — kept for backward compat */
@@ -204,6 +208,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   instanceIpcClients: Map<string, IpcClient> = new Map();
   scheduler: Scheduler | null = null;
   private configPath: string = "";
+  /** SIGHUPs received before startAll finishes are replayed once startup is safe. */
+  private startupComplete = false;
+  /** Coalesces one or more SIGHUPs into at most one follow-up reconciliation. */
+  private reloadPending = false;
+  /** A running reconciliation; only one may mutate lifecycle/config state at a time. */
+  private reconcileInFlight: Promise<void> | null = null;
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
@@ -274,10 +284,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private viewToken: string | null = null;
 
   constructor(public dataDir: string) {
+    FleetManager.signalTarget = this;
+    if (!FleetManager.sighupHandlerInstalled) {
+      process.on("SIGHUP", () => FleetManager.signalTarget?.handleSighup());
+      FleetManager.sighupHandlerInstalled = true;
+    }
     this.lifecycle = new InstanceLifecycle(this);
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+  }
+
+  private handleSighup(): void {
+    this.logger.info("Received SIGHUP, hot-reloading config...");
+    if (!this.startupComplete) {
+      this.reloadPending = true;
+      this.logger.info("Fleet startup is still in progress — queued config reload");
+      return;
+    }
+    this.scheduleReconcile();
+  }
+
+  private scheduleReconcile(): void {
+    if (this.reconcileInFlight) {
+      this.reloadPending = true;
+      this.logger.info("Config reconciliation already running — coalesced reload request");
+      return;
+    }
+
+    this.reloadPending = false;
+    this.reconcileInFlight = this.reconcileInstances()
+      .catch(err => this.logger.error({ err }, "SIGHUP config reload failed"))
+      .finally(() => {
+        this.reconcileInFlight = null;
+        if (this.reloadPending && this.startupComplete) {
+          this.scheduleReconcile();
+        }
+      });
+  }
+
+  private finishStartup(): void {
+    this.startupComplete = true;
+    if (this.reloadPending) this.scheduleReconcile();
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
@@ -932,6 +980,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
+    FleetManager.signalTarget = this;
+    this.startupComplete = false;
     this.configPath = configPath;
     this.loadEnvFile();
 
@@ -1366,15 +1416,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.updateCheckTimer = setInterval(() => this.checkForUpdates(), 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
 
-    // SIGHUP: hot-reload instance config (add/remove/restart instances)
-    const onSighup = () => {
-      this.logger.info("Received SIGHUP, hot-reloading config...");
-      this.reconcileInstances()
-        .catch(err => this.logger.error({ err }, "SIGHUP config reload failed"));
-      process.once("SIGHUP", onSighup);
-    };
-    process.once("SIGHUP", onSighup);
-
     const onRestart = () => {
       this.logger.info("Received SIGUSR2, initiating graceful restart...");
       this.restartInstances()
@@ -1397,6 +1438,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
     };
     process.once("SIGUSR1", onFullRestart);
+
+    // A SIGHUP may arrive after the PID/general is available but before the
+    // rest of startup finishes. Replay one coalesced reload only after all
+    // startup-owned lifecycle work and signal handlers are in place.
+    this.finishStartup();
   }
 
   /**
@@ -4944,6 +4990,8 @@ When users create specialized instances, suggest these configurations:
   }
 
   async stopAll(): Promise<void> {
+    this.startupComplete = false;
+    this.reloadPending = false;
     this.ipcStoppingInstances.add("__fleet_stopping__");
     sdNotify("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
@@ -5148,7 +5196,43 @@ When users create specialized instances, suggest these configurations:
   private async reconcileInstances(): Promise<void> {
     if (!this.configPath) return;
     const oldConfig = this.fleetConfig;
-    this.loadConfig(this.configPath);
+    const previousRawConfig = this.rawFleetConfig;
+    const previousRawDocument = this.rawFleetDocument;
+    const previousSavedSnapshot = this.savedFleetConfigSnapshot;
+
+    try {
+      this.loadConfig(this.configPath);
+    } catch (err) {
+      this.fleetConfig = oldConfig;
+      this.rawFleetConfig = previousRawConfig;
+      this.rawFleetDocument = previousRawDocument;
+      this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      throw err;
+    }
+
+    const validation = validateFleetConfig(this.rawFleetConfig);
+    const oldCount = Object.keys(oldConfig?.instances ?? {}).length;
+    const newCount = Object.keys(this.fleetConfig?.instances ?? {}).length;
+    const removedRatio = oldCount > 0 && newCount < oldCount
+      ? (oldCount - newCount) / oldCount
+      : 0;
+    const unsafeEmpty = oldCount > 0 && newCount === 0;
+    const unsafeBulkRemoval = removedRatio > 0.5;
+
+    if (!validation.valid || unsafeEmpty || unsafeBulkRemoval) {
+      this.fleetConfig = oldConfig;
+      this.rawFleetConfig = previousRawConfig;
+      this.rawFleetDocument = previousRawDocument;
+      this.savedFleetConfigSnapshot = previousSavedSnapshot;
+      this.logger.error({
+        oldCount,
+        newCount,
+        removedRatio,
+        validationErrors: validation.errors,
+      }, "Refusing unsafe fleet config reload; running configuration was kept");
+      return;
+    }
+
     this.routing.rebuild(this.fleetConfig!);
     this.reregisterClassicChannels();
     this.scheduler?.reload();
