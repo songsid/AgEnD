@@ -861,6 +861,55 @@ instances:
     );
   });
 
+  it("removes Telegram's /model keyboard and reuses its message for progress", async () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: { worker: { working_directory: "/tmp/worker", model: "gpt-5.6" } },
+    };
+    vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
+      { id: "gpt-5.6", label: "GPT-5.6" },
+      { id: "gpt-5.4", label: "GPT-5.4" },
+    ]);
+    vi.spyOn(fm, "applyModel").mockResolvedValue("✅ Done");
+    const promptUser = vi.fn().mockResolvedValue("menu-message");
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "fallback-progress" });
+    const adapter = {
+      promptUser,
+      editMessageRemoveButtons,
+      editMessage,
+      sendText,
+    } as any;
+
+    await fm.promptModelMenu("worker", "admin", "topic-1", adapter, "chat-1", "topic-1");
+    const choice = promptUser.mock.calls[0][2].find(
+      (item: { id: string }) => item.id.endsWith(":gpt-5.4"),
+    );
+    await (fm as any).handleModelSelection({
+      callbackData: choice.id,
+      chatId: "chat-1",
+      threadId: "topic-1",
+      messageId: "menu-message",
+      userId: "admin",
+    });
+
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+      "chat-1",
+      "menu-message",
+      "⏳ Switching worker to `gpt-5.4`…",
+      "topic-1",
+    );
+    await vi.waitFor(() => expect(editMessage).toHaveBeenCalledWith(
+      "chat-1",
+      "menu-message",
+      "✅ Done",
+      "topic-1",
+    ));
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
   it("uses a ClassicBot channel model before the fleet default", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: { model: "fleet-default" }, instances: {} };

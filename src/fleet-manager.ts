@@ -243,7 +243,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   classicChannels: ClassicChannelManager | null = null;
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -4579,7 +4579,14 @@ When users create specialized instances, suggest these configurations:
     this.pendingModelSelects.set(nonce, { instanceName, model: "", userId, channelId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
 
     try {
-      await adapter.promptUser(chatId, `Current model: ${currentModel}\nSelect a new model:`, choices, { threadId });
+      const menuMessageId = await adapter.promptUser(
+        chatId,
+        `Current model: ${currentModel}\nSelect a new model:`,
+        choices,
+        { threadId },
+      );
+      const pending = this.pendingModelSelects.get(nonce);
+      if (pending) pending.menuMessageId = menuMessageId;
       return null; // menu shown
     } catch (err) {
       this.pendingModelSelects.delete(nonce);
@@ -4609,11 +4616,27 @@ When users create specialized instances, suggest these configurations:
     const progressText = `⏳ Switching ${pending.instanceName} to \`${model}\`…`;
     let progressMsgId: string | undefined;
     if (pending.adapter && pending.adapterChatId) {
-      // TG path: send a new message and capture messageId for later edit
-      try {
-        const sent = await pending.adapter.sendText(pending.adapterChatId, progressText, { threadId: pending.adapterThreadId });
-        progressMsgId = sent.messageId;
-      } catch { /* non-fatal */ }
+      // TG path: turn the original menu into the progress message. This both
+      // removes its inline keyboard and gives the final result a stable message
+      // to edit, avoiding a stale selectable menu above a separate status post.
+      const menuMessageId = pending.menuMessageId ?? data.messageId;
+      if (menuMessageId && pending.adapter.editMessageRemoveButtons) {
+        try {
+          await pending.adapter.editMessageRemoveButtons(
+            pending.adapterChatId,
+            menuMessageId,
+            progressText,
+            pending.adapterThreadId,
+          );
+          progressMsgId = menuMessageId;
+        } catch { /* fall back to a new progress message */ }
+      }
+      if (!progressMsgId) {
+        try {
+          const sent = await pending.adapter.sendText(pending.adapterChatId, progressText, { threadId: pending.adapterThreadId });
+          progressMsgId = sent.messageId;
+        } catch { /* non-fatal */ }
+      }
     } else {
       // DC path: respond immediately with progress text
       await pending.respond(progressText).catch(() => {});
