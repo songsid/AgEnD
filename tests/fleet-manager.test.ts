@@ -27,6 +27,95 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("stopped");
   });
 
+  it("queues SIGHUP during startup and replays it after startup completes", async () => {
+    const fm = new FleetManager(tmpDir);
+    const reconcile = vi.spyOn(fm as any, "reconcileInstances").mockResolvedValue(undefined);
+
+    (fm as any).handleSighup();
+    expect(reconcile).not.toHaveBeenCalled();
+
+    (fm as any).finishStartup();
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(1));
+  });
+
+  it("coalesces concurrent SIGHUP reconciliations into one follow-up run", async () => {
+    const fm = new FleetManager(tmpDir);
+    let releaseFirst!: () => void;
+    const first = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const reconcile = vi.spyOn(fm as any, "reconcileInstances")
+      .mockImplementationOnce(() => first)
+      .mockResolvedValue(undefined);
+    (fm as any).startupComplete = true;
+
+    (fm as any).handleSighup();
+    (fm as any).handleSighup();
+    (fm as any).handleSighup();
+    expect(reconcile).toHaveBeenCalledTimes(1);
+
+    releaseFirst();
+    await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2));
+  });
+
+  it("keeps the running config when hot reload reads an empty fleet", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n  two:\n    working_directory: /tmp/two\n");
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    fm.lifecycle.daemons.set("one", {} as any);
+    fm.lifecycle.daemons.set("two", {} as any);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+
+    writeFileSync(configPath, "");
+    await (fm as any).reconcileInstances();
+
+    expect(stop).not.toHaveBeenCalled();
+    expect(Object.keys(fm.fleetConfig!.instances)).toEqual(["one", "two"]);
+  });
+
+  it("rejects invalid or greater-than-50-percent hot-reload removals", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, [
+      "instances:",
+      "  one:",
+      "    working_directory: /tmp/one",
+      "  two:",
+      "    working_directory: /tmp/two",
+      "  three:",
+      "    working_directory: /tmp/three",
+      "",
+    ].join("\n"));
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+
+    writeFileSync(configPath, "instances: []\n");
+    await (fm as any).reconcileInstances();
+    expect(stop).not.toHaveBeenCalled();
+    expect(Object.keys(fm.fleetConfig!.instances)).toHaveLength(3);
+
+    writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n");
+    await (fm as any).reconcileInstances();
+    expect(stop).not.toHaveBeenCalled();
+    expect(Object.keys(fm.fleetConfig!.instances)).toHaveLength(3);
+  });
+
+  it("allows a hot reload that removes exactly half of the instances", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n  two:\n    working_directory: /tmp/two\n");
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    fm.lifecycle.daemons.set("one", {} as any);
+    fm.lifecycle.daemons.set("two", {} as any);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+
+    writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n");
+    await (fm as any).reconcileInstances();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledWith("two");
+    expect(Object.keys(fm.fleetConfig!.instances)).toEqual(["one"]);
+  });
+
   it("clears stale idle state and reports crashed when the CLI pane dies", () => {
     const fm = new FleetManager(tmpDir);
     const instanceDir = fm.getInstanceDir("test");
