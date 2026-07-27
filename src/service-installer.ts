@@ -1,10 +1,10 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
-import { platform } from "node:os";
+import { homedir, platform } from "node:os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const templatesDir = join(__dirname, "..", "templates");
@@ -60,8 +60,52 @@ function validateVars(vars: ServiceVars & { path: string }): void {
   }
 }
 
+/**
+ * Preserve the caller's PATH order, then append locations commonly omitted by
+ * sudo/systemd. The npm-prefix inference is important for root+nvm installs:
+ * `agend update` may run with sudo's secure_path even though Codex lives beside
+ * the nvm-installed AgEnD binary.
+ */
+export function buildServicePath(
+  basePath = process.env.PATH ?? "",
+  execPath = process.argv[1] ?? "",
+  homeDir = homedir(),
+): string {
+  const dirs = basePath
+    .split(":")
+    .filter(Boolean)
+    .filter(p => !p.includes("/mnt/") && !p.includes("Program Files"));
+  const moduleMarker = "/lib/node_modules/";
+  const markerIndex = execPath.indexOf(moduleMarker);
+  const npmPrefixBin = markerIndex >= 0
+    ? join(execPath.slice(0, markerIndex), "bin")
+    : undefined;
+  const nvmBins: string[] = [];
+  try {
+    const nvmVersions = join(homeDir, ".nvm", "versions", "node");
+    for (const version of readdirSync(nvmVersions).sort().reverse()) {
+      nvmBins.push(join(nvmVersions, version, "bin"));
+    }
+  } catch { /* nvm is optional */ }
+  const fallbacks = [
+    dirname(process.execPath),
+    npmPrefixBin,
+    ...nvmBins,
+    join(homeDir, ".local", "bin"),
+    join(homeDir, ".npm-global", "bin"),
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ];
+
+  for (const candidate of fallbacks) {
+    if (candidate && !dirs.includes(candidate)) dirs.push(candidate);
+  }
+  return dirs.join(":");
+}
+
 function withDefaults(vars: ServiceVars): ServiceVars & { path: string } {
-  const path = (vars.path ?? process.env.PATH ?? "").split(":").filter(p => !p.includes("/mnt/") && !p.includes("Program Files")).join(":");
+  const path = buildServicePath(vars.path, vars.execPath);
   const full = { ...vars, path, isRoot: vars.isRoot ?? (process.getuid?.() === 0) };
   validateVars(full);
   return full;

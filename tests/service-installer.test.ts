@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderLaunchdPlist, renderSystemdUnit, detectPlatform, uninstallService } from "../src/service-installer.js";
+import { buildServicePath, renderLaunchdPlist, renderSystemdUnit, detectPlatform, uninstallService } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
   const vars = {
@@ -21,7 +21,7 @@ describe("ServiceInstaller", () => {
     expect(plist).toContain("<string>/usr/local/bin/claude-channel-daemon</string>");
     expect(plist).toContain("<string>fleet</string>");
     expect(plist).toContain("<string>start</string>");
-    expect(plist).toContain("<string>/usr/local/bin:/usr/bin:/bin</string>");
+    expect(plist).toContain("<string>/usr/local/bin:/usr/bin:/bin:");
   });
 
   it("renders systemd unit with correct values", () => {
@@ -36,6 +36,19 @@ describe("ServiceInstaller", () => {
     const plist = renderLaunchdPlist(varsWithoutPath);
     expect(plist).toContain("<key>PATH</key>");
     expect(plist).toContain(process.env.PATH!);
+  });
+
+  it("appends root user and nvm npm-prefix bins omitted by sudo PATH", () => {
+    const path = buildServicePath(
+      "/usr/sbin:/usr/bin:/bin",
+      "/root/.nvm/versions/node/v22.22.0/lib/node_modules/@songsid/agend/dist/cli.js",
+      "/root",
+    );
+    const entries = path.split(":");
+    expect(entries.slice(0, 3)).toEqual(["/usr/sbin", "/usr/bin", "/bin"]);
+    expect(entries).toContain("/root/.nvm/versions/node/v22.22.0/bin");
+    expect(entries).toContain("/root/.local/bin");
+    expect(entries).toContain("/root/.npm-global/bin");
   });
 
   it("rejects logPath with newline (systemd directive injection)", () => {

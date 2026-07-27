@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { accessSync, constants, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
 
 /** Observable execution state derived from the active CLI pane. */
 export type InstanceState = "idle" | "working" | "stuck";
@@ -204,12 +207,52 @@ export interface CliBackend {
  * tmux new-window runs commands in a minimal shell without user PATH,
  * so we resolve at daemon startup time when the full PATH is available.
  */
-export function resolveBinary(name: string): string {
+function commonBinaryDirs(): string[] {
+  const dirs = [
+    dirname(process.execPath),
+    join(homedir(), ".local", "bin"),
+    join(homedir(), ".npm-global", "bin"),
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+  ];
+
+  // Root installations often retain Codex under an nvm prefix while sudo's
+  // secure_path omits it. Probe every installed nvm Node bin as a fallback.
   try {
-    return execFileSync("which", [name], { encoding: "utf-8" }).trim();
-  } catch {
-    return name; // fallback to bare name
+    const nvmVersions = join(homedir(), ".nvm", "versions", "node");
+    for (const version of readdirSync(nvmVersions).sort().reverse()) {
+      dirs.push(join(nvmVersions, version, "bin"));
+    }
+  } catch { /* nvm is optional */ }
+
+  // Also cover custom npm prefixes such as ~/.npm-global.
+  try {
+    const prefix = execFileSync("npm", ["prefix", "-g"], {
+      encoding: "utf-8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    if (prefix) dirs.push(join(prefix, "bin"));
+  } catch { /* npm may not be in the restricted PATH */ }
+
+  return [...new Set(dirs)];
+}
+
+export function resolveBinary(name: string, fallbackDirs?: readonly string[]): string {
+  try {
+    const resolved = execFileSync("which", [name], { encoding: "utf-8" }).trim();
+    if (resolved) return resolved;
+  } catch { /* search common absolute locations below */ }
+
+  for (const dir of fallbackDirs ?? commonBinaryDirs()) {
+    const candidate = join(dir, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      if (statSync(candidate).isFile()) return candidate;
+    } catch { /* try next candidate */ }
   }
+  return name; // final fallback keeps the previous shell-PATH behavior
 }
 
 /**
