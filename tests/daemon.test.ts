@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Daemon } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -43,6 +44,21 @@ describe("Daemon", () => {
     const backend = new ClaudeCodeBackend("/tmp/ccd-test-instance");
     const daemon = new Daemon("test", makeConfig(), "/tmp/ccd-test-instance", true, backend, undefined, rootLogger);
     expect(daemon).toBeDefined();
+  });
+
+  it("sends agy's verified two-stage Ctrl+C shutdown sequence", async () => {
+    const backend = new AntigravityBackend("/tmp/agy-test-instance");
+    const daemon = new Daemon("agy-test", makeConfig(), "/tmp/agy-test-instance", false, backend, undefined, rootLogger);
+    const sendSpecialKey = vi.fn().mockResolvedValue(true);
+    (daemon as any).tmux = {
+      sendKeys: vi.fn().mockResolvedValue(true),
+      sendSpecialKey,
+    };
+
+    await (daemon as any).sendQuitSequence();
+
+    expect(backend.getQuitCommand()).toBeNull();
+    expect(sendSpecialKey.mock.calls).toEqual([["C-c"], ["C-c"]]);
   });
 });
 

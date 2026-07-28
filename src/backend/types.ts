@@ -161,6 +161,12 @@ export interface CliBackend {
   getQuitKey?(): string;
 
   /**
+   * Number of times to send getQuitKey(). Defaults to one. Some TUIs use a
+   * two-stage Ctrl+C flow (first cancels/arms exit, second confirms exit).
+   */
+  getQuitKeyPresses?(): number;
+
+  /**
    * In-session command to compact/reset the conversation context. Most CLIs use
    * "/compact"; some (e.g. Codex) use "/compact" too, OpenCode uses "/compact".
    * Used by the /compact fleet command.
