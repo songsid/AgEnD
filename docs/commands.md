@@ -19,6 +19,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
+| 🔒 `/model` | Change backend model (inline keyboard) | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -60,6 +61,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/compact` | Compact agent context | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
+| 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
 
