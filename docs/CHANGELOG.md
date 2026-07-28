@@ -4,6 +4,59 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.1] - Unreleased
+
+### Added
+- **Kiro TUI effort skill** — general-knowledge skill for Kiro's effort selector in TUI mode.
+
+### Fixed
+- **SIGHUP startup window** — startup requests during SIGHUP reload are protected.
+- **Reload reconcile safeguard** — aborts reconcile if N→0, empty config, or >50% instance drop detected.
+- **Root user Codex PATH** — PATH fallback for Codex when running as root.
+
+## [2.1.0] - 2026-07-27
+
+### Added
+- **`/model` slash command** — change backend model from chat. Admin-only. TG: inline keyboard menu. DC: select menu. Shows current model, gives instant feedback.
+- **Startup CLI-env probe** — auto-discovers available models at startup and caches per-backend.
+- **Auto-Pause/Wake** — idle instances pause after `auto_pause_after` minutes (opt-in, default: disabled). Messages auto-wake paused instances. `general` instance never pauses.
+- **Tri-state execution state** — Idle/Working/Stuck shown in `agend ls`, MCP `list_instances`, `/api/fleet`.
+- **Adapter startup isolation** — adapters launch in parallel with independent retry; one failing adapter no longer blocks others.
+- **Event-driven pane monitor** — uses tmux control mode `%output` events instead of 5-second polling; near-zero idle CPU.
+- **Adaptive startup concurrency** — reads `os.freemem()` at startup to limit parallel instance launches on low-RAM machines.
+- **Warm cap (LRU evict)** — `warm_cap` config limits resident (warm) instances; excess idle instances auto-pause.
+- **Grok Build backend** — full support for Google's Grok CLI: crash recovery, context %, quit key (Ctrl+Q), Web UI, MCP with ASCII-sanitized key.
+- **`/model` MCP tools** — `update_instance_config`, `update_fleet_defaults` for runtime config updates.
+- **Pause/wake MCP tools** — `pause_instance`, `wake_instance`, `stop_instance`, `get_fleet_status`, `get_instance_logs`, `get_fleet_config`.
+- **Cross-instance idle gate** — outbound messages wait for target instance to be idle before delivery.
+- **One-shot schedules** — `create_schedule({ at: "ISO-datetime", ... })` fires once and self-deletes.
+- **Silent schedules** — `create_schedule({ silent: true, ... })` pastes directly to pane without channel post.
+- **ClassicBot backend picker** — `/start` shows backend select menu with install status.
+- **Settings page** — structured UI for fleet.yaml/classicBot.yaml with form↔YAML dual-pane sync.
+- **Config validator** — `agend validate` CLI + `validate_config` MCP tool.
+- **Shared logger** — single root pino transport + child loggers (saves hundreds of MB + threads).
+- **Pause freeze monitors** — paused instances stop all timers/watchers (near-zero overhead).
+- **Kiro per-instance UI mode** — `kiro_ui: legacy | tui | v3` in fleet.yaml.
+
+### Fixed
+- `auto_pause_after` defaults to 0 (opt-in, user must enable).
+- `[C]` prefix removed from classic instance display names.
+- Cross-instance `[from:]` header shows sender `display_name`.
+- Classic instances appear in `agend ls`, `/status`, and Web View roster.
+- Grok: ASCII-sanitize MCP server key (CJK key → 0 tools).
+- Adapter binding race on restart.
+- Kiro lambda prompt recognized as ready pattern.
+- Stuck alerts gated on pending inbound work.
+- `fleet.log` includes date stamp.
+- Unicode instance names (Chinese ClassicBot channels).
+- CLI reply uses persisted context after restart.
+- agy: auto fresh-restart on unknown model key.
+- Idle state invalidated when CLI pane dies.
+
+### Changed
+- **Grok Build** — removed experimental markers; now stable.
+- **Shared logger** — replaces per-instance worker threads.
+
 ## [2.0.11] - Unreleased
 
 ### Added
