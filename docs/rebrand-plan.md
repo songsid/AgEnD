@@ -57,7 +57,6 @@ src/cli.ts                      — DATA_DIR path, command descriptions
 src/daemon.ts                   — CCD_INSTANCE_NAME → AGEND_INSTANCE_NAME
 src/daemon-entry.ts             — env var names
 src/fleet-manager.ts            — TMUX_SESSION, data dir references
-src/fleet-system-prompt.ts      — "CCD Fleet Context" → "AgEnD Fleet Context"
 src/channel/mcp-server.ts       — server name, CCD_SOCKET_PATH, CCD_SESSION_NAME
 src/channel/mcp-tools.ts        — tool descriptions mentioning CCD
 src/service-installer.ts        — launchd label, systemd unit name

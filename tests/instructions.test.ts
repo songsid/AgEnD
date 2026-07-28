@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { buildFleetInstructions } from "../src/instructions.js";
 import { buildInstructionReloadNotice } from "../src/daemon.js";
 
@@ -17,6 +18,27 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("[from:");
     expect(result).toContain("`reply` tool");
     expect(result).toContain("send_to_instance");
+  });
+
+  it("keeps user content in reply while preserving an operator-visible failure path", () => {
+    const result = buildFleetInstructions(base);
+    expect(result).toContain("Everything for the user goes inside the `reply` call");
+    expect(result).toContain("NOT delivered to their chat");
+    expect(result).toContain("end the turn with a final\ntext of exactly `.`");
+    expect(result).toContain("if `reply` fails, say so in the final text");
+    expect(result).toContain("After that tool succeeds, likewise end the turn with exactly `.`");
+  });
+
+  it("gives CLI-mode agents equivalent delivery and final-text rules", () => {
+    const cliInstructions = readFileSync(
+      new URL("../src/agent-cli-instructions.md", import.meta.url),
+      "utf8",
+    );
+    expect(cliInstructions).toContain("Everything for a human user goes inside the `agend-agent reply` command");
+    expect(cliInstructions).toContain("NOT delivered to their chat");
+    expect(cliInstructions).toContain("end the turn with final text of exactly `.`");
+    expect(cliInstructions).toContain("if the command fails, say so in the final text");
+    expect(cliInstructions).toContain("After the command succeeds, likewise end the turn with exactly");
   });
 
   it("does not tell backends to scan Kiro steering at startup", () => {
