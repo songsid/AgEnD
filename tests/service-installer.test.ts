@@ -29,6 +29,7 @@ describe("ServiceInstaller", () => {
     expect(unit).toContain("ExecStart=/usr/local/bin/claude-channel-daemon fleet start");
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
+    expect(unit).toContain("TimeoutStopSec=60");
   });
 
   it("falls back to process.env.PATH when path is omitted", () => {

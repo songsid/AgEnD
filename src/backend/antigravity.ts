@@ -149,7 +149,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     } catch { return null; }
   }
 
-  getQuitCommand(): string { return "/quit"; }
+  // agy does not implement /quit — it treats it as a normal chat message.
+  // Verified with agy 1.1.8: two Ctrl+C presses exit the idle TUI cleanly.
+  getQuitCommand(): null { return null; }
+  getQuitKey(): string { return "C-c"; }
+  getQuitKeyPresses(): number { return 2; }
 
   // agy has no summarizing /compact — "/clear" is the only manual context reset
   // (full reset; agy also auto-summarizes at a token threshold).

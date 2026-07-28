@@ -14,7 +14,9 @@ Environment=TERM=xterm-256color
 <% } %>WorkingDirectory=<%= workingDirectory %>
 Restart=on-failure
 RestartSec=5
-TimeoutStopSec=300
+# Daemon shutdown is bounded per batch; do not let an uncooperative backend
+# hold systemctl stop/update for the previous five-minute default.
+TimeoutStopSec=60
 StandardOutput=append:<%= logPath %>
 StandardError=append:<%= logPath %>
 
