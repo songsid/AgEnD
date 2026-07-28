@@ -23,6 +23,12 @@ import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
+import {
+  getUpdateSelector,
+  lookupTargetVersion,
+  reportUpdateRestart,
+  shouldSkipUpdate,
+} from "./update-check.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -1093,12 +1099,23 @@ program
   .description("Update AgEnD to latest version and restart service")
   .option("--version <ver>", "Specific version to install")
   .option("--beta", "Install beta version")
-  .action(async (opts: { version?: string; beta?: boolean }) => {
+  .option("--force", "Force reinstall and restart even when already up to date")
+  .action(async (opts: { version?: string; beta?: boolean; force?: boolean }) => {
     const { spawnSync } = await import("node:child_process");
-    const tag = opts.version ? opts.version : (opts.beta ? "beta" : "latest");
+    const tag = getUpdateSelector(opts);
     const pkg = `@songsid/agend@${tag}`;
+    const targetVersion = lookupTargetVersion(tag);
 
-    console.log(`\n  Updating AgEnD to ${tag}...\n`);
+    if (shouldSkipUpdate(pkgVersion, targetVersion, opts.force)) {
+      console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
+      return;
+    }
+
+    if (targetVersion) {
+      console.log(`\n  Updating AgEnD v${pkgVersion} → v${targetVersion}...\n`);
+    } else {
+      console.log(`\n  Updating AgEnD to ${tag}...\n`);
+    }
 
     // Detect and remove stale npm link (local build that shadows global install)
     try {
@@ -1196,11 +1213,7 @@ program
     // systemd → user systemd → launchd → detached pid).
     console.log("  Restarting fleet...");
     const restartResult = spawnSync(agendPath, ["restart"], { encoding: "utf-8", timeout: 30000, stdio: "inherit" });
-    if (restartResult.status === 0) {
-      console.log("  ✓ Service restarted");
-    } else {
-      console.log("  ⚠ Auto-restart failed. Run: agend start");
-    }
+    if (!reportUpdateRestart(restartResult.status)) process.exitCode = 1;
   });
 
 program
