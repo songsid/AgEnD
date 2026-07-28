@@ -46,5 +46,14 @@ agend-agent decision-list                         # List decisions
 
 - `[user:... via telegram]` → use `agend-agent reply` (NOT `agend-agent send`)
 - `[from:INSTANCE]` → use `agend-agent send` (NOT `agend-agent reply`)
+- Everything for a human user goes inside the `agend-agent reply` command. Your final
+  terminal text is NOT delivered to their chat — it only reaches local logs and
+  `/view`. After the command succeeds, end the turn with final text of exactly `.`
+  (some backends such as Kiro CLI error on a turn with no text at all). Only
+  exception: if the command fails, say so in the final text so the failure is visible
+  to the operator.
+- For cross-instance responses, put the response in `agend-agent send` or
+  `agend-agent report`. After the command succeeds, likewise end the turn with exactly
+  `.`; if it fails, put the failure in the final text so the operator can diagnose it.
 - Task flow: `agend-agent delegate` → silent work → `agend-agent report`. Zero messages in between.
 - Never send acknowledgment-only messages. Only send messages with actionable content.
