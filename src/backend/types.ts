@@ -281,10 +281,10 @@ export function validateModel(model: string): string {
   return model;
 }
 
-/** Known model prefixes/patterns per backend. Model is skipped if it doesn't match the target backend. */
+/** Known model prefixes/patterns per backend. Used only for advisory warnings. */
 const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "claude-code": /^(sonnet|opus|haiku|opusplan|best|claude)/i,
-  "kiro-cli": /^(claude|sonnet|opus|haiku|auto)/i,
+  "kiro-cli": /^(claude|sonnet|opus|haiku|auto|gpt|deepseek|minimax|glm|qwen)/i,
   "codex": /^(gpt|o[0-9]|chatgpt)/i,
   "gemini-cli": /^gemini/i,
   "opencode": /./,  // opencode accepts anything (provider-dependent)
