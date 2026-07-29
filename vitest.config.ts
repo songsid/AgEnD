@@ -17,6 +17,11 @@ export default defineConfig({
     testTimeout: 10000,
     exclude: [
       "**/node_modules/**",
+      // dist is a build artifact. Its copies of the test files don't change
+      // when src does, so leaving them in means every suite runs 26 duplicate
+      // tests and, eventually, someone chases a "dist fails but src passes"
+      // ghost. Test the source.
+      "dist/**",
       ".worktrees/**",
       ".claude/worktrees/**",
     ],
