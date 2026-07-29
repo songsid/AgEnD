@@ -1,67 +1,107 @@
-import { describe, expect, it } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { FleetManager } from "../src/fleet-manager.js";
+import { getAgendHome } from "../src/paths.js";
 
 /**
- * Mirrors FleetManager.resolveInstanceModel's precedence so the chain is pinned
- * without standing up a whole FleetManager. Keep in sync with fleet-manager.ts.
+ * Precedence tests for FleetManager.resolveInstanceModel — the single resolver
+ * behind both `/model` and `/ctx`. These drive a REAL FleetManager (not a mirror
+ * of the logic) so the classic-channel path and the cli-env cache read are
+ * genuinely exercised.
  */
-type Source = "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
-function resolve(input: {
-  instanceModel?: string;
-  fleetDefault?: string;
-  isFleetInstance?: boolean;
-  classicModel?: string;
-  cliEnvExists?: boolean;
-  cliCurrentModel?: string;
-}): { model: string; source: Source; display: string } {
-  const done = (model: string, source: Source, reason?: string) => ({
-    model, source,
-    display: source === "cli-default" ? `${model} (default)`
-      : source === "unresolved" ? `default (${reason ?? "unresolved"})`
-      : model,
-  });
-  if (input.isFleetInstance) {
-    if (input.instanceModel?.trim()) return done(input.instanceModel.trim(), "instance");
-    if (input.fleetDefault?.trim()) return done(input.fleetDefault.trim(), "fleet-default");
-  }
-  if (input.classicModel?.trim()) return done(input.classicModel.trim(), "classic");
-  if (input.cliCurrentModel?.trim()) return done(input.cliCurrentModel.trim(), "cli-default");
-  return done("default", "unresolved", input.cliEnvExists ? "this CLI does not report a default" : "not probed yet");
-}
-
 describe("resolveInstanceModel precedence", () => {
-  it("per-instance model wins over everything", () => {
-    const r = resolve({ isFleetInstance: true, instanceModel: "opus", fleetDefault: "sonnet", cliCurrentModel: "auto" });
-    expect(r).toMatchObject({ model: "opus", source: "instance", display: "opus" });
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ccd-model-resolve-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+    mkdirSync(tmpDir, { recursive: true });
   });
 
-  it("falls back to fleet defaults.model", () => {
-    const r = resolve({ isFleetInstance: true, fleetDefault: "sonnet", cliCurrentModel: "auto" });
-    expect(r).toMatchObject({ model: "sonnet", source: "fleet-default" });
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+    // Clear only the cli-env files this suite wrote, so cases don't leak.
+    const dir = cliEnvDir();
+    if (dir) rmSync(dir, { recursive: true, force: true });
   });
 
-  it("uses the classic channel override for classic instances", () => {
-    const r = resolve({ classicModel: "claude-sonnet-4.6", cliCurrentModel: "auto" });
-    expect(r).toMatchObject({ model: "claude-sonnet-4.6", source: "classic" });
+  /**
+   * The cli-env cache dir under the TEST AgEnD home. Returns null unless
+   * AGEND_HOME is explicitly set (vitest.config.ts injects a per-run temp one) —
+   * never touch a developer's real ~/.agend, even though cli-env is derived data.
+   */
+  function cliEnvDir(): string | null {
+    if (!process.env.AGEND_HOME) return null;
+    return join(getAgendHome(), "cli-env");
+  }
+
+  /** Write the cli-env probe cache the resolver's last-resort branch reads. */
+  function writeCliEnv(backend: string, env: Record<string, unknown>): void {
+    const dir = cliEnvDir();
+    if (!dir) throw new Error("AGEND_HOME must be set for these tests (vitest.config.ts injects it)");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `${backend}.json`), JSON.stringify({ backend, probedAt: Date.now(), models: [], ...env }));
+  }
+
+  it("per-instance model wins over the fleet default", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { model: "sonnet" }, instances: { worker: { model: "opus" } } } as any;
+    expect(fm.resolveInstanceModel("worker")).toMatchObject({ model: "opus", source: "instance", display: "opus" });
   });
 
-  it("resolves the CLI's own default and labels it (default)", () => {
-    const r = resolve({ isFleetInstance: true, cliEnvExists: true, cliCurrentModel: "auto" });
-    expect(r).toEqual({ model: "auto", source: "cli-default", display: "auto (default)" });
+  it("falls back to defaults.model", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { model: "sonnet" }, instances: { worker: {} } } as any;
+    expect(fm.resolveInstanceModel("worker")).toMatchObject({ model: "sonnet", source: "fleet-default" });
+  });
+
+  it("ignores a whitespace-only per-instance model", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { model: "sonnet" }, instances: { worker: { model: "   " } } } as any;
+    expect(fm.resolveInstanceModel("worker")).toMatchObject({ model: "sonnet", source: "fleet-default" });
+  });
+
+  it("uses a ClassicBot channel model before the fleet default", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { model: "fleet-default" }, instances: {} } as any;
+    (fm as any).classicChannels = {
+      getAll: () => [{ instanceName: "classic-worker", channelId: "channel-1", adapterId: "discord" }],
+      getModel: () => "classic-model",
+      getChannelIdByInstance: () => "channel-1",
+      getBackendByInstance: () => "claude-code",
+    };
+    expect(fm.resolveInstanceModel("classic-worker")).toMatchObject({ model: "classic-model", source: "classic" });
+  });
+
+  it("resolves the CLI's own default from the probe cache and labels it", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { backend: "kiro-cli" }, instances: { worker: {} } } as any;
+    writeCliEnv("kiro-cli", { currentModel: "auto" });
+    expect(fm.resolveInstanceModel("worker")).toMatchObject({
+      model: "auto", source: "cli-default", display: "auto (default)",
+    });
   });
 
   it("explains an unresolved default when the CLI reports none", () => {
-    const r = resolve({ isFleetInstance: true, cliEnvExists: true });
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { backend: "claude-code" }, instances: { worker: {} } } as any;
+    writeCliEnv("claude-code", {}); // probed, but no currentModel
+    const r = fm.resolveInstanceModel("worker");
     expect(r.source).toBe("unresolved");
     expect(r.display).toBe("default (this CLI does not report a default)");
   });
 
   it("explains an unresolved default when no probe has run", () => {
-    const r = resolve({ isFleetInstance: true, cliEnvExists: false });
-    expect(r.display).toBe("default (not probed yet)");
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { backend: "claude-code" }, instances: { worker: {} } } as any;
+    expect(fm.resolveInstanceModel("worker").display).toBe("default (not probed yet)");
   });
 
-  it("ignores whitespace-only configured models", () => {
-    const r = resolve({ isFleetInstance: true, instanceModel: "   ", fleetDefault: "sonnet" });
-    expect(r).toMatchObject({ model: "sonnet", source: "fleet-default" });
+  it("modelDisplayForInstance returns the resolved display string", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { backend: "kiro-cli" }, instances: { worker: {} } } as any;
+    writeCliEnv("kiro-cli", { currentModel: "auto" });
+    expect(fm.modelDisplayForInstance("worker")).toBe("auto (default)");
   });
 });
