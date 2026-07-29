@@ -54,6 +54,11 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
   kiro_ui: "legacy",
+  terminal: {
+    enabled: true,
+    columns: 120,
+    rows: 36,
+  },
   restart_policy: {
     max_retries: 10,
     backoff: "exponential",

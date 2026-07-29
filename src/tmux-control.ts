@@ -226,7 +226,13 @@ export class TmuxControlClient extends EventEmitter {
     this.paneToWindow.clear();
     this.lastOutputAt.clear();
 
-    this.proc = spawn("tmux", tmuxArgs(["-C", "attach", "-t", this.sessionName, "-r"]), {
+    // This is an observation-only client with no real terminal geometry.
+    // `ignore-size` prevents tmux's `window-size=latest` policy from treating
+    // its synthetic dimensions as authoritative. Instance windows are also
+    // pinned to `window-size=manual` by TmuxManager (defense in depth).
+    this.proc = spawn("tmux", tmuxArgs([
+      "-C", "attach", "-f", "ignore-size", "-t", this.sessionName, "-r",
+    ]), {
       stdio: ["pipe", "pipe", "pipe"],
     });
 

@@ -1,7 +1,32 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import type { TerminalConfig } from "./types.js";
 
 const exec = promisify(execFile);
+
+export interface TmuxLogicalSize {
+  columns: number;
+  rows: number;
+}
+
+export const DEFAULT_TMUX_LOGICAL_SIZE: Readonly<TmuxLogicalSize> = Object.freeze({
+  columns: 120,
+  rows: 36,
+});
+
+export const LEGACY_TMUX_LOGICAL_SIZE: Readonly<TmuxLogicalSize> = Object.freeze({
+  columns: 80,
+  rows: 24,
+});
+
+/** Resolve an effective config into the geometry that must be pinned in tmux. */
+export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize {
+  if (config?.enabled === false) return { ...LEGACY_TMUX_LOGICAL_SIZE };
+  return {
+    columns: config?.columns ?? DEFAULT_TMUX_LOGICAL_SIZE.columns,
+    rows: config?.rows ?? DEFAULT_TMUX_LOGICAL_SIZE.rows,
+  };
+}
 
 export class TmuxManager {
   private windowId: string;
@@ -20,7 +45,11 @@ export class TmuxManager {
     return ["-L", TmuxManager.socketName, ...args];
   }
 
-  constructor(private sessionName: string, windowId: string) {
+  constructor(
+    private sessionName: string,
+    windowId: string,
+    private logicalSize: TmuxLogicalSize = { ...DEFAULT_TMUX_LOGICAL_SIZE },
+  ) {
     this.windowId = windowId;
   }
 
@@ -81,8 +110,18 @@ export class TmuxManager {
     args.push("-P", "-F", "#{window_id}", command);
     const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args));
     this.windowId = stdout.trim();
-    if (windowName) {
-      await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"])).catch(() => {});
+    try {
+      // `window-size=manual` is essential: the shared control-mode client has
+      // no PTY and otherwise makes `window-size=latest` collapse windows back
+      // to its synthetic 80-column geometry.
+      await this.applyLogicalSize();
+      if (windowName) {
+        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"])).catch(() => {});
+      }
+    } catch (err) {
+      // Do not leave a live instance in an unpinned geometry if setup fails.
+      await this.killWindow();
+      throw err;
     }
     return this.windowId;
   }
@@ -90,9 +129,25 @@ export class TmuxManager {
   /** Restart the process inside the existing window, preserving its window id. */
   async respawnWindow(command: string, cwd: string): Promise<void> {
     if (!this.windowId) throw new Error("Cannot respawn tmux window without a window id");
+    // Apply before respawn so the new CLI sees the intended COLUMNS/LINES from
+    // its first frame. Reapplying is idempotent and repairs external drift.
+    await this.applyLogicalSize();
     await exec("tmux", TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", `${this.sessionName}:${this.windowId}`,
       "-c", cwd, command,
+    ]));
+  }
+
+  private async applyLogicalSize(): Promise<void> {
+    if (!this.windowId) throw new Error("Cannot size tmux window without a window id");
+    const target = `${this.sessionName}:${this.windowId}`;
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "set-window-option", "-t", target, "window-size", "manual",
+    ]));
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "resize-window", "-t", target,
+      "-x", String(this.logicalSize.columns),
+      "-y", String(this.logicalSize.rows),
     ]));
   }
 
@@ -150,6 +205,26 @@ export class TmuxManager {
     } catch {
       return null;
     }
+  }
+
+  /** Return tmux's effective window geometry and sizing policy (diagnostics/tests). */
+  async getWindowGeometry(): Promise<TmuxLogicalSize & { mode: string }> {
+    if (!this.windowId) throw new Error("Cannot inspect tmux window without a window id");
+    const target = `${this.sessionName}:${this.windowId}`;
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      "display-message", "-p", "-t", target,
+      "#{window_width} #{window_height}",
+    ]));
+    const { stdout: modeOutput } = await exec("tmux", TmuxManager.tmuxArgs([
+      "show-window-options", "-v", "-t", target, "window-size",
+    ]));
+    const [columnsRaw, rowsRaw] = stdout.trim().split(/\s+/);
+    const columns = Number.parseInt(columnsRaw, 10);
+    const rows = Number.parseInt(rowsRaw, 10);
+    if (!Number.isFinite(columns) || !Number.isFinite(rows)) {
+      throw new Error(`Invalid tmux window geometry: ${stdout.trim()}`);
+    }
+    return { columns, rows, mode: modeOutput.trim() };
   }
 
   async sendKeys(text: string): Promise<boolean> {

@@ -105,6 +105,42 @@ instances:
     expect(fleet.instances.v3.kiro_ui).toBe("v3");
   });
 
+  it("defaults terminal to 120x36 and deep-merges per-instance overrides", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(fleetPath, `defaults:
+  terminal:
+    columns: 132
+instances:
+  inherited:
+    working_directory: /tmp/tmux-inherited
+  custom:
+    working_directory: /tmp/tmux-custom
+    terminal:
+      rows: 40
+  legacy:
+    working_directory: /tmp/tmux-legacy
+    terminal:
+      enabled: false
+`);
+
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.instances.inherited.terminal).toEqual({
+      enabled: true,
+      columns: 132,
+      rows: 36,
+    });
+    expect(fleet.instances.custom.terminal).toEqual({
+      enabled: true,
+      columns: 132,
+      rows: 40,
+    });
+    expect(fleet.instances.legacy.terminal).toEqual({
+      enabled: false,
+      columns: 132,
+      rows: 36,
+    });
+  });
+
   it("defaults auto-pause to 30 minutes and supports per-instance disable", () => {
     const fleetPath = join(tmpDir, "fleet.yaml");
     writeFileSync(fleetPath, `instances:
