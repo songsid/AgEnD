@@ -124,6 +124,7 @@ graph LR
 - [CLI Reference](docs/cli.md) — 所有指令與選項
 - [Configuration](docs/configuration.zh-TW.md) — fleet.yaml 完整設定參考
 - [Security](SECURITY.md) — 信任模型與安全強化
+- [開發環境設定](docs/development.md) — 開發 AgEnD 本身
 
 ## 已知限制
 

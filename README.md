@@ -146,6 +146,7 @@ graph LR
 - [CLI Reference](docs/cli.md) — all commands and options
 - [Configuration](docs/configuration.md) — fleet.yaml complete reference
 - [Security](SECURITY.md) — trust model and hardening
+- [Development Setup](docs/development.md) — working on AgEnD itself
 
 ## Discord ClassicBot
 
