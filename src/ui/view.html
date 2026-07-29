@@ -8,9 +8,7 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root { --bg:#0d1117; --panel:#161b22; --border:#21262d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; }
   html, body { width: 100%; height: 100%; }
-  /* 100dvh tracks the *visible* viewport once mobile browser chrome slides in
-     and out; 100vh stays as the fallback for engines without dvh. */
-  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; width: 100vw; min-width: 0; height: 100vh; height: 100dvh; overflow: hidden; }
+  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; width: 100vw; min-width: 0; height: 100vh; overflow: hidden; }
 
   /* Sidebar */
   #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
@@ -85,21 +83,9 @@
   .help-panel li { font-size: 13px; margin: 6px 0; color: var(--fg); }
   .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--dim); font-size: 22px; line-height: 1; background: none; border: none; }
 
-  /* Mobile drawer: hidden on desktop, where the sidebar stays in flex flow. */
-  #menuBtn { display: none; position: fixed; top: 10px; left: 10px; right: auto; z-index: 95; }
   #densityBtn { font-size: 14px; font-weight: 600; letter-spacing: -.5px; }
-  #sbBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; z-index: 88; }
   @media (max-width: 700px) {
-    /* Overlay the sidebar instead of shrinking it: taking it out of the flex
-       flow is what gives #main (and the terminal) the full viewport width. */
-    #sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; flex-basis: 260px;
-      z-index: 90; transform: translateX(-100%); transition: transform .2s ease;
-      box-shadow: 4px 0 24px rgba(0,0,0,.5); }
-    #sidebar.open { transform: translateX(0); }
-    #sbBackdrop.open { display: block; }
-    #menuBtn { display: inline-flex; }
-    /* Keep the first terminal rows clear of the fixed overlay buttons. */
-    #term { padding-top: 52px; }
+    #sidebar { width: 180px; flex-basis: 180px; }
     /* The compact bar must stay one line; only the expanded form wraps. */
     #card.expanded { flex-wrap: wrap; padding: 10px 12px; }
     #edit { flex-basis: 100%; }
@@ -107,7 +93,6 @@
 </style>
 </head>
 <body>
-  <button class="help-btn" id="menuBtn" title="Instances" aria-label="Instances">☰</button>
   <button class="help-btn" id="densityBtn" title="Font density" style="right:98px">⤢</button>
   <button class="help-btn" id="langBtn" title="Language" style="right:56px">🌐</button>
   <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
@@ -116,7 +101,6 @@
     <button class="close" id="helpClose" title="Close">×</button>
     <div id="helpContent"></div>
   </aside>
-  <div id="sbBackdrop"></div>
   <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
   <div id="main">
     <div id="term"><pre id="pre"></pre></div>
@@ -162,8 +146,7 @@
       help1: "Pick an instance on the left → its live terminal shows on the right",
       help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
       help4: "Drag to reorder (needs web.token permission)",
-      help5: "Tap ⤢ to cycle font density: Fit → Comfortable → Compact",
-      help6: "On a phone, tap ☰ to open the instance list; the terminal then uses the full width",
+      help5: "Click ⤢ to cycle font density: Fit → Comfortable → Compact",
       densityFit: "Fit", densityComfortable: "Comfortable", densityCompact: "Compact", densityLabel: "Font density" },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
@@ -172,7 +155,6 @@
       help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
       help4: "拖曳可調整順序（需 web.token 權限）",
       help5: "點 ⤢ 循環切換字級密度：剛好填滿 → 舒適 → 精簡",
-      help6: "手機上點 ☰ 開啟 instance 清單；關閉後 terminal 佔滿整個寬度",
       densityFit: "剛好填滿", densityComfortable: "舒適", densityCompact: "精簡", densityLabel: "字級密度" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
@@ -183,7 +165,7 @@
     document.querySelectorAll("[data-i18n-ph]").forEach(e => { e.setAttribute("placeholder", T(e.getAttribute("data-i18n-ph"))); });
     const hc = q("helpContent");
     if (hc) { hc.innerHTML = ""; const h3 = document.createElement("h3"); h3.textContent = T("helpTitle"); hc.append(h3);
-      const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4","help5","help6"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
+      const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4","help5"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
     renderDensityBtn();
   }
 
@@ -542,19 +524,14 @@
     return cellRatio || 0.6;                // headless / odd env → old estimate
   }
 
-  // Per-breakpoint [min, max]. The removed 48px ceiling was what made an 80x24
-  // pane render at ~33px on a 1080p screen — the "font is huge" complaint.
-  function clampRange() {
-    const w = window.innerWidth;
-    if (w <= 700) return [8, 14];    // phone
-    if (w <= 1100) return [10, 18];  // tablet
-    return [12, 22];                 // desktop
-  }
+  // The removed 48px ceiling was what made an 80x24 pane render at ~33px on a
+  // 1080p screen — the "font is huge" complaint. A single desktop range is
+  // enough; /view is not targeting phones.
+  const MIN_PX = 12, MAX_PX = 22;
 
-  // Order: fit → breakpoint clamp → user density → absolute readability bounds.
-  // When the clamped size can't show all `cols`, we deliberately overflow and
-  // let #term pan horizontally rather than shrink below the floor (390px
-  // portrait at 120 cols would mathematically need ~5.3px).
+  // Order: fit → clamp → user density → absolute readability bounds. When the
+  // clamped size can't show all `cols`, #term scrolls rather than shrinking
+  // below the floor.
   function fitFont() {
     if (paneCols < 1 || paneRows < 1) return;   // no trustworthy size yet
     const term = q("term"), pre = q("pre");
@@ -563,18 +540,17 @@
     const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
     const innerW = Math.max(1, term.clientWidth - (padX || 0));
     const innerH = Math.max(1, term.clientHeight - (padY || 0));
-    const key = `${paneCols}x${paneRows}@${Math.round(innerW)}x${Math.round(innerH)}/${density}/${window.innerWidth}`;
+    const key = `${paneCols}x${paneRows}@${Math.round(innerW)}x${Math.round(innerH)}/${density}`;
     if (key === lastFitKey) return;
     const pcs = getComputedStyle(pre);
     const lhRatio = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
     const lineH = Number.isFinite(lhRatio) && lhRatio > 0 ? lhRatio : 1.2;
     const widthFit = innerW / (paneCols * glyphRatio());
     const heightFit = innerH / (paneRows * lineH);
-    const [lo, hi] = clampRange();
     // 0.5% slack keeps an exact fit from rounding into a scrollbar (paired with
     // scrollbar-gutter:stable, that's what stops resize→scrollbar→resize loops).
     let size = Math.min(widthFit, heightFit) * 0.995;
-    size = Math.max(lo, Math.min(size, hi));
+    size = Math.max(MIN_PX, Math.min(size, MAX_PX));
     size *= DENSITY[density] || 1;
     size = Math.max(8, Math.min(size, 32));
     lastFitKey = key;
@@ -606,11 +582,10 @@
   }
 
   function select(name) {
-    if (name === current) { setDrawer(false); return; }
+    if (name === current) return;
     current = name;
     lastFitKey = "";            // force a refit once the new pane's size lands
     exitEdit();
-    setDrawer(false);           // mobile: hand the width back to the terminal
     q("pre").textContent = "";  // blank the old instance's output immediately
     renderList(); renderCard(); refreshPane();
   }
@@ -690,20 +665,11 @@
   q("helpBackdrop").onclick = () => setHelp(false);
   q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); };
   q("densityBtn").onclick = cycleDensity;
-  // Mobile drawer. The sidebar is position:fixed under 700px, so opening it
-  // overlays the terminal instead of shrinking it; closed = terminal full width.
-  function setDrawer(open) {
-    q("sidebar").classList.toggle("open", open);
-    q("sbBackdrop").classList.toggle("open", open);
-  }
-  q("menuBtn").onclick = () => setDrawer(!q("sidebar").classList.contains("open"));
-  q("sbBackdrop").onclick = () => setDrawer(false);
-  window.addEventListener("keydown", (e) => { if (e.key === "Escape") { setDrawer(false); setHelp(false); } });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") setHelp(false); });
 
   window.addEventListener("resize", scheduleFit);
-  window.addEventListener("orientationchange", scheduleFit);
-  // Catches container changes the window resize event doesn't see: the drawer
-  // closing, the card expanding, mobile browser chrome sliding away.
+  // Catches container changes the window resize event doesn't see — chiefly the
+  // profile card expanding or collapsing.
   if (window.ResizeObserver) new ResizeObserver(scheduleFit).observe(q("term"));
   applyI18n();
   applyCardExpanded(cardExpanded);
