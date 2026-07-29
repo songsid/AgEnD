@@ -378,9 +378,13 @@ export class TopicCommands {
       } catch { /* ignore */ }
     }
     const contextLine = context == null ? null : formatContextUsageLine(context, tokenRatio);
+    // Effective model (resolves per-instance → fleet default → classic channel →
+    // the CLI's own default) via the shared resolver, so /ctx and /model agree.
+    const modelDisplay = this.ctx.modelDisplayForInstance?.(instanceName);
+    const modelLine = modelDisplay ? `\n${t("ctx.model", modelDisplay)}` : "";
     return context != null
-      ? `${contextLine}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`
-      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}\n${t("ctx.instance", instanceName)}`;
+      ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}\n${t("ctx.instance", instanceName)}`
+      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}${modelLine}\n${t("ctx.instance", instanceName)}`;
   }
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */

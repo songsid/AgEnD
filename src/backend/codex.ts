@@ -240,8 +240,18 @@ export class CodexBackend implements CliBackend {
     return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
   }
 
-  async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[] }> {
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+  async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[]; currentModel?: string }> {
+    // The configured model is readable from ~/.codex/config.toml (`model = "..."`).
+    let currentModel: string | undefined;
+    try {
+      currentModel = readFileSync(join(homedir(), ".codex", "config.toml"), "utf-8")
+        .split("\n")
+        .map(l => l.trim())
+        .filter(l => !l.startsWith("#"))            // skip comments
+        .map(l => l.match(/^model\s*=\s*["']([^"']+)["']/)?.[1])  // `model` only, not *_model
+        .find((v): v is string => !!v);
+    } catch { /* no config / unreadable */ }
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
   }
 
   cleanup(config: CliBackendConfig): void {

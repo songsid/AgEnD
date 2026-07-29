@@ -999,16 +999,8 @@ instances:
     expect(sendText).not.toHaveBeenCalled();
   });
 
-  it("uses a ClassicBot channel model before the fleet default", () => {
-    const fm = new FleetManager(tmpDir);
-    fm.fleetConfig = { defaults: { model: "fleet-default" }, instances: {} };
-    fm.classicChannels = {
-      getAll: () => [{ instanceName: "classic-worker", channelId: "channel-1", adapterId: "discord" }],
-      getModel: () => "classic-model",
-    } as any;
-
-    expect((fm as any).currentModelForInstance("classic-worker")).toBe("classic-model");
-  });
+  // Classic-channel model precedence moved to tests/model-resolve.test.ts, which
+  // covers the whole resolveInstanceModel() chain against a real FleetManager.
 
   it("persists explicit instance overrides even when they equal inherited defaults", () => {
     const fm = new FleetManager(tmpDir);
