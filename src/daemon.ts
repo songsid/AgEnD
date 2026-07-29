@@ -1147,10 +1147,33 @@ export class Daemon extends EventEmitter {
       }
       this.lastErrorNotifiedAt.set(key, now);
       if (ep.action === "failover") this.lastFailoverAt = now;
-      this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${ep.message}`);
-      this.emit("pty_error", { name: this.name, ...ep });
+      const message = this.resolveErrorMessage(pane, ep);
+      this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
+      this.emit("pty_error", { name: this.name, ...ep, message });
 
       break; // Only handle first unsuppressed new error per scan
+    }
+  }
+
+  /**
+   * Notification text for a detected pattern. `formatMessage` patterns build it
+   * from the match so the user gets the specifics (e.g. which period and what
+   * percentage remains) instead of a generic "running low".
+   *
+   * Uses the LAST match in the pane: an older warning may still be scrolled up
+   * (10% earlier, 5% now), and the newest one is the one worth reporting.
+   */
+  private resolveErrorMessage(pane: string, ep: ErrorPattern): string {
+    if (!ep.formatMessage) return ep.message;
+    try {
+      const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+      const matches = [...pane.matchAll(new RegExp(ep.pattern.source, flags))];
+      const last = matches[matches.length - 1];
+      return last ? ep.formatMessage(last) : ep.message;
+    } catch (err) {
+      // A bad formatter must not swallow the notification entirely.
+      this.logger.debug({ err, errorType: ep.type }, "formatMessage failed — using static message");
+      return ep.message;
     }
   }
 

@@ -3,6 +3,7 @@ import { Daemon } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
+import { createBackend } from "../src/backend/factory.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -207,8 +208,36 @@ describe("Daemon error monitor recovery", () => {
     expect((daemon as any).errorRecoveryDeadlineAt).toBe(now + 2 * timeout + 1);
   });
 
-  it("tracks count and cooldown independently for patterns with the same type", () => {
+  it("emits the real Codex quota pattern's formatted message through pty_error", () => {
+    // Drives the actual daemon emit path with the actual backend pattern, so
+    // neither the regex nor the message formatting is a test-local copy.
     const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const patterns = createBackend("codex", tmpDir).getErrorPatterns!();
+    const pane = "⚠ Heads up, you have less than 5% of your monthly limit left. Run /status for a\nbreakdown.";
+
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /READY/, 1_000_000);
+
+    expect(messages).toEqual(["Codex monthly limit: less than 5% left"]);
+  });
+
+  it("falls back to the static message when a formatter throws", () => {
+    const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const pattern = {
+      pattern: /BOOM (\d+)/,
+      type: "quota",
+      action: "notify",
+      message: "static fallback",
+      formatMessage: () => { throw new Error("bad formatter"); },
+    };
+
+    (daemon as any).evaluateErrorPatterns("BOOM 42", [pattern], /READY/, 1_000_000);
+
+    expect(messages).toEqual(["static fallback"]);
+  });
+
+  it("tracks count and cooldown independently for patterns with the same type", () => {    const messages: string[] = [];
     daemon.on("pty_error", ({ message }) => messages.push(message));
     const patterns = [
       { pattern: /LOGIN_EXPIRED/, type: "auth_error", action: "notify", message: "login", skipRecoveryWait: true },

@@ -54,6 +54,11 @@ export interface ErrorPattern {
   action: ErrorActionType;
   /** Human-readable description for notifications. */
   message: string;
+  /** Build the notification text from the regex match, when a static string
+   * would lose information the user needs. `message` stays the fallback for
+   * when the match can't be re-derived. Receives the LAST match in the pane,
+   * i.e. the most recent occurrence. */
+  formatMessage?: (match: RegExpMatchArray) => string;
   /** Skip the 5-min per-type notification cooldown so every occurrence notifies
    * (e.g. Kiro "Response timed out" — each timeout should reach the user). */
   skipCooldown?: boolean;
