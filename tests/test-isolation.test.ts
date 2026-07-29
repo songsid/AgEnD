@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -16,6 +16,14 @@ describe("test process isolation", () => {
     expect(getTmuxSessionName()).not.toBe("agend");
     expect(getTmuxSocketName()).not.toBeNull();
     expect(process.env.NOTIFY_SOCKET).toBe("");
+  });
+
+  it("collects tests from source only, never from the dist build output", () => {
+    // dist/**/*.test.js are stale copies produced by `npm run build`. Running
+    // them doubles up ~26 tests and invites a "dist fails but src passes"
+    // false alarm the next time source changes.
+    const cfg = readFileSync(join(process.cwd(), "vitest.config.ts"), "utf-8");
+    expect(cfg).toContain('"dist/**"');
   });
 });
 
