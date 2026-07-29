@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync } from "node:fs";
 import { formatContextUsageLine, parseContextPercent, parseTokenContextRatio } from "../src/topic-commands.js";
+import { createBackend } from "../src/backend/factory.js";
 
 // ── 1. Backend ready patterns ───────────────────────────────────────────
 
@@ -109,6 +110,33 @@ describe("Backend ready patterns", () => {
     const stuck = new PaneStateMachine(pattern, 15_000, 0);
     expect(stuck.observe("⠹ Responding… 3.0s", 0).state).toBe("working");
     expect(stuck.observe("⠹ Responding… 3.0s", 15_000).state).toBe("stuck");
+  });
+});
+
+describe("120-column wrap-sensitive backend coverage", () => {
+  it("uses the real OpenCode ready pattern", () => {
+    const backend = createBackend("opencode", "/tmp/test");
+    expect(backend.getReadyPattern().test("Ask anything or type / for commands")).toBe(true);
+  });
+
+  it.each([
+    ["codex", "Do you trust the files in this folder?"],
+    ["antigravity", "Do you trust this folder?"],
+    ["grok", "Do you trust the contents of this directory?"],
+  ])("uses the real %s trust-dialog pattern", (backendName, pane) => {
+    const backend = createBackend(backendName, "/tmp/test");
+    const patterns = backend.getStartupDialogs?.().map(dialog => dialog.pattern) ?? [];
+    expect(patterns.some(pattern => pattern.test(pane))).toBe(true);
+  });
+
+  it.each([
+    ["claude-code", "Login expired", "auth_error"],
+    ["kiro-cli", "The selected model is not available. Please use '/model'.", "model_error"],
+  ])("uses the real %s error pattern for %s", (backendName, pane, type) => {
+    const backend = createBackend(backendName, "/tmp/test");
+    const match = backend.getErrorPatterns?.().find(error => error.pattern.test(pane));
+    expect(match?.type).toBe(type);
+    expect(match?.action).toBe("notify");
   });
 });
 

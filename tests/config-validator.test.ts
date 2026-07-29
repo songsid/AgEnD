@@ -99,3 +99,40 @@ describe("validateFleetConfig kiro_ui", () => {
     });
   });
 });
+
+describe("validateFleetConfig terminal", () => {
+  const base = {
+    channel: {
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "TOKEN",
+      access: { mode: "open", allowed_users: [] },
+    },
+    instances: { worker: { working_directory: "/tmp/worker" } },
+  };
+
+  it("accepts global and per-instance logical sizes", () => {
+    expect(validateFleetConfig({
+      ...base,
+      defaults: { terminal: { enabled: true, columns: 120, rows: 36 } },
+      instances: {
+        worker: {
+          working_directory: "/tmp/worker",
+          terminal: { enabled: false, columns: 80, rows: 24 },
+        },
+      },
+    }).errors).toEqual([]);
+  });
+
+  it.each([
+    [{ columns: 79 }, "defaults.terminal.columns"],
+    [{ columns: 301 }, "defaults.terminal.columns"],
+    [{ columns: 120.5 }, "defaults.terminal.columns"],
+    [{ rows: 23 }, "defaults.terminal.rows"],
+    [{ rows: 121 }, "defaults.terminal.rows"],
+    [{ enabled: "yes" }, "defaults.terminal.enabled"],
+  ])("rejects invalid terminal config %j", (terminal, path) => {
+    expect(validateFleetConfig({ ...base, defaults: { terminal } }).errors)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ path })]));
+  });
+});

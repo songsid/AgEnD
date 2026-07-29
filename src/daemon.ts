@@ -7,7 +7,7 @@ import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import type { Logger } from "./logger.js";
 import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
-import { TmuxManager } from "./tmux-manager.js";
+import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
@@ -572,7 +572,11 @@ export class Daemon extends EventEmitter {
 
     // 2. Tmux — ensure session, create window if not alive
     await TmuxManager.ensureSession(this.tmuxSessionName);
-    this.tmux = new TmuxManager(this.tmuxSessionName, "");
+    this.tmux = new TmuxManager(
+      this.tmuxSessionName,
+      "",
+      resolveTmuxLogicalSize(this.config.terminal),
+    );
 
     // Strategy A: always start fresh Claude window (MCP server has no reconnection)
     // Kill any existing window from previous run
@@ -1837,7 +1841,11 @@ export class Daemon extends EventEmitter {
       const windows = await TmuxManager.listWindows(this.tmuxSessionName);
       const match = windows.find(w => w.name === this.name);
       if (!match) return undefined;
-      this.tmux = new TmuxManager(this.tmuxSessionName, match.id);
+      this.tmux = new TmuxManager(
+        this.tmuxSessionName,
+        match.id,
+        resolveTmuxLogicalSize(this.config.terminal),
+      );
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
       await this.controlClient?.registerWindow(match.id);
       this.bindInstanceStateOutputListener(match.id);
