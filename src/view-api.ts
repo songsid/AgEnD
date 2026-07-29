@@ -3,7 +3,8 @@
  * instance profiles. Separate from the operator Web UI (`/ui`):
  *
  *   GET  /view                 → static page (no token)
- *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text)
+ *   GET  /api/pane/:instance    → `tmux capture-pane -ep` output (ANSI text),
+ *                                plus X-Pane-Cols / X-Pane-Rows response headers
  *   GET  /api/profiles          → merged roster (live status + config + profile)
  *   GET  /api/profile/:instance → one profile row
  *   POST /api/profile/:instance → upsert profile              (web.token only)
@@ -132,19 +133,54 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   });
 }
 
-/** Capture a pane's current contents (with ANSI escapes) for an instance. */
-async function capturePane(ctx: ViewApiContext, name: string): Promise<string> {
+/** tmux target for an instance's window, or null if it has no window yet. */
+function paneTarget(ctx: ViewApiContext, name: string): string | null {
   const widFile = join(ctx.dataDir, "instances", name, "window-id");
-  if (!existsSync(widFile)) return "";
+  if (!existsSync(widFile)) return null;
   const wid = readFileSync(widFile, "utf-8").trim();
-  if (!wid) return "";
+  if (!wid) return null;
+  return `${getTmuxSession()}:${wid}`;
+}
+
+function tmuxArgs(rest: string[]): string[] {
   const socket = getTmuxSocketName();
-  const args = [
-    ...(socket ? ["-L", socket] : []),
-    "capture-pane", "-p", "-e", "-t", `${getTmuxSession()}:${wid}`,
-  ];
-  const { stdout } = await execFileP("tmux", args, { maxBuffer: 8 * 1024 * 1024 });
-  return stdout;
+  return socket ? ["-L", socket, ...rest] : rest;
+}
+
+/** A pane's logical grid size in cells, as tmux sees it. */
+export interface PaneSize { cols: number; rows: number }
+
+/**
+ * Capture a pane's contents (with ANSI escapes) **and** its logical grid size.
+ *
+ * The size matters as much as the text: the web view sizes its font from
+ * `cols`/`rows` rather than from the captured text's longest line, because a
+ * sparse frame (a freshly-started CLI printing three short lines) would
+ * otherwise fit to ~3 columns and blow the font up to the 48px ceiling.
+ */
+async function capturePane(ctx: ViewApiContext, name: string): Promise<{ text: string; size: PaneSize | null }> {
+  const target = paneTarget(ctx, name);
+  if (!target) return { text: "", size: null };
+  const [text, size] = await Promise.all([
+    execFileP("tmux", tmuxArgs(["capture-pane", "-p", "-e", "-t", target]), { maxBuffer: 8 * 1024 * 1024 })
+      .then(r => r.stdout),
+    // display-message resolves the window's *active* pane, matching capture-pane.
+    execFileP("tmux", tmuxArgs(["display-message", "-p", "-t", target, "#{pane_width}x#{pane_height}"]))
+      .then(r => parsePaneSize(r.stdout))
+      // A missing size must not fail the whole capture — the client falls back
+      // to its last known size (or skips refitting) when the headers are absent.
+      .catch(() => null),
+  ]);
+  return { text, size };
+}
+
+/** Parse `display-message`'s `<cols>x<rows>` output. Returns null if unusable. */
+export function parsePaneSize(out: string): PaneSize | null {
+  const m = /^(\d+)x(\d+)$/.exec(out.trim());
+  if (!m) return null;
+  const cols = Number(m[1]), rows = Number(m[2]);
+  if (!Number.isFinite(cols) || !Number.isFinite(rows) || cols < 1 || rows < 1) return null;
+  return { cols, rows };
 }
 
 /** True if the path belongs to the view feature (so the caller can skip the
@@ -189,11 +225,19 @@ export function handleViewRequest(
   }
 
   // ── GET /api/pane/:instance ──
+  // Body is the raw ANSI capture; the pane's cell grid rides along in
+  // X-Pane-Cols / X-Pane-Rows so the client can size its font from the pane's
+  // real dimensions instead of guessing from the captured text.
   if (method === "GET" && path.startsWith("/api/pane/")) {
     const name = decodeURIComponent(path.slice("/api/pane/".length));
     if (!knownInstance(ctx, name)) { json(res, 404, { error: "unknown instance" }); return true; }
     capturePane(ctx, name)
-      .then(text => { res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" }); res.end(text); })
+      .then(({ text, size }) => {
+        const headers: Record<string, string> = { "Content-Type": "text/plain; charset=utf-8" };
+        if (size) { headers["X-Pane-Cols"] = String(size.cols); headers["X-Pane-Rows"] = String(size.rows); }
+        res.writeHead(200, headers);
+        res.end(text);
+      })
       .catch(err => { ctx.logger.debug({ err, name }, "capture-pane failed"); res.writeHead(200, { "Content-Type": "text/plain" }); res.end(""); });
     return true;
   }
