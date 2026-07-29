@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, shellQuote, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 
 export class ClaudeCodeBackend implements CliBackend {
@@ -30,11 +30,9 @@ export class ClaudeCodeBackend implements CliBackend {
     }
 
     if (config.model) {
-      if (isModelCompatible("claude-code", config.model)) {
-        cmd += ` --model ${validateModel(config.model)}`;
-      } else {
-        console.warn(`[agend] model "${config.model}" is not compatible with claude-code — skipping --model, using the CLI's default`);
-      }
+      const model = validateModel(config.model);
+      warnIfModelMismatch("claude-code", model);
+      cmd += ` --model ${model}`;
     }
 
     // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt

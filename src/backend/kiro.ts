@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
 
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
@@ -20,11 +20,9 @@ export class KiroBackend implements CliBackend {
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
     if (!config.skipResume) cmd += " --resume";
     if (config.model) {
-      if (isModelCompatible("kiro-cli", config.model)) {
-        cmd += ` --model ${validateModel(config.model)}`;
-      } else {
-        console.warn(`[agend] model "${config.model}" is not compatible with kiro-cli — skipping --model, using the CLI's default`);
-      }
+      const model = validateModel(config.model);
+      warnIfModelMismatch("kiro-cli", model);
+      cmd += ` --model ${model}`;
     }
     cmd += " --require-mcp-startup";
     return cmd;

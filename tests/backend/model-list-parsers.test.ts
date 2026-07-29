@@ -62,3 +62,18 @@ Available models:
     expect(isModelCompatible("antigravity", model)).toBe(true);
   });
 });
+
+describe("Kiro model compatibility hints", () => {
+  it.each([
+    "auto",
+    "claude-opus-5",
+    "claude-sonnet-4.6",
+    "gpt-5.6-sol",
+    "deepseek-3.2",
+    "minimax-m2.5",
+    "glm-5",
+    "qwen3-coder-next",
+  ])("recognizes a model from the live 2026-07-29 catalog: %s", (model) => {
+    expect(isModelCompatible("kiro-cli", model)).toBe(true);
+  });
+});
