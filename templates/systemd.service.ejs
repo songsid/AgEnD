@@ -4,6 +4,8 @@ After=network.target
 
 [Service]
 Type=notify
+# Node delegates AF_UNIX datagram sends to systemd-notify, so the helper must
+# be accepted. src/sd-notify.ts keeps NOTIFY_SOCKET out of all other children.
 NotifyAccess=all
 TimeoutStartSec=0
 WatchdogSec=60
