@@ -103,7 +103,18 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `skipPermissions` | boolean | — | Skip CLI permission checks |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |
+| `log_level` | string | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |
+| `worktree_source` | string | — | Original repo path (when using git worktree) |
+| `cost_guard` | CostGuardConfig | — | Per-instance daily cost limit (overrides fleet) |
+| `restart_policy.max_retries` | number | `10` | Max crash restarts |
+| `restart_policy.backoff` | string | `"exponential"` | `"exponential"` or `"linear"` |
+| `restart_policy.reset_after` | number | `300` | Seconds of uptime before retry count resets |
+| `restart_policy.health_check_interval_ms` | number | `30000` | Health check polling interval |
+| `context_guardian.grace_period_ms` | number | `600000` | Grace period before context rotation (ms) |
+| `context_guardian.max_age_hours` | number | `0` (disabled) | Force rotation after N hours |
 | `terminal` | object | — | tmux pane geometry override (see below) |
+
+---
 
 #### instance.terminal
 
@@ -125,15 +136,6 @@ defaults:
 ```
 
 Per-instance `terminal` overrides `defaults.terminal`.
-| `log_level` | string | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |
-| `worktree_source` | string | — | Original repo path (when using git worktree) |
-| `cost_guard` | CostGuardConfig | — | Per-instance daily cost limit (overrides fleet) |
-| `restart_policy.max_retries` | number | `10` | Max crash restarts |
-| `restart_policy.backoff` | string | `"exponential"` | `"exponential"` or `"linear"` |
-| `restart_policy.reset_after` | number | `300` | Seconds of uptime before retry count resets |
-| `restart_policy.health_check_interval_ms` | number | `30000` | Health check polling interval |
-| `context_guardian.grace_period_ms` | number | `600000` | Grace period before context rotation (ms) |
-| `context_guardian.max_age_hours` | number | `0` (disabled) | Force rotation after N hours |
 
 ---
 
