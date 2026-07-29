@@ -42,6 +42,53 @@ export function checkBinaryInstalled(binary: string): boolean {
   }
 }
 
+/** Whether a process command line identifies the shared AgEnD fleet process. */
+export function isFleetStartCommandLine(commandLine: string): boolean {
+  const normalized = commandLine.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
+  return /\b(?:agend|(?:cli|daemon-entry)\.(?:js|ts))\b.*\bfleet\s+start\b/i.test(normalized);
+}
+
+function readProcessCommandLine(pid: number): string {
+  try {
+    return readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim();
+  } catch {
+    try {
+      return execFileSync("ps", ["-p", String(pid), "-o", "command="], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+      }).trim();
+    } catch {
+      return "";
+    }
+  }
+}
+
+/**
+ * Return why an instance daemon PID must not receive SIGTERM, or null when the
+ * stale-process cleanup may proceed. daemon.pid historically stores the shared
+ * in-process FleetManager PID, so this check is deliberately conservative.
+ */
+export function getUnsafeInstanceDaemonPidReason(pid: number, dataDir: string): string | null {
+  if (!Number.isSafeInteger(pid) || pid <= 1) return "invalid or privileged PID";
+  if (pid === process.pid) return "PID is the current shared fleet process";
+
+  try {
+    const fleetPid = Number.parseInt(readFileSync(join(dataDir, "fleet.pid"), "utf8").trim(), 10);
+    if (Number.isSafeInteger(fleetPid) && pid === fleetPid) {
+      return "PID matches fleet.pid";
+    }
+  } catch {
+    // Missing/unreadable fleet.pid: fall through to the process command check.
+  }
+
+  const commandLine = readProcessCommandLine(pid);
+  if (commandLine && isFleetStartCommandLine(commandLine)) {
+    return "process command line is agend fleet start";
+  }
+  return null;
+}
+
 /**
  * Context interface for instance lifecycle operations.
  * FleetManager implements this.
@@ -350,7 +397,15 @@ export class InstanceLifecycle {
       const pidPath = join(instanceDir, "daemon.pid");
       if (existsSync(pidPath)) {
         const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
-        try { process.kill(pid, "SIGTERM"); } catch (e) { this.ctx.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
+        const unsafeReason = getUnsafeInstanceDaemonPidReason(pid, this.ctx.dataDir);
+        if (unsafeReason) {
+          this.ctx.logger.error(
+            { instance: name, pid, reason: unsafeReason, pidPath },
+            `Refusing to SIGTERM pid ${pid} — it is the shared fleet process, not a per-instance daemon`,
+          );
+        } else {
+          try { process.kill(pid, "SIGTERM"); } catch (e) { this.ctx.logger.debug({ err: e, pid }, "SIGTERM failed for stale process"); }
+        }
       }
       // Kill orphaned tmux window (daemon not in memory but window may persist)
       const windowIdPath = join(instanceDir, "window-id");
