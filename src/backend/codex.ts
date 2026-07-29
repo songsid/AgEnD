@@ -161,7 +161,24 @@ export class CodexBackend implements CliBackend {
       { pattern: /authentication|401 Unauthorized/i, type: "auth_error", action: "pause", message: "OpenAI authentication error" },
       { pattern: /insufficient_quota|billing/i, type: "quota", action: "pause", message: "OpenAI quota exceeded" },
       { pattern: /you've hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
-      { pattern: /less than \d+% of your weekly limit/i, type: "quota", action: "notify", message: "Codex weekly limit running low" },
+      // Codex warns at 10% and 5% remaining, and scopes the limit by period —
+      // "weekly" alone missed every `monthly limit` warning.
+      //
+      // `\s+` at EVERY word gap (not literal spaces) because capture-pane runs without -J,
+      // so tmux's hard wrap can land a newline (plus continuation-line padding)
+      // at any of these word gaps. The trailing "Run /status for a breakdown."
+      // is deliberately NOT part of the pattern — that tail is what actually
+      // wrapped in the reported case.
+      //
+      // `of your <period> limit` is load-bearing: it's what keeps the pattern
+      // off the agent's own prose about percentages.
+      {
+        pattern: /less\s+than\s+(\d+)\s*%\s+of\s+your\s+(hourly|daily|weekly|monthly)\s+limit/i,
+        type: "quota",
+        action: "notify",
+        message: "Codex usage limit running low",
+        formatMessage: (m) => `Codex ${m[2].toLowerCase()} limit: less than ${m[1]}% left`,
+      },
     ];
   }
 
