@@ -4,15 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.1.1] - Unreleased
+## [2.1.1] - 2026-07-29
 
 ### Added
+- **Configurable tmux geometry** — `terminal.columns` (default 120, min 80) and `terminal.rows` (default 36) in `fleet.yaml`. Supports per-instance override. `terminal.enabled: false` reverts to 80×24. **Requires instance restart to take effect.** Columns hard-floor at 80 — narrower widths cause permission prompts to wrap in ways that break pattern detection.
+- **`/ctx` and `/model` show effective model** — resolves inherited defaults and shows the actual model in use, not just the override.
 - **Kiro TUI effort skill** — general-knowledge skill for Kiro's effort selector in TUI mode.
 
 ### Fixed
-- **SIGHUP startup window** — startup requests during SIGHUP reload are protected.
-- **Reload reconcile safeguard** — aborts reconcile if N→0, empty config, or >50% instance drop detected.
+- **`npm test` killed production fleet (P0)** — two independent code paths could SIGTERM the running fleet: (1) `getAgendHome()` fell back to real `~/.agend` when `AGEND_HOME` was unset, letting test FleetManager read the production `daemon.pid`; (2) tests inherited `NOTIFY_SOCKET`, causing `sdNotify("STOPPING=1")` to be delivered to the real systemd unit. Three-layer defence added. **Note: `NotifyAccess=all` is intentional and must not be changed to `main`** — Node.js cannot write to AF_UNIX datagram sockets directly; `sdNotify` uses a `systemd-notify` child process, which `main` mode rejects. Changing it breaks `READY=1` and causes the 60s watchdog to kill the unit.
+- **Model not applied on restart** — configured models were silently discarded; `restart_instance` now passes the model correctly.
+- **Codex usage warning not detected** — pattern only matched "weekly"; Codex actually reports "monthly" limits. Now detects any limit period and reports the specifics.
+- **`/view` font size** — font was inferred from screen text, could reach 48px and lock; now clamped 12–22px from tmux pane grid.
+- **SIGHUP startup window** — startup requests during SIGHUP reload are now protected.
+- **Reload reconcile safeguard** — aborts reconcile if config drops to N→0, empty, or >50% instance count change.
 - **Root user Codex PATH** — PATH fallback for Codex when running as root.
+- **`agend update` unnecessary restart** — skips service restart when the installed version already matches.
+- **agy clean exit** — `agy` process now exits cleanly on `stop_instance`.
 
 ## [2.1.0] - 2026-07-27
 

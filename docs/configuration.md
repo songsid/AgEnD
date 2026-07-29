@@ -103,6 +103,28 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `skipPermissions` | boolean | — | Skip CLI permission checks |
 | `pre_task_command` | string | — | Raw command pasted before each user message |
 | `startup_timeout_ms` | number | `25000` | CLI startup timeout (ms) |
+| `terminal` | object | — | tmux pane geometry override (see below) |
+
+#### instance.terminal
+
+Controls the tmux pane size for this instance. Requires instance restart to take effect.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `columns` | number | `120` | Terminal width (80–300). Hard minimum 80 — narrower widths cause permission prompts to wrap in ways that break pattern detection. |
+| `rows` | number | `36` | Terminal height (24–120). |
+| `enabled` | boolean | `true` | Set `false` to revert to the legacy 80×24 fixed size. |
+
+You can also set `terminal` under `defaults` to apply a size to all instances:
+
+```yaml
+defaults:
+  terminal:
+    columns: 180
+    rows: 50
+```
+
+Per-instance `terminal` overrides `defaults.terminal`.
 | `log_level` | string | `"info"` | `"debug"`, `"info"`, `"warn"`, `"error"` |
 | `worktree_source` | string | — | Original repo path (when using git worktree) |
 | `cost_guard` | CostGuardConfig | — | Per-instance daily cost limit (overrides fleet) |
