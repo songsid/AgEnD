@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, isModelCompatible, resolveBinary, validateModel } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
@@ -81,11 +81,9 @@ export class GrokBackend implements CliBackend {
       if (sid) cmd += ` --resume ${sid}`;
     }
     if (config.model) {
-      if (isModelCompatible("grok", config.model)) {
-        cmd += ` --model ${validateModel(config.model)}`;
-      } else {
-        console.warn(`[agend] model "${config.model}" is not compatible with grok — skipping --model, using the CLI's default`);
-      }
+      const model = validateModel(config.model);
+      warnIfModelMismatch("grok", model);
+      cmd += ` --model ${model}`;
     }
     return cmd;
   }
