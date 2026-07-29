@@ -8,7 +8,9 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   :root { --bg:#0d1117; --panel:#161b22; --border:#21262d; --fg:#c9d1d9; --dim:#8b949e; --accent:#58a6ff; }
   html, body { width: 100%; height: 100%; }
-  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; width: 100vw; min-width: 0; height: 100vh; overflow: hidden; }
+  /* 100dvh tracks the *visible* viewport once mobile browser chrome slides in
+     and out; 100vh stays as the fallback for engines without dvh. */
+  body { background: var(--bg); color: var(--fg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; display: flex; width: 100vw; min-width: 0; height: 100vh; height: 100dvh; overflow: hidden; }
 
   /* Sidebar */
   #sidebar { width: 240px; flex: 0 0 240px; background: var(--panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
@@ -31,21 +33,35 @@
 
   /* Main */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #term { flex: 1; background: #000; overflow: auto; padding: 10px 12px; }
+  /* Padding kept at 5/6px: enough that glyphs don't touch the edge, small
+     enough that the terminal keeps essentially the whole main area. */
+  #term { flex: 1; background: #000; overflow: auto; scrollbar-gutter: stable; padding: 5px 6px; }
   #term pre { min-width: 100%; min-height: 100%; font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace; line-height: 1.2; white-space: pre; color: #d0d0d0; }
 
-  /* Card */
-  #card { background: var(--panel); border-top: 1px solid var(--border); padding: 14px 18px; display: flex; gap: 16px; align-items: flex-start; }
-  #avatarBox { width: 56px; height: 56px; flex: 0 0 56px; }
-  .avatar-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; display: block; }
-  .avatar-ph { width: 56px; height: 56px; border-radius: 50%; background: #30363d; color: var(--dim); display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 600; text-transform: uppercase; user-select: none; }
-  #cardBody { flex: 1; min-width: 0; }
-  #cardBody .row1 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  #cardBody .dname { font-size: 16px; font-weight: 600; }
-  #cardBody .role { color: var(--accent); font-size: 13px; }
-  #cardBody .meta { color: var(--dim); font-size: 12px; margin-top: 3px; }
-  #cardBody .desc { font-size: 13px; margin-top: 6px; color: #adbac7; white-space: pre-wrap; }
-  #editBtn { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; font-size: 13px; }
+  /* Card — a single compact bar by default so the terminal keeps the height.
+     `.expanded` restores the tall layout with avatar + description. */
+  #card { background: var(--panel); border-top: 1px solid var(--border); padding: 5px 10px; display: flex; gap: 10px; align-items: center; }
+  #avatarBox { width: 24px; height: 24px; flex: 0 0 24px; }
+  .avatar-img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+  .avatar-ph { width: 100%; height: 100%; border-radius: 50%; background: #30363d; color: var(--dim); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; text-transform: uppercase; user-select: none; }
+  #cardBody { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; overflow: hidden; }
+  #cardBody .row1 { display: flex; align-items: baseline; gap: 10px; flex: 0 0 auto; }
+  #cardBody .dname { font-size: 13px; font-weight: 600; white-space: nowrap; }
+  #cardBody .role { color: var(--accent); font-size: 12px; white-space: nowrap; }
+  #cardBody .meta { color: var(--dim); font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #cardBody .desc { display: none; }
+  #cardToggle { background: none; border: none; color: var(--dim); cursor: pointer; font-size: 12px; padding: 2px 4px; flex: 0 0 auto; }
+  #cardToggle:hover { color: var(--fg); }
+
+  #card.expanded { align-items: flex-start; padding: 12px 14px; }
+  #card.expanded #avatarBox { width: 48px; height: 48px; flex: 0 0 48px; }
+  #card.expanded .avatar-ph { font-size: 20px; }
+  #card.expanded #cardBody { display: block; }
+  #card.expanded #cardBody .dname { font-size: 16px; }
+  #card.expanded #cardBody .role { font-size: 13px; }
+  #card.expanded #cardBody .meta { font-size: 12px; margin-top: 3px; white-space: normal; overflow: visible; }
+  #card.expanded #cardBody .desc { display: block; font-size: 13px; margin-top: 6px; color: #adbac7; white-space: pre-wrap; }
+  #editBtn { background: #21262d; color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12px; flex: 0 0 auto; }
   #editBtn:hover { border-color: var(--accent); }
 
   /* Edit form */
@@ -68,14 +84,31 @@
   .help-panel ul { margin: 8px 0 0 18px; }
   .help-panel li { font-size: 13px; margin: 6px 0; color: var(--fg); }
   .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--dim); font-size: 22px; line-height: 1; background: none; border: none; }
+
+  /* Mobile drawer: hidden on desktop, where the sidebar stays in flex flow. */
+  #menuBtn { display: none; position: fixed; top: 10px; left: 10px; right: auto; z-index: 95; }
+  #densityBtn { font-size: 14px; font-weight: 600; letter-spacing: -.5px; }
+  #sbBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; z-index: 88; }
   @media (max-width: 700px) {
-    #sidebar { width: 180px; flex-basis: 180px; }
-    #card { flex-wrap: wrap; padding: 10px 12px; }
+    /* Overlay the sidebar instead of shrinking it: taking it out of the flex
+       flow is what gives #main (and the terminal) the full viewport width. */
+    #sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 260px; flex-basis: 260px;
+      z-index: 90; transform: translateX(-100%); transition: transform .2s ease;
+      box-shadow: 4px 0 24px rgba(0,0,0,.5); }
+    #sidebar.open { transform: translateX(0); }
+    #sbBackdrop.open { display: block; }
+    #menuBtn { display: inline-flex; }
+    /* Keep the first terminal rows clear of the fixed overlay buttons. */
+    #term { padding-top: 52px; }
+    /* The compact bar must stay one line; only the expanded form wraps. */
+    #card.expanded { flex-wrap: wrap; padding: 10px 12px; }
     #edit { flex-basis: 100%; }
   }
 </style>
 </head>
 <body>
+  <button class="help-btn" id="menuBtn" title="Instances" aria-label="Instances">☰</button>
+  <button class="help-btn" id="densityBtn" title="Font density" style="right:98px">⤢</button>
   <button class="help-btn" id="langBtn" title="Language" style="right:56px">🌐</button>
   <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
   <div class="help-backdrop" id="helpBackdrop"></div>
@@ -83,6 +116,7 @@
     <button class="close" id="helpClose" title="Close">×</button>
     <div id="helpContent"></div>
   </aside>
+  <div id="sbBackdrop"></div>
   <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
   <div id="main">
     <div id="term"><pre id="pre"></pre></div>
@@ -93,6 +127,7 @@
         <div class="meta" id="meta"></div>
         <div class="desc" id="desc"></div>
       </div>
+      <button id="cardToggle" title="Expand profile" aria-expanded="false">▲</button>
       <button id="editBtn" data-i18n="editProfile">✏️ Edit</button>
       <div id="edit">
         <input id="fDisplay" data-i18n-ph="displayName" placeholder="Display name">
@@ -126,13 +161,19 @@
       saveHint: "Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).", helpTitle: "📖 Help",
       help1: "Pick an instance on the left → its live terminal shows on the right",
       help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
-      help4: "Drag to reorder (needs web.token permission)" },
+      help4: "Drag to reorder (needs web.token permission)",
+      help5: "Tap ⤢ to cycle font density: Fit → Comfortable → Compact",
+      help6: "On a phone, tap ☰ to open the instance list; the terminal then uses the full width",
+      densityFit: "Fit", densityComfortable: "Comfortable", densityCompact: "Compact", densityLabel: "Font density" },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
       saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
       help1: "左側選 instance → 右側顯示即時 terminal 畫面",
       help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
-      help4: "拖曳可調整順序（需 web.token 權限）" },
+      help4: "拖曳可調整順序（需 web.token 權限）",
+      help5: "點 ⤢ 循環切換字級密度：剛好填滿 → 舒適 → 精簡",
+      help6: "手機上點 ☰ 開啟 instance 清單；關閉後 terminal 佔滿整個寬度",
+      densityFit: "剛好填滿", densityComfortable: "舒適", densityCompact: "精簡", densityLabel: "字級密度" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
@@ -142,16 +183,28 @@
     document.querySelectorAll("[data-i18n-ph]").forEach(e => { e.setAttribute("placeholder", T(e.getAttribute("data-i18n-ph"))); });
     const hc = q("helpContent");
     if (hc) { hc.innerHTML = ""; const h3 = document.createElement("h3"); h3.textContent = T("helpTitle"); hc.append(h3);
-      const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
+      const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4","help5","help6"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
+    renderDensityBtn();
   }
 
   let roster = [];
   let rosterByName = new Map();
   let current = null;
   let poll = null;
-  let fitted = false;
-  let lastPaneText = "";
+  // Pane grid in cells, reported by /api/pane's X-Pane-Cols / X-Pane-Rows.
+  // This — not the captured text — is the font-size input.
+  let paneCols = 0, paneRows = 0;
+  let lastFitKey = "";          // skip redundant recalcs
+  let appliedSize = 0;          // last font-size actually written to #pre
   let resizeTimer = null;
+  // Font density — the manual escape hatch. Once the tmux grid is large
+  // (120x32), the auto-fit size is necessarily small, so the user needs a way
+  // to trade "everything visible" against "readable glyphs".
+  const DENSITY = { fit: 1, comfortable: 1.25, compact: 0.8 };
+  const DENSITY_GLYPH = { fit: "⤢", comfortable: "A+", compact: "A−" };
+  const DENSITY_ORDER = ["fit", "comfortable", "compact"];
+  let density = localStorage.getItem("agend_view_density");
+  if (!DENSITY[density]) density = "fit";
   const collapsed = new Set();  // group names the user has collapsed
   // Drag-sort state
   let sortGroups = new Map();   // groupName    -> sort_index (persisted override)
@@ -463,38 +516,121 @@
       }
       const text = await r.text();
       if (target !== current) return;
-      lastPaneText = text;
+      // Pane grid comes from tmux, so a sparse frame can't distort the fit.
+      const c = Number(r.headers.get("X-Pane-Cols")), rw = Number(r.headers.get("X-Pane-Rows"));
+      if (c >= 1 && rw >= 1 && (c !== paneCols || rw !== paneRows)) { paneCols = c; paneRows = rw; lastFitKey = ""; }
       q("pre").innerHTML = ansiToHtml(text);
-      if (!fitted) { fitFont(text); fitted = true; }
+      fitFont();
     } catch { /* transient network error — keep last frame */ }
   }
 
-  // Fit the captured terminal into both available dimensions. The old 16px
-  // ceiling left an 80x24 pane occupying roughly one quarter of a 1080p view.
-  function fitFont(text) {
-    const visible = text.replace(/\s+$/, "");
-    const lines = visible ? visible.split("\n") : [];
-    const cols = lines.reduce((m, l) => Math.max(m, l.replace(/\x1b\[[0-9;]*m/g, "").length), 0);
-    if (cols < 1) return;
-    const termW = Math.max(1, q("term").clientWidth - 24);
-    const termH = Math.max(1, q("term").clientHeight - 20);
-    // Monospace glyph width ≈ .6em; line-height is fixed at 1.2.
-    const widthFit = termW / (cols * 0.6);
-    const heightFit = termH / (Math.max(1, lines.length) * 1.2);
-    let size = Math.floor(Math.min(widthFit, heightFit));
-    size = Math.max(8, Math.min(size, 48));
-    q("pre").style.fontSize = size + "px";
+  // ── Font sizing ───────────────────────────────────────
+  // Measured advance width of one monospace cell as a fraction of font-size.
+  // The old hardcoded .6em was only an estimate and drifts per resolved font.
+  // The ratio is font-size independent, so measuring once is enough.
+  let cellRatio = 0;
+  function glyphRatio() {
+    if (cellRatio) return cellRatio;
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0;font-size:100px";
+    probe.style.fontFamily = getComputedStyle(q("pre")).fontFamily;
+    probe.textContent = "0".repeat(100);
+    document.body.appendChild(probe);
+    const w = probe.getBoundingClientRect().width;
+    probe.remove();
+    if (w > 0) cellRatio = w / 100 / 100;   // ÷100 chars, ÷100px font-size
+    return cellRatio || 0.6;                // headless / odd env → old estimate
+  }
+
+  // Per-breakpoint [min, max]. The removed 48px ceiling was what made an 80x24
+  // pane render at ~33px on a 1080p screen — the "font is huge" complaint.
+  function clampRange() {
+    const w = window.innerWidth;
+    if (w <= 700) return [8, 14];    // phone
+    if (w <= 1100) return [10, 18];  // tablet
+    return [12, 22];                 // desktop
+  }
+
+  // Order: fit → breakpoint clamp → user density → absolute readability bounds.
+  // When the clamped size can't show all `cols`, we deliberately overflow and
+  // let #term pan horizontally rather than shrink below the floor (390px
+  // portrait at 120 cols would mathematically need ~5.3px).
+  function fitFont() {
+    if (paneCols < 1 || paneRows < 1) return;   // no trustworthy size yet
+    const term = q("term"), pre = q("pre");
+    const cs = getComputedStyle(term);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const innerW = Math.max(1, term.clientWidth - (padX || 0));
+    const innerH = Math.max(1, term.clientHeight - (padY || 0));
+    const key = `${paneCols}x${paneRows}@${Math.round(innerW)}x${Math.round(innerH)}/${density}/${window.innerWidth}`;
+    if (key === lastFitKey) return;
+    const pcs = getComputedStyle(pre);
+    const lhRatio = parseFloat(pcs.lineHeight) / parseFloat(pcs.fontSize);
+    const lineH = Number.isFinite(lhRatio) && lhRatio > 0 ? lhRatio : 1.2;
+    const widthFit = innerW / (paneCols * glyphRatio());
+    const heightFit = innerH / (paneRows * lineH);
+    const [lo, hi] = clampRange();
+    // 0.5% slack keeps an exact fit from rounding into a scrollbar (paired with
+    // scrollbar-gutter:stable, that's what stops resize→scrollbar→resize loops).
+    let size = Math.min(widthFit, heightFit) * 0.995;
+    size = Math.max(lo, Math.min(size, hi));
+    size *= DENSITY[density] || 1;
+    size = Math.max(8, Math.min(size, 32));
+    lastFitKey = key;
+    // Sub-pixel churn (a scrollbar appearing shrinks the box, which would shrink
+    // the font, which would hide the scrollbar again) resolves to a no-op here.
+    if (Math.abs(size - appliedSize) < 0.75) return;
+    appliedSize = size;
+    pre.style.fontSize = size.toFixed(2) + "px";
+  }
+
+  function scheduleFit() {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => { lastFitKey = ""; fitFont(); }, 80);
+  }
+
+  function renderDensityBtn() {
+    const b = q("densityBtn");
+    if (!b) return;
+    b.textContent = DENSITY_GLYPH[density];
+    b.title = `${T("densityLabel")}: ${T("density" + density.charAt(0).toUpperCase() + density.slice(1))}`;
+  }
+
+  function cycleDensity() {
+    density = DENSITY_ORDER[(DENSITY_ORDER.indexOf(density) + 1) % DENSITY_ORDER.length];
+    localStorage.setItem("agend_view_density", density);
+    renderDensityBtn();
+    lastFitKey = "";
+    fitFont();
   }
 
   function select(name) {
-    if (name === current) return;
-    current = name; fitted = false;
+    if (name === current) { setDrawer(false); return; }
+    current = name;
+    lastFitKey = "";            // force a refit once the new pane's size lands
     exitEdit();
+    setDrawer(false);           // mobile: hand the width back to the terminal
     q("pre").textContent = "";  // blank the old instance's output immediately
     renderList(); renderCard(); refreshPane();
   }
 
   // ── Edit ──────────────────────────────────────────────
+  // The card is a one-line bar by default; expanding it (or editing) is what
+  // borrows height back from the terminal.
+  let cardExpanded = localStorage.getItem("agend_view_card_expanded") === "1";
+  function applyCardExpanded(on) {
+    q("card").classList.toggle("expanded", on);
+    const t = q("cardToggle");
+    t.textContent = on ? "▼" : "▲";
+    t.setAttribute("aria-expanded", on ? "true" : "false");
+    scheduleFit();   // the terminal just gained or lost height
+  }
+  function setCardExpanded(on, persist) {
+    if (persist) { cardExpanded = on; localStorage.setItem("agend_view_card_expanded", on ? "1" : "0"); }
+    applyCardExpanded(on);
+  }
+
   function enterEdit() {
     const it = roster.find(r => r.instance_name === current);
     if (!it) return;
@@ -503,14 +639,18 @@
     q("fDesc").value = it.description || "";
     q("fToken").value = localStorage.getItem("agend_web_token") || "";
     q("msg").textContent = "";
+    applyCardExpanded(true);          // form needs the room; don't persist it
     q("cardBody").style.display = "none";
+    q("cardToggle").style.display = "none";
     q("editBtn").style.display = "none";
     q("edit").style.display = "flex";
   }
   function exitEdit() {
     q("edit").style.display = "none";
     q("cardBody").style.display = "";
+    q("cardToggle").style.display = "";
     q("editBtn").style.display = "";
+    applyCardExpanded(cardExpanded);  // back to the user's own preference
   }
 
   async function save() {
@@ -542,19 +682,31 @@
   q("editBtn").onclick = enterEdit;
   q("cancelBtn").onclick = exitEdit;
   q("saveBtn").onclick = save;
+  q("cardToggle").onclick = () => setCardExpanded(!q("card").classList.contains("expanded"), true);
 
   const setHelp = (open) => { q("helpPanel").classList.toggle("open", open); q("helpBackdrop").classList.toggle("open", open); };
   q("helpBtn").onclick = () => setHelp(!q("helpPanel").classList.contains("open"));
   q("helpClose").onclick = () => setHelp(false);
   q("helpBackdrop").onclick = () => setHelp(false);
   q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); };
-  window.addEventListener("resize", () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => {
-      if (lastPaneText) fitFont(lastPaneText);
-    }, 100);
-  });
+  q("densityBtn").onclick = cycleDensity;
+  // Mobile drawer. The sidebar is position:fixed under 700px, so opening it
+  // overlays the terminal instead of shrinking it; closed = terminal full width.
+  function setDrawer(open) {
+    q("sidebar").classList.toggle("open", open);
+    q("sbBackdrop").classList.toggle("open", open);
+  }
+  q("menuBtn").onclick = () => setDrawer(!q("sidebar").classList.contains("open"));
+  q("sbBackdrop").onclick = () => setDrawer(false);
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") { setDrawer(false); setHelp(false); } });
+
+  window.addEventListener("resize", scheduleFit);
+  window.addEventListener("orientationchange", scheduleFit);
+  // Catches container changes the window resize event doesn't see: the drawer
+  // closing, the card expanding, mobile browser chrome sliding away.
+  if (window.ResizeObserver) new ResizeObserver(scheduleFit).observe(q("term"));
   applyI18n();
+  applyCardExpanded(cardExpanded);
 
   // ── Boot ──────────────────────────────────────────────
   loadRoster().then(() => { refreshPane(); });
