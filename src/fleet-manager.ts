@@ -4476,12 +4476,28 @@ When users create specialized instances, suggest these configurations:
     return null;
   }
 
-  /** Resolve the model currently configured for a fleet or ClassicBot instance. */
-  private currentModelForInstance(instanceName: string): string {
+  /**
+   * Resolve the effective model for a fleet or ClassicBot instance, plus where it
+   * came from. Single source of truth for `/model` and `/ctx` — precedence:
+   * per-instance → fleet defaults → classic channel → CLI's own default (from the
+   * cli-env probe cache) → unresolved.
+   */
+  resolveInstanceModel(instanceName: string): { model: string; source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved"; display: string; reason?: string } {
+    const done = (model: string, source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved", reason?: string) => ({
+      model,
+      source,
+      reason,
+      // Make an inherited CLI default legible instead of the bare word "default".
+      display: source === "cli-default" ? `${model} (default)`
+        : source === "unresolved" ? `default (${reason ?? "unresolved"})`
+        : model,
+    });
+
     const fleetInstance = this.fleetConfig?.instances[instanceName];
     if (fleetInstance) {
-      const fleetModel = fleetInstance.model ?? this.fleetConfig?.defaults?.model;
-      if (fleetModel?.trim()) return fleetModel.trim();
+      if (fleetInstance.model?.trim()) return done(fleetInstance.model.trim(), "instance");
+      const fleetDefault = this.fleetConfig?.defaults?.model;
+      if (fleetDefault?.trim()) return done(fleetDefault.trim(), "fleet-default");
     }
 
     const classic = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
@@ -4491,11 +4507,22 @@ When users create specialized instances, suggest these configurations:
         classic.adapterId,
         this.fleetConfig?.defaults?.model,
       );
-      if (classicModel?.trim()) return classicModel.trim();
+      if (classicModel?.trim()) return done(classicModel.trim(), "classic");
     }
 
-    const cachedModel = this.readCliEnv(this.backendNameForInstance(instanceName))?.currentModel;
-    return cachedModel?.trim() || "default";
+    // Nothing configured → show what the CLI itself defaults to (kiro default_model,
+    // grok "Default model:", codex config.toml, agy settings.json), cached by the probe.
+    const cliEnv = this.readCliEnv(this.backendNameForInstance(instanceName));
+    const cachedModel = cliEnv?.currentModel;
+    if (cachedModel?.trim()) return done(cachedModel.trim(), "cli-default");
+    // Say WHY it's unresolved: no fresh probe yet vs. the CLI not exposing a default
+    // (e.g. claude-code's default is account-side, opencode's is provider-side).
+    return done("default", "unresolved", cliEnv ? "this CLI does not report a default" : "not probed yet");
+  }
+
+  /** Human-readable effective model, e.g. `auto (default)`. Used by /ctx. */
+  modelDisplayForInstance(instanceName: string): string {
+    return this.resolveInstanceModel(instanceName).display;
   }
 
   private modelChoiceLabel(
@@ -4564,7 +4591,8 @@ When users create specialized instances, suggest these configurations:
     const options = await this.getModelOptions(name, isRefresh);
     if (options.length === 0) { await data.respond(`No model list available for ${name}. Type \`/model <name>\` to set one directly.`); return; }
 
-    const currentModel = this.currentModelForInstance(name);
+    // Raw id for ✓-matching options; display resolves an inherited CLI default.
+    const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(name);
     const nonce = randomBytes(6).toString("hex");
     const choices = options.slice(0, 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
@@ -4574,7 +4602,7 @@ When users create specialized instances, suggest these configurations:
     timer.unref?.();
     this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
     try {
-      await data.respondChoices(`Current model: **${currentModel}**\nSelect a new model:`, choices);
+      await data.respondChoices(`Current model: **${currentDisplay}**\nSelect a new model:`, choices);
     } catch (err) {
       this.pendingModelSelects.delete(nonce);
       clearTimeout(timer);
@@ -4601,7 +4629,7 @@ When users create specialized instances, suggest these configurations:
       return `No model list available for ${instanceName}. Use \`/model <name>\` to set one directly.`;
     }
 
-    const currentModel = this.currentModelForInstance(instanceName);
+    const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(instanceName);
     const nonce = randomBytes(6).toString("hex");
     const choices = options.slice(0, 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
@@ -4627,7 +4655,7 @@ When users create specialized instances, suggest these configurations:
     try {
       const menuMessageId = await adapter.promptUser(
         chatId,
-        `Current model: ${currentModel}\nSelect a new model:`,
+        `Current model: ${currentDisplay}\nSelect a new model:`,
         choices,
         { threadId },
       );

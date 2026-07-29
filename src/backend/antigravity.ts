@@ -181,7 +181,14 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   async probeCLIEnv() {
     const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+    // agy stores the selected model in its own settings.json (the same file the
+    // statusline hook lives in), e.g. "model": "Gemini 3.5 Flash (Medium)".
+    let currentModel: string | undefined;
+    try {
+      const s = JSON.parse(readFileSync(join(homedir(), ".gemini", "antigravity-cli", "settings.json"), "utf-8"));
+      if (typeof s?.model === "string" && s.model.trim()) currentModel = s.model.trim();
+    } catch { /* no settings / unreadable */ }
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
   }
 
   getErrorPatterns(): ErrorPattern[] {
