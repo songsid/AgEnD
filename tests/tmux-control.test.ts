@@ -88,6 +88,11 @@ describe("TmuxControlClient reconnect", () => {
     expect(internal.lastOutputAt.size).toBe(0);
     // Registered windows are preserved so resolvePane can refresh them
     expect(internal.registeredWindows.has("@5")).toBe(true);
+    expect(spawnMock).toHaveBeenCalledWith(
+      "tmux",
+      expect.arrayContaining(["-C", "attach", "-f", "ignore-size", "-r"]),
+      expect.any(Object),
+    );
   });
 
   it("re-resolves all registered windows after reconnect", async () => {

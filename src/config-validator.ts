@@ -59,6 +59,23 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) err(`${path}.hang_detector.timeout_minutes`, "must be a positive finite number");
       }
     }
+    if (value.terminal !== undefined) {
+      if (!isObj(value.terminal)) {
+        err(`${path}.terminal`, "must be a mapping");
+      } else {
+        if (value.terminal.enabled !== undefined && typeof value.terminal.enabled !== "boolean") {
+          err(`${path}.terminal.enabled`, "must be a boolean");
+        }
+        const columns = value.terminal.columns;
+        if (columns !== undefined && (!Number.isInteger(columns) || (columns as number) < 80 || (columns as number) > 300)) {
+          err(`${path}.terminal.columns`, "must be an integer from 80 to 300 (narrower panes can break TUI prompt detection)");
+        }
+        const rows = value.terminal.rows;
+        if (rows !== undefined && (!Number.isInteger(rows) || (rows as number) < 24 || (rows as number) > 120)) {
+          err(`${path}.terminal.rows`, "must be an integer from 24 to 120");
+        }
+      }
+    }
   };
 
   if (!isObj(config)) {

@@ -1,5 +1,10 @@
 import { describe, it, expect, afterAll } from "vitest";
-import { TmuxManager } from "../src/tmux-manager.js";
+import {
+  LEGACY_TMUX_LOGICAL_SIZE,
+  TmuxManager,
+  resolveTmuxLogicalSize,
+} from "../src/tmux-manager.js";
+import { TmuxControlClient } from "../src/tmux-control.js";
 
 describe("TmuxManager", () => {
   const session = `ccd-test-${Date.now()}`;
@@ -18,6 +23,38 @@ describe("TmuxManager", () => {
     const windowId = await tm.createWindow("sleep 30", "/tmp");
     expect(windowId).toMatch(/@\d+/);
     expect(await tm.isWindowAlive()).toBe(true);
+    expect(await tm.getWindowGeometry()).toEqual({
+      columns: 120,
+      rows: 36,
+      mode: "manual",
+    });
+  });
+
+  it("keeps a per-instance size stable while the control client is attached", async () => {
+    const tm = new TmuxManager(session, "", { columns: 132, rows: 40 });
+    await tm.createWindow("sleep 30", "/tmp", "stable-size");
+    const control = new TmuxControlClient(session, 100);
+    control.start();
+    try {
+      // Give tmux time to register the no-PTY control client. Before
+      // ignore-size/manual pinning this is where latest collapsed to 80 cols.
+      await new Promise(r => setTimeout(r, 500));
+      expect(await tm.getWindowGeometry()).toEqual({
+        columns: 132,
+        rows: 40,
+        mode: "manual",
+      });
+      control.stop();
+      control.start();
+      await new Promise(r => setTimeout(r, 500));
+      expect(await tm.getWindowGeometry()).toEqual({
+        columns: 132,
+        rows: 40,
+        mode: "manual",
+      });
+    } finally {
+      control.stop();
+    }
   });
 
   it("sends keys and captures pane", async () => {
@@ -39,11 +76,32 @@ describe("TmuxManager", () => {
   });
 
   it("respawns a process in the same window", async () => {
-    const tm = new TmuxManager(session, "");
+    const tm = new TmuxManager(session, "", { columns: 100, rows: 30 });
     const wid = await tm.createWindow("sleep 30", "/tmp", "respawn-test");
     await tm.respawnWindow("sleep 30", "/tmp");
     expect(tm.getWindowId()).toBe(wid);
     expect(await tm.getPaneStatus()).toEqual({ alive: true });
+    expect(await tm.getWindowGeometry()).toEqual({
+      columns: 100,
+      rows: 30,
+      mode: "manual",
+    });
+  });
+
+  it("pins 80x24 when the tmux size feature flag is disabled", async () => {
+    const legacySize = resolveTmuxLogicalSize({
+      enabled: false,
+      columns: 200,
+      rows: 60,
+    });
+    expect(legacySize).toEqual(LEGACY_TMUX_LOGICAL_SIZE);
+    const tm = new TmuxManager(session, "", legacySize);
+    await tm.createWindow("sleep 30", "/tmp", "legacy-size");
+    expect(await tm.getWindowGeometry()).toEqual({
+      columns: 80,
+      rows: 24,
+      mode: "manual",
+    });
   });
 
   it("lists windows", async () => {
