@@ -8,8 +8,7 @@ describe("AgEnD view responsive terminal", () => {
   it("declares a device-width viewport and full-screen shell", () => {
     expect(html).toContain('name="viewport" content="width=device-width, initial-scale=1"');
     expect(html).toContain("width: 100vw");
-    // 100dvh tracks the visible viewport on mobile; 100vh stays as fallback.
-    expect(html).toContain("height: 100vh; height: 100dvh");
+    expect(html).toContain("height: 100vh");
   });
 
   it("sizes the font from the pane's cell grid, not from the captured text", () => {
@@ -23,10 +22,9 @@ describe("AgEnD view responsive terminal", () => {
     expect(html).not.toMatch(/lines\.reduce\(\(m, l\) => Math\.max/);
   });
 
-  it("clamps per breakpoint instead of the old 48px ceiling", () => {
-    expect(html).toContain("return [8, 14]");   // phone
-    expect(html).toContain("return [10, 18]");  // tablet
-    expect(html).toContain("return [12, 22]");  // desktop
+  it("clamps to a single desktop range instead of the old 48px ceiling", () => {
+    expect(html).toContain("const MIN_PX = 12, MAX_PX = 22");
+    expect(html).toContain("Math.max(MIN_PX, Math.min(size, MAX_PX))");
     expect(html).not.toContain("Math.min(size, 48)");
     expect(html).not.toContain("Math.min(size, 16)");
     // Absolute readability floor survives the density multiplier.
@@ -35,19 +33,14 @@ describe("AgEnD view responsive terminal", () => {
 
   it("refits on container changes, not just window resize", () => {
     expect(html).toContain('window.addEventListener("resize", scheduleFit)');
-    expect(html).toContain('window.addEventListener("orientationchange", scheduleFit)');
     expect(html).toContain("new ResizeObserver(scheduleFit)");
   });
 
-  it("turns the mobile sidebar into an overlay drawer", () => {
-    // Taking the sidebar out of the flex flow is what gives #main full width.
-    expect(html).toMatch(/#sidebar \{ position: fixed;/);
-    expect(html).toContain("#sidebar.open { transform: translateX(0); }");
-    expect(html).toContain('id="menuBtn"');
-    expect(html).toContain('id="sbBackdrop"');
-    expect(html).toContain("function setDrawer(open)");
-    // Desktop keeps the static 240px sidebar.
+  it("keeps the desktop sidebar layout untouched", () => {
     expect(html).toContain("#sidebar { width: 240px; flex: 0 0 240px;");
+    // Mobile drawer was dropped from scope — /view is desktop-only.
+    expect(html).not.toContain('id="menuBtn"');
+    expect(html).not.toContain("setDrawer");
   });
 
   it("offers a persisted font density control", () => {
