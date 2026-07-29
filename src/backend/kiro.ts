@@ -154,15 +154,18 @@ export class KiroBackend implements CliBackend {
   // command), so a runtime paste can't select a specific model — use restart.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
-  async listModels(): Promise<import("./types.js").ModelOption[]> {
-    // Verified format: { "models": [{ model_name, model_id, description, ... }],
-    //   "default_model": "auto" }. Older/other shapes (bare array) also tolerated.
+  /**
+   * Parse `chat --list-models --format json` once. Verified format:
+   * `{ "models": [{ model_name, model_id, description, ... }], "default_model": "auto" }`.
+   * A bare array (older/other shape) is tolerated. Never throws.
+   */
+  private readModelsPayload(): { models: import("./types.js").ModelOption[]; defaultModel?: string } {
     try {
       const out = execFileSync(this.binaryPath, ["chat", "--list-models", "--format", "json"],
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
       const parsed = JSON.parse(out);
       const arr: unknown[] = Array.isArray(parsed) ? parsed : (parsed?.models ?? []);
-      return arr.map((m: unknown) => {
+      const models = arr.map((m: unknown) => {
         if (typeof m === "string") return { id: m, label: m };
         const o = m as Record<string, unknown>;
         const id = String(o.model_id ?? o.id ?? o.name ?? o.model ?? "");
@@ -170,13 +173,20 @@ export class KiroBackend implements CliBackend {
         const desc = typeof o.description === "string" ? o.description : undefined;
         return desc ? { id, label, description: desc } : { id, label };
       }).filter(o => o.id);
+      const dm = Array.isArray(parsed) ? undefined : parsed?.default_model;
+      return { models, defaultModel: typeof dm === "string" && dm.trim() ? dm.trim() : undefined };
     } catch { /* unknown flag/format — fall back to free-text */ }
-    return [];
+    return { models: [] };
+  }
+
+  async listModels(): Promise<import("./types.js").ModelOption[]> {
+    return this.readModelsPayload().models;
   }
 
   async probeCLIEnv() {
     const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+    const { models, defaultModel } = this.readModelsPayload();
+    return { version: probeCliVersion(this.binaryPath), models, currentModel: defaultModel };
   }
 
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).

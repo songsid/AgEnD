@@ -292,7 +292,14 @@ export class GrokBackend implements CliBackend {
 
   async probeCLIEnv() {
     const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+    // `grok models` prints "Default model: grok-4.5" above the list (verified).
+    let currentModel: string | undefined;
+    try {
+      const out = execFileSync(this.binaryPath, ["models"],
+        { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+      currentModel = out.match(/Default model:\s*(\S+)/i)?.[1];
+    } catch { /* best effort */ }
+    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
   }
 
   cleanup(config: CliBackendConfig): void {

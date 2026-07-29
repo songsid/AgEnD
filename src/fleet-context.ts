@@ -59,6 +59,8 @@ export interface FleetContext {
   removeInstance(name: string): Promise<void>;
   getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  /** Human-readable effective model for an instance (resolves inherited defaults). */
+  modelDisplayForInstance?(name: string): string;
   /**
    * Show a model-selection inline keyboard for the given instance in a TG topic.
    * Returns a fallback text message if no model list is available (caller should send it).
