@@ -4,8 +4,12 @@ After=network.target
 
 [Service]
 Type=notify
-# Node delegates AF_UNIX datagram sends to systemd-notify, so the helper must
-# be accepted. src/sd-notify.ts keeps NOTIFY_SOCKET out of all other children.
+# NotifyAccess must stay "all": sdNotify() delivers via a short-lived
+# systemd-notify child, so "main"/"exec" reject it with
+# "Got notification message from PID <helper>, but reception only permitted
+# for main PID <service>" (Result=protocol), breaking READY/WATCHDOG.
+# The capability is instead contained in src/sd-notify.ts, which removes
+# NOTIFY_SOCKET from the environment so no other child process inherits it.
 NotifyAccess=all
 TimeoutStartSec=0
 WatchdogSec=60
