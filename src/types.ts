@@ -43,6 +43,18 @@ export interface HangDetectorConfig {
   timeout_minutes: number;
 }
 
+/**
+ * Stable logical terminal geometry for an instance's tmux window.
+ *
+ * `enabled: false` is the compatibility escape hatch: the window is pinned to
+ * tmux's historical 80x24 geometry rather than inheriting the larger defaults.
+ */
+export interface TerminalConfig {
+  enabled?: boolean;
+  columns?: number;
+  rows?: number;
+}
+
 export interface DailySummaryConfig {
   enabled: boolean;
   hour: number;
@@ -128,6 +140,8 @@ export interface InstanceConfig {
   agent_mode?: "mcp" | "cli";
   /** Hang detector override for this instance. */
   hang_detector?: HangDetectorConfig;
+  /** Logical terminal size. Defaults to 120x36; set enabled=false for 80x24 compatibility. */
+  terminal?: TerminalConfig;
   /** Command to paste raw before each user message (e.g. "/chat load base.json") */
   pre_task_command?: string;
 }
