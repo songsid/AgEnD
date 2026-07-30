@@ -13,6 +13,7 @@ import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
 import { getAgendHome } from "./paths.js";
 import { t } from "./locale.js";
+import { PIE_PERCENT_RE } from "./tui-glyphs.js";
 
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
@@ -69,7 +70,7 @@ export function compactCommandForBackend(backend: string): string {
  * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
  * MOST RECENT prompt wins (a captured scrollback may hold several). Covers the
  * common CLI prompt formats:
- *   kiro-cli classic:  "6% !>"        kiro-cli TUI: "◔ 6%"
+ *   kiro-cli classic:  "6% !>"        kiro-cli TUI: "◔ 6%" (any pie glyph)
  *   bracketed:         "[6%]"         claude/others prompt: "6% ❯" / "6% >"
  *   codex TUI footer:  "Context 94% left" (remaining) or "Context 6% used"
  *   opencode footer:   "1.2K (6%)"   (token count then parenthesized %)
@@ -121,7 +122,7 @@ export function parseContextPercent(pane: string): number | null {
     const ratio = parseTokenContextRatio(line);
     if (ratio) return ratio.percentage;
     const m = line.match(/(\d+)%.*[!❯>]/)
-      || line.match(/◔\s*(\d+)%/)
+      || line.match(PIE_PERCENT_RE)
       || line.match(/\[(\d+)%\]/)
       || line.match(/Context\s+(\d+)%\s+used/i)               // codex "context-used" variant
       || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);        // opencode "1.2K (6%)"
