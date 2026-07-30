@@ -8,6 +8,7 @@ import { execFileSync } from "node:child_process";
 import yaml from "js-yaml";
 import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivityAt } from "../src/classic-channel-manager.js";
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
+import { IpcServer } from "../src/channel/ipc-bridge.js";
 
 describe("FleetManager", () => {
   let tmpDir: string;
@@ -25,6 +26,159 @@ describe("FleetManager", () => {
     const fm = new FleetManager(tmpDir);
     mkdirSync(join(tmpDir, "instances/test"), { recursive: true });
     expect(fm.getInstanceStatus("test")).toBe("stopped");
+  });
+
+  describe("IPC connection single-flight and orphan cleanup", () => {
+    it("coalesces concurrent connect attempts into one live client", async () => {
+      const fm = new FleetManager(tmpDir);
+      const name = "ipc-connect-race";
+      const instanceDir = fm.getInstanceDir(name);
+      mkdirSync(instanceDir, { recursive: true });
+      const server = new IpcServer(join(instanceDir, "channel.sock"));
+      await server.listen();
+      try {
+        const first = fm.connectIpcToInstance(name);
+        const second = fm.connectIpcToInstance(name);
+        expect(first).toBe(second);
+        await Promise.all([first, second]);
+        await vi.waitFor(() => expect((server as any).clients.size).toBe(1));
+        expect(fm.instanceIpcClients.get(name)?.connected).toBe(true);
+      } finally {
+        await fm.instanceIpcClients.get(name)?.close();
+        await server.close();
+      }
+    });
+
+    it("coalesces concurrent reconnect loops per instance", async () => {
+      vi.useFakeTimers();
+      try {
+        const fm = new FleetManager(tmpDir);
+        const name = "ipc-reconnect-race";
+        fm.lifecycle.daemons.set(name, {} as any);
+        const connectedClient = { connected: true } as any;
+        const connect = vi.spyOn(fm, "connectIpcToInstance").mockImplementation(async () => {
+          fm.instanceIpcClients.set(name, connectedClient);
+        });
+
+        const first = (fm as any).ipcReconnect(name) as Promise<void>;
+        const second = (fm as any).ipcReconnect(name) as Promise<void>;
+        expect(first).toBe(second);
+        await vi.advanceTimersByTimeAsync(3_000);
+        await Promise.all([first, second]);
+
+        expect(connect).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("fully disposes a replaced IPC client", async () => {
+      const fm = new FleetManager(tmpDir);
+      const name = "ipc-replace";
+      const instanceDir = fm.getInstanceDir(name);
+      mkdirSync(instanceDir, { recursive: true });
+      const server = new IpcServer(join(instanceDir, "channel.sock"));
+      await server.listen();
+      try {
+        await fm.connectIpcToInstance(name);
+        const oldClient = fm.instanceIpcClients.get(name)!;
+        expect(oldClient.listenerCount("message")).toBeGreaterThan(0);
+
+        await fm.connectIpcToInstance(name);
+        await vi.waitFor(() => expect((server as any).clients.size).toBe(1));
+
+        expect(fm.instanceIpcClients.get(name)).not.toBe(oldClient);
+        expect(oldClient.connected).toBe(false);
+        expect(oldClient.eventNames()).toEqual([]);
+      } finally {
+        await fm.instanceIpcClients.get(name)?.close();
+        await server.close();
+      }
+    });
+
+    it("ignores a delayed disconnect callback from a stale client", async () => {
+      const fm = new FleetManager(tmpDir);
+      const name = "ipc-stale-disconnect";
+      const instanceDir = fm.getInstanceDir(name);
+      mkdirSync(instanceDir, { recursive: true });
+      const server = new IpcServer(join(instanceDir, "channel.sock"));
+      await server.listen();
+      try {
+        await fm.connectIpcToInstance(name);
+        const oldClient = fm.instanceIpcClients.get(name)!;
+        // Capture the actual FleetManager listener to model EventEmitter's
+        // in-progress listener snapshot while replacement disposes the client.
+        const delayedDisconnect = oldClient.listeners("disconnect")[0] as () => void;
+
+        await fm.connectIpcToInstance(name);
+        const currentClient = fm.instanceIpcClients.get(name)!;
+        expect(currentClient).not.toBe(oldClient);
+
+        delayedDisconnect();
+
+        expect(fm.instanceIpcClients.get(name)).toBe(currentClient);
+        expect(currentClient.connected).toBe(true);
+      } finally {
+        fm.ipcStoppingInstances.add(name);
+        await fm.instanceIpcClients.get(name)?.close();
+        await server.close();
+      }
+    });
+
+    it("recovers from an actual overflow without duplicate outbound delivery", async () => {
+      const fm = new FleetManager(tmpDir);
+      const name = "ipc-overflow";
+      const instanceDir = fm.getInstanceDir(name);
+      mkdirSync(instanceDir, { recursive: true });
+      const server = new IpcServer(join(instanceDir, "channel.sock"));
+      await server.listen();
+
+      const sendText = vi.fn().mockResolvedValue({ messageId: "sent-1" });
+      const adapter = {
+        id: "test",
+        type: "telegram",
+        sendText,
+        getChatId: () => "chat-1",
+      } as any;
+      fm.adapter = adapter;
+      fm.worlds.set("test", { adapter } as any);
+      fm.fleetConfig = {
+        defaults: {},
+        instances: {
+          [name]: { working_directory: tmpDir, topic_id: "topic-1" },
+        },
+      } as any;
+      fm.lifecycle.daemons.set(name, {} as any);
+
+      try {
+        await fm.connectIpcToInstance(name);
+        expect((server as any).clients.size).toBe(1);
+        const initialClient = fm.instanceIpcClients.get(name);
+
+        // This is the production line-parser overflow path. socket.destroy()
+        // also causes close (and may cause error), which previously spawned
+        // multiple concurrent reconnect loops.
+        server.broadcast({ type: "overflow-trigger", payload: "x".repeat(1_100_000) });
+
+        await vi.waitFor(() => {
+          expect(fm.instanceIpcClients.get(name)).not.toBe(initialClient);
+          expect(fm.instanceIpcClients.get(name)?.connected).toBe(true);
+          expect((server as any).clients.size).toBe(1);
+        }, { timeout: 6_000, interval: 100 });
+
+        server.broadcast({
+          type: "fleet_outbound",
+          tool: "reply",
+          args: { chat_id: "chat-1", text: "HI" },
+          requestId: 7,
+        });
+        await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(1));
+      } finally {
+        fm.ipcStoppingInstances.add(name);
+        await fm.instanceIpcClients.get(name)?.close();
+        await server.close();
+      }
+    }, 10_000);
   });
 
   it("queues SIGHUP during startup and replays it after startup completes", async () => {

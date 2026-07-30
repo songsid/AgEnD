@@ -260,6 +260,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
   readonly ipcStoppingInstances = new Set<string>();
+  /** Coalesce concurrent connection attempts for the same daemon socket. */
+  private ipcConnectInFlight = new Map<string, Promise<void>>();
+  /** At most one reconnect/backoff loop may exist per instance. */
+  private ipcReconnectInFlight = new Map<string, Promise<void>>();
 
   // Adapter restart: prevents re-entrant restart attempts
   private adapterRestarting = new Set<string>();
@@ -2066,14 +2070,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Connect IPC to a single instance with all handlers */
-  async connectIpcToInstance(name: string): Promise<void> {
+  connectIpcToInstance(name: string): Promise<void> {
+    const inFlight = this.ipcConnectInFlight.get(name);
+    if (inFlight) return inFlight;
+
+    const connection = this.connectIpcToInstanceInternal(name)
+      .finally(() => {
+        if (this.ipcConnectInFlight.get(name) === connection) {
+          this.ipcConnectInFlight.delete(name);
+        }
+      });
+    this.ipcConnectInFlight.set(name, connection);
+    return connection;
+  }
+
+  private async connectIpcToInstanceInternal(name: string): Promise<void> {
     // Close existing client to prevent socket leak on reconnect
     const existing = this.instanceIpcClients.get(name);
     if (existing) {
-      this.ipcStoppingInstances.add(name);
-      try { existing.close(); } catch (err) { this.logger.debug({ err, name }, "IPC client close failed (likely already closed)"); }
-      this.instanceIpcClients.delete(name);
-      this.ipcStoppingInstances.delete(name);
+      // Remove application listeners before destroying the socket. Even if a
+      // future regression creates two clients, the replaced one cannot keep
+      // handling fleet_outbound messages as an orphan.
+      existing.removeAllListeners();
+      try {
+        await existing.close();
+      } catch (err) {
+        this.logger.debug({ err, name }, "IPC client close failed (likely already closed)");
+      } finally {
+        if (this.instanceIpcClients.get(name) === existing) {
+          this.instanceIpcClients.delete(name);
+        }
+      }
     }
 
     const sockPath = join(this.getInstanceDir(name), "channel.sock");
@@ -2143,6 +2170,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       // Auto-reconnect on disconnect (unless intentionally stopping)
       ipc.on("disconnect", () => {
+        // A delayed event from a replaced/stale client must never delete the
+        // current connection or start another reconnect loop.
+        if (this.instanceIpcClients.get(name) !== ipc) return;
         this.instanceIpcClients.delete(name);
         if (this.ipcStoppingInstances.has(name)) return;
         this.ipcReconnect(name).catch(() => {});
@@ -2153,7 +2183,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Attempt IPC reconnection with exponential backoff */
-  private async ipcReconnect(name: string): Promise<void> {
+  private ipcReconnect(name: string): Promise<void> {
+    const inFlight = this.ipcReconnectInFlight.get(name);
+    if (inFlight) return inFlight;
+
+    const reconnect = this.runIpcReconnect(name)
+      .finally(() => {
+        if (this.ipcReconnectInFlight.get(name) === reconnect) {
+          this.ipcReconnectInFlight.delete(name);
+        }
+      });
+    this.ipcReconnectInFlight.set(name, reconnect);
+    return reconnect;
+  }
+
+  private async runIpcReconnect(name: string): Promise<void> {
     for (let attempt = 1; ; attempt++) {
       if (this.ipcStoppingInstances.has(name) || !this.daemons.has(name)) return;
       const delay = attempt <= 3 ? 3000 * Math.pow(2, attempt - 1) : 60_000; // 3s, 6s, 12s, then 60s
