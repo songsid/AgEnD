@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { PIE_CLASS } from "../tui-glyphs.js";
 
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
@@ -99,8 +100,14 @@ export class KiroBackend implements CliBackend {
   getReadyPattern(): RegExp {
     // Startup: trust/banner text. Daily prompt: "22% !>" / "8% ❯";
     // Kiro may insert mode glyphs between them, e.g. "20% λ !>".
-    // TUI statusline: "◔ 22%" context indicator shown while waiting for input.
-    return /All tools are now trusted|Trust All Tools active|Credits:.*Time:|ask a question or describe a task|\d+%.*[!❯>]|◔\s*\d+%/m;
+    // TUI statusline: the context indicator shown while waiting for input,
+    // e.g. "◑ 27%". The glyph steps through PIE_GLYPHS as the window fills,
+    // so all of them have to match — not just the low-usage "◔".
+    return new RegExp(
+      `All tools are now trusted|Trust All Tools active|Credits:.*Time:`
+      + `|ask a question or describe a task|\\d+%.*[!❯>]|${PIE_CLASS}\\s*\\d+%`,
+      "m",
+    );
   }
 
   getErrorPatterns(): ErrorPattern[] {
