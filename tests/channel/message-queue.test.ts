@@ -129,6 +129,60 @@ describe("MessageQueue", () => {
     expect(callCount).toBeGreaterThanOrEqual(2);
   });
 
+  it("does not retry an ambiguous error that merely mentions a rate limit", async () => {
+    const warn = vi.fn();
+    const sendFn = vi.fn(async () => {
+      throw new Error("socket closed after 429 Too Many Requests response");
+    });
+    const queue = new MessageQueue(
+      {
+        send: sendFn,
+        edit: vi.fn(),
+        sendFile: vi.fn(async () => ({ messageId: "2" })),
+      },
+      { warn },
+    );
+
+    queue.enqueue("c1", undefined, { type: "content", text: "send once" });
+    queue.start();
+    await new Promise(r => setTimeout(r, 300));
+    queue.stop();
+
+    expect(sendFn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("retries only the unsent tail of a partially delivered content batch", async () => {
+    const first = "a".repeat(4096);
+    const second = "b";
+    const attempts: string[] = [];
+    let rejectedSecond = false;
+    const sendFn = vi.fn(async (_c: string, _t: string | undefined, text: string) => {
+      attempts.push(text);
+      if (text === second && !rejectedSecond) {
+        rejectedSecond = true;
+        const err = new Error("Too Many Requests") as Error & { status?: number };
+        err.status = 429;
+        throw err;
+      }
+      return { messageId: "1" };
+    });
+    const queue = new MessageQueue({
+      send: sendFn,
+      edit: vi.fn(),
+      sendFile: vi.fn(async () => ({ messageId: "2" })),
+    });
+
+    queue.enqueue("c1", undefined, { type: "content", text: first });
+    queue.enqueue("c1", undefined, { type: "content", text: second });
+    queue.start();
+    await new Promise(r => setTimeout(r, 1500));
+    queue.stop();
+
+    expect(attempts.filter(text => text === first)).toHaveLength(1);
+    expect(attempts.filter(text => text === second)).toHaveLength(2);
+  });
+
   it("flood control drop also resets backoff (P3.8)", async () => {
     // Reproduces the P3.8 bug: under sustained 429s, backoff grew past 10s,
     // status_updates were dropped, but backoff stayed high — so even after

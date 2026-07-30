@@ -28,12 +28,13 @@ vi.mock("grammy", () => {
 
   class MockBot extends EventEmitter {
     token: string;
-    api: Record<string, ReturnType<typeof vi.fn>>;
+    api: Record<string, any>;
 
     constructor(token: string) {
       super();
       this.token = token;
       this.api = {
+        raw: {},
         sendMessage: vi.fn().mockResolvedValue({ message_id: 1 }),
         editMessageText: vi.fn().mockResolvedValue(undefined),
         sendPhoto: vi.fn().mockResolvedValue({ message_id: 2 }),
@@ -57,6 +58,10 @@ vi.mock("grammy", () => {
 
     stop(): Promise<void> {
       return Promise.resolve();
+    }
+
+    use(_handler: (ctx: unknown, next: () => Promise<void>) => Promise<void>): this {
+      return this;
     }
 
     catch(_handler: (err: unknown) => void): this {
@@ -101,6 +106,7 @@ vi.mock("grammy", () => {
 import { TelegramAdapter } from "../../../src/channel/adapters/telegram.js";
 import { AccessManager } from "../../../src/channel/access-manager.js";
 import type { PermissionPrompt } from "../../../src/channel/types.js";
+import { GrammyError } from "grammy";
 
 // ── Test helpers ──────────────────────────────────────────────────────────
 
@@ -255,6 +261,45 @@ describe("TelegramAdapter", () => {
     expect(firstArg.length).toBeLessThanOrEqual(4096);
   });
 
+  it("does not duplicate a rich message when delivery happened before an ambiguous error", async () => {
+    const bot = (adapter as unknown as { bot: { api: Record<string, any> } }).bot;
+    let delivered = 0;
+    bot.api.raw.sendRichMessage = vi.fn(async () => {
+      delivered++;
+      throw new Error("socket closed after Telegram accepted the request");
+    });
+
+    await expect(adapter.sendText("100", "# Delivered heading")).rejects.toThrow("socket closed");
+
+    expect(delivered).toBe(1);
+    expect(bot.api.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("falls back to sendMessage when the rich-message method is unavailable", async () => {
+    const bot = (adapter as unknown as { bot: { api: Record<string, any> } }).bot;
+    delete bot.api.raw.sendRichMessage;
+    bot.api.sendMessage.mockResolvedValueOnce({ message_id: 77 });
+
+    const result = await adapter.sendText("100", "# Legacy Bot API");
+
+    expect(bot.api.sendMessage).toHaveBeenCalledTimes(1);
+    expect(result.messageId).toBe("77");
+  });
+
+  it("falls back once when Telegram explicitly rejects the rich-message request", async () => {
+    const bot = (adapter as unknown as { bot: { api: Record<string, any> } }).bot;
+    bot.api.raw.sendRichMessage = vi.fn().mockRejectedValue(
+      new GrammyError("Bad Request: method not found", 404, "sendRichMessage", {}),
+    );
+    bot.api.sendMessage.mockResolvedValueOnce({ message_id: 78 });
+
+    const result = await adapter.sendText("100", "# Unsupported rich API");
+
+    expect(bot.api.raw.sendRichMessage).toHaveBeenCalledTimes(1);
+    expect(bot.api.sendMessage).toHaveBeenCalledTimes(1);
+    expect(result.messageId).toBe("78");
+  });
+
   // ── Message handler ───────────────────────────────────────────────────────
 
   it("emits 'message' for allowed users", async () => {
@@ -276,6 +321,9 @@ describe("TelegramAdapter", () => {
   it("blocks messages from non-allowed users", async () => {
     const received: unknown[] = [];
     adapter.on("message", (m) => received.push(m));
+    // Primary fleet chat is access-controlled; non-primary chats are
+    // intentionally forwarded for ClassicBot's own access control.
+    (adapter as unknown as { lastChatId: string }).lastChatId = "100";
 
     await fireEvent("message", {
       message: makeTelegramMessage({ from: { id: 999, username: "stranger" } }),
