@@ -50,7 +50,12 @@ export interface OutboundContext {
   readonly lifecycle: InstanceLifecycle;
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
-  readonly classicChannels: { getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[]; getChannelIdByInstance?(name: string): string | undefined; getBackendByInstance?(name: string, fleetDefault?: string): string } | null;
+  readonly classicChannels: {
+    getAll(): { instanceName: string; name: string; backend?: string; model?: string; channelId: string; adapterId?: string }[];
+    getChannelIdByInstance?(name: string): string | undefined;
+    getBackendByInstance?(name: string, fleetDefault?: string): string;
+    getModel?(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined;
+  } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
@@ -67,6 +72,12 @@ export interface OutboundContext {
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  resolveInstanceModel?(name: string): {
+    model: string;
+    source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
+    display: string;
+    reason?: string;
+  };
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -266,6 +277,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
       display_name: config.display_name ?? null,
       description: config.description ?? null,
       backend: config.backend ?? "claude-code",
+      model: ctx.resolveInstanceModel?.(name).model ?? config.model ?? "default",
+      kind: "fleet-topic" as "fleet-topic" | "classic",
       tags: config.tags ?? [],
       last_activity: ctx.lastActivityMs(name) ? new Date(ctx.lastActivityMs(name)).toISOString() : null,
     }));
@@ -286,7 +299,14 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         topic_id: ch.channelId as any,
         display_name: `classic: ${ch.name}`,
         description: `ClassicBot channel (${ch.name})`,
-        backend: ch.backend ?? "claude-code",
+        backend: ctx.classicChannels.getBackendByInstance?.(
+          ch.instanceName,
+          ctx.fleetConfig?.defaults?.backend,
+        ) ?? ch.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code",
+        model: ctx.resolveInstanceModel?.(ch.instanceName).model
+          ?? ctx.classicChannels.getModel?.(ch.channelId, ch.adapterId, ctx.fleetConfig?.defaults?.model)
+          ?? "default",
+        kind: "classic" as const,
         tags: ["classic"],
         last_activity: ctx.lastActivityMs(ch.instanceName) ? new Date(ctx.lastActivityMs(ch.instanceName)).toISOString() : null,
       });
@@ -304,9 +324,11 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
   const targetName = v.data.name;
   const config = ctx.fleetConfig?.instances[targetName];
   if (config) {
+    const model = ctx.resolveInstanceModel?.(targetName);
     respond({
       name: targetName,
       type: "instance",
+      kind: "fleet-topic",
       description: config.description ?? null,
       tags: config.tags ?? [],
       working_directory: config.working_directory,
@@ -317,7 +339,8 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
         : null,
       topic_id: config.topic_id ?? null,
       backend: config.backend ?? "claude-code",
-      model: config.model ?? null,
+      model: model?.model ?? config.model ?? "default",
+      model_source: model?.source ?? (config.model ? "instance" : "unresolved"),
       last_activity: ctx.lastActivityMs(targetName) ? new Date(ctx.lastActivityMs(targetName)).toISOString() : null,
       worktree_source: config.worktree_source ?? null,
     });
@@ -327,9 +350,12 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
   if (ctx.classicChannels) {
     const channelId = ctx.classicChannels.getChannelIdByInstance?.(targetName);
     if (channelId) {
+      const channel = ctx.classicChannels.getAll().find(ch => ch.instanceName === targetName);
+      const model = ctx.resolveInstanceModel?.(targetName);
       respond({
         name: targetName,
         type: "instance",
+        kind: "classic",
         description: `ClassicBot channel`,
         tags: ["classic"],
         working_directory: "",
@@ -337,8 +363,18 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
         instance_state: ctx.getInstanceExecutionState?.(targetName) ?? null,
         last_paused_at: null,
         topic_id: channelId,
-        backend: ctx.classicChannels.getBackendByInstance?.(targetName) ?? "claude-code",
-        model: null,
+        backend: ctx.classicChannels.getBackendByInstance?.(
+          targetName,
+          ctx.fleetConfig?.defaults?.backend,
+        ) ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code",
+        model: model?.model
+          ?? ctx.classicChannels.getModel?.(channelId, channel?.adapterId, ctx.fleetConfig?.defaults?.model)
+          ?? "default",
+        model_source: model?.source ?? (
+          ctx.classicChannels.getModel?.(channelId, channel?.adapterId, ctx.fleetConfig?.defaults?.model)
+            ? "classic"
+            : "unresolved"
+        ),
         last_activity: ctx.lastActivityMs(targetName) ? new Date(ctx.lastActivityMs(targetName)).toISOString() : null,
         worktree_source: null,
       });

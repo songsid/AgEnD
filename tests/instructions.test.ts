@@ -12,6 +12,18 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("`/home/user/project`");
   });
 
+  it("includes the effective runtime identity when provided", () => {
+    const result = buildFleetInstructions({
+      ...base,
+      runtimeIdentity: {
+        kind: "classic",
+        backend: "codex",
+        model: "gpt-5.6-sol",
+      },
+    });
+    expect(result).toContain("Runtime: kind=classic, backend=codex, model=gpt-5.6-sol.");
+  });
+
   it("includes message format and collaboration rules", () => {
     const result = buildFleetInstructions(base);
     expect(result).toContain("[user:");

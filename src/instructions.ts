@@ -5,6 +5,11 @@ import { fileURLToPath } from "node:url";
 export interface FleetInstructionsParams {
   instanceName: string;
   workingDirectory: string;
+  runtimeIdentity?: {
+    kind: "fleet-topic" | "classic";
+    backend: string;
+    model: string;
+  };
   displayName?: string;
   description?: string;
   customPrompt?: string;
@@ -15,11 +20,14 @@ export interface FleetInstructionsParams {
 }
 
 export function buildFleetInstructions(params: FleetInstructionsParams): string {
-  const { instanceName, workingDirectory, displayName, description, customPrompt } = params;
+  const { instanceName, workingDirectory, runtimeIdentity, displayName, description, customPrompt } = params;
   const sections: string[] = [];
 
   // ── Identity ──
   sections.push(`# AgEnD Fleet Context\nYou are **${instanceName}**, an instance in an AgEnD fleet.\nYour working directory is \`${workingDirectory}\`.`);
+  if (runtimeIdentity) {
+    sections.push(`Runtime: kind=${runtimeIdentity.kind}, backend=${runtimeIdentity.backend}, model=${runtimeIdentity.model}.`);
+  }
   if (displayName) {
     sections.push(`Your display name is "${displayName}". Use this when introducing yourself.`);
   } else {
