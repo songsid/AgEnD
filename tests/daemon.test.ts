@@ -63,6 +63,107 @@ describe("Daemon", () => {
   });
 });
 
+describe("Daemon backend-native input queue delivery", () => {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code", idle: boolean) {
+    const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@queued");
+
+    const backend = createBackend(backendName, instanceDir);
+    const control = {
+      isIdle: vi.fn(() => idle),
+      waitUntilIdle: vi.fn().mockResolvedValue(undefined),
+      hasOutputSince: vi.fn(() => false),
+    };
+    const daemon = new Daemon(
+      `${backendName}-queue-test`,
+      makeConfig(),
+      instanceDir,
+      false,
+      backend,
+      control as any,
+      rootLogger,
+    );
+    const tmux = {
+      pasteBuffer: vi.fn().mockResolvedValue(true),
+      sendSpecialKey: vi.fn().mockResolvedValue(true),
+    };
+    (daemon as any).tmux = tmux;
+    (daemon as any).firstDeliveryDelay = { consume: () => 0 };
+
+    return { backend, control, daemon, instanceDir, tmux };
+  }
+
+  it("hands busy Codex input to its native queue with exactly one Enter", async () => {
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false);
+    const queued = vi.fn();
+    const delivered = vi.fn();
+    const confirmed = vi.fn();
+    daemon.on("message_queued", queued);
+    daemon.on("message_delivered", delivered);
+    daemon.on("message_confirmed", confirmed);
+
+    try {
+      expect(backend.supportsQueuedInput?.()).toBe(true);
+
+      const result = await (daemon as any).deliverMessage("queued work", {
+        chatId: "chat",
+        messageId: "message",
+      });
+
+      expect(result).toBe(true);
+      expect(control.waitUntilIdle).not.toHaveBeenCalled();
+      expect(control.hasOutputSince).not.toHaveBeenCalled();
+      expect(tmux.pasteBuffer).toHaveBeenCalledWith("queued work");
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+      expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+      expect(queued).toHaveBeenCalledOnce();
+      expect(delivered).toHaveBeenCalledOnce();
+      expect(confirmed).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the idle gate and confirmation path for backends without a native queue", async () => {
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+
+    try {
+      expect(backend.supportsQueuedInput?.()).toBeUndefined();
+
+      const result = await (daemon as any).deliverMessage("wait for idle");
+
+      expect(result).toBe(true);
+      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
+      expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("retains swallowed-Enter confirmation for Codex when it starts idle", async () => {
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", true);
+    const confirm = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+
+    try {
+      const result = await (daemon as any).deliverMessage("normal idle submission");
+
+      expect(result).toBe(true);
+      expect(control.waitUntilIdle).not.toHaveBeenCalled();
+      expect(confirm).toHaveBeenCalledTimes(2);
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("Daemon snapshot", () => {
   let tmpDir: string;
   let daemon: Daemon;
