@@ -1,13 +1,110 @@
-import { execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { basename, dirname, join, resolve } from "node:path";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
+const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
+const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
+
+/**
+ * Remove AgEnD-owned MCP tables from a Codex TOML config without touching
+ * unrelated user settings or third-party MCP servers. Track TOML multiline
+ * strings so a line such as `[heading]` inside AGEND_DECISIONS cannot be
+ * mistaken for the start of another table.
+ */
+function stripAgendMcpTables(content: string): string {
+  const lines = content.split(/(?<=\n)/);
+  let skipping = false;
+  let multiline: `"""` | `'''` | null = null;
+  let removed = false;
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    if (!multiline) {
+      const header = line.match(/^\s*\[([^\]]+)\]\s*(?:#.*)?(?:\r?\n)?$/);
+      if (header) {
+        const path = header[1].trim();
+        skipping = /^mcp_servers\.(?:"|')?agend(?:-|(?=["'.]|$))/i.test(path);
+        if (skipping) removed = true;
+      }
+    }
+
+    if (!skipping) kept.push(line);
+
+    // TOML multiline basic/literal strings may contain table-looking lines.
+    // Count unescaped delimiters and toggle only on an odd number.
+    for (const delimiter of ['"""', "'''"] as const) {
+      if (multiline && multiline !== delimiter) continue;
+      let count = 0;
+      let pos = 0;
+      while ((pos = line.indexOf(delimiter, pos)) !== -1) {
+        if (delimiter === "'''" || pos === 0 || line[pos - 1] !== "\\") count++;
+        pos += delimiter.length;
+      }
+      if (count % 2 === 1) multiline = multiline === delimiter ? null : delimiter;
+    }
+  }
+
+  // Avoid rewriting a clean user config merely to normalize whitespace.
+  return removed ? kept.join("") : content;
+}
+
+function tomlString(value: string): string {
+  // JSON strings are valid TOML basic strings for the values AgEnD emits.
+  return JSON.stringify(value);
+}
+
+function renderMcpServer(name: string, entry: McpServerEntry, instanceName: string): string {
+  const mcpName = `${name}-${instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
+  const env = { ...entry.env, AGEND_INSTANCE_NAME: instanceName };
+  const args = entry.args.map(tomlString).join(", ");
+  const envLines = Object.entries(env)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key} = ${tomlString(value)}`)
+    .join("\n");
+  return [
+    `[mcp_servers.${mcpName}]`,
+    `command = ${tomlString(entry.command)}`,
+    `args = [${args}]`,
+    "",
+    `[mcp_servers.${mcpName}.env]`,
+    envLines,
+    "",
+  ].join("\n");
+}
+
+function atomicWritePrivate(path: string, content: string): void {
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  const tempPath = join(
+    dirname(path),
+    `.${basename(path)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(tempPath, content, { encoding: "utf-8", mode: 0o600, flag: "wx" });
+    chmodSync(tempPath, 0o600);
+    renameSync(tempPath, path);
+  } finally {
+    try { if (existsSync(tempPath)) unlinkSync(tempPath); } catch {}
+  }
+}
 
 // Account-aware models_cache.json is preferred. These documented Codex models
 // are only a last-resort menu when the TUI has not populated its cache yet.
@@ -20,9 +117,13 @@ const CODEX_FALLBACK_MODELS: ModelOption[] = [
 export class CodexBackend implements CliBackend {
   readonly binaryName = "codex";
   private binaryPath: string;
+  private readonly sharedCodexHome: string;
+  private readonly isolatedCodexHome: string;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
+    this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
+    this.isolatedCodexHome = resolve(instanceDir, "codex-home");
   }
 
   buildCommand(config: CliBackendConfig): string {
@@ -45,33 +146,28 @@ export class CodexBackend implements CliBackend {
       warnIfModelMismatch("codex", model);
       cmd += ` -c model="${model}"`;
     }
-    return cmd;
+    // CODEX_HOME is the only Codex-supported way to isolate the complete base
+    // config. A profile only layers over the shared config and would therefore
+    // still load every globally registered AgEnD MCP server.
+    return `CODEX_HOME=${shellQuote(this.isolatedCodexHome)} ${cmd}`;
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Codex stores MCP config globally in ~/.codex/config.toml.
-    // Use execFileSync (no shell) to avoid escaping issues with env values
-    // containing JSON (e.g. AGEND_DECISIONS). Use namespaced key to avoid
-    // conflicts when multiple Codex instances run simultaneously.
+    this.prepareIsolatedHome();
+    this.cleanSharedConfig();
+
+    // Copy all user settings but no AgEnD MCP entries into a private base
+    // config, then append only this instance's server(s). Each instance writes
+    // a distinct file, eliminating the old concurrent global-config race.
+    let content = "";
+    try {
+      content = stripAgendMcpTables(readFileSync(join(this.sharedCodexHome, "config.toml"), "utf-8"));
+    } catch { /* a first-time Codex user may have no global config */ }
+    if (content && !content.endsWith("\n")) content += "\n";
     for (const [name, entry] of Object.entries(config.mcpServers)) {
-      // Codex rejects non-ASCII MCP server names (e.g. CJK instance names) and
-      // would otherwise fail silently, leaving the instance with no reply MCP
-      // server. Sanitize to the safe charset codex accepts.
-      const mcpName = `${name}-${config.instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
-      const allEnv = { ...entry.env, AGEND_INSTANCE_NAME: config.instanceName };
-      const args = ["mcp", "add", mcpName];
-      for (const [k, v] of Object.entries(allEnv)) {
-        args.push("--env", `${k}=${v}`);
-      }
-      args.push("--", entry.command, ...entry.args);
-      // Remove existing entry first (codex mcp add fails if name exists)
-      try { execFileSync(this.binaryPath, ["mcp", "remove", mcpName], { stdio: "ignore" }); } catch { /* may not exist */ }
-      // Surface add failures — a silent failure means no reply MCP server.
-      try { execFileSync(this.binaryPath, args, { stdio: "ignore" }); }
-      catch (e) { console.warn(`[codex] mcp add "${mcpName}" failed: ${(e as Error).message}`); }
+      content += `\n${renderMcpServer(name, entry, config.instanceName)}`;
     }
-    // Clean up old non-namespaced key if present (one-time migration)
-    try { execFileSync(this.binaryPath, ["mcp", "remove", "agend"], { stdio: "ignore" }); } catch { /* may not exist */ }
+    atomicWritePrivate(join(this.isolatedCodexHome, "config.toml"), content);
 
     this.enableContextStatusLine();
 
@@ -104,7 +200,7 @@ export class CodexBackend implements CliBackend {
    * ~/.codex/config.toml (no toml dependency); other settings untouched.
    */
   private enableContextStatusLine(): void {
-    const configPath = join(homedir(), ".codex", "config.toml");
+    const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
@@ -130,21 +226,91 @@ export class CodexBackend implements CliBackend {
       }
     }
     try {
-      mkdirSync(dirname(configPath), { recursive: true });
-      writeFileSync(configPath, content);
+      atomicWritePrivate(configPath, content);
     } catch { /* best effort — never block launch on statusline config */ }
   }
 
   preTrust(workDir: string): void {
-    const configPath = join(homedir(), ".codex", "config.toml");
+    const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch {}
 
     const section = `[projects."${workDir}"]`;
     if (content.includes(section)) return;
 
-    mkdirSync(dirname(configPath), { recursive: true });
-    appendFileSync(configPath, `\n${section}\ntrust_level = "trusted"\n`);
+    atomicWritePrivate(configPath, `${content.trimEnd()}\n\n${section}\ntrust_level = "trusted"\n`);
+  }
+
+  /**
+   * Preserve Codex login/session/cache behavior while isolating config.toml.
+   * Before this fix all instances shared CODEX_HOME, so sharing these runtime
+   * files is intentionally unchanged. Only config.toml (which contains MCP
+   * capabilities and AGEND_DECISIONS) becomes private to this instance.
+   */
+  private prepareIsolatedHome(): void {
+    mkdirSync(this.isolatedCodexHome, { recursive: true, mode: 0o700 });
+    chmodSync(this.isolatedCodexHome, 0o700);
+    if (this.sharedCodexHome === this.isolatedCodexHome || !existsSync(this.sharedCodexHome)) return;
+
+    for (const name of readdirSync(this.sharedCodexHome)) {
+      if (name === "config.toml" || name === AGEND_MCP_CLEANUP_LOCK || name.startsWith(".config.toml.")) continue;
+      const source = join(this.sharedCodexHome, name);
+      const target = join(this.isolatedCodexHome, name);
+      if (existsSync(target)) continue;
+      try {
+        const type = lstatSync(source).isDirectory() ? "dir" : "file";
+        symlinkSync(source, target, type);
+      } catch {
+        // State/cache links are compatibility aids; config isolation must not
+        // fail merely because a concurrently-created cache entry disappeared.
+      }
+    }
+  }
+
+  /**
+   * One-time migration for installations polluted by the old global `codex
+   * mcp add` path. The lock protects separate fleet processes/upgrades, and
+   * atomic rename prevents readers from observing a truncated config.
+   */
+  private cleanSharedConfig(): void {
+    if (this.sharedCodexHome === this.isolatedCodexHome) return;
+    mkdirSync(this.sharedCodexHome, { recursive: true, mode: 0o700 });
+    const lockPath = join(this.sharedCodexHome, AGEND_MCP_CLEANUP_LOCK);
+    let lockFd: number | undefined;
+    const acquire = (): boolean => {
+      try {
+        lockFd = openSync(lockPath, "wx", 0o600);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (!acquire()) {
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > AGEND_MCP_CLEANUP_LOCK_STALE_MS) {
+          unlinkSync(lockPath);
+          if (!acquire()) return;
+        } else {
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+
+    try {
+      const configPath = join(this.sharedCodexHome, "config.toml");
+      let content: string;
+      try { content = readFileSync(configPath, "utf-8"); } catch { return; }
+      const cleaned = stripAgendMcpTables(content);
+      if (cleaned !== content) atomicWritePrivate(configPath, cleaned);
+    } finally {
+      if (lockFd !== undefined) {
+        try { closeSync(lockFd); } catch {}
+      }
+      try { unlinkSync(lockPath); } catch {}
+    }
   }
 
   getReadyPattern(): RegExp {
@@ -223,8 +389,10 @@ export class CodexBackend implements CliBackend {
    */
   async listModels(): Promise<ModelOption[]> {
     try {
-      const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), ".codex");
-      const cachePath = join(codexHome, "models_cache.json");
+      const isolatedCache = join(this.isolatedCodexHome, "models_cache.json");
+      const cachePath = existsSync(isolatedCache)
+        ? isolatedCache
+        : join(this.sharedCodexHome, "models_cache.json");
       if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) {
         return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
       }
@@ -256,10 +424,15 @@ export class CodexBackend implements CliBackend {
   }
 
   async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[]; currentModel?: string }> {
-    // The configured model is readable from ~/.codex/config.toml (`model = "..."`).
+    // The configured model is readable from the isolated base config. Fall
+    // back to the shared user config before this instance has been prepared.
     let currentModel: string | undefined;
     try {
-      currentModel = readFileSync(join(homedir(), ".codex", "config.toml"), "utf-8")
+      const isolatedConfig = join(this.isolatedCodexHome, "config.toml");
+      const configPath = existsSync(isolatedConfig)
+        ? isolatedConfig
+        : join(this.sharedCodexHome, "config.toml");
+      currentModel = readFileSync(configPath, "utf-8")
         .split("\n")
         .map(l => l.trim())
         .filter(l => !l.startsWith("#"))            // skip comments
@@ -270,11 +443,14 @@ export class CodexBackend implements CliBackend {
   }
 
   cleanup(config: CliBackendConfig): void {
-    for (const name of Object.keys(config.mcpServers)) {
-      // Must match the sanitized name used in writeConfig, or removal misses it.
-      const mcpName = `${name}-${config.instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
-      try { execFileSync(this.binaryPath, ["mcp", "remove", mcpName], { stdio: "ignore" }); } catch { /* best effort */ }
-    }
+    // Never mutate the shared Codex config from instance cleanup. Remove the
+    // private AgEnD capability while preserving sessions and user settings.
+    try {
+      const configPath = join(this.isolatedCodexHome, "config.toml");
+      const content = readFileSync(configPath, "utf-8");
+      atomicWritePrivate(configPath, stripAgendMcpTables(content));
+    } catch { /* best effort */ }
+    this.cleanSharedConfig();
 
     // Remove fleet instructions marker block from AGENTS.md
     try {
@@ -283,14 +459,14 @@ export class CodexBackend implements CliBackend {
       if (isEmpty && existsSync(agentsMd)) unlinkSync(agentsMd);
     } catch { /* best effort */ }
 
-    // Remove trust entry from ~/.codex/config.toml
+    // Remove trust entry from the isolated Codex config.
     try {
-      const configPath = join(homedir(), ".codex", "config.toml");
+      const configPath = join(this.isolatedCodexHome, "config.toml");
       const content = readFileSync(configPath, "utf-8");
       const escaped = config.workingDirectory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const re = new RegExp(`\\n?\\[projects\\."${escaped}"\\]\\ntrust_level = "trusted"\\n?`);
       if (re.test(content)) {
-        writeFileSync(configPath, content.replace(re, "\n"));
+        atomicWritePrivate(configPath, content.replace(re, "\n"));
       }
     } catch { /* best effort */ }
   }
