@@ -43,6 +43,7 @@ export interface ViewApiContext {
   } | null;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
   getUiStatus(): unknown;
+  resolveInstanceModel?(name: string): { model: string };
 }
 
 interface ProfileRow {
@@ -260,8 +261,12 @@ export function handleViewRequest(
         instance_name: name,
         status: l?.status ?? ctx.getInstanceStatus(name),
         context_pct: l?.context_pct ?? 0,
-        model: l?.model ?? "",
-        backend: cfg?.backend ?? (classic ? ctx.classicChannels!.getBackendByInstance(name) : "claude-code"),
+        // Prefer the CLI's live statusline when it reports a model; Classic and
+        // non-statusline backends fall back to the shared effective resolver.
+        model: l?.model || ctx.resolveInstanceModel?.(name).model || "",
+        backend: cfg?.backend ?? (classic
+          ? ctx.classicChannels!.getBackendByInstance(name, ctx.fleetConfig?.defaults?.backend)
+          : "claude-code"),
         tags: cfg?.tags ?? (classic ? ["classic"] : []),
         display_name: p?.display_name ?? null,
         role: p?.role ?? null,
