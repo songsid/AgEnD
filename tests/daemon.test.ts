@@ -47,6 +47,31 @@ describe("Daemon", () => {
     expect(daemon).toBeDefined();
   });
 
+  it("injects the effective runtime identity into backend instructions", () => {
+    const instanceDir = "/tmp/codex-runtime-identity";
+    const backend = createBackend("codex", instanceDir);
+    const daemon = new Daemon(
+      "classic-codex",
+      { ...makeConfig(), backend: "codex", model: "gpt-5.6-sol" },
+      instanceDir,
+      true,
+      backend,
+      undefined,
+      rootLogger,
+      { kind: "classic", backend: "codex", model: "gpt-5.6-sol" },
+    );
+
+    const config = (daemon as any).buildBackendConfig();
+
+    expect(config.instructions)
+      .toContain("Runtime: kind=classic, backend=codex, model=gpt-5.6-sol.");
+    expect(config.mcpServers.agend.env).toMatchObject({
+      AGEND_INSTANCE_KIND: "classic",
+      AGEND_BACKEND: "codex",
+      AGEND_MODEL: "gpt-5.6-sol",
+    });
+  });
+
   it("sends agy's verified two-stage Ctrl+C shutdown sequence", async () => {
     const backend = new AntigravityBackend("/tmp/agy-test-instance");
     const daemon = new Daemon("agy-test", makeConfig(), "/tmp/agy-test-instance", false, backend, undefined, rootLogger);

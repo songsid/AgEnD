@@ -14,6 +14,7 @@ import type { Logger } from "./logger.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
+import type { FleetInstructionsParams } from "./instructions.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
 
 export interface BackendInstallationInfo {
@@ -171,7 +172,12 @@ export class InstanceLifecycle {
 
   constructor(private ctx: LifecycleContext) {}
 
-  async start(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
+  async start(
+    name: string,
+    config: InstanceConfig,
+    topicMode: boolean,
+    runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
+  ): Promise<void> {
     if (this.daemons.has(name)) {
       this.ctx.logger.info({ name }, "Instance already running, skipping");
       return;
@@ -212,7 +218,20 @@ export class InstanceLifecycle {
     }
 
     const backend = createBackend(backendName, instanceDir);
-    const daemon = new Daemon(name, config, instanceDir, topicMode, backend, this.ctx.controlClient ?? undefined, this.ctx.logger);
+    const daemon = new Daemon(
+      name,
+      config,
+      instanceDir,
+      topicMode,
+      backend,
+      this.ctx.controlClient ?? undefined,
+      this.ctx.logger,
+      runtimeIdentity ?? {
+        kind: "fleet-topic",
+        backend: backendName,
+        model: config.model ?? "default",
+      },
+    );
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
