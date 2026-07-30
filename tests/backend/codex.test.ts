@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, lstatSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CodexBackend } from "../../src/backend/codex.js";
 import { appendWithMarker } from "../../src/backend/marker-utils.js";
@@ -7,6 +7,7 @@ import type { CliBackendConfig } from "../../src/backend/types.js";
 
 const TEST_DIR = "/tmp/ccd-test-codex-backend";
 const WORK_DIR = "/tmp/ccd-test-codex-workdir";
+const SHARED_CODEX_HOME = "/tmp/ccd-test-codex-shared-home";
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {
@@ -30,19 +31,22 @@ describe("CodexBackend", () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
-    process.env.CODEX_HOME = join(TEST_DIR, "codex-home");
+    mkdirSync(SHARED_CODEX_HOME, { recursive: true });
+    process.env.CODEX_HOME = SHARED_CODEX_HOME;
   });
   afterEach(() => {
     if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = originalCodexHome;
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(WORK_DIR, { recursive: true, force: true });
+    rmSync(SHARED_CODEX_HOME, { recursive: true, force: true });
   });
 
   describe("buildCommand", () => {
     it("always uses resume --last (resumes latest session for CWD)", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
+      expect(cmd).toContain(`CODEX_HOME='${join(TEST_DIR, "codex-home")}'`);
       expect(cmd).toContain("resume --last");
       expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
     });
@@ -62,6 +66,99 @@ describe("CodexBackend", () => {
     });
   });
 
+  describe("per-instance MCP isolation", () => {
+    it("writes only each instance's MCP server to its private CODEX_HOME", () => {
+      const instanceA = join(TEST_DIR, "instance-a");
+      const instanceB = join(TEST_DIR, "instance-b");
+      mkdirSync(instanceA, { recursive: true });
+      mkdirSync(instanceB, { recursive: true });
+      writeFileSync(join(SHARED_CODEX_HOME, "config.toml"), [
+        'model = "gpt-5.6-sol"',
+        "",
+        "[mcp_servers.third_party]",
+        'command = "third-party"',
+        "",
+        "[mcp_servers.agend-stale-instance]",
+        'command = "node"',
+        "",
+        "[mcp_servers.agend-stale-instance.env]",
+        'AGEND_DECISIONS = """',
+        "[a table-looking line inside a multiline string]",
+        'secret decision from stale instance"""',
+        'AGEND_SOCKET_PATH = "/tmp/stale.sock"',
+        "",
+      ].join("\n"), { mode: 0o600 });
+      writeFileSync(join(SHARED_CODEX_HOME, "auth.json"), '{"token":"shared"}', { mode: 0o600 });
+
+      const configA = makeConfig({
+        instanceDir: instanceA,
+        instanceName: "codex-a",
+        mcpServers: {
+          agend: {
+            command: "node",
+            args: ["/opt/agend/mcp-server.js"],
+            env: {
+              AGEND_SOCKET_PATH: "/tmp/codex-a.sock",
+              AGEND_DECISIONS: "decision-a",
+            },
+          },
+        },
+      });
+      const configB = makeConfig({
+        instanceDir: instanceB,
+        instanceName: "codex-b",
+        mcpServers: {
+          agend: {
+            command: "node",
+            args: ["/opt/agend/mcp-server.js"],
+            env: {
+              AGEND_SOCKET_PATH: "/tmp/codex-b.sock",
+              AGEND_DECISIONS: "decision-b",
+            },
+          },
+        },
+      });
+
+      // Exercise the production writeConfig implementation for two instances.
+      const backendA = new CodexBackend(instanceA);
+      const backendB = new CodexBackend(instanceB);
+      backendA.writeConfig(configA);
+      backendB.writeConfig(configB);
+
+      const homeA = join(instanceA, "codex-home");
+      const homeB = join(instanceB, "codex-home");
+      const contentA = readFileSync(join(homeA, "config.toml"), "utf-8");
+      const contentB = readFileSync(join(homeB, "config.toml"), "utf-8");
+      const shared = readFileSync(join(SHARED_CODEX_HOME, "config.toml"), "utf-8");
+
+      expect(contentA).toContain("[mcp_servers.agend-codex-a]");
+      expect(contentA).toContain('AGEND_SOCKET_PATH = "/tmp/codex-a.sock"');
+      expect(contentA).toContain('AGEND_DECISIONS = "decision-a"');
+      expect(contentA).not.toContain("codex-b");
+      expect(contentA).not.toContain("stale instance");
+      expect(contentA).toContain("[mcp_servers.third_party]");
+
+      expect(contentB).toContain("[mcp_servers.agend-codex-b]");
+      expect(contentB).toContain('AGEND_SOCKET_PATH = "/tmp/codex-b.sock"');
+      expect(contentB).toContain('AGEND_DECISIONS = "decision-b"');
+      expect(contentB).not.toContain("codex-a");
+      expect(contentB).not.toContain("stale instance");
+      expect(contentB).toContain("[mcp_servers.third_party]");
+
+      // Existing global pollution is removed, while unrelated config survives.
+      expect(shared).not.toContain("agend-stale-instance");
+      expect(shared).not.toContain("secret decision");
+      expect(shared).toContain("[mcp_servers.third_party]");
+      expect(shared).toContain('model = "gpt-5.6-sol"');
+
+      // Private homes/configs are not group/world-readable. Runtime auth and
+      // session state remain shared through links, preserving login/resume.
+      expect(statSync(homeA).mode & 0o077).toBe(0);
+      expect(statSync(join(homeA, "config.toml")).mode & 0o077).toBe(0);
+      expect(lstatSync(join(homeA, "auth.json")).isSymbolicLink()).toBe(true);
+    });
+  });
+
   describe("getSessionId", () => {
     it("returns null (Codex manages sessions internally)", () => {
       const backend = new CodexBackend(TEST_DIR);
@@ -71,7 +168,7 @@ describe("CodexBackend", () => {
 
   describe("listModels", () => {
     it("reads visible account models from the Codex TUI cache", async () => {
-      const codexHome = process.env.CODEX_HOME!;
+      const codexHome = SHARED_CODEX_HOME;
       mkdirSync(codexHome, { recursive: true });
       writeFileSync(join(codexHome, "models_cache.json"), JSON.stringify({
         models: [
@@ -93,7 +190,7 @@ describe("CodexBackend", () => {
     it.each(["missing", "malformed", "unknown-shape"])(
       "returns documented fallback models for a %s cache",
       async (kind) => {
-        const codexHome = process.env.CODEX_HOME!;
+        const codexHome = SHARED_CODEX_HOME;
         mkdirSync(codexHome, { recursive: true });
         if (kind === "malformed") writeFileSync(join(codexHome, "models_cache.json"), "{");
         if (kind === "unknown-shape") writeFileSync(join(codexHome, "models_cache.json"), "{}");
