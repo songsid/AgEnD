@@ -180,12 +180,18 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
   if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
 
-  try {
-    await deliverToInstance(ctx, targetInstanceName, { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta });
-  } catch (err) {
-    respond(null, sanitizeError(err, ctx, `wake/deliver to ${targetName}`));
-    return;
-  }
+  // Fire-and-queue: hand the message to the fleet and respond immediately.
+  // deliverToInstance owns waking a paused target, the idle gate and retries;
+  // awaiting it here blocked this call for as long as the target stayed busy
+  // (up to the idle-gate timeout), which serialized ALL cross-instance traffic
+  // and surfaced as "IPC request timed out after 30000ms" on the caller.
+  // Unknown/stopped targets already errored synchronously above, so anything
+  // failing past this point is a delivery problem to log, not a caller error.
+  void deliverToInstance(ctx, targetInstanceName, { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta })
+    .catch(err => ctx.logger.warn(
+      { err, target: targetName, correlation_id: correlationId },
+      "queued cross-instance delivery failed",
+    ));
   // Show a cancel button on the target's topic so a watching user can interrupt
   // work started by another instance — but only for messages that actually put
   // the recipient to work (task/query). Informational report/update messages
@@ -246,7 +252,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
   ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 500)}${(message ?? "").length > 500 ? " […]" : ""}`);
-  respond({ sent: true, target: targetName, correlation_id: correlationId,
+  respond({ sent: true, queued: true, target: targetName, correlation_id: correlationId,
     ...(ctx.lifecycle.daemons.get(targetInstanceName)?.isErrorState && {
       warning: (() => {
         const daemon = ctx.lifecycle.daemons.get(targetInstanceName)!;
@@ -677,9 +683,14 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     targetNames = [...ctx.instanceIpcClients.keys()].filter(n => n !== meta.instanceName && n !== senderLabel);
   }
 
-  const deliveryResults = await Promise.all(targetNames.map(async targetName => {
+  // Fire-and-queue, same rationale as send_to_instance: a broadcast awaiting every
+  // target's idle gate blocked for as long as the BUSIEST recipient. Connectivity
+  // is decided synchronously (that's the real failure), delivery runs in background.
+  const sentTo: string[] = [];
+  const failed: string[] = [];
+  for (const targetName of targetNames) {
     const hostInstance = ctx.instanceIpcClients.has(targetName) ? targetName : ctx.sessionRegistry.get(targetName);
-    if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) return { targetName, sent: false };
+    if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) { failed.push(targetName); continue; }
 
     const correlationId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const ipcMeta: Record<string, string> = {
@@ -692,15 +703,13 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     if (task_summary) ipcMeta.task_summary = task_summary;
     if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
 
-    try {
-      await deliverToInstance(ctx, hostInstance, { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta });
-      return { targetName, sent: true };
-    } catch {
-      return { targetName, sent: false };
-    }
-  }));
-  const sentTo = deliveryResults.filter(result => result.sent).map(result => result.targetName);
-  const failed = deliveryResults.filter(result => !result.sent).map(result => result.targetName);
+    void deliverToInstance(ctx, hostInstance, { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta })
+      .catch(err => ctx.logger.warn(
+        { err, target: targetName, correlation_id: correlationId },
+        "queued broadcast delivery failed",
+      ));
+    sentTo.push(targetName);
+  }
 
   ctx.logger.info(`📢 ${senderLabel} broadcast to ${sentTo.length} instances: ${(message).slice(0, 80)}`);
   const summary = task_summary || message.slice(0, 200);
@@ -708,7 +717,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
   ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${message.slice(0, 500)}${message.length > 500 ? " […]" : ""}`);
-  respond({ sent_to: sentTo, failed, count: sentTo.length });
+  respond({ sent_to: sentTo, failed, count: sentTo.length, queued: true });
 };
 
 // ── Teams ────────────────────────────────────────────────────────────────
