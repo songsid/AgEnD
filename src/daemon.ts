@@ -1778,18 +1778,19 @@ export class Daemon extends EventEmitter {
 
   /**
    * Deliver a single message and drive its status reactions:
-   *   ⏳ message_queued    — CLI busy; queued, waiting for idle
+   *   ⏳ message_queued    — CLI busy; queued locally or by the backend
    *   👀 message_delivered — pasted + Enter sent; agent now has it
-   *   ✅ message_confirmed — idle→busy transition observed; agent is processing
+   *   ✅ message_confirmed — processing observed, or native queue handoff succeeded
    *   ❌ message_failed    — tmux window gone, paste retries exhausted
    * Returns true once the message is in the CLI, false only on real delivery failure.
    *
    * Bug A (silent message loss): paste failures retry with backoff (window recovery)
    * and emit `message_failed` if all attempts fail.
-   * Busy handling (UX): we never force-paste into a busy CLI and never give up on a
-   * busy one — we show ⏳ and wait for idle indefinitely (a genuinely hung CLI is the
-   * hang detector's job; a user who can't wait presses Cancel → Escape → idle). The
-   * pasteLock is serial, so later messages naturally queue behind this wait.
+   * Busy handling (UX): backends without a native input queue show ⏳ and wait for
+   * idle indefinitely (a genuinely hung CLI is the hang detector's job). Backends
+   * that explicitly support queued input receive one complete paste+Enter transaction
+   * immediately and own the application-level queue themselves. The pasteLock remains
+   * serial in both cases so separate PTY writes can never overlap.
    */
   private async deliverMessage(formatted: string, status?: { chatId: string; messageId: string }): Promise<boolean> {
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
@@ -1801,11 +1802,21 @@ export class Daemon extends EventEmitter {
 
     let windowId = this.getWindowId();
 
-    // If the CLI is busy, show ⏳ and wait for it to go idle — no timeout, no force.
+    const supportsQueuedInput = this.backend?.supportsQueuedInput?.() === true;
+    let handingOffToNativeQueue = false;
+
+    // If the CLI is busy, either hand the complete submission to its native input
+    // queue or wait for idle. Native queue support is an explicit backend capability:
+    // normal Enter input has steering/interrupt semantics in several other CLIs.
     if (windowId && this.controlClient && !this.controlClient.isIdle(windowId)) {
       if (status) this.emit("message_queued", status);
-      this.logger.debug("CLI busy — queuing message until idle");
-      await this.controlClient.waitUntilIdle(windowId);
+      if (supportsQueuedInput) {
+        handingOffToNativeQueue = true;
+        this.logger.debug("CLI busy — handing message to backend-native input queue");
+      } else {
+        this.logger.debug("CLI busy — queuing message until idle");
+        await this.controlClient.waitUntilIdle(windowId);
+      }
     }
 
     // Bug A: paste with backoff. Transient failures are usually a stale window id
@@ -1832,10 +1843,13 @@ export class Daemon extends EventEmitter {
       await this.tmux!.sendSpecialKey("Enter");
       if (status) this.emit("message_delivered", status); // 👀
 
-      // Confirm the CLI accepted the message by transitioning idle→busy (new output
-      // after Enter). If still idle after ~2s the Enter was likely swallowed while
-      // the TUI was redrawing — re-send Enter once and re-check.
-      if (windowId && this.controlClient) {
+      // A busy queue-capable CLI does not necessarily emit output when it accepts
+      // queued input. Treat the successful paste+Enter as the handoff confirmation;
+      // probing for idle→busy would time out and a second bare Enter could mutate
+      // the queue/TUI state. Idle submissions retain the swallowed-Enter safeguard.
+      if (handingOffToNativeQueue) {
+        if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
+      } else if (windowId && this.controlClient) {
         let becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");

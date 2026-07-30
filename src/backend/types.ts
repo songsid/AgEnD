@@ -112,6 +112,14 @@ export interface CliBackend {
   /** The CLI binary name (e.g. "claude", "gemini", "codex") */
   readonly binaryName: string;
 
+  /**
+   * Whether the CLI accepts Enter-submitted input while it is busy and queues
+   * that input for a later turn. When true, the daemon may hand a complete
+   * paste+Enter transaction to the CLI without first waiting for an idle pane.
+   * Absent means false.
+   */
+  supportsQueuedInput?(): boolean;
+
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
 
