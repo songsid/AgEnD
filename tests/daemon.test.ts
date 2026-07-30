@@ -89,7 +89,7 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code", idle: boolean) {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code", idle: boolean, pane = "") {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
@@ -112,6 +112,7 @@ describe("Daemon backend-native input queue delivery", () => {
     const tmux = {
       pasteBuffer: vi.fn().mockResolvedValue(true),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
+      capturePane: vi.fn().mockResolvedValue(pane),
     };
     (daemon as any).tmux = tmux;
     (daemon as any).firstDeliveryDelay = { consume: () => 0 };
@@ -119,8 +120,12 @@ describe("Daemon backend-native input queue delivery", () => {
     return { backend, control, daemon, instanceDir, tmux };
   }
 
-  it("hands busy Codex input to its native queue with exactly one Enter", async () => {
-    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false);
+  it("hands busy Codex input to its native queue with exactly one Enter when paste is visible", async () => {
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
+      "codex",
+      false,
+      "thinking…\n↳ queued work",
+    );
     const queued = vi.fn();
     const delivered = vi.fn();
     const confirmed = vi.fn();
@@ -139,12 +144,68 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(result).toBe(true);
       expect(control.waitUntilIdle).not.toHaveBeenCalled();
       expect(control.hasOutputSince).not.toHaveBeenCalled();
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
       expect(tmux.pasteBuffer).toHaveBeenCalledWith("queued work");
+      expect(tmux.capturePane).toHaveBeenCalledOnce();
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
       expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
       expect(queued).toHaveBeenCalledOnce();
       expect(delivered).toHaveBeenCalledOnce();
       expect(confirmed).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("re-delivers via idle gate when busy Codex paste is silently swallowed", async () => {
+    // First capture (post busy-paste) empty → silent loss; after idle-gated
+    // re-paste the text appears (or busy confirm succeeds).
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false, "");
+    tmux.capturePane
+      .mockResolvedValueOnce("working… redrawing…") // no text, no ↳
+      .mockResolvedValue("↳ queued work that was swallowed");
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+    const failed = vi.fn();
+    const confirmed = vi.fn();
+    daemon.on("message_failed", failed);
+    daemon.on("message_confirmed", confirmed);
+
+    try {
+      const result = await (daemon as any).deliverMessage("queued work that was swallowed", {
+        chatId: "chat",
+        messageId: "message",
+      });
+
+      expect(result).toBe(true);
+      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
+      expect(tmux.sendSpecialKey.mock.calls.filter((c: string[]) => c[0] === "Enter").length).toBeGreaterThanOrEqual(2);
+      expect(confirm).toHaveBeenCalled();
+      expect(confirmed).toHaveBeenCalledOnce();
+      expect(failed).not.toHaveBeenCalled();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("emits message_failed when idle-gated redelivery also cannot land the paste", async () => {
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false, "still busy redraw");
+    const confirm = vi.fn().mockResolvedValue(false);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+    const failed = vi.fn();
+    daemon.on("message_failed", failed);
+
+    try {
+      const result = await (daemon as any).deliverMessage("vanishing payload text", {
+        chatId: "chat",
+        messageId: "message",
+      });
+
+      expect(result).toBe(false);
+      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
+      expect(failed).toHaveBeenCalledOnce();
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }

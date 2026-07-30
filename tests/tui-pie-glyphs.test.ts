@@ -58,15 +58,24 @@ describe("parseContextPercent with each pie glyph", () => {
 describe("ready patterns with each pie glyph", () => {
   // Resolved from the real backend objects — a copied regex here could drift
   // from the one that actually runs, which is how this bug survived.
-  for (const name of ["kiro-cli", "antigravity"]) {
-    it(`${name} matches a status line with any pie glyph`, () => {
-      const pattern = readyPattern(name);
-      for (const g of GLYPHS) {
-        expect(pattern.test(`kiro_default · auto · ${g} 27% · λ`), `${name} ${g}`).toBe(true);
-        expect(pattern.test(`${g} 5%`), `${name} ${g} bare`).toBe(true);
-      }
-    });
-  }
+  it("kiro-cli matches mid-line status and bare pie readings", () => {
+    const pattern = readyPattern("kiro-cli");
+    for (const g of GLYPHS) {
+      expect(pattern.test(`kiro_default · auto · ${g} 27% · λ`), g).toBe(true);
+      expect(pattern.test(`${g} 5%`), `${g} bare`).toBe(true);
+    }
+  });
+
+  it("antigravity matches line-leading pie footers only (not mid-prose bullets)", () => {
+    const pattern = readyPattern("antigravity");
+    for (const g of GLYPHS) {
+      expect(pattern.test(`${g} 5%`), `${g} bare`).toBe(true);
+      expect(pattern.test(`  ${g} 27%`), `${g} indented footer`).toBe(true);
+      // Mid-line / prose must not ready — ● especially is a common bullet.
+      expect(pattern.test(`progress ${g} 45% done`), `${g} mid`).toBe(false);
+      expect(pattern.test(`任務 ${g} 45% 完成`), `${g} cjk`).toBe(false);
+    }
+  });
 
   it("kiro-cli keeps its non-pie ready signals", () => {
     const pattern = readyPattern("kiro-cli");
@@ -88,5 +97,17 @@ describe("ready patterns with each pie glyph", () => {
     expect(pattern.test("? for shortcuts")).toBe(true);
     expect(pattern.test("Gemini")).toBe(true);
     expect(pattern.test(">")).toBe(true);
+  });
+});
+
+describe("parseContextPercent ignores agent pie-like prose", () => {
+  it("does not treat '● 45% 完成' style lines as context usage", () => {
+    expect(parseContextPercent("任務 ● 45% 完成，繼續處理中")).toBeNull();
+    expect(parseContextPercent("status: ● 45% done")).toBeNull();
+  });
+
+  it("still reads real status-line pie readings", () => {
+    expect(parseContextPercent("kiro_default · auto · ◑ 27% · λ")).toBe(27);
+    expect(parseContextPercent("◑ 27%")).toBe(27);
   });
 });
