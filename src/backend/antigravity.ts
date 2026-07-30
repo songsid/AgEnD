@@ -5,6 +5,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync }
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, shellQuote, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
+import { PIE_CLASS } from "../tui-glyphs.js";
 
 /** Parse `agy models`, which may emit slugs or human-readable display names. */
 export function parseAntigravityModelsOutput(output: string): import("./types.js").ModelOption[] {
@@ -130,8 +131,9 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   getReadyPattern(): RegExp {
     // Startup/header: Gemini shortcut text. Daily prompts observed in the TUI
-    // are either "◔ 42%" or a standalone ">" line between separators.
-    return /\? for shortcuts|Gemini|◔\s*\d+%|^>\s*$/m;
+    // are either a pie context reading ("◑ 42%") or a standalone ">" line
+    // between separators. Same pie-glyph range as Kiro.
+    return new RegExp(`\\? for shortcuts|Gemini|${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
   }
 
   getContextUsage(): number | null {

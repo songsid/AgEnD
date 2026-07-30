@@ -23,6 +23,7 @@ import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
+import { PIE_PERCENT_RE } from "./tui-glyphs.js";
 import {
   getUpdateSelector,
   lookupTargetVersion,
@@ -1862,7 +1863,7 @@ function formatTimeSince(isoStr: string): string {
  * Universal context-% parser for `agend ls` (all backends). Kept in sync with
  * parseContextPercent() in topic-commands.ts — same formats, bottom-up so the
  * most recent prompt wins:
- *   kiro classic "8% !>" / TUI "◔ 1%" / bracket "[8%]" / prompt "8% ❯"
+ *   kiro classic "8% !>" / TUI "◑ 1%" (any pie glyph) / bracket "[8%]" / prompt "8% ❯"
  *   codex "Context N% left" (remaining → 100-N) or "Context N% used"
  *   opencode "1.2K (6%)"
  *   grok "12K / 500K" (used tokens / context window)
@@ -1887,7 +1888,7 @@ const defaultParser = (output: string): number | null => {
       if (Number.isFinite(used) && Number.isFinite(total) && total > 0) return used / total * 100;
     }
     const m = line.match(/(\d+)%.*[!❯>]/)
-      || line.match(/◔\s*(\d+)%/)
+      || line.match(PIE_PERCENT_RE)
       || line.match(/\[(\d+)%\]/)
       || line.match(/Context\s+(\d+)%\s+used/i)
       || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);
