@@ -19,5 +19,12 @@ export const PIE_GLYPHS = "◔◐◑◒◓◕●";
 /** Character class for the pie glyphs, e.g. `new RegExp(`${PIE_CLASS}\\s*(\\d+)%`)`. */
 export const PIE_CLASS = `[${PIE_GLYPHS}]`;
 
-/** Matches a TUI context reading such as `◑ 27%`; group 1 is the percentage. */
-export const PIE_PERCENT_RE = new RegExp(`${PIE_CLASS}\\s*(\\d+)%`);
+/**
+ * Matches a TUI context reading such as `◑ 27%` or `kiro · ◑ 27% · λ`; group 1
+ * is the percentage. Requires the pie at line-start or after a status separator
+ * (`·` / box glyph), and not free prose like "● 45% 完成" mid-sentence.
+ */
+export const PIE_PERCENT_RE = new RegExp(
+  `(?:^|[·│┃])\\s*${PIE_CLASS}\\s*(\\d+)%(?=\\s*(?:[·│┃λ!❯>]|$))`,
+  "m",
+);
