@@ -126,6 +126,10 @@ export class CodexBackend implements CliBackend {
     this.isolatedCodexHome = resolve(instanceDir, "codex-home");
   }
 
+  supportsQueuedInput(): boolean {
+    return true;
+  }
+
   buildCommand(config: CliBackendConfig): string {
     const approvalFlag = config.skipPermissions !== false
       ? "--dangerously-bypass-approvals-and-sandbox"
