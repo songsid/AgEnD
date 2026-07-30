@@ -345,7 +345,7 @@ export class TopicCommands {
     // use it when the instance is ACTUALLY classic — otherwise a fleet instance
     // that inherits its backend would wrongly pick up the classic default.
     const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
-      ? this.ctx.classicChannels.getBackendByInstance(instanceName)
+      ? this.ctx.classicChannels.getBackendByInstance(instanceName, this.ctx.fleetConfig?.defaults?.backend)
       : undefined;
     const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
       ?? classicBackend
@@ -392,7 +392,11 @@ export class TopicCommands {
   async sendCompact(instanceName: string): Promise<string> {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
+      const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
+        ? this.ctx.classicChannels.getBackendByInstance(instanceName, this.ctx.fleetConfig?.defaults?.backend)
+        : undefined;
       const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+        ?? classicBackend
         ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
       const cmd = compactCommandForBackend(backend);
       ipc.send({ type: "raw_paste", content: cmd });
@@ -403,7 +407,11 @@ export class TopicCommands {
 
   /** Send a backend-appropriate session-save command to a fleet-topic instance. */
   async sendSave(instanceName: string, filename: string): Promise<string> {
+    const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
+      ? this.ctx.classicChannels.getBackendByInstance(instanceName, this.ctx.fleetConfig?.defaults?.backend)
+      : undefined;
     const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
+      ?? classicBackend
       ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     const cmd = saveCommandForBackend(backend, filename);
     if (!cmd) return SAVE_UNSUPPORTED_MSG;
