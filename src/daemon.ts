@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
-import type { Logger } from "./logger.js";
+import { rotateLogIfNeeded, type Logger } from "./logger.js";
 import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
@@ -644,8 +644,12 @@ export class Daemon extends EventEmitter {
     })();
 
     if (!this.config.lightweight) {
-      // 3. Pipe-pane for prompt detection
+      // 3. Pipe-pane for prompt detection. Rotate first so a ballooned log from a
+      // previous stuck splash (hundreds of MB of ANSI frames) is truncated before
+      // we attach — pipe-pane uses `cat >>` on the same inode, so copytruncate
+      // keeps the writer attached after size resets.
       const outputLog = join(this.instanceDir, "output.log");
+      rotateLogIfNeeded(outputLog);
       await this.tmux.pipeOutput(outputLog).catch(() => {});
 
       // 4. Transcript monitor
@@ -762,6 +766,11 @@ export class Daemon extends EventEmitter {
           return;
         }
         if (paneStatus?.alive) {
+          // Instance output.log is fed by tmux pipe-pane and was previously never
+          // rotated (only fleet.log / daemon.log were). Cap growth every tick.
+          if (!this.config.lightweight) {
+            rotateLogIfNeeded(join(this.instanceDir, "output.log"));
+          }
           scheduleNext();
           return;
         }
@@ -2408,7 +2417,9 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ err }, "Failed to set remain-on-exit — exit codes will not be captured");
     });
     if (reuseWindow && !this.config.lightweight) {
-      await this.tmux!.pipeOutput(join(this.instanceDir, "output.log")).catch(err => {
+      const outputLog = join(this.instanceDir, "output.log");
+      rotateLogIfNeeded(outputLog);
+      await this.tmux!.pipeOutput(outputLog).catch(err => {
         this.logger.warn({ err }, "Failed to restore pipe-pane after wake");
       });
     }

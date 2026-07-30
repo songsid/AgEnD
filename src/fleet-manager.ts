@@ -1148,6 +1148,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Rotate fleet.log daily too (besides the startup size check above), so a
       // long-running fleet doesn't accumulate an unbounded log.
       rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
+      // Instance output.log is pipe-pane (TUI ANSI). Daemon health ticks also
+      // rotate it; this is the daily safety net for idle/stopped instances.
+      for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
+        rotateLogIfNeeded(join(this.dataDir, "instances", name, "output.log"));
+      }
     }, () => {
       const instances = Object.keys(this.fleetConfig?.instances ?? {});
       const costMap = new Map<string, number>();
