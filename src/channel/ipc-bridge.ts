@@ -189,6 +189,8 @@ export class IpcServer extends EventEmitter {
 export class IpcClient extends EventEmitter {
   private sockPath: string;
   private socket: Socket | null = null;
+  /** A socket lifecycle must produce at most one disconnect notification. */
+  private disconnected = false;
 
   constructor(sockPath: string) {
     super();
@@ -199,28 +201,51 @@ export class IpcClient extends EventEmitter {
     return new Promise((resolve, reject) => {
       const socket = createConnection(this.sockPath);
       this.socket = socket;
+      this.disconnected = false;
+      let connectSettled = false;
 
       const parse = makeLineParser((msg) => {
         this.emit("message", msg);
       }, () => {
         this.emit("overflow");
-        socket.destroy();
-        this.emit("disconnect", new Error("IPC buffer overflow"));
+        this.handleDisconnect(new Error("IPC buffer overflow"), socket);
       });
 
       socket.on("data", parse);
       socket.on("error", (err) => {
-        this.emit("disconnect", err);
+        if (!connectSettled) {
+          connectSettled = true;
+          reject(err);
+        }
+        this.handleDisconnect(err, socket);
       });
       socket.on("close", () => {
-        this.emit("disconnect", new Error("socket closed"));
+        if (!connectSettled) {
+          connectSettled = true;
+          reject(new Error("socket closed before connect"));
+        }
+        this.handleDisconnect(new Error("socket closed"), socket);
       });
-      socket.once("error", reject);
       socket.once("connect", () => {
-        socket.removeListener("error", reject);
+        connectSettled = true;
         resolve();
       });
     });
+  }
+
+  /**
+   * Converge overflow/error/close into one notification, then make the client
+   * inert. EventEmitter invokes listeners synchronously, so FleetManager sees
+   * the disconnect before listeners are removed.
+   */
+  private handleDisconnect(error: Error, socket: Socket): void {
+    if (this.disconnected || this.socket !== socket) return;
+    this.disconnected = true;
+    this.emit("disconnect", error);
+    socket.removeAllListeners();
+    if (!socket.destroyed) socket.destroy();
+    this.socket = null;
+    this.removeAllListeners();
   }
 
   get connected(): boolean {
@@ -234,13 +259,12 @@ export class IpcClient extends EventEmitter {
   }
 
   async close(): Promise<void> {
-    return new Promise((resolve) => {
-      if (!this.socket || this.socket.destroyed) {
-        resolve();
-        return;
-      }
-      this.socket.once("close", resolve);
-      this.socket.destroy();
-    });
+    const socket = this.socket;
+    this.disconnected = true;
+    this.socket = null;
+    this.removeAllListeners();
+    if (!socket) return;
+    socket.removeAllListeners();
+    if (!socket.destroyed) socket.destroy();
   }
 }
