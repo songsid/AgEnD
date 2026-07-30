@@ -11,6 +11,21 @@ import { MessageQueue } from "../message-queue.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * A Telegram API 400/404 is an explicit server-side rejection, so the request
+ * was not delivered and a compatibility fallback is safe. Network errors,
+ * timeouts, and 5xx responses have an unknown delivery outcome and must never
+ * trigger a second send.
+ */
+function isDefiniteTelegramRejection(err: unknown): boolean {
+  if (!(err instanceof GrammyError)) return false;
+  return err.error_code === 400 || err.error_code === 404;
+}
+
 /** Convert a threadId string to a Telegram message_thread_id number.
  * Returns undefined for null/undefined or for the General topic (id=1),
  * which must not receive message_thread_id in Telegram API calls. */
@@ -444,14 +459,29 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {
-      try {
-        const result = await (this.bot.api as any).raw.sendRichMessage({
-          chat_id: Number(chatId),
-          rich_message: { markdown: text },
-          ...(toThreadId(opts?.threadId) ? { message_thread_id: toThreadId(opts?.threadId) } : {}),
-        });
-        return { messageId: String(result.message_id), chatId, threadId: opts?.threadId };
-      } catch { /* fallback to normal sendText below */ }
+      const sendRichMessage = (this.bot.api as any).raw?.sendRichMessage;
+      if (typeof sendRichMessage !== "function") {
+        console.warn("[telegram] sendRichMessage is unavailable; falling back to sendMessage");
+      } else {
+        try {
+          const result = await sendRichMessage.call((this.bot.api as any).raw, {
+            chat_id: Number(chatId),
+            rich_message: { markdown: text },
+            ...(toThreadId(opts?.threadId) ? { message_thread_id: toThreadId(opts?.threadId) } : {}),
+          });
+          return { messageId: String(result.message_id), chatId, threadId: opts?.threadId };
+        } catch (err) {
+          if (!isDefiniteTelegramRejection(err)) {
+            console.warn(
+              `[telegram] sendRichMessage failed with unknown delivery outcome; refusing duplicate fallback: ${errorMessage(err)}`,
+            );
+            throw err;
+          }
+          console.warn(
+            `[telegram] sendRichMessage was rejected before delivery; falling back to sendMessage: ${errorMessage(err)}`,
+          );
+        }
+      }
     }
 
     return new Promise<SentMessage>((resolve, reject) => {
@@ -639,16 +669,28 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     if (threadId) {
       const chatId = this.getChatId();
       if (chatId) {
-        const sent = await this.bot.api.sendMessage(Number(chatId), text, {
-          message_thread_id: Number(threadId),
-          reply_markup: keyboard,
-          parse_mode: "Markdown",
-        }).catch(() => {
-          return this.bot.api.sendMessage(Number(chatId), text, {
+        let sent;
+        try {
+          sent = await this.bot.api.sendMessage(Number(chatId), text, {
+            message_thread_id: Number(threadId),
+            reply_markup: keyboard,
+            parse_mode: "Markdown",
+          });
+        } catch (err) {
+          if (!isDefiniteTelegramRejection(err)) {
+            console.warn(
+              `[telegram] approval send failed with unknown delivery outcome; refusing duplicate fallback: ${errorMessage(err)}`,
+            );
+            throw err;
+          }
+          console.warn(
+            `[telegram] approval Markdown send was rejected before delivery; retrying without parse mode: ${errorMessage(err)}`,
+          );
+          sent = await this.bot.api.sendMessage(Number(chatId), text, {
             message_thread_id: Number(threadId),
             reply_markup: keyboard,
           });
-        });
+        }
         sentChatId = sent.chat.id;
         sentMessageId = sent.message_id;
       }

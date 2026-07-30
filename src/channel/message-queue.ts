@@ -26,15 +26,35 @@ interface PerQueueState {
   running: boolean;
 }
 
-function is429Error(err: unknown): boolean {
+function isDefinite429Rejection(err: unknown): boolean {
   if (err instanceof Error) {
-    const e = err as Error & { status?: number; code?: number; response?: { status?: number } };
+    const e = err as Error & {
+      status?: number;
+      code?: number;
+      error_code?: number;
+      response?: { status?: number };
+    };
     if (e.status === 429) return true;
     if (e.code === 429) return true;
+    if (e.error_code === 429) return true;
     if (e.response?.status === 429) return true;
-    if (e.message.includes("429") || e.message.toLowerCase().includes("too many requests")) return true;
   }
   return false;
+}
+
+/**
+ * Carries only operations which the remote API explicitly rejected before
+ * delivery. Earlier operations in the same merged batch may already have been
+ * accepted and must never be replayed.
+ */
+class QueueDeliveryError extends Error {
+  constructor(
+    readonly cause: unknown,
+    readonly retryItems: QueuedMessage[],
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = "QueueDeliveryError";
+  }
 }
 
 function splitText(text: string): string[] {
@@ -54,6 +74,14 @@ export class MessageQueue {
 
   constructor(private sender: QueueSender, logger?: { warn(obj: unknown, msg?: string): void }) {
     this.logger = logger;
+  }
+
+  private warn(obj: unknown, msg: string): void {
+    if (this.logger) {
+      this.logger.warn(obj, msg);
+      return;
+    }
+    console.warn(`[message-queue] ${msg}`, obj);
   }
 
   private queueKey(chatId: string, threadId: string | undefined): string {
@@ -127,7 +155,7 @@ export class MessageQueue {
           // out the full exponential delay.
           state.backoffMs = INITIAL_BACKOFF_MS;
           state.backoffUntil = 0;
-          this.logger?.warn(
+          this.warn(
             { chatId: state.key.chatId, dropped: before - state.items.length },
             "MessageQueue flood control: dropped status_update items, backoff reset",
           );
@@ -152,15 +180,22 @@ export class MessageQueue {
         state.backoffUntil = 0;
         await this.sleep(WORKER_BETWEEN_MS);
       } catch (err) {
-        if (is429Error(err)) {
-          // Re-insert the consumed items back at the front of the queue
-          state.items.unshift(...pendingItems);
+        const deliveryErr = err instanceof QueueDeliveryError ? err : null;
+        const cause = deliveryErr?.cause ?? err;
+        if (isDefinite429Rejection(cause)) {
+          // Re-insert only operations the API explicitly rejected. Content
+          // earlier in a merged batch may already have been delivered.
+          state.items.unshift(...(deliveryErr?.retryItems ?? pendingItems));
           // Exponential backoff, cap at MAX_BACKOFF_MS
           state.backoffUntil = Date.now() + state.backoffMs;
           state.backoffMs = Math.min(state.backoffMs * 2, MAX_BACKOFF_MS);
         } else {
-          // Non-rate-limit error: drop the item to avoid infinite loops
-          this.logger?.warn({ err, chatId: state.key.chatId }, "Message dropped due to non-retryable error");
+          // A timeout/network error may have happened after the remote API
+          // accepted the message. Drop rather than risk a duplicate.
+          this.warn(
+            { err: cause, chatId: state.key.chatId },
+            "Message dropped because delivery outcome is unknown or error is non-retryable",
+          );
           state.backoffMs = INITIAL_BACKOFF_MS;
           state.backoffUntil = 0;
           await this.sleep(WORKER_BETWEEN_MS);
@@ -187,14 +222,21 @@ export class MessageQueue {
     if (first.type === "content") {
       const { merged, consumed } = this.mergeContentMessages(state);
       const work = async () => {
-        for (const chunk of merged) {
-          if (chunk.filePath) {
-            await this.sender.sendFile(chatId, threadId, chunk.filePath);
-          } else if (chunk.text) {
-            const parts = splitText(chunk.text);
-            for (const part of parts) {
-              await this.sender.send(chatId, threadId, part);
+        for (let i = 0; i < merged.length; i++) {
+          const chunk = merged[i];
+          try {
+            if (chunk.filePath) {
+              await this.sender.sendFile(chatId, threadId, chunk.filePath);
+            } else if (chunk.text) {
+              await this.sender.send(chatId, threadId, chunk.text);
             }
+          } catch (err) {
+            const retryItems: QueuedMessage[] = merged.slice(i).map(remaining =>
+              remaining.filePath
+                ? { type: "content", filePath: remaining.filePath }
+                : { type: "content", text: remaining.text ?? "" },
+            );
+            throw new QueueDeliveryError(err, retryItems);
           }
         }
       };
