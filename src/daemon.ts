@@ -21,6 +21,7 @@ import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
+import type { FleetInstructionsParams } from "./instructions.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -409,9 +410,15 @@ export class Daemon extends EventEmitter {
     private backend?: CliBackend,
     private controlClient?: TmuxControlClient,
     rootLogger?: Logger,
+    private runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
   ) {
     super();
     if (!rootLogger) throw new Error("Daemon requires a shared root logger");
+    this.runtimeIdentity ??= {
+      kind: "fleet-topic",
+      backend: config.backend ?? backend?.binaryName ?? "unknown",
+      model: config.model ?? "default",
+    };
     this.logger = rootLogger.child({ instance: name }, { level: config.log_level });
     this.tmuxSessionName = getTmuxSession();
     this.messageBus = new MessageBus();
@@ -2168,6 +2175,9 @@ export class Daemon extends EventEmitter {
       AGEND_SOCKET_PATH: sockPath,
       AGEND_INSTANCE_NAME: this.name,
       AGEND_WORKING_DIR: this.config.working_directory,
+      AGEND_INSTANCE_KIND: this.runtimeIdentity?.kind ?? "fleet-topic",
+      AGEND_BACKEND: this.runtimeIdentity?.backend ?? this.config.backend ?? this.backend?.binaryName ?? "unknown",
+      AGEND_MODEL: this.runtimeIdentity?.model ?? this.config.model ?? "default",
     };
     if (this.config.tool_set) mcpEnv.AGEND_TOOL_SET = this.config.tool_set;
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
@@ -2194,6 +2204,7 @@ export class Daemon extends EventEmitter {
       instructions = buildFleetInstructions({
         instanceName: this.name,
         workingDirectory: this.config.working_directory,
+        runtimeIdentity: this.runtimeIdentity,
         displayName: this.config.display_name,
         description: this.config.description,
         customPrompt: resolvedCustomPrompt,
@@ -2205,6 +2216,7 @@ export class Daemon extends EventEmitter {
       instructions = buildFleetInstructions({
         instanceName: this.name,
         workingDirectory: this.config.working_directory,
+        runtimeIdentity: this.runtimeIdentity,
         displayName: this.config.display_name,
         description: this.config.description,
         customPrompt: resolvedCustomPrompt,

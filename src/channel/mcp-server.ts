@@ -201,6 +201,11 @@ function buildMcpInstructions(): string {
   return buildFleetInstructions({
     instanceName: process.env.AGEND_INSTANCE_NAME ?? "unknown",
     workingDirectory: process.env.AGEND_WORKING_DIR ?? process.cwd(),
+    runtimeIdentity: {
+      kind: process.env.AGEND_INSTANCE_KIND === "classic" ? "classic" : "fleet-topic",
+      backend: process.env.AGEND_BACKEND ?? "unknown",
+      model: process.env.AGEND_MODEL ?? "default",
+    },
     displayName: process.env.AGEND_DISPLAY_NAME,
     description: process.env.AGEND_DESCRIPTION,
     customPrompt: process.env.AGEND_CUSTOM_PROMPT,
