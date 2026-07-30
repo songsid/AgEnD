@@ -78,8 +78,8 @@ describe("IPC Bridge", () => {
     await server.listen();
 
     client = new IpcClient(sockPath);
-    let disconnected = false;
-    client.on("disconnect", () => { disconnected = true; });
+    let disconnectCount = 0;
+    client.on("disconnect", () => { disconnectCount++; });
     await client.connect();
 
     // Server-side: write a payload exceeding 1 MB on a single line (no \n)
@@ -89,7 +89,10 @@ describe("IPC Bridge", () => {
 
     await new Promise(r => setTimeout(r, 200));
     expect(received).toHaveLength(0); // overflow before parse
-    expect(disconnected).toBe(true);  // client socket destroyed
+    expect(disconnectCount).toBe(1);  // overflow + close converge to one event
+    expect(client.connected).toBe(false);
+    expect(client.listenerCount("message")).toBe(0);
+    expect(client.listenerCount("disconnect")).toBe(0);
   });
 
   it("rejects socket path exceeding OS limit", async () => {
