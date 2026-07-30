@@ -41,6 +41,18 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
     const stat = statSync(logPath);
     if (stat.size < maxSize) return;
 
+    // Ballooned far past the limit (e.g. never-rotated TUI animation flood at
+    // hundreds of MB): drop content in place. Copying a 700MB+ file to .1 is
+    // slow and wasteful; the open writer (pipe-pane `cat >>`, pino) keeps the
+    // same inode so truncate is enough.
+    if (stat.size > maxSize * 10) {
+      for (let i = 1; i <= maxFiles; i++) {
+        try { unlinkSync(`${logPath}.${i}`); } catch { /* no rotated file */ }
+      }
+      truncateSync(logPath, 0);
+      return;
+    }
+
     // Shift existing rotated files: .2 → .3 (oldest deleted), .1 → .2, …
     for (let i = maxFiles; i >= 2; i--) {
       const src = `${logPath}.${i - 1}`;

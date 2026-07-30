@@ -177,6 +177,8 @@ export class GrokBackend implements CliBackend {
   getReadyPattern(): RegExp {
     // Verified: `❯` is the idle input prompt inside the TUI box; the Grok Build
     // header ("Grok Build" / "Grok <n>") also identifies the ready screen.
+    // NOTE: the animated intro logo is pure braille/ANSI with no these markers —
+    // do not broaden this to match the splash or idle detection never settles.
     return /❯|Grok \d|Grok Build/m;
   }
 
@@ -193,6 +195,16 @@ export class GrokBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      // Animated intro logo (spinning braille X). It redraws continuously, so
+      // AgEnD's idle detector (2s of silence) never fires and messages queue
+      // forever. User-confirmed fix: one Enter skips to the ready prompt.
+      // Negative lookahead for ❯ so we don't re-submit on the post-logo welcome
+      // screen, which still shows the same braille art above the input box.
+      {
+        pattern: /⣠⣾⠿(?![\s\S]*❯)/,
+        keys: ["Enter"],
+        description: "Grok intro logo — skip to prompt",
+      },
       // Workspace trust confirmation ("Do you trust the contents of this directory?")
       // appears BEFORE the login screen — auto-approve with the 'y' hotkey.
       { pattern: /Do you trust the contents|trust.*directory/i, keys: ["y"], description: "Grok workspace trust — auto-approve" },
@@ -250,6 +262,14 @@ export class GrokBackend implements CliBackend {
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      // Same intro-logo skip as startup: if a respawn/crash leaves the pane on the
+      // spinning splash, the 5s error-monitor cycle dismisses it without waiting
+      // for the next full start sequence.
+      {
+        pattern: /⣠⣾⠿(?![\s\S]*❯)/,
+        keys: ["Enter"],
+        description: "Grok intro logo — skip to prompt",
+      },
       // Mid-task tool-approval prompt ("1. Yes, always  2. Yes  3. No"). Select
       // option 1 so the fleet runs unattended. Primary mechanism is
       // --always-approve at launch; this is the net if that flag is absent/ignored.
