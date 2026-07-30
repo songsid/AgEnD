@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { getStdoutPrettyOptions } from "../src/logger.js";
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { getStdoutPrettyOptions, rotateLogIfNeeded } from "../src/logger.js";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -48,3 +48,39 @@ describe("logger stdout formatting", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 });
+
+describe("rotateLogIfNeeded", () => {
+  it("copytruncates when over maxSize", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-rotate-"));
+    const log = join(dir, "output.log");
+    writeFileSync(log, "x".repeat(100));
+    rotateLogIfNeeded(log, 50, 3);
+    expect(statSync(log).size).toBe(0);
+    expect(existsSync(`${log}.1`)).toBe(true);
+    expect(statSync(`${log}.1`).size).toBe(100);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("truncates without copying when ballooned far past the limit", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-rotate-huge-"));
+    const log = join(dir, "output.log");
+    // maxSize 10 → balloon threshold 100; write 120 bytes
+    writeFileSync(log, "y".repeat(120));
+    writeFileSync(`${log}.1`, "old");
+    rotateLogIfNeeded(log, 10, 3);
+    expect(statSync(log).size).toBe(0);
+    expect(existsSync(`${log}.1`)).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("no-ops when under maxSize", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-rotate-small-"));
+    const log = join(dir, "output.log");
+    writeFileSync(log, "tiny");
+    rotateLogIfNeeded(log, 1000, 3);
+    expect(statSync(log).size).toBe(4);
+    expect(existsSync(`${log}.1`)).toBe(false);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
