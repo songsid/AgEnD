@@ -537,11 +537,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       }
       throw new Error(`Message ${messageId} not found in any channel`);
     } catch (err) {
-      // Fallback: send a new message if edit fails
-      if (this.generalChannelId) {
-        const channel = await this._fetchTextChannel(this.generalChannelId);
-        await channel.send(text.slice(0, DISCORD_MAX_LENGTH));
-      }
+      // Do not turn an edit failure into a new send. A timeout can happen
+      // after Discord applied the edit, and retrying as a fresh message would
+      // duplicate the status/reply with no way to identify the accepted copy.
+      console.warn(
+        `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
     }
   }
 
