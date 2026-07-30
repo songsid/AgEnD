@@ -782,7 +782,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
   }
 
-  async startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void> {
+  async startInstance(
+    name: string,
+    config: InstanceConfig,
+    topicMode: boolean,
+    kind: "fleet-topic" | "classic" = "fleet-topic",
+  ): Promise<void> {
     if (this.lifecycle.isPaused(name)) {
       this.logger.info({ name }, "Persisted paused instance — skipping startup");
       return;
@@ -798,7 +803,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.ensureGeneralInstructions(config.working_directory, config.backend);
     }
     this.instanceProcessStatus.delete(name);
-    await this.lifecycle.start(name, config, topicMode);
+    await this.lifecycle.start(name, config, topicMode, {
+      kind,
+      backend: config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
+      model: this.resolveInstanceModel(name).display,
+    });
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
   }
@@ -5011,7 +5020,7 @@ When users create specialized instances, suggest these configurations:
       ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
-    await this.startInstance(instanceName, config, topicMode);
+    await this.startInstance(instanceName, config, topicMode, "classic");
   }
 
   /** Handle /start slash command — register classic channel */
