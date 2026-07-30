@@ -220,6 +220,8 @@ export class PendingWorkTracker {
 const NORMAL_ENTER_SETTLE_MS = 500;
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
+/** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
+const NATIVE_QUEUE_PASTE_VERIFY_MS = 2_000;
 
 /**
  * One-shot timing gate for the first paste after a CLI reaches its ready
@@ -1859,13 +1861,53 @@ export class Daemon extends EventEmitter {
       await this.tmux!.sendSpecialKey("Enter");
       if (status) this.emit("message_delivered", status); // 👀
 
-      // A busy queue-capable CLI does not necessarily emit output when it accepts
-      // queued input. Treat the successful paste+Enter as the handoff confirmation;
-      // probing for idle→busy would time out and a second bare Enter could mutate
-      // the queue/TUI state. Idle submissions retain the swallowed-Enter safeguard.
+      // Busy queue-capable CLIs (codex) may accept paste without an idle→busy
+      // transition. Do NOT probe for busy — a second bare Enter can mutate the
+      // queue. Instead verify the paste actually landed in the pane (TUI redraw
+      // can silently swallow it). Idle submissions keep the swallowed-Enter path.
       if (handingOffToNativeQueue) {
-        if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
-      } else if (windowId && this.controlClient) {
+        await new Promise(r => setTimeout(r, NATIVE_QUEUE_PASTE_VERIFY_MS));
+        if (await this.nativeQueuePasteVisible(formatted)) {
+          if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
+          return true;
+        }
+
+        // Silent loss: fall back once to the normal idle-gated path.
+        this.logger.warn("Native-queue paste not visible in pane — retrying via idle-gated delivery");
+        if (windowId && this.controlClient) {
+          await this.controlClient.waitUntilIdle(windowId);
+        }
+        const repasted = await this.tmux!.pasteBuffer(formatted);
+        if (!repasted) {
+          this.logger.error("Idle-gated redelivery paste failed after native-queue silent loss");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
+        await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
+        const retryAt = Date.now();
+        await this.tmux!.sendSpecialKey("Enter");
+        if (windowId && this.controlClient) {
+          let becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
+          if (!becameBusy) {
+            this.logger.warn("No idle→busy after idle-gated redelivery — re-sending Enter once");
+            const retry2At = Date.now();
+            await this.tmux!.sendSpecialKey("Enter");
+            becameBusy = await this.confirmBusyAfterEnter(windowId, retry2At);
+          }
+          if (becameBusy) {
+            if (status) this.emit("message_confirmed", status); // ✅
+            return true;
+          }
+        } else if (await this.nativeQueuePasteVisible(formatted)) {
+          if (status) this.emit("message_confirmed", status); // ✅
+          return true;
+        }
+        this.logger.error("Idle-gated redelivery also failed after native-queue silent loss");
+        if (status) this.emit("message_failed", status); // ❌
+        return false;
+      }
+
+      if (windowId && this.controlClient) {
         let becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
@@ -1886,6 +1928,30 @@ export class Daemon extends EventEmitter {
     this.logger.error("Message delivery failed after retries — window not ready");
     if (status) this.emit("message_failed", status); // ❌
     return false;
+  }
+
+  /**
+   * True when a busy native-queue paste appears to have landed: Codex shows a
+   * `↳` queue marker, or a distinctive slice of the pasted text is on screen.
+   * Used only to detect silent paste loss — not as a general ready check.
+   */
+  private async nativeQueuePasteVisible(formatted: string): Promise<boolean> {
+    if (!this.tmux) return false;
+    try {
+      const pane = await this.tmux.capturePane();
+      if (pane.includes("↳")) return true;
+      for (const line of formatted.split(/\r?\n/)) {
+        const t = line.trim();
+        if (t.length >= 8 && pane.includes(t)) return true;
+      }
+      const compact = formatted.replace(/\s+/g, " ").trim();
+      if (compact.length >= 8 && pane.includes(compact.slice(0, Math.min(80, compact.length)))) {
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }
 
   /** Re-resolve this instance's tmux window by name (stale id after crash/respawn). */

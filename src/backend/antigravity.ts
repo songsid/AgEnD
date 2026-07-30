@@ -131,9 +131,10 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
 
   getReadyPattern(): RegExp {
     // Startup/header: Gemini shortcut text. Daily prompts observed in the TUI
-    // are either a pie context reading ("◑ 42%") or a standalone ">" line
-    // between separators. Same pie-glyph range as Kiro.
-    return new RegExp(`\\? for shortcuts|Gemini|${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
+    // are either a pie context reading ("◑ 42%") on its own footer line, or a
+    // standalone ">" between separators. Pie branch is line-anchored so agent
+    // prose like "● 45% 完成" cannot false-ready the pane (● is in PIE_CLASS).
+    return new RegExp(`\\? for shortcuts|Gemini|^\\s*${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
   }
 
   getContextUsage(): number | null {

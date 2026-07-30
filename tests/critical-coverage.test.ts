@@ -52,6 +52,10 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("? for shortcuts")).toBe(true);
     expect(pattern.test("Gemini 3.5 Flash")).toBe(true);
     expect(pattern.test("◔ 47%")).toBe(true);
+    expect(pattern.test("  ◑ 27%")).toBe(true); // footer may be indented
+    // Agent prose must NOT false-ready (● is in PIE_CLASS).
+    expect(pattern.test("任務 ● 45% 完成，繼續處理中")).toBe(false);
+    expect(pattern.test("status: ● 45% done")).toBe(false);
     // Live agy tmux capture (2026-07-20): separator, lone prompt, separator.
     expect(pattern.test("────────\n>\n────────\nContext 16% used")).toBe(true);
     expect(pattern.test("Thinking...")).toBe(false);
