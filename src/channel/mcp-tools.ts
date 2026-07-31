@@ -144,4 +144,29 @@ export const TOOL_SETS: Record<string, string[]> = {
     "validate_config", "get_fleet_status", "get_instance_logs", "get_fleet_config",
   ],
   minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
+  /**
+   * Dispatcher profile for general instances. `standard` is NOT usable here — it
+   * lacks delegate_task, request_information, report_result, create_instance,
+   * start_instance, list_teams and download_attachment, i.e. most of the flow
+   * GENERAL_INSTRUCTIONS actually prescribes (list_teams → list_instances →
+   * describe_instance → create_instance → send_to_instance).
+   *
+   * Everything a general needs to route work, and nothing it doesn't: no repo
+   * checkout/release, no deployments, no team mutation, no fleet-config writes,
+   * no delete/replace/stop — destructive or project-local verbs belong to the
+   * instance doing the work, and each omitted tool is schema resent every turn.
+   */
+  general: [
+    // Channel I/O (users talk to general, and send it images/files)
+    "reply", "react", "edit_message", "download_attachment",
+    // Discovery — the documented dispatch preamble
+    "list_teams", "list_instances", "describe_instance", "get_fleet_status",
+    // Dispatch
+    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
+    // Bring capacity online (reuse-first, but it may need to create/start)
+    "create_instance", "start_instance", "restart_instance", "wake_instance",
+    // Coordination surfaces general is told to use
+    "task", "list_decisions", "post_decision",
+    "create_schedule", "list_schedules", "delete_schedule",
+  ],
 };

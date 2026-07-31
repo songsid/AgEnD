@@ -53,6 +53,52 @@ export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = DEFAULT_STATE_SAFETY_SWEEP_MS;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
+/**
+ * Whether two working directories belong to the same project, so a fleet-scoped
+ * decision recorded in one reaches the other. Covers the worktree/checkout
+ * layout AgEnD fleets actually use — `AgEnD`, `AgEnD-dev1`, `AgEnD-dev2`,
+ * `AgEnD-reviewer`, `AgEnD-main` are one project; `DouPo_Server` is not.
+ * Nesting counts too (a subdirectory of a project belongs to it).
+ */
+export function sameProjectFamily(a: string, b: string): boolean {
+  const norm = (p: string) => p.replace(/\/+$/, "");
+  const x = norm(a), y = norm(b);
+  if (x === y) return true;
+  if (x.startsWith(y + "/") || y.startsWith(x + "/")) return true;
+  // Strip a trailing worktree/role suffix: "AgEnD-dev2" → "agend".
+  const family = (p: string) => {
+    const base = p.slice(p.lastIndexOf("/") + 1).toLowerCase();
+    return base.replace(/[-_](dev\d*|main|reviewer|tester|leader|sol|codex|worktree|wt\d*)$/i, "");
+  };
+  const fx = family(x), fy = family(y);
+  return fx.length > 0 && fx === fy;
+}
+
+/**
+ * Pick the decisions worth injecting into one instance's system prompt.
+ *
+ * `scope: "fleet"` previously bypassed the project check outright, so every
+ * instance carried every other project's playbook — measured at 8 of 14 here,
+ * resent on every API call. A fleet decision must now also be relevant: global
+ * (no project_root), the same project, or the same project family.
+ *
+ * `isDispatcher` (a general) opts out of that narrowing on purpose: it routes
+ * work across all projects, so cross-project rules ("X 文件操作由 Y 負責") are
+ * precisely what it must know. Narrowing a general would cause misrouting.
+ */
+export function selectRelevantDecisions<T extends { scope?: string; project_root?: string; title: string }>(
+  all: T[],
+  workDir: string,
+  isDispatcher = false,
+): T[] {
+  return all.filter(d => {
+    if (d.project_root === workDir) return true;   // own project, any scope
+    if (d.scope !== "fleet") return false;         // project-scoped, elsewhere
+    if (!d.project_root) return true;              // truly global
+    return isDispatcher || sameProjectFamily(d.project_root, workDir);
+  });
+}
+
 /** Read the last real channel inbound timestamp persisted across daemon restarts. */
 export function readLastInboundAt(instanceDir: string, now = Date.now()): number | null {
   try {
@@ -333,6 +379,13 @@ export class Daemon extends EventEmitter {
   private statePollInFlight = false;
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
+  /**
+   * Sticky "pause as soon as possible" (auth failure). Unlike pauseRequested —
+   * which the state monitor clears whenever the pane is not idle — this survives
+   * busy/stuck states, because an auth error fires mid-turn and a plain pause()
+   * would silently no-op exactly when we most need to stop feeding the CLI.
+   */
+  private pausePending = false;
   private pauseWakeState: "active" | "pausing" | "paused" | "waking" = "active";
   private pauseWakeTransition: Promise<void> | null = null;
   // Model failover: override model on next spawn when rate-limited
@@ -1299,6 +1352,16 @@ export class Daemon extends EventEmitter {
   }
 
   /** Gracefully stop the CLI while keeping its remain-on-exit tmux window. */
+  /**
+   * Mark the instance to pause as soon as its pane is idle. Used for auth
+   * failures: pause() alone no-ops while the CLI is busy/stuck, which is the
+   * usual state when the error surfaces. Cleared by a successful pause or wake.
+   */
+  requestPauseWhenIdle(): void {
+    if (this.pauseWakeState === "paused") return;
+    this.pausePending = true;
+  }
+
   async pause(): Promise<void> {
     if (this.pauseWakeState === "paused") return;
     if (this.pauseWakeState === "pausing" || this.pauseWakeState === "waking") {
@@ -1362,6 +1425,9 @@ export class Daemon extends EventEmitter {
 
   /** Respawn the CLI in the preserved window and block until its prompt is ready. */
   async wake(timeoutMs = 30_000): Promise<void> {
+    // An explicit wake (e.g. after the user re-logs in) cancels a deferred
+    // auth pause — otherwise the instance would pause again the moment it idles.
+    this.pausePending = false;
     if (this.pauseWakeState === "active") return;
     if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
     if (this.getPauseWakeState() === "active") return;
@@ -1436,6 +1502,12 @@ export class Daemon extends EventEmitter {
     }
 
     if (snapshot.state !== "idle") this.pauseRequested = false;
+    // A pause deferred by an auth failure: retry the moment the pane settles.
+    if (this.pausePending && snapshot.state === "idle" && this.pasteQueueDepth === 0) {
+      this.pausePending = false;
+      this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
+      return;
+    }
     if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
       this.pauseRequested = true;
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
@@ -2236,7 +2308,14 @@ export class Daemon extends EventEmitter {
       try {
         const all: { title: string; content: string; scope?: string; project_root?: string }[] = JSON.parse(process.env.AGEND_DECISIONS);
         const workDir = this.config.working_directory;
-        decisions = all.filter(d => d.scope === "fleet" || d.project_root === workDir);
+        // `scope: "fleet"` used to bypass the project check entirely, so a
+        // single-project worker inherited every other project's playbook (8 of
+        // 14 injected here were foreign) — resent on every API call. Now a
+        // fleet decision must also be RELEVANT: global (no project_root), the
+        // same project, or the same project family (worktrees/checkouts of one
+        // repo). A general is exempt: it dispatches across all projects, so
+        // cross-project routing rules are exactly what it needs.
+        decisions = selectRelevantDecisions(all, workDir, this.config.general_topic === true);
         // Stable ordering so identical decision sets always build byte-identical
         // instructions — otherwise source ordering jitter flips the warmup hash.
         decisions.sort((a, b) => a.title.localeCompare(b.title));
@@ -2254,7 +2333,13 @@ export class Daemon extends EventEmitter {
       AGEND_BACKEND: this.runtimeIdentity?.backend ?? this.config.backend ?? this.backend?.binaryName ?? "unknown",
       AGEND_MODEL: this.runtimeIdentity?.model ?? this.config.model ?? "default",
     };
-    if (this.config.tool_set) mcpEnv.AGEND_TOOL_SET = this.config.tool_set;
+    // A general is a dispatcher, not a worker: default it to the `general` tool
+    // profile instead of `full`. Every tool's schema is resent on every API call,
+    // so full (44 tools) costs a general ~22k chars per turn — the single largest
+    // slice of its prompt. Explicit config still wins.
+    const defaultToolSet = this.config.general_topic ? "general" : undefined;
+    const toolSet = this.config.tool_set ?? defaultToolSet;
+    if (toolSet) mcpEnv.AGEND_TOOL_SET = toolSet;
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
     if (this.config.description) mcpEnv.AGEND_DESCRIPTION = this.config.description;
     if (resolvedWorkflow === false) mcpEnv.AGEND_WORKFLOW = "false";
