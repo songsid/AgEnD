@@ -107,6 +107,72 @@ describe("Codex usage-limit warning detection", () => {
   });
 });
 
+describe("Codex workspace credits exhausted", () => {
+  const dir = mkdtempSync(join(tmpdir(), "codex-credits-"));
+  const patterns = createBackend("codex", dir).getErrorPatterns!();
+  const LINE = "■ Your workspace is out of credits. Ask your workspace owner to refill in order to continue.";
+
+  /** Every codex pattern that fires on a given pane, in declaration order. */
+  const matching = (pane: string) => patterns.filter(p => p.pattern.test(pane));
+
+  it("detects the workspace exhaustion line", () => {
+    const hit = matching(LINE);
+    expect(hit).toHaveLength(1);
+    expect(hit[0].message).toBe("Codex workspace credits exhausted — workspace owner must refill");
+  });
+
+  it("notifies rather than restarting or failing over", () => {
+    const [hit] = matching(LINE);
+    expect(hit.action).toBe("notify");
+    // `credits_exhausted` isn't in the ErrorType union; credits/quota problems
+    // are already modelled as "quota" across every backend.
+    expect(hit.type).toBe("quota");
+  });
+
+  it("does not collide with the personal-account quota patterns", () => {
+    // The daemon acts on the FIRST matching pattern per scan, so an overlap
+    // here would silently reroute this to `pause`.
+    for (const other of ["insufficient_quota", "billing", "you've hit your usage limit"]) {
+      expect(new RegExp(other, "i").test(LINE), other).toBe(false);
+    }
+    // …and conversely, those lines must not trip the workspace pattern.
+    const workspace = matching(LINE)[0];
+    for (const line of [
+      "insufficient_quota: please check your billing",
+      "you've hit your usage limit",
+      "less than 5% of your monthly limit left",
+    ]) {
+      expect(workspace.pattern.test(line), line).toBe(false);
+    }
+  });
+
+  it("still matches when tmux wraps the line", () => {
+    for (const pane of [
+      "■ Your workspace is out of credits. Ask your workspace owner to refill in\norder to continue.",
+      "■ Your workspace is out of\ncredits. Ask your workspace owner to refill.",
+      "■ Your workspace is\nout of credits.",
+      "■ Your workspace\n   is out of credits.",   // padded continuation
+    ]) {
+      expect(matching(pane).length, JSON.stringify(pane)).toBe(1);
+    }
+  });
+
+  it("ignores prose that merely mentions credits", () => {
+    const workspace = matching(LINE)[0];
+    for (const line of [
+      "the workspace is out of disk space",
+      "check whether the workspace is out of credits later",   // still a real report
+      "out of credits",                                        // no workspace scope
+      "your personal account is out of credits",
+    ]) {
+      const hits = workspace.pattern.test(line);
+      // Only the deliberately-ambiguous third-person sentence should match; the
+      // others lack the `workspace is out of credits` phrase entirely.
+      expect(hits, line).toBe(line.includes("workspace is out of credits"));
+    }
+  });
+});
+
 describe("period-scoped limit patterns across backends", () => {
   // Guard against the same "only one period spelled out" gap reappearing: any
   // pattern mentioning a period must accept every period it could be scoped by.

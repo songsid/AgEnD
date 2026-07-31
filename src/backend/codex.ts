@@ -329,6 +329,23 @@ export class CodexBackend implements CliBackend {
       { pattern: /authentication|401 Unauthorized/i, type: "auth_error", action: "pause", message: "OpenAI authentication error" },
       { pattern: /insufficient_quota|billing/i, type: "quota", action: "pause", message: "OpenAI quota exceeded" },
       { pattern: /you've hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
+      // Workspace (team) accounts report exhaustion differently from personal
+      // ones — the full line is:
+      //   "■ Your workspace is out of credits. Ask your workspace owner to
+      //    refill in order to continue."
+      // Neither `insufficient_quota|billing` nor `you've hit your usage limit`
+      // matches it, so this state went unreported.
+      //
+      // `\s+` at each word gap: capture-pane runs without -J, so tmux's hard
+      // wrap can land a newline anywhere in the phrase. The `■` prefix and the
+      // "Ask your workspace owner…" tail are deliberately left out — the prefix
+      // is decoration and the tail is what would wrap.
+      {
+        pattern: /workspace\s+is\s+out\s+of\s+credits/i,
+        type: "quota",
+        action: "notify",
+        message: "Codex workspace credits exhausted — workspace owner must refill",
+      },
       // Codex warns at 10% and 5% remaining, and scopes the limit by period —
       // "weekly" alone missed every `monthly limit` warning.
       //
