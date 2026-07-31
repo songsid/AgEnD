@@ -14,7 +14,7 @@ description: Set and discover models — pass-through to the CLI, no AgEnD allow
 | Backend | How |
 |---------|-----|
 | kiro-cli | In pane: `/model` (gpt-*, deepseek-*, minimax-*, glm-*, qwen* supported) |
-| claude-code | `sonnet` / `opus` / `haiku` / `opusplan` / aliases |
+| claude-code | `sonnet` / `opus` / `haiku` / `opusplan` / `Fable` / aliases |
 | codex | pane `/model` or docs (`gpt-*`, `o*`) |
 | grok | `grok models` |
 | antigravity | `agy models` — set **base name only** (drop `(Medium)` / `(Thinking)` effort suffix) |

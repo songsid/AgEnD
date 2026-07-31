@@ -242,7 +242,7 @@ export const CreateInstanceArgs = z.object({
     "Human-readable description of what this instance does (e.g., 'Daily secretary for scheduling and reminders').",
   ),
   model: z.string().optional().describe(
-    "Model to use. Claude: sonnet, opus, haiku, opusplan, best, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Gemini: gemini-2.5-pro. Omit for default.",
+    "Model to use. Claude: sonnet, opus, haiku, opusplan, best, Fable, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Gemini: gemini-2.5-pro. Omit for default.",
   ),
   backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok"]).optional()
     .describe("CLI backend to use. Defaults to claude-code."),
