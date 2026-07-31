@@ -33,7 +33,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, resolveInstanceContext } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -5686,19 +5686,21 @@ When users create specialized instances, suggest these configurations:
       if (req.method === "GET" && req.url === "/status") {
         const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
           const statusFile = join(this.getInstanceDir(name), "statusline.json");
-          let context_pct = 0;
           let cost = 0;
           try {
             const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-            context_pct = data.context_window?.used_percentage ?? 0;
             cost = data.cost?.total_cost_usd ?? 0;
           } catch (err) {
             this.logger.debug({ err, name }, "statusline.json read failed (/status)");
           }
+          const backend = this.fleetConfig?.instances[name]?.backend
+            ?? this.fleetConfig?.defaults?.backend
+            ?? "claude-code";
+          const { context } = resolveInstanceContext(this.dataDir, name, backend);
           return {
             name,
             status: this.getInstanceStatus(name),
-            context_pct,
+            context_pct: context ?? 0,
             cost,
           };
         });
@@ -5923,17 +5925,23 @@ When users create specialized instances, suggest these configurations:
   getUiStatus(): unknown {
     const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
-      let context_pct = 0;
       let cost = 0;
       let model = "";
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-        context_pct = data.context_window?.used_percentage ?? 0;
         cost = data.cost?.total_cost_usd ?? 0;
         model = data.model?.display_name ?? "";
       } catch (err) {
         this.logger.debug({ err, name }, "statusline.json read failed (getUiStatus)");
       }
+      // Align with /ctx: statusline for claude-code, pane scrape for kiro/grok/codex.
+      // Previously only statusline.json was read, so View sidebar ctx% was always 0
+      // for every non-claude backend.
+      const backend = this.fleetConfig?.instances[name]?.backend
+        ?? this.fleetConfig?.defaults?.backend
+        ?? "claude-code";
+      const { context } = resolveInstanceContext(this.dataDir, name, backend);
+      const context_pct = context ?? 0;
       return { name, status: this.getInstanceStatus(name), context_pct, cost, model };
     });
     return {
