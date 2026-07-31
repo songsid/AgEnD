@@ -434,7 +434,9 @@ describe("Daemon error monitor recovery", () => {
     (daemon as any).evaluateErrorPatterns(pane, patterns, /READY/, 1_000_000);
 
     expect(events).toHaveLength(1);
-    expect(events[0].action).toBe("notify");
+    // pause: instance-lifecycle pauses (or defers to idle) on this action, so the
+    // instance stops re-sending context into a CLI that can only fail.
+    expect(events[0].action).toBe("pause");
     expect(events[0].message).toBe("Codex workspace credits exhausted — workspace owner must refill");
   });
 
