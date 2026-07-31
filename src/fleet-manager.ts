@@ -199,7 +199,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceWorldBinding = new Map<string, string>();
   // Dedup inbound messages seen by more than one adapter (e.g. two DC bots in the
   // same guild both receive every message). Bounded FIFO of recent message keys.
+  //
+  // Persisted to <dataDir>/recent-inbound.json so it also covers the restart case:
+  // Telegram replays updates buffered while the fleet was down (we deliberately no
+  // longer drop them — see telegram.ts `drop_pending_updates`), and an in-memory-only
+  // set would let anything already handled before the restart through a second time.
   private recentMessageIds = new Set<string>();
+  private recentMessageIdsDirty = false;
   private accessManager: AccessManager | null = null;
 
   /** Primary world (first adapter) — used for fleet-level notifications */
@@ -277,6 +283,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private recentInboundFlushTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
@@ -1048,6 +1055,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const pidPath = join(this.dataDir, "fleet.pid");
     writeFileSync(pidPath, String(process.pid), "utf-8");
+
+    this.loadRecentMessageIds();
+    // Periodic flush bounds how many keys a hard kill (SIGKILL, OOM) can lose;
+    // stopAll() flushes too. unref'd so it never holds the event loop open.
+    this.recentInboundFlushTimer = setInterval(() => this.saveRecentMessageIds(), 10_000);
+    this.recentInboundFlushTimer.unref?.();
 
     this.eventLog = new EventLog(join(this.dataDir, "events.db"));
 
@@ -2329,6 +2342,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const oldest = this.recentMessageIds.values().next().value;
         if (oldest !== undefined) this.recentMessageIds.delete(oldest);
       }
+      this.recentMessageIdsDirty = true;
     }
 
     // Bot messages: only allow in collab channels or TG classic with @mention
@@ -5076,11 +5090,46 @@ When users create specialized instances, suggest these configurations:
     return t("classic.stopped");
   }
 
+  /** Path of the persisted inbound-dedup keys. */
+  private recentInboundPath(): string {
+    return join(this.dataDir, "recent-inbound.json");
+  }
+
+  /** Restore inbound-dedup keys so a restart can't re-handle replayed updates. */
+  private loadRecentMessageIds(): void {
+    const path = this.recentInboundPath();
+    if (!existsSync(path)) return;
+    try {
+      const arr: unknown = JSON.parse(readFileSync(path, "utf-8"));
+      if (!Array.isArray(arr)) return;
+      for (const key of arr) {
+        if (typeof key === "string") this.recentMessageIds.add(key);
+      }
+      this.logger.debug({ count: this.recentMessageIds.size }, "Restored inbound dedup keys");
+    } catch (err) {
+      // A corrupt file only costs us dedup across this one restart — never boot.
+      this.logger.warn({ err, path }, "Failed to load inbound dedup state");
+    }
+  }
+
+  /** Persist inbound-dedup keys. Cheap enough to call on shutdown and on a timer. */
+  private saveRecentMessageIds(): void {
+    if (!this.recentMessageIdsDirty) return;
+    this.recentMessageIdsDirty = false;
+    try {
+      writeFileSync(this.recentInboundPath(), JSON.stringify([...this.recentMessageIds]), "utf-8");
+    } catch (err) {
+      this.logger.warn({ err }, "Failed to save inbound dedup state");
+    }
+  }
+
   async stopAll(): Promise<void> {
     this.startupComplete = false;
     this.reloadPending = false;
     this.ipcStoppingInstances.add("__fleet_stopping__");
     sdNotify("STOPPING=1");
+    this.saveRecentMessageIds();
+    if (this.recentInboundFlushTimer) { clearInterval(this.recentInboundFlushTimer); this.recentInboundFlushTimer = null; }
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     // Cancel adapter retry timers
     for (const state of this.adapterState.values()) {
