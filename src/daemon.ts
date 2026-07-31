@@ -119,6 +119,40 @@ export function writeLastInboundAt(instanceDir: string, timestamp: number): void
   renameSync(temp, target);
 }
 
+/**
+ * Render the handoff/routing metadata that rides along with an inbound message
+ * into the block actually pasted into the agent's pane.
+ *
+ * These fields were all populated by the sender (outbound-handlers builds them
+ * into `ipcMeta`) and delivered over IPC, but never rendered — so the receiving
+ * agent could not see them, and several documented flows could not work:
+ *
+ * - `report_result` requires a `correlation_id` the agent had no way to know, so
+ *   the "correlation_id not recognized" warning fired on essentially every call.
+ * - Delegation cancel buttons are retired by correlation id, so they never retired.
+ * - `react`, `edit_message` and `reply.reply_to` need `message_id`, which the tool
+ *   descriptions tell the agent to take "from the inbound block".
+ * - `download_attachment` needs `attachment_file_id`.
+ * - `requires_reply` was invisible, so a delegated task looked like an FYI.
+ *
+ * Only non-empty fields are emitted, so a plain user message gains at most a
+ * message_id line.
+ */
+export function renderHandoffMetadata(meta: Record<string, string>): string {
+  const rows: string[] = [];
+  const add = (label: string, value: string | undefined) => {
+    if (value && value.trim()) rows.push(`${label}: ${value.trim()}`);
+  };
+  add("message_id", meta.message_id);
+  add("correlation_id", meta.correlation_id);
+  add("request_kind", meta.request_kind);
+  add("task_summary", meta.task_summary);
+  add("working_directory", meta.working_directory);
+  add("branch", meta.branch);
+  add("attachment_file_id", meta.attachment_file_id);
+  return rows.length ? `\n(${rows.join(" | ")})` : "";
+}
+
 /** Headless inactivity timer used by the daemon and unit tests. */
 export class AutoPauseController {
   private pausedAt: number | null = null;
@@ -1858,11 +1892,19 @@ export class Daemon extends EventEmitter {
       // #77: show the sender's display name for readability, keeping the machine
       // instance name in parens so the recipient's send_to_instance target is valid.
       const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
-      formatted = `[from:${fromLabel}] ${content}\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)`;
+      formatted = `[from:${fromLabel}] ${content}`;
+      formatted += renderHandoffMetadata(meta);
+      // A delegated task that requires a reply must not read like a chatty FYI —
+      // the "you may stay silent" line is for the latter only.
+      formatted += meta.requires_reply === "true"
+        ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
+        : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
     } else {
       const via = meta.source ? ` via ${meta.source}` : "";
       const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
-      formatted = `[user:${user}${via}${idTag}] ${content}\n(Reply using the reply tool — do NOT respond with direct text)`;
+      formatted = `[user:${user}${via}${idTag}] ${content}`;
+      formatted += renderHandoffMetadata(meta);
+      formatted += "\n(Reply using the reply tool — do NOT respond with direct text)";
     }
     if (meta.reply_to_text) {
       formatted += `\n(reply_to: "${meta.reply_to_text}")`;
