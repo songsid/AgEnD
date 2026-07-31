@@ -100,6 +100,9 @@
   .u-fill.warn { background: #d29922; } .u-fill.crit { background: #f85149; }
   .u-sub { color: var(--dim); font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .u-err { color: #d29922; font-size: 12px; margin: 6px 0; }
+  /* Neutral note (subscription plan, or "sign-in needed") — deliberately not the
+     amber error colour, since neither state is a failure. */
+  .u-note { color: var(--dim); font-size: 12px; margin: 6px 0; }
   .u-foot { color: var(--dim); font-size: 11px; margin-top: 14px; display: flex; gap: 8px; align-items: baseline; }
   .u-foot button { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 8px; }
   .u-foot button:hover { color: var(--fg); border-color: var(--accent); }
@@ -743,7 +746,13 @@
       html += `<div class="u-provider"><div class="u-head"><span class="u-name">${esc(p.name)}</span>` +
         (p.plan ? `<span class="u-plan">${esc(p.plan)}</span>` : "") + `</div>`;
       if (p.status === "error") html += `<div class="u-err">${esc(p.error || "error")}</div>`;
-      else html += (p.metrics || []).map(usageMetricHtml).join("");
+      else {
+        html += (p.metrics || []).map(usageMetricHtml).join("");
+        // A provider with nothing to meter (subscription plan) or one awaiting
+        // sign-in carries a hint instead of metrics. Without this the panel
+        // rendered an empty box, so those states looked broken.
+        if (p.hint) html += `<div class="u-note">${esc(p.hint)}</div>`;
+      }
       html += `</div>`;
     }
     const at = new Date(usageData.fetchedAt).toLocaleTimeString();
