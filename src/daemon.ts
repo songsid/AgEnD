@@ -1787,6 +1787,14 @@ export class Daemon extends EventEmitter {
       const snapshot = this.instanceStateMachine.observe(pane, Date.now());
       this.applyInstanceStateSnapshot(snapshot, pane);
 
+      // Backends without a transcript feed can still say what they are doing, if
+      // their TUI names it. Free-riding on a capture that already happened: no
+      // extra tmux call. Cadence is the capture cadence (idle debounce + the 60s
+      // safety sweep), which matches the progress ticker's own 60s interval.
+      if (this.backend?.getPaneActivity) {
+        this.publishActivity(snapshot.state === "idle" ? null : this.backend.getPaneActivity(pane));
+      }
+
       if (snapshot.state === "idle") {
         this.clearInstanceStateStuckTimer();
       } else if (snapshot.state === "working") {
