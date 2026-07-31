@@ -333,6 +333,15 @@ const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
 const NATIVE_QUEUE_PASTE_VERIFY_MS = 2_000;
+/** Enter-confirmation poll: 10 × 200ms ≈ 2s of observed silence before giving up. */
+const CONFIRM_BUSY_POLLS = 10;
+const CONFIRM_BUSY_POLL_MS = 200;
+/**
+ * Ceiling on the whole confirmation, including time re-earned after a control-mode
+ * reconnect. Without it a reconnect loop could restart the poll indefinitely and
+ * hold the pane write lock along with it.
+ */
+const CONFIRM_BUSY_MAX_WAIT_MS = 10_000;
 
 /**
  * One-shot timing gate for the first paste after a CLI reaches its ready
@@ -2330,11 +2339,42 @@ export class Daemon extends EventEmitter {
     }
   }
 
-  /** Poll up to ~2s (200ms × 10) for the pane to emit output after `since`. */
+  /**
+   * Poll up to ~2s (200ms × 10) for the pane to emit output after `since`.
+   *
+   * A `false` here is not "no output" — it is read as **"the message was pasted but
+   * never submitted"**, which re-sends Enter and then reports ❌ to the user. So a
+   * false negative costs a possible double submit and a failure notice for a
+   * message that actually arrived.
+   *
+   * That is exactly what a control-mode reconnect used to produce. `connect()`
+   * drops every output timestamp, so `hasOutputSince` answers `false` for a pane
+   * that did react — the evidence was thrown away, not absent. Blind time is
+   * therefore not counted against the budget: after a reset the poll restarts from
+   * the moment observation resumed. A hard wall-clock cap keeps a reconnect loop
+   * from extending this forever.
+   */
   private async confirmBusyAfterEnter(windowId: string, since: number): Promise<boolean> {
-    for (let i = 0; i < 10; i++) {
-      await new Promise(r => setTimeout(r, 200));
-      if (this.controlClient!.hasOutputSince(windowId, since)) return true;
+    const client = this.controlClient!;
+    const hardDeadline = Date.now() + CONFIRM_BUSY_MAX_WAIT_MS;
+    let observedFrom = since;
+    let polls = 0;
+
+    while (polls < CONFIRM_BUSY_POLLS) {
+      await new Promise(r => setTimeout(r, CONFIRM_BUSY_POLL_MS));
+      if (client.hasOutputSince(windowId, observedFrom)) return true;
+
+      const resetAt = client.getObservationResetAt();
+      if (resetAt > observedFrom && Date.now() < hardDeadline) {
+        this.logger.debug(
+          { windowId, resetAt },
+          "Control mode reconnected mid-confirmation — restarting the Enter check from when we could see again",
+        );
+        observedFrom = resetAt;
+        polls = 0;
+        continue;
+      }
+      polls++;
     }
     return false;
   }
