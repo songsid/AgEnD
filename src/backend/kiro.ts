@@ -158,6 +158,35 @@ export class KiroBackend implements CliBackend {
         action: "pause",
         message: "Kiro session expired — run `kiro-cli login` to restore all kiro instances",
       },
+      // #384: the AgEnD MCP server died, or something wrote non-JSON-RPC to its
+      // stdout and kiro dropped the connection. kiro keeps running and keeps
+      // answering, so nothing looks broken — but every fleet tool is gone, which
+      // for an AgEnD instance means it can no longer reply, report, or delegate.
+      // It cannot reconnect in-session; only a restart re-establishes the
+      // transport, which is why this is the one kiro error with action "restart".
+      //
+      // Both alternatives are matched on their full structure rather than on a
+      // keyword. An agent discussing this very failure — plausible in a fleet that
+      // maintains AgEnD — must not restart itself, so "MCP" or "transport closed"
+      // alone would be far too eager. The quoted server name and the complete
+      // stdout sentence are things kiro prints, not things people paraphrase.
+      //
+      // No skipCooldown: if MCP is broken in a way a restart cannot fix, the
+      // default 5-minute per-pattern cooldown is what keeps this from becoming a
+      // restart loop.
+      {
+        pattern: /Transport to MCP server '[^']+' is closed|non-JSON-RPC output to stdout which caused the connection to close/,
+        type: "crash",
+        action: "restart",
+        message: "MCP transport closed — fleet tools were unavailable, restarting to reconnect",
+        // No formatMessage. The obvious thing to extract is the quoted server
+        // name, but it is always `agend-<instance-name>` and the notification is
+        // already addressed to that instance — it would restate the one thing the
+        // reader already knows. It would also only work half the time:
+        // resolveErrorMessage formats the LAST match in the pane, and kiro prints
+        // the stdout sentence after the transport line, so the name is usually not
+        // in the match that gets formatted.
+      },
     ];
   }
 
