@@ -149,6 +149,21 @@ export interface CliBackend {
    */
   getBusyPattern?(): RegExp | null;
 
+  /**
+   * What the CLI is doing right now, read off a pane capture, for the live
+   * progress line. Return null when nothing is running or it cannot be told.
+   *
+   * A *function* rather than a regex because "currently running" is usually a
+   * relationship between two markers — a tool announcement with no completion
+   * line after it — not a single match.
+   *
+   * Purely cosmetic: nothing decides anything from the result, so returning null
+   * always is a valid implementation and simply leaves the progress line showing
+   * elapsed time. Prefer that over guessing. Keep the text short; the caller caps
+   * and flattens it, but a tool name beats a truncated sentence.
+   */
+  getPaneActivity?(pane: string): string | null;
+
   /** Error patterns to detect in PTY output during operation. */
   getErrorPatterns?(): ErrorPattern[];
 

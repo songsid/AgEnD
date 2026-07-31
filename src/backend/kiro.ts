@@ -110,6 +110,37 @@ export class KiroBackend implements CliBackend {
     );
   }
 
+  /**
+   * The tool kiro is running right now, for the live progress line.
+   *
+   * kiro announces every tool call in the pane and reports its completion
+   * separately. Captured from a live pane:
+   *
+   *   I will run the following command: … (using tool: shell)
+   *   Purpose: Merge #419
+   *    - Completed in 67.914s
+   *
+   * So "running" is not a marker but a *relationship*: the last announcement with
+   * no completion line after it. Comparing positions is what makes this usable —
+   * matching `(using tool: …)` alone would leave the last tool of the turn pinned
+   * to the progress line forever.
+   *
+   * `Purpose:` is included when kiro emitted one, because "shell: Merge #419" says
+   * far more than "shell". It is agent-written text; the caller flattens and caps
+   * it.
+   */
+  getPaneActivity(pane: string): string | null {
+    const announcements = [...pane.matchAll(/\(using tool: ([^)\n]+)\)/g)];
+    const last = announcements.at(-1);
+    if (last?.index === undefined) return null; // index 0 is a valid position
+
+    const after = pane.slice(last.index);
+    if (/^\s*-\s*Completed in\b/m.test(after)) return null; // that tool has finished
+
+    const purpose = after.match(/^\s*Purpose:\s*(.+)$/m);
+    return purpose ? `${last[1]}: ${purpose[1].trim()}` : last[1];
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /having trouble responding/i, type: "rate_limit", action: "notify", message: "Rate limit (having trouble responding)" },
