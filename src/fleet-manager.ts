@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
@@ -26,7 +26,7 @@ import type { ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./
 import { createAdapter } from "./channel/factory.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
-import { createLogger, type Logger } from "./logger.js";
+import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
@@ -314,6 +314,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
+  private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -1108,7 +1109,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.loadEnvFile();
 
     // Rotate fleet.log if oversized (before any logging)
-    const { rotateLogIfNeeded } = await import("./logger.js");
     rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
 
     const fleet = this.loadConfig(configPath);
@@ -1257,11 +1257,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Rotate fleet.log daily too (besides the startup size check above), so a
       // long-running fleet doesn't accumulate an unbounded log.
       rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
-      // Instance output.log is pipe-pane (TUI ANSI). Daemon health ticks also
-      // rotate it; this is the daily safety net for idle/stopped instances.
-      for (const name of Object.keys(this.fleetConfig?.instances ?? {})) {
-        rotateLogIfNeeded(join(this.dataDir, "instances", name, "output.log"));
-      }
+      // Instance output.log is pipe-pane (TUI ANSI). Daemon health ticks rotate a
+      // running instance's own log; this sweep is the safety net for every other
+      // kind. One implementation, so the two cannot cover different sets.
+      this.rotateAllInstanceLogs();
     }, () => {
       const instances = Object.keys(this.fleetConfig?.instances ?? {});
       const costMap = new Map<string, number>();
@@ -1434,6 +1433,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.pruneEventLog();
     this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
     this.eventLogPruneTimer.unref?.();
+
+    // Same shape for pipe-pane logs, and for the same reason: the only sweep that
+    // covered them lived inside the daily-summary callback, so it did not run at
+    // all when summaries were off.
+    this.rotateAllInstanceLogs();
+    this.logRotateTimer = setInterval(() => this.rotateAllInstanceLogs(), 24 * 60 * 60_000);
+    this.logRotateTimer.unref?.();
 
     // Phase 2: Start remaining instances with staggered concurrency
     if (others.length > 0) {
@@ -3938,6 +3944,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Drop event/activity rows older than the retention window. Best-effort. */
+  /**
+   * Cap every instance's pipe-pane log, walking the instances **directory** rather
+   * than the config.
+   *
+   * A running instance rotates its own log on each health tick, so the ones that
+   * need this are the ones nothing else looks at:
+   *
+   *   - deleted instances, whose directory outlives the config entry. Nothing ever
+   *     touched these again. On the machine this was found on, one held 122 MB and
+   *     another 74 MB, out of 622 MB of pipe-pane logs in total.
+   *   - classic instances, which live in classicChannels, not fleetConfig.instances,
+   *     and so were never in the old config-driven loop at all.
+   *   - stopped instances, which have no health tick running.
+   *
+   * pipe-pane writes raw TUI output, so a wedged splash screen can emit ANSI frames
+   * at animation rate. Unbounded growth here fills the disk, which takes the whole
+   * fleet down rather than one instance.
+   */
+  private rotateAllInstanceLogs(): void {
+    const root = join(this.dataDir, "instances");
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(root, { withFileTypes: true });
+    } catch {
+      return; // no instances directory yet
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      // rotateLogIfNeeded is already best-effort and returns early on a missing
+      // file, so a directory without a pipe-pane log costs one stat.
+      rotateLogIfNeeded(join(root, entry.name, "output.log"));
+    }
+  }
+
   private pruneEventLog(): void {
     try {
       this.eventLog?.prune(FleetManager.EVENT_LOG_RETENTION_DAYS);
@@ -5619,6 +5659,7 @@ When users create specialized instances, suggest these configurations:
     this.dailySummary?.stop();
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     // Cancel-button timers were never cleared here. The idle-check interval is not
     // unref'd, so it held the event loop open past shutdown and kept retrying
     // deletes against an adapter that was already gone.
