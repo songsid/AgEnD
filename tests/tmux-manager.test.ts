@@ -26,7 +26,7 @@ describe("TmuxManager", () => {
     expect(await tm.getWindowGeometry()).toEqual({
       columns: 120,
       rows: 36,
-      mode: "manual",
+      mode: "latest",
     });
   });
 
@@ -37,12 +37,12 @@ describe("TmuxManager", () => {
     control.start();
     try {
       // Give tmux time to register the no-PTY control client. Before
-      // ignore-size/manual pinning this is where latest collapsed to 80 cols.
+      // ignore-size this is where window-size=latest collapsed to 80 cols.
       await new Promise(r => setTimeout(r, 500));
       expect(await tm.getWindowGeometry()).toEqual({
         columns: 132,
         rows: 40,
-        mode: "manual",
+        mode: "latest",
       });
       control.stop();
       control.start();
@@ -50,11 +50,23 @@ describe("TmuxManager", () => {
       expect(await tm.getWindowGeometry()).toEqual({
         columns: 132,
         rows: 40,
-        mode: "manual",
+        mode: "latest",
       });
     } finally {
       control.stop();
     }
+  });
+
+  it("keeps window-size=latest after a resize (resize implicitly sets manual)", async () => {
+    // tmux resets window-size to "manual" as a side effect of `resize-window
+    // -x/-y`, so applyLogicalSize must set "latest" AFTER resizing. Getting the
+    // order wrong silently pins the window and a human attach cannot resize it.
+    const tm = new TmuxManager(session, "", { columns: 100, rows: 30 });
+    await tm.createWindow("sleep 30", "/tmp", "resize-order");
+    expect(await tm.getWindowGeometry()).toEqual({ columns: 100, rows: 30, mode: "latest" });
+    // A respawn re-applies the geometry; the policy must survive that too.
+    await tm.respawnWindow("sleep 30", "/tmp");
+    expect(await tm.getWindowGeometry()).toEqual({ columns: 100, rows: 30, mode: "latest" });
   });
 
   it("sends keys and captures pane", async () => {
@@ -84,7 +96,7 @@ describe("TmuxManager", () => {
     expect(await tm.getWindowGeometry()).toEqual({
       columns: 100,
       rows: 30,
-      mode: "manual",
+      mode: "latest",
     });
   });
 
@@ -100,7 +112,7 @@ describe("TmuxManager", () => {
     expect(await tm.getWindowGeometry()).toEqual({
       columns: 80,
       rows: 24,
-      mode: "manual",
+      mode: "latest",
     });
   });
 
