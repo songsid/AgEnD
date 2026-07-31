@@ -28,6 +28,28 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("stopped");
   });
 
+  it("getUiStatus includes classic instances (View sidebar context_pct)", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" },
+      instances: { "fleet-only": { working_directory: "/tmp" } },
+    } as any;
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    classicChannels.register("channel-1", "discord", "classic-room", "Room", "owner", "codex");
+    fm.classicChannels = classicChannels;
+
+    const ui = fm.getUiStatus() as { instances: Array<{ name: string; context_pct: number }> };
+    const names = ui.instances.map(i => i.name);
+    expect(names).toContain("fleet-only");
+    // Classic was previously omitted → /api/profiles live map miss → ctx always 0
+    expect(names).toContain("classic-room");
+    expect(ui.instances.find(i => i.name === "classic-room")).toMatchObject({
+      name: "classic-room",
+      context_pct: expect.any(Number),
+    });
+  });
+
   describe("IPC connection single-flight and orphan cleanup", () => {
     it("coalesces concurrent connect attempts into one live client", async () => {
       const fm = new FleetManager(tmpDir);
