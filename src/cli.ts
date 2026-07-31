@@ -114,6 +114,49 @@ fleet
 
     const { FleetManager } = await import("./fleet-manager.js");
     const fm = new FleetManager(DATA_DIR);
+
+    // Register crash/signal handlers BEFORE startAll(). Startup routinely takes
+    // minutes (sequential general spawn, staggered instances, warmup waits), and
+    // without these a Ctrl-C or `systemctl stop` in that window got Node's default
+    // behaviour: instant death with fleet.pid already written, databases unclosed,
+    // and every tmux window orphaned.
+    let stopping = false;
+    const shutdown = async () => {
+      if (stopping) return; // SIGINT and SIGTERM share this, and crash paths call stopAll too
+      stopping = true;
+      console.log("\nStopping fleet...");
+      await fm.stopAll().catch(err => console.error("Shutdown error:", err));
+      process.exit(0);
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+
+    process.on("uncaughtException", (err) => {
+      // An uncaught exception leaves unknown state — still the one case worth
+      // tearing down for.
+      console.error("Uncaught exception:", err);
+      if (stopping) return;
+      stopping = true;
+      fm.stopAll().catch(() => {}).finally(() => process.exit(1));
+    });
+
+    process.on("unhandledRejection", (err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      // 409 = another bot poller exists — the adapter retries, don't crash.
+      if (msg.includes("409") && msg.includes("getUpdates")) {
+        console.error("Bot polling conflict (409) — retrying...");
+        return;
+      }
+      // Do NOT take the fleet down. A rejected promise in one instance's tmux
+      // call, health tick, or model switch used to stop every other working
+      // instance and exit(1) — the widest blast radius in the process. Log it
+      // loudly (with the stack) and keep the other instances serving; the
+      // per-instance health check and crash recovery handle a genuinely broken
+      // instance on their own.
+      console.error("Unhandled rejection (fleet continues):", err);
+      if (err instanceof Error && err.stack) console.error(err.stack);
+    });
+
     if (instance) {
       const config = fm.loadConfig(FLEET_CONFIG_PATH);
       const inst = config.instances[instance];
@@ -130,31 +173,6 @@ fleet
       await fm.startAll(FLEET_CONFIG_PATH);
     }
     console.log("Fleet started");
-
-    // Keep process alive + clean shutdown on Ctrl+C
-    const shutdown = async () => {
-      console.log("\nStopping fleet...");
-      await fm.stopAll();
-      process.exit(0);
-    };
-    process.on("SIGINT", shutdown);
-    process.on("SIGTERM", shutdown);
-    process.on("uncaughtException", async (err) => {
-      console.error("Uncaught exception:", err);
-      await fm.stopAll().catch(() => {});
-      process.exit(1);
-    });
-    process.on("unhandledRejection", async (err) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      // 409 = another bot poller exists — adapter handles retry, don't crash
-      if (msg.includes("409") && msg.includes("getUpdates")) {
-        console.error("Bot polling conflict (409) — retrying...");
-        return;
-      }
-      console.error("Unhandled rejection:", err);
-      await fm.stopAll().catch(() => {});
-      process.exit(1);
-    });
   });
 
 fleet

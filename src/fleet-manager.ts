@@ -4775,9 +4775,18 @@ When users create specialized instances, suggest these configurations:
       await pending.respond(progressText).catch(() => {});
     }
 
-    // Apply model in background — don't await here (keeps callback handler fast)
+    // Apply model in background — don't await here (keeps callback handler fast).
+    // Guarded: applyModel() restarts the instance, and an unguarded rejection here
+    // meant a user picking from the /model menu could take the whole fleet down.
+    // On failure the user gets told, rather than the click silently doing nothing.
     void (async () => {
-      const result = await this.applyModel(pending.instanceName, model);
+      let result: string;
+      try {
+        result = await this.applyModel(pending.instanceName, model);
+      } catch (err) {
+        this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
+        result = `Model switch to \`${model}\` failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
       if (pending.adapter && pending.adapterChatId) {
         if (progressMsgId) {
           pending.adapter.editMessage(pending.adapterChatId, progressMsgId, result, pending.adapterThreadId).catch(() => {
@@ -5076,7 +5085,22 @@ When users create specialized instances, suggest these configurations:
     return t("classic.stopped");
   }
 
-  async stopAll(): Promise<void> {
+  /**
+   * Idempotent while in flight: SIGINT and SIGTERM share one handler and the
+   * uncaughtException path calls this too, so overlapping runs were possible —
+   * each snapshotting the daemon map and calling stop() on the same daemons
+   * concurrently. Deliberately NOT `async`, so callers receive the same promise
+   * object rather than a fresh wrapper around it. The latch clears when the run
+   * settles, so a later genuine stop (after a restart) still does the work.
+   */
+  stopAll(): Promise<void> {
+    this.stopAllInFlight ??= this.doStopAll().finally(() => { this.stopAllInFlight = null; });
+    return this.stopAllInFlight;
+  }
+
+  private stopAllInFlight: Promise<void> | null = null;
+
+  private async doStopAll(): Promise<void> {
     this.startupComplete = false;
     this.reloadPending = false;
     this.ipcStoppingInstances.add("__fleet_stopping__");
@@ -5822,7 +5846,10 @@ When users create specialized instances, suggest these configurations:
             res.writeHead(500);
             res.end(JSON.stringify({ error: `Start failed: ${(err as Error).message}` }));
           }
-        })();
+          // The inner catch can itself throw (writeHead after a successful
+          // writeHead is ERR_HTTP_HEADERS_SENT), and that rejection escapes the
+          // IIFE. Same for the two handlers below.
+        })().catch(err => this.logger.error({ err, name }, "HTTP start handler failed"));
         return;
       }
 
@@ -5843,7 +5870,7 @@ When users create specialized instances, suggest these configurations:
             res.writeHead(status);
             res.end(JSON.stringify({ error: `Restart failed: ${(err as Error).message}` }));
           }
-        })();
+        })().catch(err => this.logger.error({ err, name }, "HTTP restart handler failed"));
         return;
       }
 
@@ -5866,7 +5893,7 @@ When users create specialized instances, suggest these configurations:
             res.writeHead(500);
             res.end(JSON.stringify({ error: `Stop failed: ${(err as Error).message}` }));
           }
-        })();
+        })().catch(err => this.logger.error({ err, name }, "HTTP stop handler failed"));
         return;
       }
 
