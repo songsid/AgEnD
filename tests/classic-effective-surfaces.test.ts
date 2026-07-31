@@ -111,4 +111,45 @@ describe("Classic effective backend surfaces", () => {
     ]);
     expect(getBackendByInstance).toHaveBeenCalledWith("classic-room", "kiro-cli");
   });
+
+  it("/api/profiles uses fleet defaults.backend when instance omits backend", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "fleet-profiles-default-"));
+    const ctx: ViewApiContext = {
+      viewToken: null,
+      webToken: null,
+      dataDir,
+      fleetConfig: {
+        defaults: { backend: "kiro-cli", model: "claude-sonnet-4.6" },
+        instances: {
+          // inherits defaults.backend — previously View hard-coded "claude-code"
+          "agend-leader-t1": { working_directory: "/tmp" },
+        },
+      } as ViewApiContext["fleetConfig"],
+      logger: { debug() {}, info() {}, warn() {}, error() {} } as ViewApiContext["logger"],
+      classicChannels: null,
+      getInstanceStatus: () => "running",
+      getUiStatus: () => ({
+        instances: [{ name: "agend-leader-t1", status: "running", context_pct: 42, model: "" }],
+      }),
+      resolveInstanceModel: () => ({ model: "claude-sonnet-4.6" }),
+    };
+    const { response, output } = responseCapture();
+
+    handleViewRequest(
+      { method: "GET", headers: {} } as IncomingMessage,
+      response,
+      new URL("http://localhost/api/profiles"),
+      ctx,
+    );
+
+    const profiles = JSON.parse(output.body);
+    expect(profiles).toEqual([
+      expect.objectContaining({
+        instance_name: "agend-leader-t1",
+        backend: "kiro-cli",
+        context_pct: 42,
+        model: "claude-sonnet-4.6",
+      }),
+    ]);
+  });
 });
