@@ -252,10 +252,18 @@ export class IpcClient extends EventEmitter {
     return this.socket != null && !this.socket.destroyed;
   }
 
-  send(msg: unknown): void {
-    if (this.socket && !this.socket.destroyed) {
-      this.socket.write(encode(msg));
-    }
+  /**
+   * Write a message, reporting whether it actually went out.
+   *
+   * Used to return void and no-op on a dead socket, so a caller that had checked
+   * `connected` a moment earlier could not tell the difference between "sent" and
+   * "silently dropped" — and the gap between that check and this write is exactly
+   * when a restarting daemon closes the socket.
+   */
+  send(msg: unknown): boolean {
+    if (!this.socket || this.socket.destroyed) return false;
+    this.socket.write(encode(msg));
+    return true;
   }
 
   async close(): Promise<void> {
