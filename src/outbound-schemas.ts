@@ -302,10 +302,16 @@ export const BroadcastArgs = z.object({
   requires_reply: z.boolean().optional().describe("Whether recipients should reply"),
 });
 
+// `correlation_id` is optional on both: omit it and one is minted, or pass the id
+// from an inbound block to thread this request onto that conversation. It used to
+// be absent from these two schemas, so zod stripped it and wrapAsSend's forwarding
+// (which reads v.data.correlation_id) was dead for everything except report_result.
 export const RequestInformationArgs = z.object({
   target_instance: NonEmptyString.describe("Name of the instance to ask."),
   question: NonEmptyString.describe("The question to ask."),
   context: z.string().optional().describe("Optional context to help the recipient answer."),
+  correlation_id: z.string().optional()
+    .describe("Optional: thread this onto an existing exchange (from an inbound block)."),
 });
 
 export const DelegateTaskArgs = z.object({
@@ -314,12 +320,14 @@ export const DelegateTaskArgs = z.object({
   success_criteria: z.string().optional()
     .describe("How the recipient should judge if the task is complete."),
   context: z.string().optional().describe("Optional background context for the task."),
+  correlation_id: z.string().optional()
+    .describe("Optional: thread this onto an existing exchange (from an inbound block)."),
 });
 
 export const ReportResultArgs = z.object({
   target_instance: NonEmptyString.describe("Name of the instance to report to."),
   correlation_id: z.string().optional()
-    .describe("The correlation_id from the original request."),
+    .describe("The correlation_id shown in the request's inbound block."),
   summary: NonEmptyString.describe("Summary of the result."),
   artifacts: z.string().optional()
     .describe("Optional details: file paths, commit hashes, URLs, etc."),
