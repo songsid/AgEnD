@@ -44,8 +44,9 @@ export class TmuxControlClient extends EventEmitter {
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Epoch ms until which "no output recorded" must not be read as "idle". */
-  private observationGraceUntil = 0;
+  /** Epoch ms of the last observation reset. Everything before it is unobservable:
+   *  the pane cache was dropped, so the absence of a record proves nothing. */
+  private observationResetAt = 0;
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -129,7 +130,7 @@ export class TmuxControlClient extends EventEmitter {
   private resetPaneObservations(): void {
     this.paneToWindow.clear();
     this.lastOutputAt.clear();
-    this.observationGraceUntil = Date.now() + this.silenceMs;
+    this.observationResetAt = Date.now();
   }
 
   /**
@@ -147,7 +148,19 @@ export class TmuxControlClient extends EventEmitter {
    * An actively generating pane re-registers well inside it.
    */
   private inObservationGrace(): boolean {
-    return Date.now() < this.observationGraceUntil;
+    return this.observationResetAt > 0 && Date.now() < this.observationResetAt + this.silenceMs;
+  }
+
+  /**
+   * When this client last lost its view of every pane (0 if it never has).
+   *
+   * A caller reasoning about a *window* of time — "did the pane react in the two
+   * seconds after I pressed Enter?" — needs to know whether it could see for all
+   * of it. A reset inside that window makes a negative answer meaningless, and
+   * acting on it produces confident, wrong conclusions.
+   */
+  getObservationResetAt(): number {
+    return this.observationResetAt;
   }
 
   /** Check if a window's pane has been silent for at least silenceMs */
