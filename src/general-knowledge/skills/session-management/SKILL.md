@@ -1,46 +1,27 @@
 ---
 name: session-management
-description: Where kiro-cli and claude-code store sessions, and how to fork one to a new instance
+description: Session stores, forking, and auth-pause recovery
 ---
+
+## Auth failure (auto-pause)
+
+When AgEnD sees `auth_error` it **pauses** that instance (`pausePending` sticky):
+- One notification **per backend** (not per instance) — log in once, same-backend peers recover.
+- Auth is **per-user global** across backends: claude-code, codex, kiro, grok, opencode, antigravity.
+- Messages while paused stay in the **queue** — do not re-send.
+- After the user re-auths: `wake` / normal wake clears `pausePending`.
 
 ## Where sessions live
 
 | | kiro-cli | claude-code |
 |---|---|---|
 | Store | `~/.kiro/sessions/cli/<uuid>.json` | `~/.claude/projects/<path-encoded>/*.jsonl` |
-| Keyed by | session uuid | project (working) directory |
-| Reload | `/chat load <file>` | none — `--continue` (latest for the dir) / `--resume <id>` |
-| Text export | — | `/export` (plain text, **not** reloadable) |
+| Reload | `/chat load <file>` | `--continue` / `--resume <id>` |
 
-`<path-encoded>` = the absolute working_directory with `/` → `-`
-(e.g. `/home/han/Projects/AgEnD` → `-home-han-Projects-AgEnD`).
+`<path-encoded>` = absolute cwd with `/` → `-`.
 
-## Fork a session to a new instance
+## Fork (source must be idle)
 
-Confirm the source is **idle** first (`describe_instance` / `get_fleet_status`) — don't fork mid-task.
-
-**kiro-cli** — save, copy, load:
-1. On the source, save: `/chat save <name>.json -f` (paste via tmux if needed).
-2. `create_instance` (same backend).
-3. `cp ~/.agend/workspaces/<source>/<name>.json ~/.agend/workspaces/<target>/`
-4. Load on the target: `/chat load <name>.json`, or set `pre_task_command: "/chat load <name>.json"`.
-
-**claude-code** — copy the `.jsonl` (no save/load command):
-1. Newest source session: `ls -lt ~/.claude/projects/<source-encoded>/*.jsonl | head`
-2. `create_instance` (backend `claude-code`); note its working_directory.
-3. Copy into the target's encoded project dir:
-   ```bash
-   TARGET_ENC="$(echo '<target-working-dir>' | sed 's#/#-#g')"
-   mkdir -p ~/.claude/projects/$TARGET_ENC
-   cp ~/.claude/projects/<source-encoded>/<session>.jsonl ~/.claude/projects/$TARGET_ENC/
-   ```
-4. Start the target — claude-code resumes the newest `.jsonl` via `--continue`.
-
-**Caveats:** a claude-code session only truly makes sense under its original working_directory
-(paths inside the transcript refer to it). Pick the right `.jsonl` if several exist (newest by
-mtime; compaction/branches create new files). `/export` is text only, not reloadable.
-
-## Backup
-
-Sessions are plain files — back them up by copying the store paths above
-(e.g. `cp ~/.kiro/sessions/cli/*.json <dest>/`). Only copy while the instance is idle.
+- **kiro:** `/chat save name.json -f` → `create_instance` → copy workspace file → `/chat load name.json`
+- **claude-code:** copy newest `*.jsonl` into target's encoded project dir → start (uses `--continue`)
+- Prefer `replace_instance` when the whole session is poisoned (see instance-lifecycle)
