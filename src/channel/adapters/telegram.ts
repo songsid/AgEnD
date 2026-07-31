@@ -787,6 +787,22 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return this.sendText(chatId, alert.message, opts);
   }
 
+  /**
+   * Edit an alert's text while KEEPING its inline keyboard.
+   *
+   * `editMessage` cannot be used for this: it omits `reply_markup`, and the Bot API
+   * treats that as "clear the keyboard" — which is precisely how
+   * `editMessageRemoveButtons` works. Editing a cancel-button message with it would
+   * delete the cancel button.
+   */
+  async editAlert(chatId: string, messageId: string, alert: AlertData): Promise<void> {
+    const keyboard = new InlineKeyboard();
+    for (const choice of alert.choices ?? []) keyboard.text(choice.label, choice.id);
+    await this.bot.api.editMessageText(Number(chatId), Number(messageId), alert.message, {
+      reply_markup: keyboard,
+    });
+  }
+
   async createTopic(name: string): Promise<number> {
     const chatId = this.getChatId();
     if (!chatId) throw new Error("No chat ID set — cannot create topic");
