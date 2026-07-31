@@ -802,7 +802,10 @@ export class Daemon extends EventEmitter {
         // delivery is already in flight or queued. Without the lock the notice and
         // that delivery race into the same pane.
         await this.paneWriteLock.run(async () => {
-          await this.tmux?.pasteText(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
+          await this.tmux?.pasteText(
+            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+            this.systemPasteOptions(),
+          );
         });
         // Record the value the agent has now been told about so the next
         // unchanged restart skips the reload.
@@ -1325,7 +1328,7 @@ export class Daemon extends EventEmitter {
               if (SPECIAL_KEYS.has(key)) {
                 await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
               } else {
-                await this.tmux!.pasteText(key);
+                await this.tmux!.pasteText(key, this.systemPasteOptions());
               }
               await new Promise(r => setTimeout(r, 200));
             }
@@ -1981,6 +1984,19 @@ export class Daemon extends EventEmitter {
       instanceName: this.name,
       activity: next,
     });
+  }
+
+  /**
+   * Options for every system-initiated paste (startup notice, session snapshot,
+   * runtime-dialog keys).
+   *
+   * One place, so the three call sites cannot drift apart on it. Backends with a
+   * native input queue do not get the retry Enter: on those, a second bare Enter
+   * is not the no-op the retry assumed but a queue mutation — the same reason
+   * `deliverMessage` refuses to probe for busy with one.
+   */
+  private systemPasteOptions(): { retryEnter: boolean } {
+    return { retryEnter: this.backend?.supportsQueuedInput?.() !== true };
   }
 
   private summarizeTool(name: string, input: unknown): string {
@@ -2787,7 +2803,7 @@ export class Daemon extends EventEmitter {
     try {
       // Messages can arrive during a restart and be queued on pasteLock before the
       // snapshot lands; both write to the pane, so both go through the same lock.
-      await this.paneWriteLock.run(() => this.tmux!.pasteText(`[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`));
+      await this.paneWriteLock.run(() => this.tmux!.pasteText(`[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`, this.systemPasteOptions()));
       this.logger.info("Injected session snapshot as first message");
       this.emit("snapshot_injected", this.name);
     } catch (err) {
