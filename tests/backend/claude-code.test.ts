@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node
 import { join } from "node:path";
 import { ClaudeCodeBackend } from "../../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
+import { isModelCompatible, validateModel } from "../../src/backend/types.js";
 
 const TEST_DIR = "/tmp/ccd-test-claude-backend";
 const WORK_DIR = "/tmp/ccd-test-workdir";
@@ -186,6 +187,29 @@ describe("ClaudeCodeBackend", () => {
 
       expect(dialog?.keys).toEqual(["Down", "Enter"]);
       expect(dialog?.description).toContain("Resume full session as-is");
+    });
+  });
+
+  describe("listModels", () => {
+    it("offers Fable alongside the established aliases", async () => {
+      const models = await new ClaudeCodeBackend(TEST_DIR).listModels();
+      expect(models.map(m => m.id)).toEqual(["default", "sonnet", "opus", "haiku", "opusplan", "Fable"]);
+    });
+
+    it("passes the compatibility check so no advisory warning fires", () => {
+      // The advisory pattern is a separate list from listModels(), so adding a
+      // model in one place without the other yields a spurious
+      // "doesn't match the usual pattern" warning on every start.
+      for (const m of ["Fable", "fable", "FABLE"]) {
+        expect(isModelCompatible("claude-code", m), m).toBe(true);
+      }
+      // Every advertised model must clear the check, not just the new one.
+      expect(isModelCompatible("claude-code", "sonnet")).toBe(true);
+      expect(isModelCompatible("claude-code", "opusplan")).toBe(true);
+    });
+
+    it("is safe to pass through to the CLI as a shell argument", () => {
+      expect(validateModel("Fable")).toBe("Fable");
     });
   });
 });

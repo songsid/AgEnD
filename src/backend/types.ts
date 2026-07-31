@@ -291,7 +291,7 @@ export function validateModel(model: string): string {
 
 /** Known model prefixes/patterns per backend. Used only for advisory warnings. */
 const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
-  "claude-code": /^(sonnet|opus|haiku|opusplan|best|claude)/i,
+  "claude-code": /^(sonnet|opus|haiku|opusplan|best|fable|claude)/i,
   "kiro-cli": /^(claude|sonnet|opus|haiku|auto|gpt|deepseek|minimax|glm|qwen)/i,
   "codex": /^(gpt|o[0-9]|chatgpt)/i,
   "gemini-cli": /^gemini/i,
