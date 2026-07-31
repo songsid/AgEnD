@@ -1,36 +1,27 @@
 ---
 name: model-discovery
-description: List available models per backend, configure model in fleet.yaml
+description: Set and discover models — pass-through to the CLI, no AgEnD allowlist gate
 ---
 
-## Model Names by Backend
+## How to set a model
 
-Models are specified in fleet.yaml `defaults.model` or per-instance `model` field.
+- fleet.yaml: `defaults.model` or per-instance `model`
+- **Pass-through:** AgEnD no longer blocks unknown model ids — it may **warn**, then still pass the string to the CLI
+- **CLI is source of truth** — if the model is invalid, the backend CLI errors (fix the name there)
 
-| Backend | How to list models | Default |
-|---------|-------------------|---------|
-| **kiro-cli** | In tmux: send `/model` + Enter → read model list → Esc to close | auto (latest) |
-| **claude-code** | `sonnet`, `opus`, `haiku`, `opusplan`, `best`, `sonnet[1m]`, `opus[1m]` | sonnet |
-| **antigravity** | Run `agy models` to see available models | Gemini 3.5 Flash (Medium) |
-| **codex** | `gpt-4o`, `o3`, `o4-mini` | gpt-4o |
-| **opencode** | `opencode models` | depends on provider |
-| **grok** | `grok-4.5`, `grok-4.3`, `grok-code`, `grok-build-0.1` | grok default |
+## Discover real names
 
-**Important for antigravity (agy):**
-- `agy models` shows names like `Gemini 3.5 Flash (Medium)` — the parenthetical suffix (Medium/High/Low/Thinking) is the **effort level**, NOT part of the model name.
-- When setting model in fleet.yaml, use only the base name WITHOUT the effort suffix.
-- Example: `agy models` shows `Gemini 3.5 Flash (Medium)` → set `model: "Gemini 3.5 Flash"`
-- Example: `agy models` shows `Claude Opus 4.6 (Thinking)` → set `model: "Claude Opus 4.6"`
+| Backend | How |
+|---------|-----|
+| kiro-cli | In pane: `/model` (gpt-*, deepseek-*, minimax-*, glm-*, qwen* supported) |
+| claude-code | `sonnet` / `opus` / `haiku` / `opusplan` / aliases |
+| codex | pane `/model` or docs (`gpt-*`, `o*`) |
+| grok | `grok models` |
+| antigravity | `agy models` — set **base name only** (drop `(Medium)` / `(Thinking)` effort suffix) |
+| opencode | `opencode models` |
 
-**Important:** Model names vary by backend. Always check the actual CLI output rather than guessing names.
-
-Example fleet.yaml:
 ```yaml
 defaults:
   backend: kiro-cli
   model: claude-sonnet-4-20250514
-
-instances:
-  heavy-task:
-    model: claude-opus-4-20250514
 ```
