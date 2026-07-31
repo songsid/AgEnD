@@ -322,7 +322,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.reloadPending = false;
     this.reconcileInFlight = this.reconcileInstances()
-      .catch(err => this.logger.error({ err }, "SIGHUP config reload failed"))
+      .catch(err => {
+        // Almost always a YAML parse error. Log-only meant the user edited
+        // fleet.yaml, sent SIGHUP, and got no reaction and no explanation.
+        this.logger.error({ err }, "SIGHUP config reload failed");
+        const message = err instanceof Error ? err.message : String(err);
+        this.notifyFleetError(`⚠️ fleet.yaml reload FAILED — ${message}\nThe previous configuration is still running.`);
+      })
       .finally(() => {
         this.reconcileInFlight = null;
         if (this.reloadPending && this.startupComplete) {
@@ -5476,6 +5482,15 @@ When users create specialized instances, suggest these configurations:
         removedRatio,
         validationErrors: validation.errors,
       }, "Refusing unsafe fleet config reload; running configuration was kept");
+      // Tell the operator. A silently ignored config edit is the most confusing
+      // possible outcome: they change fleet.yaml, send SIGHUP, and nothing happens
+      // with no explanation anywhere they are looking.
+      const why = !validation.valid
+        ? `validation failed:\n${validation.errors.map(e => `• ${e.path}: ${e.message}`).join("\n")}`
+        : unsafeEmpty
+          ? `it removed every instance (${oldCount} → 0)`
+          : `it removed more than half the instances (${oldCount} → ${newCount})`;
+      this.notifyFleetError(`⚠️ fleet.yaml reload REJECTED — ${why}\nThe previous configuration is still running.`);
       return;
     }
 

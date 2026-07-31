@@ -883,6 +883,7 @@ export class Daemon extends EventEmitter {
             this.logger.warn({ instanceDir: this.instanceDir }, "Instance directory missing — stopping health check");
             this.healthCheckPaused = true;
             this.healthCheckTimer = null;
+            this.emitSupervisionEnded("instance directory was removed from disk", "Recreate the instance, or delete it from fleet.yaml.");
             return;
           }
           if (!this.tmux || this.spawning || this.healthCheckPaused || Daemon.tmuxServerPaused) {
@@ -938,6 +939,7 @@ export class Daemon extends EventEmitter {
             this.logger.info("CLI exited normally (code 0) — pausing health check");
             await this.tmux.killWindow();
             this.healthCheckPaused = true;
+            this.emitSupervisionEnded("the CLI exited normally (code 0)", "Nothing crashed — start it again when you need it.");
             return;
           }
           this.setProcessStatus("crashed");
@@ -1042,6 +1044,10 @@ export class Daemon extends EventEmitter {
           if (max_retries <= 0) {
             this.healthCheckPaused = true;
             this.logger.warn(`${cliLabel} window died — automatic restart is disabled`);
+            this.emitSupervisionEnded(
+              "the CLI died and automatic restart is disabled (restart_policy.max_retries is 0)",
+              "Start it manually, or raise max_retries in fleet.yaml.",
+            );
             return;
           }
 
@@ -1078,6 +1084,11 @@ export class Daemon extends EventEmitter {
 
           if (this.crashCount > max_retries) {
             this.logger.error({ crashCount: this.crashCount, maxRetries: max_retries }, "Max crash retries exceeded — not respawning");
+            this.healthCheckPaused = true;
+            this.emitSupervisionEnded(
+              `it crashed ${this.crashCount} times, exceeding restart_policy.max_retries (${max_retries})`,
+              "Check the logs for the cause, then restart it.",
+            );
             return; // don't schedule next — given up
           }
 
@@ -1160,6 +1171,22 @@ export class Daemon extends EventEmitter {
    * A dead remain-on-exit pane still contains the old ready prompt, so allowing
    * the pane monitor to capture it would re-create a false idle state.
    */
+  /**
+   * Announce that this instance is no longer being supervised.
+   *
+   * Four health-check exits set `healthCheckPaused = true` and returned without
+   * telling anyone: a clean CLI exit, `max_retries <= 0`, crash retries exhausted,
+   * and the instance directory being deleted. Only the crash-LOOP case emitted an
+   * event, so a fleet could quietly contain a dead instance that still looked fine
+   * on the dashboard — while messages routed to it queued or failed with a bare ❌.
+   *
+   * `crash_loop` already had this treatment; this is the same bridge for the other
+   * four, carrying a human-readable cause and the operator's next step.
+   */
+  private emitSupervisionEnded(reason: string, remedy: string): void {
+    this.emit("supervision_ended", { name: this.name, reason, remedy });
+  }
+
   private setProcessStatus(status: "running" | "crashed" | "stopped"): void {
     if (this.processStatus === status) return;
     this.processStatus = status;

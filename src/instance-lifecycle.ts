@@ -335,6 +335,19 @@ export class InstanceLifecycle {
       this.ctx.notifyInstanceTopic(name, t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
+    daemon.on("supervision_ended", safeHandler((data: { name: string; reason: string; remedy: string }) => {
+      // The instance is dead and nothing will restart it. Say so where the operator
+      // is looking, and mark the topic — otherwise messages routed here just queue
+      // or fail with a bare ❌ and the dashboard still looks normal.
+      this.ctx.eventLog?.insert(name, "supervision_ended", { reason: data.reason });
+      this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
+      this.ctx.notifyInstanceTopic(
+        name,
+        `🛑 ${name} is no longer running and will not be restarted automatically — ${data.reason}.\n${data.remedy}`,
+      );
+      this.ctx.setTopicIcon(name, "red");
+    }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
+
     daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
       this.ctx.logger.error({ name, message: data.message }, "Health check failing — instance supervision degraded");
