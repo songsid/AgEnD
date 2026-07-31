@@ -122,11 +122,28 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       if (channelIds.has(cid)) err(`${at}.id`, `duplicate channel id "${cid}"`);
       channelIds.add(cid);
     }
-    if (isObj(ch.access) && ch.access.allowed_users !== undefined && !isIdArray(ch.access.allowed_users)) {
-      err(`${at}.access.allowed_users`, "must be an array of strings/numbers");
-    }
-    if (isObj(ch.access) && ch.access.mode !== undefined && !["open", "locked", "pairing"].includes(String(ch.access.mode))) {
-      err(`${at}.access.mode`, "must be open, locked, or pairing");
+    if (ch.access !== undefined && !isObj(ch.access)) {
+      err(`${at}.access`, "must be a mapping");
+    } else if (isObj(ch.access)) {
+      if (ch.access.allowed_users !== undefined && !isIdArray(ch.access.allowed_users)) {
+        err(`${at}.access.allowed_users`, "must be an array of strings/numbers");
+      }
+      if (ch.access.mode !== undefined && !["open", "locked", "pairing"].includes(String(ch.access.mode))) {
+        err(`${at}.access.mode`, "must be open, locked, or pairing");
+      }
+      for (const key of ["max_pending_codes", "code_expiry_minutes"] as const) {
+        const value = ch.access[key];
+        if (value !== undefined && (!Number.isFinite(value) || (value as number) <= 0)) {
+          err(`${at}.access.${key}`, "must be a positive finite number");
+        }
+      }
+      if (ch.access.mode === "locked" && Array.isArray(ch.access.allowed_users) && ch.access.allowed_users.length === 0) {
+        warn(`${at}.access`, "mode is locked with an empty allowed_users — nobody can reach this fleet");
+      }
+    } else {
+      // Absent block means locked (whitelist only) — surface it here rather than
+      // letting the user discover it as a silently unresponsive bot.
+      warn(`${at}.access`, "no access block — defaults to locked (whitelist only); add allowed_users or set mode explicitly");
     }
   });
 
