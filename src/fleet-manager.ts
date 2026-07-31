@@ -125,6 +125,8 @@ const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
 const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
 /** Elapsed time is only shown once work has clearly outlasted a quick answer. */
 const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
+/** How much of a tool summary the progress line will show before eliding. */
+const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
  * Reactions that count as an explicit approve/reject signal, and are therefore worth
  * waking a paused instance for. Everything else is chatter: delivered only if the
@@ -269,6 +271,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // reply, on cancel, or when a newer button supersedes it for the same
   // instance. Per-button tracking means a failed delete never strands a button.
   private cancelButtons = new Map<string, CancelButtonEntry>();
+  /** instanceName → what it is doing right now, when the backend can tell us. */
+  private instanceActivity = new Map<string, string>();
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -2280,6 +2284,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.handleSetDescription(name, msg);
         } else if (msg.type === "instance_process_state") {
           this.cacheInstanceProcessStatus(name, msg.status);
+        } else if (msg.type === "instance_activity") {
+          this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {
@@ -4115,7 +4121,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * progress indicator (#409) — the channel showed nothing at all during long work,
    * and once the agent had replied once there was no sign it was still going.
    */
-  static progressText(elapsedMs: number): string {
+  static progressText(elapsedMs: number, activity?: string | null): string {
     if (elapsedMs < PROGRESS_MIN_ELAPSED_MS) return "👀 處理中…";
     const totalSeconds = Math.floor(elapsedMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
@@ -4123,7 +4129,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const elapsed = minutes >= 60
       ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
       : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
-    return `⏳ 處理中… (已進行 ${elapsed})`;
+    const detail = FleetManager.sanitizeActivity(activity);
+    return detail
+      ? `⏳ 處理中… (已進行 ${elapsed} · ${detail})`
+      : `⏳ 處理中… (已進行 ${elapsed})`;
+  }
+
+  /**
+   * Make a tool summary safe to paste into a channel message.
+   *
+   * The text is agent-controlled (it is built from tool inputs — file paths,
+   * shell commands), so it gets flattened to one line, capped, and stripped of
+   * the two Discord mass-mention triggers. Neither channel renders it with a
+   * parse mode, so no markup escaping is needed beyond that.
+   */
+  private static sanitizeActivity(activity?: string | null): string | null {
+    if (!activity) return null;
+    const flat = activity.replace(/\s+/g, " ").replace(/@(everyone|here)/g, "@​$1").trim();
+    if (!flat) return null;
+    return flat.length > PROGRESS_ACTIVITY_MAX_CHARS
+      ? `${flat.slice(0, PROGRESS_ACTIVITY_MAX_CHARS - 1)}…`
+      : flat;
+  }
+
+  /**
+   * Remember what an instance is currently doing, for the progress line.
+   *
+   * Best-effort by design: only backends that expose a live activity feed report
+   * anything, and the progress line simply omits the detail for the rest. It is
+   * never used to decide anything — purely what the user is shown.
+   */
+  private cacheInstanceActivity(name: string, activity: string | null): void {
+    if (activity) this.instanceActivity.set(name, activity);
+    else this.instanceActivity.delete(name);
   }
 
   /**
@@ -4142,7 +4180,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Idle means the turn ended; the idle-edge handler retires the button.
       if (this.getInstanceIdle(entry.instanceName)) return;
 
-      const text = FleetManager.progressText(Date.now() - (entry.startedAt ?? Date.now()));
+      const text = FleetManager.progressText(
+        Date.now() - (entry.startedAt ?? Date.now()),
+        this.instanceActivity.get(entry.instanceName),
+      );
       if (text === entry.lastProgressText) return; // nothing changed — skip the API call
       const adapter = this.getAdapterForInstance(entry.instanceName) ?? this.adapter;
       if (!adapter?.editAlert) return;
