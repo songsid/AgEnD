@@ -21,6 +21,9 @@
     "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "vitest run --config e2e/vitest.config.e2e.ts",
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
     "prepublishOnly": "npm run build"
   },
   "engines": {

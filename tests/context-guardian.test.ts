@@ -49,11 +49,17 @@ describe("ContextGuardian (pure monitoring)", () => {
       cost: { total_cost_usd: 0.5, total_duration_ms: 1000 },
     }));
 
-    // watchFile polls at 2s interval — wait for it
-    await new Promise(r => setTimeout(r, 3000));
+    // watchFile stat-polls at a 2s interval, so a fixed 3s sleep is only ~1s of
+    // slack — under a loaded parallel run that expires and the suite goes red for
+    // timing reasons. Poll for the event instead, with a deadline well above the
+    // interval.
+    const deadline = Date.now() + 15_000;
+    while (spy.mock.calls.length === 0 && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+    }
     expect(spy).toHaveBeenCalled();
     expect(spy.mock.calls[0][0].used_percentage).toBe(25);
-  });
+  }, 20_000);
 
   it("does not have state, requestRestart, or startTimer methods", () => {
     // Verify the simplified API — no state machine
