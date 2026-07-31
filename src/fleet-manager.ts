@@ -5923,7 +5923,16 @@ When users create specialized instances, suggest these configurations:
   }
 
   getUiStatus(): unknown {
-    const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => {
+    const fleetNames = Object.keys(this.fleetConfig?.instances ?? {});
+    // Classic rooms live only in classicBot.yaml — /api/profiles merges them into
+    // the View roster, but previously getUiStatus skipped them so context_pct was
+    // always 0 (live map miss → l?.context_pct ?? 0).
+    const classicOnly = (this.classicChannels?.getAll() ?? [])
+      .map(ch => ch.instanceName)
+      .filter(name => !fleetNames.includes(name));
+    const names = [...fleetNames, ...classicOnly];
+
+    const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
       let cost = 0;
       let model = "";
@@ -5935,11 +5944,12 @@ When users create specialized instances, suggest these configurations:
         this.logger.debug({ err, name }, "statusline.json read failed (getUiStatus)");
       }
       // Align with /ctx: statusline for claude-code, pane scrape for kiro/grok/codex.
-      // Previously only statusline.json was read, so View sidebar ctx% was always 0
-      // for every non-claude backend.
-      const backend = this.fleetConfig?.instances[name]?.backend
-        ?? this.fleetConfig?.defaults?.backend
-        ?? "claude-code";
+      const classic = classicOnly.includes(name);
+      const backend = classic
+        ? this.classicChannels!.getBackendByInstance(name, this.fleetConfig?.defaults?.backend)
+        : (this.fleetConfig?.instances[name]?.backend
+          ?? this.fleetConfig?.defaults?.backend
+          ?? "claude-code");
       const { context } = resolveInstanceContext(this.dataDir, name, backend);
       const context_pct = context ?? 0;
       return { name, status: this.getInstanceStatus(name), context_pct, cost, model };
