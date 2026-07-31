@@ -264,9 +264,13 @@ export function handleViewRequest(
         // Prefer the CLI's live statusline when it reports a model; Classic and
         // non-statusline backends fall back to the shared effective resolver.
         model: l?.model || ctx.resolveInstanceModel?.(name).model || "",
-        backend: cfg?.backend ?? (classic
-          ? ctx.classicChannels!.getBackendByInstance(name, ctx.fleetConfig?.defaults?.backend)
-          : "claude-code"),
+        // Prefer explicit instance backend; else classic resolver; else fleet
+        // default — never hardcode "claude-code" when defaults.backend is kiro.
+        backend: cfg?.backend
+          ?? (classic
+            ? ctx.classicChannels!.getBackendByInstance(name, ctx.fleetConfig?.defaults?.backend)
+            : ctx.fleetConfig?.defaults?.backend)
+          ?? "claude-code",
         tags: cfg?.tags ?? (classic ? ["classic"] : []),
         display_name: p?.display_name ?? null,
         role: p?.role ?? null,

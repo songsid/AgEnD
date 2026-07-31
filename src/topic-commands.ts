@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
-import { exec, spawn } from "node:child_process";
+import { exec, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
@@ -11,7 +11,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
-import { getAgendHome } from "./paths.js";
+import { getAgendHome, getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t } from "./locale.js";
 import { PIE_PERCENT_RE } from "./tui-glyphs.js";
 
@@ -129,6 +129,75 @@ export function parseContextPercent(pane: string): number | null {
     if (m) return parseInt(m[1], 10);
   }
   return null;
+}
+
+/** Claude Code statusline.json context used % (null if missing / unreadable). */
+export function readStatuslineContextPct(dataDir: string, instanceName: string): number | null {
+  try {
+    const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
+    if (!existsSync(statusFile)) return null;
+    const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+    const pct = data.context_window?.used_percentage;
+    return typeof pct === "number" && Number.isFinite(pct) ? pct : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Live-pane scrape used by /ctx, /status Ctx, and /view sidebar. */
+export function scrapePaneContext(
+  instanceName: string,
+  backend: string,
+): { context: number | null; tokenRatio: TokenContextRatio | null } {
+  try {
+    const socketName = getTmuxSocketName();
+    // Scrollback (-S -60) so a recent footer/statusline is kept even mid-output.
+    const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
+    const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
+    const pane = execFileSync("tmux", tmuxArgs, {
+      encoding: "utf-8",
+      timeout: 2000,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const tokenRatio = backend === "grok" ? parseTokenContextRatio(pane) : null;
+    const context = tokenRatio?.percentage ?? parseContextPercent(pane);
+    return { context, tokenRatio };
+  } catch {
+    return { context: null, tokenRatio: null };
+  }
+}
+
+const paneContextCache = new Map<string, { at: number; context: number | null; tokenRatio: TokenContextRatio | null }>();
+const PANE_CONTEXT_CACHE_MS = 12_000;
+
+/**
+ * Single source of truth for instance context % across /ctx, /status, and View.
+ * Claude-code prefers statusline.json (authoritative, no TUI scrape); everyone
+ * else scrapes the live pane with the same parsers /ctx uses. A short cache
+ * avoids N tmux captures per roster/SSE tick on large fleets.
+ */
+export function resolveInstanceContext(
+  dataDir: string,
+  instanceName: string,
+  backend: string,
+  opts?: { bypassCache?: boolean },
+): { context: number | null; tokenRatio: TokenContextRatio | null } {
+  if (backend === "claude-code") {
+    const fromFile = readStatuslineContextPct(dataDir, instanceName);
+    if (fromFile != null) return { context: fromFile, tokenRatio: null };
+  }
+
+  const now = Date.now();
+  if (!opts?.bypassCache) {
+    const hit = paneContextCache.get(instanceName);
+    if (hit && now - hit.at < PANE_CONTEXT_CACHE_MS) {
+      return { context: hit.context, tokenRatio: hit.tokenRatio };
+    }
+  }
+
+  const scraped = scrapePaneContext(instanceName, backend);
+  paneContextCache.set(instanceName, { at: now, ...scraped });
+  return scraped;
 }
 
 export class TopicCommands {
@@ -337,47 +406,28 @@ export class TopicCommands {
     }
   }
 
+  /** Resolve the effective backend name for fleet or classic instances. */
+  private effectiveBackend(instanceName: string): string {
+    const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
+      ? this.ctx.classicChannels.getBackendByInstance(instanceName, this.ctx.fleetConfig?.defaults?.backend)
+      : undefined;
+    return this.ctx.fleetConfig?.instances[instanceName]?.backend
+      ?? classicBackend
+      ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+  }
+
   /** Get context usage text for an instance (shared by TG + DC) */
   async getCtxText(instanceName: string): Promise<string> {
     // Classic instances live in classicBot.yaml, not fleet.yaml → consult the
     // classic channel manager for those so we don't mis-report defaults.backend.
-    // getBackendByInstance always returns a string (its own fallback), so only
-    // use it when the instance is ACTUALLY classic — otherwise a fleet instance
-    // that inherits its backend would wrongly pick up the classic default.
-    const classicBackend = this.ctx.classicChannels?.getChannelIdByInstance(instanceName)
-      ? this.ctx.classicChannels.getBackendByInstance(instanceName, this.ctx.fleetConfig?.defaults?.backend)
-      : undefined;
-    const backend = this.ctx.fleetConfig?.instances[instanceName]?.backend
-      ?? classicBackend
-      ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
-    let context: number | null = null;
-    let tokenRatio: TokenContextRatio | null = null;
-    // Only claude-code writes statusline.json. Reading it for other backends
-    // risks a stale value left over from a previous backend (e.g. after
-    // switching claude-code → kiro-cli), so those go straight to capture-pane.
-    if (backend === "claude-code") {
-      try {
-        const statusFile = join(this.ctx.dataDir, "instances", instanceName, "statusline.json");
-        if (existsSync(statusFile)) {
-          const d = JSON.parse(readFileSync(statusFile, "utf-8"));
-          context = d.context_window?.used_percentage ?? null;
-        }
-      } catch { /* ignore */ }
-    }
-    if (context == null) {
-      try {
-        const { execFileSync } = await import("node:child_process");
-        const { getTmuxSocketName, getTmuxSessionName } = await import("./paths.js");
-        const socketName = getTmuxSocketName();
-        // Include scrollback (-S -60) so a recent prompt is captured even when
-        // the CLI is mid-output and the bottom of the visible pane has no prompt.
-        const baseArgs = ["capture-pane", "-t", `${getTmuxSessionName()}:${instanceName}`, "-p", "-S", "-60"];
-        const tmuxArgs = socketName ? ["-L", socketName, ...baseArgs] : baseArgs;
-        const pane = execFileSync("tmux", tmuxArgs, { encoding: "utf-8", timeout: 2000, stdio: ["pipe", "pipe", "pipe"] });
-        if (backend === "grok") tokenRatio = parseTokenContextRatio(pane);
-        context = tokenRatio?.percentage ?? parseContextPercent(pane);
-      } catch { /* ignore */ }
-    }
+    const backend = this.effectiveBackend(instanceName);
+    // Fresh scrape for /ctx (user is asking right now) — bypass short cache.
+    const { context, tokenRatio } = resolveInstanceContext(
+      this.ctx.dataDir,
+      instanceName,
+      backend,
+      { bypassCache: true },
+    );
     const contextLine = context == null ? null : formatContextUsageLine(context, tokenRatio);
     // Effective model (resolves per-instance → fleet default → classic channel →
     // the CLI's own default) via the shared resolver, so /ctx and /model agree.
@@ -478,18 +528,17 @@ export class TopicCommands {
       const costPaused = this.ctx.costGuard?.isLimited(name);
       if (status === "paused") pausedCount++;
 
-      let contextStr = "-";
-      try {
-        const data = JSON.parse(readFileSync(join(this.ctx.dataDir, "instances", name, "statusline.json"), "utf-8"));
-        if (data.context_window?.used_percentage != null) {
-          contextStr = `${Math.round(data.context_window.used_percentage)}%`;
-        }
-      } catch { /* file may not exist yet */ }
-
-      const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
       const backend = classic
         ? this.ctx.classicChannels?.getBackendByInstance(name, this.ctx.fleetConfig.defaults?.backend) ?? "-"
         : this.ctx.fleetConfig.instances[name]?.backend ?? this.ctx.fleetConfig.defaults?.backend ?? "-";
+      // Same source as /ctx (statusline for claude-code, pane scrape otherwise).
+      // Without this, kiro/grok/codex always showed "-" in the Ctx column.
+      const { context } = backend === "-"
+        ? { context: null as number | null }
+        : resolveInstanceContext(this.ctx.dataDir, name, backend);
+      const contextStr = context == null ? "-" : `${Math.round(context)}%`;
+
+      const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
 
       let icon: string;
       if (costPaused || status === "paused") icon = "⏸";
@@ -502,7 +551,8 @@ export class TopicCommands {
           : executionState === "stuck" ? "🔴 stuck"
             : executionState === "paused" ? "⏸ paused"
               : "—";
-      const displayName = this.shortInstanceName(name);
+      // [C] marks ClassicBot-created rooms so they don't look like fleet topics.
+      const displayName = (classic ? "[C] " : "") + this.shortInstanceName(name);
       rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
     }
 
@@ -555,6 +605,8 @@ export class TopicCommands {
     const require = createRequire(import.meta.url);
     const agendVersion = require("../package.json").version ?? "unknown";
 
+    // Rate (claude-code 5h statusline quota) was dropped: on kiro/grok/codex
+    // fleets it was permanently "-", so the column just added noise.
     const lines: string[] = [
       "## System Info",
       "",
@@ -567,8 +619,8 @@ export class TopicCommands {
       "",
       "## Instances",
       "",
-      "| Name | State | IPC | Cost | Rate |",
-      "|------|-------|-----|------|------|",
+      "| Name | State | IPC | Cost |",
+      "|------|-------|-----|------|",
     ];
 
     const fleetNames = new Set(info.instances.map(inst => inst.name));
@@ -580,11 +632,10 @@ export class TopicCommands {
         state: this.ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
         ipc: this.ctx.instanceIpcClients.has(ch.instanceName),
         costCents: this.ctx.costGuard?.getDailyCostCents(ch.instanceName) ?? 0,
-        rateLimits: null,
-        classic: true,
+        classic: true as const,
       }));
     const instances = [
-      ...info.instances.map(inst => ({ ...inst, classic: false })),
+      ...info.instances.map(inst => ({ ...inst, classic: false as const })),
       ...classicInstances,
     ];
 
@@ -599,9 +650,8 @@ export class TopicCommands {
             : displayState === "paused" ? "⏸"
               : displayState === "stopped" ? "⚪" : "🟢";
       const ipc = inst.ipc ? "✓" : "✗";
-      const rate = inst.rateLimits ? `5h:${inst.rateLimits.five_hour_pct}%` : "-";
-      const displayName = this.shortInstanceName(inst.name);
-      lines.push(`| ${icon} ${displayName} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} | ${rate} |`);
+      const displayName = (inst.classic ? "[C] " : "") + this.shortInstanceName(inst.name);
+      lines.push(`| ${icon} ${displayName} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} |`);
     }
 
     if (info.fleet_cost_limit_cents > 0) {
