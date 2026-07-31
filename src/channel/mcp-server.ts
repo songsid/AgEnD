@@ -20,16 +20,17 @@ import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
 import { buildFleetInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
+import { mcpTimeoutMs } from "./ipc-timeouts.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
 const SOCKET_PATH = process.env.AGEND_SOCKET_PATH ?? "";
-const IPC_TIMEOUT_MS = 30_000;
-const SLOW_IPC_TIMEOUT_MS = 60_000;
 
-const SLOW_TOOLS = new Set(["start_instance", "create_instance", "delete_instance", "replace_instance"]);
+// Per-tool ceilings come from the shared table so they stay strictly above the
+// daemon's own budget for the same tool — otherwise this timer pre-empts the
+// daemon's specific error message with a generic one. See ipc-timeouts.ts.
 
 // ---------------------------------------------------------------------------
 // Safety nets
@@ -166,7 +167,7 @@ function ipcRequest(
       return;
     }
 
-    const timeoutMs = SLOW_TOOLS.has(tool) ? SLOW_IPC_TIMEOUT_MS : IPC_TIMEOUT_MS;
+    const timeoutMs = mcpTimeoutMs(tool);
     const requestId = ++requestCounter;
     const timer = setTimeout(() => {
       pendingRequests.delete(requestId);
