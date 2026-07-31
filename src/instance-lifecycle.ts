@@ -342,6 +342,19 @@ export class InstanceLifecycle {
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
+    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number }) => {
+      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
+      this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
+      this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
+      // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
+      // restore its tools — say so instead of implying self-healing. Deliberately
+      // NOT auto-restarting: that would interrupt whatever the agent is doing, and
+      // an instance whose CLI is otherwise fine may still be doing useful work.
+      this.ctx.notifyInstanceTopic(name,
+        `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
+        + `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`);
+    }, this.ctx.logger, `daemon.mcp_died[${name}]`));
+
     daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);

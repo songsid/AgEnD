@@ -6,6 +6,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeeded, type Logger } from "./logger.js";
+import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
@@ -408,6 +409,10 @@ export class Daemon extends EventEmitter {
   private firstDeliveryDelay = new FirstDeliveryDelay();
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  /** Same 5-min gate the error monitor uses, so a dead MCP server alerts once. */
+  private static readonly MCP_DEATH_COOLDOWN_MS = 5 * 60_000;
+  private lastMcpDeathNotifiedAt = 0;
+  private mcpDeathNotifiedForPid: number | null = null;
   /** Prevent in-flight monitor callbacks from re-arming after a pause. */
   private runtimeMonitorsFrozen = false;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
@@ -779,6 +784,37 @@ export class Daemon extends EventEmitter {
     this.logger.info(`${this.name} ready`);
   }
 
+  /**
+   * Detect a CRASHED MCP server and report it once.
+   *
+   * The MCP server writes its pid to channel.mcp.pid at startup and unlinks it on
+   * a clean exit, so "file present + pid dead" specifically means it died without
+   * cleaning up (crash / OOM / SIGKILL). A missing file is either "not started
+   * yet" or "exited cleanly" — neither is an incident, and an orphan exit implies
+   * the CLI itself died, which the crash detector already covers.
+   *
+   * The daemon deliberately does NOT try to respawn it: MCP is a stdio protocol
+   * where the CLI spawns the server and owns its pipes, so a daemon-spawned
+   * process would have no client reading it. Only the CLI can restore its own
+   * tools — hence notify, and let the operator decide about restarting.
+   */
+  private checkMcpServerAlive(): void {
+    if (this.isPaused) return;
+    const status = mcpServerState(this.instanceDir);
+    if (status.state === "unknown") return;
+    if (status.state === "alive") {
+      this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
+      return;
+    }
+    // Dead: report once per pid, and at most once per cooldown window.
+    if (this.mcpDeathNotifiedForPid === status.pid) return;
+    if (Date.now() - this.lastMcpDeathNotifiedAt < Daemon.MCP_DEATH_COOLDOWN_MS) return;
+    this.mcpDeathNotifiedForPid = status.pid;
+    this.lastMcpDeathNotifiedAt = Date.now();
+    this.logger.error({ pid: status.pid }, "MCP server process is gone — instance has no agend tools");
+    this.emit("mcp_died", { name: this.name, pid: status.pid });
+  }
+
   private startHealthCheck(): void {
     if (this.runtimeMonitorsFrozen || this.healthCheckTimer) return;
     const { max_retries, backoff, reset_after } = this.config.restart_policy;
@@ -809,6 +845,8 @@ export class Daemon extends EventEmitter {
           scheduleNext();
           return;
         }
+        // The CLI owns the MCP server process, so the daemon can only observe it.
+        this.checkMcpServerAlive();
 
         // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
         const cliLabel = this.backend?.binaryName ?? "CLI";
