@@ -49,11 +49,13 @@ export function msUntilMidnight(timezone: string): number {
 
 export class CostGuard extends EventEmitter {
   private config: CostGuardConfig;
-  private eventLog: EventLog;
+  /** Null when the event log could not be opened — cost tracking still works,
+   * only the cost_snapshot history rows are skipped. */
+  private eventLog: EventLog | null;
   private trackers = new Map<string, InstanceTracker>();
   private timer: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(config: CostGuardConfig, eventLog: EventLog) {
+  constructor(config: CostGuardConfig, eventLog: EventLog | null) {
     super();
     this.config = config;
     this.eventLog = eventLog;
@@ -120,7 +122,7 @@ export class CostGuard extends EventEmitter {
     tracker.warnEmitted = false;
     tracker.limitEmitted = false;
 
-    this.eventLog.insert(instance, "cost_snapshot", {
+    this.eventLog?.insert(instance, "cost_snapshot", {
       session_cost_usd: previousUsd,
       accumulated_cents: tracker.accumulatedCents,
     });
