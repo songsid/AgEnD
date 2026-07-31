@@ -816,10 +816,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   /**
    * Edit an alert's text while keeping its buttons.
    *
-   * discord.js preserves `components` when an edit passes only `content`, so this
-   * could get away with re-using editMessage — but it re-sends the row anyway so the
-   * behaviour is identical on both platforms and does not depend on that detail.
-   * (On Telegram omitting the keyboard actively clears it.)
+   * The two platforms disagree about what *omitting* the buttons means, and the
+   * disagreement is exactly inverted:
+   *
+   *   Telegram — omitting `reply_markup` CLEARS the keyboard.
+   *   Discord  — omitting `components` KEEPS whatever is already there.
+   *
+   * So an `editAlert` with no choices used to clear the buttons on one platform and
+   * preserve them on the other, from the same call site. `components` is therefore
+   * always sent, empty array included: `alert.choices` is the single description of
+   * what the message should end up with, on both platforms.
    */
   async editAlert(chatId: string, messageId: string, alert: AlertData, opts?: SendOpts): Promise<void> {
     const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
@@ -835,7 +841,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     }
     await msg.edit({
       content: alert.message.slice(0, DISCORD_MAX_LENGTH),
-      ...(row.components.length > 0 ? { components: [row] } : {}),
+      components: row.components.length > 0 ? [row] : [],
     });
   }
 
