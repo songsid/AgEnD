@@ -1,20 +1,31 @@
 import { join } from "node:path";
 
 /**
- * Conservative whitelist for an instance name when it is going to be used as a
- * path segment. Allows letters, digits, `_`, `-`, `.`. Empty / pure-`.` /
- * pure-`..` is rejected so we cannot escape `dataDir/instances/`.
+ * Constraint on an instance name when it is going to be used as a path segment.
+ * Unicode is deliberately allowed (instance names may be non-ASCII), but path
+ * separators, traversal, and control characters are not: a NUL or other control
+ * byte has no legitimate use in a filename and behaves inconsistently across
+ * syscalls, so it is rejected here rather than reaching the filesystem.
+ *
+ * Empty / pure-`.` / pure-`..` / anything containing `..` is rejected so we cannot
+ * escape `dataDir/instances/`.
  *
  * Defence-in-depth: callers (CLI / fleet config loader) already constrain
  * instance names, but `resolveAccessPathFromConfig` is invoked from several
  * entry points and the consequence of a traversal here is reading or writing
  * an attacker-supplied file path.
  */
-const SAFE_INSTANCE_NAME = /^[^/\\]+$/;
+const PATH_SEPARATOR_OR_CONTROL = /[/\\\u0000-\u001f\u007f]/;
 
 function assertSafeInstanceName(instance: string): void {
-  if (!instance || !SAFE_INSTANCE_NAME.test(instance) || instance === "." || instance === ".." || instance.includes("..")) {
-    throw new Error(`Invalid instance name "${instance}" — must not contain path separators or traversal`);
+  if (
+    !instance
+    || PATH_SEPARATOR_OR_CONTROL.test(instance)
+    || instance === "."
+    || instance === ".."
+    || instance.includes("..")
+  ) {
+    throw new Error(`Invalid instance name "${instance}" — must not contain path separators, traversal, or control characters`);
   }
 }
 
