@@ -12,6 +12,7 @@ import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
+import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
 import { ToolTracker } from "./channel/tool-tracker.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, StartupDialog } from "./backend/types.js";
@@ -2254,8 +2255,8 @@ export class Daemon extends EventEmitter {
       });
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
-        respond(null, "Task operation timed out after 30s");
-      }, 30_000);
+        respond(null, `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
+      }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
@@ -2278,8 +2279,8 @@ export class Daemon extends EventEmitter {
       });
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
-        respond(null, "Decision operation timed out after 30s");
-      }, 30_000);
+        respond(null, `Decision operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
+      }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
@@ -2308,8 +2309,8 @@ export class Daemon extends EventEmitter {
       // Wait for fleet_schedule_response via pending request map
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
-        respond(null, "Schedule operation timed out after 30s");
-      }, 30_000);
+        respond(null, `Schedule operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
+      }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
@@ -2331,7 +2332,9 @@ export class Daemon extends EventEmitter {
           fleetRequestId: fleetReqId,
           senderSessionName,
         });
-        const crossTimeoutMs = (tool === "start_instance" || tool === "create_instance" || tool === "replace_instance") ? 60_000 : 30_000;
+        // Shared table, so delete_instance and the deployment tools get the same
+        // budget here as the MCP client expects (the ad-hoc list omitted them).
+        const crossTimeoutMs = daemonBudgetMs(tool);
         const timeout = setTimeout(() => {
           this.pendingIpcRequests.delete(fleetReqId);
           respond(null, `Cross-instance operation timed out after ${crossTimeoutMs / 1000}s`);
@@ -2374,8 +2377,8 @@ export class Daemon extends EventEmitter {
       this.ipcServer?.broadcast({ type: "fleet_outbound", tool, args, fleetRequestId: fleetReqId });
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(outboundKey);
-        respond(null, "Fleet outbound timed out after 30s");
-      }, 30_000);
+        respond(null, `Fleet outbound timed out after ${daemonBudgetMs(tool) / 1000}s`);
+      }, daemonBudgetMs(tool));
       this.pendingIpcRequests.set(outboundKey, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
