@@ -54,6 +54,9 @@ export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = DEFAULT_STATE_SAFETY_SWEEP_MS;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
+/** Minimum gap between "health check is failing" notifications for one instance. */
+const HEALTH_ERROR_NOTIFY_INTERVAL_MS = 10 * 60_000;
+
 /**
  * Whether two working directories belong to the same project, so a fleet-scoped
  * decision recorded in one reaches the other. Covers the worktree/checkout
@@ -385,6 +388,7 @@ export class Daemon extends EventEmitter {
   private lastSpawnAt = 0;
   private crashTimestamps: number[] = [];
   private healthCheckPaused = false;
+  private lastHealthErrorNotifyAt = 0;
   /** CLI pane availability, independent from the daemon process and tri-state. */
   private processStatus: "running" | "crashed" | "stopped" = "running";
   private spawning = false;
@@ -1129,6 +1133,18 @@ export class Daemon extends EventEmitter {
 
         } catch (err) {
           this.logger.error({ err }, "Health check tick failed — continuing");
+          // Surface it to the operator, not just the log — a health check that
+          // keeps throwing means this instance is no longer being supervised.
+          // Throttled: the tick repeats every ~30s, so an unnotified persistent
+          // fault would otherwise post twice a minute forever.
+          const now = Date.now();
+          if (now - this.lastHealthErrorNotifyAt > HEALTH_ERROR_NOTIFY_INTERVAL_MS) {
+            this.lastHealthErrorNotifyAt = now;
+            this.emit("health_check_error", {
+              name: this.name,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
           scheduleNext();
           return;
         }

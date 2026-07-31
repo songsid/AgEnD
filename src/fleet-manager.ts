@@ -3618,6 +3618,64 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
+  /**
+   * Report a fleet-level fault (not attributable to one instance) to the General
+   * topic, so the operator learns about it without reading daemon.log.
+   *
+   * Throttled per distinct message: an unhandled rejection typically comes from a
+   * loop (a poller, a repeating timer), and one channel message per occurrence
+   * would bury the topic — which is worse than silence. First occurrence goes out
+   * immediately, repeats are suppressed for THROTTLE_MS and then re-sent with a
+   * count.
+   *
+   * The log line is written by the caller regardless: if every adapter is down,
+   * the only notification path is the one that is broken.
+   */
+  notifyFleetError(text: string): void {
+    const now = Date.now();
+    const key = text.slice(0, 200);
+    const seen = this.fleetErrorNotices.get(key);
+    if (seen && now - seen.at < FleetManager.FLEET_ERROR_THROTTLE_MS) {
+      seen.suppressed++;
+      return;
+    }
+    const suppressed = seen?.suppressed ?? 0;
+    this.fleetErrorNotices.set(key, { at: now, suppressed: 0 });
+    // Bound the map: it is keyed by message text, and a message with a varying
+    // suffix (a path, an id) would otherwise grow it without limit.
+    if (this.fleetErrorNotices.size > 100) {
+      const oldest = this.fleetErrorNotices.keys().next().value;
+      if (oldest !== undefined) this.fleetErrorNotices.delete(oldest);
+    }
+
+    const body = suppressed > 0
+      ? `${text}\n(plus ${suppressed} more in the last ${Math.round(FleetManager.FLEET_ERROR_THROTTLE_MS / 60_000)}m)`
+      : text;
+
+    // Resolved from config, NOT findGeneralInstance(): that requires a live daemon,
+    // and a fleet-level fault is exactly when the General may be down. The topic
+    // itself still exists, and notifyInstanceTopic only needs adapter + group +
+    // topic_id to post into it.
+    const general = Object.entries(this.fleetConfig?.instances ?? {})
+      .find(([, config]) => config.general_topic === true)?.[0];
+    if (general) {
+      this.notifyInstanceTopic(general, body);
+      return;
+    }
+    // No General instance — fall back to the primary channel's group.
+    const channelCfg = this.getChannelConfig();
+    const groupId = channelCfg?.group_id;
+    if (this.adapter && groupId) {
+      this.adapter.sendText(String(groupId), body)
+        .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
+      return;
+    }
+    this.logger.warn({ text: body }, "Fleet error had no notification target (no General instance, no adapter)");
+  }
+
+  private static readonly FLEET_ERROR_THROTTLE_MS = 10 * 60_000;
+  private fleetErrorNotices = new Map<string, { at: number; suppressed: number }>();
+
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): void {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
