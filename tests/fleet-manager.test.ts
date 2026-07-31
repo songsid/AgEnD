@@ -505,7 +505,10 @@ describe("FleetManager", () => {
     expect(choices.map(choice => choice.id)).toEqual(
       KNOWN_BACKENDS.filter(backend => backend !== "mock" && backend !== "gemini-cli"),
     );
-    expect(choices.find(choice => choice.id === "grok")?.label).toBe("grok ⚠️");
+    // Grok is no longer marked experimental — Discord dropped the marker but
+    // ClassicBot kept its own EXPERIMENTAL_BACKENDS set, so the two platforms
+    // labelled the same backend differently.
+    expect(choices.find(choice => choice.id === "grok")?.label).toBe("grok");
     expect(choices.some(choice => choice.id === "mock")).toBe(false);
   });
 

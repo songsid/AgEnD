@@ -1,0 +1,20 @@
+{
+  // Type-checks the test suites, which the build config deliberately excludes
+  // (it emits dist/ from src/ only). Without this, a renamed or deleted export
+  // breaks tests without any tsc error — that is how a test importing a function
+  // renamed six weeks earlier stayed broken on main while CI was green.
+  //
+  // No emit, so rootDir/outDir/declaration from the base config don't apply.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "sourceMap": false,
+    // The base config pins rootDir to src/ for emit; widen it so tests/ and e2e/
+    // are allowed in the program.
+    "rootDir": ".",
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src", "tests", "e2e"],
+  "exclude": ["node_modules", "dist"]
+}

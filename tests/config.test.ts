@@ -141,19 +141,22 @@ instances:
     });
   });
 
-  it("defaults auto-pause to 30 minutes and supports per-instance disable", () => {
+  it("leaves auto-pause disabled unless opted into", () => {
+    // Auto-pause shipped defaulting to 30 minutes and was reverted to opt-in
+    // (0 = disabled) — see DEFAULT_INSTANCE_CONFIG in src/config.ts, matched by
+    // the daemon's own fallback. This assertion tracked the reverted value.
     const fleetPath = join(tmpDir, "fleet.yaml");
     writeFileSync(fleetPath, `instances:
   default-pause:
     working_directory: /tmp/default-pause
-  never-pause:
-    working_directory: /tmp/never-pause
-    auto_pause_after: 0
+  opted-in:
+    working_directory: /tmp/opted-in
+    auto_pause_after: 45
 `);
 
     const fleet = loadFleetConfig(fleetPath);
-    expect(fleet.instances["default-pause"].auto_pause_after).toBe(30);
-    expect(fleet.instances["never-pause"].auto_pause_after).toBe(0);
+    expect(fleet.instances["default-pause"].auto_pause_after).toBe(0);
+    expect(fleet.instances["opted-in"].auto_pause_after).toBe(45);
   });
 
   it("returns empty instances when no fleet.yaml exists", () => {

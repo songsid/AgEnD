@@ -7,7 +7,6 @@ import type { Logger } from "./logger.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
 import type { Choice } from "./channel/types.js";
 
-const EXPERIMENTAL_BACKENDS = new Set(["grok"]);
 
 /** Last real channel activity recorded in a ClassicBot chat log. */
 export function readClassicLastActivityAt(dataDir: string, instanceName: string): number | null {
@@ -28,10 +27,7 @@ export function readClassicLastActivityAt(dataDir: string, instanceName: string)
 export function getClassicBackendChoices(): Choice[] {
   return KNOWN_BACKENDS
     .filter(backend => backend !== "mock" && backend !== "gemini-cli")
-    .map(backend => ({
-      id: backend,
-      label: EXPERIMENTAL_BACKENDS.has(backend) ? `${backend} ⚠️` : backend,
-    }));
+    .map(backend => ({ id: backend, label: backend }));
 }
 
 /** Reject test-only/unknown values supplied through `/start <backend>`. */
