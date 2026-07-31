@@ -12,8 +12,33 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGuardConfig, DailySummaryConfig, WebhookConfig, AccessConfig } from "./types.js";
 
-/** Fallback access policy for a channel with no `access:` block — open (no gate). */
-const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
+/**
+ * Per-field defaults for a channel's `access:` block, matching the documented
+ * contract in docs/configuration.md (3 pending codes, 10-minute TTL).
+ *
+ * The old fallback used zero for both limits, and each zero disabled the control
+ * it was supposed to impose: `code_expiry_minutes: 0` makes AccessManager's expiry
+ * arithmetic NaN (`now - createdAt < NaN` is always false), so pairing codes never
+ * expired, and `max_pending_codes: 0` made the quota check `size >= 0` — never
+ * enforced. A partial block such as `access: {mode: pairing}` inherited both bugs
+ * because there was no per-field merge at all.
+ */
+const DEFAULT_ACCESS_LIMITS = { max_pending_codes: 3, code_expiry_minutes: 10 } as const;
+
+/**
+ * Mode for a channel with NO `access:` block.
+ *
+ * `docs/configuration.md` documents the default as "locked" (whitelist only), but
+ * the code has always fallen back to "open" — i.e. every user on the platform can
+ * drive the fleet. Flipping that unconditionally would lock existing deployments
+ * out of their own bot: AccessManager only writes its state file once something
+ * changes, so a fleet that has been running on the open fallback without ever
+ * pairing a user has no saved mode to fall back on. So the tightening applies to
+ * genuinely fresh data dirs, and an existing deployment keeps working while being
+ * warned on every start (see resolveAccessMode / warnAboutAccessMode).
+ */
+const FRESH_INSTALL_ACCESS_MODE: AccessConfig["mode"] = "locked";
+const LEGACY_ACCESS_MODE: AccessConfig["mode"] = "open";
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
@@ -1594,9 +1619,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
+    const accessStatePath = join(accessDir, "access.json");
     const accessManager = new AccessManager(
-      channelConfig.access ?? DEFAULT_OPEN_ACCESS,
-      join(accessDir, "access.json"),
+      this.resolveAccessConfig(channelConfig, accessStatePath, channelConfig.id ?? channelConfig.type),
+      accessStatePath,
     );
     this.accessManager = accessManager;
     const inboxDir = join(this.dataDir, "inbox");
@@ -1861,9 +1887,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
+    const accessStatePath = join(accessDir, `access-${adapterId}.json`);
     const accessManager = new AccessManager(
-      channelConfig.access ?? DEFAULT_OPEN_ACCESS,
-      join(accessDir, `access-${adapterId}.json`),
+      this.resolveAccessConfig(channelConfig, accessStatePath, adapterId),
+      accessStatePath,
     );
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
@@ -5074,6 +5101,59 @@ When users create specialized instances, suggest these configurations:
     this.reregisterClassicChannels();
     this.logger.info({ channelId, adapterId, instanceName: ch.instanceName }, "Classic channel stopped");
     return t("classic.stopped");
+  }
+
+  /**
+   * Resolve a channel's access policy, filling in the documented per-field
+   * defaults and choosing a safe mode when the block is absent entirely.
+   *
+   * `statePath` decides the absent-block case: if AccessManager already has state
+   * there, it carries the effective mode and this fallback is cosmetic. If not, a
+   * data dir that has never run any instance is a fresh install and gets the
+   * fail-closed default; an existing deployment keeps the historical open mode so
+   * an upgrade can never lock the operator out of their own bot.
+   */
+  private resolveAccessConfig(channelConfig: ChannelConfig, statePath: string, adapterId: string): AccessConfig {
+    const explicit = channelConfig.access;
+    // `allowed_users` is defaulted too: a partial block that omits it would
+    // otherwise reach AccessManager as undefined and throw when it spreads it.
+    const base = { allowed_users: [] as (number | string)[], ...DEFAULT_ACCESS_LIMITS };
+    if (explicit?.mode) {
+      return { ...base, ...explicit, mode: explicit.mode };
+    }
+    const isFreshInstall = !existsSync(statePath) && !this.hasExistingInstanceState();
+    const mode = isFreshInstall ? FRESH_INSTALL_ACCESS_MODE : LEGACY_ACCESS_MODE;
+    this.warnAboutAccessMode(adapterId, mode, isFreshInstall);
+    return { ...base, ...(explicit ?? {}), mode };
+  }
+
+  /** True if this data dir has run instances before (i.e. it is not a fresh install). */
+  private hasExistingInstanceState(): boolean {
+    try {
+      return readdirSync(join(this.dataDir, "instances")).length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Say out loud which access mode an omitted `access:` block resolved to, and how to fix it. */
+  private warnAboutAccessMode(adapterId: string, mode: AccessConfig["mode"], isFreshInstall: boolean): void {
+    if (isFreshInstall) {
+      this.logger.warn(
+        { adapterId, mode },
+        "No `access:` block for this channel — defaulting to locked (whitelist only). " +
+        "Add channel.access.allowed_users in fleet.yaml so you can talk to the fleet, " +
+        "or set channel.access.mode: open to allow everyone.",
+      );
+      return;
+    }
+    this.logger.warn(
+      { adapterId, mode },
+      "SECURITY: no `access:` block for this channel, so it stays OPEN — every user on " +
+      "this platform can drive the fleet. Existing installs keep this behaviour so an " +
+      "upgrade cannot lock you out; set channel.access.mode explicitly (locked + " +
+      "allowed_users is the documented default) to close it.",
+    );
   }
 
   async stopAll(): Promise<void> {

@@ -42,10 +42,21 @@ Each entry configures a platform adapter (Telegram or Discord).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` | `locked` = whitelist only. `pairing` = self-register via /pair. `open` = all users + bots allowed (bot messages reach fleet topics directly) |
+| `mode` | `"locked"` \| `"pairing"` \| `"open"` | `"locked"` on a fresh install; see note | `locked` = whitelist only. `pairing` = self-register via /pair. `open` = all users + bots allowed (bot messages reach fleet topics directly) |
 | `allowed_users` | (number\|string)[] | `[]` | Whitelisted user IDs |
 | `max_pending_codes` | number | `3` | Max simultaneous pairing codes |
 | `code_expiry_minutes` | number | `10` | Pairing code TTL |
+
+> **Set `mode` explicitly.** Omitting the whole `access:` block on a fresh install
+> gives you `locked`, so add `allowed_users` (or choose another mode) or nothing can
+> reach the fleet — the startup log says so. On a data dir that has already run
+> instances the omitted block stays `open` instead, because tightening it on upgrade
+> would lock an existing operator out of their own bot; that case logs a SECURITY
+> warning on every start until you set `mode`. `agend validate` warns for both.
+>
+> Once a fleet has run, the effective mode lives in `~/.agend/access/access*.json`
+> and that saved value wins over `fleet.yaml`. Use `agend access lock <instance>` /
+> `agend access unlock <instance>` to change it for an existing fleet.
 
 #### channel.options (Discord)
 
