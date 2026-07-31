@@ -231,7 +231,7 @@ describe("paused status visibility", () => {
     expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working |");
     expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle |");
     expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck |");
-    expect(status).toContain("| [C] classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle |");
+    expect(status).toContain("| classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle |");
   });
 
   it("renders execution state and distinguishes paused from stopped in /sysinfo", () => {
@@ -261,6 +261,6 @@ describe("paused status visibility", () => {
     expect(sysinfo).toContain("| 🔵 busy | working | ✓ |");
     expect(sysinfo).toContain("| ⏸ sleeping | paused | ✓ |");
     expect(sysinfo).toContain("| ⚪ off | stopped | ✗ |");
-    expect(sysinfo).toContain("| 🔴 [C] classic-lab-5678 | stuck | ✓ |");
+    expect(sysinfo).toContain("| 🔴 classic-lab-5678 | stuck | ✓ |");
   });
 });
