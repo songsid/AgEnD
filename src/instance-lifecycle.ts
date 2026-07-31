@@ -166,11 +166,48 @@ export interface LifecycleReplaceArgs {
   reason?: string;
 }
 
+/** Suppress duplicate auth alerts for the same backend within this window. */
+const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
+
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
+  /** backend → last auth-error alert time, so one expiry sends one alert. */
+  private lastAuthAlertAt = new Map<string, number>();
 
   constructor(private ctx: LifecycleContext) {}
+
+  /** Backend a running instance uses (config → fleet default). */
+  private backendOf(name: string): string {
+    return this.ctx.fleetConfig?.instances[name]?.backend
+      ?? this.ctx.fleetConfig?.defaults?.backend
+      ?? "claude-code";
+  }
+
+  /**
+   * One alert per backend per cooldown, naming every affected instance — a CLI's
+   * credentials are shared, so N instances failing is ONE problem with ONE fix
+   * (re-login once). The per-instance daemon cooldown can't dedupe across
+   * instances, so the fleet-level map does it here.
+   */
+  private notifyAuthErrorOnce(name: string, message: string): void {
+    const backend = this.backendOf(name);
+    const now = Date.now();
+    const last = this.lastAuthAlertAt.get(backend) ?? 0;
+    if (now - last < AUTH_ALERT_COOLDOWN_MS) {
+      this.ctx.logger.info({ name, backend }, "auth error suppressed (backend already alerted)");
+      return;
+    }
+    this.lastAuthAlertAt.set(backend, now);
+
+    const affected = [...this.daemons.keys()].filter(n => this.backendOf(n) === backend);
+    const others = affected.filter(n => n !== name);
+    const scope = others.length
+      ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
+      : `\`${name}\` (${backend})`;
+    this.ctx.notifyInstanceTopic(name,
+      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then.`);
+  }
 
   async start(
     name: string,
@@ -310,7 +347,15 @@ export class InstanceLifecycle {
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
-      this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
+      // Auth failures are a property of the BACKEND's shared credentials, not of
+      // one instance: every instance on that CLI fails at once, and one re-login
+      // fixes them all. Notify once per backend (listing who's affected) instead
+      // of N near-identical alerts, and suppress repeats fleet-wide.
+      if (data.type === "auth_error") {
+        this.notifyAuthErrorOnce(name, data.message);
+      } else {
+        this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
+      }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
       // The CLI interrupted itself on this error, so any pending Cancel button is
@@ -328,6 +373,15 @@ export class InstanceLifecycle {
         // default (valid) model.
         this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
           this.ctx.logger.error({ err, name }, "pty_error restart failed"));
+      } else if (data.action === "pause") {
+        // Previously unhandled, so an expired session kept receiving messages and
+        // re-sending its whole context into a CLI that could only fail — wasted
+        // credit and lost work. pause() alone no-ops while the pane is busy (the
+        // usual state when auth fails), so mark it to pause as soon as it idles.
+        // Queued messages survive: delivery wakes a paused instance.
+        void this.pause(name)
+          .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
+          .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
       }
     }, this.ctx.logger, `daemon.pty_error[${name}]`));
 
