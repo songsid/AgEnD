@@ -68,6 +68,8 @@ export interface OutboundContext {
   getChannelConfig?(adapterId?: string): import("./types.js").ChannelConfig | undefined;
   getGroupIdForInstance?(name: string): string;
   getWorldForInstance?(name: string): { id: string; adapter: ChannelAdapter } | undefined;
+  /** Post a notice into an instance's own topic (used to report failed deliveries). */
+  notifyInstanceTopic?(instanceName: string, text: string): void;
   sendCancelButton?(instanceName: string, correlationId?: string): Promise<void>;
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
@@ -125,6 +127,79 @@ async function deliverToInstance(
   const ipc = ctx.instanceIpcClients.get(instanceName);
   if (!ipc) throw new Error(`Instance '${instanceName}' is not connected`);
   ipc.send(payload);
+}
+
+/** Cross-instance delivery retries: same shape the scheduler already uses. */
+const CROSS_INSTANCE_RETRY_DEFAULTS = { retries: 3, intervalMs: 30_000 } as const;
+let crossInstanceRetry: { retries: number; intervalMs: number } = { ...CROSS_INSTANCE_RETRY_DEFAULTS };
+
+/** Test seam: real retry intervals are 30s, far beyond a test's patience. */
+export function setCrossInstanceRetryForTests(cfg: { retries: number; intervalMs: number } | null): void {
+  crossInstanceRetry = cfg ?? { ...CROSS_INSTANCE_RETRY_DEFAULTS };
+}
+
+/**
+ * Deliver a cross-instance message with retries, and make a final failure VISIBLE.
+ *
+ * This path used to be pure fire-and-forget: the handler answered
+ * `{sent: true, queued: true}` and a later rejection went to `logger.warn` and
+ * nowhere else. The sending agent believed it had delivered, the recipient never
+ * got it, and no human was told — the last large hole under "instance messages
+ * must not get lost". The failure window is real: `deliverWithIdleGate` throws
+ * whenever the target's IPC has gone, which is exactly what happens while a target
+ * is restarting or crash-looping.
+ *
+ * Retries reuse the scheduler's proven numbers (3 attempts, 30s apart). On final
+ * failure we log at error, record it in the event log, and post to BOTH the
+ * sender's and the target's topic so the agent that sent it and any watching human
+ * both find out.
+ */
+async function deliverCrossInstanceWithRetry(
+  ctx: OutboundContext,
+  targetInstanceName: string,
+  targetLabel: string,
+  senderLabel: string,
+  correlationId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  const attempt = async (): Promise<Error | null> => {
+    try {
+      await deliverToInstance(ctx, targetInstanceName, payload);
+      return null;
+    } catch (err) {
+      return err instanceof Error ? err : new Error(String(err));
+    }
+  };
+
+  let lastError = await attempt();
+  for (let i = 0; lastError && i < crossInstanceRetry.retries; i++) {
+    ctx.logger.warn(
+      { err: lastError.message, target: targetLabel, correlation_id: correlationId, attempt: i + 1 },
+      "Cross-instance delivery failed — retrying",
+    );
+    await new Promise(r => setTimeout(r, crossInstanceRetry.intervalMs));
+    lastError = await attempt();
+  }
+
+  if (!lastError) return;
+
+  ctx.logger.error(
+    { err: lastError.message, target: targetLabel, correlation_id: correlationId, attempts: crossInstanceRetry.retries + 1 },
+    "Cross-instance delivery failed after retries — message lost",
+  );
+  ctx.eventLog?.insert(targetInstanceName, "cross_instance_delivery_failed", {
+    from: senderLabel,
+    correlation_id: correlationId,
+    error: lastError.message,
+  });
+
+  const notice = `❌ Message from ${senderLabel} to ${targetLabel} could not be delivered after `
+    + `${crossInstanceRetry.retries + 1} attempts (${lastError.message}). `
+    + `correlation_id: ${correlationId}`;
+  // Both topics: the sender's agent needs to know its send did not land, and a human
+  // watching the target needs to know something was addressed to it and never arrived.
+  ctx.notifyInstanceTopic?.(senderLabel, notice);
+  if (targetInstanceName !== senderLabel) ctx.notifyInstanceTopic?.(targetInstanceName, notice);
 }
 
 // ── Handler implementations ─────────────────────────────────────────────
@@ -187,11 +262,16 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // and surfaced as "IPC request timed out after 30000ms" on the caller.
   // Unknown/stopped targets already errored synchronously above, so anything
   // failing past this point is a delivery problem to log, not a caller error.
-  void deliverToInstance(ctx, targetInstanceName, { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta })
-    .catch(err => ctx.logger.warn(
-      { err, target: targetName, correlation_id: correlationId },
-      "queued cross-instance delivery failed",
-    ));
+  // Retries and, on final failure, tells both agents' topics — see
+  // deliverCrossInstanceWithRetry. It never rejects, so nothing escapes here.
+  void deliverCrossInstanceWithRetry(
+    ctx,
+    targetInstanceName,
+    targetName,
+    senderLabel,
+    correlationId,
+    { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta },
+  );
   // Show a cancel button on the target's topic so a watching user can interrupt
   // work started by another instance — but only for messages that actually put
   // the recipient to work (task/query). Informational report/update messages
@@ -703,11 +783,16 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     if (task_summary) ipcMeta.task_summary = task_summary;
     if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
 
-    void deliverToInstance(ctx, hostInstance, { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta })
-      .catch(err => ctx.logger.warn(
-        { err, target: targetName, correlation_id: correlationId },
-        "queued broadcast delivery failed",
-      ));
+    // Same at-least-once treatment as send_to_instance: retry, then surface a
+    // final failure on both topics instead of dying in a warn-level log line.
+    void deliverCrossInstanceWithRetry(
+      ctx,
+      hostInstance,
+      targetName,
+      senderLabel,
+      correlationId,
+      { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta },
+    );
     sentTo.push(targetName);
   }
 
