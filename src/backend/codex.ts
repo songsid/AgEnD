@@ -343,7 +343,12 @@ export class CodexBackend implements CliBackend {
       {
         pattern: /workspace\s+is\s+out\s+of\s+credits/i,
         type: "quota",
-        action: "notify",
+        // pause, not notify: exhausted credits are a dead end until someone
+        // refills, so leaving the instance running just burns cycles failing.
+        // Matches how the other terminal quota states behave (claude-code's
+        // "credit balance is too low", codex's own "you've hit your usage
+        // limit"). Costs a manual resume after the refill.
+        action: "pause",
         message: "Codex workspace credits exhausted — workspace owner must refill",
       },
       // Codex warns at 10% and 5% remaining, and scopes the limit by period —

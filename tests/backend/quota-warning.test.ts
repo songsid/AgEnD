@@ -121,9 +121,12 @@ describe("Codex workspace credits exhausted", () => {
     expect(hit[0].message).toBe("Codex workspace credits exhausted — workspace owner must refill");
   });
 
-  it("notifies rather than restarting or failing over", () => {
+  it("pauses rather than restarting or failing over", () => {
     const [hit] = matching(LINE);
-    expect(hit.action).toBe("notify");
+    // Exhausted credits are a dead end until a refill, so pausing stops the
+    // instance burning cycles on a CLI that can only fail. Same treatment as
+    // the other terminal quota states.
+    expect(hit.action).toBe("pause");
     // `credits_exhausted` isn't in the ErrorType union; credits/quota problems
     // are already modelled as "quota" across every backend.
     expect(hit.type).toBe("quota");
