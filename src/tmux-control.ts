@@ -12,6 +12,13 @@ export interface TmuxPaneOutputEvent {
 
 export const CONTROL_SAFETY_SWEEP_MS = 60_000;
 
+/**
+ * Consecutive `list-panes` failures before a window's registration is dropped.
+ * More than one because tmux fails transiently under load, and unregistering a
+ * live window would silence the output events its daemon depends on.
+ */
+const RESOLVE_FAILURES_BEFORE_DROP = 3;
+
 function tmuxArgs(args: string[]): string[] {
   const socket = getTmuxSocketName();
   return socket ? ["-L", socket, ...args] : args;
@@ -42,6 +49,7 @@ export class TmuxControlClient extends EventEmitter {
   private lastOutputAt = new Map<string, number>(); // paneId → timestamp
   private paneToWindow = new Map<string, string>();  // paneId → windowId
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
+  private resolveFailures = new Map<string, number>(); // windowId → consecutive resolve failures
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Epoch ms of the last observation reset. Everything before it is unobservable:
@@ -96,6 +104,7 @@ export class TmuxControlClient extends EventEmitter {
   /** Unregister a window (call on killWindow) */
   unregisterWindow(windowId: string): void {
     this.registeredWindows.delete(windowId);
+    this.resolveFailures.delete(windowId);
     for (const [pane, win] of this.paneToWindow) {
       if (win === windowId) {
         this.paneToWindow.delete(pane);
@@ -105,19 +114,39 @@ export class TmuxControlClient extends EventEmitter {
     }
   }
 
-  /** Resolve a window's current pane id and cache the mapping. */
+  /**
+   * Resolve a window's current pane id and cache the mapping.
+   *
+   * Drops a registration that has failed to resolve `RESOLVE_FAILURES_BEFORE_DROP`
+   * times in a row. Every reconnect re-resolves every registered window, one tmux
+   * subprocess each, so a registration for a window that no longer exists is a
+   * permanent per-reconnect cost — and callers do forget to unregister (a crash
+   * respawn creates a new window id and the dead one used to stay forever).
+   *
+   * Consecutive failures rather than one: `list-panes` also fails transiently when
+   * tmux is busy, e.g. during a fleet-restart storm, and dropping a live window's
+   * registration would silence its output events.
+   */
   private async resolvePane(windowId: string): Promise<void> {
     try {
       const paneId = await execTmux([
         "list-panes", "-t", `${this.sessionName}:${windowId}`,
         "-F", "#{pane_id}",
       ]);
+      this.resolveFailures.delete(windowId);
       if (paneId) {
         this.paneToWindow.set(paneId, windowId);
         this.logger?.debug({ windowId, paneId }, "Registered window→pane mapping");
       }
     } catch {
-      this.logger?.debug({ windowId }, "Failed to resolve pane ID for window");
+      const failures = (this.resolveFailures.get(windowId) ?? 0) + 1;
+      this.resolveFailures.set(windowId, failures);
+      if (failures >= RESOLVE_FAILURES_BEFORE_DROP && this.registeredWindows.has(windowId)) {
+        this.logger?.debug({ windowId, failures }, "Window has not resolved for several attempts — dropping its registration");
+        this.unregisterWindow(windowId);
+        return;
+      }
+      this.logger?.debug({ windowId, failures }, "Failed to resolve pane ID for window");
     }
   }
 
