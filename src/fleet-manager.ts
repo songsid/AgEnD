@@ -51,6 +51,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
+import { handleUsageRequest, isUsagePath } from "./usage/usage-api.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -5656,6 +5657,9 @@ When users create specialized instances, suggest these configurations:
       } else if (isViewPath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
         // /view routes accept the read-only view.token (or web.token) and do
         // their own per-method auth in view-api.ts — skip the web-token gate.
+      } else if (isUsagePath(new URL(req.url ?? "/", `http://localhost:${port}`).pathname)) {
+        // /api/ai-usage is read-only GET data for the /view Usage panel — open
+        // like the other /view data routes (usage-api.ts rejects non-GET).
       } else {
         // All other endpoints require a valid token (query ?token= or X-Agend-Token header).
         // /ui/* will also re-check in web-api.ts, which is harmless.
@@ -5876,6 +5880,7 @@ When users create specialized instances, suggest these configurations:
 
       const url = new URL(req.url ?? "/", `http://localhost:${port}`);
       if (handleViewRequest(req, res, url, this as unknown as import("./view-api.js").ViewApiContext)) return;
+      if (handleUsageRequest(req, res, url, this as unknown as import("./usage/usage-api.js").UsageApiContext)) return;
       if (handleSettingsRequest(req, res, url, this as unknown as import("./settings-api.js").SettingsApiContext)) return;
       if (handleWebRequest(req, res, url, this as unknown as import("./web-api.js").WebApiContext)) return;
 

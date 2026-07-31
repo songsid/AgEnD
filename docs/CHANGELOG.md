@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [2.1.1] - Unreleased
 
 ### Added
+- **AI usage panel on /view** — 📊 button opens a panel showing live subscription usage for the CLI backends logged in on this machine (Claude session/weekly %, Codex windows/credits, Grok weekly pool). New `GET /api/ai-usage` endpoint (5-min cache); disable with `web.usage_panel: false`. Provider logic vendored from ai-usage-board/OpenUsage (MIT, see `src/usage/LICENSE.md`).
 - **Kiro TUI effort skill** — general-knowledge skill for Kiro's effort selector in TUI mode.
 
 ### Fixed

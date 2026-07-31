@@ -130,6 +130,15 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
   });
 
+  // ── Web UI ────────────────────────────────────────────────
+  if (config.web !== undefined && !isObj(config.web)) {
+    err("web", "must be a mapping");
+  } else if (isObj(config.web)) {
+    if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
+      err("web.usage_panel", "must be a boolean");
+    }
+  }
+
   // ── Defaults ──────────────────────────────────────────────
   if (config.defaults !== undefined && !isObj(config.defaults)) {
     err("defaults", "must be a mapping");
