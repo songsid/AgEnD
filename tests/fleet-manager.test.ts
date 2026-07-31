@@ -712,7 +712,9 @@ describe("FleetManager", () => {
     vi.spyOn(fm.lifecycle, "wake").mockImplementation(async () => { order.push("wake"); });
     fm.instanceIpcClients.set("test", {
       connected: true,
-      send: () => { order.push("send"); },
+      // send() reports whether the write actually went out; a double that returns
+      // nothing reads as a dropped message and the delivery waits for a reconnect.
+      send: () => { order.push("send"); return true; },
     } as any);
 
     await fm.deliverToInstance("test", { type: "fleet_inbound", content: "hello" });
@@ -721,7 +723,7 @@ describe("FleetManager", () => {
 
   it("reports wake failure without delivering", async () => {
     const fm = new FleetManager(tmpDir);
-    const send = vi.fn();
+    const send = vi.fn().mockReturnValue(true);
     vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(true);
     vi.spyOn(fm.lifecycle, "wake").mockRejectedValue(new Error("wake ready timeout"));
     fm.instanceIpcClients.set("test", { connected: true, send } as any);
@@ -732,7 +734,7 @@ describe("FleetManager", () => {
 
   it("holds cross-instance delivery while working and releases it on idle", async () => {
     const fm = new FleetManager(tmpDir);
-    const send = vi.fn();
+    const send = vi.fn().mockReturnValue(true);
     fm.instanceIpcClients.set("test", { connected: true, send } as any);
     (fm as any).cacheInstanceExecutionState("test", {
       state: "working", observedAt: 1_000, stateChangedAt: 1_000,
@@ -755,7 +757,7 @@ describe("FleetManager", () => {
 
   it("delivers user inbound immediately even while the instance is working", async () => {
     const fm = new FleetManager(tmpDir);
-    const send = vi.fn();
+    const send = vi.fn().mockReturnValue(true);
     fm.instanceIpcClients.set("test", { connected: true, send } as any);
     (fm as any).cacheInstanceExecutionState("test", {
       state: "working", observedAt: 1_000, stateChangedAt: 1_000,
@@ -773,7 +775,7 @@ describe("FleetManager", () => {
     vi.useFakeTimers();
     try {
       const fm = new FleetManager(tmpDir);
-      const send = vi.fn();
+      const send = vi.fn().mockReturnValue(true);
       fm.instanceIpcClients.set("test", { connected: true, send } as any);
       (fm as any).cacheInstanceExecutionState("test", {
         state: "working", observedAt: 1_000, stateChangedAt: 1_000,
@@ -798,6 +800,7 @@ describe("FleetManager", () => {
       connected: true,
       send: (msg: Record<string, unknown>) => {
         if (msg.type === "fleet_inbound") delivered.push(String(msg.content));
+        return true;
       },
     } as any);
     (fm as any).cacheInstanceExecutionState("test", {
