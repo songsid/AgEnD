@@ -1774,16 +1774,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(t("not_authorized"));
           return;
         }
-        try {
-          const { execSync } = await import("node:child_process");
-          const backend = this.fleetConfig?.defaults?.backend || "claude-code";
-          const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
-          const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          await data.respond(clean || "No output");
-        } catch (err: any) {
-          const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          await data.respond(output);
-        }
+        await data.respond(await this.runBackendDoctor());
       } else if (data.command === "status") {
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
@@ -2029,16 +2020,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(t("not_authorized"));
           return;
         }
-        try {
-          const { execSync } = await import("node:child_process");
-          const backend = this.fleetConfig?.defaults?.backend || "claude-code";
-          const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
-          const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          await data.respond(clean || "No output");
-        } catch (err: any) {
-          const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          await data.respond(output);
-        }
+        await data.respond(await this.runBackendDoctor());
       } else if (data.command === "status") {
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
@@ -2242,9 +2224,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (existsSync(windowIdPath)) {
           const windowId = readFileSync(windowIdPath, "utf-8").trim();
           if (windowId) {
+            // Async with an explicit timeout: this was execSync with NO timeout at
+            // all, so a wedged tmux server blocked the whole fleet event loop
+            // indefinitely — while we were here to diagnose a lost connection.
+            // A timeout is also the correct signal: an unresponsive tmux server
+            // means we cannot verify the pane, which is treated as dead (the same
+            // conclusion the old code reached only by throwing).
             try {
-              const { execSync } = await import("node:child_process");
-              execSync(`tmux list-panes -t "${windowId}"`, { stdio: "ignore" });
+              const { execFile } = await import("node:child_process");
+              const { promisify } = await import("node:util");
+              const { getTmuxSocketName } = await import("./paths.js");
+              // Honour socket isolation: without -L this queried the user's default
+              // tmux server instead of the fleet's, so under a custom AGEND_HOME the
+              // check was meaningless (it reported every pane dead).
+              const socket = getTmuxSocketName();
+              const args = socket ? ["-L", socket, "list-panes", "-t", windowId] : ["list-panes", "-t", windowId];
+              await promisify(execFile)("tmux", args, { timeout: 5_000 });
             } catch {
               // Pane dead — respawn
               this.logger.info({ name }, "Tmux pane dead after IPC loss — respawning instance");
@@ -3641,6 +3636,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * So: try, move a bad file aside and retry once with a fresh one, and if even
    * that fails carry on without an event log.
    */
+  /**
+   * Run `agend backend doctor` for the fleet's default backend and return its
+   * cleaned output.
+   *
+   * Async on purpose: this was `execSync` with a 30s timeout, reachable by any
+   * allowlisted user through `/doctor`. While it ran, the entire fleet event loop
+   * was frozen — no IPC, no adapter, no message delivery, no health responses,
+   * and critically no WATCHDOG ping, so a slow doctor could push past
+   * WatchdogSec and have systemd SIGABRT the fleet.
+   */
+  private async runBackendDoctor(): Promise<string> {
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+    const backend = this.fleetConfig?.defaults?.backend || "claude-code";
+    try {
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      // execFile with an argv array — no shell, so the backend name cannot be
+      // interpreted as a command even if config is malformed.
+      const { stdout } = await promisify(execFile)("agend", ["backend", "doctor", backend], {
+        timeout: 30_000,
+        encoding: "utf-8",
+      });
+      return stripAnsi(stdout) || "No output";
+    } catch (err) {
+      const e = err as { stdout?: string; message?: string };
+      return stripAnsi(e.stdout ?? e.message ?? "Doctor failed");
+    }
+  }
+
   /** Drop event/activity rows older than the retention window. Best-effort. */
   private pruneEventLog(): void {
     try {
@@ -5688,10 +5712,20 @@ When users create specialized instances, suggest these configurations:
 
   private async checkForUpdates(): Promise<void> {
     try {
-      const { execSync } = await import("node:child_process");
+      // Both npm lookups are async: as execSync they froze the fleet event loop for
+      // up to 15s each, and on a beta build BOTH ran — 30s with no WATCHDOG ping,
+      // past WatchdogSec's half-interval and enough for systemd to SIGABRT the fleet
+      // for a background version check.
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execFileP = promisify(execFile);
+      const npmVersion = async (spec: string): Promise<string> => {
+        const { stdout } = await execFileP("npm", ["view", spec, "version"], { timeout: 15_000 });
+        return stdout.toString().trim();
+      };
       const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
       const currentVersion = JSON.parse(readFileSync(pkgPath, "utf-8")).version ?? "0.0.0";
-      const latest = execSync("npm view @songsid/agend version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
+      const latest = await npmVersion("@songsid/agend");
       let target = latest;
       if (currentVersion.includes("-beta")) {
         // Beta users track the @beta channel (never fall back to @latest, which is
@@ -5699,7 +5733,7 @@ When users create specialized instances, suggest these configurations:
         // of beta/latest is the newest.
         let beta = "";
         try {
-          beta = execSync("npm view @songsid/agend@beta version", { stdio: "pipe", timeout: 15_000 }).toString().trim();
+          beta = await npmVersion("@songsid/agend@beta");
         } catch { /* no beta tag */ }
         target = beta || latest;
         if (latest && this.semverGt(latest, target)) target = latest;

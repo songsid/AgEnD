@@ -699,16 +699,25 @@ export class TopicCommands {
     }
 
     await adapter.sendText(chatId, t("doctor.running"), { threadId });
+    // Async, and execFile rather than a shell string: as execSync this froze the
+    // whole fleet event loop for up to 30s — no IPC, no delivery, no WATCHDOG
+    // ping — and any allowlisted user could trigger it with /doctor.
+    const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+    const backend = this.ctx.fleetConfig?.defaults?.backend || "claude-code";
+    let output: string;
     try {
-      const { execSync } = await import("node:child_process");
-      const backend = this.ctx.fleetConfig?.defaults?.backend || "claude-code";
-      const result = execSync(`agend backend doctor ${backend}`, { timeout: 30_000, encoding: "utf-8" });
-      const clean = result.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-      await adapter.sendText(chatId, clean || "No output", { threadId });
-    } catch (err: any) {
-      const output = (err.stdout ?? err.message ?? "Doctor failed").replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-      await adapter.sendText(chatId, output, { threadId });
+      const { execFile } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const { stdout } = await promisify(execFile)("agend", ["backend", "doctor", backend], {
+        timeout: 30_000,
+        encoding: "utf-8",
+      });
+      output = stripAnsi(stdout) || "No output";
+    } catch (err) {
+      const e = err as { stdout?: string; message?: string };
+      output = stripAnsi(e.stdout ?? e.message ?? "Doctor failed");
     }
+    await adapter.sendText(chatId, output, { threadId });
   }
 
   /** Reply with redirect when message arrives in an unbound topic */
