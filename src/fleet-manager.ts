@@ -33,7 +33,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, resolveInstanceContext } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -3599,6 +3599,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async removeInstance(name: string): Promise<void> {
+    // Drop cached pane context — the map is keyed by instance name and nothing
+    // else evicted deleted entries, so it grew for the life of the process.
+    forgetInstanceContext(name);
     // Clean up schedules (scheduler is fleet-level, not lifecycle-level)
     const config = this.fleetConfig?.instances[name];
     if (this.scheduler && config?.topic_id) {
