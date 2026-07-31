@@ -399,6 +399,8 @@ export class Daemon extends EventEmitter {
   // Pending ack: react 🫡 on first transcript activity after receiving a message
   private pendingAckMessage: { chatId: string; messageId: string } | null = null;
   // Tool status tracking for channel adapter
+  /** Last activity published to the fleet manager; null when nothing is running. */
+  private currentActivity: string | null = null;
   private toolStatusMessageId: string | null = null;
   private toolStatusLines: string[] = [];
   private toolStatusDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -810,9 +812,13 @@ export class Daemon extends EventEmitter {
         ackIfPending();
         this.recordRecentEvent({ type: "tool_use", name, preview: this.summarizeTool(name, input) });
         this.recordRecentToolActivity(this.summarizeTool(name, input));
+        this.publishActivity(this.summarizeTool(name, input));
       });
       this.transcriptMonitor.on("tool_result", (name: string, _output: unknown) => {
         this.recordRecentEvent({ type: "tool_result", name });
+        // The tool finished; whatever comes next has not started yet. Better to
+        // show only elapsed time than to leave a stale "Bash: npm test" on screen.
+        this.publishActivity(null);
       });
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.logger.debug({ text: text.slice(0, 200) }, "Claude response");
@@ -1677,6 +1683,10 @@ export class Daemon extends EventEmitter {
     // observations between enqueue and paste must not clear a newer inbound.
     if (snapshot.state === "idle" && previous !== "idle") {
       this.pendingWork.recordIdle(snapshot.observedAt);
+      // The turn is over. A transcript can end on a tool_use with no matching
+      // tool_result (interrupted, crashed, cancelled), which would otherwise leave
+      // the last tool pinned to the progress line for the rest of the session.
+      this.publishActivity(null);
     }
 
     if (snapshot.state !== previous) {
@@ -1914,6 +1924,28 @@ export class Daemon extends EventEmitter {
   }
 
   // ── Tool status tracking ──────────────────────────────────────
+
+  /**
+   * Tell the fleet manager what this instance is doing right now, for the live
+   * progress line on the cancel button.
+   *
+   * Purely cosmetic — nothing decides anything from it, so it is fine that only
+   * backends with a transcript feed report at all (claude-code today). For the
+   * rest the progress line keeps showing just elapsed time.
+   *
+   * Repeats are dropped: the ticker only edits the channel message when the text
+   * changes, and a stream of identical broadcasts would defeat that.
+   */
+  private publishActivity(activity: string | null): void {
+    const next = activity && activity.trim() ? activity.trim() : null;
+    if (next === this.currentActivity) return;
+    this.currentActivity = next;
+    this.ipcServer?.broadcast({
+      type: "instance_activity",
+      instanceName: this.name,
+      activity: next,
+    });
+  }
 
   private summarizeTool(name: string, input: unknown): string {
     const inp = input as Record<string, unknown> | null;
