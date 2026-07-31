@@ -12,3 +12,6 @@ with or endorsed by OpenUsage, and uses none of its branding.
 Both upstreams are MIT-licensed; the MIT license text and copyright notices
 are preserved in their respective repositories, and this notice satisfies the
 attribution requirement for the ported portions.
+
+The Kiro (Amazon Q Developer) provider is original work for this project —
+OpenUsage has no Kiro provider — first published in ai-usage-board.
