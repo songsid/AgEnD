@@ -14,7 +14,6 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import { ToolTracker } from "./channel/tool-tracker.js";
 import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, StartupDialog } from "./backend/types.js";
 import { shellQuote } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
@@ -51,8 +50,6 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
-/** @deprecated State detection is event-driven; this now aliases the safety sweep. */
-export const DEFAULT_STATE_POLL_INTERVAL_MS = DEFAULT_STATE_SAFETY_SWEEP_MS;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
 /** Minimum gap between "health check is failing" notifications for one instance. */
@@ -363,7 +360,6 @@ export class Daemon extends EventEmitter {
   private ipcServer: IpcServer | null = null;
   private messageBus: MessageBus;
   private transcriptMonitor: TranscriptMonitor | null = null;
-  private toolTracker: ToolTracker | null = null;
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
@@ -587,8 +583,6 @@ export class Daemon extends EventEmitter {
       let key: string | undefined;
       if ((type === "fleet_schedule_response" || type === "fleet_outbound_response" || type === "fleet_decision_response" || type === "fleet_task_response" || type === "fleet_display_name_response" || type === "fleet_description_response") && msg.fleetRequestId) {
         key = String(msg.fleetRequestId);
-      } else if (type === "fleet_outbound_response" && msg.requestId != null) {
-        key = `fleet_out_${msg.requestId}`;
       }
       if (key && this.pendingIpcRequests.has(key)) {
         const handler = this.pendingIpcRequests.get(key)!;
@@ -765,30 +759,30 @@ export class Daemon extends EventEmitter {
       this.transcriptMonitor.on("tool_use", (name: string, input: unknown) => {
         this.logger.debug({ tool: name }, "Tool use");
         ackIfPending();
-        this.hangDetector?.recordActivity();
         this.recordRecentEvent({ type: "tool_use", name, preview: this.summarizeTool(name, input) });
         this.recordRecentToolActivity(this.summarizeTool(name, input));
       });
       this.transcriptMonitor.on("tool_result", (name: string, _output: unknown) => {
-        this.hangDetector?.recordActivity();
         this.recordRecentEvent({ type: "tool_result", name });
       });
       this.transcriptMonitor.on("assistant_text", (text: string) => {
         this.logger.debug({ text: text.slice(0, 200) }, "Claude response");
         ackIfPending();
-        this.hangDetector?.recordActivity();
         this.recordRecentEvent({ type: "assistant_text", preview: text.slice(0, 100) });
       });
       this.transcriptMonitor.startPolling();
 
-      // HangDetector remains the fleet-manager notification event bridge. Its
-      // legacy silence timer is intentionally not started: pane state transitions
-      // below are now the sole source of hang events.
+      // HangDetector is the notification bridge to the fleet manager; pane state
+      // transitions below are the sole source of hang events (see hang-detector.ts).
+      // `hang_detector.enabled: false` opts out of the notification entirely.
+      // NOTE: `hang_detector.timeout_minutes` is NOT read here — the stuck timeout
+      // the pane monitor actually uses is resolved separately below. The two have
+      // long been separate; documented rather than silently ignored.
       const hangConfig = (this.config as InstanceConfig & {
         hang_detector?: { enabled?: boolean; timeout_minutes?: number };
       }).hang_detector;
       if (hangConfig?.enabled !== false) {
-        this.hangDetector = new HangDetector(hangConfig?.timeout_minutes ?? 10);
+        this.hangDetector = new HangDetector();
       }
 
       // 8. Context guardian
@@ -798,7 +792,6 @@ export class Daemon extends EventEmitter {
 
       this.guardian.on("status_update", () => {
         this.saveSessionId();
-        this.hangDetector?.recordStatuslineUpdate();
       });
       // Context rotation removed: all CLI backends have built-in auto-compact.
       // Crash recovery (health check + respawn with snapshot) is retained below.
@@ -1414,7 +1407,6 @@ export class Daemon extends EventEmitter {
     this.freezeRuntimeMonitors();
     if (this.toolStatusDebounce) { clearTimeout(this.toolStatusDebounce); this.toolStatusDebounce = null; }
     this.pendingIpcRequests.clear();
-    this.hangDetector?.stop();
     if (this.adapter) await this.adapter.stop();
 
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
@@ -1921,7 +1913,6 @@ export class Daemon extends EventEmitter {
       writeFileSync(join(this.instanceDir, "prev-instructions"), this.pendingInstructionsUpdate);
       this.pendingInstructionsUpdate = undefined;
     }
-    this.hangDetector?.recordInbound();
     this.pendingWork.recordInbound();
     // v3: record user messages for rotation snapshot
     this.recordRecentUserMessage(content, meta);
