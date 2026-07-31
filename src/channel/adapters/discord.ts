@@ -9,6 +9,7 @@ import { createWriteStream } from "node:fs";
 import {
   Client,
   GatewayIntentBits,
+  Partials,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -18,6 +19,10 @@ import {
   MessageFlags,
   type TextChannel,
   type Message,
+  type MessageReaction,
+  type PartialMessageReaction,
+  type User,
+  type PartialUser,
   type Interaction,
   type ChatInputCommandInteraction,
 } from "discord.js";
@@ -95,7 +100,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
+        // Required to receive messageReactionAdd/Remove at all.
+        GatewayIntentBits.GuildMessageReactions,
       ],
+      // Reactions on messages that are not in the cache — which is every message
+      // sent before the current process started, i.e. the common case after any
+      // restart — arrive as PARTIAL objects. Without these, discord.js drops those
+      // events entirely and reactions appear to work only on very recent messages.
+      partials: [Partials.Message, Partials.Reaction, Partials.User],
     });
 
     this.queue = new MessageQueue({
@@ -135,6 +147,47 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // shares the fleet process).
     this.client.on("error", (err) => console.warn(`[discord] client error: ${(err as Error)?.message ?? err}`));
     this.client.on("shardError", (err) => console.warn(`[discord] shard error: ${(err as Error)?.message ?? err}`));
+
+    // Reactions on the bot's messages, as inbound events (#408). Both add and remove
+    // are reported so an agent can see an approval being withdrawn.
+    const onReaction = async (
+      reaction: MessageReaction | PartialMessageReaction,
+      user: User | PartialUser,
+      action: "add" | "remove",
+    ): Promise<void> => {
+      try {
+        // Partial reaction — the message is not in cache, which is every message
+        // from before this process started. Fetch before reading .message.
+        if (reaction.partial) {
+          try { await reaction.fetch(); } catch { return; }
+        }
+        if (user.id === this.client.user?.id) return; // our own reaction
+        const message = reaction.message;
+        // Only reactions on OUR messages are meaningful as agent signals; a user
+        // reacting to another user's message is chatter.
+        if (message.author?.id && message.author.id !== this.client.user?.id) return;
+        if (message.guildId && message.guildId !== this.guildId && !this.openChannels.has(message.channelId)) return;
+
+        this.emit("reaction", {
+          source: "discord",
+          adapterId: this.id,
+          chatId: this.guildId,
+          threadId: message.channelId,
+          messageId: message.id,
+          userId: user.id,
+          username: ("username" in user ? user.username : null) ?? user.id,
+          emoji: reaction.emoji.name ?? reaction.emoji.toString(),
+          action,
+          timestamp: new Date(),
+        });
+      } catch (err) {
+        // Same containment as the other handlers: a throw here would become an
+        // unhandledRejection.
+        console.warn(`[discord] reaction ${action} handler error (${(err as Error).message})`);
+      }
+    };
+    this.client.on("messageReactionAdd", (reaction, user) => void onReaction(reaction, user, "add"));
+    this.client.on("messageReactionRemove", (reaction, user) => void onReaction(reaction, user, "remove"));
 
     this.client.on("messageCreate", async (msg: Message) => {
       try {

@@ -127,6 +127,26 @@ export interface InboundMessage {
   replyToText?: string;
 }
 
+/**
+ * A user adding or removing a reaction on one of the bot's messages (#408).
+ *
+ * Emitted as an adapter `reaction` event. `messageId` is the bot's message, which is
+ * what lets an agent tell WHICH of its messages was reacted to — the inbound block
+ * renders message_id, so the agent can correlate.
+ */
+export interface InboundReaction {
+  source: string;
+  adapterId: string;
+  chatId: string;
+  threadId?: string;
+  messageId: string;
+  userId: string;
+  username: string;
+  emoji: string;
+  action: "add" | "remove";
+  timestamp: Date;
+}
+
 export interface Attachment {
   kind: "photo" | "document" | "audio" | "voice" | "video" | "sticker";
   fileId: string;

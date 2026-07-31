@@ -630,6 +630,14 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
+        // `no_wake` marks low-value signals (a non-approval reaction, #408): worth
+        // showing an instance that is already awake, never worth resuming a paused
+        // one and spending a turn on. Dropped rather than queued, so a paused
+        // instance does not surface a pile of stale emoji on its next wake.
+        if (meta?.no_wake === "true" && this.isPaused) {
+          this.logger.debug({ preview: String(msg.content).slice(0, 60) }, "Dropping no_wake message for paused instance");
+          return;
+        }
         void this.wake().then(() => {
           this.pushChannelMessage(msg.content as string, meta, targetSession);
         }).catch(err => {

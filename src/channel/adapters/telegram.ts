@@ -11,6 +11,24 @@ import { MessageQueue } from "../message-queue.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 
+/**
+ * Update types this adapter subscribes to.
+ *
+ * `message_reaction` is NOT in Telegram's default set, so it only arrives when
+ * allowed_updates is passed explicitly — and passing it freezes the set, so
+ * everything the adapter handles has to be listed. Keep in sync with the
+ * `bot.on(...)` handlers.
+ *
+ * Note: Telegram only delivers `message_reaction` when the bot is an administrator
+ * in the chat. A non-admin bot simply receives nothing, with no error.
+ */
+export const TELEGRAM_ALLOWED_UPDATES = [
+  "message",
+  "edited_message",
+  "callback_query",
+  "message_reaction",
+] as const;
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -274,6 +292,45 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     });
 
     // Handle topic closed/deleted events (for auto-unbind)
+    // Reactions on the bot's own messages (#408). Bot API 7.0+, and only delivered
+    // when the bot is an administrator in the chat.
+    this.bot.on("message_reaction", (ctx: Context) => {
+      try {
+        const update = ctx.update.message_reaction;
+        if (!update) return;
+        const user = update.user;
+        if (!user || user.is_bot) return;
+        // `new_reaction` is the full current set, not a delta: an empty array means
+        // the user removed their last reaction.
+        const current = update.new_reaction ?? [];
+        const previous = update.old_reaction ?? [];
+        const emojiOf = (r: { type: string; emoji?: string; custom_emoji_id?: string }) =>
+          r.type === "emoji" ? r.emoji ?? "" : r.custom_emoji_id ?? "";
+        const before = new Set(previous.map(emojiOf).filter(Boolean));
+        const after = new Set(current.map(emojiOf).filter(Boolean));
+
+        const chatId = String(update.chat.id);
+        const base = {
+          source: "telegram",
+          adapterId: this.id,
+          chatId,
+          threadId: undefined as string | undefined,
+          messageId: String(update.message_id),
+          userId: String(user.id),
+          username: user.username ?? user.first_name ?? String(user.id),
+          timestamp: new Date(),
+        };
+        for (const emoji of after) {
+          if (!before.has(emoji)) this.emit("reaction", { ...base, emoji, action: "add" });
+        }
+        for (const emoji of before) {
+          if (!after.has(emoji)) this.emit("reaction", { ...base, emoji, action: "remove" });
+        }
+      } catch (err) {
+        console.warn(`[telegram] message_reaction handler error (${errorMessage(err)})`);
+      }
+    });
+
     this.bot.on("message:forum_topic_closed", (ctx: Context) => {
       const chatId = String(ctx.message?.chat.id ?? "");
       const threadId = ctx.message?.message_thread_id != null
@@ -394,6 +451,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           try {
             await this.bot.start({
               drop_pending_updates: attempt === 1 && reconnects === 0,
+              // Telegram's DEFAULT allowed_updates excludes message_reaction, so
+              // reactions cannot arrive unless the set is listed explicitly. Passing
+              // this list also FREEZES the set: any update type omitted here stops
+              // arriving, silently. So it enumerates everything this adapter handles
+              // — `message` (and its sub-filters) and `callback_query` — plus
+              // message_reaction. A future handler for a new update type must be
+              // added here too, or it will never fire.
+              allowed_updates: TELEGRAM_ALLOWED_UPDATES,
               onStart: (info) => {
                 reconnects = 0; // reset on successful start
                 this.emit("started", info.username);
