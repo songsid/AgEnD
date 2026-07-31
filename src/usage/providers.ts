@@ -470,9 +470,30 @@ interface KiroToken {
   expires_at?: string;
   region?: string;
   profile_arn?: string;
+  /** IAM Identity Center portal URL — present only for Q Developer Pro logins. */
+  start_url?: string;
+  /** Social login provider (google/github/…) — present only for free-tier logins. */
+  provider?: string;
 }
 
-function readKiroToken(): { token?: KiroToken; missing?: boolean } {
+/**
+ * Which Kiro login is in use. Verified against a real kiro-cli auth store:
+ * - IAM Identity Center (Amazon Q Developer Pro) tokens carry `start_url`
+ *   (e.g. `https://d-xxxx.awsapps.com/start/`) and no social `provider`.
+ * - Free-tier social logins (Builder ID / Google / GitHub) carry `provider`
+ *   and a `profile_arn`.
+ * Q Developer Pro is a seat-licensed subscription, so the credit/usage endpoint
+ * that Builder ID reports against does not describe it.
+ */
+export type KiroAuthKind = "q-developer-pro" | "builder-id";
+
+export function kiroAuthKind(token: KiroToken): KiroAuthKind {
+  return typeof token.start_url === "string" && token.start_url.trim().length > 0
+    ? "q-developer-pro"
+    : "builder-id";
+}
+
+function readKiroToken(): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean } {
   const home = process.env.KIRO_CLI_HOME || join(homedir(), ".local", "share", "kiro-cli");
   let db: Database.Database;
   try {
@@ -483,11 +504,24 @@ function readKiroToken(): { token?: KiroToken; missing?: boolean } {
   try {
     const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key IN ('kirocli:social:token','codewhisperer:odic:token')").all() as { key: string; value: string }[];
     const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]));
-    const raw = byKey["kirocli:social:token"] ?? byKey["codewhisperer:odic:token"];
-    if (!raw) return { missing: true };
-    const token = JSON.parse(raw) as KiroToken;
-    if (!token.access_token) return { missing: true };
-    return { token };
+    const parse = (raw?: string): KiroToken | null => {
+      if (!raw) return null;
+      try {
+        const t = JSON.parse(raw) as KiroToken;
+        return t.access_token ? t : null;
+      } catch { return null; }
+    };
+    const candidates = [parse(byKey["kirocli:social:token"]), parse(byKey["codewhisperer:odic:token"])]
+      .filter((t): t is KiroToken => t !== null);
+    if (candidates.length === 0) return { missing: true };
+    // Switching login type leaves the old token behind, so "first key wins"
+    // could report a stale account. Prefer a token that has not expired, then
+    // the one that expires latest.
+    const expiry = (t: KiroToken) => (t.expires_at ? new Date(t.expires_at).getTime() : 0);
+    const now = Date.now();
+    const live = candidates.filter(t => expiry(t) > now);
+    const token = (live.length ? live : candidates).sort((a, b) => expiry(b) - expiry(a))[0];
+    return { token, kind: kiroAuthKind(token) };
   } catch {
     return { missing: true };
   } finally {
@@ -505,14 +539,27 @@ function kiroEpochIso(sec: unknown): string | null {
     : null;
 }
 
-async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const { token, missing } = readKiroToken();
+/** Exported for tests: the Q-Pro and expired paths return without any network call. */
+export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const { token, kind, missing } = readKiroToken();
   if (missing || !token) {
     return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", metrics: [] };
   }
   const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : null;
   if (expiresAt && expiresAt < Date.now()) {
-    return { status: "error", error: "Access token expired. Use `kiro-cli` once — it refreshes its own login.", metrics: [] };
+    // Not an error state: kiro-cli refreshes its own login on next use, and the
+    // panel showing a red failure for a routine token rollover is just noise.
+    return { status: "no-credentials", hint: "Sign-in needed — run `kiro-cli` once and it refreshes itself.", metrics: [] };
+  }
+  if (kind === "q-developer-pro") {
+    // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
+    // buckets, not this, so there is nothing to meter and no call to make.
+    return {
+      status: "ok",
+      plan: "Q Developer Pro",
+      hint: "Subscription — no credit usage to report.",
+      metrics: [],
+    };
   }
 
   const region = token.region
