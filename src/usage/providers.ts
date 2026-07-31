@@ -21,6 +21,7 @@
 import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import Database from "better-sqlite3";
 
 export interface UsageMetric {
   label: string;
@@ -456,12 +457,163 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   return { status: "ok", plan, metrics };
 }
 
+// ── Kiro (Amazon Q Developer) ────────────────────────────────────────────────
+// Original research, no OpenUsage upstream: the Kiro CLI stores its login in
+// data.sqlite3 `auth_kv` (social or Identity Center token) and usage rides on
+// the CodeWhisperer GetUsageLimits API — the exact call the CLI itself makes.
+// Read-only: the CLI refreshes its own tokens.
+
+const KIRO_TARGET = "AmazonCodeWhispererService.GetUsageLimits";
+
+interface KiroToken {
+  access_token?: string;
+  expires_at?: string;
+  region?: string;
+  profile_arn?: string;
+}
+
+function readKiroToken(): { token?: KiroToken; missing?: boolean } {
+  const home = process.env.KIRO_CLI_HOME || join(homedir(), ".local", "share", "kiro-cli");
+  let db: Database.Database;
+  try {
+    db = new Database(join(home, "data.sqlite3"), { readonly: true, fileMustExist: true });
+  } catch {
+    return { missing: true };
+  }
+  try {
+    const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key IN ('kirocli:social:token','codewhisperer:odic:token')").all() as { key: string; value: string }[];
+    const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    const raw = byKey["kirocli:social:token"] ?? byKey["codewhisperer:odic:token"];
+    if (!raw) return { missing: true };
+    const token = JSON.parse(raw) as KiroToken;
+    if (!token.access_token) return { missing: true };
+    return { token };
+  } catch {
+    return { missing: true };
+  } finally {
+    try { db.close(); } catch { /* best-effort */ }
+  }
+}
+
+function kiroTitleCase(s: string): string {
+  return s.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+}
+
+function kiroEpochIso(sec: unknown): string | null {
+  return typeof sec === "number" && Number.isFinite(sec) && sec > 0
+    ? new Date(sec * 1000).toISOString()
+    : null;
+}
+
+async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const { token, missing } = readKiroToken();
+  if (missing || !token) {
+    return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", metrics: [] };
+  }
+  const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : null;
+  if (expiresAt && expiresAt < Date.now()) {
+    return { status: "error", error: "Access token expired. Use `kiro-cli` once — it refreshes its own login.", metrics: [] };
+  }
+
+  const region = token.region
+    || (typeof token.profile_arn === "string" ? token.profile_arn.split(":")[3] : "")
+    || "us-east-1";
+
+  let res: Response;
+  try {
+    res = await fetch(`https://codewhisperer.${region}.amazonaws.com/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-amz-json-1.0",
+        "X-Amz-Target": KIRO_TARGET,
+        Authorization: `Bearer ${token.access_token}`,
+      },
+      body: JSON.stringify(token.profile_arn ? { profileArn: token.profile_arn } : {}),
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    return { status: "error", error: `Could not reach codewhisperer.${region}.amazonaws.com.`, metrics: [] };
+  }
+  if (res.status === 401 || res.status === 403) {
+    return { status: "error", error: "Token rejected. Use `kiro-cli` once to refresh the login.", metrics: [] };
+  }
+  if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, metrics: [] };
+
+  interface KiroBreakdown {
+    displayName?: string; displayNamePlural?: string;
+    currentUsage?: number; currentUsageWithPrecision?: number;
+    usageLimit?: number; usageLimitWithPrecision?: number;
+    currentOverages?: number; currentOveragesWithPrecision?: number;
+    overageCharges?: number; nextDateReset?: number;
+    bonuses?: { status?: string; currentUsage?: number; usageLimit?: number; expiresAt?: number }[];
+  }
+  let body: {
+    nextDateReset?: number;
+    subscriptionInfo?: { subscriptionTitle?: string };
+    overageConfiguration?: { overageStatus?: string };
+    usageBreakdownList?: KiroBreakdown[];
+  };
+  try { body = await res.json() as typeof body; } catch {
+    return { status: "error", error: "Invalid response from GetUsageLimits.", metrics: [] };
+  }
+
+  const plan = typeof body.subscriptionInfo?.subscriptionTitle === "string"
+    ? kiroTitleCase(body.subscriptionInfo.subscriptionTitle)
+    : null;
+
+  const metrics: UsageMetric[] = [];
+  for (const ub of Array.isArray(body.usageBreakdownList) ? body.usageBreakdownList : []) {
+    const unit = (ub.displayNamePlural || ub.displayName || "credits").toLowerCase();
+    const used = ub.currentUsageWithPrecision ?? ub.currentUsage ?? null;
+    const limit = ub.usageLimitWithPrecision ?? ub.usageLimit ?? null;
+    if (used !== null && limit !== null && limit > 0) {
+      metrics.push({
+        label: `${ub.displayNamePlural || ub.displayName || "Usage"} (monthly)`,
+        type: "percent",
+        used: Math.min(100, (used / limit) * 100),
+        resetsAt: kiroEpochIso(ub.nextDateReset ?? body.nextDateReset),
+        note: `${+used.toFixed(1)} / ${+limit.toFixed(0)} ${unit}`,
+      });
+    }
+
+    // Bonus / gift credits (redeemed promo codes), aggregated across active codes.
+    const bonuses = (ub.bonuses ?? []).filter(b => b?.status === "ACTIVE");
+    if (bonuses.length) {
+      const bUsed = bonuses.reduce((s, b) => s + (b.currentUsage ?? 0), 0);
+      const bLimit = bonuses.reduce((s, b) => s + (b.usageLimit ?? 0), 0);
+      const expiries = bonuses.map(b => b.expiresAt).filter((e): e is number => typeof e === "number" && e > 0);
+      if (bLimit > 0) {
+        metrics.push({
+          label: "Bonus credits",
+          type: "percent",
+          used: Math.min(100, (bUsed / bLimit) * 100),
+          resetsAt: expiries.length ? kiroEpochIso(Math.min(...expiries)) : null,
+          note: `${+bUsed.toFixed(1)} / ${+bLimit.toFixed(0)} ${unit} · ${bonuses.length} codes`,
+        });
+      }
+    }
+
+    const overages = ub.currentOveragesWithPrecision ?? ub.currentOverages ?? 0;
+    if (overages > 0 && typeof ub.overageCharges === "number") {
+      metrics.push({ label: "Overage charges", type: "dollars", used: ub.overageCharges });
+    }
+  }
+
+  const overageStatus = body.overageConfiguration?.overageStatus;
+  if (typeof overageStatus === "string") {
+    metrics.push({ label: "Pay-per-use", type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
+  }
+
+  return { status: "ok", plan, metrics };
+}
+
 // ── Registry ─────────────────────────────────────────────────────────────────
 
 const PROVIDERS: { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> }[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
   { id: "grok", name: "Grok", fetch: fetchGrokUsage },
+  { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
 ];
 
 /** Fetch every provider in parallel. Providers without local credentials are
