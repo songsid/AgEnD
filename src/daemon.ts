@@ -54,6 +54,9 @@ export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 export const DEFAULT_STATE_POLL_INTERVAL_MS = DEFAULT_STATE_SAFETY_SWEEP_MS;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
+/** Minimum gap between "health check is failing" notifications for one instance. */
+const HEALTH_ERROR_NOTIFY_INTERVAL_MS = 10 * 60_000;
+
 /**
  * Whether two working directories belong to the same project, so a fleet-scoped
  * decision recorded in one reaches the other. Covers the worktree/checkout
@@ -385,6 +388,7 @@ export class Daemon extends EventEmitter {
   private lastSpawnAt = 0;
   private crashTimestamps: number[] = [];
   private healthCheckPaused = false;
+  private lastHealthErrorNotifyAt = 0;
   /** CLI pane availability, independent from the daemon process and tri-state. */
   private processStatus: "running" | "crashed" | "stopped" = "running";
   private spawning = false;
@@ -865,262 +869,285 @@ export class Daemon extends EventEmitter {
       this.healthCheckTimer = setTimeout(async () => {
         this.healthCheckTimer = null;
         if (this.runtimeMonitorsFrozen) return;
-        // Instance directory removed externally (e.g. `rm -rf ~/.agend/instances/<name>`).
-        // Stop the loop permanently — otherwise every tick triggers a respawn, whose
-        // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
-        // spamming errors every ~30s forever.
-        if (!existsSync(this.instanceDir)) {
-          this.logger.warn({ instanceDir: this.instanceDir }, "Instance directory missing — stopping health check");
-          this.healthCheckPaused = true;
-          this.healthCheckTimer = null;
-          return;
-        }
-        if (!this.tmux || this.spawning || this.healthCheckPaused || Daemon.tmuxServerPaused) {
-          scheduleNext();
-          return;
-        }
-        // The CLI owns the MCP server process, so the daemon can only observe it.
-        this.checkMcpServerAlive();
-
-        // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
-        const cliLabel = this.backend?.binaryName ?? "CLI";
-
-        let paneStatus = await this.tmux.getPaneStatus();
-        // Auto-pause intentionally exits the pane process. A health tick that
-        // began just before pause must not classify that exit as a crash.
-        if (this.isPaused || this.pauseWakeState === "waking") {
-          scheduleNext();
-          return;
-        }
-        if (paneStatus?.alive) {
-          // Instance output.log is fed by tmux pipe-pane and was previously never
-          // rotated (only fleet.log / daemon.log were). Cap growth every tick.
-          if (!this.config.lightweight) {
-            rotateLogIfNeeded(join(this.instanceDir, "output.log"));
+        // The whole tick is guarded: an unguarded throw in here (a tmux hiccup,
+        // ENOSPC on the crash-history write) became an unhandled rejection, which
+        // the CLI turned into stopAll() + exit(1) for the ENTIRE fleet, and it also
+        // ended this instance's health loop because scheduleNext() sat after the
+        // throwing code. Catch, log, and keep checking.
+        try {
+          // Instance directory removed externally (e.g. `rm -rf ~/.agend/instances/<name>`).
+          // Stop the loop permanently — otherwise every tick triggers a respawn, whose
+          // writeRotationSnapshot fails with ENOENT and gets caught as "Failed to respawn",
+          // spamming errors every ~30s forever.
+          if (!existsSync(this.instanceDir)) {
+            this.logger.warn({ instanceDir: this.instanceDir }, "Instance directory missing — stopping health check");
+            this.healthCheckPaused = true;
+            this.healthCheckTimer = null;
+            return;
           }
-          scheduleNext();
-          return;
-        }
-
-        // A null status is ambiguous: it can be a transient `tmux list-panes`
-        // failure (e.g. tmux busy during a fleet-restart storm) rather than a
-        // real exit. Re-confirm once after a short delay before treating it as
-        // a crash. A non-null {alive:false} is a definite dead pane (real exit)
-        // and needs no recheck.
-        if (paneStatus === null) {
-          await new Promise(r => setTimeout(r, 1500));
-          paneStatus = await this.tmux.getPaneStatus();
-          if (paneStatus?.alive) {
-            this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
+          if (!this.tmux || this.spawning || this.healthCheckPaused || Daemon.tmuxServerPaused) {
             scheduleNext();
             return;
           }
-        }
+          // The CLI owns the MCP server process, so the daemon can only observe it.
+          this.checkMcpServerAlive();
 
-        // paneStatus === null → window gone entirely (e.g. tmux server crash)
-        // paneStatus.alive === false → pane dead, exit code available
-        const exitCode = paneStatus?.exitCode;
-        this.logger.debug({ exitCode }, `[health] pane exited with code: ${exitCode}`);
+          // Human-readable backend label for logs (e.g. "claude", "kiro-cli")
+          const cliLabel = this.backend?.binaryName ?? "CLI";
 
-        // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
-        if (paneStatus && exitCode === 0) {
-          this.setProcessStatus("stopped");
-          this.logger.info("CLI exited normally (code 0) — pausing health check");
-          await this.tmux.killWindow();
-          this.healthCheckPaused = true;
-          return;
-        }
-        this.setProcessStatus("crashed");
+          let paneStatus = await this.tmux.getPaneStatus();
+          // Auto-pause intentionally exits the pane process. A health tick that
+          // began just before pause must not classify that exit as a crash.
+          if (this.isPaused || this.pauseWakeState === "waking") {
+            scheduleNext();
+            return;
+          }
+          if (paneStatus?.alive) {
+            // Instance output.log is fed by tmux pipe-pane and was previously never
+            // rotated (only fleet.log / daemon.log were). Cap growth every tick.
+            if (!this.config.lightweight) {
+              rotateLogIfNeeded(join(this.instanceDir, "output.log"));
+            }
+            scheduleNext();
+            return;
+          }
 
-        // Distinguish tmux server crash from single window crash.
-        // nullReason records *why* getPaneStatus returned null (for diagnosing
-        // whether this was a real window loss or a transient query failure).
-        let crashType: "server" | "window" = "window";
-        let nullReason: string | undefined;
-        if (!paneStatus) {
-          const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
-          if (!serverAlive) {
-            crashType = "server";
-            nullReason = "server_gone";
-            this.logger.error(`tmux server died — all ${cliLabel} windows lost`);
-
-            // Fleet-level circuit breaker: pause all instances on repeated tmux server crashes
-            Daemon.tmuxServerCrashTimestamps.push(Date.now());
-            const cutoff = Date.now() - 5 * 60_000;
-            Daemon.tmuxServerCrashTimestamps = Daemon.tmuxServerCrashTimestamps.filter(t => t > cutoff);
-            if (Daemon.tmuxServerCrashTimestamps.length >= 2 && !Daemon.tmuxServerPaused) {
-              Daemon.tmuxServerPaused = true;
-              this.logger.error("Fleet-level tmux server circuit breaker triggered — pausing all respawns for 30s");
-              this.emit("tmux_server_crash", this.name);
-              if (!Daemon.tmuxServerRecoveryTimer) {
-                Daemon.tmuxServerRecoveryTimer = setTimeout(() => {
-                  Daemon.tmuxServerRecoveryTimer = null;
-                  Daemon.tmuxServerPaused = false;
-                }, 30_000);
-              }
+          // A null status is ambiguous: it can be a transient `tmux list-panes`
+          // failure (e.g. tmux busy during a fleet-restart storm) rather than a
+          // real exit. Re-confirm once after a short delay before treating it as
+          // a crash. A non-null {alive:false} is a definite dead pane (real exit)
+          // and needs no recheck.
+          if (paneStatus === null) {
+            await new Promise(r => setTimeout(r, 1500));
+            paneStatus = await this.tmux.getPaneStatus();
+            if (paneStatus?.alive) {
+              this.logger.debug(`[health] ${cliLabel} pane reported gone then alive on recheck — transient query failure, ignoring`);
               scheduleNext();
               return;
             }
+          }
 
-            await new Promise(r => setTimeout(r, 2_000)); // let session stabilize
+          // paneStatus === null → window gone entirely (e.g. tmux server crash)
+          // paneStatus.alive === false → pane dead, exit code available
+          const exitCode = paneStatus?.exitCode;
+          this.logger.debug({ exitCode }, `[health] pane exited with code: ${exitCode}`);
+
+          // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
+          if (paneStatus && exitCode === 0) {
+            this.setProcessStatus("stopped");
+            this.logger.info("CLI exited normally (code 0) — pausing health check");
+            await this.tmux.killWindow();
+            this.healthCheckPaused = true;
+            return;
+          }
+          this.setProcessStatus("crashed");
+
+          // Distinguish tmux server crash from single window crash.
+          // nullReason records *why* getPaneStatus returned null (for diagnosing
+          // whether this was a real window loss or a transient query failure).
+          let crashType: "server" | "window" = "window";
+          let nullReason: string | undefined;
+          if (!paneStatus) {
+            const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
+            if (!serverAlive) {
+              crashType = "server";
+              nullReason = "server_gone";
+              this.logger.error(`tmux server died — all ${cliLabel} windows lost`);
+
+              // Fleet-level circuit breaker: pause all instances on repeated tmux server crashes
+              Daemon.tmuxServerCrashTimestamps.push(Date.now());
+              const cutoff = Date.now() - 5 * 60_000;
+              Daemon.tmuxServerCrashTimestamps = Daemon.tmuxServerCrashTimestamps.filter(t => t > cutoff);
+              if (Daemon.tmuxServerCrashTimestamps.length >= 2 && !Daemon.tmuxServerPaused) {
+                Daemon.tmuxServerPaused = true;
+                this.logger.error("Fleet-level tmux server circuit breaker triggered — pausing all respawns for 30s");
+                this.emit("tmux_server_crash", this.name);
+                if (!Daemon.tmuxServerRecoveryTimer) {
+                  Daemon.tmuxServerRecoveryTimer = setTimeout(() => {
+                    Daemon.tmuxServerRecoveryTimer = null;
+                    Daemon.tmuxServerPaused = false;
+                  }, 30_000);
+                }
+                scheduleNext();
+                return;
+              }
+
+              await new Promise(r => setTimeout(r, 2_000)); // let session stabilize
+            } else {
+              // null but server alive: window-level disappearance. Probe whether
+              // the window truly no longer exists vs a transient query glitch.
+              nullReason = "no_window";
+              try {
+                const windows = await TmuxManager.listWindows(this.tmuxSessionName);
+                if (windows.some(w => w.name === this.name)) nullReason = "window_present_query_glitch";
+              } catch { nullReason = "query_error"; }
+              this.logger.warn({ exitCode, nullReason }, `${cliLabel} window not found (tmux server alive)`);
+            }
           } else {
-            // null but server alive: window-level disappearance. Probe whether
-            // the window truly no longer exists vs a transient query glitch.
-            nullReason = "no_window";
+            this.logger.warn({ exitCode }, `${cliLabel} process exited`);
+          }
+
+          // Capture last output before killing. Best-effort even when the pane is
+          // gone (paneStatus null) — gives the crash record something to diagnose
+          // from instead of an empty lastOutput.
+          let lastOutput: string | undefined;
+          try {
+            const raw = await this.tmux.capturePaneWithHistory(50);
+            // Strip ANSI escape codes for readability
+            const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+            lastOutput = cleaned.trimEnd() || undefined;
+          } catch { /* best effort — pane may already be gone */ }
+
+          // Kill the dead window (remain-on-exit keeps it around) before respawn
+          if (paneStatus) {
+            await this.tmux.killWindow();
+          }
+
+          // Detect claude-code background session conflict — recover without counting as crash
+          if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+            if (!this.backgroundSessionRecoveryAttempted) {
+              this.backgroundSessionRecoveryAttempted = true;
+              this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
+              const sidFile = join(this.instanceDir, "session-id");
+              try { unlinkSync(sidFile); } catch {}
+              this.skipResume = true;
+              await new Promise(r => setTimeout(r, 2_000));
+              try {
+                await this.spawnClaudeWindow();
+                this.setProcessStatus("running");
+                this.logger.info("Recovered from background session conflict");
+                this.emit("crash_respawn", this.name);
+              } catch (err) {
+                this.logger.error({ err: (err as Error).message }, "Recovery from background session conflict failed");
+              }
+              return; // Don't count as crash
+            }
+            // Already attempted recovery — fall through to normal crash handling
+          }
+
+          // Detect a --continue/--resume failure (no conversation to resume). The
+          // session-id file persists across the crash, so a blind respawn would add
+          // --continue again and crash in the same way → loop. Clear the session id
+          // and skip resume so the next spawn starts fresh. (skipResume also stops
+          // saveSessionId below from resurrecting the id from statusline.json.)
+          if (lastOutput && /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)|--continue/i.test(lastOutput)) {
+            this.logger.warn("Detected --continue/resume failure — clearing session-id; next spawn starts fresh");
+            try { unlinkSync(join(this.instanceDir, "session-id")); } catch { /* may not exist */ }
+            this.skipResume = true;
+          }
+
+          // Append to crash history
+          this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
+
+          if (max_retries <= 0) {
+            this.healthCheckPaused = true;
+            this.logger.warn(`${cliLabel} window died — automatic restart is disabled`);
+            return;
+          }
+
+          // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
+          this.crashTimestamps.push(Date.now());
+          const crashWindowMs = 5 * 60_000;
+          this.crashTimestamps = this.crashTimestamps.filter(t => t > Date.now() - crashWindowMs);
+
+          if (this.crashTimestamps.length >= 3) {
+            this.healthCheckPaused = true;
+            this.logger.error(
+              { crashesInWindow: this.crashTimestamps.length },
+              "3+ crashes in 5 minutes — pausing respawn",
+            );
+            // P1: Persist crash state so next process restart skips resume
+            try {
+              writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
+                crashesInWindow: this.crashTimestamps.length,
+                lastCrashAt: Date.now(),
+                resumeDisabled: true,
+              }));
+            } catch { /* best effort */ }
+            this.emit("crash_loop", this.name);
+            return; // don't schedule next — paused
+          }
+
+          // Reset crash count if enough time has passed
+          if (reset_after > 0 && Date.now() - this.lastCrashAt > reset_after) {
+            this.crashCount = 0;
+          }
+
+          this.crashCount++;
+          this.lastCrashAt = Date.now();
+
+          if (this.crashCount > max_retries) {
+            this.logger.error({ crashCount: this.crashCount, maxRetries: max_retries }, "Max crash retries exceeded — not respawning");
+            return; // don't schedule next — given up
+          }
+
+          // Calculate backoff delay
+          const delay = backoff === "exponential"
+            ? Math.min(1000 * Math.pow(2, this.crashCount - 1), 60_000)
+            : 1000 * this.crashCount;
+
+          this.logger.warn({ crashCount: this.crashCount, delay }, `${cliLabel} window died — respawning after backoff`);
+
+          await new Promise(r => setTimeout(r, delay));
+
+          try {
+            this.saveSessionId();
+            this.transcriptMonitor?.resetOffset();
+            // Kill orphan MCP server from the crashed CLI session.
+            // MCP server writes its PID to channel.mcp.pid on startup.
+            try {
+              const pidFile = join(this.instanceDir, "channel.mcp.pid");
+              const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
+              process.kill(pid, "SIGTERM");
+              this.logger.info({ pid }, "Killed orphan MCP server");
+            } catch { /* no pid file or process already dead */ }
+            // Kill any same-name windows before respawn to prevent orphans.
+            // Wrapped in try-catch: if tmux server is dead, listWindows throws —
+            // must not block spawnClaudeWindow (which calls ensureSession).
             try {
               const windows = await TmuxManager.listWindows(this.tmuxSessionName);
-              if (windows.some(w => w.name === this.name)) nullReason = "window_present_query_glitch";
-            } catch { nullReason = "query_error"; }
-            this.logger.warn({ exitCode, nullReason }, `${cliLabel} window not found (tmux server alive)`);
-          }
-        } else {
-          this.logger.warn({ exitCode }, `${cliLabel} process exited`);
-        }
-
-        // Capture last output before killing. Best-effort even when the pane is
-        // gone (paneStatus null) — gives the crash record something to diagnose
-        // from instead of an empty lastOutput.
-        let lastOutput: string | undefined;
-        try {
-          const raw = await this.tmux.capturePaneWithHistory(50);
-          // Strip ANSI escape codes for readability
-          const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          lastOutput = cleaned.trimEnd() || undefined;
-        } catch { /* best effort — pane may already be gone */ }
-
-        // Kill the dead window (remain-on-exit keeps it around) before respawn
-        if (paneStatus) {
-          await this.tmux.killWindow();
-        }
-
-        // Detect claude-code background session conflict — recover without counting as crash
-        if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
-          if (!this.backgroundSessionRecoveryAttempted) {
-            this.backgroundSessionRecoveryAttempted = true;
-            this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
-            const sidFile = join(this.instanceDir, "session-id");
-            try { unlinkSync(sidFile); } catch {}
-            this.skipResume = true;
-            await new Promise(r => setTimeout(r, 2_000));
-            try {
-              await this.spawnClaudeWindow();
-              this.setProcessStatus("running");
-              this.logger.info("Recovered from background session conflict");
-              this.emit("crash_respawn", this.name);
-            } catch (err) {
-              this.logger.error({ err: (err as Error).message }, "Recovery from background session conflict failed");
+              for (const w of windows) {
+                if (w.name === this.name) {
+                  const tm = new TmuxManager(this.tmuxSessionName, w.id);
+                  await tm.killWindow();
+                }
+              }
+            } catch { /* tmux server may be dead — ensureSession in trySpawn will recover */ }
+            // Write snapshot before spawn — consumed only if resume fails
+            this.writeRotationSnapshot("crash");
+            // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
+            const resumed = await this.spawnClaudeWindow();
+            if (!resumed) {
+              // Resume failed → fresh session → inject snapshot for context
+              await this.injectSnapshotMessage();
+            } else {
+              // Clean up stale snapshot — resume restored full context
+              try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
             }
-            return; // Don't count as crash
+            this.setProcessStatus("running");
+            this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
+            this.emit("crash_respawn", this.name);
+          } catch (err) {
+            this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
           }
-          // Already attempted recovery — fall through to normal crash handling
-        }
 
-        // Detect a --continue/--resume failure (no conversation to resume). The
-        // session-id file persists across the crash, so a blind respawn would add
-        // --continue again and crash in the same way → loop. Clear the session id
-        // and skip resume so the next spawn starts fresh. (skipResume also stops
-        // saveSessionId below from resurrecting the id from statusline.json.)
-        if (lastOutput && /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)|--continue/i.test(lastOutput)) {
-          this.logger.warn("Detected --continue/resume failure — clearing session-id; next spawn starts fresh");
-          try { unlinkSync(join(this.instanceDir, "session-id")); } catch { /* may not exist */ }
-          this.skipResume = true;
-        }
-
-        // Append to crash history
-        this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
-
-        if (max_retries <= 0) {
-          this.healthCheckPaused = true;
-          this.logger.warn(`${cliLabel} window died — automatic restart is disabled`);
+        } catch (err) {
+          this.logger.error({ err }, "Health check tick failed — continuing");
+          // Surface it to the operator, not just the log — a health check that
+          // keeps throwing means this instance is no longer being supervised.
+          // Throttled: the tick repeats every ~30s, so an unnotified persistent
+          // fault would otherwise post twice a minute forever.
+          const now = Date.now();
+          if (now - this.lastHealthErrorNotifyAt > HEALTH_ERROR_NOTIFY_INTERVAL_MS) {
+            this.lastHealthErrorNotifyAt = now;
+            this.emit("health_check_error", {
+              name: this.name,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+          scheduleNext();
           return;
         }
-
-        // Detect rapid crash: sliding window — 3+ crashes in 5 minutes
-        this.crashTimestamps.push(Date.now());
-        const crashWindowMs = 5 * 60_000;
-        this.crashTimestamps = this.crashTimestamps.filter(t => t > Date.now() - crashWindowMs);
-
-        if (this.crashTimestamps.length >= 3) {
-          this.healthCheckPaused = true;
-          this.logger.error(
-            { crashesInWindow: this.crashTimestamps.length },
-            "3+ crashes in 5 minutes — pausing respawn",
-          );
-          // P1: Persist crash state so next process restart skips resume
-          try {
-            writeFileSync(join(this.instanceDir, "crash-state.json"), JSON.stringify({
-              crashesInWindow: this.crashTimestamps.length,
-              lastCrashAt: Date.now(),
-              resumeDisabled: true,
-            }));
-          } catch { /* best effort */ }
-          this.emit("crash_loop", this.name);
-          return; // don't schedule next — paused
-        }
-
-        // Reset crash count if enough time has passed
-        if (reset_after > 0 && Date.now() - this.lastCrashAt > reset_after) {
-          this.crashCount = 0;
-        }
-
-        this.crashCount++;
-        this.lastCrashAt = Date.now();
-
-        if (this.crashCount > max_retries) {
-          this.logger.error({ crashCount: this.crashCount, maxRetries: max_retries }, "Max crash retries exceeded — not respawning");
-          return; // don't schedule next — given up
-        }
-
-        // Calculate backoff delay
-        const delay = backoff === "exponential"
-          ? Math.min(1000 * Math.pow(2, this.crashCount - 1), 60_000)
-          : 1000 * this.crashCount;
-
-        this.logger.warn({ crashCount: this.crashCount, delay }, `${cliLabel} window died — respawning after backoff`);
-
-        await new Promise(r => setTimeout(r, delay));
-
-        try {
-          this.saveSessionId();
-          this.transcriptMonitor?.resetOffset();
-          // Kill orphan MCP server from the crashed CLI session.
-          // MCP server writes its PID to channel.mcp.pid on startup.
-          try {
-            const pidFile = join(this.instanceDir, "channel.mcp.pid");
-            const pid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
-            process.kill(pid, "SIGTERM");
-            this.logger.info({ pid }, "Killed orphan MCP server");
-          } catch { /* no pid file or process already dead */ }
-          // Kill any same-name windows before respawn to prevent orphans.
-          // Wrapped in try-catch: if tmux server is dead, listWindows throws —
-          // must not block spawnClaudeWindow (which calls ensureSession).
-          try {
-            const windows = await TmuxManager.listWindows(this.tmuxSessionName);
-            for (const w of windows) {
-              if (w.name === this.name) {
-                const tm = new TmuxManager(this.tmuxSessionName, w.id);
-                await tm.killWindow();
-              }
-            }
-          } catch { /* tmux server may be dead — ensureSession in trySpawn will recover */ }
-          // Write snapshot before spawn — consumed only if resume fails
-          this.writeRotationSnapshot("crash");
-          // Try --resume first; spawnClaudeWindow falls back to fresh session if resume fails
-          const resumed = await this.spawnClaudeWindow();
-          if (!resumed) {
-            // Resume failed → fresh session → inject snapshot for context
-            await this.injectSnapshotMessage();
-          } else {
-            // Clean up stale snapshot — resume restored full context
-            try { unlinkSync(join(this.instanceDir, "rotation-state.json")); } catch { /* may not exist */ }
-          }
-          this.setProcessStatus("running");
-          this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
-          this.emit("crash_respawn", this.name);
-        } catch (err) {
-          this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
-        }
-
         scheduleNext();
       }, healthCheckIntervalMs);
     };

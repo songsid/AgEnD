@@ -335,6 +335,15 @@ export class InstanceLifecycle {
       this.ctx.notifyInstanceTopic(name, t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
+    daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
+      this.ctx.logger.error({ name, message: data.message }, "Health check failing — instance supervision degraded");
+      this.ctx.notifyInstanceTopic(
+        name,
+        `⚠️ ${name}: health check is failing (\`${data.message}\`). Crash detection for this instance may be degraded — see daemon.log.`,
+      );
+    }, this.ctx.logger, `daemon.health_check_error[${name}]`));
+
     daemon.on("crash_loop", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_loop", {});
       this.ctx.logger.error({ name }, "Instance in crash loop — respawn paused");
