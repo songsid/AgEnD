@@ -44,6 +44,8 @@ export class TmuxControlClient extends EventEmitter {
   private registeredWindows = new Set<string>();    // windowIds we should re-resolve on reconnect
   private stopped = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Epoch ms until which "no output recorded" must not be read as "idle". */
+  private observationGraceUntil = 0;
   private safetySweepTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(
@@ -118,12 +120,46 @@ export class TmuxControlClient extends EventEmitter {
     }
   }
 
+  /**
+   * Forget everything we knew about panes, and remember that we have forgotten.
+   *
+   * Kept as one method so the grace can never be skipped: clearing the maps
+   * without arming it is precisely the bug this exists to prevent.
+   */
+  private resetPaneObservations(): void {
+    this.paneToWindow.clear();
+    this.lastOutputAt.clear();
+    this.observationGraceUntil = Date.now() + this.silenceMs;
+  }
+
+  /**
+   * True while a freshly (re)connected client has not had time to observe output.
+   *
+   * `connect()` drops the pane cache, so for a moment afterwards *every* pane looks
+   * like it has never produced output — including panes that are mid-generation.
+   * Reading that as "idle" is the dangerous direction: a delivery would skip its
+   * busy branch and paste straight into a working CLI, where Enter is a steering
+   * interrupt rather than a new turn.
+   *
+   * `silenceMs` is the right length because it is already this class's definition
+   * of idle: a pane that produces nothing for that long counts as idle anyway, so
+   * the grace never suppresses a state the client would otherwise have reported.
+   * An actively generating pane re-registers well inside it.
+   */
+  private inObservationGrace(): boolean {
+    return Date.now() < this.observationGraceUntil;
+  }
+
   /** Check if a window's pane has been silent for at least silenceMs */
   isIdle(windowId: string): boolean {
     const paneId = this.windowToPaneId(windowId);
-    if (!paneId) return true; // unknown window = assume idle
+    // "Unknown" means unknown, not idle — but only while that ignorance is fresh.
+    // After the grace we fall back to the old optimistic answer, because a window
+    // that is genuinely untracked (never registered, or resolve failed) must not
+    // block delivery forever.
+    if (!paneId) return !this.inObservationGrace();
     const last = this.lastOutputAt.get(paneId);
-    if (last == null) return true;
+    if (last == null) return !this.inObservationGrace();
     return Date.now() - last >= this.silenceMs;
   }
 
@@ -236,8 +272,7 @@ export class TmuxControlClient extends EventEmitter {
     // disconnect that windows churned) can leave our cached paneId →
     // windowId mapping pointing at a stale or recycled pane. Drop the
     // cache and re-resolve every registered window from the new server.
-    this.paneToWindow.clear();
-    this.lastOutputAt.clear();
+    this.resetPaneObservations();
 
     // This is an observation-only client with no real terminal geometry.
     // `ignore-size` prevents tmux's `window-size=latest` policy from treating
