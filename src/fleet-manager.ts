@@ -128,6 +128,14 @@ const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
+ * How long a delivery waits out a disconnected instance IPC before giving up.
+ *
+ * Sized for a daemon restart (socket close → respawn → CLI ready), which is the
+ * event this exists for. Past it the delivery fails loudly as it always did.
+ */
+const IPC_RECONNECT_GRACE_MS = 30_000;
+const IPC_RECONNECT_POLL_MS = 250;
+/**
  * Reactions that count as an explicit approve/reject signal, and are therefore worth
  * waking a paused instance for. Everything else is chatter: delivered only if the
  * instance is already awake, never worth a wake-up plus a full agent turn.
@@ -273,6 +281,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private cancelButtons = new Map<string, CancelButtonEntry>();
   /** instanceName → what it is doing right now, when the backend can tell us. */
   private instanceActivity = new Map<string, string>();
+  /** instanceName → tail of deliveries waiting for its IPC to come back. */
+  private ipcWaitTails = new Map<string, Promise<void>>();
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -737,10 +747,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
-    const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
-    ipc.send(payload);
+    await this.sendWhenConnected(instanceName, payload);
     this.lastDeliveryAt.set(instanceName, Date.now());
+  }
+
+  /**
+   * Hand a payload to an instance's IPC, waiting out a *transient* disconnect.
+   *
+   * A daemon that is restarting — `/restart`, crash recovery, a model switch —
+   * drops its socket for a few seconds. Any message arriving in that window used
+   * to fail instantly: the caller logged a warning, put ❌ on the user's message,
+   * and the message was gone. The user had to notice the ❌ and retype it. That is
+   * the "instance 訊息不容易掉" goal failing on the most predictable event there is.
+   *
+   * The wait is bounded. If the instance is genuinely down, this still throws and
+   * the ❌ still appears — just for a real failure rather than a restart.
+   *
+   * Ordering is preserved by serialising behind any waiter already queued for this
+   * instance, *including* when the socket happens to be up: otherwise a message
+   * arriving after the reconnect could overtake one that has been waiting for it.
+   */
+  private async sendWhenConnected(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+    const queued = this.ipcWaitTails.get(instanceName);
+    if (!queued) {
+      const ipc = this.instanceIpcClients.get(instanceName);
+      if (ipc?.connected && ipc.send(payload)) return;
+    }
+
+    const attempt = (queued ?? Promise.resolve())
+      .catch(() => { /* a previous waiter's failure must not cancel this one */ })
+      .then(() => this.sendAfterIpcReturns(instanceName, payload));
+    // The chain stores a settled-either-way promise so one failed delivery cannot
+    // wedge every later one, and so `queued` above is safe to await unguarded.
+    const tail = attempt.catch(() => {});
+    this.ipcWaitTails.set(instanceName, tail);
+    try {
+      await attempt;
+    } finally {
+      // Only the last waiter clears the chain; while a queue is still draining the
+      // map must keep pointing at it or ordering is lost.
+      if (this.ipcWaitTails.get(instanceName) === tail) {
+        this.ipcWaitTails.delete(instanceName);
+      }
+    }
+  }
+
+  /** Poll for the instance's IPC to come back, then send. Throws if it does not. */
+  private async sendAfterIpcReturns(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+    const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
+    let warned = false;
+    for (;;) {
+      // Re-read every round: a reconnect replaces the IpcClient object entirely,
+      // so a cached reference would stay dead forever.
+      const ipc = this.instanceIpcClients.get(instanceName);
+      if (ipc?.connected && ipc.send(payload)) return;
+      if (Date.now() >= deadline) {
+        throw new Error(`Instance '${instanceName}' IPC is unavailable`);
+      }
+      if (!warned) {
+        warned = true;
+        this.logger.info({ instanceName }, "Instance IPC is down — holding delivery until it reconnects");
+      }
+      await new Promise(resolve => setTimeout(resolve, IPC_RECONNECT_POLL_MS));
+    }
   }
 
   /** Single delivery facade: wake paused CLIs and serialize non-user work behind idle. */
@@ -763,9 +832,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await this.lifecycle.wake(instanceName, 30_000);
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      const ipc = this.instanceIpcClients.get(instanceName);
-      if (!ipc?.connected) throw new Error(`Instance '${instanceName}' IPC is unavailable`);
-      ipc.send(payload);
+      await this.sendWhenConnected(instanceName, payload);
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
       this.lastDeliveryAt.set(instanceName, Date.now());
