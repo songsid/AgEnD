@@ -342,6 +342,12 @@ const CONFIRM_BUSY_POLL_MS = 200;
  * hold the pane write lock along with it.
  */
 const CONFIRM_BUSY_MAX_WAIT_MS = 10_000;
+/**
+ * How long a delivery waits for an in-flight spawn. Comfortably past the default
+ * 25s startup timeout plus dialog dismissal; past it we fall back to the old
+ * behaviour rather than holding a message indefinitely.
+ */
+const SPAWN_SETTLE_MAX_WAIT_MS = 60_000;
 
 /**
  * One-shot timing gate for the first paste after a CLI reaches its ready
@@ -429,6 +435,15 @@ export class Daemon extends EventEmitter {
   /** CLI pane availability, independent from the daemon process and tri-state. */
   private processStatus: "running" | "crashed" | "stopped" = "running";
   private spawning = false;
+  /**
+   * Resolves when the in-flight spawn finishes; null when none is running.
+   *
+   * `spawning` alone can only be polled. Delivery needs to *wait*, and a boolean
+   * poll would either busy-loop or race the flag being cleared.
+   */
+  private spawnSettled: Promise<void> | null = null;
+  private resolveSpawnSettled: (() => void) | null = null;
+  private spawnDepth = 0;
   private skipResume = false;
   private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
@@ -1647,7 +1662,7 @@ export class Daemon extends EventEmitter {
     }
 
     this.pauseWakeState = "waking";
-    this.spawning = true;
+    this.beginSpawn();
     const transition = this.autoPauseController.wakeOnDeliver(async () => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -1683,7 +1698,7 @@ export class Daemon extends EventEmitter {
       this.logger.error({ err: (err as Error).message }, "Instance wake failed");
       throw err;
     } finally {
-      this.spawning = false;
+      this.endSpawn();
       if (this.pauseWakeTransition === transition) this.pauseWakeTransition = null;
     }
   }
@@ -2152,6 +2167,9 @@ export class Daemon extends EventEmitter {
       // Odd number of fences = unclosed. Remove all code fences from the message.
       formatted = formatted.replace(/```/g, "");
     }
+
+    // Before anything reads the window id: a spawn in progress is about to change it.
+    await this.waitForSpawnToSettle();
 
     let windowId = this.getWindowId();
 
@@ -2778,9 +2796,68 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /**
+   * Depth, not a flag: the wake path marks a spawn and then calls trySpawn, which
+   * marks another. With a plain boolean the inner one's completion would clear the
+   * latch while the outer spawn was still dismissing dialogs, releasing delivery
+   * into exactly the window this exists to close.
+   */
+  private beginSpawn(): void {
+    this.spawnDepth++;
+    this.spawning = true;
+    if (!this.spawnSettled) {
+      this.spawnSettled = new Promise<void>(resolve => { this.resolveSpawnSettled = resolve; });
+    }
+  }
+
+  private endSpawn(): void {
+    this.spawnDepth = Math.max(0, this.spawnDepth - 1);
+    if (this.spawnDepth > 0) return; // an enclosing spawn is still running
+    this.spawning = false;
+    const resolve = this.resolveSpawnSettled;
+    this.spawnSettled = null;
+    this.resolveSpawnSettled = null;
+    resolve?.();
+  }
+
+  /**
+   * Hold until the CLI has finished starting up.
+   *
+   * Startup is not a quiet period: `dismissDialogsUntilReady` is clicking through
+   * trust prompts and session pickers. A pane showing a modal dialog produces no
+   * output, so `waitUntilIdle` reports it idle and a queued message gets pasted
+   * *into the dialog* — where the text is discarded and the Enter picks a menu
+   * item. The paste and the Enter both "succeed", so this loses the message
+   * without even a ❌.
+   *
+   * The pane write lock (#414) does not cover this: it serialises each key
+   * sequence, but it is released between one dialog and the next.
+   *
+   * Bounded, and called BEFORE the pane lock is taken — waiting on the spawn while
+   * holding the lock the spawn itself needs would deadlock.
+   */
+  private async waitForSpawnToSettle(): Promise<void> {
+    const settled = this.spawnSettled;
+    if (!settled) return;
+    this.logger.debug("Holding delivery until the CLI has finished starting up");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cap = new Promise<void>(resolve => {
+      timer = setTimeout(resolve, SPAWN_SETTLE_MAX_WAIT_MS);
+      timer.unref?.();
+    });
+    try {
+      await Promise.race([settled, cap]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (this.spawning) {
+      this.logger.warn("CLI still starting after the delivery hold — delivering anyway");
+    }
+  }
+
   /** Spawn a CLI window. Returns true if --resume was used successfully. */
   private async spawnClaudeWindow(): Promise<boolean> {
-    this.spawning = true;
+    this.beginSpawn();
     let resumedSuccessfully = false;
     try {
     this.toolStatusLines = [];
@@ -2815,7 +2892,7 @@ export class Daemon extends EventEmitter {
     this.skipResume = false; // CLI started successfully — reset for next spawn
     this.backgroundSessionRecoveryAttempted = false;
     } finally {
-      this.spawning = false;
+      this.endSpawn();
     }
     return resumedSuccessfully;
   }
