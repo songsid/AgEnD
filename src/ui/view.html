@@ -83,6 +83,27 @@
   .help-panel li { font-size: 13px; margin: 6px 0; color: var(--fg); }
   .help-panel .close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--dim); font-size: 22px; line-height: 1; background: none; border: none; }
 
+  /* AI usage panel (shares .help-panel chrome) */
+  .u-provider { margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .u-provider:first-of-type { border-top: none; padding-top: 0; }
+  .u-head { display: flex; align-items: baseline; gap: 8px; }
+  .u-head .u-name { font-size: 14px; font-weight: 600; }
+  .u-head .u-plan { color: var(--dim); font-size: 11px; }
+  .u-metric { margin: 8px 0; }
+  .u-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
+  .u-row .u-label { color: var(--dim); flex: 1; min-width: 0; }
+  .u-row .u-val { font-variant-numeric: tabular-nums; }
+  .u-row .u-status { font-size: 11px; font-weight: 600; }
+  .u-status.warn { color: #d29922; } .u-status.crit { color: #f85149; }
+  .u-meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .u-fill { height: 100%; border-radius: 3px; background: var(--accent); min-width: 2px; }
+  .u-fill.warn { background: #d29922; } .u-fill.crit { background: #f85149; }
+  .u-sub { color: var(--dim); font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .u-err { color: #d29922; font-size: 12px; margin: 6px 0; }
+  .u-foot { color: var(--dim); font-size: 11px; margin-top: 14px; display: flex; gap: 8px; align-items: baseline; }
+  .u-foot button { background: none; border: 1px solid var(--border); border-radius: 5px; color: var(--dim); cursor: pointer; font-size: 11px; padding: 2px 8px; }
+  .u-foot button:hover { color: var(--fg); border-color: var(--accent); }
+
   #densityBtn { font-size: 14px; font-weight: 600; letter-spacing: -.5px; }
   @media (max-width: 700px) {
     #sidebar { width: 180px; flex-basis: 180px; }
@@ -93,6 +114,7 @@
 </style>
 </head>
 <body>
+  <button class="help-btn" id="usageBtn" title="AI usage" style="right:140px; display:none">📊</button>
   <button class="help-btn" id="densityBtn" title="Font density" style="right:98px">⤢</button>
   <button class="help-btn" id="langBtn" title="Language" style="right:56px">🌐</button>
   <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
@@ -100,6 +122,10 @@
   <aside class="help-panel" id="helpPanel">
     <button class="close" id="helpClose" title="Close">×</button>
     <div id="helpContent"></div>
+  </aside>
+  <aside class="help-panel" id="usagePanel">
+    <button class="close" id="usageClose" title="Close">×</button>
+    <div id="usageContent"></div>
   </aside>
   <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
   <div id="main">
@@ -147,7 +173,10 @@
       help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
       help4: "Drag to reorder (needs web.token permission)",
       help5: "Click ⤢ to cycle font density: Fit → Comfortable → Compact",
-      densityFit: "Fit", densityComfortable: "Comfortable", densityCompact: "Compact", densityLabel: "Font density" },
+      densityFit: "Fit", densityComfortable: "Comfortable", densityCompact: "Compact", densityLabel: "Font density",
+      usageTitle: "📊 AI Usage", usageEmpty: "No AI CLI logins found on this machine.",
+      usageUpdated: "updated", usageRefresh: "Refresh", usageHigh: "high", usageNear: "near limit",
+      usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data." },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
       saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
@@ -155,7 +184,10 @@
       help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
       help4: "拖曳可調整順序（需 web.token 權限）",
       help5: "點 ⤢ 循環切換字級密度：剛好填滿 → 舒適 → 精簡",
-      densityFit: "剛好填滿", densityComfortable: "舒適", densityCompact: "精簡", densityLabel: "字級密度" },
+      densityFit: "剛好填滿", densityComfortable: "舒適", densityCompact: "精簡", densityLabel: "字級密度",
+      usageTitle: "📊 AI 訂閱用量", usageEmpty: "本機沒有偵測到已登入的 AI CLI。",
+      usageUpdated: "更新於", usageRefresh: "重新整理", usageHigh: "偏高", usageNear: "接近上限",
+      usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
@@ -666,6 +698,86 @@
   q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); };
   q("densityBtn").onclick = cycleDensity;
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setHelp(false); });
+
+  // ── AI usage panel ────────────────────────────────────
+  let usageData = null;
+  let usageTimer = null;
+
+  function usageResetText(iso) {
+    if (!iso) return "";
+    const ms = new Date(iso).getTime() - Date.now();
+    if (isNaN(ms)) return "";
+    if (ms <= 0) return T("usageSoon");
+    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+    const t = h >= 48 ? `${Math.floor(h / 24)}d ${h % 24}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+    return T("usageResets").replace("{t}", t);
+  }
+
+  function usageMetricHtml(m) {
+    if (m.type === "percent") {
+      const pct = Math.min(100, Math.max(0, m.used ?? 0));
+      const cls = pct >= 90 ? "crit" : pct >= 70 ? "warn" : "";
+      const word = pct >= 90 ? T("usageNear") : pct >= 70 ? T("usageHigh") : "";
+      const sub = usageResetText(m.resetsAt);
+      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span>` +
+        (word ? `<span class="u-status ${cls}">${esc(word)}</span>` : "") +
+        `<span class="u-val">${pct.toFixed(0)}%</span></div>` +
+        `<div class="u-meter"><div class="u-fill ${cls}" style="width:${pct}%"></div></div>` +
+        (sub ? `<div class="u-sub">${esc(sub)}</div>` : "") + `</div>`;
+    }
+    if (m.type === "dollars") {
+      const val = m.limit ? `$${(m.used ?? 0).toFixed(2)} / $${m.limit.toFixed(2)}` : `$${(m.used ?? 0).toFixed(2)}`;
+      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span><span class="u-val">${esc(val)}</span></div></div>`;
+    }
+    const val = `${m.value ?? ""} ${m.unit ?? ""}`.trim();
+    return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span><span class="u-val">${esc(val)}</span></div>` +
+      (m.note ? `<div class="u-sub">${esc(m.note)}</div>` : "") + `</div>`;
+  }
+
+  function renderUsage() {
+    const box = q("usageContent");
+    if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>${T("usageTitle")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
+    let html = `<h3>${T("usageTitle")}</h3>`;
+    if (!usageData.providers.length) html += `<div class="u-err">${T("usageEmpty")}</div>`;
+    for (const p of usageData.providers) {
+      html += `<div class="u-provider"><div class="u-head"><span class="u-name">${esc(p.name)}</span>` +
+        (p.plan ? `<span class="u-plan">${esc(p.plan)}</span>` : "") + `</div>`;
+      if (p.status === "error") html += `<div class="u-err">${esc(p.error || "error")}</div>`;
+      else html += (p.metrics || []).map(usageMetricHtml).join("");
+      html += `</div>`;
+    }
+    const at = new Date(usageData.fetchedAt).toLocaleTimeString();
+    html += `<div class="u-foot"><span>${T("usageUpdated")} ${esc(at)}</span><button id="usageRefresh">${T("usageRefresh")}</button></div>`;
+    box.innerHTML = html;
+    const rb = q("usageRefresh");
+    if (rb) rb.onclick = () => loadUsage(true);
+  }
+
+  async function loadUsage(force) {
+    try {
+      const r = await fetch(`/api/ai-usage${force ? "?force=1" : ""}`);
+      if (r.status === 404) { q("usageBtn").style.display = "none"; return false; }
+      usageData = await r.json();
+    } catch { usageData = null; }
+    renderUsage();
+    return true;
+  }
+
+  const setUsage = (open) => {
+    q("usagePanel").classList.toggle("open", open);
+    q("helpBackdrop").classList.toggle("open", open);
+    if (open) { setHelp(false); loadUsage(false); if (!usageTimer) usageTimer = setInterval(() => loadUsage(false), 60_000); }
+    else if (usageTimer) { clearInterval(usageTimer); usageTimer = null; }
+  };
+  q("usageBtn").onclick = () => setUsage(!q("usagePanel").classList.contains("open"));
+  q("usageClose").onclick = () => setUsage(false);
+  q("helpBackdrop").addEventListener("click", () => setUsage(false));
+  q("helpBtn").addEventListener("click", () => setUsage(false));
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") setUsage(false); });
+  q("langBtn").addEventListener("click", () => { if (usageData) renderUsage(); });
+  // Probe once at boot: shows the 📊 button only when the endpoint is enabled,
+  // and warms the server-side 5-minute cache so the first open is instant.
+  loadUsage(false).then(ok => { if (ok !== false) q("usageBtn").style.display = ""; });
 
   window.addEventListener("resize", scheduleFit);
   // Catches container changes the window resize event doesn't see — chiefly the
