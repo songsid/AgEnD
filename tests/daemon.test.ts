@@ -97,7 +97,10 @@ describe("Daemon backend-native input queue delivery", () => {
     const backend = createBackend(backendName, instanceDir);
     const control = {
       isIdle: vi.fn(() => idle),
-      waitUntilIdle: vi.fn().mockResolvedValue(undefined),
+      // Resolves true = the pane reached idle. It returns a boolean now so a wedged
+      // pane can be reported as a delivery failure instead of silently absorbing
+      // the queue; see the "wedged pane" case below.
+      waitUntilIdle: vi.fn().mockResolvedValue(true),
       hasOutputSince: vi.fn(() => false),
     };
     const daemon = new Daemon(
@@ -225,6 +228,57 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(control.waitUntilIdle).toHaveBeenCalledOnce();
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
       expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a delivery failure when the pane never frees up", async () => {
+    // waitUntilIdle used to have no timeout at all: a wedged pane held the
+    // pasteLock forever and every message behind it queued silently, with no ❌ and
+    // no log — the caller believed delivery was merely slow.
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    control.waitUntilIdle.mockResolvedValue(false);
+    const failed = vi.fn();
+    daemon.on("message_failed", failed);
+
+    try {
+      const result = await (daemon as any).deliverMessage("into a wedged pane", {
+        chatId: "chat",
+        messageId: "message",
+      });
+
+      expect(result).toBe(false);
+      expect(failed).toHaveBeenCalledOnce();
+      // Nothing was pasted into the wedged CLI, where it would have sat
+      // unsubmitted and had the next message land on top of it.
+      expect(tmux.pasteBuffer).not.toHaveBeenCalled();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a failure when both Enters are swallowed instead of claiming success", async () => {
+    // The message is sitting UNSUBMITTED in the CLI's input box. This used to
+    // return true, leaving the reaction at 👀 forever while the next delivery
+    // pasted on top — submitting two messages as one.
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    (daemon as any).confirmBusyAfterEnter = vi.fn().mockResolvedValue(false);
+    const failed = vi.fn();
+    const confirmed = vi.fn();
+    daemon.on("message_failed", failed);
+    daemon.on("message_confirmed", confirmed);
+
+    try {
+      const result = await (daemon as any).deliverMessage("never submitted", {
+        chatId: "chat",
+        messageId: "message",
+      });
+
+      expect(result).toBe(false);
+      expect(failed).toHaveBeenCalledOnce();
+      expect(confirmed).not.toHaveBeenCalled();
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(2); // original + one retry
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }

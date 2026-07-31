@@ -167,19 +167,32 @@ export class TmuxControlClient extends EventEmitter {
   }
 
   /**
-   * Wait until a window's pane is idle, with NO timeout — resolves only once idle
-   * (or the client stops). Used by message delivery to queue behind a busy CLI and
-   * deliver the moment it frees up, rather than force-pasting or giving up.
+   * Wait until a window's pane is idle. Used by message delivery to queue behind a
+   * busy CLI and deliver the moment it frees up, rather than force-pasting.
+   *
+   * Resolves `true` on idle (or if the control client stops), `false` if
+   * `timeoutMs` elapsed first. This used to have NO timeout at all, so a wedged
+   * pane held the pasteLock forever and every message behind it queued silently
+   * with no ❌ and no log — the caller believed delivery was merely slow. A very
+   * long default keeps the "a busy CLI is not a lost message" behaviour while
+   * putting a floor under how long a wedge can absorb the queue unnoticed.
    */
-  waitUntilIdle(windowId: string): Promise<void> {
-    if (this.isIdle(windowId)) return Promise.resolve();
+  waitUntilIdle(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+    if (this.isIdle(windowId)) return Promise.resolve(true);
     return new Promise((resolve) => {
       const check = setInterval(() => {
         if (this.stopped || this.isIdle(windowId)) {
           clearInterval(check);
-          resolve();
+          clearTimeout(timer);
+          resolve(true);
         }
       }, 200);
+      const timer = setTimeout(() => {
+        clearInterval(check);
+        this.logger?.warn({ windowId, timeoutMs }, "waitUntilIdle timed out — pane appears wedged");
+        resolve(false);
+      }, timeoutMs);
+      timer.unref?.();
     });
   }
 

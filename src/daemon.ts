@@ -2012,7 +2012,15 @@ export class Daemon extends EventEmitter {
         this.logger.debug("CLI busy — handing message to backend-native input queue");
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
-        await this.controlClient.waitUntilIdle(windowId);
+        const becameIdle = await this.controlClient.waitUntilIdle(windowId);
+        if (!becameIdle) {
+          // The pane never freed up. Report the failure instead of pasting into a
+          // wedged CLI (where the text would sit unsubmitted and the next message
+          // would land on top of it) — and instead of holding the queue silently.
+          this.logger.error("Pane still busy after the idle wait — reporting delivery failure");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
       }
     }
 
@@ -2094,7 +2102,17 @@ export class Daemon extends EventEmitter {
           await this.tmux!.sendSpecialKey("Enter");
           becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
         }
-        if (becameBusy && status) this.emit("message_confirmed", status); // ✅
+        if (becameBusy) {
+          if (status) this.emit("message_confirmed", status); // ✅
+        } else {
+          // Both Enters were swallowed: the text is sitting UNSUBMITTED in the
+          // CLI's input box. This used to return true, so the reaction stayed at 👀
+          // forever and the next delivery pasted on top — submitting two messages
+          // as one. Say so instead.
+          this.logger.error("Message pasted but never submitted (no idle→busy after two Enters)");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
       } else {
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
