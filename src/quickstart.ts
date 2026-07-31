@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline/promises";
-import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync, chmodSync } from "node:fs";
+import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
+import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
@@ -11,6 +12,18 @@ import { getAgendHome } from "./paths.js";
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 const ENV_PATH = join(DATA_DIR, ".env");
+
+/**
+ * .env holds the bot tokens. If it could not be made owner-only, say so here —
+ * quickstart is interactive, so this is the one moment a human is watching and
+ * can actually fix it. Not fatal: an exposed token still works, and aborting
+ * setup over a permission bit would be worse than warning about it.
+ */
+function warnIfEnvNotPrivate(result: SecretWriteResult): void {
+  if (result.ok) return;
+  console.log(`  ⚠️  ${ENV_PATH} is not owner-only (${result.reason ?? "unknown"}).`);
+  console.log(`     It contains your bot token. Fix with: chmod 600 ${ENV_PATH}`);
+}
 
 // ── ANSI helpers ─────────────────────────────────────────
 
@@ -495,8 +508,7 @@ async function addPersonaBot(rl: import("node:readline/promises").Interface): Pr
   const idx = lines.findIndex(l => l.startsWith(envVar + "="));
   if (idx >= 0) { lines[idx] = `${envVar}=${token}`; console.log(`  ${yellow("!")} ${envVar} already in .env — overwritten.`); }
   else lines.push(`${envVar}=${token}`);
-  writeFileSync(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n", { mode: 0o600 });
-  try { chmodSync(ENV_PATH, 0o600); } catch { /* best effort */ }
+  warnIfEnvNotPrivate(writeSecretFile(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n"));
   console.log(`  ${green("✓")} ${ENV_PATH}`);
 
   await restartFleetIfRunning();
@@ -617,8 +629,7 @@ export async function runQuickstart(): Promise<void> {
         const idx = lines.findIndex(l => l.startsWith(result.tokenEnvName + "="));
         if (idx >= 0) lines[idx] = envLine;
         else lines.push(envLine);
-        writeFileSync(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n", { mode: 0o600 });
-        try { chmodSync(ENV_PATH, 0o600); } catch {}
+        warnIfEnvNotPrivate(writeSecretFile(ENV_PATH, lines.filter(l => l !== "").join("\n") + "\n"));
         console.log(`  ${green("✓")} ${ENV_PATH}`);
 
         await maybeUpdateClassicBot(rl);
@@ -770,8 +781,7 @@ export async function runQuickstart(): Promise<void> {
 
     // Write .env with all tokens
     const envLines = platforms.map(p => `${p.tokenEnvName}=${p.token}`).join("\n") + "\n";
-    writeFileSync(ENV_PATH, envLines, { mode: 0o600 });
-    try { chmodSync(ENV_PATH, 0o600); } catch { /* best-effort on Windows */ }
+    warnIfEnvNotPrivate(writeSecretFile(ENV_PATH, envLines));
     console.log(`  ${green("✓")} ${ENV_PATH}`);
 
     // ── ClassicBot setup (Discord only) ──────────────────
