@@ -135,6 +135,20 @@ export interface CliBackend {
   /** Regex to detect when the CLI is ready to accept input. */
   getReadyPattern(): RegExp;
 
+  /**
+   * Regex matching a marker that means "generating right now", if the TUI has one.
+   *
+   * Several TUIs keep their input box (and therefore their ready marker) on screen
+   * the whole time they work, so a ready match alone cannot distinguish idle from
+   * busy. When this is supplied, a match **vetoes** ready: the pane is treated as
+   * not-ready no matter what `getReadyPattern()` says.
+   *
+   * Only worth implementing when the marker is present *only* while generating.
+   * A pattern that lingers after the work finishes is worse than none, because the
+   * instance would never be seen as idle again. Omit if unsure.
+   */
+  getBusyPattern?(): RegExp | null;
+
   /** Error patterns to detect in PTY output during operation. */
   getErrorPatterns?(): ErrorPattern[];
 

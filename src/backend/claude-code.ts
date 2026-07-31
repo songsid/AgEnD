@@ -74,8 +74,48 @@ export class ClaudeCodeBackend implements CliBackend {
     }
   }
 
+  /**
+   * `❯` is the input box, which Claude Code renders persistently — it is on screen
+   * while the agent works, not only when it is waiting. So this marks "the TUI has
+   * finished starting up", not "the agent is idle"; `getBusyPattern()` is what
+   * separates those two. Startup dialogs are matched before this (see
+   * getStartupDialogs) because `❯ 1. Resume from summary` would satisfy it.
+   *
+   * `ok\s*$` used to be the second alternative here and has been removed. `ok` is
+   * what *AgEnD's own* statusline script prints (see writeStatusLineScript), so the
+   * pattern was matching a line this file writes — permanently true, and true for
+   * reasons that had nothing to do with the CLI's state.
+   */
   getReadyPattern(): RegExp {
-    return /❯|ok\s*$/m;
+    return /❯/;
+  }
+
+  /**
+   * The live spinner line, which is on screen only while generating. Captured from
+   * two running panes:
+   *
+   *   working →  `✢ Accomplishing… (11m 26s · ↓ 38.0k tokens)`
+   *   idle    →  `✻ Worked for 6m 49s`
+   *
+   * Both panes also showed `❯` and the `ok` statusline, which is why neither of
+   * those can carry the distinction. The discriminator is the ellipsis followed by
+   * a parenthesised live elapsed counter; the completed line is past tense with no
+   * `…` and no counter. The verb and the glyph both rotate, so neither is matched.
+   *
+   * Deliberately narrow, because the cost is asymmetric. Missing the spinner just
+   * restores today's behaviour; matching prose that happens to sit on a *stable*
+   * pane would hold the instance in `working` forever — no auto-pause, no cancel
+   * button retirement, and eventually a bogus hang alert. So the line must start
+   * with a non-ASCII, non-letter glyph and carry a single word ending in `…`:
+   * `- Something… (5s)` and `I waited… (30s) for the build` are both rejected.
+   *
+   * Note when this actually decides anything: while the CLI really is generating,
+   * the elapsed counter ticks, the pane changes, and motion already reports
+   * `working`. The veto only bites on a *frozen* pane whose last frame still shows
+   * an in-progress spinner — which is exactly the hang this is meant to surface.
+   */
+  getBusyPattern(): RegExp {
+    return /^[ \t]*[^\x00-\x7F\p{L}\p{N}\s]\s+\p{L}+…\s*\(\d+[hms]\b/mu;
   }
 
   getContextUsage(): number | null {
