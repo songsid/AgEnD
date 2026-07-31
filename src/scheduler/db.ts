@@ -8,6 +8,9 @@ export class SchedulerDb {
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    // Wait for a concurrent writer instead of failing the call outright: the CLI
+    // and the fleet both open this file.
+    this.db.pragma("busy_timeout = 5000");
     this.db.pragma("foreign_keys = ON");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS schedules (

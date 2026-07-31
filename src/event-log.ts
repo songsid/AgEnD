@@ -44,6 +44,10 @@ export class EventLog {
   constructor(dbPath: string) {
     this.db = new Database(dbPath);
     this.db.pragma("journal_mode = WAL");
+    // The fleet writes this file while `agend events` / `agend activity` read it
+    // from a separate process. Without a busy timeout, either side raises
+    // SQLITE_BUSY immediately instead of waiting for the other's write to finish.
+    this.db.pragma("busy_timeout = 5000");
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
