@@ -424,6 +424,20 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual(["static fallback"]);
   });
 
+  it("emits a pty_error for the Codex workspace-credits line", () => {
+    // Real backend patterns + the real emit path, including the wrapped tail.
+    const events: { type: string; action: string; message: string }[] = [];
+    daemon.on("pty_error", (e: any) => events.push(e));
+    const patterns = createBackend("codex", tmpDir).getErrorPatterns!();
+    const pane = "■ Your workspace is out of credits. Ask your workspace owner to refill in\norder to continue.";
+
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /READY/, 1_000_000);
+
+    expect(events).toHaveLength(1);
+    expect(events[0].action).toBe("notify");
+    expect(events[0].message).toBe("Codex workspace credits exhausted — workspace owner must refill");
+  });
+
   it("tracks count and cooldown independently for patterns with the same type", () => {    const messages: string[] = [];
     daemon.on("pty_error", ({ message }) => messages.push(message));
     const patterns = [
