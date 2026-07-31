@@ -1517,7 +1517,11 @@ export class Daemon extends EventEmitter {
       }
       if (!killed) this.logger.warn("CLI did not exit gracefully within 3s, force killing window");
       // Always kill window — remain-on-exit keeps dead panes around after CLI exits
+      const stoppedWindowId = this.tmux.getWindowId();
       await this.tmux.killWindow();
+      // The control client is shared across the fleet and outlives this daemon, so
+      // a registration left behind here is re-resolved on every reconnect forever.
+      if (stoppedWindowId) this.controlClient?.unregisterWindow(stoppedWindowId);
       const windowIdFile = join(this.instanceDir, "window-id");
       try { unlinkSync(windowIdFile); } catch (e) { this.logger.debug({ err: e }, "Failed to remove window-id file"); }
     }
@@ -2327,6 +2331,7 @@ export class Daemon extends EventEmitter {
 
   /** Re-resolve this instance's tmux window by name (stale id after crash/respawn). */
   private async recoverWindow(): Promise<string | undefined> {
+    const previousWindowId = this.tmux?.getWindowId();
     try {
       const windows = await TmuxManager.listWindows(this.tmuxSessionName);
       const match = windows.find(w => w.name === this.name);
@@ -2337,6 +2342,12 @@ export class Daemon extends EventEmitter {
         resolveTmuxLogicalSize(this.config.terminal),
       );
       writeFileSync(join(this.instanceDir, "window-id"), match.id);
+      // The window we were talking to is gone; leaving it registered means the
+      // control client re-resolves a dead id — one tmux subprocess — on every
+      // reconnect, for the life of the fleet process.
+      if (previousWindowId && previousWindowId !== match.id) {
+        this.controlClient?.unregisterWindow(previousWindowId);
+      }
       await this.controlClient?.registerWindow(match.id);
       this.bindInstanceStateOutputListener(match.id);
       this.logger.info({ windowId: match.id }, "Recovered window ID for message delivery");
@@ -2893,7 +2904,11 @@ export class Daemon extends EventEmitter {
       await this.tmux!.respawnWindow(cmd, resolvedCwd);
       windowId = this.tmux!.getWindowId();
     } else {
+      // A crash respawn makes a brand new window. The dead one stays registered
+      // unless we say so — the respawn branch above already does.
+      const retired = this.tmux!.getWindowId();
       windowId = await this.tmux!.createWindow(cmd, resolvedCwd, this.name);
+      if (retired && retired !== windowId) this.controlClient?.unregisterWindow(retired);
     }
     writeFileSync(join(this.instanceDir, "window-id"), windowId);
 
