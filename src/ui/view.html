@@ -718,7 +718,7 @@
       const pct = Math.min(100, Math.max(0, m.used ?? 0));
       const cls = pct >= 90 ? "crit" : pct >= 70 ? "warn" : "";
       const word = pct >= 90 ? T("usageNear") : pct >= 70 ? T("usageHigh") : "";
-      const sub = usageResetText(m.resetsAt);
+      const sub = [m.note, usageResetText(m.resetsAt)].filter(Boolean).join(" · ");
       return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span>` +
         (word ? `<span class="u-status ${cls}">${esc(word)}</span>` : "") +
         `<span class="u-val">${pct.toFixed(0)}%</span></div>` +
