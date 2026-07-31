@@ -228,8 +228,10 @@ export class TmuxControlClient extends EventEmitter {
 
     // This is an observation-only client with no real terminal geometry.
     // `ignore-size` prevents tmux's `window-size=latest` policy from treating
-    // its synthetic dimensions as authoritative. Instance windows are also
-    // pinned to `window-size=manual` by TmuxManager (defense in depth).
+    // its synthetic dimensions as authoritative. This flag is now load-bearing,
+    // not defense in depth: instance windows use `window-size latest` (see
+    // TmuxManager.applyLogicalSize) so a human `tmux attach` can resize them, and
+    // without `ignore-size` this client would collapse them to 80 columns.
     this.proc = spawn("tmux", tmuxArgs([
       "-C", "attach", "-f", "ignore-size", "-t", this.sessionName, "-r",
     ]), {
