@@ -203,22 +203,50 @@ export class AutoPauseController {
  * Pane motion wins over a ready match because several backends keep their ready
  * marker in a persistent header/footer while generating. A stable ready pane is
  * idle; changing content is working; stable non-ready content eventually sticks.
+ *
+ * ## Why an optional busy pattern exists
+ *
+ * "Motion wins" degrades badly when a backend's ready marker is *always* on
+ * screen. `stuck` requires `!ready`, so for such a backend the state can only ever
+ * be idle or working — the stuck edge, and with it `handleStuckTransition` and the
+ * hang notification, is unreachable. A frozen CLI is then reported as idle, which
+ * also clears pending work: the message the user sent is quietly booked as done.
+ *
+ * claude-code was exactly this case (see ClaudeCodeBackend.getReadyPattern). A
+ * backend that can point at a marker meaning "generating right now" supplies
+ * `getBusyPattern()`, and that match vetoes ready regardless of what the ready
+ * pattern says.
  */
 export class PaneStateMachine {
   private readonly readyPattern: RegExp;
+  private readonly busyPattern: RegExp | null;
   private lastPaneHash: string | null = null;
   private lastPaneChangeAt: number;
   private lastObservedAt: number;
   private stateChangedAt: number;
   private currentState: InstanceState = "idle";
 
-  constructor(readyPattern: RegExp, private readonly stuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS, now = Date.now()) {
+  constructor(
+    readyPattern: RegExp,
+    private readonly stuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS,
+    now = Date.now(),
+    busyPattern?: RegExp | null,
+  ) {
     // Stateful g/y regexes mutate lastIndex and can alternate true/false across
     // polls. State detection must be deterministic for identical pane content.
     this.readyPattern = new RegExp(readyPattern.source, readyPattern.flags.replace(/[gy]/g, ""));
+    this.busyPattern = busyPattern
+      ? new RegExp(busyPattern.source, busyPattern.flags.replace(/[gy]/g, ""))
+      : null;
     this.lastPaneChangeAt = now;
     this.lastObservedAt = now;
     this.stateChangedAt = now;
+  }
+
+  /** Ready, unless the backend can positively see that it is still generating. */
+  private isReady(pane: string): boolean {
+    if (this.busyPattern?.test(pane)) return false;
+    return this.readyPattern.test(pane);
   }
 
   observe(pane: string, now = Date.now()): InstanceStateSnapshot {
@@ -231,7 +259,7 @@ export class PaneStateMachine {
     }
     this.lastObservedAt = now;
 
-    const ready = this.readyPattern.test(pane);
+    const ready = this.isReady(pane);
     const nextState: InstanceState = firstObservation
       ? ready ? "idle" : "working"
       : paneChanged
@@ -412,6 +440,7 @@ export class Daemon extends EventEmitter {
   private instanceStateIdleDebounceMs = DEFAULT_STATE_IDLE_DEBOUNCE_MS;
   private instanceStateStuckTimeoutMs = DEFAULT_STUCK_TIMEOUT_MS;
   private instanceStateReadyPattern: RegExp | null = null;
+  private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
   private statePollInFlight = false;
   private autoPauseController: AutoPauseController;
@@ -1241,6 +1270,7 @@ export class Daemon extends EventEmitter {
     if (!this.tmux) return;
     if (!this.backend) return; // lightweight mode has no backend
     const readyPattern = this.backend.getReadyPattern();
+    const busyPattern = this.backend.getBusyPattern?.() ?? null;
 
     this.errorMonitorTimer = setInterval(async () => {
       if (!this.tmux || this.spawning) return;
@@ -1276,7 +1306,7 @@ export class Daemon extends EventEmitter {
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
 
-        this.evaluateErrorPatterns(pane, patterns, readyPattern);
+        this.evaluateErrorPatterns(pane, patterns, readyPattern, Date.now(), busyPattern);
       } catch {
         // capturePane can fail if window is transitioning — ignore
       }
@@ -1289,6 +1319,7 @@ export class Daemon extends EventEmitter {
     patterns: ErrorPattern[],
     readyPattern: RegExp,
     now = Date.now(),
+    busyPattern: RegExp | null = null,
   ): void {
     // Count occurrences across the WHOLE pane (not just text after the last
     // ready prompt). Clone with `g` so stateful backend regexes cannot leak
@@ -1297,11 +1328,16 @@ export class Daemon extends EventEmitter {
       const flags = pattern.flags.includes("g") ? pattern.flags : pattern.flags + "g";
       return (pane.match(new RegExp(pattern.source, flags)) || []).length;
     };
+    // Same veto as the state machine: a backend whose ready marker is permanently
+    // on screen would otherwise "recover" on the very first tick after the error,
+    // rebaselining the occurrence count while the error is still displayed — one
+    // notification, a false recovery log, then silence.
+    const looksReady = (): boolean => !busyPattern?.test(pane) && readyPattern.test(pane);
 
     // State: waiting for recovery. A missing/outdated ready pattern must not
     // suppress every future error forever, so the gate has a hard deadline.
     if (this.errorWaitingForRecovery) {
-      if (readyPattern.test(pane)) {
+      if (looksReady()) {
         const downtime = Math.round((now - this.errorDetectedAt) / 1000);
         const active = patterns.find(ep => Daemon.errorPatternKey(ep) === this.activeErrorPatternKey);
         if (active) {
@@ -1784,7 +1820,13 @@ export class Daemon extends EventEmitter {
       ? rawConfig.idle_debounce_ms
       : DEFAULT_STATE_IDLE_DEBOUNCE_MS;
     this.instanceStateReadyPattern = this.backend.getReadyPattern();
-    this.instanceStateMachine = new PaneStateMachine(this.instanceStateReadyPattern, this.instanceStateStuckTimeoutMs);
+    this.instanceStateBusyPattern = this.backend.getBusyPattern?.() ?? null;
+    this.instanceStateMachine = new PaneStateMachine(
+      this.instanceStateReadyPattern,
+      this.instanceStateStuckTimeoutMs,
+      Date.now(),
+      this.instanceStateBusyPattern,
+    );
     this.instanceStateLastOutputAt = 0;
     this.instanceStateMonitorActive = true;
 
@@ -1827,6 +1869,12 @@ export class Daemon extends EventEmitter {
       paneTail: sanitizePaneTail(pane),
       readyPattern: readyPattern.toString(),
       readyMatched: deterministicReadyPattern.test(pane),
+      // A pane that is stuck *while* the ready marker matches means the busy
+      // pattern is what held it back — worth seeing when tuning either regex.
+      busyPattern: this.instanceStateBusyPattern?.toString(),
+      busyMatched: this.instanceStateBusyPattern
+        ? new RegExp(this.instanceStateBusyPattern.source, this.instanceStateBusyPattern.flags.replace(/[gy]/g, "")).test(pane)
+        : undefined,
       unchangedForMs: snapshot.unchangedForMs,
       pendingWork: this.pendingWork.hasPendingWork(),
     };

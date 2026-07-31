@@ -13,7 +13,11 @@ describe("Backend ready patterns", () => {
     const backend = new ClaudeCodeBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
     expect(pattern.test("❯")).toBe(true);
-    expect(pattern.test("something ok")).toBe(true);
+    // Was asserted as `true`. The `ok\s*$` alternative that made it true has been
+    // removed: `ok` is what AgEnD's own statusline script prints, so the pattern
+    // was permanently satisfied by a line the backend itself writes — and it also
+    // matched any prose line ending in "ok", "look", "book"…
+    expect(pattern.test("something ok")).toBe(false);
     expect(pattern.test("Loading...")).toBe(false);
     // Live tmux capture (2026-07-20) uses a non-breaking space after the glyph.
     expect(pattern.test("❯\u00a0")).toBe(true);
