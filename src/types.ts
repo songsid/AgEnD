@@ -230,6 +230,12 @@ export interface FleetTemplate {
   instances: Record<string, TemplateInstanceDef>;
 }
 
+/** Web UI feature toggles (fleet.yaml `web:` section). */
+export interface WebConfig {
+  /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
+  usage_panel?: boolean;
+}
+
 export interface FleetConfig {
   channel?: ChannelConfig;
   channels?: ChannelConfig[];
@@ -240,6 +246,7 @@ export interface FleetConfig {
   templates?: Record<string, FleetTemplate>;
   profiles?: Record<string, ProfileConfig>;
   health_port?: number;
+  web?: WebConfig;
 }
 
 /**

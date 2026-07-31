@@ -100,6 +100,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     templates?: Record<string, FleetTemplate>;
     profiles?: FleetConfig["profiles"];
     health_port?: number;
+    web?: FleetConfig["web"];
   } | null;
 
   if (!parsed) {
@@ -158,6 +159,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     templates,
     profiles: parsed.profiles,
     health_port: parsed.health_port,
+    web: parsed.web,
   };
 }
 
