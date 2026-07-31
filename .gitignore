@@ -26,6 +26,13 @@ plugins/agend-plugin-discord/package-lock.json
 # NPM auth (generated during publish, auto-cleaned)
 .npmrc
 
+# `agend chat-export` output. It defaults to ./chat-export-<timestamp>.html in the
+# CWD and contains real conversation content — usernames, message text, and local
+# paths. Two such exports had been committed to this public repo.
+chat-export-*.html
+chat.html
+demo.html
+
 # Session files (Claude Code / OpenCode)
 *.session.json
 20[0-9][0-9][01][0-9][0-3][0-9].json
