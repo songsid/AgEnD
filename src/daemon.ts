@@ -20,6 +20,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
+import { writeSecretFile } from "./secret-file.js";
 import { PaneWriteLock } from "./pane-write-lock.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
@@ -2977,8 +2978,16 @@ export class Daemon extends EventEmitter {
     // the global web token) from impersonating instances.
     const agentTokenPath = join(this.instanceDir, "agent.token");
     const agentToken = randomBytes(32).toString("hex");
-    writeFileSync(agentTokenPath, agentToken, { mode: 0o600 });
-    try { chmodSync(agentTokenPath, 0o600); } catch {}
+    const tokenWrite = writeSecretFile(agentTokenPath, agentToken);
+    if (!tokenWrite.ok) {
+      // Do not fail the spawn over it — an instance that cannot start is worse
+      // than one whose token is readable. But say so, loudly: the whole point of
+      // this token is that other local processes cannot use it.
+      this.logger.error(
+        { path: agentTokenPath, mode: tokenWrite.mode?.toString(8), reason: tokenWrite.reason },
+        "Agent token file is not owner-only — other local users can impersonate this instance",
+      );
+    }
 
     // AGEND_HOME points the child's agent-cli at the same data dir the daemon
     // is using, so it can locate <instanceDir>/agent.token.
