@@ -24,6 +24,7 @@ import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
 import { PIE_PERCENT_RE } from "./tui-glyphs.js";
+import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
   getUpdateSelector,
   lookupTargetVersion,
@@ -1762,24 +1763,7 @@ async function fuzzyMatch(query: string, names: string[]): Promise<string | null
 }
 
 async function resolveInstance(query: string, config: import("./types.js").FleetConfig): Promise<string> {
-  const names = Object.keys(config.instances);
-  // Include classic instances from classicBot.yaml
-  try {
-    const classicPath = join(DATA_DIR, "classicBot.yaml");
-    if (existsSync(classicPath)) {
-      const yamlMod = (await import("js-yaml")).default;
-      const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string; channelId?: string; instanceName?: string }> } | null;
-      if (classic?.channels) {
-        for (const [key, val] of Object.entries(classic.channels)) {
-          // New format persists instanceName; old format keyed by channelId.
-          if (val.instanceName) { names.push(val.instanceName); continue; }
-          const channelId = val.channelId ?? key;
-          const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
-          names.push(`classic-${chName}-${channelId.slice(-4)}`);
-        }
-      }
-    }
-  } catch { /* ignore */ }
+  const names = await listInstanceNames(config);
   const match = await fuzzyMatch(query, names);
   if (!match) {
     console.error(`No instance matching "${query}". Available: ${names.join(", ")}`);
@@ -1900,10 +1884,45 @@ const defaultParser = (output: string): number | null => {
 /** Optional backend-specific overrides; none needed — defaultParser covers all. */
 const contextParsers: Record<string, (output: string) => number | null> = {};
 
-async function lsAction(opts: { json?: boolean }): Promise<void> {
+/**
+ * Every instance name the CLI accepts: fleet.yaml instances plus the
+ * dynamically-created ClassicBot ones. Shared by `resolveInstance` (fuzzy
+ * matching for `attach`) and `ls --names-only` (shell completion), so the
+ * candidates offered by tab-completion are exactly the ones `attach` resolves.
+ */
+async function listInstanceNames(config: import("./types.js").FleetConfig): Promise<string[]> {
+  const names = Object.keys(config.instances);
+  try {
+    const classicPath = join(DATA_DIR, "classicBot.yaml");
+    if (existsSync(classicPath)) {
+      const yamlMod = (await import("js-yaml")).default;
+      const classic = yamlMod.load(readFileSync(classicPath, "utf-8")) as { channels?: Record<string, { name?: string; channelId?: string; instanceName?: string }> } | null;
+      if (classic?.channels) {
+        for (const [key, val] of Object.entries(classic.channels)) {
+          // New format persists instanceName; old format keyed by channelId.
+          if (val.instanceName) { names.push(val.instanceName); continue; }
+          const channelId = val.channelId ?? key;
+          const chName = (val.name ?? channelId).toLowerCase().replace(/[^\p{L}\d-]/gu, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "project";
+          names.push(`classic-${chName}-${channelId.slice(-4)}`);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  return names;
+}
+
+async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<void> {
     const yaml = (await import("js-yaml")).default;
     const config = yaml.load(readFileSync(FLEET_CONFIG_PATH, "utf-8")) as import("./types.js").FleetConfig;
     const names = Object.keys(config.instances);
+
+    // --names-only feeds shell completion, so it must return before any tmux or
+    // status work (a tab press should not wait on the fleet) and must print
+    // nothing but names — a "no instances" notice would become a candidate.
+    if (opts.namesOnly) {
+      for (const n of await listInstanceNames(config)) console.log(n);
+      return;
+    }
 
     // Load classic channels from classicBot.yaml (keyed by channelId)
     const classicPath = join(DATA_DIR, "classicBot.yaml");
@@ -2193,13 +2212,40 @@ program
   .command("ls")
   .description("List all instances with status, backend, team, and last activity")
   .option("--json", "Output as JSON")
-  .action(async (opts: { json?: boolean }) => {
+  .option("--names-only", "Print instance names one per line (for shell completion)")
+  .action(async (opts: { json?: boolean; namesOnly?: boolean }) => {
     await lsAction(opts);
   });
 
 program
-  .command("health")
-  .description("Fleet health check — shows problems and diagnostics")
+  .command("completion")
+  .description("Print a shell completion script (bash or zsh)")
+  .argument("<shell>", `Shell to generate for (${COMPLETION_SHELLS.join(", ")})`)
+  .addHelpText("after", `
+Install:
+  bash   echo 'eval "$(agend completion bash)"' >> ~/.bashrc
+  zsh    echo 'eval "$(agend completion zsh)"'  >> ~/.zshrc
+
+Then reload the shell. Tab-completes instance names for \`agend attach\` and
+\`agend fleet start|stop|restart\`, and subcommands elsewhere.`)
+  .action((shell: string) => {
+    if (!(COMPLETION_SHELLS as readonly string[]).includes(shell)) {
+      console.error(`Unsupported shell: ${shell}. Supported: ${COMPLETION_SHELLS.join(", ")}`);
+      process.exit(2);
+    }
+    // Subcommand names come from commander itself, so the script can't drift
+    // out of sync with the CLI the way a hardcoded list would.
+    const fleetCmd = program.commands.find(c => c.name() === "fleet");
+    console.log(completionScript(shell as CompletionShell, {
+      topLevel: program.commands.map(c => c.name()),
+      fleetSub: fleetCmd?.commands.map(c => c.name()) ?? [],
+      instanceCommands: ["attach"],
+      fleetInstanceCommands: ["start", "stop", "restart"],
+    }));
+  });
+
+program
+  .command("health")  .description("Fleet health check — shows problems and diagnostics")
   .option("--json", "Output as JSON")
   .option("-q, --quiet", "One-line summary only")
   .action(async (opts: { json?: boolean; quiet?: boolean }) => {

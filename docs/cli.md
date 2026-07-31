@@ -55,6 +55,7 @@ agend fleet cleanup --dry-run   # Preview cleanup without deleting
 ```bash
 agend ls                        # List instances with status, backend, team, context, activity
 agend ls --json                 # JSON output
+agend ls --names-only           # Names one per line (used by shell completion)
 agend attach [name]             # Attach to instance tmux window (fuzzy match, interactive menu)
 agend logs                      # Show fleet log
 agend logs -n 100               # Show last 100 lines (default: 50)
@@ -63,6 +64,35 @@ agend logs --instance <name>    # Filter by instance name
 agend export-chat               # Export fleet activity as HTML chat log
 agend export-chat --from <date> --to <date> -o <path>
 ```
+
+## Shell completion
+
+Tab-completes instance names for `agend attach` and `agend fleet start|stop|restart`,
+and subcommand names elsewhere.
+
+```bash
+agend completion bash           # Print the bash script
+agend completion zsh            # Print the zsh script
+```
+
+Install by adding one line to your shell rc file:
+
+```bash
+# bash — ~/.bashrc
+echo 'eval "$(agend completion bash)"' >> ~/.bashrc
+
+# zsh — ~/.zshrc (needs compinit; see below)
+echo 'eval "$(agend completion zsh)"' >> ~/.zshrc
+```
+
+Then reload the shell (`exec $SHELL`) and try `agend attach age<TAB>`.
+
+zsh requires the completion system to be initialised first. If it isn't already,
+`autoload -Uz compinit && compinit` must appear **above** the `eval` line in `~/.zshrc`.
+
+Names come from `agend ls --names-only`, so completion offers exactly the instances
+`attach` accepts — including ClassicBot instances that only exist in `classicBot.yaml`.
+Each TAB press runs that command (~90ms).
 
 ## Backend diagnostics
 
