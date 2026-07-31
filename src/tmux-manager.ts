@@ -255,7 +255,22 @@ export class TmuxManager {
     } catch { return false; }
   }
 
-  async pasteText(text: string): Promise<boolean> {
+  /**
+   * Paste text and submit it.
+   *
+   * `retryEnter` re-sends Enter a second later, because a TUI that is busy
+   * redrawing can swallow the first one. Its old comment claimed the extra Enter
+   * "is a no-op on an empty input for all supported CLIs" — but `deliverMessage`
+   * states the opposite for the same keystroke: *"Do NOT probe for busy — a second
+   * bare Enter can mutate the queue."* Both cannot be right, and the delivery path
+   * is the one that learned it from a real backend.
+   *
+   * So it is now the caller's choice, keyed off `supportsQueuedInput()`. Defaults
+   * to true, which is the long-standing behaviour for every backend without a
+   * native input queue.
+   */
+  async pasteText(text: string, opts: { retryEnter?: boolean } = {}): Promise<boolean> {
+    const retryEnter = opts.retryEnter !== false;
     try {
       const target = `${this.sessionName}:${this.windowId}`;
       const bufName = `paste-${this.windowId}-${Date.now()}`;
@@ -263,10 +278,10 @@ export class TmuxManager {
       await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
       await new Promise(r => setTimeout(r, 500));
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
-      // Retry Enter: if TUI was busy outputting, the first Enter may be swallowed.
-      // A second Enter on an empty input is a no-op for all supported CLIs.
-      await new Promise(r => setTimeout(r, 1000));
-      await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
+      if (retryEnter) {
+        await new Promise(r => setTimeout(r, 1000));
+        await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
+      }
       return true;
     } catch { return false; }
   }
