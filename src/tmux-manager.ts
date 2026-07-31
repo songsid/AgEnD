@@ -111,9 +111,9 @@ export class TmuxManager {
     const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args));
     this.windowId = stdout.trim();
     try {
-      // `window-size=manual` is essential: the shared control-mode client has
-      // no PTY and otherwise makes `window-size=latest` collapse windows back
-      // to its synthetic 80-column geometry.
+      // Apply the configured geometry and hand sizing to real terminals. The
+      // control-mode client is kept harmless by its `ignore-size` flag, which is
+      // what makes `window-size latest` safe here (see applyLogicalSize).
       await this.applyLogicalSize();
       if (windowName) {
         await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"])).catch(() => {});
@@ -138,16 +138,30 @@ export class TmuxManager {
     ]));
   }
 
+  /**
+   * Give the window its configured geometry, then hand sizing authority to real
+   * terminals: with `window-size latest`, a human `tmux attach` resizes the
+   * window to their terminal instead of being stuck at the configured size.
+   *
+   * ORDER MATTERS. `resize-window -x/-y` implicitly switches the option back to
+   * `manual`, so `latest` must be set AFTER the resize or it is silently undone.
+   *
+   * Safe because the shared control-mode client attaches with `-f ignore-size`
+   * (see tmux-control.ts): verified on a scratch tmux server that under `latest`
+   * an ignore-size control client does NOT collapse the window to its synthetic
+   * 80 columns, while a real 200x50 PTY client does take over — and the size
+   * persists after that client detaches.
+   */
   private async applyLogicalSize(): Promise<void> {
     if (!this.windowId) throw new Error("Cannot size tmux window without a window id");
     const target = `${this.sessionName}:${this.windowId}`;
     await exec("tmux", TmuxManager.tmuxArgs([
-      "set-window-option", "-t", target, "window-size", "manual",
-    ]));
-    await exec("tmux", TmuxManager.tmuxArgs([
       "resize-window", "-t", target,
       "-x", String(this.logicalSize.columns),
       "-y", String(this.logicalSize.rows),
+    ]));
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "set-window-option", "-t", target, "window-size", "latest",
     ]));
   }
 
