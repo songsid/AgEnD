@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
-import { sdNotify } from "./sd-notify.js";
+import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -5648,7 +5648,7 @@ When users create specialized instances, suggest these configurations:
     this.startupComplete = false;
     this.reloadPending = false;
     this.ipcStoppingInstances.add("__fleet_stopping__");
-    sdNotify("STOPPING=1");
+    sdNotifyBlocking("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     // Cancel adapter retry timers
     for (const state of this.adapterState.values()) {
