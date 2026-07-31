@@ -393,7 +393,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
           try {
             await this.bot.start({
-              drop_pending_updates: attempt === 1 && reconnects === 0,
+              // Never drop updates Telegram buffered while we were down. Dropping
+              // them is a GUARANTEED silent loss of user messages — including on
+              // every automatic adapter restart, because restartAdapter() reuses
+              // this object and resets the counters below. The replay risk it was
+              // guarding against is already handled by the fleet's persistent
+              // inbound dedup (FleetManager.recentMessageIds), which survives a
+              // restart, so a redelivered update is skipped rather than doubled.
+              drop_pending_updates: false,
               onStart: (info) => {
                 reconnects = 0; // reset on successful start
                 this.emit("started", info.username);
