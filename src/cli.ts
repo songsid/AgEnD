@@ -149,12 +149,22 @@ fleet
       }
       // Do NOT take the fleet down. A rejected promise in one instance's tmux
       // call, health tick, or model switch used to stop every other working
-      // instance and exit(1) — the widest blast radius in the process. Log it
-      // loudly (with the stack) and keep the other instances serving; the
+      // instance and exit(1) — the widest blast radius in the process. The
       // per-instance health check and crash recovery handle a genuinely broken
       // instance on their own.
+      //
+      // Surviving quietly would be its own failure mode, so this reports to the
+      // General topic as well as the log: the operator must not have to read
+      // daemon.log to learn the fleet swallowed a fault. notifyFleetError()
+      // throttles repeats, since these usually arrive from a loop.
       console.error("Unhandled rejection (fleet continues):", err);
       if (err instanceof Error && err.stack) console.error(err.stack);
+      try {
+        fm.notifyFleetError(`⚠️ Fleet caught an unhandled error and kept running:\n\`${msg}\`\nSee daemon.log for the stack trace.`);
+      } catch (notifyErr) {
+        // Never let the reporting path itself become an unhandled rejection.
+        console.error("Failed to report unhandled rejection:", notifyErr);
+      }
     });
 
     if (instance) {
