@@ -1311,8 +1311,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
-    // Signal systemd: generals ready
-    sdNotify("READY=1");
+    // The systemd watchdog answers exactly one question: is this process still
+    // turning its event loop? Pinging from a timer proves that, and after the
+    // blocking child-process calls were made async it is a meaningful signal —
+    // a deadlocked or frozen fleet stops pinging and systemd restarts it.
+    //
+    // It deliberately does NOT gate on fleet health. "No adapter connected" or
+    // "an instance crashed" must not kill the process: the fleet would be restarted
+    // into the same broken state, and a user who has legitimately stopped every
+    // instance would get a restart loop. Those conditions surface through /health
+    // (which now returns 503) and through the General-topic notifications instead.
     this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
 
     // EventLog.prune() existed but was never called, so `events` and `activity`
@@ -1472,6 +1480,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // rest of startup finishes. Replay one coalesced reload only after all
     // startup-owned lifecycle work and signal handlers are in place.
     this.finishStartup();
+
+    // Tell systemd we are ready only now. This used to fire right after the
+    // generals started — before adapters, classic instances, topic creation and the
+    // health server — so `systemctl start` returned success while the fleet was
+    // still deaf: no path existed for a user message to arrive.
+    sdNotify("READY=1");
+    const health = this.getFleetHealth();
+    if (health.status !== "ok") {
+      this.logger.warn({ health }, "Fleet started with problems — see /health");
+    }
   }
 
   /**
@@ -1592,6 +1610,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Get adapter states for /status visibility. */
   getAdapterStates(): Map<string, { status: string; retryCount: number; lastError?: string }> {
     return this.adapterState;
+  }
+
+  /**
+   * Real, checkable fleet health for `/health` and the operator.
+   *
+   * `status` is:
+   *  - `ok`       — at least one adapter connected and every configured instance
+   *                 that should be running is running
+   *  - `degraded` — reachable, but something the operator should look at (an
+   *                 adapter retrying, an instance crashed or stopped)
+   *  - `down`     — the fleet cannot do its job: no adapter is connected, so no
+   *                 message can arrive or be answered
+   *
+   * Deliberately does NOT gate the systemd watchdog — see the comment at the
+   * WATCHDOG timer for why.
+   */
+  getFleetHealth(): {
+    status: "ok" | "degraded" | "down";
+    uptime: number;
+    instances: { configured: number; running: number; crashed: number; paused: number; stopped: number };
+    adapters: { total: number; connected: number; states: Record<string, string> };
+    startupComplete: boolean;
+    problems: string[];
+  } {
+    const names = Object.keys(this.fleetConfig?.instances ?? {});
+    const counts = { configured: names.length, running: 0, crashed: 0, paused: 0, stopped: 0 };
+    for (const name of names) {
+      const state = this.getInstanceStatus(name);
+      if (state === "running") counts.running++;
+      else if (state === "crashed") counts.crashed++;
+      else if (state === "paused") counts.paused++;
+      else counts.stopped++;
+    }
+
+    const states: Record<string, string> = {};
+    let connected = 0;
+    for (const [id, state] of this.adapterState) {
+      states[id] = state.status;
+      if (state.status === "connected") connected++;
+    }
+
+    const problems: string[] = [];
+    if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
+    if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
+    for (const [id, state] of this.adapterState) {
+      if (state.status !== "connected") problems.push(`adapter ${id} is ${state.status}`);
+    }
+    if (!this.startupComplete) problems.push("startup has not completed");
+
+    // "down" is reserved for "cannot receive or answer a message at all". A fleet
+    // with adapters configured but none connected is exactly that.
+    const status = this.adapterState.size > 0 && connected === 0
+      ? "down"
+      : problems.length > 0 ? "degraded" : "ok";
+
+    return {
+      status,
+      uptime: Math.floor((Date.now() - this.startedAt) / 1000),
+      instances: counts,
+      adapters: { total: this.adapterState.size, connected, states },
+      startupComplete: this.startupComplete,
+      problems,
+    };
   }
 
   /** Start the primary adapter (backward-compatible, sets this.adapter) */
@@ -2260,6 +2341,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async restartAdapter(adapter: ChannelAdapter, id: string): Promise<void> {
     if (this.adapterRestarting.has(id)) return;
     this.adapterRestarting.add(id);
+    // Reflect reality in adapterState throughout. This loop used to leave the state
+    // untouched, so getAdapterStates() — and therefore /health and the dashboard —
+    // kept reporting "connected" for an adapter that had been down for hours. An
+    // adapter's true status was simply not knowable from inside the process.
+    const previous = this.adapterState.get(id);
+    this.adapterState.set(id, { status: "retrying", retryCount: 0, lastError: previous?.lastError });
     try {
       for (let attempt = 1; ; attempt++) {
         if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
@@ -2270,8 +2357,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await adapter.stop().catch(() => {});
           await adapter.start();
           this.logger.info({ id, attempt }, "Adapter restarted successfully");
+          this.adapterState.set(id, { status: "connected", retryCount: 0 });
           return;
-        } catch { /* retry */ }
+        } catch (err) {
+          this.adapterState.set(id, {
+            status: "retrying",
+            retryCount: attempt,
+            lastError: (err as Error)?.message ?? String(err),
+          });
+        }
         if (attempt % 10 === 0) {
           this.logger.warn({ id, attempt }, "Adapter restart still failing");
         }
@@ -5844,15 +5938,13 @@ When users create specialized instances, suggest these configurations:
       }
 
       if (req.method === "GET" && req.url === "/health") {
-        const instanceCount = this.fleetConfig?.instances
-          ? Object.keys(this.fleetConfig.instances).length
-          : 0;
-        res.writeHead(200);
-        res.end(JSON.stringify({
-          status: "ok",
-          instances: instanceCount,
-          uptime: Math.floor((Date.now() - this.startedAt) / 1000),
-        }));
+        const health = this.getFleetHealth();
+        // 503 when the fleet cannot do its job, so an external monitor sees it.
+        // This used to always answer 200 "ok" with a count of CONFIGURED instances,
+        // so every agent could be dead and every adapter down and it still looked
+        // green.
+        res.writeHead(health.status === "ok" ? 200 : 503);
+        res.end(JSON.stringify(health));
         return;
       }
 
