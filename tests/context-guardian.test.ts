@@ -35,7 +35,7 @@ describe("ContextGuardian (pure monitoring)", () => {
     guardian.startWatching();
 
     const { writeFileSync } = await import("node:fs");
-    writeFileSync(statusFile, JSON.stringify({
+    const write = () => writeFileSync(statusFile, JSON.stringify({
       session_id: "test",
       model: { id: "test", display_name: "test" },
       context_window: {
@@ -49,13 +49,16 @@ describe("ContextGuardian (pure monitoring)", () => {
       cost: { total_cost_usd: 0.5, total_duration_ms: 1000 },
     }));
 
-    // watchFile stat-polls at a 2s interval, so a fixed 3s sleep is only ~1s of
-    // slack — under a loaded parallel run that expires and the suite goes red for
-    // timing reasons. Poll for the event instead, with a deadline well above the
-    // interval.
+    // watchFile stat-polls (2s interval) and only fires when the stat CHANGES
+    // between polls. Writing once right after startWatching races the watcher's
+    // baseline stat: if that baseline already sees the created file, there is no
+    // change left to observe and the listener never fires — which made this test
+    // fail ~2 runs in 3. Re-writing while waiting guarantees a stat change lands
+    // after the baseline, whenever the baseline was taken.
     const deadline = Date.now() + 15_000;
     while (spy.mock.calls.length === 0 && Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, 100));
+      write();
+      await new Promise(r => setTimeout(r, 250));
     }
     expect(spy).toHaveBeenCalled();
     expect(spy.mock.calls[0][0].used_percentage).toBe(25);

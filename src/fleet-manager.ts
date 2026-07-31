@@ -22,7 +22,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { ChannelAdapter, InboundMessage, Choice } from "./channel/types.js";
+import type { ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
@@ -125,6 +125,12 @@ const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
 const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
 /** Elapsed time is only shown once work has clearly outlasted a quick answer. */
 const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
+/**
+ * Reactions that count as an explicit approve/reject signal, and are therefore worth
+ * waking a paused instance for. Everything else is chatter: delivered only if the
+ * instance is already awake, never worth a wake-up plus a full agent turn.
+ */
+const REACTION_APPROVAL_EMOJIS = new Set(["👍", "👎"]);
 
 /** One tracked cancel button. Keyed by messageId in `cancelButtons`, so each
  * button is retired independently — replacing one never strands another. */
@@ -1736,6 +1742,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.handleInboundMessage(msg);
     }, this.logger, "adapter.message"));
 
+    this.adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
+      await this.handleInboundReaction(r);
+    }, this.logger, "adapter.reaction"));
+
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
@@ -1993,6 +2003,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       await this.handleInboundMessage(msg);
     }, this.logger, `adapter[${adapterId}].message`));
+
+    adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
+      await this.handleInboundReaction(r);
+    }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
@@ -2423,6 +2437,57 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (byName) return byName;
     }
     return generals[0];
+  }
+
+  /**
+   * A user reacted to one of the bot's messages (#408).
+   *
+   * Delivered as a normal inbound so it reuses routing, dedup, the idle gate and
+   * delivery confirmation — nothing new is needed on that path. `message_id`
+   * identifies the bot message that was reacted to, and since the inbound block now
+   * renders message_id, the agent can tell WHICH of its messages this refers to.
+   *
+   * Policy: only the approval emojis wake an instance. A 👍 costing a full agent
+   * turn is acceptable when it means "approved"; every other emoji is chatter and
+   * must not spend a turn, so those are delivered only to an instance that is
+   * already awake (`no_wake`) and dropped for a paused one.
+   */
+  private async handleInboundReaction(r: InboundReaction): Promise<void> {
+    const instanceName = this.resolveSlashTarget(r.threadId ?? r.chatId, r.adapterId);
+    if (!instanceName) {
+      this.logger.debug({ emoji: r.emoji, chatId: r.chatId }, "Reaction in an unrouted channel — ignoring");
+      return;
+    }
+
+    const isApproval = REACTION_APPROVAL_EMOJIS.has(r.emoji);
+    const verb = r.action === "add" ? "reacted" : "removed their reaction";
+    const content = `[reaction:${r.emoji}] ${r.username} ${verb} on your message ${r.messageId}`;
+
+    this.eventLog?.logActivity("reaction", r.username, `${r.emoji} ${r.action}`, instanceName);
+
+    try {
+      await this.deliverToInstance(instanceName, {
+        type: "fleet_inbound",
+        content,
+        meta: {
+          chat_id: "",           // not a chat message — must not become the reply target
+          thread_id: "",
+          message_id: r.messageId,
+          user: r.username,
+          user_id: r.userId,
+          source: r.source,
+          ts: r.timestamp.toISOString(),
+          request_kind: "update",
+          requires_reply: "false",
+          // Non-approval reactions never wake a paused instance.
+          ...(isApproval ? {} : { no_wake: "true" }),
+        },
+      });
+    } catch (err) {
+      // A reaction is a nice-to-have signal; failing to deliver one must not be
+      // noisy. The user can always say it in words.
+      this.logger.debug({ err, instanceName, emoji: r.emoji }, "Reaction delivery failed");
+    }
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
