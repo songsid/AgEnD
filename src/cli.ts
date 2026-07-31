@@ -92,8 +92,14 @@ fleet
       const fleet = loadFleetConfig(FLEET_CONFIG_PATH);
       const port = fleet.health_port ?? 19280;
       try {
-        const healthResp = await fetch(`http://127.0.0.1:${port}/health`);
-        if (healthResp.ok) {
+        // Any HTTP answer means a fleet daemon is listening — including a 503,
+        // which /health now returns when the fleet is degraded (no adapter
+        // connected, an instance crashed). Checking `.ok` here would treat a
+        // degraded fleet as "not running" and start a SECOND fleet on the same
+        // data dir, whose startup cleanup kills the first one's tmux windows.
+        // Only a connection error means nothing is there (the catch below).
+        await fetch(`http://127.0.0.1:${port}/health`);
+        {
           try {
             const resp = await fetch(`http://127.0.0.1:${port}/api/instance/${encodeURIComponent(instance)}/start`, { method: "POST" });
             const body = await resp.json() as Record<string, unknown>;
