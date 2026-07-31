@@ -24,6 +24,11 @@ export default defineConfig({
       "dist/**",
       ".worktrees/**",
       ".claude/worktrees/**",
+      // e2e has its own config (e2e/vitest.config.e2e.ts): 120s timeouts, one file
+      // at a time, and it boots real tmux fleets on fixed ports. Swept in here it
+      // ran under this config's 10s timeout, in parallel — slow and flaky. Run it
+      // deliberately with `npm run test:e2e`.
+      "e2e/**",
     ],
     env: {
       PATH: process.env.PATH ?? "",

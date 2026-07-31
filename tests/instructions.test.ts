@@ -32,13 +32,21 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("send_to_instance");
   });
 
-  it("keeps user content in reply while preserving an operator-visible failure path", () => {
+  it("tells agents the turn is not done until the conclusion is posted to the channel", () => {
+    // The reply-tool guidance was rewritten from prohibitive ("your terminal text
+    // is NOT delivered") to procedural ("a turn isn't finished until the channel
+    // has your conclusion"). These assertions still named the old phrasing.
     const result = buildFleetInstructions(base);
-    expect(result).toContain("Everything for the user goes inside the `reply` call");
-    expect(result).toContain("NOT delivered to their chat");
-    expect(result).toContain("end the turn with a final\ntext of exactly `.`");
-    expect(result).toContain("if `reply` fails, say so in the final text");
-    expect(result).toContain("After that tool succeeds, likewise end the turn with exactly `.`");
+    expect(result).toContain("A turn isn't finished until the channel has your conclusion");
+    expect(result).toContain("not your terminal text");
+    expect(result).toContain("having a conclusion you never posted is not");
+    expect(result).toContain("close with a short line like `.`");
+  });
+
+  it("routes user replies and instance replies to different tools", () => {
+    const result = buildFleetInstructions(base);
+    expect(result).toContain("reply with the `reply` tool");
+    expect(result).toContain("`send_to_instance` or `report_result`, NOT the `reply` tool");
   });
 
   it("gives CLI-mode agents equivalent delivery and final-text rules", () => {
