@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
-import { outboundHandlers } from "../src/outbound-handlers.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { outboundHandlers, setCrossInstanceRetryForTests } from "../src/outbound-handlers.js";
+
+// Real retry intervals are 30s; keep tests snappy and let background retry chains
+// finish inside the test instead of leaking timers past it.
+beforeEach(() => setCrossInstanceRetryForTests({ retries: 2, intervalMs: 5 }));
+afterEach(() => setCrossInstanceRetryForTests(null));
 
 /**
  * Cross-instance tools must hand the message to the fleet and return immediately.
@@ -17,8 +22,9 @@ function makeContext(opts: { deliver: () => Promise<void>; connected?: string[] 
     sessionRegistry: new Map(),
     lifecycle: { daemons: new Map(), isPaused: vi.fn(() => false) },
     classicChannels: null,
-    eventLog: { logActivity: vi.fn() },
+    eventLog: { logActivity: vi.fn(), insert: vi.fn() },
     deliverToInstance: vi.fn(opts.deliver),
+    notifyInstanceTopic: vi.fn(),
     lastActivityMs: vi.fn(() => 0),
   } as any;
 }
@@ -78,7 +84,7 @@ describe("cross-instance tools are fire-and-queue", () => {
     });
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ queued: true });
-    // The rejection is logged in the background rather than surfaced to the agent.
+    // The rejection triggers background retries rather than surfacing to the agent.
     await vi.waitFor(() => expect(ctx.logger.warn).toHaveBeenCalled());
   });
 
@@ -93,6 +99,61 @@ describe("cross-instance tools are fire-and-queue", () => {
     expect(error).toBeUndefined();
     expect(result).toMatchObject({ queued: true });
     expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it("retries a failed delivery and succeeds without bothering anyone", async () => {
+    // Transient failure — exactly the restart/crash-loop window the retry exists
+    // for. The recipient gets the message on attempt 2; no notification needed.
+    let calls = 0;
+    const ctx = makeContext({
+      deliver: () => (++calls === 1 ? Promise.reject(new Error("IPC gone")) : Promise.resolve()),
+    });
+
+    await callTool("send_to_instance", ctx, { instance_name: "target", message: "hello" });
+
+    await vi.waitFor(() => expect(ctx.deliverToInstance).toHaveBeenCalledTimes(2));
+    expect(ctx.notifyInstanceTopic).not.toHaveBeenCalled();
+    expect(ctx.logger.error).not.toHaveBeenCalled();
+  });
+
+  it("tells both topics and the event log when every retry fails", async () => {
+    // This used to die in a single warn-level log line: the sender believed it
+    // delivered, the recipient never got it, and no human was told.
+    const ctx = makeContext({ deliver: () => Promise.reject(new Error("IPC gone")) });
+
+    const { result } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "hello",
+    });
+    const correlationId = result.correlation_id as string;
+
+    // 1 initial + 2 retries (test config), then give up loudly.
+    await vi.waitFor(() => expect(ctx.notifyInstanceTopic).toHaveBeenCalledTimes(2));
+    expect(ctx.deliverToInstance).toHaveBeenCalledTimes(3);
+
+    const topics = ctx.notifyInstanceTopic.mock.calls.map((c: unknown[]) => c[0]);
+    expect(topics).toContain("sender");
+    expect(topics).toContain("target");
+    const notice = ctx.notifyInstanceTopic.mock.calls[0][1] as string;
+    expect(notice).toContain("could not be delivered");
+    expect(notice).toContain(correlationId);
+
+    expect(ctx.eventLog.insert).toHaveBeenCalledWith(
+      "target",
+      "cross_instance_delivery_failed",
+      expect.objectContaining({ from: "sender", correlation_id: correlationId }),
+    );
+    expect(ctx.logger.error).toHaveBeenCalled();
+  });
+
+  it("broadcast targets get the same retry-and-report treatment", async () => {
+    const ctx = makeContext({ deliver: () => Promise.reject(new Error("IPC gone")), connected: ["a"] });
+    ctx.fleetConfig.instances = { sender: {}, a: {} };
+
+    const { result } = await callTool("broadcast", ctx, { message: "all hands", targets: ["a"] });
+    expect(result).toMatchObject({ queued: true, count: 1 });
+
+    await vi.waitFor(() => expect(ctx.notifyInstanceTopic).toHaveBeenCalled());
+    expect(ctx.deliverToInstance).toHaveBeenCalledTimes(3);
   });
 
   it("broadcast responds immediately and reports unreachable targets as failed", async () => {
