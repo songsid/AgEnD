@@ -276,6 +276,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private healthServer: Server | null = null;
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
+  /** Days of event/activity history to keep. */
+  private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
 
@@ -1049,7 +1052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const pidPath = join(this.dataDir, "fleet.pid");
     writeFileSync(pidPath, String(process.pid), "utf-8");
 
-    this.eventLog = new EventLog(join(this.dataDir, "events.db"));
+    this.eventLog = this.openEventLog();
 
     // Initialize classic channel manager. The primary adapter (channels[0])
     // migrates legacy single-bot entries and names without a suffix. Classic
@@ -1311,6 +1314,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Signal systemd: generals ready
     sdNotify("READY=1");
     this.watchdogTimer = setInterval(() => sdNotify("WATCHDOG=1"), 30_000);
+
+    // EventLog.prune() existed but was never called, so `events` and `activity`
+    // grew without bound for the life of the install. Prune once at startup and
+    // daily after that; the timer is unref'd so it never holds the loop open.
+    this.pruneEventLog();
+    this.eventLogPruneTimer = setInterval(() => this.pruneEventLog(), 24 * 60 * 60_000);
+    this.eventLogPruneTimer.unref?.();
 
     // Phase 2: Start remaining instances with staggered concurrency
     if (others.length > 0) {
@@ -3619,6 +3629,48 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Open the event log, tolerating a corrupt file.
+   *
+   * `events.db` holds history only — event rows and the activity feed. Nothing the
+   * fleet needs to run depends on it, and every consumer already uses
+   * `this.eventLog?.`. An unguarded `new EventLog(...)` here meant a corrupt or
+   * unreadable history file (a truncated WAL after a hard kill, a full disk)
+   * threw during startAll and the WHOLE FLEET FAILED TO BOOT — trading every
+   * running agent for a file whose only job is reporting.
+   *
+   * So: try, move a bad file aside and retry once with a fresh one, and if even
+   * that fails carry on without an event log.
+   */
+  /** Drop event/activity rows older than the retention window. Best-effort. */
+  private pruneEventLog(): void {
+    try {
+      this.eventLog?.prune(FleetManager.EVENT_LOG_RETENTION_DAYS);
+    } catch (err) {
+      this.logger.warn({ err }, "Event log prune failed");
+    }
+  }
+
+  private openEventLog(): EventLog | null {
+    const dbPath = join(this.dataDir, "events.db");
+    try {
+      return new EventLog(dbPath);
+    } catch (err) {
+      this.logger.error({ err, dbPath }, "events.db unusable — moving it aside and starting a fresh one");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      for (const suffix of ["", "-wal", "-shm"]) {
+        try { renameSync(`${dbPath}${suffix}`, `${dbPath}${suffix}.corrupt-${stamp}`); } catch { /* may not exist */ }
+      }
+      try {
+        return new EventLog(dbPath);
+      } catch (retryErr) {
+        // History is worth losing; a fleet that won't start is not.
+        this.logger.error({ err: retryErr, dbPath }, "Could not open a fresh events.db — continuing without event logging");
+        return null;
+      }
+    }
+  }
+
+  /**
    * Report a fleet-level fault (not attributable to one instance) to the General
    * topic, so the operator learns about it without reading daemon.log.
    *
@@ -5172,6 +5224,7 @@ When users create specialized instances, suggest these configurations:
     this.costGuard?.stop();
     this.dailySummary?.stop();
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
+    if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);

@@ -63,6 +63,7 @@ function profileDb(dataDir: string): Database.Database {
   if (_db && _dbPath === p) return _db;
   const db = new Database(p);
   db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 5000");
   db.exec(`CREATE TABLE IF NOT EXISTS instance_profile (
     instance_name TEXT PRIMARY KEY,
     display_name TEXT,
