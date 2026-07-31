@@ -19,6 +19,7 @@ import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
 import { buildFleetInstructions } from "../instructions.js";
+import { reconnectDelayMs } from "./reconnect-backoff.js";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -62,7 +63,13 @@ let ipcConnected = false;
 let requestCounter = 0;
 let reconnecting = false;
 let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 20; // ~60s of retries
+// Reconnect forever with exponential backoff instead of giving up. There used to
+// be a 20 × 3s = 60s budget, but a fleet restart routinely takes longer (measured
+// 142s on a fleet with ~2k tasks), and an MCP server that exits cannot be
+// respawned mid-session by its client — the agent silently loses every agend tool
+// until the user restarts the CLI. Idle retries cost ~nothing (one unix-socket
+// connect attempt), and isOrphaned() still terminates us when our CLI goes away,
+// so there is no process leak.
 const pendingRequests = new Map<
   number,
   { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
@@ -70,10 +77,16 @@ const pendingRequests = new Map<
 
 function setupIpcListeners(client: IpcClient): void {
   client.on("message", (msg: Record<string, unknown>) => {
-    // Graceful shutdown: daemon tells us it's shutting down — skip reconnect
+    // The daemon broadcasts this on ANY stop — including the stop half of a
+    // restart. Exiting here was the main way a long-lived client lost its tools
+    // permanently: the daemon returned a minute later, but this process was gone
+    // and the MCP client cannot respawn a server mid-session. Stay alive and let
+    // the ensuing disconnect drive the backoff loop; if the fleet is stopped for
+    // good, our own CLI exiting makes isOrphaned() end us.
     if (msg.type === "shutdown") {
-      process.stderr.write("agend: daemon shutting down — exiting gracefully\n");
-      process.exit(0);
+      process.stderr.write("agend: daemon shutting down — will reconnect when it returns\n");
+      ipcConnected = false;
+      return;
     }
 
     if (typeof msg.requestId === "number" && pendingRequests.has(msg.requestId)) {
@@ -133,13 +146,10 @@ function scheduleReconnect(): void {
     process.exit(0);
   }
   reconnectAttempts++;
-  if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-    process.stderr.write(`agend: max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) exceeded — exiting\n`);
-    process.exit(1);
-  }
   reconnecting = true;
-  const delay = 3000;
-  process.stderr.write(`agend: reconnecting in ${delay}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...\n`);
+  // 1s, 2s, 4s … capped at 30s: fast for a blip, calm through a long restart.
+  const delay = reconnectDelayMs(reconnectAttempts);
+  process.stderr.write(`agend: reconnecting in ${delay}ms (attempt ${reconnectAttempts})...\n`);
   setTimeout(() => {
     reconnecting = false;
     connectIpc();
