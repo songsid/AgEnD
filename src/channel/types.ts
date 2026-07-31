@@ -64,6 +64,17 @@ export interface ChannelAdapter extends EventEmitter {
   promptUser(chatId: string, text: string, choices: Choice[], opts?: SendOpts): Promise<string>;
   notifyAlert(chatId: string, alert: AlertData, opts?: SendOpts): Promise<SentMessage>;
 
+  /**
+   * Update an alert's text **in place, keeping its buttons**.
+   *
+   * Needed because `editMessage` cannot be reused here: on Telegram it calls
+   * `editMessageText` without `reply_markup`, and omitting that field CLEARS the
+   * inline keyboard (see `editMessageRemoveButtons`, which relies on exactly that).
+   * So editing a cancel-button message's text with `editMessage` would silently
+   * delete the cancel button. This re-sends the keyboard from `alert.choices`.
+   */
+  editAlert?(chatId: string, messageId: string, alert: AlertData, opts?: SendOpts): Promise<void>;
+
   createTopic?(name: string): Promise<number | string>;
   deleteTopic?(topicId: number | string): Promise<void>;
   topicExists?(topicId: number | string): Promise<boolean>;

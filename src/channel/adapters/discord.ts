@@ -760,6 +760,32 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return this.sendText(chatId, alert.message, opts);
   }
 
+  /**
+   * Edit an alert's text while keeping its buttons.
+   *
+   * discord.js preserves `components` when an edit passes only `content`, so this
+   * could get away with re-using editMessage — but it re-sends the row anyway so the
+   * behaviour is identical on both platforms and does not depend on that detail.
+   * (On Telegram omitting the keyboard actively clears it.)
+   */
+  async editAlert(chatId: string, messageId: string, alert: AlertData, opts?: SendOpts): Promise<void> {
+    const channel = await this._fetchTextChannel(opts?.threadId ?? chatId);
+    const msg = await channel.messages.fetch(messageId);
+    const row = new ActionRowBuilder<ButtonBuilder>();
+    for (const choice of alert.choices ?? []) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(choice.id)
+          .setLabel(choice.label.slice(0, 80))
+          .setStyle(ButtonStyle.Secondary),
+      );
+    }
+    await msg.edit({
+      content: alert.message.slice(0, DISCORD_MAX_LENGTH),
+      ...(row.components.length > 0 ? { components: [row] } : {}),
+    });
+  }
+
   // ── Topology: create channel ────────────────────────────────────────────
 
   private async _resolveCategory(): Promise<string> {

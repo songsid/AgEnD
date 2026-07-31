@@ -114,6 +114,17 @@ const CANCEL_BTN_MAX_RETRIES = 3;
  * buttons no clear trigger reached (e.g. a scheduled/HTTP turn that never called
  * reply). 5min (not the old 2s idle-watch) so Thinking isn't misread as idle. */
 const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
+/**
+ * How often the cancel button's text is refreshed with elapsed working time.
+ *
+ * One edit per working instance per interval — at 60s that is trivial for both
+ * platforms' rate limits, and it reads as a live counter rather than a stale
+ * snapshot. Nothing new is posted, so the channel is never spammed: there is
+ * exactly one progress message per turn, and it is the cancel button itself.
+ */
+const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
+/** Elapsed time is only shown once work has clearly outlasted a quick answer. */
+const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
 
 /** One tracked cancel button. Keyed by messageId in `cancelButtons`, so each
  * button is retired independently — replacing one never strands another. */
@@ -132,6 +143,12 @@ interface CancelButtonEntry {
   /** 5-min idle-check backstop; retires the button once the instance is idle. */
   idleCheckTimer?: ReturnType<typeof setInterval>;
   retiring?: boolean;
+  /** When this button was posted; the live progress text counts from here. */
+  startedAt?: number;
+  /** Periodic in-place text update while the instance is still working (#409). */
+  progressTimer?: ReturnType<typeof setInterval>;
+  /** Last text written, so an unchanged tick skips the API call. */
+  lastProgressText?: string;
 }
 
 interface AdapterCallbackData {
@@ -597,7 +614,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // warm_cap: a fresh transition into idle may free this instance for eviction,
     // or (more usefully) reveal that the fleet is now over cap. Only fire on the
     // edge into idle, not on every idle heartbeat.
-    if (state === "idle" && previous?.state !== "idle") this.enforceWarmCap();
+    if (state === "idle" && previous?.state !== "idle") {
+      this.enforceWarmCap();
+      // The turn is genuinely over — retire the cancel/progress button now rather
+      // than waiting for the 5-minute idle backstop to notice.
+      this.retireInstanceButtons(name);
+    }
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
@@ -2949,8 +2971,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
       if (tool === "reply") {
-        // Agent answered — retire its pending cancel button and mark ✅ done.
-        this.clearCancelButton(instanceName);
+        // A reply is NOT proof the turn is over: on multi-step work an agent
+        // replies ("starting…") and keeps going for many minutes. Retiring the
+        // button here left the channel looking idle with no way to cancel and no
+        // sign anything was happening (#410). Idle state owns retirement now; if the
+        // instance is still working, move the button below the new reply so it stays
+        // the last thing in the channel.
+        if (this.getInstanceIdle(instanceName)) {
+          this.clearCancelButton(instanceName);
+        } else {
+          void this.sendCancelButton(instanceName);
+        }
         this.reactDone(instanceName);
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
         this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
@@ -3988,7 +4019,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         threadId: sent.threadId ?? threadId,
         correlationId,
         retryCount: 0,
+        // Elapsed time is measured from when this button was posted — i.e. from
+        // when the work was handed over — not from the pane's working transition,
+        // which resets if the CLI blips idle mid-turn.
+        startedAt: Date.now(),
       };
+      this.startProgressTicker(entry);
       // Idle-check backstop: every 5min, if the instance is idle, retire the
       // button. Covers turns that end without hitting a clear trigger (reply /
       // cancel / correlation). Cleared in discardButton when the entry is removed.
@@ -4004,6 +4040,63 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (e) {
       this.logger.warn({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
     }
+  }
+
+  /**
+   * The cancel button's text for a given elapsed time.
+   *
+   * Below the threshold it keeps the original wording, so a normal quick answer
+   * looks exactly as it did before. Past it, the button doubles as the live
+   * progress indicator (#409) — the channel showed nothing at all during long work,
+   * and once the agent had replied once there was no sign it was still going.
+   */
+  static progressText(elapsedMs: number): string {
+    if (elapsedMs < PROGRESS_MIN_ELAPSED_MS) return "👀 處理中…";
+    const totalSeconds = Math.floor(elapsedMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    const elapsed = minutes >= 60
+      ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+      : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+    return `⏳ 處理中… (已進行 ${elapsed})`;
+  }
+
+  /**
+   * Refresh the button's text in place while the instance keeps working.
+   *
+   * Uses `editAlert`, NOT `editMessage`: on Telegram the latter omits reply_markup,
+   * and the Bot API treats that as "clear the keyboard" — so editing with it would
+   * delete the very cancel button this is trying to keep alive.
+   */
+  private startProgressTicker(entry: CancelButtonEntry): void {
+    entry.progressTimer = setInterval(() => {
+      if (!this.cancelButtons.has(entry.messageId)) {
+        clearInterval(entry.progressTimer);
+        return;
+      }
+      // Idle means the turn ended; the idle-edge handler retires the button.
+      if (this.getInstanceIdle(entry.instanceName)) return;
+
+      const text = FleetManager.progressText(Date.now() - (entry.startedAt ?? Date.now()));
+      if (text === entry.lastProgressText) return; // nothing changed — skip the API call
+      const adapter = this.getAdapterForInstance(entry.instanceName) ?? this.adapter;
+      if (!adapter?.editAlert) return;
+
+      entry.lastProgressText = text;
+      adapter.editAlert(entry.chatId, entry.messageId, {
+        type: "cancel",
+        instanceName: entry.instanceName,
+        message: text,
+        choices: [{ id: `cancel:${entry.instanceName}`, label: t("cancel.button") }],
+      }, entry.threadId ? { threadId: entry.threadId } : undefined)
+        .catch(err => {
+          // A failed progress edit must never escalate: the button still works and
+          // the next tick retries. Common causes are a deleted message or a
+          // rate limit.
+          this.logger.debug({ err, instanceName: entry.instanceName }, "Progress edit failed");
+        });
+    }, PROGRESS_UPDATE_INTERVAL_MS);
+    entry.progressTimer.unref?.();
   }
 
   /** Retire (delete) every cancel button belonging to an instance. */
@@ -4036,6 +4129,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private discardButton(entry: CancelButtonEntry): void {
     if (entry.retryTimer) clearTimeout(entry.retryTimer);
     if (entry.idleCheckTimer) clearInterval(entry.idleCheckTimer);
+    if (entry.progressTimer) clearInterval(entry.progressTimer);
     this.cancelButtons.delete(entry.messageId);
   }
 
@@ -5352,6 +5446,15 @@ When users create specialized instances, suggest these configurations:
     this.dailySummary?.stop();
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
+    // Cancel-button timers were never cleared here. The idle-check interval is not
+    // unref'd, so it held the event loop open past shutdown and kept retrying
+    // deletes against an adapter that was already gone.
+    for (const entry of [...this.cancelButtons.values()]) {
+      if (entry.retryTimer) clearTimeout(entry.retryTimer);
+      if (entry.idleCheckTimer) clearInterval(entry.idleCheckTimer);
+      if (entry.progressTimer) clearInterval(entry.progressTimer);
+    }
+    this.cancelButtons.clear();
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);
