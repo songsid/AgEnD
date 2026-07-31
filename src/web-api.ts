@@ -244,7 +244,10 @@ export function handleWebRequest(
     const backends = BACKENDS.map(b => {
       let installed = false;
       let binPath = "";
-      try { binPath = execFileSync("which", [b.binary], { stdio: "pipe" }).toString().trim(); installed = true; } catch { /* */ }
+      // Timeout matches the other `which` probe (instance-lifecycle): these are
+      // synchronous and run in the fleet process, so a hung lookup on a broken
+      // PATH entry (a dead NFS mount) would block the event loop indefinitely.
+      try { binPath = execFileSync("which", [b.binary], { stdio: "pipe", timeout: 2000 }).toString().trim(); installed = true; } catch { /* not installed */ }
       return { name: b.name, binary: b.binary, installed, path: binPath };
     });
     json(res, 200, { backends });
