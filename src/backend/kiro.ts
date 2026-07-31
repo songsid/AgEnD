@@ -115,6 +115,18 @@ export class KiroBackend implements CliBackend {
       { pattern: /having trouble responding/i, type: "rate_limit", action: "notify", message: "Rate limit (having trouble responding)" },
       { pattern: /model.*not available|Please use '\/model'/i, type: "model_error", action: "notify", message: "Model unavailable — use /model to switch" },
       { pattern: /Response timed out/i, type: "timeout", action: "notify", message: "Kiro response timed out (generation too long) — please try again", skipCooldown: true, skipRecoveryWait: true },
+      // Session/login expiry. kiro had NO auth pattern, so an expired login was
+      // silent: it kept accepting work and failing every turn. Strings taken from
+      // the kiro-cli binary itself ("You are not logged in, please log in with",
+      // AWS SSO "ExpiredTokenException", "no device registration found for token")
+      // rather than guessed. Deliberately specific — bare "Unauthorized"/"Not
+      // logged in" would false-positive on an agent merely discussing auth code.
+      {
+        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token/i,
+        type: "auth_error",
+        action: "pause",
+        message: "Kiro session expired — run `kiro-cli login` to restore all kiro instances",
+      },
     ];
   }
 
