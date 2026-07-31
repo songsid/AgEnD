@@ -9,7 +9,10 @@ import { OpenCodeBackend } from "../../src/backend/opencode.js";
 import type { CliBackend, CliBackendConfig } from "../../src/backend/types.js";
 
 const INSTANCE_DIR = "/tmp/agend-model-passthrough";
-const UNKNOWN_MODEL = "fable-new-model";
+// Must stay atypical for EVERY backend pattern in the table below, so it can't
+// borrow a real model name — "fable-new-model" broke the moment Fable became a
+// known claude-code model.
+const UNKNOWN_MODEL = "zzz-not-a-real-model";
 
 function config(model: string): CliBackendConfig {
   return {

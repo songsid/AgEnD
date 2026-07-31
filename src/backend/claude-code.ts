@@ -148,6 +148,9 @@ export class ClaudeCodeBackend implements CliBackend {
       { id: "opus", label: "opus" },
       { id: "haiku", label: "haiku" },
       { id: "opusplan", label: "opusplan", description: "opus plans, sonnet executes" },
+      // Capitalised because that is the form verified to work with
+      // `claude --model Fable`; the lowercase alias is unconfirmed.
+      { id: "Fable", label: "Fable", description: "Claude Fable 5" },
     ];
   }
 
