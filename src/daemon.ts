@@ -20,6 +20,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { HangDetector } from "./hang-detector.js";
+import { PaneWriteLock } from "./pane-write-lock.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
 import type { FleetInstructionsParams } from "./instructions.js";
@@ -431,7 +432,13 @@ export class Daemon extends EventEmitter {
   private recentEvents: RotationSnapshotEvent[] = [];
   private recentToolActivity: string[] = [];
   private snapshotConsumed = false;
+  /** Orders inbound channel messages against each other (queue-depth accounting
+   *  and ⏳/👀/✅ reactions live here). It does NOT cover the other writers that
+   *  reach the pane — {@link paneWriteLock} does. */
   private pasteLock: Promise<void> = Promise.resolve();
+  /** Mutual exclusion for *every* write into the pane, whichever subsystem it
+   *  comes from. See PaneWriteLock for why interleaving is destructive. */
+  private readonly paneWriteLock = new PaneWriteLock();
   private pendingInstructionsUpdate: string | undefined;
   private pendingInstructionsNotice = false;
   // Whether the warmup steering-reload notice should be injected after spawn.
@@ -736,7 +743,12 @@ export class Daemon extends EventEmitter {
         } else {
           await new Promise(r => setTimeout(r, 5000));
         }
-        await this.tmux?.pasteText(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
+        // This path only runs when pasteQueueDepth > 0 — i.e. exactly when a real
+        // delivery is already in flight or queued. Without the lock the notice and
+        // that delivery race into the same pane.
+        await this.paneWriteLock.run(async () => {
+          await this.tmux?.pasteText(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
+        });
         // Record the value the agent has now been told about so the next
         // unchanged restart skips the reload.
         try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }
@@ -1241,17 +1253,27 @@ export class Daemon extends EventEmitter {
         // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
         for (const dialog of dialogs) {
           if (!dialog.pattern.test(pane)) continue;
-          this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
-          const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
-          for (const key of dialog.keys) {
-            if (SPECIAL_KEYS.has(key)) {
-              await this.tmux.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
-            } else {
-              await this.tmux.pasteText(key);
+          // These keys go straight into the pane. Sent while a message delivery is
+          // mid-transaction, an `Escape` wipes the pasted text and an `Enter`
+          // submits it half-composed — the user sees a message that vanished. Skip
+          // (not queue) when the pane is busy: this poller runs every 5s, and the
+          // dialog will still be on screen next tick.
+          const dismissed = await this.paneWriteLock.tryRun(async () => {
+            this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
+            const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
+            for (const key of dialog.keys) {
+              if (SPECIAL_KEYS.has(key)) {
+                await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+              } else {
+                await this.tmux!.pasteText(key);
+              }
+              await new Promise(r => setTimeout(r, 200));
             }
-            await new Promise(r => setTimeout(r, 200));
+          });
+          if (!dismissed) {
+            this.logger.debug({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
           }
-          return; // Dialog dismissed, skip error checks this cycle
+          return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
 
         this.evaluateErrorPatterns(pane, patterns, readyPattern);
@@ -1380,6 +1402,12 @@ export class Daemon extends EventEmitter {
    * Interrupt the CLI's current generation (cancel button / `/cancel`).
    * Direct tmux key event (not a paste) so it registers as the interrupt key.
    * kiro-cli interrupts on Ctrl+C; the others (claude-code, codex, …) on Escape.
+   *
+   * Deliberately NOT taken through `paneWriteLock`. Cancel is the user's way out
+   * of a pane that is busy or wedged — queueing it behind the very delivery chain
+   * it exists to unblock would make the button useless exactly when it is needed.
+   * The cost is accepted: an Escape landing between a paste and its Enter discards
+   * that message, which is what the user asked for anyway.
    */
   async sendEscape(): Promise<void> {
     const cancelKey = this.backend?.getCancelKey() ?? "Escape";
@@ -2051,6 +2079,28 @@ export class Daemon extends EventEmitter {
       }
     }
 
+    // Everything above is *waiting*; everything below *writes*. Only the write is
+    // held under the pane lock — holding it across the idle wait (up to 30 min)
+    // would starve the runtime-dialog dismisser, which is often the very thing
+    // that would let the pane go idle again.
+    return this.paneWriteLock.run(() =>
+      this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status));
+  }
+
+  /**
+   * The write half of a delivery: paste → Enter → confirm, with retries.
+   *
+   * Always called under {@link paneWriteLock}. Split out from `deliverMessage`
+   * precisely so the lock's scope is visible at the call site rather than being
+   * an invariant maintained by comments.
+   */
+  private async writeMessageToPane(
+    formatted: string,
+    initialWindowId: string | undefined,
+    handingOffToNativeQueue: boolean,
+    status?: { chatId: string; messageId: string },
+  ): Promise<boolean> {
+    let windowId = initialWindowId;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
@@ -2578,7 +2628,9 @@ export class Daemon extends EventEmitter {
     // Small delay to let the CLI fully render its ready prompt
     await new Promise(r => setTimeout(r, 1_000));
     try {
-      await this.tmux.pasteText(`[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`);
+      // Messages can arrive during a restart and be queued on pasteLock before the
+      // snapshot lands; both write to the pane, so both go through the same lock.
+      await this.paneWriteLock.run(() => this.tmux!.pasteText(`[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`));
       this.logger.info("Injected session snapshot as first message");
       this.emit("snapshot_injected", this.name);
     } catch (err) {
@@ -2780,14 +2832,19 @@ export class Daemon extends EventEmitter {
         for (const dialog of startupDialogs) {
           if (dialog.pattern.test(pane)) {
             this.logger.debug(`Dismissing startup dialog: ${dialog.description}`);
-            for (const key of dialog.keys) {
-              if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
-                await this.tmux!.sendSpecialKey(key);
-              } else {
-                await this.tmux!.sendKeys(key);
+            // Restart is exactly when inbound messages pile up, and nothing gates
+            // delivery on `spawning`. Take the pane lock for the key sequence so a
+            // queued message cannot be pasted into a half-dismissed trust dialog.
+            await this.paneWriteLock.run(async () => {
+              for (const key of dialog.keys) {
+                if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
+                  await this.tmux!.sendSpecialKey(key);
+                } else {
+                  await this.tmux!.sendKeys(key);
+                }
+                await new Promise(r => setTimeout(r, 200));
               }
-              await new Promise(r => setTimeout(r, 200));
-            }
+            });
             // Wait for next screen to render
             if (this.controlClient) {
               const wid = readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
