@@ -1,58 +1,22 @@
 import { EventEmitter } from "node:events";
 
-export class HangDetector extends EventEmitter {
-  private lastActivityTs = 0;
-  private lastStatuslineTs = 0;
-  private lastInboundTs = 0;
-  private hungEmitted = false;
-  private checkTimer: ReturnType<typeof setInterval> | null = null;
-  private timeoutMs: number;
-
-  constructor(timeoutMinutes: number) {
-    super();
-    this.timeoutMs = timeoutMinutes * 60 * 1000;
-  }
-
-  recordActivity(): void {
-    this.lastActivityTs = Date.now();
-    if (this.hungEmitted) {
-      this.hungEmitted = false;
-    }
-  }
-
-  recordInbound(): void {
-    this.lastInboundTs = Date.now();
-  }
-
-  recordStatuslineUpdate(): void {
-    this.lastStatuslineTs = Date.now();
-  }
-
-  isHung(): boolean {
-    if (this.lastActivityTs === 0) return false;
-    if (this.lastInboundTs === 0) return false;
-    const now = Date.now();
-    // Only flag as hung if:
-    // 1. There's an inbound that hasn't been answered (no activity since inbound)
-    // 2. Timeout has elapsed since that inbound
-    const noActivitySinceInbound = this.lastActivityTs < this.lastInboundTs;
-    const stale = now - this.lastInboundTs > this.timeoutMs;
-    return stale && noActivitySinceInbound;
-  }
-
-  start(intervalMs = 60_000): void {
-    this.checkTimer = setInterval(() => {
-      if (this.isHung() && !this.hungEmitted) {
-        this.hungEmitted = true;
-        this.emit("hang");
-      }
-    }, intervalMs);
-  }
-
-  stop(): void {
-    if (this.checkTimer) {
-      clearInterval(this.checkTimer);
-      this.checkTimer = null;
-    }
-  }
-}
+/**
+ * Carries "this instance looks hung" from the daemon to the fleet manager.
+ *
+ * It is only an event bridge. Hang detection itself lives in the daemon's pane-state
+ * machine, which emits `hang` directly when a pane stops changing for the configured
+ * stuck timeout; `instance-lifecycle` subscribes to that and notifies.
+ *
+ * It used to also contain a silence-timer state machine — `start()`, `isHung()`,
+ * `hungEmitted`, and timestamps fed by `recordActivity` / `recordInbound` /
+ * `recordStatuslineUpdate`. None of it ran: `start()` was never called from
+ * anywhere, so `isHung()` was unreachable, the timestamps were written and never
+ * read, and the constructor's `timeoutMinutes` was ignored (the real stuck timeout
+ * is read separately by the pane monitor). Its tests exercised that dead logic —
+ * two had identical setup with contradictory expectations, which can only pass
+ * unnoticed when neither runs against anything real.
+ *
+ * Kept as a named class rather than a bare EventEmitter so the daemon → lifecycle
+ * wiring stays typed and greppable.
+ */
+export class HangDetector extends EventEmitter {}

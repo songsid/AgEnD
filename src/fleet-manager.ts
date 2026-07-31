@@ -186,7 +186,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
-  /** @deprecated Use lifecycle.daemons — kept for backward compat */
+  /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   private rawFleetConfig: RawFleetConfig = {};
