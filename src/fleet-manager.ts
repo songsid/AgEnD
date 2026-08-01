@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
+import { ReplyDeduper } from "./reply-dedup.js";
 import { isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -312,6 +313,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // reply, on cancel, or when a newer button supersedes it for the same
   // instance. Per-button tracking means a failed delete never strands a button.
   private cancelButtons = new Map<string, CancelButtonEntry>();
+  /** Duplicate-reply suppression across both the MCP and HTTP reply paths. */
+  readonly replyDeduper = new ReplyDeduper();
   /** instanceName → what it is doing right now, when the backend can tell us. */
   private instanceActivity = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
@@ -3223,35 +3226,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       threadId = undefined;
     }
 
+    // Reply dedup: retries land here when the agent was told a send failed
+    // (daemon budget elapsed, shell tool killed) while the adapter send was
+    // still in flight and about to succeed. One real send, everyone gets its
+    // outcome; a genuinely failed send clears the entry so a retry passes.
+    if (tool === "reply") {
+      const ticket = this.replyDeduper.begin(
+        instanceName,
+        String(args.text ?? ""),
+        Array.isArray(args.files) ? args.files as string[] : [],
+      );
+      if (ticket.duplicate) {
+        this.logger.info({ instanceName }, "Duplicate reply suppressed — replaying the original send's outcome");
+        ticket.subscribe(respond);
+        return;
+      }
+      const original = respond;
+      const respondAndRecord = (result: unknown, error?: string) => {
+        ticket.complete(result, error);
+        original(result, error);
+      };
+      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord)) {
+        this.afterReplyRouted(instanceName, args, senderSessionName);
+        return;
+      }
+      // routeToolCall knows "reply"; not handling it means the world changed.
+      ticket.complete(null, "reply not handled");
+      original(null, "reply not handled");
+      return;
+    }
+
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
-      if (tool === "reply") {
-        // A reply is NOT proof the turn is over (#410) — but it is not proof of
-        // more work either. Split the difference: an instance that is clearly
-        // idle loses the button now; one that looks busy keeps it (re-posted
-        // below the reply so it stays last in the channel), with a 2-minute
-        // grace check — if it has NOT resumed working by then, the reply was the
-        // end of the turn and the button goes. A multi-step run that keeps
-        // working sails through the check and keeps its button.
-        if (this.getInstanceIdle(instanceName)) {
-          this.clearCancelButton(instanceName);
-        } else {
-          void this.sendCancelButton(instanceName).then(() => this.armReplyGrace(instanceName));
-        }
-        this.reactDone(instanceName);
-        const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
-        this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
-        this.emitSseEvent("message", {
-          instance: instanceName, sender: senderSessionName ?? instanceName,
-          text: (args.text as string ?? "").slice(0, 2000),
-          ts: new Date().toISOString(),
-        });
-        // Log bot reply to classic instance chat-log
-        const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
-        if (isClassic) {
-          ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
-        }
-      }
       return;
     }
 
@@ -3265,6 +3271,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await handler(this, args, respond, { instanceName, requestId, fleetRequestId, senderSessionName });
     } else {
       respond(null, `Unknown tool: ${tool}`);
+    }
+  }
+
+  /** Side effects of a routed reply: cancel-button lifecycle, logs, SSE, chat log. */
+  private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string): void {
+    // A reply is NOT proof the turn is over (#410) — but it is not proof of
+    // more work either. Split the difference: an instance that is clearly
+    // idle loses the button now; one that looks busy keeps it (re-posted
+    // below the reply so it stays last in the channel), with a 2-minute
+    // grace check — if it has NOT resumed working by then, the reply was the
+    // end of the turn and the button goes. A multi-step run that keeps
+    // working sails through the check and keeps its button.
+    if (this.getInstanceIdle(instanceName)) {
+      this.clearCancelButton(instanceName);
+    } else {
+      void this.sendCancelButton(instanceName).then(() => this.armReplyGrace(instanceName));
+    }
+    this.reactDone(instanceName);
+    const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
+    this.logger.info(`${instanceName} → ${replyTo}: ${(args.text as string ?? "").slice(0, 100)}`);
+    this.emitSseEvent("message", {
+      instance: instanceName, sender: senderSessionName ?? instanceName,
+      text: (args.text as string ?? "").slice(0, 2000),
+      ts: new Date().toISOString(),
+    });
+    // Log bot reply to classic instance chat-log
+    const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
+    if (isClassic) {
+      ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
     }
   }
 
