@@ -551,18 +551,13 @@ export class TopicCommands {
 
   /**
    * `/usage` — AI subscription usage for every CLI backend logged in on this
-   * machine, one compact message. Admin-only like /model: the metrics describe
-   * the operator's accounts (plans, spend caps), not the fleet, and vendors
-   * rate-limit the endpoints behind them, so open access would let any group
-   * member both read billing detail and burn the shared cache window.
+   * machine, one compact message. Same permission level as /ctx (none): whoever
+   * can talk to the fleet may see how much headroom it has left. Vendor rate
+   * limits are protected by the shared 5-minute cache, not by gating callers.
    */
   private async handleUsageCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
-    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
-      await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
-      return;
-    }
     try {
       const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
       const summary = formatUsageSummary(await getUsageSnapshot());
@@ -942,7 +937,7 @@ export class TopicCommands {
                 { command: "collab", description: "🔒 Toggle bot/webhook mode" },
                 { command: "update", description: "🔒 Update AgEnD to latest" },
                 { command: "doctor", description: "🔒 Run health diagnostics" },
-                { command: "usage", description: "🔒 AI subscription usage" },
+                { command: "usage", description: "AI subscription usage" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
