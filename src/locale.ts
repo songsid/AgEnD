@@ -93,7 +93,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "slash.save": "Save the agent's conversation",
     "slash.load": "Load a saved conversation",
     "slash.collab": "Toggle bot/webhook collaboration mode",
-    "slash.status": "Show fleet status and costs",
+    "slash.status": "Fleet status, per-instance costs and health (admin only)",
     "slash.sysinfo": "System diagnostics",
     "slash.restart": "Graceful restart all instances",
     "slash.update": "Update AgEnD to latest version",
