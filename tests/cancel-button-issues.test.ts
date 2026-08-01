@@ -15,6 +15,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 
 type Internals = {
   getInstanceIdle(name: string): boolean;
+  getInstanceStatus(name: string): string;
   getInstanceExecutionState(name: string): string | null;
   instanceStateCache: Map<string, { state: string }>;
   lifecycle: { isPaused(name: string): boolean };
@@ -35,6 +36,10 @@ function makeFleet() {
   const fm = new FleetManager(dir);
   const internals = fm as unknown as Internals;
   internals.lifecycle.isPaused = () => false;
+  // These tests model a LIVE daemon (there is no daemon.pid in a tmp dir, and
+  // the safety net treats a non-running daemon as idle — correctly, but that is
+  // cancel-button-safety-net.test.ts's subject, not this file's).
+  internals.getInstanceStatus = () => "running";
   return { fm, internals };
 }
 
