@@ -15,12 +15,19 @@
  * race. Deriving both from one table is what keeps them from drifting apart again.
  */
 
-/** Tools that spawn a tmux window and a CLI before they can answer. */
+/**
+ * Tools that spawn a tmux window and a CLI before they can answer — plus reply,
+ * whose adapter send can be held well past 30s by Discord's rate limiter (its
+ * REST layer queues 429'd requests instead of failing them). Under the 30s
+ * budget the agent was told the reply timed out while the send was still going
+ * to succeed, and its retry produced the duplicate-reply reports.
+ */
 export const SLOW_TOOLS: ReadonlySet<string> = new Set([
   "start_instance",
   "create_instance",
   "delete_instance",
   "replace_instance",
+  "reply",
 ]);
 
 /**
