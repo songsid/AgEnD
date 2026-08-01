@@ -116,6 +116,14 @@ const CANCEL_BTN_MAX_RETRIES = 3;
  * reply). 5min (not the old 2s idle-watch) so Thinking isn't misread as idle. */
 const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
 /**
+ * How long after a reply an instance gets to resume working before its cancel
+ * button is retired. A short turn ends with a reply and never works again → the
+ * button disappears ~2 minutes after the answer. A multi-step run replies
+ * mid-flight and keeps going → the grace check sees "working" and leaves the
+ * button alone (the idle edge retires it when the run really ends).
+ */
+const REPLY_RETIRE_GRACE_MS = 2 * 60_000;
+/**
  * How often the cancel button's text is refreshed with elapsed working time.
  *
  * One edit per working instance per interval — at 60s that is trivial for both
@@ -163,6 +171,8 @@ interface CancelButtonEntry {
   retryTimer?: ReturnType<typeof setTimeout>;
   /** 5-min idle-check backstop; retires the button once the instance is idle. */
   idleCheckTimer?: ReturnType<typeof setInterval>;
+  /** One-shot post-reply check; retires the button unless work resumed. */
+  replyGraceTimer?: ReturnType<typeof setTimeout>;
   retiring?: boolean;
   /** When this button was posted; the live progress text counts from here. */
   startedAt?: number;
@@ -390,7 +400,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lastActivity.get(name) ?? 0;
   }
 
+  /**
+   * Is the instance between turns?
+   *
+   * Prefers the daemon's pane state machine (debounced, busy-pattern aware) over
+   * the control client's raw 2-second output-silence heuristic. The raw heuristic
+   * reads every >2s output lull as idle — and long silent tools (a build, a test
+   * run) or an LLM pause produce those constantly mid-turn. That misreading is
+   * what retired cancel buttons in the middle of long work (the 5-minute backstop
+   * fired during a lull) and froze their progress text (ticker skipped "idle"
+   * ticks). The silence heuristic remains only as the fallback for instances
+   * whose daemon has not reported a state yet.
+   */
   private getInstanceIdle(name: string): boolean {
+    const state = this.getInstanceExecutionState(name);
+    if (state === "working" || state === "stuck") return false;
+    if (state === "idle") return true;
     try {
       const widFile = join(this.getInstanceDir(name), "window-id");
       if (!existsSync(widFile)) return true;
@@ -3163,16 +3188,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Route standard channel tools (reply, react, edit_message, download_attachment)
     if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
       if (tool === "reply") {
-        // A reply is NOT proof the turn is over: on multi-step work an agent
-        // replies ("starting…") and keeps going for many minutes. Retiring the
-        // button here left the channel looking idle with no way to cancel and no
-        // sign anything was happening (#410). Idle state owns retirement now; if the
-        // instance is still working, move the button below the new reply so it stays
-        // the last thing in the channel.
+        // A reply is NOT proof the turn is over (#410) — but it is not proof of
+        // more work either. Split the difference: an instance that is clearly
+        // idle loses the button now; one that looks busy keeps it (re-posted
+        // below the reply so it stays last in the channel), with a 2-minute
+        // grace check — if it has NOT resumed working by then, the reply was the
+        // end of the turn and the button goes. A multi-step run that keeps
+        // working sails through the check and keeps its button.
         if (this.getInstanceIdle(instanceName)) {
           this.clearCancelButton(instanceName);
         } else {
-          void this.sendCancelButton(instanceName);
+          void this.sendCancelButton(instanceName).then(() => this.armReplyGrace(instanceName));
         }
         this.reactDone(instanceName);
         const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
@@ -4204,8 +4230,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
+    // Resolve the group through the world fallback (first world when unbound),
+    // NOT through getChannelConfig(binding)?.group_id: on a fleet configured with
+    // `channels:` worlds the primary `channel:` block is empty, so an instance
+    // with no world binding yet (fresh restart, cross-instance delegation)
+    // resolved group_id to undefined and the button silently never appeared.
     const adapterId = this.instanceWorldBinding.get(instanceName);
-    const groupId = this.getChannelConfig(adapterId)?.group_id;
+    const groupId = this.getGroupIdForInstance(instanceName) || undefined;
     const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
 
     let chatId: string | undefined;
@@ -4220,7 +4251,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // General / flat fallback: post to the group (no thread).
       if (!chatId && groupId) chatId = String(groupId);
     }
-    if (!chatId) return;
+    if (!chatId) {
+      // A button that cannot be addressed must say so — this exact silence is how
+      // "the cancel button sometimes never appears" stayed unreported-in-logs.
+      this.logger.warn({ instanceName, topicId, groupId }, "Cannot address cancel button (no chat id resolved)");
+      return;
+    }
 
     try {
       const sent = await adapter.notifyAlert(chatId, {
@@ -4249,6 +4285,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // when the work was handed over — not from the pane's working transition,
         // which resets if the CLI blips idle mid-turn.
         startedAt: Date.now(),
+        // Matches the text notifyAlert just posted, so the first 60s tick does
+        // not re-edit identical text — which put a "(edited)" mark on Discord
+        // with nothing visibly changed.
+        lastProgressText: "👀 處理中…",
       };
       this.startProgressTicker(entry);
       // Idle-check backstop: every 5min, if the instance is idle, retire the
@@ -4332,9 +4372,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         clearInterval(entry.progressTimer);
         return;
       }
-      // Idle means the turn ended; the idle-edge handler retires the button.
-      if (this.getInstanceIdle(entry.instanceName)) return;
-
       const text = FleetManager.progressText(
         Date.now() - (entry.startedAt ?? Date.now()),
         this.instanceActivity.get(entry.instanceName),
@@ -4358,6 +4395,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
     }, PROGRESS_UPDATE_INTERVAL_MS);
     entry.progressTimer.unref?.();
+  }
+
+  /**
+   * After a reply: give the instance REPLY_RETIRE_GRACE_MS to resume working; if
+   * it has not, retire its button. Re-arming replaces the previous timer, so a
+   * burst of replies ends with exactly one pending check.
+   */
+  private armReplyGrace(instanceName: string): void {
+    for (const entry of this.cancelButtons.values()) {
+      if (entry.instanceName !== instanceName) continue;
+      if (entry.replyGraceTimer) clearTimeout(entry.replyGraceTimer);
+      entry.replyGraceTimer = setTimeout(() => {
+        entry.replyGraceTimer = undefined;
+        if (!this.cancelButtons.has(entry.messageId)) return;
+        if (!this.getInstanceIdle(instanceName)) return; // resumed — a long run keeps its button
+        this.logger.info({ instanceName, messageId: entry.messageId }, "Cancel button retired — no work resumed after reply");
+        this.retireButton(entry);
+      }, REPLY_RETIRE_GRACE_MS);
+      entry.replyGraceTimer.unref?.();
+    }
   }
 
   /** Retire (delete) every cancel button belonging to an instance. */
@@ -4391,6 +4448,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (entry.retryTimer) clearTimeout(entry.retryTimer);
     if (entry.idleCheckTimer) clearInterval(entry.idleCheckTimer);
     if (entry.progressTimer) clearInterval(entry.progressTimer);
+    if (entry.replyGraceTimer) clearTimeout(entry.replyGraceTimer);
     this.cancelButtons.delete(entry.messageId);
   }
 
