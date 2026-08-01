@@ -187,6 +187,10 @@ export const StopInstanceArgs = z.object({
 
 export const GetFleetStatusArgs = z.object({});
 
+export const GetUsageArgs = z.object({
+  force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
+});
+
 export const GetInstanceLogsArgs = z.object({
   name: NonEmptyString.describe("The instance name to get logs for"),
   lines: z.number().optional().describe("Number of lines to return (default: 50)"),

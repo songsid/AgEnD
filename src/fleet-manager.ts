@@ -1971,6 +1971,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
         await data.respond(await this.runBackendDoctor());
+      } else if (data.command === "usage") {
+        // Admin-gated like /doctor: the metrics describe the operator's accounts
+        // (plans, spend caps), and the reply is ephemeral so only the caller sees it.
+        if (!this.isFleetAdmin(data.userId, adapterId)) {
+          await data.respond(t("not_authorized"));
+          return;
+        }
+        try {
+          const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
+          await data.respond(formatUsageSummary(await getUsageSnapshot()));
+        } catch (err) {
+          await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
+        }
       } else if (data.command === "status") {
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
@@ -2221,6 +2234,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
         await data.respond(await this.runBackendDoctor());
+      } else if (data.command === "usage") {
+        // Admin-gated like /doctor: the metrics describe the operator's accounts
+        // (plans, spend caps), and the reply is ephemeral so only the caller sees it.
+        if (!this.isFleetAdmin(data.userId, adapterId)) {
+          await data.respond(t("not_authorized"));
+          return;
+        }
+        try {
+          const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
+          await data.respond(formatUsageSummary(await getUsageSnapshot()));
+        } catch (err) {
+          await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
+        }
       } else if (data.command === "status") {
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);

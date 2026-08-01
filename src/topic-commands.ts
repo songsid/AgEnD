@@ -292,6 +292,11 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/usage" || text.startsWith("/usage@")) {
+      await this.handleUsageCommand(msg);
+      return true;
+    }
+
     if (text === "/update" || text.startsWith("/update@")) {
       await this.handleUpdateCommand(msg);
       return true;
@@ -542,6 +547,29 @@ export class TopicCommands {
 
     await adapter.sendText(chatId, t("restart.graceful"), { threadId });
     process.kill(process.pid, "SIGUSR2");
+  }
+
+  /**
+   * `/usage` — AI subscription usage for every CLI backend logged in on this
+   * machine, one compact message. Admin-only like /model: the metrics describe
+   * the operator's accounts (plans, spend caps), not the fleet, and vendors
+   * rate-limit the endpoints behind them, so open access would let any group
+   * member both read billing detail and burn the shared cache window.
+   */
+  private async handleUsageCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+      return;
+    }
+    try {
+      const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
+      const summary = formatUsageSummary(await getUsageSnapshot());
+      await adapter.sendText(msg.chatId, summary, { threadId: msg.threadId });
+    } catch (err) {
+      await adapter.sendText(msg.chatId, `⚠️ Usage fetch failed: ${(err as Error).message}`, { threadId: msg.threadId });
+    }
   }
 
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
@@ -914,6 +942,7 @@ export class TopicCommands {
                 { command: "collab", description: "🔒 Toggle bot/webhook mode" },
                 { command: "update", description: "🔒 Update AgEnD to latest" },
                 { command: "doctor", description: "🔒 Run health diagnostics" },
+                { command: "usage", description: "🔒 AI subscription usage" },
               ],
               scope: { type: "chat", chat_id: ch.group_id },
             }),
