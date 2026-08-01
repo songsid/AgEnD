@@ -188,29 +188,46 @@ export class EventLog {
   }
 
   /**
-   * Pending reactions as one compact context line: `👍×2 from hanhanv, ❓×1 from
-   * user2`. Returns null (not an empty string) when there is nothing pending, so
-   * callers add zero context in the common case. `maxId` is what the caller hands
-   * back to markReactionsConsumed — bounding by id keeps a reaction that arrives
-   * DURING delivery pending for the next message instead of being silently eaten.
+   * Pending reactions as compact context, grouped by the message they landed on:
+   *
+   *   msg 1532964272244523028: 👍×2 from hanhanv, ❓ from user2 | msg 1532965…: 👍 from hanhanv
+   *
+   * The message id is the point (#433): the agent's inbound blocks render each of
+   * its own messages' ids, so carrying the id is what lets it tell WHICH of its
+   * messages was reacted to. Within a message, duplicates of the same emoji from
+   * the same user collapse to ×N (a re-added reaction is not new information).
+   *
+   * Returns null (not an empty string) when there is nothing pending, so callers
+   * add zero context in the common case. `maxId` is what the caller hands back to
+   * markReactionsConsumed — bounding by id keeps a reaction that arrives DURING
+   * delivery pending for the next message instead of being silently eaten.
    */
   pendingReactions(instance: string): { summary: string; maxId: number } | null {
     const rows = this.db
-      .prepare("SELECT id, username, emoji FROM reactions WHERE instance_name = ? AND consumed_at IS NULL ORDER BY id")
-      .all(instance) as Array<{ id: number; username: string; emoji: string }>;
+      .prepare("SELECT id, message_id, username, emoji FROM reactions WHERE instance_name = ? AND consumed_at IS NULL ORDER BY id")
+      .all(instance) as Array<{ id: number; message_id: string; username: string; emoji: string }>;
     if (rows.length === 0) return null;
 
-    const counts = new Map<string, number>();
+    // message_id → (emoji+user → count), both insertion-ordered so the summary
+    // reads in arrival order.
+    const byMessage = new Map<string, Map<string, number>>();
     for (const row of rows) {
+      const counts = byMessage.get(row.message_id) ?? new Map<string, number>();
       const key = `${row.emoji}\u0000${row.username}`;
       counts.set(key, (counts.get(key) ?? 0) + 1);
+      byMessage.set(row.message_id, counts);
     }
-    const parts: string[] = [];
-    for (const [key, count] of counts) {
-      const [emoji, username] = key.split("\u0000");
-      parts.push(count > 1 ? `${emoji}×${count} from ${username}` : `${emoji} from ${username}`);
+
+    const groups: string[] = [];
+    for (const [messageId, counts] of byMessage) {
+      const parts: string[] = [];
+      for (const [key, count] of counts) {
+        const [emoji, username] = key.split("\u0000");
+        parts.push(count > 1 ? `${emoji}×${count} from ${username}` : `${emoji} from ${username}`);
+      }
+      groups.push(`msg ${messageId}: ${parts.join(", ")}`);
     }
-    return { summary: parts.join(", "), maxId: rows[rows.length - 1].id };
+    return { summary: groups.join(" | "), maxId: rows[rows.length - 1].id };
   }
 
   /** Mark reactions up to `maxId` as shown. Call only after the delivery succeeded. */
