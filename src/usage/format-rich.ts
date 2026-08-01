@@ -54,7 +54,12 @@ function metricLine(m: UsageMetric): MetricLine | null {
   const pct = metricPercent(m);
   switch (m.type) {
     case "percent":
-      return { bar: usageBar(pct ?? 0), text: `${Math.round(m.used ?? 0)}% ${m.label}${resetSuffix(m.resetsAt)}` };
+      return {
+        bar: usageBar(pct ?? 0),
+        // note explains WHICH number this is (e.g. "busiest of 8 models"); it is
+        // what stops a legitimate 0% from reading as a broken meter.
+        text: `${Math.round(m.used ?? 0)}% ${m.label}${m.note ? ` (${m.note})` : ""}${resetSuffix(m.resetsAt)}`,
+      };
     case "dollars": {
       const used = `$${(m.used ?? 0).toFixed(2)}`;
       return m.limit

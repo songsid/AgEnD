@@ -263,7 +263,7 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
     "3p-5h": "Claude & others (session)", "3p-weekly": "Claude & others (weekly)",
   };
   const direct: UsageMetric[] = [];
-  const pools = new Map<string, { fraction: number; resetsAt: string | null }>();
+  const pools = new Map<string, { fraction: number; resetsAt: string | null; models: number }>();
   for (const b of buckets) {
     if (!b.bucketId || typeof b.remainingFraction !== "number" || !Number.isFinite(b.remainingFraction)) continue;
     const reset = b.resetTime ?? null;
@@ -274,26 +274,64 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
     }
     const pool = b.bucketId.startsWith("gemini") ? "Gemini" : "Claude & others";
     const existing = pools.get(pool);
-    if (!existing || b.remainingFraction < existing.fraction) {
-      pools.set(pool, { fraction: b.remainingFraction, resetsAt: reset });
+    if (!existing) {
+      pools.set(pool, { fraction: b.remainingFraction, resetsAt: reset, models: 1 });
+      continue;
+    }
+    // Count every model in the pool; track the worst separately. Replacing the
+    // whole entry on a new worst would restart the count at that bucket.
+    existing.models += 1;
+    if (b.remainingFraction < existing.fraction) {
+      existing.fraction = b.remainingFraction;
+      existing.resetsAt = reset;
     }
   }
   if (direct.length) return direct;
   return [...pools.entries()].map(([label, p]) => ({
-    label, type: "percent" as const, used: (1 - p.fraction) * 100, resetsAt: p.resetsAt,
+    label,
+    type: "percent" as const,
+    used: (1 - p.fraction) * 100,
+    resetsAt: p.resetsAt,
+    // Which number this is: the highest usage across the pool's models. Without
+    // it a flat 0% right after a weekly rollover is indistinguishable from a
+    // broken reading — which is exactly how it was reported.
+    note: `busiest of ${p.models} model${p.models === 1 ? "" : "s"}`,
   }));
+}
+
+interface AgyStoredToken { access_token?: string; refresh_token?: string; expiry?: string; expiry_date?: number }
+
+/**
+ * agy's token file, in either shape.
+ *
+ * This machine writes it nested (`{ token: {...}, id_token, auth_method }`),
+ * which is what the provider was built against. Flat (`{ access_token, ... }`)
+ * is accepted too — it costs one `??` and other installs or future agy versions
+ * may differ. `expiry_date` (epoch ms, the shape ~/.gemini/oauth_creds.json
+ * uses) is read alongside `expiry` (RFC3339) for the same reason.
+ */
+export function readAgyToken(file: unknown): AgyStoredToken {
+  const f = (file ?? {}) as { token?: AgyStoredToken } & AgyStoredToken;
+  const nested = f.token;
+  return nested?.access_token || nested?.refresh_token ? nested : f;
+}
+
+/** RFC3339 `expiry` or epoch-ms `expiry_date`, whichever the file carries. */
+function agyExpiryMs(t: AgyStoredToken): number {
+  if (typeof t.expiry_date === "number" && Number.isFinite(t.expiry_date)) return t.expiry_date;
+  return t.expiry ? new Date(t.expiry).getTime() : 0;
 }
 
 async function agyAccessToken(): Promise<{ token: string } | { error: string } | null> {
   const home = process.env.GEMINI_HOME || join(homedir(), ".gemini");
-  let file: { token?: { access_token?: string; refresh_token?: string; expiry?: string } };
+  let raw: unknown;
   try {
-    file = JSON.parse(await readFile(join(home, ...AGY_TOKEN_FILE), "utf8"));
+    raw = JSON.parse(await readFile(join(home, ...AGY_TOKEN_FILE), "utf8"));
   } catch {
     return null; // no agy login on this machine
   }
-  const t = file.token ?? {};
-  const expiryMs = t.expiry ? new Date(t.expiry).getTime() : 0;
+  const t = readAgyToken(raw);
+  const expiryMs = agyExpiryMs(t);
   if (t.access_token && expiryMs > Date.now() + 60_000) return { token: t.access_token };
   if (agyTokenCache && agyTokenCache.until > Date.now()) return { token: agyTokenCache.token };
 
