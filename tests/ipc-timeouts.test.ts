@@ -36,7 +36,9 @@ describe("the MCP ceiling is strictly above the daemon budget", () => {
 
 describe("budgets by tool class", () => {
   it("gives an ordinary tool the default budget", () => {
-    expect(daemonBudgetMs("reply")).toBe(DEFAULT_IPC_BUDGET_MS);
+    // reply moved to SLOW_TOOLS (Discord rate-limit stalls exceed 30s while the
+    // send still succeeds — the timeout-then-retry made duplicate replies).
+    expect(daemonBudgetMs("react")).toBe(DEFAULT_IPC_BUDGET_MS);
   });
 
   it("gives instance-spawning tools the slow budget", () => {
