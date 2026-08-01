@@ -73,32 +73,72 @@ function claudeResetIso(value: unknown): string | null {
   return null;
 }
 
-async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");
-  let oauth: { accessToken?: string; expiresAt?: number; subscriptionType?: string; rateLimitTier?: string };
-  try {
-    oauth = JSON.parse(await readFile(join(home, ".credentials.json"), "utf8")).claudeAiOauth;
-    if (!oauth?.accessToken) throw new Error("no token");
-  } catch {
-    return { status: "no-credentials", hint: "Log in with the Claude Code CLI (`claude`).", metrics: [] };
-  }
-
+/**
+ * Where the Claude OAuth bearer comes from, in preference order:
+ *
+ * 1. `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`) when present and
+ *    unexpired — the interactive `/login` flow. Carries plan metadata.
+ * 2. `CLAUDE_CODE_OAUTH_TOKEN` — the long-lived (annual) token minted by
+ *    `claude setup-token`. Users on this flow often have NO credentials file at
+ *    all (or a stale one from an old login), which is why /usage showed them
+ *    "not logged in" / "token expired" while their CLI worked fine. Same token
+ *    family (`sk-ant-oat…`), same usage endpoint; it just carries no plan
+ *    metadata, so plan shows unknown.
+ * 3. An expired file token with no env fallback stays an explicit error.
+ * 4. `ANTHROPIC_API_KEY` alone is named in the hint but NOT used: console API
+ *    keys are pay-per-token and have no subscription usage to query — the OAuth
+ *    endpoint rejects them, and pretending otherwise would render a misleading
+ *    error instead of an accurate "log in" hint.
+ */
+export function resolveClaudeAuth(
+  file: { accessToken?: string; expiresAt?: number; subscriptionType?: string; rateLimitTier?: string } | null,
+  env: NodeJS.ProcessEnv = process.env,
+): { token: string; plan: string | null } | { error: string; plan: string | null } | null {
   let plan: string | null = null;
-  if (oauth.subscriptionType?.trim()) {
-    plan = oauth.subscriptionType.trim().replace(/^./, c => c.toUpperCase());
-    const tier = oauth.rateLimitTier?.match(/\d+x/);
+  if (file?.subscriptionType?.trim()) {
+    plan = file.subscriptionType.trim().replace(/^./, c => c.toUpperCase());
+    const tier = file.rateLimitTier?.match(/\d+x/);
     if (tier) plan += ` ${tier[0]}`;
   }
 
-  if (oauth.expiresAt && oauth.expiresAt < Date.now()) {
-    return { status: "error", plan, error: "Access token expired. Run `claude` once to refresh it.", metrics: [] };
+  const fileFresh = !!file?.accessToken && !(file.expiresAt && file.expiresAt < Date.now());
+  if (file?.accessToken && fileFresh) return { token: file.accessToken.trim(), plan };
+
+  const envToken = env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (envToken) return { token: envToken, plan };
+
+  if (file?.accessToken) {
+    return { error: "Access token expired. Run `claude` once to refresh it.", plan };
   }
+  return null;
+}
+
+async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");
+  let file: { accessToken?: string; expiresAt?: number; subscriptionType?: string; rateLimitTier?: string } | null;
+  try {
+    file = JSON.parse(await readFile(join(home, ".credentials.json"), "utf8")).claudeAiOauth ?? null;
+  } catch {
+    file = null;
+  }
+
+  const auth = resolveClaudeAuth(file);
+  if (auth === null) {
+    const hint = process.env.ANTHROPIC_API_KEY
+      ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
+      : "Log in with the Claude Code CLI (`claude`).";
+    return { status: "no-credentials", hint, metrics: [] };
+  }
+  if ("error" in auth) {
+    return { status: "error", plan: auth.plan, error: auth.error, metrics: [] };
+  }
+  const plan = auth.plan;
 
   let res: Response;
   try {
     res = await fetch(CLAUDE_USAGE_URL, {
       headers: {
-        Authorization: `Bearer ${oauth.accessToken.trim()}`,
+        Authorization: `Bearer ${auth.token}`,
         Accept: "application/json",
         "Content-Type": "application/json",
         "anthropic-beta": "oauth-2025-04-20",
