@@ -6,6 +6,7 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
+import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1743,6 +1744,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instances: { configured: number; running: number; crashed: number; paused: number; stopped: number };
     adapters: { total: number; connected: number; states: Record<string, string> };
     startupComplete: boolean;
+    /** See process-memory.ts: the fleet process and the whole service cgroup are
+     *  reported separately because they differ by ~60x and only one of them can
+     *  show a fleet-manager leak. */
+    memory: FleetMemory;
     problems: string[];
   } {
     const names = Object.keys(this.fleetConfig?.instances ?? {});
@@ -1782,6 +1787,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instances: counts,
       adapters: { total: this.adapterState.size, connected, states },
       startupComplete: this.startupComplete,
+      memory: readFleetMemory(),
       problems,
     };
   }
