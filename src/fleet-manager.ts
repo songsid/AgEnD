@@ -5060,6 +5060,13 @@ When users create specialized instances, suggest these configurations:
       }
     }
 
+    // Classic channels queue reactions like everyone else (#432 stored them, but
+    // this path never attached them — reactions in a ClassicBot channel went into
+    // the DB and were never seen again). Same contract as the topic paths:
+    // consumed only after the delivery succeeded.
+    const reactions = this.pendingReactionsMeta(instanceName);
+    Object.assign(meta, reactions.meta);
+
     try {
       await this.deliverToInstance(instanceName, {
         type: "fleet_inbound",
@@ -5067,6 +5074,7 @@ When users create specialized instances, suggest these configurations:
         targetSession: instanceName,
         meta,
       });
+      reactions.consume();
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Classic wake/delivery failed");
       return;
