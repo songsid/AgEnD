@@ -2,7 +2,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { exec, execFileSync, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { join, basename } from "node:path";
-import { homedir } from "node:os";
+import { homedir, release } from "node:os";
 import { createRequire } from "node:module";
 
 const execAsync = promisify(exec);
@@ -61,6 +61,28 @@ export function parsePauseWakeCommand(text: string): { action: "pause" | "wake";
  * Antigravity (agy) has NO summarizing compact — its only manual context-reset
  * is "/clear" (a full reset; it also auto-summarizes at a token threshold).
  */
+/** os.release(), guarded — purely informational, must never break /sysinfo. */
+function osRelease(): string {
+  try { return release(); } catch { return "?"; }
+}
+
+/**
+ * `tmux -V`, memoised. One short synchronous exec for the lifetime of the
+ * process — /sysinfo is on-demand and rare, and the version cannot change under
+ * a running fleet (the server would have to restart with it).
+ */
+let cachedTmuxVersion: string | null = null;
+function tmuxVersion(): string {
+  if (cachedTmuxVersion === null) {
+    try {
+      cachedTmuxVersion = execFileSync("tmux", ["-V"], { encoding: "utf-8", timeout: 3000 }).trim();
+    } catch {
+      cachedTmuxVersion = "not found";
+    }
+  }
+  return cachedTmuxVersion;
+}
+
 export function compactCommandForBackend(backend: string): string {
   if (backend === "antigravity") return "/clear";
   return "/compact";
@@ -570,6 +592,12 @@ export class TopicCommands {
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
+    // Admin-gated: with the /sysinfo instance table folded in, /status now shows
+    // the whole fleet's per-instance costs and IPC health in one message.
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      await adapter.sendText(msg.chatId, t("cmd.admin_required", "/status"), { threadId: msg.threadId });
+      return;
+    }
     const text = await this.getStatusText();
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
@@ -630,7 +658,10 @@ export class TopicCommands {
             : executionState === "paused" ? "⏸ paused"
               : "—";
       const displayName = this.shortInstanceName(name);
-      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} |`);
+      // IPC reachability moved here from /sysinfo: it is per-instance health, and
+      // /status is now the one place that shows the fleet per instance.
+      const ipc = this.ctx.instanceIpcClients.has(name) ? "✓" : "✗";
+      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
     }
 
     if (rows.length === 0) return "No instances configured.";
@@ -638,8 +669,8 @@ export class TopicCommands {
     const lines = [
       "## Fleet Status",
       "",
-      "| Instance | Backend | Ctx | Cost | Status | State |",
-      "|----------|---------|-----|------|--------|-------|",
+      "| Instance | Backend | Ctx | Cost | Status | State | IPC |",
+      "|----------|---------|-----|------|--------|-------|-----|",
       ...rows,
       "",
       `Paused instances: ${pausedCount}`,
@@ -674,7 +705,14 @@ export class TopicCommands {
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
 
-  /** Get system info as markdown text (shared by TG + DC) */
+  /**
+   * Get system info as markdown text (shared by TG + DC).
+   *
+   * System-level only. The per-instance table (state/IPC/cost) moved to /status,
+   * which was already the fleet-per-instance view — the two tables overlapped on
+   * everything but the IPC column, and each command answered half of "is the
+   * machine fine and are the instances fine".
+   */
   getSysInfoText(): string {
     const info = this.ctx.getSysInfo();
     const upHours = Math.floor(info.uptime_seconds / 3600);
@@ -682,60 +720,19 @@ export class TopicCommands {
     const require = createRequire(import.meta.url);
     const agendVersion = require("../package.json").version ?? "unknown";
 
-    // Rate (claude-code 5h statusline quota) was dropped: on kiro/grok/codex
-    // fleets it was permanently "-", so the column just added noise.
-    const lines: string[] = [
+    return [
       "## System Info",
       "",
       "| Metric | Value |",
       "|--------|-------|",
       `| AgEnD | v${agendVersion} |`,
+      `| OS | ${process.platform} ${osRelease()} (${process.arch}) |`,
+      `| Node | ${process.version} |`,
+      `| tmux | ${tmuxVersion()} |`,
       `| Uptime | ${upHours}h ${upMins}m |`,
       `| Memory | ${info.memory_mb.rss} MB RSS |`,
       `| Heap | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
-      "",
-      "## Instances",
-      "",
-      "| Name | State | IPC | Cost |",
-      "|------|-------|-----|------|",
-    ];
-
-    const fleetNames = new Set(info.instances.map(inst => inst.name));
-    const classicInstances = (this.ctx.classicChannels?.getAll() ?? [])
-      .filter(ch => !fleetNames.has(ch.instanceName))
-      .map(ch => ({
-        name: ch.instanceName,
-        status: this.ctx.getInstanceStatus(ch.instanceName),
-        state: this.ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
-        ipc: this.ctx.instanceIpcClients.has(ch.instanceName),
-        costCents: this.ctx.costGuard?.getDailyCostCents(ch.instanceName) ?? 0,
-        classic: true as const,
-      }));
-    const instances = [
-      ...info.instances.map(inst => ({ ...inst, classic: false as const })),
-      ...classicInstances,
-    ];
-
-    for (const inst of instances) {
-      const executionState = (inst as typeof inst & { state?: "idle" | "working" | "stuck" | null }).state;
-      const displayState = inst.status === "paused" ? "paused"
-        : inst.status === "stopped" || inst.status === "crashed" ? inst.status
-          : executionState ?? "running";
-      const icon = displayState === "idle" ? "🟢"
-        : displayState === "working" ? "🔵"
-          : displayState === "stuck" || displayState === "crashed" ? "🔴"
-            : displayState === "paused" ? "⏸"
-              : displayState === "stopped" ? "⚪" : "🟢";
-      const ipc = inst.ipc ? "✓" : "✗";
-      const displayName = this.shortInstanceName(inst.name);
-      lines.push(`| ${icon} ${displayName} | ${displayState} | ${ipc} | ${formatCents(inst.costCents)} |`);
-    }
-
-    if (info.fleet_cost_limit_cents > 0) {
-      lines.push("", `Fleet cost: ${formatCents(info.fleet_cost_cents)} / ${formatCents(info.fleet_cost_limit_cents)} daily`);
-    }
-
-    return lines.join("\n");
+    ].join("\n");
   }
 
   private async handleUpdateCommand(msg: InboundMessage): Promise<void> {
@@ -925,7 +922,7 @@ export class TopicCommands {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               commands: [
-                { command: "status", description: "Show fleet status and costs" },
+                { command: "status", description: "🔒 Fleet status, per-instance costs and health" },
                 { command: "sysinfo", description: "System diagnostics" },
                 { command: "dashboard", description: "🔒 Get dashboard URLs" },
                 { command: "ctx", description: "Show context usage" },
