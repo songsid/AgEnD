@@ -182,6 +182,32 @@ export class GrokBackend implements CliBackend {
     return /❯|Grok \d|Grok Build/m;
   }
 
+  /**
+   * The live spinner line, which is on screen only while grok is working.
+   *
+   * Needed for the same reason claude-code needed one: the TUI keeps its input box
+   * (and therefore `❯`) on screen the whole time it works, so the ready pattern is
+   * effectively constant-true and `stuck` is unreachable — no hang notification,
+   * and a frozen CLI reported as idle, which clears pending work.
+   *
+   * Measured rather than assumed. I triggered a read-only task on a live grok
+   * instance and sampled its pane every second for 90s: 27 distinct frames, and the
+   * ready pattern matched **every** working frame. The spinner separates them
+   * cleanly — frames 1-25 (working) match this, frames 0 and 26 (before and after)
+   * do not. Captured shapes:
+   *
+   *   ⠹ Waiting for response… 5s        …  ⇣2k [stop]
+   *   ⠼ Thinking… 3.0s                  …  ⇣2k [stop]
+   *
+   * Anchored on the braille spinner glyph, which does not occur in agent prose. The
+   * cost is asymmetric — a false positive on a *stable* pane would pin the instance
+   * in `working` forever — so `◆ Thought for 1.8s` (past tense, no ellipsis) and
+   * `I waited… 30s for the build` are both rejected.
+   */
+  getBusyPattern(): RegExp {
+    return /^[ \t]*[\u2800-\u28FF]\s+\p{L}[^\n]*…\s*\d+(\.\d+)?s\b/mu;
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     // NOTE: "Turn cancelled by user" is NORMAL behaviour (user interrupt), not an
     // error — none of the patterns below match it, and none should be added that do.
