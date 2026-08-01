@@ -169,3 +169,49 @@ describe("error recovery gate honours the busy veto", () => {
     }
   });
 });
+
+describe("AntigravityBackend busy pattern", () => {
+  // CAVEAT (mirrored from the source): no agy instance exists in this fleet and
+  // no agy pipe-pane recording survives on this machine, so unlike the
+  // claude-code/grok patterns these lines derive from the duplicate-reply
+  // incident's reported pane, not from a capture of ours. The asymmetric-cost
+  // rules are the same: a miss restores today's behaviour, a false positive on
+  // stable prose would pin `working`, so the pattern must be narrow.
+  it("marks the reported streaming shapes busy", async () => {
+    const { AntigravityBackend } = await import("../src/backend/antigravity.js");
+    const busy = new AntigravityBackend("/tmp/test").getBusyPattern();
+    for (const line of [
+      "✢ Thinking… 12s",
+      "· Reasoning... (esc to cancel)",
+      "  ✻ Cogitating… 3.5s",
+      "✽ Working... 45s",
+    ]) {
+      expect(busy.test(line), line).toBe(true);
+    }
+  });
+
+  it("rejects prose, completed steps, and the idle screen", async () => {
+    const { AntigravityBackend } = await import("../src/backend/antigravity.js");
+    const backend = new AntigravityBackend("/tmp/test");
+    const busy = backend.getBusyPattern();
+    for (const line of [
+      "· plain bullet point about thinking",     // no ellipsis+timer
+      "✻ Worked for 6m 49s",                     // past tense, no ellipsis
+      "I kept thinking... 12s is a long time",   // prose, not line-leading glyph
+      "────────\n>\n────────\nContext 16% used", // the live idle capture
+      "? for shortcuts",
+    ]) {
+      expect(busy.test(line), line).toBe(false);
+    }
+  });
+
+  it("still finds the idle prompt without the Gemini header", async () => {
+    const { AntigravityBackend } = await import("../src/backend/antigravity.js");
+    const ready = new AntigravityBackend("/tmp/test").getReadyPattern();
+    // The 2026-07-20 live capture: separator, lone prompt, separator. Removing
+    // the constant-true `Gemini` marker must not lose this screen.
+    expect(ready.test("────────\n>\n────────\nContext 16% used")).toBe(true);
+    expect(ready.test("  ◑ 27%")).toBe(true);
+    expect(ready.test("Gemini 3.5 Flash")).toBe(false); // header alone is not idle
+  });
+});
