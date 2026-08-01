@@ -68,7 +68,24 @@ describe("handleInboundReaction stores instead of delivering", () => {
       await internals.handleInboundReaction(reaction({ emoji: "❓", username: "user2", messageId: "msg-3" }));
 
       const pending = internals.eventLog.pendingReactions("alpha");
-      expect(pending?.summary).toBe("👍 from hanhanv, ❓ from user2");
+      expect(pending?.summary).toBe("msg msg-99: 👍 from hanhanv | msg msg-3: ❓ from user2");
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("groups by message and collapses duplicates within one", async () => {
+    // The message id is the point: the agent can match `msg <id>` against the
+    // message_id its own inbound blocks rendered, and know WHICH reply was
+    // reacted to. Repeats of the same emoji on the same message collapse to ×N.
+    const { internals, cleanup } = makeFleet();
+    try {
+      await internals.handleInboundReaction(reaction({ messageId: "msg-A" }));
+      await internals.handleInboundReaction(reaction({ messageId: "msg-A" }));
+      await internals.handleInboundReaction(reaction({ messageId: "msg-B", emoji: "🎉" }));
+
+      expect(internals.eventLog.pendingReactions("alpha")?.summary)
+        .toBe("msg msg-A: 👍×2 from hanhanv | msg msg-B: 🎉 from hanhanv");
     } finally {
       cleanup();
     }
@@ -106,13 +123,14 @@ describe("pending reactions ride the next real message", () => {
       await internals.handleInboundReaction(reaction({ messageId: "msg-100" }));
       await internals.handleInboundReaction(reaction({ emoji: "❓", username: "user2" }));
 
+      const expected = "msg msg-99: 👍 from hanhanv, ❓ from user2 | msg msg-100: 👍 from hanhanv";
       const first = internals.pendingReactionsMeta("alpha");
-      expect(first.meta.pending_reactions).toBe("👍×2 from hanhanv, ❓ from user2");
+      expect(first.meta.pending_reactions).toBe(expected);
 
       // Fetch alone must not consume: a delivery that fails after summarising
       // keeps the reactions queued for the next message.
       const again = internals.pendingReactionsMeta("alpha");
-      expect(again.meta.pending_reactions).toBe("👍×2 from hanhanv, ❓ from user2");
+      expect(again.meta.pending_reactions).toBe(expected);
 
       first.consume();
       expect(internals.pendingReactionsMeta("alpha").meta).toEqual({});
@@ -143,7 +161,7 @@ describe("pending reactions ride the next real message", () => {
       await internals.handleInboundReaction(reaction({ emoji: "🚀", messageId: "msg-7" }));
       inFlight.consume();
 
-      expect(internals.pendingReactionsMeta("alpha").meta.pending_reactions).toBe("🚀 from hanhanv");
+      expect(internals.pendingReactionsMeta("alpha").meta.pending_reactions).toBe("msg msg-7: 🚀 from hanhanv");
     } finally {
       cleanup();
     }
@@ -154,7 +172,7 @@ describe("pending reactions ride the next real message", () => {
     try {
       internals.eventLog.addReaction("beta", "m1", "hanhanv", "👍");
       expect(internals.pendingReactionsMeta("alpha").meta).toEqual({});
-      expect(internals.pendingReactionsMeta("beta").meta.pending_reactions).toBe("👍 from hanhanv");
+      expect(internals.pendingReactionsMeta("beta").meta.pending_reactions).toBe("msg m1: 👍 from hanhanv");
     } finally {
       cleanup();
     }
