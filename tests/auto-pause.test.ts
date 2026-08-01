@@ -219,6 +219,7 @@ describe("paused status visibility", () => {
             : name === "classic-room-1234" ? "idle" : null,
       costGuard: null,
       getAdapterStates: () => new Map(),
+      instanceIpcClients: new Map([["active", {}], ["ready", {}], ["frozen", {}], ["classic-room-1234", {}]]),
       classicChannels: {
         getAll: () => [{ instanceName: "classic-room-1234", name: "room", channelId: "1234" }],
         getBackendByInstance: () => "codex",
@@ -227,30 +228,29 @@ describe("paused status visibility", () => {
 
     const status = await commands.getStatusText();
     expect(status).toContain("Paused instances: 1");
-    expect(status).toContain("| sleeping | codex | - | $0.00 | ⏸ | ⏸ paused |");
-    expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working |");
-    expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle |");
-    expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck |");
-    expect(status).toContain("| classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle |");
+    // IPC column folded in from the old /sysinfo instance table.
+    expect(status).toContain("| sleeping | codex | - | $0.00 | ⏸ | ⏸ paused | ✗ |");
+    expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working | ✓ |");
+    expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
+    expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck | ✓ |");
+    expect(status).toContain("| classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
   });
 
-  it("renders execution state and distinguishes paused from stopped in /sysinfo", () => {
+  it("/sysinfo is system-level only — the instance table moved to /status", () => {
     const commands = new TopicCommands({
       fleetConfig: { defaults: {}, instances: {} },
       getSysInfo: () => ({
-        uptime_seconds: 60,
+        uptime_seconds: 3660,
         memory_mb: { rss: 1, heapUsed: 1, heapTotal: 2 },
         instances: [
           { name: "busy", status: "running", state: "working", ipc: true, costCents: 0, rateLimits: null },
-          { name: "sleeping", status: "paused", state: null, ipc: true, costCents: 0, rateLimits: null },
-          { name: "off", status: "stopped", state: null, ipc: false, costCents: 0, rateLimits: null },
         ],
         fleet_cost_cents: 0,
         fleet_cost_limit_cents: 0,
       }),
       getInstanceStatus: () => "running",
       getInstanceExecutionState: () => "stuck",
-      instanceIpcClients: new Map([["classic-lab-5678", {}]]),
+      instanceIpcClients: new Map(),
       classicChannels: {
         getAll: () => [{ instanceName: "classic-lab-5678", name: "lab", channelId: "5678" }],
       },
@@ -258,9 +258,15 @@ describe("paused status visibility", () => {
     } as any);
 
     const sysinfo = commands.getSysInfoText();
-    expect(sysinfo).toContain("| 🔵 busy | working | ✓ |");
-    expect(sysinfo).toContain("| ⏸ sleeping | paused | ✓ |");
-    expect(sysinfo).toContain("| ⚪ off | stopped | ✗ |");
-    expect(sysinfo).toContain("| 🔴 classic-lab-5678 | stuck | ✓ |");
+    // System facts stay (and OS/Node/tmux are new).
+    expect(sysinfo).toContain("| Uptime | 1h 1m |");
+    expect(sysinfo).toContain(`| Node | ${process.version} |`);
+    expect(sysinfo).toContain("| OS |");
+    expect(sysinfo).toContain("| tmux |");
+    // Instance information is /status's job now — even instances the sys-info
+    // payload still carries must not be rendered here.
+    expect(sysinfo).not.toContain("Instances");
+    expect(sysinfo).not.toContain("busy");
+    expect(sysinfo).not.toContain("classic-lab-5678");
   });
 });
