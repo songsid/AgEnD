@@ -81,6 +81,8 @@ type CrudHandler = (ctx: OutboundContext, instance: string, args: Record<string,
 export interface AgentEndpointContext extends OutboundContext {
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
   readonly dataDir: string;
+  /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
+  readonly replyDeduper?: import("./reply-dedup.js").ReplyDeduper;
   handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
   handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
   handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
@@ -224,7 +226,25 @@ export async function dispatchAgentOperation(
       const fullArgs = { ...args, chat_id: chatId, ...(threadId ? { thread_id: threadId } : {}) };
       const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
         ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
+
+      // Reply dedup, same ledger as the MCP path. The HTTP variant of the race:
+      // the agent's shell tool kills a slow `agend-agent reply` (the adapter send
+      // is waiting out a rate limit and will succeed), the agent re-runs it, and
+      // the channel shows the reply twice.
+      const ticket = tool === "reply"
+        ? ctx.replyDeduper?.begin(
+          instance,
+          String((args as Record<string, unknown>).text ?? ""),
+          Array.isArray((args as Record<string, unknown>).files) ? (args as Record<string, unknown>).files as string[] : [],
+        )
+        : undefined;
+      if (ticket?.duplicate) {
+        ticket.subscribe((result, error) => resolve(error ? { error } : result));
+        return;
+      }
+
       const handled = routeToolCall(adapter, tool, fullArgs, threadId, (result, error) => {
+        if (ticket && !ticket.duplicate) ticket.complete(result, error);
         // A successful reply retires the instance's cancel button — mirroring the
         // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,
         // which replies via POST /agent instead of an MCP tool call) never hit
@@ -232,7 +252,10 @@ export async function dispatchAgentOperation(
         if (!error && tool === "reply") ctx.clearCancelButton?.(instance);
         resolve(error ? { error } : result);
       });
-      if (!handled) resolve({ error: `Unhandled channel tool: ${tool}` });
+      if (!handled) {
+        if (ticket && !ticket.duplicate) ticket.complete(null, "unhandled");
+        resolve({ error: `Unhandled channel tool: ${tool}` });
+      }
     });
   }
 
