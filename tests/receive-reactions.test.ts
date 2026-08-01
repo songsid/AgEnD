@@ -198,6 +198,68 @@ describe("pending reactions ride the next real message", () => {
   });
 });
 
+describe("classic channels get their pending reactions too", () => {
+  it("attaches the summary to forwardToClassicInstance and consumes on success", async () => {
+    // #432 wired the general and topic delivery paths; classic messages go
+    // through forwardToClassicInstance, which did not attach them — reactions in
+    // a ClassicBot channel were stored and never seen again.
+    const { internals, deliver, cleanup } = makeFleet();
+    const fm = internals as unknown as {
+      classicChannels: unknown;
+      forwardToClassicInstance(
+        name: string,
+        text: string,
+        msg: Record<string, unknown>,
+      ): Promise<void>;
+    };
+    fm.classicChannels = {
+      getAdapterIdByInstance: () => "discord",
+      getChannelIdByInstance: () => "chan-1",
+      getContextLines: () => 0,
+    };
+    try {
+      await internals.handleInboundReaction(reaction({ emoji: "🚀" }));
+
+      await fm.forwardToClassicInstance("alpha", "hello", {
+        chatId: "chan-1", messageId: "m1", userId: "u1", username: "hanhanv",
+        source: "discord", timestamp: new Date(),
+      });
+
+      const meta = (deliver.mock.calls[0][1] as { meta: Record<string, string> }).meta;
+      expect(meta.pending_reactions).toBe("msg msg-99: 🚀 from hanhanv");
+      // Delivered → consumed: the next classic message must not repeat it.
+      expect(internals.pendingReactionsMeta("alpha").meta).toEqual({});
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("keeps reactions queued when the classic delivery fails", async () => {
+    const { internals, deliver, cleanup } = makeFleet();
+    deliver.mockRejectedValueOnce(new Error("IPC is unavailable"));
+    const fm = internals as unknown as {
+      classicChannels: unknown;
+      forwardToClassicInstance(name: string, text: string, msg: Record<string, unknown>): Promise<void>;
+    };
+    fm.classicChannels = {
+      getAdapterIdByInstance: () => "discord",
+      getChannelIdByInstance: () => "chan-1",
+      getContextLines: () => 0,
+    };
+    try {
+      await internals.handleInboundReaction(reaction({ emoji: "🚀" }));
+      await fm.forwardToClassicInstance("alpha", "hello", {
+        chatId: "chan-1", messageId: "m1", userId: "u1", username: "hanhanv",
+        source: "discord", timestamp: new Date(),
+      });
+
+      expect(internals.pendingReactionsMeta("alpha").meta.pending_reactions).toContain("🚀");
+    } finally {
+      cleanup();
+    }
+  });
+});
+
 describe("reaction retention", () => {
   it("prunes queued reactions after the retention window", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-react-prune-"));
