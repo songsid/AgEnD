@@ -124,6 +124,24 @@ const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
  */
 const REPLY_RETIRE_GRACE_MS = 2 * 60_000;
 /**
+ * The daemon only broadcasts execution state on TRANSITIONS, so a long
+ * single-state run sends nothing for hours. The idle backstop therefore pokes a
+ * query each tick; a live daemon answers within milliseconds and refreshes the
+ * cache. When nothing has refreshed it for this long despite those pokes, the
+ * reporting chain (daemon, IPC, or state monitor) is dead and a "working" state
+ * from 30 minutes ago proves nothing — the button may be retired.
+ */
+const STATE_REPORT_STALE_MS = 30 * 60_000;
+/**
+ * Unconditional ceiling on a cancel button's life. Deliberately far beyond any
+ * legitimate run (multi-hour tasks are normal on this fleet): everything below
+ * this is decided by real state; a button that somehow survives a full day is
+ * wreckage, stuck or not.
+ */
+const CANCEL_BTN_MAX_LIFETIME_MS = 24 * 60 * 60_000;
+/** Orphaned-button ledger, swept at startup. Lives in the fleet data dir. */
+const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
+/**
  * How often the cancel button's text is refreshed with elapsed working time.
  *
  * One edit per working instance per interval — at 60s that is trivial for both
@@ -277,7 +295,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicIcons: { green?: string; blue?: string; red?: string } = {};
   private lastActivity = new Map<string, number>();
   /** Latest pane-derived execution snapshot reported by each daemon. */
-  private instanceStateCache = new Map<string, InstanceStateSnapshot>();
+  private instanceStateCache = new Map<string, InstanceStateSnapshot & { receivedAt: number }>();
   /** CLI pane status overrides; daemon.pid alone only proves FleetManager lives. */
   private instanceProcessStatus = new Map<string, "crashed" | "stopped">();
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
@@ -393,6 +411,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private finishStartup(): void {
     this.startupComplete = true;
     if (this.reloadPending) this.scheduleReconcile();
+    void this.sweepOrphanedCancelButtons();
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
@@ -413,6 +432,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * whose daemon has not reported a state yet.
    */
   private getInstanceIdle(name: string): boolean {
+    // A daemon that is not running cannot be mid-turn. This is what a stale
+    // "working" cache after a hard daemon kill (SIGKILL/OOM — no IPC crash
+    // report ever arrives) must not override.
+    if (this.getInstanceStatus(name) !== "running") return true;
     const state = this.getInstanceExecutionState(name);
     if (state === "working" || state === "stuck") return false;
     if (state === "idle") return true;
@@ -422,6 +445,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const wid = readFileSync(widFile, "utf-8").trim();
       return wid ? (this.controlClient?.isIdle(wid) ?? true) : true;
     } catch { return true; }
+  }
+
+  /**
+   * True when the instance claims working/stuck but nothing has refreshed that
+   * claim for STATE_REPORT_STALE_MS despite the backstop's per-tick queries.
+   * Measures the CACHE's age, not the button's — a healthy multi-hour run
+   * answers every query and never trips this.
+   */
+  private stateReportDead(name: string): boolean {
+    const cached = this.instanceStateCache.get(name);
+    if (!cached) return false; // no claim to distrust — getInstanceIdle owns this case
+    return Date.now() - cached.receivedAt > STATE_REPORT_STALE_MS;
   }
 
   // ── LifecycleContext bridge methods ──────────────────────────────────────
@@ -660,6 +695,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         msg.stateChangedAt,
         previous?.state === state ? previous.stateChangedAt : now,
       ),
+      // Fleet-manager receipt time, NOT the daemon's observation time: staleness
+      // asks "is anyone still reporting", which only the receiver can date.
+      receivedAt: now,
     });
     for (const check of this.instanceIdleWaiters.get(name) ?? []) check();
     // warm_cap: a fresh transition into idle may free this instance for eviction,
@@ -4296,12 +4334,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // cancel / correlation). Cleared in discardButton when the entry is removed.
       entry.idleCheckTimer = setInterval(() => {
         if (!this.cancelButtons.has(entry.messageId)) { clearInterval(entry.idleCheckTimer); return; }
-        if (this.getInstanceIdle(instanceName)) {
-          this.logger.info({ instanceName, messageId: entry.messageId }, "Cancel button idle backstop retiring");
+        const reason = this.getInstanceIdle(instanceName) ? "idle"
+          : this.stateReportDead(instanceName) ? "state reports stopped"
+            : Date.now() - (entry.startedAt ?? 0) > CANCEL_BTN_MAX_LIFETIME_MS ? "24h ceiling"
+              : null;
+        if (reason) {
+          this.logger.info({ instanceName, messageId: entry.messageId, reason }, "Cancel button backstop retiring");
           this.retireButton(entry);
+          return;
         }
+        // Still looks busy. The daemon only broadcasts on transitions, so ask for
+        // a fresh snapshot — a live daemon's answer refreshes receivedAt and keeps
+        // the staleness check honest; a dead one's silence is the evidence.
+        this.instanceIpcClients.get(instanceName)?.send({
+          type: "query_instance_state", requestId: `cancel-btn-${Date.now()}`,
+        });
       }, CANCEL_BTN_IDLE_CHECK_INTERVAL_MS);
       this.cancelButtons.set(sent.messageId, entry);
+      this.persistCancelButtons();
       this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
     } catch (e) {
       this.logger.warn({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
@@ -4450,6 +4500,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (entry.progressTimer) clearInterval(entry.progressTimer);
     if (entry.replyGraceTimer) clearTimeout(entry.replyGraceTimer);
     this.cancelButtons.delete(entry.messageId);
+    this.persistCancelButtons();
+  }
+
+  /**
+   * Mirror the live buttons to disk. The map is memory-only, so before this a
+   * fleet restart orphaned every button on screen: frozen "處理中…" text and a
+   * click that did nothing, forever. The ledger is tiny (a handful of rows) and
+   * written on every add/remove — no debounce needed at that rate.
+   */
+  private persistCancelButtons(): void {
+    try {
+      const rows = [...this.cancelButtons.values()].map(e => ({
+        instanceName: e.instanceName,
+        adapterId: e.adapterId,
+        chatId: e.chatId,
+        messageId: e.messageId,
+        threadId: e.threadId,
+      }));
+      writeFileSync(join(this.dataDir, CANCEL_BTN_LEDGER_FILE), JSON.stringify(rows));
+    } catch (err) {
+      this.logger.debug({ err }, "Cancel button ledger write failed");
+    }
+  }
+
+  /**
+   * Delete the previous process's buttons. Runs once adapters are up: nothing
+   * from a previous fleet process can still be mid-turn from this process's
+   * point of view, so every ledger row is an orphan by definition.
+   */
+  private async sweepOrphanedCancelButtons(): Promise<void> {
+    const ledgerPath = join(this.dataDir, CANCEL_BTN_LEDGER_FILE);
+    let rows: Array<{ instanceName: string; adapterId?: string; chatId: string; messageId: string; threadId?: string }>;
+    try {
+      if (!existsSync(ledgerPath)) return;
+      rows = JSON.parse(readFileSync(ledgerPath, "utf-8"));
+    } catch {
+      try { unlinkSync(ledgerPath); } catch { /* corrupt ledger — drop it */ }
+      return;
+    }
+    for (const row of rows) {
+      const adapter = (row.adapterId ? this.worlds.get(row.adapterId)?.adapter : undefined)
+        ?? this.getAdapterForInstance?.(row.instanceName) ?? this.adapter;
+      if (!adapter?.deleteMessage) continue;
+      try {
+        await adapter.deleteMessage(row.chatId, row.messageId, row.threadId);
+        this.logger.info({ instanceName: row.instanceName, messageId: row.messageId }, "Swept orphaned cancel button from previous run");
+      } catch (err) {
+        // Best effort: the message may already be gone, or too old to delete.
+        this.logger.debug({ err, messageId: row.messageId }, "Orphaned cancel button sweep failed");
+      }
+    }
+    // The current process owns the ledger from here on.
+    this.persistCancelButtons();
   }
 
   /** Re-attempt a failed button delete up to CANCEL_BTN_MAX_RETRIES times. */
