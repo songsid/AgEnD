@@ -14,14 +14,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
-import { fetchAllUsage, type ProviderUsage } from "./providers.js";
+import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
 }
 
-type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
+export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
 
 const CACHE_MS = 5 * 60 * 1000;
 let cache: { at: number; payload: UsagePayload } | null = null;
@@ -46,6 +46,66 @@ async function usage(force: boolean): Promise<UsagePayload> {
     .then(payload => { cache = { at: Date.now(), payload }; return payload; })
     .finally(() => { inflight = null; });
   return inflight;
+}
+
+/**
+ * The same cached snapshot the HTTP route serves, for in-process callers: the
+ * `/usage` slash command and the `get_usage` MCP tool. One cache for all three
+ * surfaces, because the 5-minute TTL exists to protect vendor rate limits and a
+ * second entry point that bypassed it would defeat that.
+ */
+export function getUsageSnapshot(force = false): Promise<UsagePayload> {
+  return usage(force);
+}
+
+/**
+ * Render a usage payload as one compact chat message.
+ *
+ * Plain text on purpose: it is sent through adapter.sendText with no parse mode,
+ * so any markup would be shown literally. One line per provider; errors and
+ * missing credentials say so inline rather than being silently omitted — "Codex:
+ * not logged in" is information, an absent row is a question.
+ */
+export function formatUsageSummary(payload: UsagePayload): string {
+  const lines: string[] = ["📊 AI subscription usage"];
+  for (const provider of payload.providers) {
+    const name = provider.plan ? `${provider.name} (${provider.plan})` : provider.name;
+    if (provider.status === "no-credentials") {
+      lines.push(`· ${name}: not logged in`);
+      continue;
+    }
+    if (provider.status === "error") {
+      lines.push(`· ${name}: ⚠️ ${provider.error ?? "error"}`);
+      continue;
+    }
+    const parts = provider.metrics.map(formatMetric).filter(Boolean);
+    lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : "no data"}`);
+  }
+  return lines.join("\n");
+}
+
+function formatMetric(m: UsageMetric): string {
+  switch (m.type) {
+    case "percent":
+      return `${m.label} ${Math.round(m.used ?? 0)}%${resetSuffix(m.resetsAt)}`;
+    case "dollars": {
+      const used = `$${(m.used ?? 0).toFixed(2)}`;
+      return m.limit ? `${m.label} ${used}/$${m.limit.toFixed(2)}` : `${m.label} ${used}`;
+    }
+    case "count":
+      return `${m.label} ${m.value ?? "?"}${m.unit ? ` ${m.unit}` : ""}`;
+    case "text":
+      return m.value != null ? `${m.label} ${m.value}` : "";
+  }
+}
+
+function resetSuffix(resetsAt?: string | null): string {
+  if (!resetsAt) return "";
+  const at = new Date(resetsAt);
+  if (Number.isNaN(at.getTime())) return "";
+  const hours = Math.round((at.getTime() - Date.now()) / 3_600_000);
+  if (hours <= 0) return "";
+  return hours >= 48 ? ` (resets in ${Math.round(hours / 24)}d)` : ` (resets in ${hours}h)`;
 }
 
 /** True if the path belongs to the usage feature (so the caller can skip the
