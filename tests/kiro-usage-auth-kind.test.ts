@@ -69,15 +69,26 @@ describe("fetchKiroUsage (no network on these paths)", () => {
   it("an expired token is a friendly sign-in prompt, not an error", async () => {
     seed({ "kirocli:social:token": { ...SOCIAL, expires_at: past() } });
     const r = await fetchKiroUsage();
-    expect(r.status).toBe("no-credentials"); // was "error" → ugly red panel
+    // Was `no-credentials` — but fetchAllUsage FILTERS that status out, so the
+    // whole Kiro row disappeared instead of showing this prompt. `ok` + hint
+    // keeps it on screen; still never a red error.
+    expect(r.status).toBe("ok");
     expect(r.error).toBeUndefined();
     expect(r.hint).toMatch(/kiro-cli/);
   });
 
-  it("says so when there are no credentials at all", async () => {
+  it("stays visible, signed out, when kiro-cli is installed with no login", async () => {
     seed({});
     const r = await fetchKiroUsage();
-    expect(r.status).toBe("no-credentials");
+    // Installed but signed out is actionable state, not absence of the CLI.
+    expect(r.status).toBe("ok");
+    expect(r.hint).toMatch(/signed out/i);
+  });
+
+  it("disappears only when kiro-cli is not installed at all", async () => {
+    process.env.KIRO_CLI_HOME = "/tmp/agend-kiro-not-installed-at-all";
+    const r = await fetchKiroUsage();
+    expect(r.status).toBe("no-credentials"); // the one filtered-out status
     expect(r.hint).toMatch(/Log in/i);
   });
 
