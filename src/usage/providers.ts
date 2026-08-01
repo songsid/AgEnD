@@ -705,17 +705,26 @@ export function kiroAuthKind(token: KiroToken): KiroAuthKind {
     : "builder-id";
 }
 
-function readKiroToken(): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean } {
+/**
+ * `notInstalled` means there is no kiro-cli data directory at all — the only
+ * case where the provider should vanish from the panel. `missing` means kiro-cli
+ * IS installed but no login we recognise is stored: a real state the user needs
+ * to see, not a reason to hide the row.
+ */
+function readKiroToken(): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean; notInstalled?: boolean } {
   const home = process.env.KIRO_CLI_HOME || join(homedir(), ".local", "share", "kiro-cli");
   let db: Database.Database;
   try {
     db = new Database(join(home, "data.sqlite3"), { readonly: true, fileMustExist: true });
   } catch {
-    return { missing: true };
+    return { notInstalled: true };
   }
   try {
-    const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key IN ('kirocli:social:token','codewhisperer:odic:token')").all() as { key: string; value: string }[];
-    const byKey = Object.fromEntries(rows.map(r => [r.key, r.value]));
+    // Read every token-shaped row rather than a fixed pair of keys: kiro names
+    // its auth rows per login type (`kirocli:social:token`,
+    // `codewhisperer:odic:token`, …), and an unlisted one used to read as
+    // "not logged in" — which then removed Kiro from the panel entirely.
+    const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key LIKE '%:token'").all() as { key: string; value: string }[];
     const parse = (raw?: string): KiroToken | null => {
       if (!raw) return null;
       try {
@@ -723,7 +732,8 @@ function readKiroToken(): { token?: KiroToken; kind?: KiroAuthKind; missing?: bo
         return t.access_token ? t : null;
       } catch { return null; }
     };
-    const candidates = [parse(byKey["kirocli:social:token"]), parse(byKey["codewhisperer:odic:token"])]
+    const candidates = rows
+      .map(r => parse(r.value))
       .filter((t): t is KiroToken => t !== null);
     if (candidates.length === 0) return { missing: true };
     // Switching login type leaves the old token behind, so "first key wins"
@@ -753,15 +763,23 @@ function kiroEpochIso(sec: unknown): string | null {
 
 /** Exported for tests: the Q-Pro and expired paths return without any network call. */
 export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const { token, kind, missing } = readKiroToken();
-  if (missing || !token) {
+  const { token, kind, missing, notInstalled } = readKiroToken();
+  if (notInstalled) {
+    // The one case that should disappear from the panel: kiro-cli isn't here.
     return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", metrics: [] };
+  }
+  if (missing || !token) {
+    // Installed but no readable login. Previously indistinguishable from
+    // not-installed, so the whole Kiro row vanished instead of saying this.
+    return { status: "ok", plan: "Kiro", hint: "Signed out — run `kiro-cli` to log in.", metrics: [] };
   }
   const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : null;
   if (expiresAt && expiresAt < Date.now()) {
     // Not an error state: kiro-cli refreshes its own login on next use, and the
     // panel showing a red failure for a routine token rollover is just noise.
-    return { status: "no-credentials", hint: "Sign-in needed — run `kiro-cli` once and it refreshes itself.", metrics: [] };
+    // Still `ok` rather than no-credentials, so the row stays on screen with its
+    // explanation instead of the provider silently disappearing.
+    return { status: "ok", plan: "Kiro", hint: "Sign-in needed — run `kiro-cli` once and it refreshes itself.", metrics: [] };
   }
   if (kind === "q-developer-pro") {
     // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
@@ -894,6 +912,11 @@ export async function fetchAllUsage(): Promise<{ fetchedAt: string; providers: P
   }));
   return {
     fetchedAt: new Date().toISOString(),
+    // `no-credentials` now means exactly "this CLI is not set up on this
+    // machine" — those are hidden. Anything a user could act on (signed out,
+    // token rolled over, no quota for this account type) is reported as `ok`
+    // with a hint by its provider, so it stays on screen. A provider that
+    // vanishes silently is the failure this filter used to cause.
     providers: results.filter(r => r.status !== "no-credentials"),
   };
 }
