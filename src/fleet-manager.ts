@@ -1982,12 +1982,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond(await this.runBackendDoctor());
       } else if (data.command === "usage") {
-        // Admin-gated like /doctor: the metrics describe the operator's accounts
-        // (plans, spend caps), and the reply is ephemeral so only the caller sees it.
-        if (!this.isFleetAdmin(data.userId, adapterId)) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
+        // Same permission level as /ctx (none). The reply is still ephemeral —
+        // the adapter defers non-chat commands that way — so it never spams the
+        // channel either way.
         try {
           const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
           await data.respond(formatUsageSummary(await getUsageSnapshot()));
@@ -2245,12 +2242,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         await data.respond(await this.runBackendDoctor());
       } else if (data.command === "usage") {
-        // Admin-gated like /doctor: the metrics describe the operator's accounts
-        // (plans, spend caps), and the reply is ephemeral so only the caller sees it.
-        if (!this.isFleetAdmin(data.userId, adapterId)) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
+        // Same permission level as /ctx (none). The reply is still ephemeral —
+        // the adapter defers non-chat commands that way — so it never spams the
+        // channel either way.
         try {
           const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
           await data.respond(formatUsageSummary(await getUsageSnapshot()));
