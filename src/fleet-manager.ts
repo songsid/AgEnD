@@ -136,12 +136,6 @@ const PROGRESS_ACTIVITY_MAX_CHARS = 48;
  */
 const IPC_RECONNECT_GRACE_MS = 30_000;
 const IPC_RECONNECT_POLL_MS = 250;
-/**
- * Reactions that count as an explicit approve/reject signal, and are therefore worth
- * waking a paused instance for. Everything else is chatter: delivered only if the
- * instance is already awake, never worth a wake-up plus a full agent turn.
- */
-const REACTION_APPROVAL_EMOJIS = new Set(["👍", "👎"]);
 
 /** One tracked cancel button. Keyed by messageId in `cancelButtons`, so each
  * button is retired independently — replacing one never strands another. */
@@ -2527,15 +2521,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /**
    * A user reacted to one of the bot's messages (#408).
    *
-   * Delivered as a normal inbound so it reuses routing, dedup, the idle gate and
-   * delivery confirmation — nothing new is needed on that path. `message_id`
-   * identifies the bot message that was reacted to, and since the inbound block now
-   * renders message_id, the agent can tell WHICH of its messages this refers to.
-   *
-   * Policy: only the approval emojis wake an instance. A 👍 costing a full agent
-   * turn is acceptable when it means "approved"; every other emoji is chatter and
-   * must not spend a turn, so those are delivered only to an instance that is
-   * already awake (`no_wake`) and dropped for a paused one.
+   * A reaction is context, not a message (#432, reworking #413): it never triggers
+   * an agent turn and never wakes anything. It is queued in the event log and rides
+   * into the instance's NEXT real message as one compact leading line —
+   * `[Recent reactions: 👍×2 from hanhanv]` — after which it is marked consumed.
+   * No pending reactions → no line → zero context spent, which is the common case.
    */
   private async handleInboundReaction(r: InboundReaction): Promise<void> {
     const instanceName = this.resolveSlashTarget(r.threadId ?? r.chatId, r.adapterId);
@@ -2544,35 +2534,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const isApproval = REACTION_APPROVAL_EMOJIS.has(r.emoji);
-    const verb = r.action === "add" ? "reacted" : "removed their reaction";
-    const content = `[reaction:${r.emoji}] ${r.username} ${verb} on your message ${r.messageId}`;
-
     this.eventLog?.logActivity("reaction", r.username, `${r.emoji} ${r.action}`, instanceName);
-
-    try {
-      await this.deliverToInstance(instanceName, {
-        type: "fleet_inbound",
-        content,
-        meta: {
-          chat_id: "",           // not a chat message — must not become the reply target
-          thread_id: "",
-          message_id: r.messageId,
-          user: r.username,
-          user_id: r.userId,
-          source: r.source,
-          ts: r.timestamp.toISOString(),
-          request_kind: "update",
-          requires_reply: "false",
-          // Non-approval reactions never wake a paused instance.
-          ...(isApproval ? {} : { no_wake: "true" }),
-        },
-      });
-    } catch (err) {
-      // A reaction is a nice-to-have signal; failing to deliver one must not be
-      // noisy. The user can always say it in words.
-      this.logger.debug({ err, instanceName, emoji: r.emoji }, "Reaction delivery failed");
+    if (r.action === "add") {
+      this.eventLog?.addReaction(instanceName, r.messageId, r.username, r.emoji);
+    } else {
+      // Withdrawn before anyone saw it → it never happened. See removeReaction.
+      this.eventLog?.removeReaction(instanceName, r.messageId, r.username, r.emoji);
     }
+  }
+
+  /**
+   * The queued-reaction summary for an instance's next real message, or {} when
+   * nothing is pending (the common case must add zero context). The consume
+   * callback is separate from the fetch so reactions are only marked once the
+   * message actually went out — a failed delivery keeps them queued.
+   */
+  private pendingReactionsMeta(instanceName: string): { meta: Record<string, string>; consume: () => void } {
+    const pending = this.eventLog?.pendingReactions(instanceName);
+    if (!pending) return { meta: {}, consume: () => {} };
+    return {
+      meta: { pending_reactions: pending.summary },
+      consume: () => this.eventLog?.markReactionsConsumed(instanceName, pending.maxId),
+    };
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
@@ -2914,6 +2897,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
         this.warnIfRateLimited(generalInstance, msg);
         const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, generalInstance);
+        const generalReactions = this.pendingReactionsMeta(generalInstance);
         try {
           await this.deliverToInstance(generalInstance, {
             type: "fleet_inbound",
@@ -2929,9 +2913,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               adapter_id: msg.adapterId,
               source: msg.source,
               ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
+              ...generalReactions.meta,
               ...extraMeta,
             },
           });
+          generalReactions.consume();
           this.lastInboundUser.set(generalInstance, msg.username);
           this.logger.info(`${msg.username} → ${generalInstance}: ${(text ?? "").slice(0, 100)}`);
           this.eventLog?.logActivity("message", msg.username, (text ?? "").slice(0, 200), generalInstance);
@@ -3014,6 +3000,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.warnIfRateLimited(instanceName, msg);
 
     const { text, extraMeta } = await processAttachments(msg, inboundAdapter, this.logger, instanceName);
+    const reactions = this.pendingReactionsMeta(instanceName);
 
     try {
       await this.deliverToInstance(instanceName, {
@@ -3030,9 +3017,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           adapter_id: msg.adapterId,
           source: msg.source,
           ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
+          ...reactions.meta,
           ...extraMeta,
         },
       });
+      // Only after the message actually went out. A failed delivery keeps the
+      // reactions queued for the retry / the next message.
+      reactions.consume();
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Wake/delivery failed");
       if (msg.chatId && msg.messageId) {

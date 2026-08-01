@@ -61,6 +61,25 @@ export class EventLog {
     `);
     this.insertStmt = this.db.prepare("INSERT INTO events (instance_name, event_type, payload) VALUES (?, ?, ?)");
 
+    // Reaction queue (#432 rework of #408/#413). A reaction is context, not a
+    // message: it no longer triggers an agent turn. It waits here until the next
+    // REAL message to the same instance, rides in as one compact context line,
+    // and is then marked consumed. consumed_at stays (rather than DELETE) so a
+    // delivery that fails after summarising does not lose the reactions — they
+    // are only marked once the message actually went out.
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS reactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_name TEXT NOT NULL,
+        message_id TEXT NOT NULL,
+        username TEXT NOT NULL,
+        emoji TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        consumed_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_reactions_pending ON reactions(instance_name, consumed_at);
+    `);
+
     // Activity log for visualization
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS activity (
@@ -136,6 +155,69 @@ export class EventLog {
     this.db
       .prepare("DELETE FROM activity WHERE timestamp < datetime('now', ?)")
       .run(`-${days} days`);
+    // Reactions have their own, shorter horizon: after REACTION_RETENTION_DAYS a
+    // pending reaction is stale context nobody should be shown, consumed or not.
+    this.db
+      .prepare("DELETE FROM reactions WHERE created_at < datetime('now', ?)")
+      .run(`-${EventLog.REACTION_RETENTION_DAYS} days`);
+  }
+
+  private static REACTION_RETENTION_DAYS = 7;
+
+  /** Queue a reaction for the instance's next real message. */
+  addReaction(instance: string, messageId: string, username: string, emoji: string): void {
+    this.db
+      .prepare("INSERT INTO reactions (instance_name, message_id, username, emoji) VALUES (?, ?, ?, ?)")
+      .run(instance, messageId, username, emoji);
+  }
+
+  /**
+   * A withdrawn reaction is withdrawn context. Deleting the matching pending row
+   * (newest first, one per removal) means an add-then-remove nets out to nothing,
+   * instead of reporting a 👍 the user visibly took back. Already-consumed rows
+   * are left alone — the agent has seen those; history does not un-happen.
+   */
+  removeReaction(instance: string, messageId: string, username: string, emoji: string): void {
+    this.db
+      .prepare(`DELETE FROM reactions WHERE id = (
+        SELECT id FROM reactions
+        WHERE instance_name = ? AND message_id = ? AND username = ? AND emoji = ? AND consumed_at IS NULL
+        ORDER BY id DESC LIMIT 1
+      )`)
+      .run(instance, messageId, username, emoji);
+  }
+
+  /**
+   * Pending reactions as one compact context line: `👍×2 from hanhanv, ❓×1 from
+   * user2`. Returns null (not an empty string) when there is nothing pending, so
+   * callers add zero context in the common case. `maxId` is what the caller hands
+   * back to markReactionsConsumed — bounding by id keeps a reaction that arrives
+   * DURING delivery pending for the next message instead of being silently eaten.
+   */
+  pendingReactions(instance: string): { summary: string; maxId: number } | null {
+    const rows = this.db
+      .prepare("SELECT id, username, emoji FROM reactions WHERE instance_name = ? AND consumed_at IS NULL ORDER BY id")
+      .all(instance) as Array<{ id: number; username: string; emoji: string }>;
+    if (rows.length === 0) return null;
+
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = `${row.emoji}\u0000${row.username}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const parts: string[] = [];
+    for (const [key, count] of counts) {
+      const [emoji, username] = key.split("\u0000");
+      parts.push(count > 1 ? `${emoji}×${count} from ${username}` : `${emoji} from ${username}`);
+    }
+    return { summary: parts.join(", "), maxId: rows[rows.length - 1].id };
+  }
+
+  /** Mark reactions up to `maxId` as shown. Call only after the delivery succeeded. */
+  markReactionsConsumed(instance: string, maxId: number): void {
+    this.db
+      .prepare("UPDATE reactions SET consumed_at = datetime('now') WHERE instance_name = ? AND id <= ? AND consumed_at IS NULL")
+      .run(instance, maxId);
   }
 
   close(): void {
