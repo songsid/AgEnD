@@ -95,7 +95,9 @@ describe("ready patterns with each pie glyph", () => {
   it("antigravity keeps its non-pie ready signals", () => {
     const pattern = readyPattern("antigravity");
     expect(pattern.test("? for shortcuts")).toBe(true);
-    expect(pattern.test("Gemini")).toBe(true);
+    // Bare `Gemini` was removed: the persistent header shows it while streaming
+    // too, so it made the pattern constant-true (same class as #415).
+    expect(pattern.test("Gemini")).toBe(false);
     expect(pattern.test(">")).toBe(true);
   });
 });

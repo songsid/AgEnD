@@ -54,7 +54,10 @@ describe("Backend ready patterns", () => {
     const backend = new AntigravityBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
     expect(pattern.test("? for shortcuts")).toBe(true);
-    expect(pattern.test("Gemini 3.5 Flash")).toBe(true);
+    // Bare `Gemini` was removed from the pattern: it is the persistent header's
+    // model label, on screen while streaming too — a constant-true ready marker
+    // (the same bug class #415 fixed for claude-code).
+    expect(pattern.test("Gemini 3.5 Flash")).toBe(false);
     expect(pattern.test("◔ 47%")).toBe(true);
     expect(pattern.test("  ◑ 27%")).toBe(true); // footer may be indented
     // Agent prose must NOT false-ready (● is in PIE_CLASS).
