@@ -70,6 +70,70 @@ describe("getUsageSnapshot", () => {
   });
 });
 
+describe("rich rendering", () => {
+  it("draws proportional bars, clamped to the ends", async () => {
+    const { usageBar } = await import("../src/usage/format-rich.js");
+    expect(usageBar(0)).toBe("░░░░░░░░░░");
+    expect(usageBar(34)).toBe("███░░░░░░░");
+    expect(usageBar(100)).toBe("██████████");
+    // A vendor reporting "105% used" must not overflow the bar.
+    expect(usageBar(105)).toBe("██████████");
+    expect(usageBar(-3)).toBe("░░░░░░░░░░");
+  });
+
+  it("renders Discord Markdown with bars, plans, and inline failures", async () => {
+    const { renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const text = renderUsageMarkdown(PAYLOAD);
+
+    expect(text).toContain("📊 **AI Subscription Usage**");
+    expect(text).toContain("**Claude** (Max)");
+    expect(text).toContain("`███░░░░░░░` 34% Session · resets in 3h");
+    expect(text).toContain("`██░░░░░░░░` $3.50/$20.00 Extra usage"); // dollars w/ limit gets a bar too
+    expect(text).toContain("⚪ **Codex**");
+    expect(text).toContain("> not logged in");
+    expect(text).toContain("🔴 **Grok**");
+    expect(text).toContain("Credits: 812 left");
+  });
+
+  it("renders Telegram HTML with every payload string entity-escaped", async () => {
+    const { renderUsageHtml } = await import("../src/usage/format-rich.js");
+    const hostile: typeof PAYLOAD = {
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "x", name: "Weird & Co", status: "error" as const,
+        error: "expected <token> & got </nothing>", metrics: [],
+      }],
+    };
+    const text = renderUsageHtml(hostile);
+
+    // One stray `<` makes Telegram reject the whole message.
+    expect(text).toContain("Weird &amp; Co");
+    expect(text).toContain("expected &lt;token&gt; &amp; got &lt;/nothing&gt;");
+    expect(text).not.toMatch(/<(?!\/?(b|code)>)/); // only <b> and <code> tags survive
+
+    const ok = renderUsageHtml(PAYLOAD);
+    expect(ok).toContain("<b>Claude</b> (Max)");
+    expect(ok).toContain("<code>███░░░░░░░</code> 34% Session");
+  });
+
+  it("colours the provider dot by its hottest metric", async () => {
+    const { renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const hot: typeof PAYLOAD = {
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "c", name: "Claude", status: "ok" as const, plan: null,
+        metrics: [
+          { label: "Session", type: "percent" as const, used: 12 },
+          { label: "Weekly", type: "percent" as const, used: 95 },
+        ],
+      }],
+    };
+    // The reader scans for "which one is hot" — a 95% weekly must not hide
+    // behind a green dot because the session happens to be fresh.
+    expect(renderUsageMarkdown(hot)).toContain("🔴 **Claude**");
+  });
+});
+
 describe("get_usage MCP tool", () => {
   it("is defined with the force flag and a description that states the use case", () => {
     const tool = TOOLS.find(t => t.name === "get_usage");
