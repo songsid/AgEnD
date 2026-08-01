@@ -129,6 +129,16 @@ const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
+ * Emoji AgEnD itself stamps on messages as machine signals: the delivery-status
+ * ladder (⏳ queued, 👀 delivered, ✅ confirmed, ❌ failed) and the 🫡 ack. They
+ * are indicators, not opinions, so they never belong in the reactions queue —
+ * regardless of who they arrive from, because the adapter-level bot filter can
+ * miss (Discord partial users may not carry the `bot` flag). The cost is that a
+ * human genuinely reacting ✅ is also dropped; with four bot-stamped meanings
+ * already attached to these glyphs, that reading is ambiguous anyway.
+ */
+const DELIVERY_STATUS_EMOJIS = new Set(["👀", "⏳", "✅", "❌", "🫡"]);
+/**
  * How long a delivery waits out a disconnected instance IPC before giving up.
  *
  * Sized for a daemon restart (socket close → respawn → CLI ready), which is the
@@ -2557,6 +2567,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const instanceName = this.resolveSlashTarget(r.threadId ?? r.chatId, r.adapterId);
     if (!instanceName) {
       this.logger.debug({ emoji: r.emoji, chatId: r.chatId }, "Reaction in an unrouted channel — ignoring");
+      return;
+    }
+
+    if (DELIVERY_STATUS_EMOJIS.has(r.emoji)) {
+      this.logger.debug({ emoji: r.emoji, user: r.username }, "Ignoring delivery-status emoji as a reaction");
       return;
     }
 

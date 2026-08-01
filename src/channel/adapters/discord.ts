@@ -162,6 +162,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           try { await reaction.fetch(); } catch { return; }
         }
         if (user.id === this.client.user?.id) return; // our own reaction
+        // Any bot's reaction, not only our own. In multi-bot channels (collab,
+        // ClassicBot) a SIBLING AgEnD bot stamps delivery-status emoji
+        // (👀/⏳/✅/❌) on our messages; Telegram already drops bot reactions via
+        // `user.is_bot`, and this is the same rule. `bot` can be missing on a
+        // partial user — treat unknown as human and let the emoji-set filter
+        // downstream catch the status stamps.
+        if ("bot" in user && user.bot === true) return;
         const message = reaction.message;
         // Only reactions on OUR messages are meaningful as agent signals; a user
         // reacting to another user's message is chatter.
