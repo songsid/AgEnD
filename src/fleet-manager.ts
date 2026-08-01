@@ -1986,8 +1986,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // the adapter defers non-chat commands that way — so it never spams the
         // channel either way.
         try {
-          const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
-          await data.respond(formatUsageSummary(await getUsageSnapshot()));
+          const { getUsageSnapshot } = await import("./usage/usage-api.js");
+          const { renderUsageMarkdown } = await import("./usage/format-rich.js");
+          // slash_command is Discord-only; editReply renders Markdown natively.
+          await data.respond(renderUsageMarkdown(await getUsageSnapshot()));
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
@@ -2252,8 +2254,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // the adapter defers non-chat commands that way — so it never spams the
         // channel either way.
         try {
-          const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
-          await data.respond(formatUsageSummary(await getUsageSnapshot()));
+          const { getUsageSnapshot } = await import("./usage/usage-api.js");
+          const { renderUsageMarkdown } = await import("./usage/format-rich.js");
+          // slash_command is Discord-only; editReply renders Markdown natively.
+          await data.respond(renderUsageMarkdown(await getUsageSnapshot()));
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
