@@ -30,6 +30,7 @@ import {
   StopInstanceArgs,
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
+  GetUsageArgs,
   GetFleetConfigArgs,
   UpdateInstanceConfigArgs,
   UpdateFleetDefaultsArgs,
@@ -563,6 +564,18 @@ const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
   const stopped = names.length - running - paused;
   respond({ total: names.length, running, paused, stopped });
+};
+
+const getUsage: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(GetUsageArgs, rawArgs, "get_usage");
+  if (!v.ok) { respond(null, v.error); return; }
+  try {
+    // Same structure as GET /api/ai-usage, same 5-minute cache behind it.
+    const { getUsageSnapshot } = await import("./usage/usage-api.js");
+    respond(await getUsageSnapshot(v.data.force === true));
+  } catch (err) {
+    respond(null, `Usage fetch failed: ${(err as Error).message}`);
+  }
 };
 
 const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
@@ -1129,6 +1142,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["wake_instance", wakeInstance],
   ["stop_instance", stopInstance],
   ["get_fleet_status", getFleetStatus],
+  ["get_usage", getUsage],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
   ["update_instance_config", updateInstanceConfig],
