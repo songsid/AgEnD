@@ -1992,6 +1992,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
       } else if (data.command === "status") {
+        // Admin-gated (like the topic path): the merged table shows every
+        // instance's cost and IPC health.
+        if (!this.isFleetAdmin(data.userId, adapterId)) {
+          await data.respond(t("cmd.admin_required", "/status"));
+          return;
+        }
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
       } else if (data.command === "sysinfo") {
@@ -2252,6 +2258,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
       } else if (data.command === "status") {
+        // Admin-gated (like the topic path): the merged table shows every
+        // instance's cost and IPC health.
+        if (!this.isFleetAdmin(data.userId, adapterId)) {
+          await data.respond(t("cmd.admin_required", "/status"));
+          return;
+        }
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
       } else if (data.command === "sysinfo") {

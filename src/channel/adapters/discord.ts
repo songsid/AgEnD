@@ -476,7 +476,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "chat", description: t("slash.chat"),
             options: [{ name: "message", description: "Your message", type: 3, required: true }],
           },
-          { name: "status", description: t("slash.status") },
+          { name: "status", description: "🔒 " + t("slash.status") },
           { name: "sysinfo", description: t("slash.sysinfo") },
           { name: "dashboard", description: t("slash.dashboard") },
           { name: "ctx", description: t("slash.ctx") },
