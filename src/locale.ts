@@ -98,7 +98,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "slash.restart": "Graceful restart all instances",
     "slash.update": "Update AgEnD to latest version",
     "slash.doctor": "Run health diagnostics",
-    "slash.usage": "AI subscription usage (admin only)",
+    "slash.usage": "AI subscription usage",
     "chat.usage": "Usage: `/chat <message>`",
     "filename.invalid": "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.",
     "dashboard.disabled": "⛔ /dashboard disabled — no allowed_users configured",
