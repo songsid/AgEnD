@@ -581,9 +581,17 @@ export class TopicCommands {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
     try {
-      const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
-      const summary = formatUsageSummary(await getUsageSnapshot());
-      await adapter.sendText(msg.chatId, summary, { threadId: msg.threadId });
+      const { getUsageSnapshot } = await import("./usage/usage-api.js");
+      const { renderUsageHtml, renderUsageMarkdown } = await import("./usage/format-rich.js");
+      const payload = await getUsageSnapshot();
+      // Each platform gets its native rich format: Telegram needs parse_mode
+      // HTML; Discord renders Markdown in plain content. Anything else falls back
+      // to Markdown, which degrades to readable text.
+      if (adapter.type === "telegram") {
+        await adapter.sendText(msg.chatId, renderUsageHtml(payload), { threadId: msg.threadId, format: "html" });
+      } else {
+        await adapter.sendText(msg.chatId, renderUsageMarkdown(payload), { threadId: msg.threadId });
+      }
     } catch (err) {
       await adapter.sendText(msg.chatId, `⚠️ Usage fetch failed: ${(err as Error).message}`, { threadId: msg.threadId });
     }
