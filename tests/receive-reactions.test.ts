@@ -104,6 +104,25 @@ describe("handleInboundReaction stores instead of delivering", () => {
     }
   });
 
+  it("drops AgEnD's own delivery-status emoji, whoever they arrive from", async () => {
+    // In multi-bot channels a sibling AgEnD bot stamps 👀/⏳/✅/❌ (and the 🫡
+    // ack) on our messages. The Discord bot-flag filter can miss on partial
+    // users, so the emoji set is checked here regardless of sender.
+    const { internals, cleanup } = makeFleet();
+    try {
+      for (const emoji of ["👀", "⏳", "✅", "❌", "🫡"]) {
+        await internals.handleInboundReaction(reaction({ emoji }));
+      }
+      expect(internals.eventLog.pendingReactions("alpha")).toBeNull();
+
+      // A non-status emoji from the same shape of event still queues.
+      await internals.handleInboundReaction(reaction({ emoji: "🎯" }));
+      expect(internals.eventLog.pendingReactions("alpha")?.summary).toContain("🎯");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("ignores a reaction in an unrouted channel", async () => {
     const { internals, cleanup } = makeFleet(null);
     try {
