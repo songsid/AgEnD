@@ -130,11 +130,38 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   }
 
   getReadyPattern(): RegExp {
-    // Startup/header: Gemini shortcut text. Daily prompts observed in the TUI
-    // are either a pie context reading ("◑ 42%") on its own footer line, or a
-    // standalone ">" between separators. Pie branch is line-anchored so agent
-    // prose like "● 45% 完成" cannot false-ready the pane (● is in PIE_CLASS).
-    return new RegExp(`\\? for shortcuts|Gemini|^\\s*${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
+    // Daily prompts observed in the TUI are either a pie context reading
+    // ("◑ 42%") on its own footer line, or a standalone ">" between separators.
+    // Pie branch is line-anchored so agent prose like "● 45% 完成" cannot
+    // false-ready the pane (● is in PIE_CLASS).
+    //
+    // Bare `Gemini` was removed: it is the model label in the persistent header,
+    // on screen while streaming too, so it made the whole pattern constant-true
+    // (same failure as claude-code's old `ok` — see #415). The remaining markers
+    // are still visible during generation; getBusyPattern() is what separates
+    // idle from working.
+    return new RegExp(`\\? for shortcuts|^\\s*${PIE_CLASS}\\s*\\d+%|^>\\s*$`, "m");
+  }
+
+  /**
+   * The live spinner line, on screen only while agy is generating — as reported
+   * from the duplicate-reply incident pane: a rotating star/dot glyph, a
+   * "thinking" verb, and a live seconds timer, e.g. `✢ Thinking… 12s` /
+   * `· Reasoning... (esc to cancel)`.
+   *
+   * IMPORTANT CAVEAT, deliberately on the record: unlike claude-code (#415) and
+   * grok (#430), this pattern is NOT derived from a pane I captured myself.
+   * There is no antigravity instance in this fleet and no agy pipe-pane
+   * recording on this machine (the closest candidates turned out to be kiro's
+   * TUI). The shape comes from the incident observation plus the same
+   * asymmetric-cost rules as the other backends: anchored to a line-leading
+   * glyph that does not occur in prose, requiring a verb AND a live marker
+   * (seconds timer or the esc-to-cancel suffix). A miss falls back to today's
+   * behaviour; a false positive on a stable pane would pin `working`, so
+   * narrow wins. Verify against a real pane when an agy instance next exists.
+   */
+  getBusyPattern(): RegExp {
+    return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
   }
 
   getContextUsage(): number | null {
