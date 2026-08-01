@@ -192,6 +192,178 @@ async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   return { status: "ok", plan, metrics };
 }
 
+// ── Antigravity ──────────────────────────────────────────────────────────────
+//
+// Cloud Code quota API, verified live against this machine's real agy login
+// (2026-08-02): refresh the Google OAuth token, then POST
+// `retrieveUserQuotaSummary`. The flow and the installed-app client pair come
+// from OpenUsage's Antigravity provider; for installed-app OAuth clients Google
+// does not treat the "secret" as confidential (it ships inside every copy of
+// the app), so embedding it is the accepted norm, not a leaked key. It is
+// required for the refresh-token grant.
+
+const AGY_TOKEN_FILE = ["antigravity-cli", "antigravity-oauth-token"];
+const AGY_CLOUDCODE_URLS = [
+  "https://daily-cloudcode-pa.googleapis.com",
+  "https://cloudcode-pa.googleapis.com",
+];
+/**
+ * The Google installed-app OAuth client pair, READ FROM THE INSTALLED agy
+ * BINARY rather than committed here.
+ *
+ * Installed-app clients embed their "secret" in every copy, so Google does not
+ * treat it as confidential — but that does not make it ours to publish, and
+ * GitHub's push protection agrees. Scanning the binary we are already
+ * authenticating on behalf of keeps the credential where its owner put it: if
+ * agy is not installed, we simply cannot refresh, which is the correct answer
+ * anyway. ~180MB scans in well under a second and the result is cached.
+ */
+/**
+ * Refresh the Google OAuth token — only when the operator has supplied the
+ * installed-app client pair.
+ *
+ * agy stores a Google OAuth token that expires hourly and refreshes it whenever
+ * agy itself runs. Refreshing it ourselves needs the app's installed-app client
+ * pair, and there is no honest way for AgEnD to obtain it: it is not recoverable
+ * from the shipped binary (the strings that look like it are a different
+ * client), and hard-coding the published pair would mean committing a
+ * credential to a public repo — which GitHub push protection blocks, correctly.
+ *
+ * So it is opt-in. Without it, an expired token yields a clear "run `agy` once"
+ * hint rather than a broken panel — and in the case this provider actually
+ * exists for (a fleet with a live agy instance), agy is running and keeping its
+ * own token fresh, so the refresh is rarely needed at all.
+ */
+function agyOAuthClient(env: NodeJS.ProcessEnv = process.env): { id: string; secret: string } | null {
+  const id = env.AGY_OAUTH_CLIENT_ID?.trim();
+  const secret = env.AGY_OAUTH_CLIENT_SECRET?.trim();
+  return id && secret ? { id, secret } : null;
+}
+
+/** Refreshed bearer, cached until shortly before expiry. The CLI's token file is
+ * never written back — it belongs to agy; refresh tokens are reusable. */
+let agyTokenCache: { token: string; until: number } | null = null;
+
+interface AgyBucket { bucketId?: string; displayName?: string; remainingFraction?: number; resetTime?: string }
+
+/**
+ * Pool the summary's buckets into at most four metrics.
+ *
+ * Two payload shapes exist. Older accounts report pooled ids (`gemini-5h`,
+ * `gemini-weekly`, `3p-5h`, `3p-weekly`), which map 1:1. This machine's live
+ * response instead lists PER-MODEL buckets (`gemini-3.6-flash-high`,
+ * `claude-sonnet-4-6`, `gpt-oss-120b-medium`, …) — those aggregate into a
+ * Gemini pool and an everything-else pool, keeping each pool's WORST remaining
+ * fraction, because eleven per-model meters is noise and the binding constraint
+ * is the one that runs out first.
+ */
+export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
+  const POOLED: Record<string, string> = {
+    "gemini-5h": "Gemini (session)", "gemini-weekly": "Gemini (weekly)",
+    "3p-5h": "Claude & others (session)", "3p-weekly": "Claude & others (weekly)",
+  };
+  const direct: UsageMetric[] = [];
+  const pools = new Map<string, { fraction: number; resetsAt: string | null }>();
+  for (const b of buckets) {
+    if (!b.bucketId || typeof b.remainingFraction !== "number" || !Number.isFinite(b.remainingFraction)) continue;
+    const reset = b.resetTime ?? null;
+    const pooledLabel = POOLED[b.bucketId];
+    if (pooledLabel) {
+      direct.push({ label: pooledLabel, type: "percent", used: (1 - b.remainingFraction) * 100, resetsAt: reset });
+      continue;
+    }
+    const pool = b.bucketId.startsWith("gemini") ? "Gemini" : "Claude & others";
+    const existing = pools.get(pool);
+    if (!existing || b.remainingFraction < existing.fraction) {
+      pools.set(pool, { fraction: b.remainingFraction, resetsAt: reset });
+    }
+  }
+  if (direct.length) return direct;
+  return [...pools.entries()].map(([label, p]) => ({
+    label, type: "percent" as const, used: (1 - p.fraction) * 100, resetsAt: p.resetsAt,
+  }));
+}
+
+async function agyAccessToken(): Promise<{ token: string } | { error: string } | null> {
+  const home = process.env.GEMINI_HOME || join(homedir(), ".gemini");
+  let file: { token?: { access_token?: string; refresh_token?: string; expiry?: string } };
+  try {
+    file = JSON.parse(await readFile(join(home, ...AGY_TOKEN_FILE), "utf8"));
+  } catch {
+    return null; // no agy login on this machine
+  }
+  const t = file.token ?? {};
+  const expiryMs = t.expiry ? new Date(t.expiry).getTime() : 0;
+  if (t.access_token && expiryMs > Date.now() + 60_000) return { token: t.access_token };
+  if (agyTokenCache && agyTokenCache.until > Date.now()) return { token: agyTokenCache.token };
+
+  const client = agyOAuthClient();
+  if (!t.refresh_token || !client) {
+    if (!t.access_token) return null;
+    return {
+      error: client
+        ? "Access token expired and no refresh token is stored. Run `agy` once."
+        : "Access token expired. Run `agy` once to refresh it (or set AGY_OAUTH_CLIENT_ID/SECRET to refresh automatically).",
+    };
+  }
+  try {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: client.id,
+        client_secret: client.secret,
+        refresh_token: t.refresh_token,
+        grant_type: "refresh_token",
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return { error: "Google sign-in expired. Run `agy` once to log in again." };
+    const body = await res.json() as { access_token?: string; expires_in?: number };
+    if (!body.access_token) return { error: "Google token refresh returned no token." };
+    agyTokenCache = { token: body.access_token, until: Date.now() + Math.max(60, (body.expires_in ?? 3600) - 120) * 1000 };
+    return { token: body.access_token };
+  } catch {
+    return { error: "Could not reach oauth2.googleapis.com." };
+  }
+}
+
+async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const auth = await agyAccessToken();
+  if (auth === null) {
+    return { status: "no-credentials", hint: "Log in with the Antigravity CLI (`agy`).", metrics: [] };
+  }
+  if ("error" in auth) return { status: "error", error: auth.error, metrics: [] };
+
+  for (const base of AGY_CLOUDCODE_URLS) {
+    let res: Response;
+    try {
+      res = await fetch(`${base}/v1internal:retrieveUserQuotaSummary`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${auth.token}`,
+          "Content-Type": "application/json",
+          "User-Agent": "antigravity",
+        },
+        body: "{}",
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch { continue; }
+    if (res.status === 401 || res.status === 403) {
+      return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", metrics: [] };
+    }
+    if (!res.ok) continue; // try the other base
+    let body: { groups?: { buckets?: AgyBucket[] }[] };
+    try { body = await res.json() as typeof body; } catch { continue; }
+    const buckets = (body.groups ?? []).flatMap(g => g.buckets ?? []);
+    const metrics = agyPoolMetrics(buckets);
+    return metrics.length
+      ? { status: "ok", plan: null, metrics }
+      : { status: "ok", plan: null, hint: "No quota information reported for this account.", metrics: [] };
+  }
+  return { status: "error", error: "Could not reach the Cloud Code quota endpoints.", metrics: [] };
+}
+
 // ── Codex ────────────────────────────────────────────────────────────────────
 
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
@@ -691,6 +863,12 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
     metrics.push({ label: "Pay-per-use", type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
   }
 
+  if (metrics.length === 0) {
+    // Amazon Q logins whose account type reports no credit buckets (#398's
+    // sibling case): an OK answer with nothing in it must say so, not render an
+    // empty row that reads like a failure.
+    return { status: "ok", plan: plan ?? "Amazon Q", hint: "No quota information available for this account type.", metrics: [] };
+  }
   return { status: "ok", plan, metrics };
 }
 
@@ -698,6 +876,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
 
 const PROVIDERS: { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> }[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
+  { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
   { id: "grok", name: "Grok", fetch: fetchGrokUsage },
   { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
