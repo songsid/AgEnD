@@ -693,14 +693,6 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
-        // `no_wake` marks low-value signals (a non-approval reaction, #408): worth
-        // showing an instance that is already awake, never worth resuming a paused
-        // one and spending a turn on. Dropped rather than queued, so a paused
-        // instance does not surface a pile of stale emoji on its next wake.
-        if (meta?.no_wake === "true" && this.isPaused) {
-          this.logger.debug({ preview: String(msg.content).slice(0, 60) }, "Dropping no_wake message for paused instance");
-          return;
-        }
         void this.wake().then(() => {
           this.pushChannelMessage(msg.content as string, meta, targetSession);
         }).catch(err => {
@@ -2118,6 +2110,12 @@ export class Daemon extends EventEmitter {
       const via = meta.source ? ` via ${meta.source}` : "";
       const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
       formatted = `[user:${user}${via}${idTag}] ${content}`;
+      // Reactions queued since the last real message (#432). One leading line of
+      // context, present only when something is pending — a reaction no longer
+      // costs a turn of its own.
+      if (meta.pending_reactions) {
+        formatted = `[Recent reactions: ${meta.pending_reactions}]\n${formatted}`;
+      }
       formatted += renderHandoffMetadata(meta);
       formatted += "\n(Reply using the reply tool — do NOT respond with direct text)";
     }
