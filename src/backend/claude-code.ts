@@ -178,6 +178,11 @@ export class ClaudeCodeBackend implements CliBackend {
 
   getCancelKey(): string { return "Escape"; }
 
+  // `claude --effort <level>` (low, medium, high, xhigh, max) and a `/effort`
+  // slash command in the TUI — verified from `claude --help` on 2026-08-02.
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
+  getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
+
   // claude-code has a clean one-shot in-session `/model <name>` → runtime switch.
   getModelSwitchStrategy(): "runtime" | "restart" { return "runtime"; }
 

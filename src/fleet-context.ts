@@ -74,4 +74,17 @@ export interface FleetContext {
     chatId: string,
     threadId?: string,
   ): Promise<string | null>;
+
+  /** Apply a reasoning-effort level (runtime paste or persist+restart). */
+  applyEffort?(instanceName: string, level: string): Promise<string>;
+
+  /** TG inline-keyboard effort menu; same contract as promptModelMenu. */
+  promptEffortMenu?(
+    instanceName: string,
+    userId: string,
+    channelId: string,
+    adapter: import("./channel/types.js").ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null>;
 }
