@@ -14,7 +14,7 @@ import { Daemon, shellCommandLabel } from "../src/daemon.js";
 
 describe("shellCommandLabel", () => {
   it("shows the program and drops everything after it", () => {
-    expect(shellCommandLabel('curl -H "Bearer sk-ant-oat01-secret" https://api.com')).toBe("curl");
+    expect(shellCommandLabel('curl -H "Bearer FAKE-TOKEN-FOR-TEST" https://api.com')).toBe("curl");
   });
 
   it("keeps a subcommand, because `npm` alone says nothing", () => {
@@ -31,7 +31,7 @@ describe("shellCommandLabel", () => {
 
   it("never shows a flag, path, URL or assignment as the subcommand", () => {
     expect(shellCommandLabel("psql postgres://user:pw@host/db")).toBe("psql");
-    expect(shellCommandLabel("mysql -u root -phunter2")).toBe("mysql");
+    expect(shellCommandLabel("mysql -u root -pFAKE-PASSWORD-FOR-TEST")).toBe("mysql");
     expect(shellCommandLabel("ssh deploy@10.0.0.1")).toBe("ssh");
     expect(shellCommandLabel("cat /etc/shadow")).toBe("cat");
     expect(shellCommandLabel('gh pr create --body "$(cat /tmp/secret)"')).toBe("gh pr");
@@ -49,15 +49,15 @@ describe("shellCommandLabel", () => {
   });
 
   it("takes the first line only — a heredoc body never reaches the channel", () => {
-    const label = shellCommandLabel("gh pr create --body-file - <<'EOF'\ntoken: sk-ant-secret\nEOF");
+    const label = shellCommandLabel("gh pr create --body-file - <<'EOF'\ntoken: FAKE-TOKEN-FOR-TEST\nEOF");
     expect(label).toBe("gh pr");
-    expect(label).not.toContain("sk-ant-secret");
+    expect(label).not.toContain("FAKE-TOKEN-FOR-TEST");
   });
 
   it("does not present the next line's program as a subcommand", () => {
     // Splitting on all whitespace would read this as "bash curl", which is not a
     // thing; the second line is a separate command and none of it is ours to show.
-    expect(shellCommandLabel('bash\ncurl -H "Bearer sk-ant-secret" https://api.com')).toBe("bash");
+    expect(shellCommandLabel('bash\ncurl -H "Bearer FAKE-TOKEN-FOR-TEST" https://api.com')).toBe("bash");
   });
 
   it("caps a pathological program name and survives an empty command", () => {
@@ -67,12 +67,22 @@ describe("shellCommandLabel", () => {
   });
 
   it("leaks nothing from a realistic set of commands", () => {
-    const secrets = ["sk-ant-oat01-abc", "hunter2", "ghp_deadbeef", "AKIAIOSFODNN7"];
+    // Placeholders, not realistic-looking values: a test that plants a
+    // credential-shaped string is a secret scanner's false positive forever, and
+    // the assertion below only cares that the string does not survive into the
+    // label. `curl -H "Authorization: Bearer …"` tripped gitleaks'
+    // curl-auth-header rule when this literal looked like a real token.
+    const secrets = [
+      "FAKE-ANTHROPIC-TOKEN-FOR-TEST",
+      "FAKE-PASSWORD-FOR-TEST",
+      "FAKE-GITHUB-TOKEN-FOR-TEST",
+      "FAKE-AWS-KEY-FOR-TEST",
+    ];
     const commands = [
-      'curl -H "Authorization: Bearer sk-ant-oat01-abc" https://api.anthropic.com/v1/usage',
-      "mysql -u admin -phunter2 -e 'select * from users'",
-      "gh auth login --with-token ghp_deadbeef",
-      "AWS_ACCESS_KEY_ID=AKIAIOSFODNN7 aws s3 sync . s3://bucket",
+      `curl -H "Authorization: Bearer ${secrets[0]}" https://api.anthropic.com/v1/usage`,
+      `mysql -u admin -p${secrets[1]} -e 'select * from users'`,
+      `gh auth login --with-token ${secrets[2]}`,
+      `AWS_ACCESS_KEY_ID=${secrets[3]} aws s3 sync . s3://bucket`,
     ];
     for (const cmd of commands) {
       const label = shellCommandLabel(cmd);
