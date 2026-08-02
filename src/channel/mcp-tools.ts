@@ -98,6 +98,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Stop a running instance (terminates the daemon)."],
   ["get_fleet_status", schemas.GetFleetStatusArgs,
     "Get fleet summary: count of running, paused, and stopped instances."],
+  ["get_effort", schemas.GetEffortArgs,
+    "Get the reasoning-effort setting for an instance: the level in force, the levels its CLI backend accepts, and whether changing it takes effect immediately or needs a restart. Defaults to yourself."],
   ["get_usage", schemas.GetUsageArgs,
     "Get AI subscription usage for the CLI backends logged in on this machine (Claude/Codex/Grok/Kiro). Returns per-provider metrics — use it to notice you are close to a limit and warn the user."],
   ["get_instance_logs", schemas.GetInstanceLogsArgs,
@@ -143,7 +145,7 @@ export const TOOL_SETS: Record<string, string[]> = {
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
-    "validate_config", "get_fleet_status", "get_usage", "get_instance_logs", "get_fleet_config",
+    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
   ],
   minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
   /**
@@ -162,7 +164,7 @@ export const TOOL_SETS: Record<string, string[]> = {
     // Channel I/O (users talk to general, and send it images/files)
     "reply", "react", "edit_message", "download_attachment",
     // Discovery — the documented dispatch preamble
-    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage",
+    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort",
     // Dispatch
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
     // Bring capacity online (reuse-first, but it may need to create/start)

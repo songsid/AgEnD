@@ -5771,6 +5771,18 @@ When users create specialized instances, suggest these configurations:
   /** AgEnD's canonical effort ladder, low → max. Backends expose a subset. */
   static readonly EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
+  /** How this instance's backend applies an effort change. */
+  effortStrategyFor(instanceName: string): "runtime" | "restart" | "unsupported" {
+    try {
+      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      const strategy = backend.getEffortStrategy?.() ?? "unsupported";
+      // A backend claiming support but listing no levels is unusable either way.
+      return strategy !== "unsupported" && (backend.getEffortLevels?.() ?? []).length > 0
+        ? strategy
+        : "unsupported";
+    } catch { return "unsupported"; }
+  }
+
   /** Effort levels this instance's backend actually accepts (empty = unsupported). */
   effortLevelsFor(instanceName: string): string[] {
     try {
@@ -5866,7 +5878,7 @@ When users create specialized instances, suggest these configurations:
     if (strategy === "runtime") {
       if (!this.instanceIpcClients.get(instanceName)) return `${warn}❌ ${instanceName} is not running.`;
       this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
-      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).`;
+      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).${this.effortSuffix(instanceName)}`;
     }
 
     // restart: persist the model so the respawned CLI launches with it.
@@ -5880,7 +5892,23 @@ When users create specialized instances, suggest these configurations:
     }
     if (!persisted) return `${warn}❌ Could not set model for ${instanceName}.`;
     await this.restartSingleInstance(instanceName);
-    return `${warn}✅ Set ${instanceName} to \`${model}\` and restarted.`;
+    return `${warn}✅ Set ${instanceName} to \`${model}\` and restarted.${this.effortSuffix(instanceName)}`;
+  }
+
+  /**
+   * The trailing "Current effort: …" line for a /model reply.
+   *
+   * Model and effort interact (a cheaper model at max effort is a different
+   * trade than a bigger one at low), so showing the effort in force right after
+   * a switch saves the round trip of asking. Empty when the backend has none.
+   */
+  private effortSuffix(instanceName: string): string {
+    if (this.effortLevelsFor(instanceName).length === 0) return "";
+    const { effort, source } = this.resolveInstanceEffort(instanceName);
+    if (!effort) return "\nCurrent effort: (CLI default)";
+    return source === "fleet-default"
+      ? `\nCurrent effort: ${effort} (fleet default)`
+      : `\nCurrent effort: ${effort}`;
   }
 
   /** Read recent chat log for agent context */
