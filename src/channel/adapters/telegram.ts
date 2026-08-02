@@ -299,7 +299,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         const update = ctx.update.message_reaction;
         if (!update) return;
         const user = update.user;
-        if (!user || user.is_bot) return;
+        // Bot reactions pass through (agents signalling each other); the
+        // delivery-status stamps are filtered downstream by exact emoji. NOTE:
+        // Telegram itself rarely delivers other bots' events to a bot, so
+        // bot-to-bot reactions may be platform-limited here regardless.
+        if (!user) return;
         // `new_reaction` is the full current set, not a delta: an empty array means
         // the user removed their last reaction.
         const current = update.new_reaction ?? [];
