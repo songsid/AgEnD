@@ -31,6 +31,7 @@ import {
   reportUpdateRestart,
   shouldSkipUpdate,
 } from "./update-check.js";
+import { clearUpdateMarker, markUpdateInProgress } from "./update-marker.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -1153,6 +1154,19 @@ program
       console.log(`\n  Updating AgEnD to ${tag}...\n`);
     }
 
+    // Tell the running fleet that what happens next is planned. `npm install -g`
+    // replaces the package directory underneath the live daemon — MCP servers
+    // die, then the restart stops every instance — and without this marker the
+    // old daemon reports each one as a crash. The new fleet deletes the marker
+    // once it finishes starting; it also expires on its own, so an update that
+    // dies here does not silence real alerts.
+    markUpdateInProgress(DATA_DIR);
+    const failUpdate = (message: string): never => {
+      clearUpdateMarker(DATA_DIR);
+      console.error(message);
+      process.exit(1);
+    };
+
     // Detect and remove stale npm link (local build that shadows global install)
     try {
       const agendPath = execSync("which agend", { encoding: "utf-8", stdio: "pipe" }).trim();
@@ -1182,8 +1196,7 @@ program
         try {
           execSync("curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash", { stdio: "inherit" });
         } catch {
-          console.error("  Failed to install nvm. Install manually: https://github.com/nvm-sh/nvm");
-          process.exit(1);
+          failUpdate("  Failed to install nvm. Install manually: https://github.com/nvm-sh/nvm");
         }
       }
       console.log("  Using nvm to install Node 22...");
@@ -1191,8 +1204,7 @@ program
       try {
         execSync(`bash -c '${nvmPrefix} && npm install -g ${pkg}'`, { stdio: "inherit" });
       } catch {
-        console.error("  Failed to install via nvm.");
-        process.exit(1);
+        failUpdate("  Failed to install via nvm.");
       }
       // Try to remove old system binary
       console.log("  Note: removing old system install (may require sudo)...");
@@ -1202,8 +1214,7 @@ program
       try {
         execSync(`npm install -g ${pkg}`, { stdio: "inherit" });
       } catch {
-        console.error(`  Failed to update. Try: npm install -g ${pkg}`);
-        process.exit(1);
+        failUpdate(`  Failed to update. Try: npm install -g ${pkg}`);
       }
     }
 
@@ -1214,14 +1225,12 @@ program
       ? spawnSync("bash", ["-c", `source ${nvmSh2} && nvm use 22 > /dev/null 2>&1 && which agend`], { encoding: "utf-8" }).stdout?.trim()
       : spawnSync("which", ["agend"], { encoding: "utf-8" }).stdout?.trim();
     if (!agendPath) {
-      console.error("  ✗ Verification failed: agend not found in PATH after install.");
       if (needsSudo) console.error("  You may need to add nvm to your shell profile and restart.");
-      process.exit(1);
+      failUpdate("  ✗ Verification failed: agend not found in PATH after install.");
     }
     const verifyResult = spawnSync(agendPath, ["--version"], { encoding: "utf-8", timeout: 5000 });
     if (verifyResult.status !== 0) {
-      console.error("  ✗ Verification failed: agend --version returned error.");
-      process.exit(1);
+      failUpdate("  ✗ Verification failed: agend --version returned error.");
     }
     const newVersion = (verifyResult.stdout ?? "").trim();
     console.log(`  ✓ Installed: ${newVersion}`);
@@ -1249,7 +1258,12 @@ program
     // systemd → user systemd → launchd → detached pid).
     console.log("  Restarting fleet...");
     const restartResult = spawnSync(agendPath, ["restart"], { encoding: "utf-8", timeout: 30000, stdio: "inherit" });
-    if (!reportUpdateRestart(restartResult.status)) process.exitCode = 1;
+    if (!reportUpdateRestart(restartResult.status)) {
+      // No new fleet is coming up to clear the marker — do it here, or the next
+      // 15 minutes of genuine crashes would go unreported.
+      clearUpdateMarker(DATA_DIR);
+      process.exitCode = 1;
+    }
   });
 
 program

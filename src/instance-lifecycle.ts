@@ -118,6 +118,8 @@ export interface LifecycleContext {
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
   notifyInstanceTopic(name: string, text: string): void;
+  /** True while the fleet is stopping on purpose or an `agend update` is running. */
+  isPlannedRestart(): boolean;
   /** List claimed tasks for an instance (from task board). Returns empty array if unavailable. */
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }>;
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void;
@@ -131,6 +133,12 @@ export interface LifecycleContext {
 }
 
 type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
+
+/** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
+export interface IncidentEventSource {
+  on(event: string, handler: (...args: any[]) => void): unknown;
+  requestPauseWhenIdle(): void;
+}
 
 /** Arguments accepted by handleCreate — mirrors CreateInstanceArgs in outbound-schemas.ts
  *  plus internal-only fields forwarded by deploy_template (profile-derived). */
@@ -177,6 +185,28 @@ export class InstanceLifecycle {
 
   constructor(private ctx: LifecycleContext) {}
 
+  /**
+   * Report an incident to the user — unless the fleet is deliberately going
+   * down, in which case the "incident" is the shutdown doing its job.
+   *
+   * `agend update` stops instances, kills their MCP servers and restarts the
+   * daemon; every one of those looked like a crash to the alert path, so an
+   * upgrade produced a burst of ⚠️ for things that were working correctly. That
+   * burst is worse than noise: it teaches the operator to ignore the same alert
+   * that matters when a process really does die on its own.
+   *
+   * The event log and daemon.log entries still happen at the call sites — this
+   * suppresses the chat message, not the record. A crash outside a planned
+   * restart notifies exactly as before.
+   */
+  private notifyIncident(name: string, kind: string, text: string): void {
+    if (this.ctx.isPlannedRestart()) {
+      this.ctx.logger.info({ name, kind }, "Incident notification suppressed — planned restart in progress");
+      return;
+    }
+    this.ctx.notifyInstanceTopic(name, text);
+  }
+
   /** Backend a running instance uses (config → fleet default). */
   private backendOf(name: string): string {
     return this.ctx.fleetConfig?.instances[name]?.backend
@@ -205,8 +235,119 @@ export class InstanceLifecycle {
     const scope = others.length
       ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
       : `\`${name}\` (${backend})`;
-    this.ctx.notifyInstanceTopic(name,
+    this.notifyIncident(name, "auth_error",
       `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then.`);
+  }
+
+  /**
+   * Handlers for the events that mean "something went wrong".
+   *
+   * Extracted from start() so the planned-restart suppression can be exercised
+   * against a plain event emitter — the alternative is a real Daemon, which
+   * means a real tmux window, which is why this rule went untested before.
+   */
+  attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    daemon.on("crash_respawn", safeHandler(() => {
+      this.ctx.eventLog?.insert(name, "crash_respawn", {});
+      this.ctx.logger.warn({ name }, "Instance crashed and respawned");
+      this.notifyIncident(name, "crash_respawn", t("inst.crashed_respawned", name));
+      const generalName = this.findGeneralInstance();
+      if (generalName && generalName !== name) {
+        this.notifyIncident(generalName, "crash_respawn", t("inst.crashed_respawned_log", name));
+      }
+    }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
+
+    daemon.on("snapshot_failed", safeHandler(() => {
+      this.ctx.eventLog?.insert(name, "snapshot_failed", {});
+      this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
+    }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
+
+    daemon.on("supervision_ended", safeHandler((data: { name: string; reason: string; remedy: string }) => {
+      // The instance is dead and nothing will restart it. Say so where the operator
+      // is looking, and mark the topic — otherwise messages routed here just queue
+      // or fail with a bare ❌ and the dashboard still looks normal.
+      this.ctx.eventLog?.insert(name, "supervision_ended", { reason: data.reason });
+      this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
+      this.notifyIncident(
+        name,
+        "supervision_ended",
+        `🛑 ${name} is no longer running and will not be restarted automatically — ${data.reason}.\n${data.remedy}`,
+      );
+      this.ctx.setTopicIcon(name, "red");
+    }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
+
+    daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
+      this.ctx.logger.error({ name, message: data.message }, "Health check failing — instance supervision degraded");
+      this.notifyIncident(
+        name,
+        "health_check_error",
+        `⚠️ ${name}: health check is failing (\`${data.message}\`). Crash detection for this instance may be degraded — see daemon.log.`,
+      );
+    }, this.ctx.logger, `daemon.health_check_error[${name}]`));
+
+    daemon.on("crash_loop", safeHandler(() => {
+      this.ctx.eventLog?.insert(name, "crash_loop", {});
+      this.ctx.logger.error({ name }, "Instance in crash loop — respawn paused");
+      this.notifyIncident(name, "crash_loop", t("inst.respawn_paused", name));
+      this.ctx.setTopicIcon(name, "red");
+    }, this.ctx.logger, `daemon.crash_loop[${name}]`));
+
+    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number }) => {
+      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
+      this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
+      this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
+      // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
+      // restore its tools — say so instead of implying self-healing. Deliberately
+      // NOT auto-restarting: that would interrupt whatever the agent is doing, and
+      // an instance whose CLI is otherwise fine may still be doing useful work.
+      this.notifyIncident(name, "mcp_died",
+        `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
+        + `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`);
+    }, this.ctx.logger, `daemon.mcp_died[${name}]`));
+
+    daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
+      this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
+      this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
+
+      const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
+      // Auth failures are a property of the BACKEND's shared credentials, not of
+      // one instance: every instance on that CLI fails at once, and one re-login
+      // fixes them all. Notify once per backend (listing who's affected) instead
+      // of N near-identical alerts, and suppress repeats fleet-wide.
+      if (data.type === "auth_error") {
+        this.notifyAuthErrorOnce(name, data.message);
+      } else {
+        this.notifyIncident(name, "pty_error", t("inst.notification", emoji, name, data.message, data.action));
+      }
+      this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
+
+      // The CLI interrupted itself on this error, so any pending Cancel button is
+      // now useless — retire it. We only reach here when the error wasn't
+      // cooldown-suppressed (the daemon skips the emit during cooldown), so this
+      // won't fire on repeat errors within the 5-min window. No-op if no button.
+      this.ctx.clearCancelButton(name);
+
+      if (data.action === "failover") {
+        this.ctx.checkModelFailover(name, 100); // Force failover trigger
+      } else if (data.action === "restart") {
+        // A broken *resumed* session (e.g. agy pinned to a dead model) can't
+        // self-recover; a plain restart would --continue back into it. freshStart
+        // makes the respawn skip resume so the CLI starts a clean session on its
+        // default (valid) model.
+        this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
+          this.ctx.logger.error({ err, name }, "pty_error restart failed"));
+      } else if (data.action === "pause") {
+        // Previously unhandled, so an expired session kept receiving messages and
+        // re-sending its whole context into a CLI that could only fail — wasted
+        // credit and lost work. pause() alone no-ops while the pane is busy (the
+        // usual state when auth fails), so mark it to pause as soon as it idles.
+        // Queued messages survive: delivery wakes a paused instance.
+        void this.pause(name)
+          .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
+          .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
+      }
+    }, this.ctx.logger, `daemon.pty_error[${name}]`));
   }
 
   async start(
@@ -320,105 +461,7 @@ export class InstanceLifecycle {
       this.ctx.touchActivity(name);
     });
 
-    daemon.on("crash_respawn", safeHandler(() => {
-      this.ctx.eventLog?.insert(name, "crash_respawn", {});
-      this.ctx.logger.warn({ name }, "Instance crashed and respawned");
-      this.ctx.notifyInstanceTopic(name, t("inst.crashed_respawned", name));
-      const generalName = this.findGeneralInstance();
-      if (generalName && generalName !== name) {
-        this.ctx.notifyInstanceTopic(generalName, t("inst.crashed_respawned_log", name));
-      }
-    }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
-
-    daemon.on("snapshot_failed", safeHandler(() => {
-      this.ctx.eventLog?.insert(name, "snapshot_failed", {});
-      this.ctx.notifyInstanceTopic(name, t("inst.restarted_no_context", name));
-    }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
-
-    daemon.on("supervision_ended", safeHandler((data: { name: string; reason: string; remedy: string }) => {
-      // The instance is dead and nothing will restart it. Say so where the operator
-      // is looking, and mark the topic — otherwise messages routed here just queue
-      // or fail with a bare ❌ and the dashboard still looks normal.
-      this.ctx.eventLog?.insert(name, "supervision_ended", { reason: data.reason });
-      this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
-      this.ctx.notifyInstanceTopic(
-        name,
-        `🛑 ${name} is no longer running and will not be restarted automatically — ${data.reason}.\n${data.remedy}`,
-      );
-      this.ctx.setTopicIcon(name, "red");
-    }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
-
-    daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
-      this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
-      this.ctx.logger.error({ name, message: data.message }, "Health check failing — instance supervision degraded");
-      this.ctx.notifyInstanceTopic(
-        name,
-        `⚠️ ${name}: health check is failing (\`${data.message}\`). Crash detection for this instance may be degraded — see daemon.log.`,
-      );
-    }, this.ctx.logger, `daemon.health_check_error[${name}]`));
-
-    daemon.on("crash_loop", safeHandler(() => {
-      this.ctx.eventLog?.insert(name, "crash_loop", {});
-      this.ctx.logger.error({ name }, "Instance in crash loop — respawn paused");
-      this.ctx.notifyInstanceTopic(name, t("inst.respawn_paused", name));
-      this.ctx.setTopicIcon(name, "red");
-    }, this.ctx.logger, `daemon.crash_loop[${name}]`));
-
-    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number }) => {
-      this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
-      this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
-      this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
-      // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
-      // restore its tools — say so instead of implying self-healing. Deliberately
-      // NOT auto-restarting: that would interrupt whatever the agent is doing, and
-      // an instance whose CLI is otherwise fine may still be doing useful work.
-      this.ctx.notifyInstanceTopic(name,
-        `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
-        + `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`);
-    }, this.ctx.logger, `daemon.mcp_died[${name}]`));
-
-    daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
-      this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
-      this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
-
-      const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
-      // Auth failures are a property of the BACKEND's shared credentials, not of
-      // one instance: every instance on that CLI fails at once, and one re-login
-      // fixes them all. Notify once per backend (listing who's affected) instead
-      // of N near-identical alerts, and suppress repeats fleet-wide.
-      if (data.type === "auth_error") {
-        this.notifyAuthErrorOnce(name, data.message);
-      } else {
-        this.ctx.notifyInstanceTopic(name, t("inst.notification", emoji, name, data.message, data.action));
-      }
-      this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
-
-      // The CLI interrupted itself on this error, so any pending Cancel button is
-      // now useless — retire it. We only reach here when the error wasn't
-      // cooldown-suppressed (the daemon skips the emit during cooldown), so this
-      // won't fire on repeat errors within the 5-min window. No-op if no button.
-      this.ctx.clearCancelButton(name);
-
-      if (data.action === "failover") {
-        this.ctx.checkModelFailover(name, 100); // Force failover trigger
-      } else if (data.action === "restart") {
-        // A broken *resumed* session (e.g. agy pinned to a dead model) can't
-        // self-recover; a plain restart would --continue back into it. freshStart
-        // makes the respawn skip resume so the CLI starts a clean session on its
-        // default (valid) model.
-        this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
-          this.ctx.logger.error({ err, name }, "pty_error restart failed"));
-      } else if (data.action === "pause") {
-        // Previously unhandled, so an expired session kept receiving messages and
-        // re-sending its whole context into a CLI that could only fail — wasted
-        // credit and lost work. pause() alone no-ops while the pane is busy (the
-        // usual state when auth fails), so mark it to pause as soon as it idles.
-        // Queued messages survive: delivery wakes a paused instance.
-        void this.pause(name)
-          .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
-          .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle(); });
-      }
-    }, this.ctx.logger, `daemon.pty_error[${name}]`));
+    this.attachIncidentHandlers(name, daemon);
 
     daemon.on("pty_recovered", safeHandler((data: { name: string; downtime_s: number }) => {
       const mins = Math.floor(data.downtime_s / 60);
