@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
 export class KiroBackend implements CliBackend {
@@ -25,6 +25,7 @@ export class KiroBackend implements CliBackend {
       warnIfModelMismatch("kiro-cli", model);
       cmd += ` --model ${model}`;
     }
+    if (config.effort) cmd += ` --effort ${validateEffort(config.effort)}`;
     cmd += " --require-mcp-startup";
     return cmd;
   }
@@ -268,6 +269,12 @@ export class KiroBackend implements CliBackend {
 
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).
   getCancelKey(): string { return "C-c"; }
+
+  // `kiro-cli chat --effort <EFFORT>` (low|medium|high|xhigh|max) — it is on the
+  // `chat` SUBCOMMAND, which is why a top-level `--help` search misses it. No
+  // `/effort` in the TUI command table, so changing it needs a respawn.
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+  getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
 
   cleanup(config: CliBackendConfig): void {
     // Only remove namespaced keys — non-namespaced "agend" key may belong to

@@ -30,6 +30,8 @@ export interface CliBackendConfig {
   mcpServers: Record<string, McpServerEntry>;
   skipPermissions?: boolean;
   model?: string;
+  /** Reasoning effort for backends that take it as a launch flag. */
+  effort?: string;
   /** Kiro-only UI/agent profile. Defaults to "legacy". */
   kiroUi?: "legacy" | "tui" | "v3";
   /** When true, backend should not resume a previous session (crash recovery). */
@@ -243,6 +245,24 @@ export interface CliBackend {
   getModelSwitchStrategy?(model: string): "runtime" | "restart";
 
   /**
+   * How this CLI's reasoning-effort setting can be changed.
+   *
+   * - `runtime`   — the TUI accepts `/effort <level>`; paste it, no restart.
+   * - `restart`   — effort is a launch flag only; persist it and respawn.
+   * - `unsupported` (or absent) — the CLI has no effort concept.
+   *
+   * Verified per CLI by running its `--help` on 2026-08-02; see each backend.
+   */
+  getEffortStrategy?(): "runtime" | "restart" | "unsupported";
+
+  /**
+   * Effort levels this CLI accepts, in increasing order. AgEnD's canonical set
+   * is low|medium|high|xhigh|max; a backend supporting fewer returns its own
+   * list and the caller clamps to the nearest supported level — visibly.
+   */
+  getEffortLevels?(): string[];
+
+  /**
    * Probe the CLI environment at startup: version, available models, and
    * (best-effort) auth/current model. Result is cached to disk so `/model` and
    * status views read it without re-running the CLI. Must never throw.
@@ -311,6 +331,19 @@ export function resolveBinary(name: string, fallbackDirs?: readonly string[]): s
  * shell string consumed by tmux and we cannot rely on argv-style quoting.
  */
 const SAFE_MODEL_RE = /^[A-Za-z0-9._:/-]+$/;
+/**
+ * Guard an effort level before it reaches a shell command line. Same reasoning
+ * as validateModel: the value originates from a chat message, and the launch
+ * command is a string. Only the canonical levels are allowed through.
+ */
+export function validateEffort(effort: string): string {
+  const level = effort.trim().toLowerCase();
+  if (!/^(low|medium|high|xhigh|max)$/.test(level)) {
+    throw new Error(`Invalid effort level: ${effort}`);
+  }
+  return level;
+}
+
 export function validateModel(model: string): string {
   if (!SAFE_MODEL_RE.test(model)) {
     throw new Error(`Invalid model name: ${JSON.stringify(model)} — must match ${SAFE_MODEL_RE}`);
