@@ -16,6 +16,7 @@ import type { EventLog } from "./event-log.js";
 import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
+import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 
 export interface BackendInstallationInfo {
   binary: string;
@@ -309,6 +310,14 @@ export class InstanceLifecycle {
     daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
+
+      // Antigravity's account-level cap is visible ONLY here: the quota summary
+      // API keeps reporting its buckets as barely used while the CLI is blocked
+      // (verified live — 0% used and "Individual quota reached" in the same
+      // minute). Remember it so /usage can overlay the truth on that row.
+      if (data.type === "quota" && this.backendOf(name) === "antigravity") {
+        reportProviderRateLimit("antigravity", data.message);
+      }
 
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
       // Auth failures are a property of the BACKEND's shared credentials, not of
