@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
+import { clearUpdateMarker, isUpdateInProgress } from "./update-marker.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { ReplyDeduper } from "./reply-dedup.js";
@@ -342,6 +343,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
   readonly ipcStoppingInstances = new Set<string>();
+  /** Set the moment a graceful stop begins — see isPlannedRestart(). */
+  private shuttingDown = false;
   /** Coalesce concurrent connection attempts for the same daemon socket. */
   private ipcConnectInFlight = new Map<string, Promise<void>>();
   /** At most one reconnect/backoff loop may exist per instance. */
@@ -419,8 +422,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
   }
 
+  /**
+   * Is the fleet going down (or coming back up) on purpose?
+   *
+   * Instances dying during a planned restart is the restart working, not an
+   * incident — but the code that notices a dead pane or a dead MCP server
+   * cannot tell the difference on its own. Two sources, because the noise
+   * starts before this process is even told to stop: `agend update` replaces
+   * the package on disk while this daemon is still running and still watching.
+   */
+  isPlannedRestart(): boolean {
+    return this.shuttingDown || isUpdateInProgress(this.dataDir);
+  }
+
   private finishStartup(): void {
     this.startupComplete = true;
+    // We are the post-update fleet: the update is over by definition. Clearing
+    // it here (rather than in the update command, which exits before the new
+    // fleet is up) is what keeps the quiet window from outliving the restart.
+    clearUpdateMarker(this.dataDir);
     if (this.reloadPending) this.scheduleReconcile();
     void this.sweepOrphanedCancelButtons();
   }
@@ -1187,6 +1207,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async startAll(configPath: string): Promise<void> {
     FleetManager.signalTarget = this;
     this.startupComplete = false;
+    // Cleared here, not at the end of doStopAll: a stop has an async tail, and
+    // anything arriving during it is still part of the stop.
+    this.shuttingDown = false;
     this.configPath = configPath;
     this.loadEnvFile();
 
@@ -6210,6 +6233,10 @@ When users create specialized instances, suggest these configurations:
   private async doStopAll(): Promise<void> {
     this.startupComplete = false;
     this.reloadPending = false;
+    // Before anything is stopped: everything that dies from here on dies
+    // because we asked it to. Set synchronously — doStopAll runs to its first
+    // await in the same tick as the signal handler, so no event can slip in.
+    this.shuttingDown = true;
     this.ipcStoppingInstances.add("__fleet_stopping__");
     sdNotifyBlocking("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
