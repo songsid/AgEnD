@@ -142,9 +142,22 @@ export function resolveClaudeAuth(
 ): { token: string; plan: string | null } | { error: string; plan: string | null } | null {
   let plan: string | null = null;
   if (file?.subscriptionType?.trim()) {
-    plan = file.subscriptionType.trim().replace(/^./, c => c.toUpperCase());
-    const tier = file.rateLimitTier?.match(/\d+x/);
-    if (tier) plan += ` ${tier[0]}`;
+    const subscriptionType = file.subscriptionType.trim().toLowerCase();
+    const rateLimitTier = file.rateLimitTier?.trim().toLowerCase() ?? "";
+    if (subscriptionType === "team") {
+      // Anthropic reuses the Max rate-limit tier identifier for Team Premium,
+      // but the plan multiplier is 6.25x rather than the identifier's 5x.
+      plan = rateLimitTier.includes("max")
+        ? "Team Premium (6.25x)"
+        : "Team Standard (1.25x)";
+    } else if (subscriptionType === "max") {
+      const tier = rateLimitTier.match(/(?:max_)?(\d+)x/);
+      plan = tier ? `Max (${tier[1]}x)` : "Max";
+    } else if (subscriptionType === "pro") {
+      plan = "Pro";
+    } else {
+      plan = subscriptionType.replace(/^./, c => c.toUpperCase());
+    }
   }
 
   const fileFresh = !!file?.accessToken && !(file.expiresAt && file.expiresAt < Date.now());
