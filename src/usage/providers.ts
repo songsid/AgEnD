@@ -173,12 +173,32 @@ async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   window(body.seven_day_sonnet, "Sonnet (weekly)", WEEK_MS);
 
   // Per-model weekly windows live in the `limits` array (kind: weekly_scoped).
+  // `limits` also carries which window is currently BINDING (`is_active`) and a
+  // severity the top-level windows do not expose. Probed live on a Team account:
+  // the scoped weekly (26%) was active while the plain weekly (15%) was not —
+  // i.e. the number that will actually stop you is not always the biggest one.
+  const activeKinds = new Set<string>();
   for (const entry of Array.isArray(body.limits) ? body.limits : []) {
-    const e = entry as { kind?: string; percent?: unknown; resets_at?: unknown; scope?: { model?: { display_name?: string } } };
+    const e = entry as { kind?: string; percent?: unknown; resets_at?: unknown; severity?: unknown; is_active?: unknown; scope?: { model?: { display_name?: string } } };
+    if (e?.is_active === true && typeof e.kind === "string") activeKinds.add(e.kind);
     if (e?.kind !== "weekly_scoped") continue;
     const model = e.scope?.model?.display_name;
     if (!model || typeof e.percent !== "number") continue;
-    metrics.push({ label: `${model} (weekly)`, type: "percent", used: e.percent, resetsAt: claudeResetIso(e.resets_at), windowMs: WEEK_MS });
+    metrics.push({
+      label: `${model} (weekly)`,
+      type: "percent",
+      used: e.percent,
+      resetsAt: claudeResetIso(e.resets_at),
+      windowMs: WEEK_MS,
+      ...(e.is_active === true ? { note: "binding" } : {}),
+      ...(typeof e.severity === "string" && e.severity !== "normal" ? { note: `binding · ${e.severity}` } : {}),
+    });
+  }
+  // Mark the two plain windows too, using the same source.
+  for (const m of metrics) {
+    if (m.note) continue;
+    if (m.label === "Session" && activeKinds.has("session")) m.note = "binding";
+    if (m.label === "Weekly" && activeKinds.has("weekly_all")) m.note = "binding";
   }
 
   const extra = body.extra_usage as { is_enabled?: boolean; used_credits?: unknown; monthly_limit?: unknown } | undefined;
