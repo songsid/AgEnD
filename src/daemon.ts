@@ -218,6 +218,39 @@ export class AutoPauseController {
  * `getBusyPattern()`, and that match vetoes ready regardless of what the ready
  * pattern says.
  */
+/**
+ * A shell command reduced to the part that is safe to show: the program, and a
+ * subcommand when there is one.
+ *
+ *   curl -H "Bearer sk-ant-…" https://api.com   →  curl
+ *   npm test --env=API_KEY=xxx                  →  npm test
+ *   git push origin main                        →  git push
+ *
+ * Arguments are dropped wholesale rather than filtered, because there is no
+ * reliable way to tell a secret from an ordinary argument: tokens, bearer
+ * headers, connection strings and `--password=` values all look like text. The
+ * progress line is posted to a chat channel and, for a public one, so is
+ * anything in it — so the rule is "never the arguments", not "not the arguments
+ * that look dangerous".
+ *
+ * A second token is kept only when it is a bare word (`push`, `test`), which is
+ * what a subcommand looks like and what a flag, path, URL, assignment or quoted
+ * string does not. Everything after it goes, including `git push ORIGIN MAIN`.
+ */
+export function shellCommandLabel(command: string): string {
+  // First line only: heredocs and multi-line scripts carry the payload.
+  const tokens = (command.split("\n")[0] ?? "").trim().split(/\s+/).filter(Boolean);
+  // `FOO=bar cmd …` — leading assignments are env, and their values are exactly
+  // the kind of thing being protected here.
+  while (tokens.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens.shift();
+  const program = tokens[0];
+  if (!program) return "";
+
+  const isBareWord = (t: string | undefined): boolean => !!t && /^[A-Za-z][A-Za-z0-9_-]*$/.test(t);
+  const label = isBareWord(tokens[1]) ? `${program} ${tokens[1]}` : program;
+  return label.length > 40 ? `${label.slice(0, 39)}…` : label;
+}
+
 export class PaneStateMachine {
   private readonly readyPattern: RegExp;
   private readonly busyPattern: RegExp | null;
@@ -2033,7 +2066,8 @@ export class Daemon extends EventEmitter {
     if (name === "Read") return `Read ${inp.file_path ?? ""}`;
     if (name === "Edit") return `Edit ${inp.file_path ?? ""}`;
     if (name === "Write") return `Write ${inp.file_path ?? ""}`;
-    if (name === "Bash") return `$ ${String(inp.command ?? "").slice(0, 50)}`;
+    // Command name only — never the arguments. See shellCommandLabel.
+    if (name === "Bash") return `$ ${shellCommandLabel(String(inp.command ?? ""))}`;
     if (name === "Glob") return `Glob ${inp.pattern ?? ""}`;
     if (name === "Grep") return `Grep ${inp.pattern ?? ""}`;
     if (name === "Agent") return "Agent (subagent)";
