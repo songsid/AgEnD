@@ -19,7 +19,7 @@ const FRESH = {
 describe("resolveClaudeAuth", () => {
   it("prefers a fresh file token and carries its plan metadata", () => {
     const auth = resolveClaudeAuth(FRESH, { CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-env" });
-    expect(auth).toEqual({ token: "sk-ant-oat01-file", plan: "Max 20x" });
+    expect(auth).toEqual({ token: "sk-ant-oat01-file", plan: "Max (20x)" });
   });
 
   it("uses the annual env token when there is no credentials file", () => {
@@ -33,7 +33,7 @@ describe("resolveClaudeAuth", () => {
     // CLI actually authenticates via the env token. "Token expired" was a lie.
     const stale = { ...FRESH, expiresAt: Date.now() - 1 };
     const auth = resolveClaudeAuth(stale, { CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-env" });
-    expect(auth).toEqual({ token: "sk-ant-oat01-env", plan: "Max 20x" });
+    expect(auth).toEqual({ token: "sk-ant-oat01-env", plan: "Max (20x)" });
   });
 
   it("keeps the explicit expiry error when there is no env fallback", () => {
@@ -43,8 +43,28 @@ describe("resolveClaudeAuth", () => {
     const auth = resolveClaudeAuth(stale, {}, () => null);
     expect(auth).toEqual({
       error: "Access token expired — it refreshes the next time any claude instance runs.",
-      plan: "Max 20x",
+      plan: "Max (20x)",
     });
+  });
+
+  it("distinguishes Team Premium from Max despite their shared 5x tier", () => {
+    const common = {
+      accessToken: "token",
+      expiresAt: Date.now() + 3_600_000,
+      rateLimitTier: "default_claude_max_5x",
+    };
+    expect(resolveClaudeAuth({ ...common, subscriptionType: "team" }, {}))
+      .toEqual({ token: "token", plan: "Team Premium (6.25x)" });
+    expect(resolveClaudeAuth({ ...common, subscriptionType: "max" }, {}))
+      .toEqual({ token: "token", plan: "Max (5x)" });
+  });
+
+  it("labels Team Standard and Pro subscriptions", () => {
+    const common = { accessToken: "token", expiresAt: Date.now() + 3_600_000 };
+    expect(resolveClaudeAuth({ ...common, subscriptionType: "team", rateLimitTier: "default" }, {}))
+      .toEqual({ token: "token", plan: "Team Standard (1.25x)" });
+    expect(resolveClaudeAuth({ ...common, subscriptionType: "pro" }, {}))
+      .toEqual({ token: "token", plan: "Pro" });
   });
 
   it("returns null (not-logged-in) when neither source exists", () => {
