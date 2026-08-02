@@ -691,7 +691,10 @@ export class TopicCommands {
       // IPC reachability moved here from /sysinfo: it is per-instance health, and
       // /status is now the one place that shows the fleet per instance.
       const ipc = this.ctx.instanceIpcClients.has(name) ? "✓" : "✗";
-      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
+      // "-" distinguishes "backend has no effort setting" from an unset one:
+      // an empty cell would read as missing data rather than not-applicable.
+      const effort = this.ctx.resolveInstanceEffort?.(name).effort ?? "-";
+      rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
     }
 
     if (rows.length === 0) return "No instances configured.";
@@ -699,8 +702,8 @@ export class TopicCommands {
     const lines = [
       "## Fleet Status",
       "",
-      "| Instance | Backend | Ctx | Cost | Status | State | IPC |",
-      "|----------|---------|-----|------|--------|-------|-----|",
+      "| Instance | Backend | Ctx | Effort | Cost | Status | State | IPC |",
+      "|----------|---------|-----|--------|------|--------|-------|-----|",
       ...rows,
       "",
       `Paused instances: ${pausedCount}`,

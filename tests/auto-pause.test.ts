@@ -228,12 +228,13 @@ describe("paused status visibility", () => {
 
     const status = await commands.getStatusText();
     expect(status).toContain("Paused instances: 1");
+    // Effort column added between Ctx and Cost; "-" where no effort is configured.
     // IPC column folded in from the old /sysinfo instance table.
-    expect(status).toContain("| sleeping | codex | - | $0.00 | ⏸ | ⏸ paused | ✗ |");
-    expect(status).toContain("| active | kiro-cli | - | $0.00 | 🟢 | 🔵 working | ✓ |");
-    expect(status).toContain("| ready | claude-code | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
-    expect(status).toContain("| frozen | gemini-cli | - | $0.00 | 🟢 | 🔴 stuck | ✓ |");
-    expect(status).toContain("| classic-room-1234 | codex | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
+    expect(status).toContain("| sleeping | codex | - | - | $0.00 | ⏸ | ⏸ paused | ✗ |");
+    expect(status).toContain("| active | kiro-cli | - | - | $0.00 | 🟢 | 🔵 working | ✓ |");
+    expect(status).toContain("| ready | claude-code | - | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
+    expect(status).toContain("| frozen | gemini-cli | - | - | $0.00 | 🟢 | 🔴 stuck | ✓ |");
+    expect(status).toContain("| classic-room-1234 | codex | - | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
   });
 
   it("/sysinfo is system-level only — the instance table moved to /status", () => {
