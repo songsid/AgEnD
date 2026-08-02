@@ -104,19 +104,23 @@ describe("handleInboundReaction stores instead of delivering", () => {
     }
   });
 
-  it("drops AgEnD's own delivery-status emoji, whoever they arrive from", async () => {
-    // In multi-bot channels a sibling AgEnD bot stamps 👀/⏳/✅/❌ (and the 🫡
-    // ack) on our messages. The Discord bot-flag filter can miss on partial
-    // users, so the emoji set is checked here regardless of sender.
+  it("drops exactly the four delivery-status emoji, whoever they arrive from", async () => {
+    // Bot-to-bot reactions are a real signal channel now (agent A reacts →
+    // agent B sees it), so sender kind is not filtered anywhere. The ONLY
+    // filter is this exact set — the ladder AgEnD itself stamps as plumbing.
     const { internals, cleanup } = makeFleet();
     try {
-      for (const emoji of ["👀", "⏳", "✅", "❌", "🫡"]) {
+      for (const emoji of ["👀", "⏳", "✅", "❌"]) {
         await internals.handleInboundReaction(reaction({ emoji }));
       }
       expect(internals.eventLog.pendingReactions("alpha")).toBeNull();
 
-      // A non-status emoji from the same shape of event still queues.
-      await internals.handleInboundReaction(reaction({ emoji: "🎯" }));
+      // 🫡 passes: it reads as a deliberate acknowledgement, not plumbing.
+      await internals.handleInboundReaction(reaction({ emoji: "🫡" }));
+      expect(internals.eventLog.pendingReactions("alpha")?.summary).toContain("🫡");
+
+      // And any other emoji still queues.
+      await internals.handleInboundReaction(reaction({ emoji: "🎯", messageId: "msg-2" }));
       expect(internals.eventLog.pendingReactions("alpha")?.summary).toContain("🎯");
     } finally {
       cleanup();
