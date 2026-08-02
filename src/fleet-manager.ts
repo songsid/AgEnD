@@ -5443,11 +5443,7 @@ When users create specialized instances, suggest these configurations:
   }
 
   private effortMenuHeader(instanceName: string): string {
-    const { effort, source } = this.resolveInstanceEffort(instanceName);
-    if (!effort) return "Current effort: (CLI default)";
-    return source === "fleet-default"
-      ? `Current effort: ${effort} (fleet default)`
-      : `Current effort: ${effort}`;
+    return `Current effort: ${this.effortDisplay(instanceName)}`;
   }
 
   /** `/effort` — DC Select Menu, or apply directly when a level is given. */
@@ -5470,7 +5466,9 @@ When users create specialized instances, suggest these configurations:
     }
     if (!data.respondChoices) { await data.respond(`Usage: /effort <${levels.join("|")}>`); return; }
 
-    const current = this.resolveInstanceEffort(name).effort;
+    // ✓ marks what is actually in force, preferring the detected live value.
+    const { effort: configured, detected } = this.resolveInstanceEffort(name);
+    const current = detected ?? configured;
     const nonce = randomBytes(6).toString("hex");
     const choices = levels.map(l => ({
       id: `${EFFORT_SELECT_CALLBACK_PREFIX}${nonce}:${l}`,
@@ -5502,7 +5500,8 @@ When users create specialized instances, suggest these configurations:
     if (levels.length === 0) {
       return `❌ ${this.backendNameForInstance(instanceName)} has no reasoning-effort setting.`;
     }
-    const current = this.resolveInstanceEffort(instanceName).effort;
+    const { effort: configured, detected } = this.resolveInstanceEffort(instanceName);
+    const current = detected ?? configured;
     const nonce = randomBytes(6).toString("hex");
     const choices = levels.map(l => ({
       id: `${EFFORT_SELECT_CALLBACK_PREFIX}${nonce}:${l}`,
@@ -5792,13 +5791,45 @@ When users create specialized instances, suggest these configurations:
     } catch { return []; }
   }
 
-  /** Configured effort for an instance: per-instance, else fleet default, else none. */
-  resolveInstanceEffort(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+  /**
+   * Effort for an instance: what we configured, and — where the CLI persists it
+   * — what is actually in force.
+   *
+   * They can disagree, and the disagreement is the useful part: someone running
+   * `/effort high` inside claude-code changes the live value without telling
+   * AgEnD. Reporting only our config would then be confidently wrong, and
+   * reporting only the detected value would hide what the next restart applies.
+   */
+  resolveInstanceEffort(instanceName: string): {
+    effort: string | null;
+    source: "instance" | "fleet-default" | "unset";
+    detected?: string | null;
+  } {
+    let detected: string | null = null;
+    try {
+      detected = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName))
+        .getCurrentEffort?.() ?? null;
+    } catch { /* detection is best-effort */ }
+
     const own = (this.fleetConfig?.instances[instanceName] as { effort?: string } | undefined)?.effort;
-    if (own) return { effort: own, source: "instance" };
+    if (own) return { effort: own, source: "instance", detected };
     const fallback = (this.fleetConfig?.defaults as { effort?: string } | undefined)?.effort;
-    if (fallback) return { effort: fallback, source: "fleet-default" };
-    return { effort: null, source: "unset" };
+    if (fallback) return { effort: fallback, source: "fleet-default", detected };
+    return { effort: null, source: "unset", detected };
+  }
+
+  /**
+   * How the effort reads to a human: the live value when the CLI reports one,
+   * with the configured value called out when it differs.
+   */
+  effortDisplay(instanceName: string): string {
+    const { effort, source, detected } = this.resolveInstanceEffort(instanceName);
+    if (detected && effort && detected !== effort) {
+      return `${detected} (live; config says ${effort})`;
+    }
+    if (detected) return effort ? detected : `${detected} (CLI)`;
+    if (!effort) return "(CLI default)";
+    return source === "fleet-default" ? `${effort} (fleet default)` : effort;
   }
 
   /**
@@ -5904,11 +5935,7 @@ When users create specialized instances, suggest these configurations:
    */
   private effortSuffix(instanceName: string): string {
     if (this.effortLevelsFor(instanceName).length === 0) return "";
-    const { effort, source } = this.resolveInstanceEffort(instanceName);
-    if (!effort) return "\nCurrent effort: (CLI default)";
-    return source === "fleet-default"
-      ? `\nCurrent effort: ${effort} (fleet default)`
-      : `\nCurrent effort: ${effort}`;
+    return `\nCurrent effort: ${this.effortDisplay(instanceName)}`;
   }
 
   /** Read recent chat log for agent context */

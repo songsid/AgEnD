@@ -28,8 +28,8 @@ describe("/status shows effort", () => {
       getAdapterStates: () => new Map(),
       classicChannels: null,
       costGuard: null,
-      resolveInstanceEffort: (n: string) =>
-        n === "alpha" ? { effort: "xhigh", source: "instance" } : { effort: null, source: "unset" },
+      // /status renders the display string (live value + drift), not the raw config.
+      effortDisplay: (n: string) => (n === "alpha" ? "xhigh" : "-"),
     } as never);
 
     const text = await commands.getStatusText();
@@ -66,6 +66,88 @@ describe("/model reply carries the current effort", () => {
   it("adds nothing for a backend with no effort setting", async () => {
     const fm = makeFleet("opencode");
     expect(await fm.applyModel("alpha", "some-model")).not.toContain("Current effort");
+  });
+});
+
+describe("effort detection", () => {
+  // Checked 2026-08-02: no CLI has a --show-effort query. Two persist it in a
+  // readable file; the rest take it as a launch flag and keep no state.
+  it("reads claude-code's live effortLevel from settings.json", async () => {
+    const home = tmp();
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(home, "settings.json"), JSON.stringify({ effortLevel: "XHigh" }));
+    process.env.CLAUDE_HOME = home;
+    try {
+      const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
+      // Lower-cased: `/effort` writes whatever case the user typed.
+      expect(new ClaudeCodeBackend(tmp()).getCurrentEffort()).toBe("xhigh");
+    } finally { delete process.env.CLAUDE_HOME; }
+  });
+
+  it("reads codex's model_reasoning_effort from config.toml", async () => {
+    const home = tmp();
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(join(home, "config.toml"), 'model = "gpt-5"\nmodel_reasoning_effort = "high"\n');
+    process.env.CODEX_HOME = home;
+    try {
+      const { CodexBackend } = await import("../src/backend/codex.js");
+      expect(new CodexBackend(tmp()).getCurrentEffort()).toBe("high");
+    } finally { delete process.env.CODEX_HOME; }
+  });
+
+  it("returns null rather than guessing when the file is absent or junk", async () => {
+    process.env.CLAUDE_HOME = tmp();
+    process.env.CODEX_HOME = tmp();
+    try {
+      const { ClaudeCodeBackend } = await import("../src/backend/claude-code.js");
+      const { CodexBackend } = await import("../src/backend/codex.js");
+      expect(new ClaudeCodeBackend(tmp()).getCurrentEffort()).toBeNull();
+      expect(new CodexBackend(tmp()).getCurrentEffort()).toBeNull();
+    } finally { delete process.env.CLAUDE_HOME; delete process.env.CODEX_HOME; }
+  });
+
+  it("leaves launch-flag-only backends undetected", async () => {
+    const { KiroBackend } = await import("../src/backend/kiro.js");
+    const { GrokBackend } = await import("../src/backend/grok.js");
+    // Reporting a per-model default as if it were the live session value would
+    // be worse than reporting nothing.
+    expect(new KiroBackend(tmp()).getCurrentEffort?.() ?? null).toBeNull();
+    expect(new GrokBackend(tmp()).getCurrentEffort?.() ?? null).toBeNull();
+  });
+});
+
+describe("effortDisplay", () => {
+  function fleet(backend: string, cfgEffort: string | undefined, detected: string | null) {
+    const fm = new FleetManager(tmp());
+    (fm as unknown as { fleetConfig: unknown }).fleetConfig = {
+      defaults: { backend },
+      instances: { alpha: { working_directory: "/tmp", ...(cfgEffort ? { effort: cfgEffort } : {}) } },
+    };
+    (fm as unknown as { resolveInstanceEffort(n: string): unknown }).resolveInstanceEffort = () => ({
+      effort: cfgEffort ?? null,
+      source: cfgEffort ? "instance" : "unset",
+      detected,
+    });
+    return fm;
+  }
+
+  it("calls out drift between the live value and the config", () => {
+    // Someone ran /effort inside the CLI; a restart would put it back.
+    expect(fleet("claude-code", "medium", "high").effortDisplay("alpha"))
+      .toBe("high (live; config says medium)");
+  });
+
+  it("shows the live value plainly when they agree", () => {
+    expect(fleet("claude-code", "high", "high").effortDisplay("alpha")).toBe("high");
+  });
+
+  it("marks a live value we never configured", () => {
+    expect(fleet("claude-code", undefined, "high").effortDisplay("alpha")).toBe("high (CLI)");
+  });
+
+  it("falls back to the configured value when nothing is detectable", () => {
+    expect(fleet("kiro-cli", "xhigh", null).effortDisplay("alpha")).toBe("xhigh");
+    expect(fleet("kiro-cli", undefined, null).effortDisplay("alpha")).toBe("(CLI default)");
   });
 });
 

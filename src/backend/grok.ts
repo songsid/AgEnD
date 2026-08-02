@@ -321,6 +321,11 @@ export class GrokBackend implements CliBackend {
   // The help does not enumerate values, so only the canonical three are offered;
   // grok rejects an unknown level itself rather than us guessing a wider set.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
+  // Confirmed against ~/.grok/models_cache.json, which lists each model's
+  // `reasoning_efforts` as exactly ["high","medium","low"]. The cache also
+  // carries a per-model DEFAULT, but no record of the current session's choice,
+  // so getCurrentEffort stays unimplemented rather than reporting a default as
+  // if it were live state.
   getEffortLevels(): string[] { return ["low", "medium", "high"]; }
 
   // grok's in-session model switch is a picker → restart to apply reliably.

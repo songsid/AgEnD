@@ -181,6 +181,19 @@ export class ClaudeCodeBackend implements CliBackend {
   // `claude --effort <level>` (low, medium, high, xhigh, max) and a `/effort`
   // slash command in the TUI — verified from `claude --help` on 2026-08-02.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
+
+  /**
+   * `~/.claude/settings.json` → `effortLevel`. This is LIVE state, not our
+   * config: the in-session `/effort` command writes it, so it reflects what the
+   * CLI is really doing even when nobody told AgEnD.
+   */
+  getCurrentEffort(): string | null {
+    try {
+      const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");
+      const level = JSON.parse(readFileSync(join(home, "settings.json"), "utf-8")).effortLevel;
+      return typeof level === "string" && level.trim() ? level.trim().toLowerCase() : null;
+    } catch { return null; }
+  }
   getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
 
   // claude-code has a clean one-shot in-session `/model <name>` → runtime switch.

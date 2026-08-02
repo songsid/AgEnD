@@ -693,7 +693,7 @@ export class TopicCommands {
       const ipc = this.ctx.instanceIpcClients.has(name) ? "✓" : "✗";
       // "-" distinguishes "backend has no effort setting" from an unset one:
       // an empty cell would read as missing data rather than not-applicable.
-      const effort = this.ctx.resolveInstanceEffort?.(name).effort ?? "-";
+      const effort = this.ctx.effortDisplay?.(name) ?? "-";
       rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
     }
 

@@ -575,7 +575,7 @@ const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
   const fm = ctx as unknown as {
     effortLevelsFor?(n: string): string[];
     effortStrategyFor?(n: string): "runtime" | "restart" | "unsupported";
-    resolveInstanceEffort?(n: string): { effort: string | null; source: string };
+    resolveInstanceEffort?(n: string): { effort: string | null; source: string; detected?: string | null };
     backendNameForInstance?(n: string): string;
   };
   const strategy = fm.effortStrategyFor?.(name) ?? "unsupported";
@@ -587,7 +587,10 @@ const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
     backend: fm.backendNameForInstance?.(name) ?? null,
     // null (not "") when the CLI has none, so a caller can branch on it rather
     // than parse a sentinel string.
+    // `effort` is what a restart would apply; `detected` is what the CLI is
+    // doing now. They differ when someone ran /effort inside the CLI.
     effort: supported ? resolved.effort : null,
+    detected: supported ? resolved.detected ?? null : null,
     source: supported ? resolved.source : "unsupported",
     available_levels: levels,
     // "restart" warns the agent that changing this costs a respawn — worth

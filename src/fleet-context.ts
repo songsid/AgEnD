@@ -75,8 +75,11 @@ export interface FleetContext {
     threadId?: string,
   ): Promise<string | null>;
 
+  /** Human-readable effort for an instance: live value, with config drift noted. */
+  effortDisplay?(instanceName: string): string;
+
   /** Configured effort for an instance, for display (null when unset). */
-  resolveInstanceEffort?(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
+  resolveInstanceEffort?(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset"; detected?: string | null };
 
   /** Apply a reasoning-effort level (runtime paste or persist+restart). */
   applyEffort?(instanceName: string, level: string): Promise<string>;

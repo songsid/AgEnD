@@ -256,6 +256,17 @@ export interface CliBackend {
   getEffortStrategy?(): "runtime" | "restart" | "unsupported";
 
   /**
+   * The effort level actually in force right now, if the CLI persists it
+   * somewhere readable. Null when it does not — most CLIs take effort as a
+   * launch flag and keep no queryable state, so the configured value is the
+   * only thing anyone can know.
+   *
+   * Checked on 2026-08-02: NO CLI offers a `--show-effort`-style query. Two
+   * persist it in a file (claude-code, codex); the rest are launch-flag only.
+   */
+  getCurrentEffort?(): string | null;
+
+  /**
    * Effort levels this CLI accepts, in increasing order. AgEnD's canonical set
    * is low|medium|high|xhigh|max; a backend supporting fewer returns its own
    * list and the caller clamps to the nearest supported level — visibly.

@@ -137,11 +137,13 @@ describe("resolveInstanceEffort", () => {
         defaults: { backend: "claude-code", effort: "medium" },
         instances: { alpha: { working_directory: "/tmp", effort: "max" }, beta: { working_directory: "/tmp" } },
       };
-      expect(fm.resolveInstanceEffort("alpha")).toEqual({ effort: "max", source: "instance" });
-      expect(fm.resolveInstanceEffort("beta")).toEqual({ effort: "medium", source: "fleet-default" });
+      // `detected` is the CLI's live value where readable; this fixture has no
+      // claude settings.json under a tmp CLAUDE_HOME, so it is null here.
+      expect(fm.resolveInstanceEffort("alpha")).toMatchObject({ effort: "max", source: "instance" });
+      expect(fm.resolveInstanceEffort("beta")).toMatchObject({ effort: "medium", source: "fleet-default" });
 
       (fm as unknown as { fleetConfig: unknown }).fleetConfig = { defaults: {}, instances: { beta: {} } };
-      expect(fm.resolveInstanceEffort("beta")).toEqual({ effort: null, source: "unset" });
+      expect(fm.resolveInstanceEffort("beta")).toMatchObject({ effort: null, source: "unset" });
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

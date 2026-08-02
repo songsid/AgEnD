@@ -411,6 +411,20 @@ export class CodexBackend implements CliBackend {
   // config key (settable per launch with `-c`). The TUI reads it at startup, so
   // a change needs a respawn — restart, not runtime.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+
+  /**
+   * `~/.codex/config.toml` → `model_reasoning_effort`. Read with a line regex
+   * rather than a TOML parser: it is one scalar at the top level, and adding a
+   * dependency to read one key would be the larger change.
+   */
+  getCurrentEffort(): string | null {
+    try {
+      const home = process.env.CODEX_HOME || join(homedir(), ".codex");
+      const toml = readFileSync(join(home, "config.toml"), "utf-8");
+      const m = toml.match(/^\s*model_reasoning_effort\s*=\s*["']([^"']+)["']/m);
+      return m ? m[1].trim().toLowerCase() : null;
+    } catch { return null; }
+  }
   getEffortLevels(): string[] { return ["low", "medium", "high"]; }
 
   /**
