@@ -77,6 +77,9 @@ async function main(): Promise<void> {
     case "ask": args = { target_instance: rest[0], question: rest[1] ?? "", context: rest[2] }; break;
     case "broadcast": args = { message: rest[0] ?? "", team: rest[1] }; break;
 
+    // Usage
+    case "usage": args = { ...(rest[0] === "--force" ? { force: true } : {}) }; break;
+
     // Instance management
     case "list": break;
     case "describe": args = { name: rest[0] ?? "" }; break;
@@ -133,6 +136,15 @@ async function main(): Promise<void> {
 
   try {
     const result = await post(op, args);
+    // `usage` responses carry a pre-rendered text block; print that instead of
+    // one long JSON line so an agent (or a human) can read it directly.
+    if (op === "usage") {
+      try {
+        const parsed = JSON.parse(result) as { formatted?: string; error?: string };
+        console.log(parsed.error ? result : parsed.formatted ?? result);
+        return;
+      } catch { /* fall through to raw */ }
+    }
     console.log(result);
   } catch (err) {
     die(`Connection failed: ${(err as Error).message}`);

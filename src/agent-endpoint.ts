@@ -191,6 +191,15 @@ export async function dispatchAgentOperation(
     return ctx.handleTaskCrudHttp(instance, args);
   }
 
+  // AI subscription usage — same snapshot and cache as /usage and the web panel.
+  // Returns the full payload plus a pre-rendered `formatted` text so the CLI can
+  // print something readable without owning the formatting.
+  if (op === "usage") {
+    const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
+    const payload = await getUsageSnapshot(args.force === true || args.force === "true");
+    return { formatted: formatUsageSummary(payload), ...payload };
+  }
+
   // Display name / description
   if (op === "rename") {
     return ctx.handleSetDisplayNameHttp(instance, args.name as string ?? args.display_name as string ?? "");

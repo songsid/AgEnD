@@ -27,6 +27,7 @@ agend-agent ask TARGET "question"                 # Request info
 agend-agent broadcast "message"                   # Message all agents
 
 # Instance Management
+agend-agent usage                                 # AI subscription usage (all providers)
 agend-agent list                                  # List running agents
 agend-agent describe NAME                         # Get agent details
 agend-agent start NAME                            # Start stopped agent
