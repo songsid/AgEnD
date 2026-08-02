@@ -29,10 +29,8 @@ jobs:
           else
             echo "NPM_TAG=latest" >> $GITHUB_ENV
           fi
-      - name: Swap package name and version
-        run: |
-          sed -i 's/"name": "@suzuke\/agend"/"name": "@songsid\/agend"/' package.json
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+      - name: Set package version
+        run: sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
       - run: npm publish --access public --tag ${{ env.NPM_TAG }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

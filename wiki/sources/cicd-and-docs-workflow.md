@@ -20,7 +20,7 @@ AgEnD 的自動化發布（GitHub Actions）和 release 時的文件更新流程
 - PR merge → CI only（typecheck + build）
 - Beta: tag `v2.x.y-beta.N` → npm `@beta`
 - Stable: tag `v2.x.y` → npm `@latest`
-- Package name swap: @suzuke/agend → @songsid/agend（build 時替換）
+- Package name: @songsid/agend（repository 與 publish artifact 一致，不再於 build 時替換）
 - Discord plugin 同步 publish
 
 ## 文件更新
