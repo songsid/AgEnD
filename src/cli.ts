@@ -1171,7 +1171,7 @@ program
     try {
       const agendPath = execSync("which agend", { encoding: "utf-8", stdio: "pipe" }).trim();
       const resolved = execSync(`readlink -f "${agendPath}"`, { encoding: "utf-8", stdio: "pipe" }).trim();
-      if (resolved.includes("/Projects/") || resolved.includes("@suzuke") || resolved.includes("/src/")) {
+      if (resolved.includes("/Projects/") || resolved.includes("@songsid") || resolved.includes("@suzuke") || resolved.includes("/src/")) {
         console.log(`  ⚠️  Detected local npm link: ${resolved}`);
         console.log("  Removing link to allow global install...\n");
         try { execSync("npm unlink -g @suzuke/agend", { stdio: "pipe", timeout: 15000 }); } catch {}
