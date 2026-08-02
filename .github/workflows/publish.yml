@@ -4,35 +4,38 @@ on:
   push:
     tags: ['v*']
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
-          registry-url: https://registry.npmjs.org
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Use OIDC-capable npm
+        run: npm install --global npm@11
+
+      - run: npm --version
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run build
 
-      # Publish main package as @songsid/agend
       - name: Set version from tag
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_ENV"
       - name: Determine npm tag
         run: |
           if [[ "$VERSION" == *-beta* ]]; then
-            echo "NPM_TAG=beta" >> $GITHUB_ENV
+            echo "NPM_TAG=beta" >> "$GITHUB_ENV"
           else
-            echo "NPM_TAG=latest" >> $GITHUB_ENV
+            echo "NPM_TAG=latest" >> "$GITHUB_ENV"
           fi
-      - name: Swap package name and version
-        run: |
-          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
-      - run: npm publish --access public --tag ${{ env.NPM_TAG }} --provenance
-        env:
-          NODE_AUTH_TOKEN: ''
+      - name: Set package version
+        run: npm pkg set "version=$VERSION"
+      - name: Publish
+        run: npm publish --access public --tag "$NPM_TAG"
