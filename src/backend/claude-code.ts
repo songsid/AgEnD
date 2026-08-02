@@ -102,6 +102,26 @@ export class ClaudeCodeBackend implements CliBackend {
    * a parenthesised live elapsed counter; the completed line is past tense with no
    * `…` and no counter. The verb and the glyph both rotate, so neither is matched.
    *
+   * The leading class is "any non-ASCII symbol, or an asterisk". It used to be
+   * `[^\x00-\x7F\p{L}\p{N}\s]` alone, requiring a non-ASCII glyph — but the
+   * animation cycles through six frames and one of them is a plain ASCII
+   * asterisk. Sampling a continuously working pane 50 times at 250ms:
+   *
+   *   ✻ 11/11   ✽ 10/10   ✢ 10/10   · 9/9   ✶ 4/4   * 0/6  ← U+002A never matched
+   *
+   * Since `❯` is always on screen (claude keeps its input box rendered), the ready
+   * pattern is permanently true and this pattern is the only discriminator: one
+   * asterisk frame meant "idle" while the CLI was generating, which is what
+   * retired cancel buttons mid-turn. 12% of frames, so it hit some turns and not
+   * others.
+   *
+   * `*` is spelled out rather than opening the class to all ASCII punctuation:
+   * `> quoted… (2s)` in agent output would otherwise read as a spinner, and a
+   * false positive on a *stable* pane pins the instance in `working` forever.
+   * If a future release adds another ASCII frame this pattern misses it again —
+   * but a missed frame can no longer flip the state on its own, because the
+   * state machine only decides on patterns once output has settled.
+   *
    * Deliberately narrow, because the cost is asymmetric. Missing the spinner just
    * restores today's behaviour; matching prose that happens to sit on a *stable*
    * pane would hold the instance in `working` forever — no auto-pause, no cancel
@@ -115,7 +135,7 @@ export class ClaudeCodeBackend implements CliBackend {
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*[^\x00-\x7F\p{L}\p{N}\s]\s+\p{L}+…\s*\(\d+[hms]\b/mu;
+    return /^[ \t]*(?:[^\x00-\x7F\p{L}\p{N}\s]|\*)\s+\p{L}+…\s*\(\d+[hms]\b/mu;
   }
 
   getContextUsage(): number | null {
