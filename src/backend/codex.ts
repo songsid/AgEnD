@@ -407,6 +407,12 @@ export class CodexBackend implements CliBackend {
 
   getCancelKey(): string { return "Escape"; }
 
+  // Codex has no `/effort`; reasoning effort is the `model_reasoning_effort`
+  // config key (settable per launch with `-c`). The TUI reads it at startup, so
+  // a change needs a respawn — restart, not runtime.
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+  getEffortLevels(): string[] { return ["low", "medium", "high"]; }
+
   /**
    * Codex has no `codex models` command. Its TUI/app-server maintains an
    * account-aware model catalog in $CODEX_HOME/models_cache.json, so consume

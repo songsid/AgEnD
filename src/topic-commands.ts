@@ -412,6 +412,28 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/effort" || text.startsWith("/effort ") || text.startsWith("/effort@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
+      const level = text.replace(/^\/effort(@\S+)?/, "").trim();
+      if (level) {
+        const reply = await this.ctx.applyEffort?.(instanceName, level)
+          ?? "Effort switching is unavailable.";
+        await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      } else if (this.ctx.promptEffortMenu) {
+        // No arg → inline keyboard menu (TG), same shape as /model.
+        const fallback = await this.ctx.promptEffortMenu(
+          instanceName, msg.userId, msg.threadId ?? msg.chatId, adapter, msg.chatId, msg.threadId,
+        );
+        if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
+      }
+      return true;
+    }
+
     if (text === "/model" || text.startsWith("/model ") || text.startsWith("/model@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -936,6 +958,7 @@ export class TopicCommands {
                 { command: "ctx", description: "Show context usage" },
                 { command: "compact", description: "Compact agent context" },
                 { command: "model", description: "🔒 Switch model (admin only)" },
+                { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
                 { command: "pause", description: "🔒 Pause an idle instance" },
                 { command: "wake", description: "🔒 Wake a paused instance" },
                 { command: "restart", description: "🔒 Graceful restart all instances" },
@@ -961,6 +984,7 @@ export class TopicCommands {
                 { command: "stop", description: "🔒 Stop the agent" },
                 { command: "compact", description: "🔒 Compact agent context" },
                 { command: "model", description: "🔒 Switch model (admin only)" },
+                { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
                 { command: "pause", description: "🔒 Pause the agent" },
                 { command: "wake", description: "🔒 Wake the agent" },
                 { command: "ctx", description: "Show context usage" },

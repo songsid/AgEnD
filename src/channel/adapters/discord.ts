@@ -488,6 +488,18 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           {
             name: "model", description: "🔒 Switch model (admin only)",
           },
+          {
+            name: "effort", description: "🔒 " + t("slash.effort"),
+            options: [{
+              name: "level", description: "low | medium | high | xhigh | max",
+              type: ApplicationCommandOptionType.String, required: false,
+              choices: [
+                { name: "low", value: "low" }, { name: "medium", value: "medium" },
+                { name: "high", value: "high" }, { name: "xhigh", value: "xhigh" },
+                { name: "max", value: "max" },
+              ],
+            }],
+          },
           { name: "collab", description: "🔒 " + t("slash.collab") },
           {
             name: "save", description: "🔒 " + t("slash.save"),
