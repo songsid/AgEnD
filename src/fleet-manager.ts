@@ -1171,7 +1171,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!trimmed || trimmed.startsWith("#")) continue;
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx < 0) continue;
-      const key = trimmed.slice(0, eqIdx);
+      // Accept `export KEY=value` — the shell-style form people paste from their
+      // .bashrc. Without this the variable landed in process.env under the key
+      // "export KEY" and silently did nothing.
+      const key = trimmed.slice(0, eqIdx).replace(/^export\s+/, "").trim();
       const raw = trimmed.slice(eqIdx + 1);
       const value = raw.replace(/^["'](.*)["']$/, '$1');
       // .env file always wins over inherited shell env vars, so that
