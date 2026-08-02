@@ -22,6 +22,7 @@ import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { getProviderRateLimit } from "./provider-alerts.js";
 import {
   readStatuslineRateLimits,
   type StatuslineRateLimits,
@@ -525,6 +526,24 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string } |
 }
 
 async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  // A CLI-observed rate limit outranks anything the quota API says. The bucket
+  // summary cannot see the account-level individual cap: verified live, it
+  // reported every bucket 0% used in the same minute the CLI was refusing work
+  // with "Individual quota reached". Showing those buckets would be the exact
+  // misleading 🟢 0% this overlay exists to correct — so the row goes red and
+  // the buckets are withheld until the cap lifts.
+  const capAlert = getProviderRateLimit("antigravity");
+  if (capAlert) {
+    const hoursLeft = Math.max(1, Math.round((capAlert.resetsAtMs - Date.now()) / 3_600_000));
+    const resetText = hoursLeft >= 48 ? `${Math.round(hoursLeft / 24)}d` : `${hoursLeft}h`;
+    return {
+      status: "error",
+      error: `Individual cap reached — CLI is rate limited (resets in ~${resetText}). `
+        + "The per-model pool quotas are a separate counter and may still read 0% used.",
+      metrics: [],
+    };
+  }
+
   const auth = await agyAccessToken();
   if (auth === null) {
     return { status: "no-credentials", hint: "Log in with the Antigravity CLI (`agy`).", metrics: [] };
