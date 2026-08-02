@@ -60,7 +60,7 @@ describe("resolution order is unchanged above the fallback", () => {
 
   it("a fresh credentials file still wins", () => {
     expect(resolveClaudeAuth(FRESH, { CLAUDE_CODE_OAUTH_TOKEN: "env-token" }))
-      .toEqual({ token: "file-token", plan: "Team" });
+      .toEqual({ token: "file-token", plan: "Team Standard (1.25x)" });
   });
 
   it("the environment still beats the rc fallback", () => {
@@ -77,7 +77,7 @@ describe("resolution order is unchanged above the fallback", () => {
       .toEqual({ token: "rc-token", plan: null });
     // Even an expired file yields to it — a working token beats a stale error.
     expect(resolveClaudeAuth({ ...FRESH, expiresAt: Date.now() - 1 }, {}, () => "rc-token"))
-      .toEqual({ token: "rc-token", plan: "Team" });
+      .toEqual({ token: "rc-token", plan: "Team Standard (1.25x)" });
   });
 
   it("an expired file with no other source explains that it self-heals", () => {
