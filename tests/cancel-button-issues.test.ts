@@ -20,6 +20,8 @@ type Internals = {
   instanceStateCache: Map<string, { state: string }>;
   lifecycle: { isPaused(name: string): boolean };
   cancelButtons: Map<string, Record<string, unknown>>;
+  cacheInstanceExecutionState(name: string, msg: Record<string, unknown>): void;
+  retireInstanceButtons(name: string): void;
   armReplyGrace(name: string): void;
   retireButton(entry: unknown): void;
   sendCancelButton(name: string): Promise<void>;
@@ -66,6 +68,48 @@ describe("issue 4 — idleness comes from the pane state machine, not output lul
     const { internals } = makeFleet();
     // No cache entry, no window-id file → the pre-existing optimistic answer.
     expect(internals.getInstanceIdle("alpha")).toBe(true);
+  });
+});
+
+describe("idle-edge cancel-button retirement grace", () => {
+  it("keeps the button when a queued turn resumes working during the grace", () => {
+    vi.useFakeTimers();
+    try {
+      const { internals } = makeFleet();
+      const retire = vi.fn();
+      internals.retireInstanceButtons = retire;
+      internals.cancelButtons.set("m1", { instanceName: "alpha", messageId: "m1" });
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      internals.cacheInstanceExecutionState("alpha", { state: "idle" });
+      internals.cacheInstanceExecutionState("alpha", { state: "working" });
+      vi.advanceTimersByTime(2_001);
+
+      expect(retire).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("retires the button after the grace when the instance remains idle", () => {
+    vi.useFakeTimers();
+    try {
+      const { internals } = makeFleet();
+      const retire = vi.fn();
+      internals.retireInstanceButtons = retire;
+      internals.cancelButtons.set("m1", { instanceName: "alpha", messageId: "m1" });
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      internals.cacheInstanceExecutionState("alpha", { state: "idle" });
+      vi.advanceTimersByTime(1_999);
+      expect(retire).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+
+      expect(retire).toHaveBeenCalledOnce();
+      expect(retire).toHaveBeenCalledWith("alpha");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
