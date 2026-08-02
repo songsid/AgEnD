@@ -42,6 +42,7 @@ describe("isUsagePath", () => {
 
 describe("GET /api/ai-usage", () => {
   it("returns the fetched payload and caches it", async () => {
+    vi.useFakeTimers();
     let calls = 0;
     setUsageFetcherForTests(async () => {
       calls++;
@@ -65,11 +66,20 @@ describe("GET /api/ai-usage", () => {
     expect(second.out.code).toBe(200);
     expect(calls).toBe(1);
 
-    // ?force=1 bypasses the cache.
+    // ?force=1 bypasses the TTL — but only past the 30s floor, which keeps
+    // refresh-button spam from becoming API-call spam. Inside the floor it
+    // degrades to a cached read.
+    const floored = fakeRes();
+    handleUsageRequest(fakeReq(), floored.res, urlFor("/api/ai-usage?force=1"), fakeCtx());
+    await floored.out.done;
+    expect(calls).toBe(1);
+
+    vi.advanceTimersByTime(31_000);
     const third = fakeRes();
     handleUsageRequest(fakeReq(), third.res, urlFor("/api/ai-usage?force=1"), fakeCtx());
     await third.out.done;
     expect(calls).toBe(2);
+    vi.useRealTimers();
   });
 
   it("ignores paths that are not ours", () => {

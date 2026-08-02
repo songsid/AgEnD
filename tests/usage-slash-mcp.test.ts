@@ -58,15 +58,25 @@ describe("formatUsageSummary", () => {
 
 describe("getUsageSnapshot", () => {
   it("shares the HTTP route's cache instead of re-fetching", async () => {
-    const fetcher = vi.fn().mockResolvedValue(PAYLOAD);
-    setUsageFetcherForTests(fetcher);
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn().mockResolvedValue(PAYLOAD);
+      setUsageFetcherForTests(fetcher);
 
-    await getUsageSnapshot();
-    await getUsageSnapshot();
-    expect(fetcher).toHaveBeenCalledTimes(1); // second call is the cache
+      await getUsageSnapshot();
+      await getUsageSnapshot();
+      expect(fetcher).toHaveBeenCalledTimes(1); // second call is the cache
 
-    await getUsageSnapshot(true); // force bypasses, like ?force=1
-    expect(fetcher).toHaveBeenCalledTimes(2);
+      // force bypasses the TTL — but only past the 30s floor, which exists so
+      // refresh-button spam cannot become API-call spam.
+      await getUsageSnapshot(true);
+      expect(fetcher).toHaveBeenCalledTimes(1); // inside the floor → cached
+      vi.advanceTimersByTime(31_000);
+      await getUsageSnapshot(true);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

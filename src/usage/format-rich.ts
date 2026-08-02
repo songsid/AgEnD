@@ -78,6 +78,7 @@ interface ProviderBlock {
   name: string;
   plan: string | null;
   note: string | null;      // "not logged in" / error text — instead of metrics
+  okHint: string | null;    // context under an ok row's metrics (e.g. staleness)
   lines: MetricLine[];
 }
 
@@ -86,9 +87,13 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
     dot: statusDot(p),
     name: p.name,
     plan: p.plan ?? null,
+    // An ok row can carry a hint too — e.g. "cached 3m ago — live query is rate
+    // limited" from the stale fallback. Shown under the metrics, not instead of
+    // them, so old numbers still read as numbers.
     note: p.status === "no-credentials" ? "not logged in"
       : p.status === "error" ? `⚠️ ${p.error ?? "error"}`
         : null,
+    okHint: p.status === "ok" && p.hint ? p.hint : null,
     lines: p.status === "ok" ? p.metrics.map(metricLine).filter((l): l is MetricLine => l !== null) : [],
   }));
 }
@@ -103,6 +108,7 @@ export function renderUsageMarkdown(payload: UsagePayload): string {
     for (const l of b.lines) {
       out.push(l.bar ? `\`${l.bar}\` ${l.text}` : l.text);
     }
+    if (b.okHint) out.push(`> ${b.okHint}`);
   }
   return out.join("\n");
 }
@@ -125,6 +131,7 @@ export function renderUsageHtml(payload: UsagePayload): string {
     for (const l of b.lines) {
       out.push(l.bar ? `<code>${l.bar}</code> ${escapeHtml(l.text)}` : escapeHtml(l.text));
     }
+    if (b.okHint) out.push(escapeHtml(b.okHint));
   }
   return out.join("\n");
 }
