@@ -19,6 +19,7 @@
  *   refresh at all when the file isn't writable, rather than risk the login.
  */
 import { readFile, writeFile, access, constants } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import Database from "better-sqlite3";
@@ -74,6 +75,41 @@ function claudeResetIso(value: unknown): string | null {
 }
 
 /**
+ * Shell rc files an interactive login would have exported the token into.
+ *
+ * `claude setup-token` writes NO file — verified: there is no
+ * ~/.config/claude-code, and the binary only ever reads
+ * CLAUDE_CODE_OAUTH_TOKEN from the environment. It prints the token and the
+ * user exports it, typically into a shell rc. A systemd daemon inherits none of
+ * that, which is why the token was invisible to the fleet.
+ *
+ * Reading these is bounded and defensible: same machine, same user, the user's
+ * own token, and only one specific variable is extracted. It is a fallback —
+ * anything already in the environment or the credentials file wins.
+ */
+const SHELL_RC_FILES = [".bashrc", ".bash_profile", ".zshrc", ".profile"];
+
+/** `CLAUDE_CODE_OAUTH_TOKEN` as exported in a shell rc file, or null. */
+export function tokenFromShellRc(
+  read: (path: string) => string,
+  home = homedir(),
+  files: readonly string[] = SHELL_RC_FILES,
+): string | null {
+  // Last assignment wins, matching how a shell would evaluate the file.
+  const pattern = /^[ \t]*(?:export[ \t]+)?CLAUDE_CODE_OAUTH_TOKEN[ \t]*=[ \t]*["']?([^"'\s#]+)/gm;
+  for (const file of files) {
+    let content: string;
+    try { content = read(join(home, file)); } catch { continue; }
+    let found: string | null = null;
+    for (const m of content.matchAll(pattern)) found = m[1];
+    // A literal shell expansion ("$OTHER_VAR") is not a token; skip rather than
+    // send a dollar sign to Anthropic as a bearer.
+    if (found && !found.startsWith("$")) return found;
+  }
+  return null;
+}
+
+/**
  * Where the Claude OAuth bearer comes from, in preference order:
  *
  * 1. `~/.claude/.credentials.json` (`claudeAiOauth.accessToken`) when present and
@@ -84,8 +120,11 @@ function claudeResetIso(value: unknown): string | null {
  *    "not logged in" / "token expired" while their CLI worked fine. Same token
  *    family (`sk-ant-oat…`), same usage endpoint; it just carries no plan
  *    metadata, so plan shows unknown.
- * 3. An expired file token with no env fallback stays an explicit error.
- * 4. `ANTHROPIC_API_KEY` alone is named in the hint but NOT used: console API
+ * 3. The same variable as exported in a shell rc file. A systemd-launched daemon
+ *    inherits none of the user's interactive shell, so a `setup-token` login was
+ *    invisible to /usage unless the user duplicated it into ~/.agend/.env.
+ * 4. An expired file token with no other source stays an explicit error.
+ * 5. `ANTHROPIC_API_KEY` alone is named in the hint but NOT used: console API
  *    keys are pay-per-token and have no subscription usage to query — the OAuth
  *    endpoint rejects them, and pretending otherwise would render a misleading
  *    error instead of an accurate "log in" hint.
@@ -93,6 +132,8 @@ function claudeResetIso(value: unknown): string | null {
 export function resolveClaudeAuth(
   file: { accessToken?: string; expiresAt?: number; subscriptionType?: string; rateLimitTier?: string } | null,
   env: NodeJS.ProcessEnv = process.env,
+  // Injectable so tests never depend on the developer's own ~/.bashrc.
+  rcLookup: () => string | null = readShellRcToken,
 ): { token: string; plan: string | null } | { error: string; plan: string | null } | null {
   let plan: string | null = null;
   if (file?.subscriptionType?.trim()) {
@@ -107,10 +148,32 @@ export function resolveClaudeAuth(
   const envToken = env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   if (envToken) return { token: envToken, plan };
 
+  // Last resort: the shell rc the user exported it into. A systemd daemon does
+  // not inherit that, so without this the fleet cannot see a setup-token login
+  // unless the user duplicates it into ~/.agend/.env.
+  const rcToken = rcLookup();
+  if (rcToken) return { token: rcToken, plan };
+
   if (file?.accessToken) {
-    return { error: "Access token expired. Run `claude` once to refresh it.", plan };
+    // AgEnD runs claude instances itself, and each run refreshes this file — so
+    // this usually clears on its own rather than needing a human.
+    return {
+      error: "Access token expired — it refreshes the next time any claude instance runs.",
+      plan,
+    };
   }
   return null;
+}
+
+/** Cached so /usage does not stat four rc files on every call. */
+let shellRcTokenCache: { token: string | null; at: number } | null = null;
+function readShellRcToken(): string | null {
+  if (shellRcTokenCache && Date.now() - shellRcTokenCache.at < 5 * 60_000) {
+    return shellRcTokenCache.token;
+  }
+  const token = tokenFromShellRc(path => readFileSync(path, "utf-8"));
+  shellRcTokenCache = { token, at: Date.now() };
+  return token;
 }
 
 async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {

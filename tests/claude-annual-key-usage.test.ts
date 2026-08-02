@@ -38,15 +38,20 @@ describe("resolveClaudeAuth", () => {
 
   it("keeps the explicit expiry error when there is no env fallback", () => {
     const stale = { ...FRESH, expiresAt: Date.now() - 1 };
-    const auth = resolveClaudeAuth(stale, {});
-    expect(auth).toEqual({ error: "Access token expired. Run `claude` once to refresh it.", plan: "Max 20x" });
+    // The third argument stubs out the shell-rc fallback so this asserts the
+    // no-token-anywhere case regardless of what the developer's ~/.bashrc holds.
+    const auth = resolveClaudeAuth(stale, {}, () => null);
+    expect(auth).toEqual({
+      error: "Access token expired — it refreshes the next time any claude instance runs.",
+      plan: "Max 20x",
+    });
   });
 
   it("returns null (not-logged-in) when neither source exists", () => {
-    expect(resolveClaudeAuth(null, {})).toBeNull();
+    expect(resolveClaudeAuth(null, {}, () => null)).toBeNull();
   });
 
   it("does not treat an empty env token as a login", () => {
-    expect(resolveClaudeAuth(null, { CLAUDE_CODE_OAUTH_TOKEN: "  " })).toBeNull();
+    expect(resolveClaudeAuth(null, { CLAUDE_CODE_OAUTH_TOKEN: "  " }, () => null)).toBeNull();
   });
 });
