@@ -9,10 +9,11 @@ import {
 
 /**
  * Every claude-code instance writes its own rate limits to statusline.json each
- * turn. Reading that file costs no token and no API call, and it works for API
- * key logins the usage endpoint refuses outright — so it is what the panel
- * falls back to instead of saying "not logged in" at someone whose CLI is
- * demonstrably working.
+ * turn. Reading that file costs no token and no API call, so it is what the
+ * panel falls back to instead of saying "not logged in" at someone whose CLI is
+ * demonstrably working — including `setup-token` users, whose token the fleet
+ * daemon never inherits. (An API-key login is the one case the CLI does not
+ * write the field for; see the note in statusline-usage.ts.)
  *
  * Field shape confirmed against a live file on 2026-08-02:
  *   "rate_limits":{"five_hour":{"used_percentage":29,"resets_at":1785669000},
@@ -40,12 +41,20 @@ function writeStatusline(
   utimesSync(file, secs, secs);
 }
 
-const limits = (fiveHour: number, sevenDay: number) => ({
+const limits = (fiveHour: number, sevenDay: number, base = NOW) => ({
   rate_limits: {
-    five_hour: { used_percentage: fiveHour, resets_at: IN_3H },
-    seven_day: { used_percentage: sevenDay, resets_at: IN_5D },
+    five_hour: { used_percentage: fiveHour, resets_at: Math.floor((base + 3 * 3_600_000) / 1000) },
+    seven_day: { used_percentage: sevenDay, resets_at: Math.floor((base + 5 * 86_400_000) / 1000) },
   },
 });
+
+/**
+ * Reset times relative to the wall clock, for the tests that go through
+ * fetchClaudeUsage — it reads the statusline with the real Date.now(), so
+ * fixtures pinned to the frozen NOW silently age out of their 5-hour window and
+ * the test starts failing at a time of day rather than on a code change.
+ */
+const liveLimits = (fiveHour: number, sevenDay: number) => limits(fiveHour, sevenDay, Date.now());
 
 beforeEach(() => { home = mkdtempSync(join(tmpdir(), "agend-statusline-")); });
 afterEach(() => { rmSync(home, { recursive: true, force: true }); });
@@ -163,7 +172,7 @@ describe("fetchClaudeUsage source preference", () => {
     const { fetchClaudeUsage } = await import("../src/usage/providers.js");
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
-    writeStatusline("general", limits(29, 22), Date.now());
+    writeStatusline("general", liveLimits(29, 22), Date.now());
 
     const out = await fetchClaudeUsage();
     expect(out.status).toBe("ok");            // not "not logged in"
@@ -177,7 +186,7 @@ describe("fetchClaudeUsage source preference", () => {
     // that will actually throttle the account is one the file never carries.
     const { fetchClaudeUsage } = await import("../src/usage/providers.js");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-test";
-    writeStatusline("general", limits(29, 22), Date.now());
+    writeStatusline("general", liveLimits(29, 22), Date.now());
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({
@@ -196,7 +205,7 @@ describe("fetchClaudeUsage source preference", () => {
   it("falls back to the file when the API rejects the token", async () => {
     const { fetchClaudeUsage } = await import("../src/usage/providers.js");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-stale";
-    writeStatusline("general", limits(29, 22), Date.now());
+    writeStatusline("general", liveLimits(29, 22), Date.now());
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 401, json: async () => ({}) }));
 
     const out = await fetchClaudeUsage();
@@ -207,7 +216,7 @@ describe("fetchClaudeUsage source preference", () => {
   it("falls back to the file when Anthropic rate-limits the usage endpoint", async () => {
     const { fetchClaudeUsage } = await import("../src/usage/providers.js");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-test";
-    writeStatusline("general", limits(29, 22), Date.now());
+    writeStatusline("general", liveLimits(29, 22), Date.now());
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 429, json: async () => ({}) }));
 
     const out = await fetchClaudeUsage();
@@ -226,7 +235,7 @@ describe("fetchClaudeUsage source preference", () => {
   it("keeps the network error when the statusline is unusable", async () => {
     const { fetchClaudeUsage } = await import("../src/usage/providers.js");
     process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-test";
-    writeStatusline("general", limits(29, 22), Date.now() - STATUSLINE_MAX_AGE_MS - 1);
+    writeStatusline("general", liveLimits(29, 22), Date.now() - STATUSLINE_MAX_AGE_MS - 1);
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("ENOTFOUND")));
 
     const out = await fetchClaudeUsage();
