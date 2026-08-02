@@ -75,6 +75,9 @@ export interface FleetContext {
     threadId?: string,
   ): Promise<string | null>;
 
+  /** Configured effort for an instance, for display (null when unset). */
+  resolveInstanceEffort?(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
+
   /** Apply a reasoning-effort level (runtime paste or persist+restart). */
   applyEffort?(instanceName: string, level: string): Promise<string>;
 

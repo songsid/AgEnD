@@ -187,6 +187,10 @@ export const StopInstanceArgs = z.object({
 
 export const GetFleetStatusArgs = z.object({});
 
+export const GetEffortArgs = z.object({
+  name: NonEmptyString.optional().describe("Instance to inspect. Defaults to the calling instance."),
+});
+
 export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
