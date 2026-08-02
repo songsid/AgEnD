@@ -24,8 +24,22 @@ export interface UsageApiContext {
 export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
 
 const CACHE_MS = 5 * 60 * 1000;
+/**
+ * `?force=1` still cannot fire more often than this. Force exists so the panel's
+ * refresh button can beat the 5-minute TTL, not so repeated clicks can hammer
+ * vendor endpoints — the Anthropic usage endpoint is shared with every
+ * claude-code CLI on the same account, which polls it for its own statusline,
+ * so our margin there is thinner than it looks.
+ */
+const FORCE_FLOOR_MS = 30 * 1000;
+/** How old a last-good snapshot may be and still stand in for a rate-limited row. */
+const STALE_MAX_MS = 60 * 60 * 1000;
+
 let cache: { at: number; payload: UsagePayload } | null = null;
 let inflight: Promise<UsagePayload> | null = null;
+let lastFetchStartedAt = 0;
+/** Last successful per-provider rows, for stale-while-rate-limited. */
+const lastGood = new Map<string, { at: number; provider: ProviderUsage }>();
 // Test seam: lets tests stub the network layer without real credentials.
 let fetcher: () => Promise<UsagePayload> = fetchAllUsage;
 
@@ -33,6 +47,39 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
   fetcher = fn ?? fetchAllUsage;
   cache = null;
   inflight = null;
+  lastFetchStartedAt = 0;
+  lastGood.clear();
+}
+
+/**
+ * Swap rate-limited provider rows for their last good snapshot, visibly.
+ *
+ * A vendor 429 on OUR usage query says nothing about the user's subscription —
+ * showing a red error where numbers stood a minute ago reads as "something
+ * broke", when the truth is "the numbers are 3 minutes old". Only rate-limit
+ * errors are softened this way: an auth failure or a schema error must stay
+ * loud, because stale data would hide a problem the user needs to act on.
+ */
+function withStaleFallback(payload: UsagePayload): UsagePayload {
+  const now = Date.now();
+  const providers = payload.providers.map(p => {
+    if (p.status === "ok") {
+      lastGood.set(p.id, { at: now, provider: p });
+      return p;
+    }
+    if (p.status === "error" && /rate.?limit/i.test(p.error ?? "")) {
+      const good = lastGood.get(p.id);
+      if (good && now - good.at < STALE_MAX_MS) {
+        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
+        return {
+          ...good.provider,
+          hint: `cached ${ageMin}m ago — live query is rate limited`,
+        };
+      }
+    }
+    return p;
+  });
+  return { ...payload, providers };
 }
 
 function json(res: ServerResponse, code: number, body: unknown): void {
@@ -41,10 +88,20 @@ function json(res: ServerResponse, code: number, body: unknown): void {
 }
 
 async function usage(force: boolean): Promise<UsagePayload> {
-  if (!force && cache && Date.now() - cache.at < CACHE_MS) return cache.payload;
-  inflight ??= fetcher()
-    .then(payload => { cache = { at: Date.now(), payload }; return payload; })
-    .finally(() => { inflight = null; });
+  // A force inside the floor degrades to a normal cached read instead of a
+  // fresh fetch — repeated refresh clicks must not become repeated API calls.
+  const effectiveForce = force && Date.now() - lastFetchStartedAt >= FORCE_FLOOR_MS;
+  if (!effectiveForce && cache && Date.now() - cache.at < CACHE_MS) return cache.payload;
+  inflight ??= (() => {
+    lastFetchStartedAt = Date.now();
+    return fetcher()
+      .then(payload => {
+        const resolved = withStaleFallback(payload);
+        cache = { at: Date.now(), payload: resolved };
+        return resolved;
+      })
+      .finally(() => { inflight = null; });
+  })();
   return inflight;
 }
 
@@ -79,7 +136,8 @@ export function formatUsageSummary(payload: UsagePayload): string {
       continue;
     }
     const parts = provider.metrics.map(formatMetric).filter(Boolean);
-    lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : "no data"}`);
+    const staleness = provider.hint ? ` (${provider.hint})` : "";
+    lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : "no data"}${staleness}`);
   }
   return lines.join("\n");
 }
