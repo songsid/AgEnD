@@ -51,6 +51,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
     if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");
     if (value.model_failover !== undefined && (!Array.isArray(value.model_failover) || !value.model_failover.every(v => typeof v === "string" && v.length > 0))) err(`${path}.model_failover`, "must be a list of non-empty model names");
+    if (value.progress_min_elapsed !== undefined) {
+      const v = value.progress_min_elapsed;
+      if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
+        err(`${path}.progress_min_elapsed`, "must be a non-negative number of seconds");
+      }
+    }
+
     if (value.effort !== undefined) {
       const e = value.effort;
       if (typeof e !== "string" || !/^(low|medium|high|xhigh|max)$/.test(e.trim().toLowerCase())) {

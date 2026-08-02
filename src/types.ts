@@ -157,6 +157,8 @@ export interface WebhookConfig {
 export interface FleetDefaults extends Partial<InstanceConfig> {
   /** UI/notification language for user-facing text: "en" or "zh-TW". Auto-detects from timezone if unset. */
   locale?: string;
+  /** Seconds before the cancel button starts showing elapsed time (default 30). */
+  progress_min_elapsed?: number;
   scheduler?: {
     max_schedules?: number;
     default_timezone?: string;

@@ -152,7 +152,13 @@ const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
  */
 const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
 /** Elapsed time is only shown once work has clearly outlasted a quick answer. */
-const PROGRESS_MIN_ELAPSED_MS = 2 * 60_000;
+/**
+ * Default delay before the button starts showing elapsed time. Configurable via
+ * `defaults.progress_min_elapsed` (seconds) in fleet.yaml. 30s is the balance
+ * point: most quick answers finish inside it (no churn for ordinary turns),
+ * while anything real shows signs of life well before the old two minutes.
+ */
+const PROGRESS_MIN_ELAPSED_MS = 30_000;
 /** How much of a tool summary the progress line will show before eliding. */
 const PROGRESS_ACTIVITY_MAX_CHARS = 48;
 /**
@@ -4409,8 +4415,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * progress indicator (#409) — the channel showed nothing at all during long work,
    * and once the agent had replied once there was no sign it was still going.
    */
-  static progressText(elapsedMs: number, activity?: string | null): string {
-    if (elapsedMs < PROGRESS_MIN_ELAPSED_MS) return "👀 處理中…";
+  static progressText(elapsedMs: number, activity?: string | null, minElapsedMs = PROGRESS_MIN_ELAPSED_MS): string {
+    if (elapsedMs < minElapsedMs) return "👀 處理中…";
     const totalSeconds = Math.floor(elapsedMs / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
@@ -4459,8 +4465,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * and the Bot API treats that as "clear the keyboard" — so editing with it would
    * delete the very cancel button this is trying to keep alive.
    */
+  /** Configured threshold before elapsed time appears, in ms. */
+  progressMinElapsedMs(): number {
+    const seconds = (this.fleetConfig?.defaults as { progress_min_elapsed?: number } | undefined)
+      ?.progress_min_elapsed;
+    if (typeof seconds === "number" && Number.isFinite(seconds) && seconds >= 0) {
+      return seconds * 1000;
+    }
+    return PROGRESS_MIN_ELAPSED_MS;
+  }
+
   private startProgressTicker(entry: CancelButtonEntry): void {
-    entry.progressTimer = setInterval(() => {
+    const tick = () => {
       if (!this.cancelButtons.has(entry.messageId)) {
         clearInterval(entry.progressTimer);
         return;
@@ -4468,6 +4484,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const text = FleetManager.progressText(
         Date.now() - (entry.startedAt ?? Date.now()),
         this.instanceActivity.get(entry.instanceName),
+        this.progressMinElapsedMs(),
       );
       if (text === entry.lastProgressText) return; // nothing changed — skip the API call
       const adapter = this.getAdapterForInstance(entry.instanceName) ?? this.adapter;
@@ -4486,8 +4503,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // rate limit.
           this.logger.debug({ err, instanceName: entry.instanceName }, "Progress edit failed");
         });
-    }, PROGRESS_UPDATE_INTERVAL_MS);
+    };
+    entry.progressTimer = setInterval(tick, PROGRESS_UPDATE_INTERVAL_MS);
     entry.progressTimer.unref?.();
+    // One extra tick right when the threshold passes, so a 30s threshold shows
+    // time at ~30s instead of waiting for the first 60s interval. Costs at most
+    // one additional edit per turn that lives past the threshold.
+    const firstAt = this.progressMinElapsedMs() - (Date.now() - (entry.startedAt ?? Date.now()));
+    if (firstAt > 0 && firstAt < PROGRESS_UPDATE_INTERVAL_MS) {
+      const firstTick = setTimeout(tick, firstAt);
+      firstTick.unref?.();
+    }
   }
 
   /**

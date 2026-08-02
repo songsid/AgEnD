@@ -13,11 +13,20 @@ import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
 // exactly one progress message per turn instead of a stream of new ones.
 
 describe("progressText", () => {
+  it("uses the configured threshold, defaulting to 30 seconds", () => {
+    // Default dropped from 2 minutes: real work now shows signs of life at 30s.
+    expect(FleetManager.progressText(29_000)).toBe("👀 處理中…");
+    expect(FleetManager.progressText(31_000)).toBe("⏳ 處理中… (已進行 0m 31s)");
+    // Explicit threshold (defaults.progress_min_elapsed) wins over the default.
+    expect(FleetManager.progressText(10_000, null, 5_000)).toBe("⏳ 處理中… (已進行 0m 10s)");
+    expect(FleetManager.progressText(10_000, null, 120_000)).toBe("👀 處理中…");
+  });
+
   it("keeps the original wording for a normal quick answer", () => {
     // Below the threshold nothing changes, so short turns look exactly as before.
     expect(FleetManager.progressText(0)).toBe("👀 處理中…");
-    expect(FleetManager.progressText(60_000)).toBe("👀 處理中…");
-    expect(FleetManager.progressText(119_000)).toBe("👀 處理中…");
+    expect(FleetManager.progressText(29_999)).toBe("👀 處理中…");
+    expect(FleetManager.progressText(119_000, null, 120_000)).toBe("👀 處理中…"); // old 2-min default, now opt-in
   });
 
   it("shows elapsed minutes and seconds once work is clearly long", () => {
@@ -117,5 +126,30 @@ describe("reply no longer retires a button while work continues", () => {
     else void internals.sendCancelButton("alpha");
     expect(cleared).not.toHaveBeenCalled();
     expect(reposted).toHaveBeenCalledOnce();
+  });
+});
+
+describe("progressMinElapsedMs", () => {
+  it("reads defaults.progress_min_elapsed in seconds, falling back to 30s", async () => {
+    const { mkdtempSync, rmSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "agend-pmin-"));
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).fleetConfig = { defaults: { progress_min_elapsed: 15 }, instances: {} };
+      expect(fm.progressMinElapsedMs()).toBe(15_000);
+
+      (fm as any).fleetConfig = { defaults: { progress_min_elapsed: 0 }, instances: {} };
+      expect(fm.progressMinElapsedMs()).toBe(0); // 0 = show time immediately
+
+      // Absent or invalid → the 30s default, never NaN.
+      (fm as any).fleetConfig = { defaults: {}, instances: {} };
+      expect(fm.progressMinElapsedMs()).toBe(30_000);
+      (fm as any).fleetConfig = { defaults: { progress_min_elapsed: -5 }, instances: {} };
+      expect(fm.progressMinElapsedMs()).toBe(30_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
