@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,8 +30,7 @@ jobs:
           else
             echo "NPM_TAG=latest" >> $GITHUB_ENV
           fi
-      - name: Set package version
-        run: sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
-      - run: npm publish --access public --tag ${{ env.NPM_TAG }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Swap package name and version
+        run: |
+          sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" package.json
+      - run: npm publish --access public --tag ${{ env.NPM_TAG }} --provenance
