@@ -245,6 +245,7 @@ export interface DeliveryOptions {
 const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
+const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -327,6 +328,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   classicChannels: ClassicChannelManager | null = null;
   private pendingClassicStarts = new Map<string, PendingClassicStart>();
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
+  /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
+  private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
 
   // Model failover state
@@ -1902,6 +1905,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
+      if (await this.handleEffortSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -1989,6 +1993,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(result);
       } else if (data.command === "model") {
         await this.handleModelSlash(data, adapterId);
+      } else if (data.command === "effort") {
+        await this.handleEffortSlash(data, adapterId);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -2182,6 +2188,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
+      if (await this.handleEffortSelection(data)) return;
       if (data.callbackData.startsWith("hang:")) {
         const parts = data.callbackData.split(":");
         const action = parts[1];
@@ -2260,6 +2267,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t("save.sent", `/chat load ${filename}`, name));
       } else if (data.command === "model") {
         await this.handleModelSlash(data, adapterId);
+      } else if (data.command === "effort") {
+        await this.handleEffortSlash(data, adapterId);
       } else if (data.command === "cancel") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -5428,6 +5437,165 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** `/model` slash handler (admin only). No arg → DC menu; `/model <name>` → apply directly. */
+  /** Label an effort choice, marking the one currently configured. */
+  private effortChoiceLabel(level: string, current: string | null): string {
+    return level === current ? `✓ ${level}` : level;
+  }
+
+  private effortMenuHeader(instanceName: string): string {
+    const { effort, source } = this.resolveInstanceEffort(instanceName);
+    if (!effort) return "Current effort: (CLI default)";
+    return source === "fleet-default"
+      ? `Current effort: ${effort} (fleet default)`
+      : `Current effort: ${effort}`;
+  }
+
+  /** `/effort` — DC Select Menu, or apply directly when a level is given. */
+  private async handleEffortSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    const name = this.resolveSlashTarget(data.channelId, adapterId);
+    if (!name) { await data.respond(t("classic.no_agent")); return; }
+
+    const requested = (typeof data.options?.level === "string" ? data.options.level.trim() : "")
+      || (data.text?.trim() ?? "");
+    if (requested) { await data.respond(await this.applyEffort(name, requested)); return; }
+
+    const levels = this.effortLevelsFor(name);
+    if (levels.length === 0) {
+      await data.respond(`❌ ${this.backendNameForInstance(name)} has no reasoning-effort setting.`);
+      return;
+    }
+    if (!data.respondChoices) { await data.respond(`Usage: /effort <${levels.join("|")}>`); return; }
+
+    const current = this.resolveInstanceEffort(name).effort;
+    const nonce = randomBytes(6).toString("hex");
+    const choices = levels.map(l => ({
+      id: `${EFFORT_SELECT_CALLBACK_PREFIX}${nonce}:${l}`,
+      label: this.effortChoiceLabel(l, current),
+    }));
+    const timer = setTimeout(() => this.pendingEffortSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
+    try {
+      await data.respondChoices(`${this.effortMenuHeader(name)}\nSelect a new effort level:`, choices);
+    } catch (err) {
+      this.pendingEffortSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName: name }, "effort menu failed");
+      await data.respond(`Usage: /effort <${levels.join("|")}>`);
+    }
+  }
+
+  /** TG inline-keyboard effort menu. Returns null on success, else a fallback string. */
+  async promptEffortMenu(
+    instanceName: string,
+    userId: string,
+    channelId: string,
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null> {
+    const levels = this.effortLevelsFor(instanceName);
+    if (levels.length === 0) {
+      return `❌ ${this.backendNameForInstance(instanceName)} has no reasoning-effort setting.`;
+    }
+    const current = this.resolveInstanceEffort(instanceName).effort;
+    const nonce = randomBytes(6).toString("hex");
+    const choices = levels.map(l => ({
+      id: `${EFFORT_SELECT_CALLBACK_PREFIX}${nonce}:${l}`,
+      label: this.effortChoiceLabel(l, current),
+    }));
+    const respond = async (text: string): Promise<string | undefined> => {
+      await adapter.sendText(chatId, text, { threadId });
+      return undefined;
+    };
+    const timer = setTimeout(() => {
+      const p = this.pendingEffortSelects.get(nonce);
+      if (p) {
+        this.pendingEffortSelects.delete(nonce);
+        p.respond("⏰ Effort selection expired.").catch(() => {});
+      }
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
+    try {
+      const menuMessageId = await adapter.promptUser(
+        chatId, `${this.effortMenuHeader(instanceName)}\nSelect a new effort level:`, choices, { threadId },
+      );
+      const pending = this.pendingEffortSelects.get(nonce);
+      if (pending) pending.menuMessageId = menuMessageId;
+      return null;
+    } catch (err) {
+      this.pendingEffortSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName }, "TG effort menu failed");
+      return `Usage: /effort <${levels.join("|")}>`;
+    }
+  }
+
+  /** Consume an `/effort` selection callback. Mirrors handleModelSelection. */
+  private async handleEffortSelection(data: AdapterCallbackData): Promise<boolean> {
+    if (!data.callbackData.startsWith(EFFORT_SELECT_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^effort-select:([0-9a-f]+):(.+)$/);
+    if (!match) return true;
+    const pending = this.pendingEffortSelects.get(match[1]);
+    if (!pending) return true;
+    if (data.userId && data.userId !== pending.userId) return true;
+    const cbChannel = data.threadId ?? data.chatId;
+    if (cbChannel !== pending.channelId && data.chatId !== pending.channelId) return true;
+    this.pendingEffortSelects.delete(match[1]);
+    clearTimeout(pending.timer);
+
+    const level = match[2];
+    const progressText = `⏳ Setting ${pending.instanceName} effort to \`${level}\`…`;
+    let progressMsgId: string | undefined;
+    if (pending.adapter && pending.adapterChatId) {
+      const menuMessageId = pending.menuMessageId ?? data.messageId;
+      if (menuMessageId && pending.adapter.editMessageRemoveButtons) {
+        try {
+          await pending.adapter.editMessageRemoveButtons(pending.adapterChatId, menuMessageId, progressText, pending.adapterThreadId);
+          progressMsgId = menuMessageId;
+        } catch { /* fall back to a new message */ }
+      }
+      if (!progressMsgId) {
+        try {
+          const sent = await pending.adapter.sendText(pending.adapterChatId, progressText, { threadId: pending.adapterThreadId });
+          progressMsgId = sent.messageId;
+        } catch { /* non-fatal */ }
+      }
+    } else {
+      await pending.respond(progressText).catch(() => {});
+    }
+
+    // Background-applied and guarded for the same reason as the model path: a
+    // restart backend respawns the instance here, and an unguarded rejection
+    // from a menu click must not take the fleet down.
+    void (async () => {
+      let result: string;
+      try {
+        result = await this.applyEffort(pending.instanceName, level);
+      } catch (err) {
+        this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
+        result = `Effort switch to \`${level}\` failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+      if (pending.adapter && pending.adapterChatId) {
+        if (progressMsgId) {
+          pending.adapter.editMessage(pending.adapterChatId, progressMsgId, result, pending.adapterThreadId).catch(() => {
+            pending.adapter!.sendText(pending.adapterChatId!, result, { threadId: pending.adapterThreadId }).catch(() => {});
+          });
+        } else {
+          pending.adapter.sendText(pending.adapterChatId, result, { threadId: pending.adapterThreadId }).catch(() => {});
+        }
+      } else {
+        await pending.respond(result).catch(() => {});
+      }
+    })();
+    return true;
+  }
+
   private async handleModelSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
       await data.respond(t("permission.denied"));
@@ -5600,6 +5768,93 @@ When users create specialized instances, suggest these configurations:
   }
 
   /** Apply a model to an instance: runtime paste (claude-code) or persist + restart (others). */
+  /** AgEnD's canonical effort ladder, low → max. Backends expose a subset. */
+  static readonly EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+
+  /** Effort levels this instance's backend actually accepts (empty = unsupported). */
+  effortLevelsFor(instanceName: string): string[] {
+    try {
+      const backend = createBackend(this.backendNameForInstance(instanceName), this.getInstanceDir(instanceName));
+      if ((backend.getEffortStrategy?.() ?? "unsupported") === "unsupported") return [];
+      return backend.getEffortLevels?.() ?? [];
+    } catch { return []; }
+  }
+
+  /** Configured effort for an instance: per-instance, else fleet default, else none. */
+  resolveInstanceEffort(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" } {
+    const own = (this.fleetConfig?.instances[instanceName] as { effort?: string } | undefined)?.effort;
+    if (own) return { effort: own, source: "instance" };
+    const fallback = (this.fleetConfig?.defaults as { effort?: string } | undefined)?.effort;
+    if (fallback) return { effort: fallback, source: "fleet-default" };
+    return { effort: null, source: "unset" };
+  }
+
+  /**
+   * Clamp a canonical level to the nearest one this backend supports.
+   *
+   * Clamping DOWN the ladder, never up: asking for `max` on a CLI that stops at
+   * `high` should get high, not silently fall to low. The caller reports the
+   * clamp — a user who asks for max and quietly receives high has been told the
+   * request succeeded when it did not.
+   */
+  static clampEffort(level: string, supported: string[]): string | null {
+    if (supported.includes(level)) return level;
+    const ladder = FleetManager.EFFORT_LEVELS as readonly string[];
+    const wanted = ladder.indexOf(level);
+    if (wanted < 0) return null;
+    for (let i = wanted - 1; i >= 0; i--) {
+      if (supported.includes(ladder[i])) return ladder[i];
+    }
+    return supported[0] ?? null;
+  }
+
+  /**
+   * Apply a reasoning-effort level, mirroring applyModel's shape.
+   *
+   * runtime backends take `/effort <level>` in the pane and keep working;
+   * restart backends only read it at launch, so it is persisted and the
+   * instance respawns.
+   */
+  async applyEffort(instanceName: string, requested: string): Promise<string> {
+    const level = requested.trim().toLowerCase();
+    const backendName = this.backendNameForInstance(instanceName);
+    let strategy: "runtime" | "restart" | "unsupported" = "unsupported";
+    let supported: string[] = [];
+    try {
+      const backend = createBackend(backendName, this.getInstanceDir(instanceName));
+      strategy = backend.getEffortStrategy?.() ?? "unsupported";
+      supported = backend.getEffortLevels?.() ?? [];
+    } catch { /* treated as unsupported below */ }
+
+    if (strategy === "unsupported" || supported.length === 0) {
+      return `❌ ${backendName} has no reasoning-effort setting.`;
+    }
+    if (!(FleetManager.EFFORT_LEVELS as readonly string[]).includes(level)) {
+      return `❌ Unknown effort level \`${level}\`. Use: ${FleetManager.EFFORT_LEVELS.join(", ")}.`;
+    }
+
+    const applied = FleetManager.clampEffort(level, supported);
+    if (!applied) return `❌ ${backendName} accepts none of the canonical effort levels.`;
+    const warn = applied === level
+      ? ""
+      : `⚠️ Clamped to \`${applied}\` (\`${level}\` not supported by ${backendName}).\n`;
+
+    // Persist either way: a runtime switch must survive the next respawn too,
+    // or the instance silently reverts on restart.
+    if (this.fleetConfig?.instances[instanceName]) {
+      (this.fleetConfig.instances[instanceName] as { effort?: string }).effort = applied;
+      this.saveFleetConfig();
+    }
+
+    if (strategy === "runtime") {
+      if (!this.instanceIpcClients.get(instanceName)) return `${warn}❌ ${instanceName} is not running.`;
+      this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
+      return `${warn}✅ Set ${instanceName} effort to \`${applied}\` (runtime).`;
+    }
+    await this.restartSingleInstance(instanceName);
+    return `${warn}✅ Set ${instanceName} effort to \`${applied}\` and restarted.`;
+  }
+
   async applyModel(instanceName: string, model: string): Promise<string> {
     const backendName = this.backendNameForInstance(instanceName);
     let strategy: "runtime" | "restart" = "restart";

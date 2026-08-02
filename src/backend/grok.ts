@@ -316,6 +316,13 @@ export class GrokBackend implements CliBackend {
   // Verified: grok interrupts generation on Ctrl+C.
   getCancelKey(): string { return "C-c"; }
 
+  // `--reasoning-effort` (alias `--effort`) plus a `/effort` TUI command —
+  // verified from `grok --help` and the binary's command table on 2026-08-02.
+  // The help does not enumerate values, so only the canonical three are offered;
+  // grok rejects an unknown level itself rather than us guessing a wider set.
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "runtime"; }
+  getEffortLevels(): string[] { return ["low", "medium", "high"]; }
+
   // grok's in-session model switch is a picker → restart to apply reliably.
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 

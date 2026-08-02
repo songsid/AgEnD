@@ -99,6 +99,7 @@ const messages: Record<Locale, Record<string, string>> = {
     "slash.update": "Update AgEnD to latest version",
     "slash.doctor": "Run health diagnostics",
     "slash.usage": "AI subscription usage",
+    "slash.effort": "Set reasoning effort (admin only)",
     "chat.usage": "Usage: `/chat <message>`",
     "filename.invalid": "⛔ Invalid filename — only letters, numbers, dots, hyphens, underscores allowed.",
     "dashboard.disabled": "⛔ /dashboard disabled — no allowed_users configured",

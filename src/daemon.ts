@@ -2776,6 +2776,7 @@ export class Daemon extends EventEmitter {
       },
       skipPermissions: this.config.skipPermissions,
       model: this.modelOverride ?? this.config.model,
+      effort: (this.config as InstanceConfig & { effort?: string }).effort,
       kiroUi: this.config.kiro_ui,
       skipResume: this.skipResume,
       instructions,
