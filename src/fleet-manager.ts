@@ -118,6 +118,12 @@ const CANCEL_BTN_MAX_RETRIES = 3;
  * reply). 5min (not the old 2s idle-watch) so Thinking isn't misread as idle. */
 const CANCEL_BTN_IDLE_CHECK_INTERVAL_MS = 5 * 60_000;
 /**
+ * A queued turn can produce a very short idle edge while the CLI hands off to
+ * the next message. Do not retire the cancel button until that edge remains
+ * idle for this long; a working/stuck report during the grace cancels it.
+ */
+const CANCEL_BTN_IDLE_RETIRE_GRACE_MS = 2_000;
+/**
  * How long after a reply an instance gets to resume working before its cancel
  * button is retired. A short turn ends with a reply and never works again → the
  * button disappears ~2 minutes after the answer. A multi-step run replies
@@ -322,6 +328,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // reply, on cancel, or when a newer button supersedes it for the same
   // instance. Per-button tracking means a failed delete never strands a button.
   private cancelButtons = new Map<string, CancelButtonEntry>();
+  /** Pending idle-edge retirement, one timer per instance. */
+  private cancelButtonIdleRetireTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Duplicate-reply suppression across both the MCP and HTTP reply paths. */
   readonly replyDeduper = new ReplyDeduper();
   /** instanceName → what it is doing right now, when the backend can tell us. */
@@ -740,10 +748,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // edge into idle, not on every idle heartbeat.
     if (state === "idle" && previous?.state !== "idle") {
       this.enforceWarmCap();
-      // The turn is genuinely over — retire the cancel/progress button now rather
-      // than waiting for the 5-minute idle backstop to notice.
-      this.retireInstanceButtons(name);
+      // A queued message may turn this edge back into working almost
+      // immediately. Give that handoff a short grace before retiring the button.
+      this.scheduleIdleButtonRetirement(name);
+    } else if (state !== "idle") {
+      this.cancelIdleButtonRetirement(name);
     }
+  }
+
+  private cancelIdleButtonRetirement(name: string): void {
+    const timer = this.cancelButtonIdleRetireTimers.get(name);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.cancelButtonIdleRetireTimers.delete(name);
+  }
+
+  private scheduleIdleButtonRetirement(name: string): void {
+    this.cancelIdleButtonRetirement(name);
+    const timer = setTimeout(() => {
+      // Ignore a superseded timer even if it was already queued to run.
+      if (this.cancelButtonIdleRetireTimers.get(name) !== timer) return;
+      this.cancelButtonIdleRetireTimers.delete(name);
+      if (this.getInstanceExecutionState(name) === "idle") {
+        this.retireInstanceButtons(name);
+      }
+    }, CANCEL_BTN_IDLE_RETIRE_GRACE_MS);
+    timer.unref?.();
+    this.cancelButtonIdleRetireTimers.set(name, timer);
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
@@ -752,6 +783,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     if (status !== "crashed" && status !== "stopped") return;
+    this.cancelIdleButtonRetirement(name);
     this.instanceProcessStatus.set(name, status);
     // Never display the last ready prompt as current execution state after its
     // owning CLI process has exited.
@@ -1130,6 +1162,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async stopInstance(name: string): Promise<void> {
     this.failoverActive.delete(name);
+    this.cancelIdleButtonRetirement(name);
     this.instanceStateCache.delete(name);
     this.instanceProcessStatus.delete(name);
     this.lastDeliveryAt.delete(name);
@@ -6297,6 +6330,8 @@ When users create specialized instances, suggest these configurations:
       if (entry.progressTimer) clearInterval(entry.progressTimer);
     }
     this.cancelButtons.clear();
+    for (const timer of this.cancelButtonIdleRetireTimers.values()) clearTimeout(timer);
+    this.cancelButtonIdleRetireTimers.clear();
 
     if (this.topicCleanupTimer) {
       clearInterval(this.topicCleanupTimer);
