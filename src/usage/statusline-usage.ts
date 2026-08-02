@@ -12,11 +12,23 @@
  * (`resets_at` is epoch **seconds** in the real files; the parser below also
  * accepts milliseconds and ISO strings so a format change is not an outage.)
  *
- * This source costs no token and no API call, and it works for every login
- * method — API key, OAuth, `setup-token` — because the CLI writes it after
- * authenticating however it happens to be configured. What it does NOT carry is
- * the plan name, the per-model weekly windows, which window is currently
- * binding, or extra-usage credits; only the API has those.
+ * This source costs no token and no API call. When it is present, though, is
+ * decided entirely by the CLI, and reading its 2.1.220 binary pins that down:
+ * the statusline payload includes `rate_limits` only when the CLI's own cache
+ * of the `anthropic-ratelimit-unified-{5h,7d}-*` response headers is non-empty,
+ * and that cache is cleared unless the session is first-party Anthropic
+ * (not Bedrock/Vertex) and authenticating with an OAuth token carrying the
+ * `user:inference` scope. So:
+ *
+ * - interactive `/login` and `CLAUDE_CODE_OAUTH_TOKEN` (incl. `setup-token`)
+ *   both qualify — the env-token path defaults its scopes to exactly
+ *   `["user:inference"]`;
+ * - a plain `ANTHROPIC_API_KEY` login does NOT, and never writes the field;
+ * - it is also absent until the process has received its first API response,
+ *   so a freshly started or idle instance has no reading yet.
+ *
+ * What it never carries is the plan name, the per-model weekly windows, which
+ * window is currently binding, or extra-usage credits; only the API has those.
  *
  * Merge rule across instances: **the freshest file wins.** Every instance on
  * this machine shares one account, so they are all observing the same counter;
