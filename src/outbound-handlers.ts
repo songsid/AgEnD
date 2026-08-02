@@ -30,6 +30,7 @@ import {
   StopInstanceArgs,
   GetFleetStatusArgs,
   GetInstanceLogsArgs,
+  GetEffortArgs,
   GetUsageArgs,
   GetFleetConfigArgs,
   UpdateInstanceConfigArgs,
@@ -564,6 +565,35 @@ const getFleetStatus: Handler = (ctx, rawArgs, respond) => {
   const paused = names.filter(n => ctx.lifecycle.isPaused(n)).length;
   const stopped = names.length - running - paused;
   respond({ total: names.length, running, paused, stopped });
+};
+
+const getEffort: Handler = (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(GetEffortArgs, rawArgs, "get_effort");
+  if (!v.ok) { respond(null, v.error); return; }
+  const name = v.data.name ?? meta?.instanceName;
+  if (!name) { respond(null, "No instance name available"); return; }
+  const fm = ctx as unknown as {
+    effortLevelsFor?(n: string): string[];
+    effortStrategyFor?(n: string): "runtime" | "restart" | "unsupported";
+    resolveInstanceEffort?(n: string): { effort: string | null; source: string };
+    backendNameForInstance?(n: string): string;
+  };
+  const strategy = fm.effortStrategyFor?.(name) ?? "unsupported";
+  const supported = strategy !== "unsupported";
+  const levels = supported ? fm.effortLevelsFor?.(name) ?? [] : [];
+  const resolved = fm.resolveInstanceEffort?.(name) ?? { effort: null, source: "unset" };
+  respond({
+    instance: name,
+    backend: fm.backendNameForInstance?.(name) ?? null,
+    // null (not "") when the CLI has none, so a caller can branch on it rather
+    // than parse a sentinel string.
+    effort: supported ? resolved.effort : null,
+    source: supported ? resolved.source : "unsupported",
+    available_levels: levels,
+    // "restart" warns the agent that changing this costs a respawn — worth
+    // knowing before it changes its own effort mid-task.
+    change_strategy: strategy,
+  });
 };
 
 const getUsage: Handler = async (ctx, rawArgs, respond) => {
@@ -1142,6 +1172,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["wake_instance", wakeInstance],
   ["stop_instance", stopInstance],
   ["get_fleet_status", getFleetStatus],
+  ["get_effort", getEffort],
   ["get_usage", getUsage],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
