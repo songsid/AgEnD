@@ -250,20 +250,42 @@ export class PaneStateMachine {
     return this.readyPattern.test(pane);
   }
 
-  observe(pane: string, now = Date.now()): InstanceStateSnapshot {
+  /**
+   * @param now when this observation is being evaluated — drives the idle and
+   *   stuck decisions.
+   * @param opts.changeAt when the content is believed to have changed, if that
+   *   is earlier than `now` (the tmux output timestamp). Only the elapsed-time
+   *   clock uses it; defaults to `now`.
+   * @param opts.settled the caller knows no output has arrived for the debounce
+   *   window, so "the content differs from the last capture" says nothing about
+   *   whether the CLI is still generating — decide on the patterns instead.
+   *
+   *   Captures are event-driven, not periodic: the one taken 2s after output
+   *   stops is compared against a capture that may be a minute old, so it
+   *   *always* differs. Without this flag that difference reads as "still
+   *   working" and a finished turn would not be seen as idle until the next 60s
+   *   safety sweep. Output timestamps are the honest liveness signal here, and
+   *   the caller has them.
+   */
+  observe(
+    pane: string,
+    now = Date.now(),
+    opts: { settled?: boolean; changeAt?: number } = {},
+  ): InstanceStateSnapshot {
+    const { settled = false, changeAt = now } = opts;
     const paneHash = createHash("sha256").update(pane).digest("hex");
     const firstObservation = this.lastPaneHash === null;
     const paneChanged = this.lastPaneHash !== paneHash;
     if (paneChanged) {
       this.lastPaneHash = paneHash;
-      this.lastPaneChangeAt = now;
+      this.lastPaneChangeAt = changeAt;
     }
     this.lastObservedAt = now;
 
     const ready = this.isReady(pane);
     const nextState: InstanceState = firstObservation
       ? ready ? "idle" : "working"
-      : paneChanged
+      : paneChanged && !settled
         ? "working"
         : ready
           ? "idle"
@@ -1798,8 +1820,21 @@ export class Daemon extends EventEmitter {
         || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt)) return;
 
       const observedChangeAt = expectedOutputAt || captureStartedAt;
-      this.instanceStateMachine.observe(pane, observedChangeAt);
-      const snapshot = this.instanceStateMachine.observe(pane, Date.now());
+      // One observation per capture. This used to call observe() twice with the
+      // same pane: the second call always saw an unchanged pane, so the
+      // "content moved → still working" branch could never fire and the state
+      // came down to the busy/ready patterns alone. That is why a single
+      // mismatched spinner frame was enough to report idle mid-turn.
+      const settled = this.instanceStateLastOutputAt === 0
+        || captureStartedAt - this.instanceStateLastOutputAt >= this.instanceStateIdleDebounceMs;
+      // The two times are genuinely different and both matter: the content
+      // changed when tmux reported output (observedChangeAt), but idle/stuck are
+      // decisions about *now*. The old double-observe expressed that by calling
+      // observe twice, which silently disabled the "content moved" branch.
+      const snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+        settled,
+        changeAt: observedChangeAt,
+      });
       this.applyInstanceStateSnapshot(snapshot, pane);
 
       // Backends without a transcript feed can still say what they are doing, if
