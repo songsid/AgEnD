@@ -78,12 +78,12 @@ info "Authenticated as: $NPM_USER"
 info "Building main package..."
 npm run build
 
-# Swap name + version for publish
+# Set the release version for publish. The repository package name is already
+# the public @songsid scope, so no publish-time name rewrite is needed.
 python3 -c "
 import json
 with open('package.json', 'r') as f:
     pkg = json.load(f)
-pkg['name'] = '@songsid/agend'
 pkg['version'] = '$NEXT_VERSION'
 with open('package.json', 'w') as f:
     json.dump(pkg, f, indent=2)
@@ -110,9 +110,6 @@ cd "$PLUGIN_DIR"
 
 info "Building Discord plugin..."
 npm run build
-
-# Swap imports in dist from @suzuke to @songsid
-sed -i 's|@suzuke/agend|@songsid/agend|g' dist/*.js dist/*.d.ts 2>/dev/null || true
 
 # Swap package.json for publish
 python3 -c "
