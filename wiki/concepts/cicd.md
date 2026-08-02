@@ -23,7 +23,7 @@ updated: 2026-06-21
 3. `npm run build`
 4. 從 tag 取版本（`v2.0.3` → `2.0.3`）
 5. 判斷 npm tag：含 `beta` → `@beta`，否則 `@latest`
-6. Swap package name（@suzuke/agend → @songsid/agend）+ 寫入版本號
+6. 寫入版本號（package name 已固定為 @songsid/agend）
 7. `npm publish --access public --tag [latest|beta]`
 8. Build + publish Discord plugin（同步 swap name）
 9. `gh release create`（如已存在會 422，不影響 publish）
