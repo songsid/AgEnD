@@ -22,6 +22,11 @@ import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import {
+  readStatuslineRateLimits,
+  type StatuslineRateLimits,
+  type StatuslineWindow,
+} from "./statusline-usage.js";
 import Database from "better-sqlite3";
 
 export interface UsageMetric {
@@ -176,7 +181,48 @@ function readShellRcToken(): string | null {
   return token;
 }
 
-async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+
+/**
+ * Render a statusline reading as provider metrics.
+ *
+ * Kept deliberately close to the API path's shape so the panel looks the same
+ * wherever the numbers came from — the hint is what tells the difference, and
+ * it names the source because a number with no provenance invites "is this
+ * even live?".
+ */
+export function statuslineUsage(
+  reading: StatuslineRateLimits,
+  plan: string | null,
+  now: number = Date.now(),
+): Omit<ProviderUsage, "id" | "name"> {
+  const metrics: UsageMetric[] = [];
+  const add = (w: StatuslineWindow | null, label: string, windowMs: number) => {
+    if (!w) return;
+    metrics.push({
+      label,
+      type: "percent",
+      used: w.usedPercent,
+      resetsAt: w.resetsAtMs !== null ? new Date(w.resetsAtMs).toISOString() : null,
+      windowMs,
+    });
+  };
+  add(reading.fiveHour, "Session", SESSION_MS);
+  add(reading.sevenDay, "Weekly", WEEK_MS);
+
+  const ageMin = Math.round((now - reading.observedAtMs) / 60_000);
+  const age = ageMin <= 0 ? "just now" : `${ageMin}m ago`;
+  return {
+    status: "ok",
+    plan,
+    // Say what is missing as well as where it came from: someone comparing this
+    // against claude.ai should not have to guess why per-model rows vanished.
+    hint: `from ${reading.instance}'s statusline, ${age} — no API call; plan and per-model limits need a CLI login`,
+    metrics,
+  };
+}
+
+/** Exported for tests — the statusline/API preference order is the subject. */
+export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");
   let file: { accessToken?: string; expiresAt?: number; subscriptionType?: string; rateLimitTier?: string } | null;
   try {
@@ -185,17 +231,30 @@ async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
     file = null;
   }
 
+  // Read before anything else: it costs one stat per instance, needs no token,
+  // and it is what keeps the panel useful when the API path cannot run at all.
+  const statusline = readStatuslineRateLimits();
+
   const auth = resolveClaudeAuth(file);
   if (auth === null) {
+    // No token anywhere — but the CLI itself is logged in somehow (including an
+    // API key, which the usage endpoint rejects outright), and it wrote its
+    // limits down. This is the case the whole statusline source exists for.
+    if (statusline) return statuslineUsage(statusline, null);
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
       : "Log in with the Claude Code CLI (`claude`).";
     return { status: "no-credentials", hint, metrics: [] };
   }
   if ("error" in auth) {
+    if (statusline) return statuslineUsage(statusline, auth.plan);
     return { status: "error", plan: auth.plan, error: auth.error, metrics: [] };
   }
   const plan = auth.plan;
+
+  /** Every API failure degrades to the statusline rather than to an error row. */
+  const orStatusline = (failure: Omit<ProviderUsage, "id" | "name">) =>
+    statusline ? statuslineUsage(statusline, plan) : failure;
 
   let res: Response;
   try {
@@ -210,19 +269,19 @@ async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
-    return { status: "error", plan, error: "Could not reach api.anthropic.com.", metrics: [] };
+    return orStatusline({ status: "error", plan, error: "Could not reach api.anthropic.com.", metrics: [] });
   }
   if (res.status === 401 || res.status === 403) {
-    return { status: "error", plan, error: "Token rejected. Run `claude` once to refresh the login.", metrics: [] };
+    return orStatusline({ status: "error", plan, error: "Token rejected. Run `claude` once to refresh the login.", metrics: [] });
   }
   if (res.status === 429) {
-    return { status: "error", plan, error: "Rate limited by Anthropic — try again later.", metrics: [] };
+    return orStatusline({ status: "error", plan, error: "Rate limited by Anthropic — try again later.", metrics: [] });
   }
-  if (!res.ok) return { status: "error", plan, error: `Usage request failed (HTTP ${res.status}).`, metrics: [] };
+  if (!res.ok) return orStatusline({ status: "error", plan, error: `Usage request failed (HTTP ${res.status}).`, metrics: [] });
 
   let body: Record<string, unknown>;
   try { body = await res.json() as Record<string, unknown>; } catch {
-    return { status: "error", plan, error: "Invalid response from usage endpoint.", metrics: [] };
+    return orStatusline({ status: "error", plan, error: "Invalid response from usage endpoint.", metrics: [] });
   }
 
   const metrics: UsageMetric[] = [];
@@ -271,6 +330,9 @@ async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
     if (limit) metrics.push({ label: "Extra usage", type: "dollars", used, limit });
     else if (used > 0) metrics.push({ label: "Extra usage", type: "dollars", used });
   }
+
+  // A 200 with nothing in it is not better than the file on disk.
+  if (metrics.length === 0 && statusline) return statuslineUsage(statusline, plan);
 
   return { status: "ok", plan, metrics };
 }
