@@ -20,8 +20,10 @@ export interface StatusLineData {
     total_duration_ms: number;
   };
   rate_limits?: {
-    five_hour: { used_percentage: number; resets_at: string };
-    seven_day: { used_percentage: number; resets_at: string };
+    // resets_at is epoch SECONDS in the files claude-code actually writes
+    // (verified 2026-08-02); the string form is kept for older/other writers.
+    five_hour: { used_percentage: number; resets_at: number | string };
+    seven_day: { used_percentage: number; resets_at: number | string };
   };
 }
 
