@@ -141,6 +141,8 @@ const STATE_REPORT_STALE_MS = 30 * 60_000;
  * wreckage, stuck or not.
  */
 const CANCEL_BTN_MAX_LIFETIME_MS = 24 * 60 * 60_000;
+/** A click on a button the fleet no longer tracks may fire at most this often. */
+const STALE_CANCEL_CLICK_COOLDOWN_MS = 10_000;
 /** Orphaned-button ledger, swept at startup. Lives in the fleet data dir. */
 const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
 /**
@@ -342,6 +344,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private failoverActive = new Map<string, string>(); // instance → current failover model
 
   // IPC reconnect: tracks instances being intentionally stopped (skip reconnect)
+  /** instance → when a click with no live button entry last fired a cancel. */
+  private staleCancelClickAt = new Map<string, number>();
   readonly ipcStoppingInstances = new Set<string>();
   /** Set the moment a graceful stop begins — see isPlannedRestart(). */
   private shuttingDown = false;
@@ -1956,11 +1960,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       if (data.callbackData.startsWith("cancel:")) {
-        const instanceName = data.callbackData.slice("cancel:".length);
-        // Idempotent: a button click only acts while the button is live. A
-        // second click (entry already cleared) is a no-op — don't re-send the
-        // interrupt key. (The /cancel command path calls cancelInstance directly.)
-        if (this.hasCancelButton(instanceName)) this.cancelInstance(instanceName);
+        this.handleCancelClick(data.callbackData.slice("cancel:".length), this.adapter, data);
         return;
       }
     }, this.logger, "adapter.callback_query"));
@@ -2238,9 +2238,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return;
       }
       if (data.callbackData.startsWith("cancel:")) {
-        const instanceName = data.callbackData.slice("cancel:".length);
-        // Idempotent: only the first click (while the button is live) acts.
-        if (this.hasCancelButton(instanceName)) this.cancelInstance(instanceName);
+        this.handleCancelClick(data.callbackData.slice("cancel:".length), adapter, data);
         return;
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
@@ -4328,6 +4326,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Whether the instance currently has at least one live cancel button. */
+  /**
+   * A click on a cancel button, whether or not the fleet still tracks it.
+   *
+   * The old rule was "act only while an entry is live", which made a click on a
+   * button the fleet had forgotten a silent no-op — no cancel, no message, not
+   * even a log line. That is indistinguishable from a broken button, and it is
+   * what the "按鈕點了沒反應" reports were: the entry is briefly absent while a
+   * button is being replaced, and a delete that fails leaves the message on
+   * screen with no entry at all.
+   *
+   * So: honour the click if the instance is actually running, and say so plainly
+   * if it is not. The stale-click path is rate-limited because the original
+   * concern was real — a second click must not fire a second interrupt key at an
+   * instance that has already started a new turn.
+   */
+  private handleCancelClick(instanceName: string, adapter: ChannelAdapter | null, data: AdapterCallbackData): void {
+    if (this.hasCancelButton(instanceName)) {
+      this.cancelInstance(instanceName);
+      return;
+    }
+
+    const lastAt = this.staleCancelClickAt.get(instanceName) ?? 0;
+    if (Date.now() - lastAt < STALE_CANCEL_CLICK_COOLDOWN_MS) return;
+    this.staleCancelClickAt.set(instanceName, Date.now());
+
+    // cancelInstance returns false when there is no daemon — i.e. nothing to
+    // cancel, which is the one case where the button really is dead.
+    if (this.cancelInstance(instanceName)) {
+      this.logger.info({ instanceName }, "Cancel click honoured with no live button entry");
+      return;
+    }
+    this.logger.info({ instanceName }, "Cancel click on an expired button — instance not running");
+    adapter?.editMessage(data.chatId, data.messageId, t("cancel.button_stale", instanceName), data.threadId)
+      .catch(() => { /* the message may already be gone */ });
+  }
+
   private hasCancelButton(instanceName: string): boolean {
     for (const e of this.cancelButtons.values()) {
       if (e.instanceName === instanceName) return true;
@@ -4336,11 +4370,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendCancelButton(instanceName: string, correlationId?: string): Promise<void> {
-    // At most one button shown per instance: retire any existing ones first
-    // (delete + bounded retry). Each is tracked separately, so a failed delete
-    // here doesn't strand it — it keeps retrying on its own timer.
-    this.retireInstanceButtons(instanceName);
-
+    // Post first, retire after (see the tail of this method). Retiring up front
+    // meant that from the delete until the new message came back — a chat API
+    // round trip, and every reply goes through here — the instance had NO live
+    // entry, while the old button was still on screen. A click in that window
+    // hit `hasCancelButton() === false` and was silently dropped: the reported
+    // "按鈕失效". If notifyAlert then failed, the button was simply gone.
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
     // Resolve the group through the world fallback (first world when unbound),
@@ -4378,13 +4413,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         message: "👀 處理中…",
         choices: [{ id: `cancel:${instanceName}`, label: t("cancel.button") }],
       }, threadId ? { threadId } : undefined);
-
-      // A concurrent sendCancelButton for the same instance may have posted its
-      // own button while we awaited notifyAlert. Retire any other buttons for
-      // this instance (not the one we just posted) so only the newest shows.
-      for (const other of this.cancelButtons.values()) {
-        if (other.instanceName === instanceName) this.retireButton(other);
-      }
 
       const entry: CancelButtonEntry = {
         instanceName,
@@ -4426,6 +4454,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         });
       }, CANCEL_BTN_IDLE_CHECK_INTERVAL_MS);
       this.cancelButtons.set(sent.messageId, entry);
+
+      // Only now: at most one button per instance, but never zero. Covers both
+      // the previous turn's button and any button a concurrent
+      // sendCancelButton posted while we were awaiting notifyAlert.
+      for (const other of [...this.cancelButtons.values()]) {
+        if (other.instanceName === instanceName && other.messageId !== sent.messageId) {
+          this.retireButton(other);
+        }
+      }
+
       this.persistCancelButtons();
       this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
     } catch (e) {
