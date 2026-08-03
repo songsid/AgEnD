@@ -24,6 +24,8 @@ export interface UsageApiContext {
 export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
 
 const CACHE_MS = 5 * 60 * 1000;
+/** Token rollover is routine and normally heals within seconds. */
+const TRANSIENT_CACHE_MS = 30 * 1000;
 /**
  * `?force=1` still cannot fire more often than this. Force exists so the panel's
  * refresh button can beat the 5-minute TTL, not so repeated clicks can hammer
@@ -35,9 +37,9 @@ const FORCE_FLOOR_MS = 30 * 1000;
 /** How old a last-good snapshot may be and still stand in for a rate-limited row. */
 const STALE_MAX_MS = 60 * 60 * 1000;
 
-let cache: { at: number; payload: UsagePayload } | null = null;
+let cache: { at: number; ttlMs: number; payload: UsagePayload } | null = null;
 let inflight: Promise<UsagePayload> | null = null;
-let lastFetchStartedAt = 0;
+let lastForcedFetchStartedAt: number | null = null;
 /** Last successful per-provider rows, for stale-while-rate-limited. */
 const lastGood = new Map<string, { at: number; provider: ProviderUsage }>();
 // Test seam: lets tests stub the network layer without real credentials.
@@ -47,7 +49,7 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
   fetcher = fn ?? fetchAllUsage;
   cache = null;
   inflight = null;
-  lastFetchStartedAt = 0;
+  lastForcedFetchStartedAt = null;
   lastGood.clear();
 }
 
@@ -63,8 +65,19 @@ export function setUsageFetcherForTests(fn: (() => Promise<UsagePayload>) | null
 function withStaleFallback(payload: UsagePayload): UsagePayload {
   const now = Date.now();
   const providers = payload.providers.map(p => {
-    if (p.status === "ok") {
+    if (p.status === "ok" && p.metrics.length > 0) {
       lastGood.set(p.id, { at: now, provider: p });
+      return p;
+    }
+    if (isTransientEmpty(p)) {
+      const good = lastGood.get(p.id);
+      if (good && now - good.at < STALE_MAX_MS) {
+        const ageMin = Math.max(1, Math.round((now - good.at) / 60_000));
+        return {
+          ...good.provider,
+          hint: `cached ${ageMin}m ago — ${p.hint}`,
+        };
+      }
       return p;
     }
     if (p.status === "error" && /rate.?limit/i.test(p.error ?? "")) {
@@ -82,22 +95,42 @@ function withStaleFallback(payload: UsagePayload): UsagePayload {
   return { ...payload, providers };
 }
 
+function isTransientEmpty(provider: ProviderUsage): boolean {
+  return provider.status === "ok"
+    && provider.metrics.length === 0
+    && /token refreshing/i.test(provider.hint ?? "");
+}
+
+function hasTransientEmpty(payload: UsagePayload): boolean {
+  return payload.providers.some(isTransientEmpty);
+}
+
 function json(res: ServerResponse, code: number, body: unknown): void {
   res.writeHead(code, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
 async function usage(force: boolean): Promise<UsagePayload> {
-  // A force inside the floor degrades to a normal cached read instead of a
-  // fresh fetch — repeated refresh clicks must not become repeated API calls.
-  const effectiveForce = force && Date.now() - lastFetchStartedAt >= FORCE_FLOOR_MS;
-  if (!effectiveForce && cache && Date.now() - cache.at < CACHE_MS) return cache.payload;
+  // A user's first force refresh must work even immediately after an automatic
+  // fetch (notably when Kiro refreshed its token just after that fetch). Only
+  // repeated force requests are floored to protect vendor endpoints.
+  const now = Date.now();
+  const effectiveForce = force && (
+    lastForcedFetchStartedAt === null
+    || now - lastForcedFetchStartedAt >= FORCE_FLOOR_MS
+  );
+  if (!effectiveForce && cache && now - cache.at < cache.ttlMs) return cache.payload;
   inflight ??= (() => {
-    lastFetchStartedAt = Date.now();
+    if (effectiveForce) lastForcedFetchStartedAt = Date.now();
     return fetcher()
       .then(payload => {
+        const transient = hasTransientEmpty(payload);
         const resolved = withStaleFallback(payload);
-        cache = { at: Date.now(), payload: resolved };
+        cache = {
+          at: Date.now(),
+          ttlMs: transient ? TRANSIENT_CACHE_MS : CACHE_MS,
+          payload: resolved,
+        };
         return resolved;
       })
       .finally(() => { inflight = null; });

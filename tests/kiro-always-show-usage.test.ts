@@ -56,7 +56,7 @@ describe("Kiro stays on the panel unless kiro-cli is absent", () => {
     }]]);
     const r = await fetchKiroUsage();
     expect(r.status).toBe("ok");
-    expect(r.hint).toContain("kiro-cli");
+    expect(r.hint).toContain("Token refreshing");
     expect(r.metrics).toEqual([]);
   });
 

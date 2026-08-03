@@ -67,13 +67,15 @@ describe("getUsageSnapshot", () => {
       await getUsageSnapshot();
       expect(fetcher).toHaveBeenCalledTimes(1); // second call is the cache
 
-      // force bypasses the TTL — but only past the 30s floor, which exists so
-      // refresh-button spam cannot become API-call spam.
-      await getUsageSnapshot(true);
-      expect(fetcher).toHaveBeenCalledTimes(1); // inside the floor → cached
-      vi.advanceTimersByTime(31_000);
+      // The first force bypasses an automatic cached fetch immediately.
       await getUsageSnapshot(true);
       expect(fetcher).toHaveBeenCalledTimes(2);
+      // Repeated force requests remain floored to prevent refresh spam.
+      await getUsageSnapshot(true);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(31_000);
+      await getUsageSnapshot(true);
+      expect(fetcher).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
@@ -103,6 +105,22 @@ describe("rich rendering", () => {
     expect(text).toContain("> not logged in");
     expect(text).toContain("🔴 **Grok**");
     expect(text).toContain("Credits: 812 left");
+  });
+
+  it("shows an ok hint instead of generic no data when metrics are temporarily empty", async () => {
+    const { renderUsageHtml, renderUsageMarkdown } = await import("../src/usage/format-rich.js");
+    const rollover: UsagePayload = {
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "kiro", name: "Kiro", status: "ok", plan: "Kiro",
+        hint: "Token refreshing — try again in a moment.", metrics: [],
+      }],
+    };
+
+    expect(renderUsageMarkdown(rollover)).toContain("> Token refreshing — try again in a moment.");
+    expect(renderUsageMarkdown(rollover)).not.toContain("no data");
+    expect(renderUsageHtml(rollover)).toContain("Token refreshing — try again in a moment.");
+    expect(renderUsageHtml(rollover)).not.toContain("no data");
   });
 
   it("renders Telegram HTML with every payload string entity-escaped", async () => {
