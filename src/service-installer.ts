@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
@@ -164,6 +164,40 @@ export function installService(vars: ServiceVars): string {
 
 const SERVICE_LABEL = "com.agend.fleet";
 
+export type ServiceState = "running" | "stopped" | "unavailable";
+
+/**
+ * Keep service-manager reachability separate from unit state. In particular,
+ * `systemctl is-active` uses non-zero exits for both an inactive unit and a
+ * missing D-Bus, but only the former is safe to follow with start/restart.
+ */
+export function classifySystemdServiceState(result: {
+  status: number | null;
+  stdout?: string | Buffer | null;
+  stderr?: string | Buffer | null;
+  error?: Error;
+}): ServiceState {
+  const stdout = String(result.stdout ?? "").trim().toLowerCase();
+  const stderr = String(result.stderr ?? "").trim().toLowerCase();
+  if (stdout === "active" || stdout === "activating") return "running";
+  if (stdout === "inactive" || stdout === "failed" || stdout === "unknown") return "stopped";
+  const details = `${stderr} ${result.error?.message ?? ""}`.toLowerCase();
+  if (
+    result.error
+    || result.status == null
+    || /failed to connect to bus|no medium found|transport endpoint|connection refused|system has not been booted/.test(details)
+  ) return "unavailable";
+  // A reachable systemd returns a concrete exit status for a missing/stopped
+  // unit. Treat that as stopped; callers separately decide whether it is installed.
+  return "stopped";
+}
+
+export function getSystemdServiceState(label: string, user = true): ServiceState {
+  const args = [...(user ? ["--user"] : []), "is-active", label];
+  const result = spawnSync("systemctl", args, { encoding: "utf8", timeout: 5000 });
+  return classifySystemdServiceState(result);
+}
+
 export function getServicePath(): string | null {
   const plat = detectPlatform();
   if (plat === "macos") {
@@ -173,6 +207,19 @@ export function getServicePath(): string | null {
     const p = join(process.env.HOME!, ".config/systemd/user", `${SERVICE_LABEL}.service`);
     return existsSync(p) ? p : null;
   }
+}
+
+/** Legacy/root installs may use a system-level unit instead of the user unit. */
+export function getSystemServicePath(): string | null {
+  if (detectPlatform() === "macos") return null;
+  for (const path of [
+    "/etc/systemd/system/agend.service",
+    "/usr/lib/systemd/system/agend.service",
+    "/lib/systemd/system/agend.service",
+  ]) {
+    if (existsSync(path)) return path;
+  }
+  return null;
 }
 
 export function stopService(): boolean {
@@ -204,6 +251,17 @@ export function startService(): boolean {
       try { execSync("systemctl --user daemon-reload", { stdio: "pipe" }); } catch {}
       execSync(`systemctl --user start ${SERVICE_LABEL}`, { stdio: "inherit" });
     }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function startSystemService(): boolean {
+  if (detectPlatform() === "macos" || !getSystemServicePath()) return false;
+  try {
+    try { execSync("systemctl daemon-reload", { stdio: "pipe" }); } catch {}
+    execSync("systemctl start agend", { stdio: "inherit" });
     return true;
   } catch {
     return false;

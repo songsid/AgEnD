@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildServicePath, renderLaunchdPlist, renderSystemdUnit, detectPlatform, uninstallService } from "../src/service-installer.js";
+import { buildServicePath, classifySystemdServiceState, renderLaunchdPlist, renderSystemdUnit, detectPlatform, uninstallService } from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
   const vars = {
@@ -30,6 +30,19 @@ describe("ServiceInstaller", () => {
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
     expect(unit).toContain("TimeoutStopSec=60");
+  });
+
+  it("treats active and activating systemd units as running", () => {
+    expect(classifySystemdServiceState({ status: 0, stdout: "active\n" })).toBe("running");
+    expect(classifySystemdServiceState({ status: 3, stdout: "activating\n" })).toBe("running");
+  });
+
+  it("distinguishes a reachable stopped unit from an unavailable bus", () => {
+    expect(classifySystemdServiceState({ status: 3, stdout: "inactive\n" })).toBe("stopped");
+    expect(classifySystemdServiceState({
+      status: 1,
+      stderr: "Failed to connect to bus: No medium found",
+    })).toBe("unavailable");
   });
 
   it("falls back to process.env.PATH when path is omitted", () => {

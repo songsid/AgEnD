@@ -63,6 +63,7 @@ import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
+import { releaseProcessFleetLock } from "./fleet-lock.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -6401,6 +6402,9 @@ When users create specialized instances, suggest these configurations:
 
     const pidPath = join(this.dataDir, "fleet.pid");
     try { unlinkSync(pidPath); } catch (e) { this.logger.debug({ err: e }, "Failed to remove fleet PID file"); }
+    // The lock contains a nonce, so an older/shutting-down process can never
+    // remove a lock acquired by a newer fleet owner.
+    releaseProcessFleetLock();
   }
 
   /**
