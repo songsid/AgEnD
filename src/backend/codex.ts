@@ -131,6 +131,7 @@ export class CodexBackend implements CliBackend {
   }
 
   buildCommand(config: CliBackendConfig): string {
+    this.lastKnownModel = config.model?.trim() || null;
     const approvalFlag = config.skipPermissions !== false
       ? "--dangerously-bypass-approvals-and-sandbox"
       : "--full-auto";
@@ -411,7 +412,66 @@ export class CodexBackend implements CliBackend {
   // config key (settable per launch with `-c`). The TUI reads it at startup, so
   // a change needs a respawn — restart, not runtime.
   getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
-  getEffortLevels(): string[] { return ["low", "medium", "high"]; }
+
+  /**
+   * Effort levels are PER MODEL in Codex, published in the same models_cache
+   * that listModels reads (`supported_reasoning_levels`). Verified against a
+   * live cache on 2026-08-03:
+   *
+   *   gpt-5.6-sol / -terra   low, medium, high, xhigh, max, ultra
+   *   gpt-5.6-luna           low, medium, high, xhigh, max
+   *   gpt-5.5 / 5.4 / -mini  low, medium, high, xhigh
+   *
+   * The old static ["low","medium","high"] under-reported every one of them —
+   * /effort refused `xhigh` for models whose own default IS xhigh (gpt-5.5).
+   * `model_reasoning_effort` is not validated by the CLI either (a bogus value
+   * launches fine, verified live), so this list is the only guard rail.
+   *
+   * Levels outside the fleet's canonical ladder (`ultra`) are filtered out:
+   * clampEffort and validateEffort know low…max, and offering a level the rest
+   * of the pipeline rejects would break /effort in a worse way than omitting
+   * it. Fallback when the cache or the model entry is missing: low…xhigh, the
+   * floor every catalog model supports today.
+   */
+  getEffortLevels(): string[] {
+    const FALLBACK = ["low", "medium", "high", "xhigh"];
+    const CANONICAL = new Set(["low", "medium", "high", "xhigh", "max"]);
+    try {
+      const model = this.configuredModel();
+      if (!model) return FALLBACK;
+      const isolatedCache = join(this.isolatedCodexHome, "models_cache.json");
+      const cachePath = existsSync(isolatedCache)
+        ? isolatedCache
+        : join(this.sharedCodexHome, "models_cache.json");
+      if (statSync(cachePath).size > CODEX_MODELS_CACHE_MAX_BYTES) return FALLBACK;
+      const parsed = JSON.parse(readFileSync(cachePath, "utf-8")) as { models?: unknown };
+      if (!Array.isArray(parsed.models)) return FALLBACK;
+      const entry = parsed.models.find((m): m is Record<string, unknown> =>
+        !!m && typeof m === "object" && (m as Record<string, unknown>).slug === model);
+      const levels = (entry?.supported_reasoning_levels as { effort?: unknown }[] | undefined)
+        ?.map(l => l?.effort)
+        .filter((e): e is string => typeof e === "string" && CANONICAL.has(e));
+      return levels?.length ? levels : FALLBACK;
+    } catch {
+      return FALLBACK;
+    }
+  }
+
+  /** The model this instance launches with: instance config, else config.toml. */
+  /** Model passed to the most recent buildCommand, when this backend launched the CLI. */
+  private lastKnownModel: string | null = null;
+
+  private configuredModel(): string | null {
+    if (this.lastKnownModel) return this.lastKnownModel;
+    for (const home of [this.isolatedCodexHome, this.sharedCodexHome]) {
+      try {
+        const m = readFileSync(join(home, "config.toml"), "utf-8")
+          .match(/^model\s*=\s*"([^"]+)"/m);
+        if (m) return m[1];
+      } catch { /* try the next home */ }
+    }
+    return null;
+  }
 
   /**
    * Codex has no `codex models` command. Its TUI/app-server maintains an
