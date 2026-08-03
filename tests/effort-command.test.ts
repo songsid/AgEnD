@@ -7,7 +7,10 @@ import { createBackend } from "../src/backend/factory.js";
 import { validateEffort } from "../src/backend/types.js";
 
 /**
- * Per-CLI effort support, established by running each `--help` on 2026-08-02.
+ * Per-CLI effort support, established by running each `--help` on 2026-08-02
+ * and re-verified against the real CLIs on 2026-08-03 (grok enumerates its
+ * levels in its own error message; codex levels are per model, see
+ * codex-effort-levels.test.ts).
  * The notable one is kiro-cli: `--effort` lives on the `chat` SUBCOMMAND, so a
  * top-level help search misses it — the earlier "kiro has no effort" reading.
  */
@@ -18,13 +21,28 @@ describe("backend effort capabilities", () => {
     ["grok", "runtime", ["low", "medium", "high"]],
     ["antigravity", "runtime", ["low", "medium", "high"]],
     ["kiro-cli", "restart", ["low", "medium", "high", "xhigh", "max"]],
-    ["codex", "restart", ["low", "medium", "high"]],
   ];
 
   it.each(cases)("%s → %s", (name, strategy, levels) => {
     const b = createBackend(name, mkdtempSync(join(tmpdir(), `eff-${name}-`)));
     expect(b.getEffortStrategy?.()).toBe(strategy);
     expect(b.getEffortLevels?.()).toEqual(levels);
+  });
+
+  it("codex → restart, levels read per model from models_cache.json", () => {
+    // Hermetic CODEX_HOME: on a dev machine the real ~/.codex would answer, and
+    // this test would then assert whatever model the developer happens to use.
+    // The per-model behaviour itself is covered in codex-effort-levels.test.ts;
+    // here only the strategy and the no-cache floor.
+    const prev = process.env.CODEX_HOME;
+    process.env.CODEX_HOME = mkdtempSync(join(tmpdir(), "eff-codex-home-"));
+    try {
+      const b = createBackend("codex", mkdtempSync(join(tmpdir(), "eff-codex-")));
+      expect(b.getEffortStrategy?.()).toBe("restart");
+      expect(b.getEffortLevels?.()).toEqual(["low", "medium", "high", "xhigh"]);
+    } finally {
+      if (prev === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = prev;
+    }
   });
 
   it("opencode reports no effort support", () => {
