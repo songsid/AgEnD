@@ -304,6 +304,24 @@ export class InstanceLifecycle {
         + `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`);
     }, this.ctx.logger, `daemon.mcp_died[${name}]`));
 
+    daemon.on("interactive_prompt", safeHandler((data: { name: string; kind: string; prompt: string }) => {
+      this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
+      this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");
+      const general = this.findGeneralInstance();
+      if (!general) {
+        this.ctx.logger.warn({ name }, "Interactive prompt has no General topic notification target");
+        return;
+      }
+      const label = data.kind === "sudo_password" || data.kind === "password"
+        ? "sudo password"
+        : data.kind === "press_enter" ? "Press Enter" : "Y/N confirmation";
+      this.notifyIncident(
+        general,
+        "interactive_prompt",
+        `⚠️ \`${name}\` 正在等待人工輸入（${label}）。General 可以透過 tmux attach 查看並協助操作。\n請勿在 Telegram/Discord 傳送密碼。`,
+      );
+    }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
+
     daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);

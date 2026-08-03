@@ -716,6 +716,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   getInstanceExecutionState(name: string): InstanceState | null {
     if (this.lifecycle.isPaused(name)) return null;
+    // Process status wins over a stale pane snapshot. A dead remain-on-exit pane
+    // can still contain the old ready marker and must never surface as Idle.
+    if (this.instanceProcessStatus.has(name)) return null;
     return this.instanceStateCache.get(name)?.state ?? null;
   }
 
