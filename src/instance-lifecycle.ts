@@ -116,6 +116,8 @@ export interface LifecycleContext {
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
   notifyInstanceTopic(name: string, text: string): void;
+  /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
+  isClassicInstance?(name: string): boolean;
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
   /** List claimed tasks for an instance (from task board). Returns empty array if unavailable. */
@@ -218,7 +220,7 @@ export class InstanceLifecycle {
    * (re-login once). The per-instance daemon cooldown can't dedupe across
    * instances, so the fleet-level map does it here.
    */
-  private notifyAuthErrorOnce(name: string, message: string): void {
+  private notifyAuthErrorOnce(name: string, message: string, notificationTarget = name): void {
     const backend = this.backendOf(name);
     const now = Date.now();
     const last = this.lastAuthAlertAt.get(backend) ?? 0;
@@ -233,8 +235,22 @@ export class InstanceLifecycle {
     const scope = others.length
       ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
       : `\`${name}\` (${backend})`;
-    this.notifyIncident(name, "auth_error",
+    this.notifyIncident(notificationTarget, "auth_error",
       `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then.`);
+  }
+
+  /**
+   * System errors from a ClassicBot belong in the operator's General topic,
+   * never in the end user's chat channel. Fleet-topic instances retain their
+   * existing local notification target.
+   */
+  private ptyErrorNotificationTarget(name: string): string | undefined {
+    if (!this.ctx.isClassicInstance?.(name)) return name;
+    const general = this.findGeneralInstance();
+    if (!general) {
+      this.ctx.logger.warn({ name }, "ClassicBot PTY error has no General topic notification target");
+    }
+    return general;
   }
 
   /**
@@ -335,14 +351,15 @@ export class InstanceLifecycle {
       }
 
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
+      const notificationTarget = this.ptyErrorNotificationTarget(name);
       // Auth failures are a property of the BACKEND's shared credentials, not of
       // one instance: every instance on that CLI fails at once, and one re-login
       // fixes them all. Notify once per backend (listing who's affected) instead
       // of N near-identical alerts, and suppress repeats fleet-wide.
       if (data.type === "auth_error") {
-        this.notifyAuthErrorOnce(name, data.message);
-      } else {
-        this.notifyIncident(name, "pty_error", t("inst.notification", emoji, name, data.message, data.action));
+        if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
+      } else if (notificationTarget) {
+        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, data.message, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 
