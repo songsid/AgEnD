@@ -453,6 +453,79 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
       .slice(0, 200));
 }
 
+export type InteractivePromptKind = "sudo_password" | "password" | "confirmation" | "press_enter";
+
+export interface InteractivePromptDetection {
+  kind: InteractivePromptKind;
+  prompt: string;
+}
+
+const INTERACTIVE_PROMPT_PATTERNS: ReadonlyArray<{
+  kind: InteractivePromptKind;
+  pattern: RegExp;
+}> = [
+  { kind: "sudo_password", pattern: /^\s*\[sudo\]\s+password\s+for\s+[^:\n]+:\s*$/im },
+  // macOS sudo and several package installers use this exact no-echo prompt.
+  // Tail-only + stability gating is what makes the otherwise-generic word safe.
+  { kind: "password", pattern: /^\s*(?:Password|Passphrase):\s*$/im },
+  { kind: "confirmation", pattern: /^[^\n]{0,180}(?:\([Yy]\/[Nn]\)|\[[Yy]\/[Nn]\]|\((?:yes|no)\/(?:yes|no)\))\s*:?\s*$/im },
+  { kind: "confirmation", pattern: /^\s*Are you sure[^\n]{0,160}\((?:yes\/no)(?:\/\[[^\]]+\])?\)\??\s*$/im },
+  { kind: "press_enter", pattern: /^\s*(?:Please\s+)?Press (?:the )?Enter(?: key)?(?: to [^\n]{0,120})?[.:…]?\s*$/im },
+];
+
+/**
+ * Detect terminal prompts that require a human, but only after the pane tail is
+ * unchanged and no control-mode output has arrived for the full grace period.
+ * This prevents prose such as "the installer asks [Y/n]" from notifying while
+ * an agent is still writing it.
+ */
+export class InteractivePromptDetector {
+  private signature: string | null = null;
+  private stableSince = 0;
+  private lastOutputAt = 0;
+  private notifiedSignature: string | null = null;
+
+  constructor(private readonly stableMs = 10_000) {}
+
+  observe(pane: string, now = Date.now(), outputAt = 0): InteractivePromptDetection | null {
+    const tail = sanitizePaneTail(pane, 5);
+    const tailText = tail.join("\n");
+    let matched: { kind: InteractivePromptKind; prompt: string } | null = null;
+    for (const candidate of INTERACTIVE_PROMPT_PATTERNS) {
+      const match = tailText.match(candidate.pattern);
+      if (!match) continue;
+      matched = { kind: candidate.kind, prompt: match[0].trim().slice(0, 200) };
+      break;
+    }
+
+    if (!matched) {
+      this.reset();
+      this.lastOutputAt = outputAt;
+      return null;
+    }
+
+    const signature = `${matched.kind}:${tailText}`;
+    const outputMoved = outputAt > this.lastOutputAt;
+    if (signature !== this.signature || outputMoved) {
+      this.signature = signature;
+      this.stableSince = now;
+      this.lastOutputAt = outputAt;
+      if (signature !== this.notifiedSignature) this.notifiedSignature = null;
+      return null;
+    }
+    this.lastOutputAt = outputAt;
+    if (this.notifiedSignature === signature || now - this.stableSince < this.stableMs) return null;
+    this.notifiedSignature = signature;
+    return matched;
+  }
+
+  reset(): void {
+    this.signature = null;
+    this.stableSince = 0;
+    this.notifiedSignature = null;
+  }
+}
+
 export class Daemon extends EventEmitter {
   private logger: Logger;
   private tmuxSessionName: string;
@@ -562,6 +635,7 @@ export class Daemon extends EventEmitter {
   private firstDeliveryDelay = new FirstDeliveryDelay();
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly interactivePromptDetector = new InteractivePromptDetector();
   /** Same 5-min gate the error monitor uses, so a dead MCP server alerts once. */
   private static readonly MCP_DEATH_COOLDOWN_MS = 5 * 60_000;
   private lastMcpDeathNotifiedAt = 0;
@@ -1347,7 +1421,6 @@ export class Daemon extends EventEmitter {
     if (this.runtimeMonitorsFrozen || this.errorMonitorTimer) return;
     const patterns = this.backend?.getErrorPatterns?.() ?? [];
     const dialogs = this.backend?.getRuntimeDialogs?.() ?? [];
-    if (!patterns.length && !dialogs.length) return;
     if (!this.tmux) return;
     if (!this.backend) return; // lightweight mode has no backend
     const readyPattern = this.backend.getReadyPattern();
@@ -1360,6 +1433,18 @@ export class Daemon extends EventEmitter {
         if (!alive) return;
 
         const pane = await this.tmux.capturePane();
+
+        const interactivePrompt = this.interactivePromptDetector.observe(
+          pane,
+          Date.now(),
+          this.instanceStateLastOutputAt,
+        );
+        if (interactivePrompt) {
+          this.logger.warn(interactivePrompt, "Interactive terminal prompt is waiting for human input");
+          this.emit("interactive_prompt", { name: this.name, ...interactivePrompt });
+          // A prompt is not an error and must not enter the PTY recovery gate.
+          // Continue scanning real errors in this same snapshot.
+        }
 
         // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
         for (const dialog of dialogs) {
@@ -2001,6 +2086,7 @@ export class Daemon extends EventEmitter {
     this.runtimeMonitorsFrozen = true;
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
+    this.interactivePromptDetector.reset();
     this.stopInstanceStateMonitor();
     this.transcriptMonitor?.stop();
     this.guardian?.stop();
