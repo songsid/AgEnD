@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   handleUsageRequest,
+  getUsageSnapshot,
   isUsagePath,
   setUsageFetcherForTests,
   type UsageApiContext,
@@ -66,20 +67,64 @@ describe("GET /api/ai-usage", () => {
     expect(second.out.code).toBe(200);
     expect(calls).toBe(1);
 
-    // ?force=1 bypasses the TTL — but only past the 30s floor, which keeps
-    // refresh-button spam from becoming API-call spam. Inside the floor it
-    // degrades to a cached read.
+    // The first explicit force always bypasses an automatic cached fetch.
+    const forced = fakeRes();
+    handleUsageRequest(fakeReq(), forced.res, urlFor("/api/ai-usage?force=1"), fakeCtx());
+    await forced.out.done;
+    expect(calls).toBe(2);
+
+    // Only repeated force requests are floored, preventing refresh spam.
     const floored = fakeRes();
     handleUsageRequest(fakeReq(), floored.res, urlFor("/api/ai-usage?force=1"), fakeCtx());
     await floored.out.done;
-    expect(calls).toBe(1);
+    expect(calls).toBe(2);
 
     vi.advanceTimersByTime(31_000);
     const third = fakeRes();
     handleUsageRequest(fakeReq(), third.res, urlFor("/api/ai-usage?force=1"), fakeCtx());
     await third.out.done;
-    expect(calls).toBe(2);
+    expect(calls).toBe(3);
     vi.useRealTimers();
+  });
+
+  it("keeps last-good Kiro data during rollover and refreshes after 30 seconds", async () => {
+    vi.useFakeTimers();
+    try {
+      let calls = 0;
+      setUsageFetcherForTests(async () => {
+        calls++;
+        if (calls === 2) {
+          return {
+            fetchedAt: "2026-01-01T00:00:01.000Z",
+            providers: [{
+              id: "kiro", name: "Kiro", status: "ok" as const, plan: "Kiro",
+              hint: "Token refreshing — try again in a moment.", metrics: [],
+            }],
+          };
+        }
+        return {
+          fetchedAt: "2026-01-01T00:00:00.000Z",
+          providers: [{
+            id: "kiro", name: "Kiro", status: "ok" as const, plan: "Kiro Free",
+            metrics: [{ label: "Credits", type: "percent" as const, used: calls === 1 ? 10 : 11 }],
+          }],
+        };
+      });
+
+      const good = await getUsageSnapshot();
+      expect(good.providers[0].metrics[0].used).toBe(10);
+
+      const rollover = await getUsageSnapshot(true);
+      expect(rollover.providers[0].metrics[0].used).toBe(10);
+      expect(rollover.providers[0].hint).toContain("Token refreshing");
+
+      vi.advanceTimersByTime(30_001);
+      const refreshed = await getUsageSnapshot();
+      expect(calls).toBe(3);
+      expect(refreshed.providers[0].metrics[0].used).toBe(11);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("ignores paths that are not ours", () => {
