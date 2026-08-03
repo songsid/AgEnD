@@ -1226,7 +1226,12 @@ program
       }
       // Try to remove old system binary
       console.log("  Note: removing old system install (may require sudo)...");
-      spawnSync("sudo", ["npm", "uninstall", "-g", "@songsid/agend"], { stdio: "inherit" });
+      // Never wait for a password in an agent/non-interactive terminal. This is
+      // best-effort cleanup; the new nvm install already succeeded.
+      spawnSync("sudo", ["-n", "npm", "uninstall", "-g", "@songsid/agend"], {
+        stdio: "inherit",
+        timeout: 10_000,
+      });
     } else {
       // ── Direct install ──
       try {
@@ -1886,6 +1891,13 @@ function getTreeRssKb(pid: number, depth = 0): number {
 
 function getInstanceStatusStandalone(name: string): "running" | "paused" | "stopped" | "crashed" {
   if (hasPausedMarker(join(DATA_DIR, "instances", name))) return "paused";
+  // daemon.pid is the shared FleetManager PID, so it remains alive when one
+  // CLI has entered the persisted 3-crashes circuit breaker. Consult that
+  // marker before using daemon.pid as a fallback.
+  try {
+    const crash = JSON.parse(readFileSync(join(DATA_DIR, "instances", name, "crash-state.json"), "utf8"));
+    if (Number(crash?.crashesInWindow) >= 3) return "crashed";
+  } catch { /* no valid crash-loop marker */ }
   const pidPath = join(DATA_DIR, "instances", name, "daemon.pid");
   if (!existsSync(pidPath)) return "stopped";
   const pid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
@@ -2211,22 +2223,24 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
 
     // Status icon — prefer tri-state 'state' field, fall back to idle boolean
     const statusIcon = (s: string, idle?: boolean, state?: string | null) => {
+      if (s === "crashed") return "\x1b[31m●\x1b[0m";
+      if (s === "stopped") return "\x1b[90m○\x1b[0m";
       if (state === "stuck") return "\x1b[31m●\x1b[0m";
       if (state === "paused" || s === "paused") return "\x1b[2;33m●\x1b[0m";
       if (state === "working") return "\x1b[34m●\x1b[0m";
       if (state === "idle") return "\x1b[32m●\x1b[0m";
       // Fallback for when API is unreachable
       if (s === "running") return idle === false ? "\x1b[34m●\x1b[0m" : "\x1b[32m●\x1b[0m";
-      if (s === "crashed") return "\x1b[31m●\x1b[0m";
       return "\x1b[90m○\x1b[0m";
     };
     const statusLabel = (s: string, idle?: boolean, state?: string | null) => {
+      if (s === "crashed") return "Crashed";
+      if (s === "stopped") return "Stopped";
       if (state === "stuck") return "Stuck";
       if (state === "paused" || s === "paused") return "Paused";
       if (state === "working") return "Working";
       if (state === "idle") return "Idle";
       if (s === "running") return idle === false ? "Busy" : "Idle";
-      if (s === "crashed") return "Crashed";
       return "Stopped";
     };
 
