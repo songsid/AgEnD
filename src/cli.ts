@@ -32,6 +32,7 @@ import {
   shouldSkipUpdate,
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress } from "./update-marker.js";
+import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -46,6 +47,18 @@ const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
 
 const program = new Command();
+
+function claimFleetSingleton(): boolean {
+  try {
+    setProcessFleetLock(acquireFleetLock(DATA_DIR));
+    process.once("exit", () => { releaseProcessFleetLock(); });
+    return true;
+  } catch (err) {
+    console.error((err as Error).message);
+    process.exitCode = 1;
+    return false;
+  }
+}
 
 // Read version from package.json at build time
 const pkgVersion = (() => {
@@ -118,6 +131,10 @@ fleet
         }
       } catch { /* fleet not running, fall through */ }
     }
+
+    // Claim the singleton before constructing FleetManager: its constructor and
+    // startAll path touch shared tmux, sockets, state files and adapters.
+    if (!claimFleetSingleton()) return;
 
     const { FleetManager } = await import("./fleet-manager.js");
     const fm = new FleetManager(DATA_DIR);
@@ -363,6 +380,7 @@ fleet
       console.log("Old fleet stopped. Starting with new code...");
 
       // Start new fleet in this process (new Node.js process = new code loaded)
+      if (!claimFleetSingleton()) return;
       const { FleetManager } = await import("./fleet-manager.js");
       const fm = new FleetManager(DATA_DIR);
       await fm.startAll(FLEET_CONFIG_PATH);
@@ -1364,8 +1382,10 @@ program
   .command("start")
   .description("Start the AgEnD service (must be installed first)")
   .action(async () => {
-    const { getServicePath, startService } = await import("./service-installer.js");
-    if (!getServicePath()) {
+    const { getServicePath, getSystemServicePath, startService, startSystemService } = await import("./service-installer.js");
+    const userServicePath = getServicePath();
+    const systemServicePath = getSystemServicePath();
+    if (!userServicePath && !systemServicePath) {
       console.log("No service installed. Starting fleet directly...");
       const { spawn } = await import("node:child_process");
       const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
@@ -1373,15 +1393,15 @@ program
       console.log("Fleet starting in background.");
       return;
     }
-    if (startService()) {
+    const started = systemServicePath ? startSystemService() : startService();
+    if (started) {
       console.log("Service started.");
     } else {
-      // systemd/launchd failed — fallback to direct start
-      console.log("Service manager unavailable. Starting fleet directly...");
-      const { spawn } = await import("node:child_process");
-      const child = spawn("sh", ["-c", "agend fleet start"], { detached: true, stdio: "ignore" });
-      child.unref();
-      console.log("Fleet starting in background.");
+      // A service file means the service manager owns this fleet. Falling back
+      // to a detached process here creates a second fleet when the bus recovers.
+      console.error("Failed to start the installed AgEnD service; refusing to start a detached duplicate.");
+      console.error("Check your service manager, then retry: systemctl --user status com.agend.fleet");
+      process.exitCode = 1;
     }
   });
 
@@ -1394,23 +1414,26 @@ program
     // service's own HOME, which may differ from what this command resolves (sudo,
     // AGEND_HOME) — an absent pid file does NOT mean it's stopped. Ask the service
     // manager first. This is the canonical restart the `update` flow spawns.
-    const { detectPlatform } = await import("./service-installer.js");
+    const { detectPlatform, getServicePath, getSystemServicePath, getSystemdServiceState } = await import("./service-installer.js");
     const { spawn, spawnSync } = await import("node:child_process");
     const plat = detectPlatform();
     const pidPath = join(DATA_DIR, "fleet.pid");
 
-    const isActive = (cmd: string): boolean => {
-      try {
-        return spawnSync("sh", ["-c", cmd], { encoding: "utf-8", timeout: 5000 }).stdout?.trim() === "active";
-      } catch { return false; }
-    };
     const run = (cmd: string): boolean => {
       try { execSync(cmd, { stdio: "inherit", timeout: 15000 }); return true; }
       catch { return false; }
     };
 
     // 1. System-level systemd service "agend"
-    if (plat !== "macos" && isActive("systemctl is-active agend 2>/dev/null")) {
+    const systemServiceInstalled = plat !== "macos" && getSystemServicePath() !== null;
+    const systemState = plat !== "macos" ? getSystemdServiceState("agend", false) : "stopped";
+    if (systemServiceInstalled && systemState === "unavailable") {
+      console.error("Cannot reach the system service manager; refusing a detached restart that could duplicate the fleet.");
+      console.error("Check: systemctl status agend");
+      process.exitCode = 1;
+      return;
+    }
+    if (systemServiceInstalled && (systemState === "running" || systemState === "stopped")) {
       run("systemctl daemon-reload");
       if (run("systemctl restart agend")) { console.log("Service restarted (system)."); return; }
       // Service exists → systemd will auto-retry via Restart=on-failure. Don't spawn fallback.
@@ -1419,7 +1442,17 @@ program
       return;
     }
     // 2. User-level systemd service "com.agend.fleet"
-    if (plat !== "macos" && isActive("systemctl --user is-active com.agend.fleet 2>/dev/null")) {
+    const userServiceInstalled = plat !== "macos" && getServicePath() !== null;
+    const userState = plat !== "macos"
+      ? getSystemdServiceState("com.agend.fleet", true)
+      : "stopped";
+    if (userServiceInstalled && userState === "unavailable") {
+      console.error("Cannot reach the user service manager; refusing a detached restart that could duplicate the fleet.");
+      console.error("Check: systemctl --user status com.agend.fleet");
+      process.exitCode = 1;
+      return;
+    }
+    if (userServiceInstalled && (userState === "running" || userState === "stopped")) {
       run("systemctl --user daemon-reload");
       try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
       if (run("systemctl --user restart com.agend.fleet")) { console.log("Service restarted (user)."); return; }
