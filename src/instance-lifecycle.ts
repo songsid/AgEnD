@@ -17,6 +17,9 @@ import type { TmuxControlClient } from "./tmux-control.js";
 import type { FleetInstructionsParams } from "./instructions.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
+import { isFleetStartCommandLine } from "./fleet-lock.js";
+
+export { isFleetStartCommandLine } from "./fleet-lock.js";
 
 export interface BackendInstallationInfo {
   binary: string;
@@ -42,12 +45,6 @@ export function checkBinaryInstalled(binary: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Whether a process command line identifies the shared AgEnD fleet process. */
-export function isFleetStartCommandLine(commandLine: string): boolean {
-  const normalized = commandLine.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
-  return /\b(?:agend|(?:cli|daemon-entry)\.(?:js|ts))\b.*\bfleet\s+start\b/i.test(normalized);
 }
 
 function readProcessCommandLine(pid: number): string {
