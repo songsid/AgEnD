@@ -994,7 +994,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
     // panel showing a red failure for a routine token rollover is just noise.
     // Still `ok` rather than no-credentials, so the row stays on screen with its
     // explanation instead of the provider silently disappearing.
-    return { status: "ok", plan: "Kiro", hint: "Sign-in needed — run `kiro-cli` once and it refreshes itself.", metrics: [] };
+    return { status: "ok", plan: "Kiro", hint: "Token refreshing — try again in a moment.", metrics: [] };
   }
   if (kind === "q-developer-pro") {
     // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
