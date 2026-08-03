@@ -74,7 +74,7 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     // keeps it on screen; still never a red error.
     expect(r.status).toBe("ok");
     expect(r.error).toBeUndefined();
-    expect(r.hint).toMatch(/kiro-cli/);
+    expect(r.hint).toMatch(/token refreshing/i);
   });
 
   it("stays visible, signed out, when kiro-cli is installed with no login", async () => {

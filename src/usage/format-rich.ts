@@ -104,7 +104,10 @@ export function renderUsageMarkdown(payload: UsagePayload): string {
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} **${b.name}**${b.plan ? ` (${b.plan})` : ""}`);
     if (b.note) { out.push(`> ${b.note}`); continue; }
-    if (b.lines.length === 0) { out.push("> no data"); continue; }
+    if (b.lines.length === 0) {
+      out.push(b.okHint ? `> ${b.okHint}` : "> no data");
+      continue;
+    }
     for (const l of b.lines) {
       out.push(l.bar ? `\`${l.bar}\` ${l.text}` : l.text);
     }
@@ -127,7 +130,10 @@ export function renderUsageHtml(payload: UsagePayload): string {
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} <b>${escapeHtml(b.name)}</b>${b.plan ? ` (${escapeHtml(b.plan)})` : ""}`);
     if (b.note) { out.push(escapeHtml(b.note)); continue; }
-    if (b.lines.length === 0) { out.push("no data"); continue; }
+    if (b.lines.length === 0) {
+      out.push(b.okHint ? escapeHtml(b.okHint) : "no data");
+      continue;
+    }
     for (const l of b.lines) {
       out.push(l.bar ? `<code>${l.bar}</code> ${escapeHtml(l.text)}` : escapeHtml(l.text));
     }
