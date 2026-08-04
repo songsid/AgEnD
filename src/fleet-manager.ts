@@ -338,6 +338,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private instanceActivity = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
   private ipcWaitTails = new Map<string, Promise<void>>();
+  /** instanceName → restart currently executing; concurrent callers join it. */
+  private restartsInFlight = new Map<string, Promise<void>>();
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -1231,6 +1233,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
   async restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
+    // One restart at a time per instance. Multiple sources can ask concurrently
+    // (MCP revival, /restart, pty_error, model failover); a second stop/start
+    // interleaved with the first tears down the window the first just created.
+    // Later callers join the in-flight restart instead — its opts win.
+    const inFlight = this.restartsInFlight.get(name);
+    if (inFlight) {
+      this.logger.info({ name }, "restartSingleInstance: joining the restart already in flight");
+      return inFlight;
+    }
+    const run = this.doRestartSingleInstance(name, opts)
+      .finally(() => this.restartsInFlight.delete(name));
+    this.restartsInFlight.set(name, run);
+    return run;
+  }
+
+  private async doRestartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
     if (this.configPath) {
       this.loadConfig(this.configPath);
       this.routing.rebuild(this.fleetConfig!);

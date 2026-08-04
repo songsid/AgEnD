@@ -1095,6 +1095,17 @@ export class Daemon extends EventEmitter {
   }
 
   private fireMcpRestartRequest(trigger: "already_idle" | "idle_edge" | "stale_timeout"): void {
+    // A recovery is already reshaping the CLI: crash-loop handling
+    // (healthCheckPaused), a respawn in flight (spawning), or a pause
+    // (isPaused / frozen monitors). Each of those paths ends in a fresh CLI —
+    // and with it a fresh MCP server — or in supervision ending, where a
+    // restart on top would fight the recovery. Either way the revival restart
+    // is moot: cancel it rather than defer it.
+    if (this.healthCheckPaused || this.spawning || this.isPaused || this.runtimeMonitorsFrozen) {
+      this.logger.warn({ trigger }, "MCP revival restart cancelled — instance is already pausing/spawning/recovering");
+      this.clearMcpRestartRequest();
+      return;
+    }
     this.clearMcpRestartRequest();
     this.logger.warn({ trigger }, "Requesting instance restart to revive its MCP server");
     this.emit("mcp_restart_requested", { name: this.name, trigger });
