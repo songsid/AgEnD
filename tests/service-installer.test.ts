@@ -1,5 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { buildServicePath, classifySystemdServiceState, renderLaunchdPlist, renderSystemdUnit, detectPlatform, uninstallService } from "../src/service-installer.js";
+import { describe, it, expect, vi } from "vitest";
+import {
+  buildServicePath,
+  classifySystemdServiceState,
+  renderLaunchdPlist,
+  renderSystemdUnit,
+  detectPlatform,
+  uninstallService,
+  restartSystemdService,
+  SYSTEMD_RESTART_TIMEOUT_MS,
+} from "../src/service-installer.js";
 
 describe("ServiceInstaller", () => {
   const vars = {
@@ -29,6 +38,7 @@ describe("ServiceInstaller", () => {
     expect(unit).toContain("ExecStart=/usr/local/bin/claude-channel-daemon fleet start");
     expect(unit).toContain("WorkingDirectory=/Users/test/project");
     expect(unit).toContain("Environment=PATH=/usr/local/bin:/usr/bin:/bin");
+    expect(unit).toContain("TimeoutStartSec=0");
     expect(unit).toContain("TimeoutStopSec=60");
   });
 
@@ -43,6 +53,28 @@ describe("ServiceInstaller", () => {
       status: 1,
       stderr: "Failed to connect to bus: No medium found",
     })).toBe("unavailable");
+  });
+
+  it("waits long enough for a Type=notify fleet restart to reach READY=1", () => {
+    const run = vi.fn();
+
+    expect(restartSystemdService("com.agend.fleet", true, run)).toBe(true);
+    expect(run).toHaveBeenCalledWith(
+      "systemctl",
+      ["--user", "restart", "com.agend.fleet"],
+      { stdio: "inherit", timeout: SYSTEMD_RESTART_TIMEOUT_MS },
+    );
+    expect(SYSTEMD_RESTART_TIMEOUT_MS).toBe(300_000);
+  });
+
+  it("reports a real systemctl restart failure", () => {
+    const run = vi.fn(() => { throw new Error("unit failed"); });
+    expect(restartSystemdService("agend", false, run)).toBe(false);
+    expect(run).toHaveBeenCalledWith(
+      "systemctl",
+      ["restart", "agend"],
+      expect.objectContaining({ timeout: SYSTEMD_RESTART_TIMEOUT_MS }),
+    );
   });
 
   it("falls back to process.env.PATH when path is omitted", () => {
