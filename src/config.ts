@@ -53,6 +53,8 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
 
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
+  mcp_auto_restart: true, // restart (idle-gated) when the MCP server dies
+
   kiro_ui: "legacy",
   terminal: {
     enabled: true,
