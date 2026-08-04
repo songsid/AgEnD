@@ -3288,8 +3288,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let threadId = resolveReplyThreadId(args.thread_id, routingConfig)
       ?? this.classicChannels?.getChannelIdByInstance(senderInstanceName ?? instanceName);
 
-    // Select adapter: use instance binding, or resolve from chatId in args
-    const outAdapter = this.getAdapterForInstance(senderInstanceName ?? instanceName) ?? this.adapter;
+    // Select the adapter from the daemon's exact last-inbound context. Message
+    // ids are scoped to that bot/world; routing a secondary-world id through the
+    // primary adapter produces a 404. Instance binding remains the compatibility
+    // fallback for older daemons and calls without a live/persisted context.
+    const contextAdapterId = typeof msg.adapterId === "string" && msg.adapterId
+      ? msg.adapterId
+      : undefined;
+    const contextWorld = contextAdapterId ? this.worlds.get(contextAdapterId) : undefined;
+    if (contextAdapterId && !contextWorld) {
+      respond(null, `Adapter world unavailable: ${contextAdapterId}`);
+      return;
+    }
+    const outAdapter = contextWorld?.adapter
+      ?? this.getAdapterForInstance(senderInstanceName ?? instanceName)
+      ?? this.adapter;
     if (!outAdapter) { respond(null, "No adapter available"); return; }
 
     // For classic instances: force chat_id to channelId and clear thread_id
