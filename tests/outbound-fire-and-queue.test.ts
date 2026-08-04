@@ -53,7 +53,7 @@ describe("cross-instance tools are fire-and-queue", () => {
 
     // The old code awaited the idle gate here and only answered after it timed out.
     expect(error).toBeUndefined();
-    expect(result).toMatchObject({ sent: true, queued: true, target: "target" });
+    expect(result).toMatchObject({ sent: true, queued: true, target: "target", target_state: "running" });
     expect(Date.now() - started).toBeLessThan(1_000);
     expect(ctx.deliverToInstance).toHaveBeenCalledOnce();
   });
@@ -65,6 +65,37 @@ describe("cross-instance tools are fire-and-queue", () => {
     });
     expect(result).toBeNull();
     expect(error).toMatch(/not found/i);
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+
+  it("reports a paused target and that the delivery facade will wake it", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    (ctx.lifecycle.isPaused as ReturnType<typeof vi.fn>).mockImplementation((name: string) => name === "target");
+
+    const { result, error } = await callTool("delegate_task", ctx, {
+      target_instance: "target", task: "wake me first",
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({
+      sent: true,
+      queued: true,
+      target: "target",
+      target_state: "paused",
+      waking: true,
+    });
+  });
+
+  it("does not queue a crashed target even when stale IPC remains", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.getInstanceStatus = vi.fn(() => "crashed");
+
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "do not send",
+    });
+
+    expect(result).toBeNull();
+    expect(error).toContain("target_state=crashed");
     expect(ctx.deliverToInstance).not.toHaveBeenCalled();
   });
 
