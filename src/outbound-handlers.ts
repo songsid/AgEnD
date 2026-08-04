@@ -513,7 +513,31 @@ const startInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(StartInstanceArgs, rawArgs, "start_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const targetName = v.data.name;
+  // `start_instance` is an explicit operator request, not the fleet startup
+  // reconciliation path.  Treat a persisted/daemon pause as wake so the
+  // marker is cleared and the next state snapshot is visible to `agend ls`.
+  if (ctx.lifecycle.isPaused?.(targetName)) {
+    try {
+      await ctx.lifecycle.wake(targetName, 30_000);
+      respond({ success: true, status: "started" });
+    } catch (err) {
+      respond(null, `Failed to wake instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
+    }
+    return;
+  }
   if (ctx.lifecycle.daemons.has(targetName)) {
+    // A crash-loop daemon stays in the map while its pane is dead.  Do not
+    // report it as already running; restart it so its crash marker is consumed.
+    const status = ctx.getInstanceStatus?.(targetName);
+    if (status === "crashed" || status === "stopped") {
+      try {
+        await ctx.restartSingleInstance(targetName);
+        respond({ success: true, status: "started" });
+      } catch (err) {
+        respond(null, `Failed to restart instance '${targetName}': ${sanitizeError(err, ctx, `start_instance(${targetName})`)}`);
+      }
+      return;
+    }
     respond({ success: true, status: "already_running" });
     return;
   }
