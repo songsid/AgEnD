@@ -705,6 +705,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.worlds.keys().next().value as string | undefined;
   }
 
+  /** Warn when a coordinator's adapter identity is ambiguous to the operator. */
+  private warnUnboundGeneralChannelIds(fleet: FleetConfig): void {
+    const channels = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+    if (channels.length <= 1) return;
+
+    const adapterIds = channels.map(ch => ch.id ?? ch.type);
+    for (const [name, config] of Object.entries(fleet.instances)) {
+      if (!config.general_topic || config.channel_id) continue;
+      this.logger.warn({
+        instance: name,
+        defaultAdapter: adapterIds[0],
+        availableAdapters: adapterIds,
+      }, "General instance has no channel_id in a multi-channel fleet; defaulting to the first adapter. Set channel_id explicitly.");
+    }
+  }
+
   /**
    * Resolve the authoritative adapter identity for an instance.
    * Fleet instances without channel_id and legacy Classic entries both belong
@@ -1540,6 +1556,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Auto-create/adopt a general dispatcher — ONLY for the primary adapter.
     const channelConfigs = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+    this.warnUnboundGeneralChannelIds(fleet);
     const primaryAdapterId = channelConfigs[0] ? (channelConfigs[0].id ?? channelConfigs[0].type) : undefined;
     const generalInstances = Object.entries(fleet.instances).filter(([, inst]) => inst.general_topic === true);
     let generalsCreated = false;
