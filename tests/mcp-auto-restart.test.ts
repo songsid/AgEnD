@@ -175,7 +175,9 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
 // ── Fleet side: restart with a loop-proof cooldown ─────────────────────────
 
 function makeLifecycle() {
-  const restartSingleInstance = vi.fn().mockResolvedValue(undefined);
+  const calls: string[] = [];
+  const restartSingleInstance = vi.fn(async () => { calls.push("restart"); });
+  const clearCancelButton = vi.fn(() => { calls.push("clearCancelButton"); });
   const notifyInstanceTopic = vi.fn();
   const ctx = {
     fleetConfig: { instances: { worker: { backend: "codex" } }, defaults: {} },
@@ -184,7 +186,7 @@ function makeLifecycle() {
     isPlannedRestart: () => false,
     notifyInstanceTopic,
     webhookEmit() {},
-    clearCancelButton() {},
+    clearCancelButton,
     checkModelFailover() {},
     setTopicIcon() {},
     restartSingleInstance,
@@ -192,7 +194,7 @@ function makeLifecycle() {
   const lifecycle = new InstanceLifecycle(ctx);
   const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }) as unknown as IncidentEventSource & EventEmitter;
   lifecycle.attachIncidentHandlers("worker", daemon);
-  return { daemon, restartSingleInstance, notifyInstanceTopic };
+  return { daemon, restartSingleInstance, notifyInstanceTopic, clearCancelButton, calls };
 }
 
 describe("lifecycle: mcp_restart_requested → restartSingleInstance, once per cooldown", () => {
@@ -237,5 +239,112 @@ describe("lifecycle: mcp_restart_requested → restartSingleInstance, once per c
 
     daemon.emit("mcp_died", { name: "worker", pid: 2, autoRestart: false });
     expect(notifyInstanceTopic).toHaveBeenLastCalledWith("worker", expect.stringContaining("restart_instance"));
+  });
+
+  it("retires the cancel button before restarting — a click on the leftover would target the new CLI", () => {
+    const { daemon, clearCancelButton, calls } = makeLifecycle();
+
+    daemon.emit("mcp_restart_requested", { name: "worker", trigger: "idle_edge" });
+
+    expect(clearCancelButton).toHaveBeenCalledWith("worker");
+    expect(calls).toEqual(["clearCancelButton", "restart"]);
+  });
+});
+
+// ── #485 review fixes: crash-loop bypass and restart race ──────────────────
+
+describe("daemon: a recovery in progress cancels the revival restart (sol's review, #485)", () => {
+  let dir: string;
+  afterEach(() => {
+    vi.useRealTimers();
+    liveness.mockReset();
+    liveness.mockReturnValue({ state: "unknown" } as any);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("stale timer during crash-loop handling (healthCheckPaused) cancels instead of restarting", () => {
+    vi.useFakeTimers();
+    const made = makeDaemon(); dir = made.dir;
+    const { daemon } = made;
+    daemon.instanceState = "working";
+    const requested = vi.fn();
+    daemon.on("mcp_restart_requested", requested);
+    liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
+
+    daemon.checkMcpServerAlive();
+    daemon.healthCheckPaused = true; // crash recovery took over
+    vi.advanceTimersByTime(31 * 60_000);
+
+    expect(requested).not.toHaveBeenCalled();
+    // Cancelled, not deferred: the recovery's own respawn brings a fresh MCP
+    // server, so a later idle edge must not restart on top of it either.
+    expect(daemon.mcpRestartPending).toBe(false);
+  });
+
+  it("an idle edge while a respawn is in flight (spawning) does not restart on top of it", () => {
+    const made = makeDaemon(); dir = made.dir;
+    const { daemon } = made;
+    daemon.instanceState = "working";
+    const requested = vi.fn();
+    daemon.on("mcp_restart_requested", requested);
+    liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
+
+    daemon.checkMcpServerAlive();
+    daemon.spawning = true;
+    daemon.applyInstanceStateSnapshot(idleSnapshot());
+
+    expect(requested).not.toHaveBeenCalled();
+    expect(daemon.mcpRestartPending).toBe(false);
+  });
+});
+
+describe("fleet-manager: concurrent restart sources share one restart (sol's review, #485)", () => {
+  it("the second caller joins the in-flight restart instead of stopping the instance twice", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-restart-race-"));
+    const fm = new FleetManager(dataDir) as any;
+    fm.fleetConfig = {
+      defaults: {},
+      instances: { worker: { working_directory: dataDir } },
+    };
+    let releaseStop!: () => void;
+    const stopGate = new Promise<void>(r => { releaseStop = r; });
+    const stopInstance = vi.fn(() => stopGate);
+    const startInstance = vi.fn().mockResolvedValue(undefined);
+    fm.stopInstance = stopInstance;
+    fm.startInstance = startInstance;
+
+    try {
+      const first = fm.restartSingleInstance("worker");          // MCP revival
+      const second = fm.restartSingleInstance("worker");         // manual /restart racing it
+      releaseStop();
+      await Promise.all([first, second]);
+
+      expect(stopInstance).toHaveBeenCalledTimes(1);
+      expect(startInstance).toHaveBeenCalledTimes(1);
+
+      // The guard releases once done — a later restart runs for real again.
+      await fm.restartSingleInstance("worker");
+      expect(stopInstance).toHaveBeenCalledTimes(2);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("a failed restart releases the guard for the next attempt", async () => {
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-restart-fail-"));
+    const fm = new FleetManager(dataDir) as any;
+    fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: dataDir } } };
+    fm.stopInstance = vi.fn().mockRejectedValueOnce(new Error("tmux gone")).mockResolvedValue(undefined);
+    fm.startInstance = vi.fn().mockResolvedValue(undefined);
+
+    try {
+      await expect(fm.restartSingleInstance("worker")).rejects.toThrow("tmux gone");
+      await expect(fm.restartSingleInstance("worker")).resolves.toBeUndefined();
+      expect(fm.startInstance).toHaveBeenCalledTimes(1);
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
   });
 });
