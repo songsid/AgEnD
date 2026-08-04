@@ -286,8 +286,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private recentMessageIds = new Set<string>();
   private accessManager: AccessManager | null = null;
 
-  /** Primary world (first adapter) — used for fleet-level notifications */
-  get primaryWorld(): AdapterWorld | undefined { return this.worlds.values().next().value as AdapterWorld | undefined; }
+  /** Primary world (channels[0]), independent of concurrent adapter startup order. */
+  get primaryWorld(): AdapterWorld | undefined {
+    const adapterId = this.getPrimaryAdapterId();
+    return adapterId ? this.worlds.get(adapterId) : undefined;
+  }
   readonly routing = new RoutingEngine();
   get routingTable(): Map<string, RouteTarget> { return this.routing.map; }
   instanceIpcClients: Map<string, IpcClient> = new Map();
@@ -571,10 +574,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private reregisterClassicChannels(): void {
     if (!this.classicChannels) return;
     const channels = this.classicChannels.getAll();
+    // Classic's persisted adapter is authoritative. Legacy adapter-less rows
+    // deterministically belong to channels[0], never to whichever bot happens
+    // to deliver the first message after startup/reconnect.
+    for (const ch of channels) {
+      const adapterId = ch.adapterId ?? this.getPrimaryAdapterId();
+      if (adapterId) this.instanceWorldBinding.set(ch.instanceName, adapterId);
+    }
     // Always update adapter openChannels (including empty — clears stale entries on /stop)
     for (const [adapterId, w] of this.worlds) {
       if (typeof (w.adapter as any)?.setOpenChannels === "function") {
-        const owned = channels.filter(ch => ch.adapterId === adapterId).map(ch => ch.channelId);
+        const owned = channels
+          .filter(ch => (ch.adapterId ?? this.getPrimaryAdapterId()) === adapterId)
+          .map(ch => ch.channelId);
         (w.adapter as any).setOpenChannels(owned);
       }
     }
@@ -654,50 +666,76 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
-    const worldId = this.instanceWorldBinding.get(name);
+    const worldId = this.getInstanceAdapterId(name);
     if (worldId) return this.worlds.get(worldId)?.adapter ?? this.adapter;
     return this.adapter;
   }
 
   /** Get the world for an instance */
   getWorldForInstance(name: string): AdapterWorld | undefined {
-    const worldId = this.instanceWorldBinding.get(name);
-    return worldId ? this.worlds.get(worldId) : (this.worlds.values().next().value as AdapterWorld | undefined);
+    const worldId = this.getInstanceAdapterId(name);
+    return worldId ? this.worlds.get(worldId) : undefined;
   }
 
   /** Get channel config for a specific adapter (by id), falling back to primary */
   getChannelConfig(adapterId?: string): import("./types.js").ChannelConfig | undefined {
+    const channels = this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
     if (adapterId) {
-      const world = this.worlds.get(adapterId);
-      if (world) return world.channelConfig;
+      return channels.find(ch => (ch.id ?? ch.type) === adapterId)
+        ?? this.worlds.get(adapterId)?.channelConfig
+        ?? channels[0];
     }
-    return this.fleetConfig?.channel;
+    return channels[0];
   }
 
   /** Get the group_id for an instance's bound adapter */
   getGroupIdForInstance(name: string): string {
-    const world = this.getWorldForInstance(name);
-    return world?.groupId ?? String(this.fleetConfig?.channel?.group_id ?? "");
+    const adapterId = this.getInstanceAdapterId(name);
+    const world = adapterId ? this.worlds.get(adapterId) : undefined;
+    return world?.groupId ?? String(this.getChannelConfig(adapterId)?.group_id ?? "");
+  }
+
+  /** Configured primary adapter id. Never infer this from Map insertion order. */
+  private getPrimaryAdapterId(): string | undefined {
+    const primary = this.fleetConfig?.channels?.[0] ?? this.fleetConfig?.channel;
+    if (primary) return primary.id ?? primary.type;
+    // Defensive compatibility for callers/tests that provide a live world but
+    // no channel config. Real multi-adapter fleets always have channels[].
+    return this.worlds.keys().next().value as string | undefined;
+  }
+
+  /**
+   * Resolve the authoritative adapter identity for an instance.
+   * Fleet instances without channel_id and legacy Classic entries both belong
+   * to channels[0]. Runtime bindings remain available for external sessions.
+   */
+  private getInstanceAdapterId(name: string): string | undefined {
+    const cfg = this.fleetConfig?.instances[name];
+    if (cfg) return cfg.channel_id ?? this.getPrimaryAdapterId();
+
+    if (this.classicChannels?.getChannelIdByInstance(name) !== undefined) {
+      return this.classicChannels.getAdapterIdByInstance(name) ?? this.getPrimaryAdapterId();
+    }
+
+    return this.instanceWorldBinding.get(name) ?? this.getPrimaryAdapterId();
   }
 
   /**
    * Bind an instance to a specific world (the bot that answers for it).
    * fromInbound=true (binding inferred from which adapter received a message)
-   * must not override a configured identity: skip when the instance is a general
-   * or has an explicit channel_id — otherwise a persona instance whose message
-   * was also seen by the main bot would get rebound to the wrong bot.
+   * must not override a configured identity. Fleet instances use channel_id or
+   * channels[0]; Classic instances use their persisted adapter (or channels[0]
+   * for a legacy entry). Only external sessions may bind from inbound traffic.
    */
   bindInstanceAdapter(name: string, adapterId: string, fromInbound = false): void {
-    const cfg = this.fleetConfig?.instances[name];
     if (fromInbound) {
-      // Skip inbound-derived binding for any instance that doesn't have an
-      // explicit channel_id — those default to primary adapter deterministically.
-      // This prevents a non-deterministic race where whichever adapter delivers
-      // first after restart wins the binding.
-      if (cfg?.general_topic || cfg?.channel_id) return;
-      if (cfg && !cfg.channel_id) return; // fleet instance without explicit binding → use primary
-      // Classic instance: don't override an existing binding (authoritative from /start)
-      if (this.classicChannels?.getChannelIdByInstance(name) !== undefined && this.instanceWorldBinding.has(name)) return;
+      const configuredId = this.getInstanceAdapterId(name);
+      if (this.fleetConfig?.instances[name]
+        || this.classicChannels?.getChannelIdByInstance(name) !== undefined) {
+        if (configuredId) this.instanceWorldBinding.set(name, configuredId);
+        return;
+      }
     }
     this.instanceWorldBinding.set(name, adapterId);
   }
@@ -1674,21 +1712,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
       }
 
-      // Bind instances to their adapter (which bot answers on their behalf).
-      // An explicit channel_id is authoritative — this is how a persona instance
-      // picks its bot when several share one guild. Generals without a channel_id
-      // fall back to a name-contains-adapterId heuristic.
-      const channelConfigsForBind = fleet.channels ?? (fleet.channel ? [fleet.channel] : []);
+      // Bind every fleet instance deterministically. Explicit channel_id wins;
+      // otherwise channels[0] is authoritative. Do not infer identity from
+      // concurrent adapter startup or whichever bot receives a message first.
+      const primaryAdapterId = this.getPrimaryAdapterId();
       for (const [name, config] of Object.entries(fleet.instances)) {
-        if (config.channel_id) {
-          this.bindInstanceAdapter(name, config.channel_id);
-          continue;
-        }
-        if (!config.general_topic) continue;
-        for (const ch of channelConfigsForBind) {
-          const id = ch.id ?? ch.type;
-          if (name.includes(id)) { this.bindInstanceAdapter(name, id); break; }
-        }
+        const adapterId = config.channel_id ?? primaryAdapterId;
+        if (adapterId) this.bindInstanceAdapter(name, adapterId);
       }
 
       // Guard against a stale/invalid general topic_id. An old auto-general
@@ -1698,7 +1728,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       let fixedGeneral = false;
       for (const [name, cfg] of Object.entries(this.fleetConfig!.instances)) {
         if (!cfg.general_topic || cfg.topic_id == null) continue;
-        const adapterId = this.instanceWorldBinding.get(name) ?? cfg.channel_id;
+        const adapterId = this.getInstanceAdapterId(name);
         if (this.getChannelConfig(adapterId)?.type === "discord" && !/^\d{17,}$/.test(String(cfg.topic_id))) {
           this.logger.warn({ name, topic_id: cfg.topic_id }, "Discord general topic_id is not a valid channel — unbinding to avoid a crash loop");
           delete (cfg as { topic_id?: unknown }).topic_id;
@@ -2250,7 +2280,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
-      const w = this.worlds.values().next().value as AdapterWorld | undefined;
+      // Concurrent startup can insert a secondary world first. Update the
+      // configured primary world, not Map insertion order.
+      const w = this.worlds.get(adapterId);
       if (w) {
         w.botUsername = username;
         if (userId) w.botUserId = userId;
@@ -4376,7 +4408,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): void {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
+    const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
     const groupId = channelCfg?.group_id;
 
     // Fleet topic instance
@@ -4507,7 +4539,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // `channels:` worlds the primary `channel:` block is empty, so an instance
     // with no world binding yet (fresh restart, cross-instance delegation)
     // resolved group_id to undefined and the button silently never appeared.
-    const adapterId = this.instanceWorldBinding.get(instanceName);
+    const adapterId = this.getInstanceAdapterId(instanceName);
     const groupId = this.getGroupIdForInstance(instanceName) || undefined;
     const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
 
@@ -4929,7 +4961,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    const channelCfg = this.getChannelConfig(this.instanceWorldBinding.get(instanceName));
+    const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
     const groupId = channelCfg?.group_id;
     if (!groupId) return;
     const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
