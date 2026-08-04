@@ -640,6 +640,21 @@ export class Daemon extends EventEmitter {
   private static readonly MCP_DEATH_COOLDOWN_MS = 5 * 60_000;
   private lastMcpDeathNotifiedAt = 0;
   private mcpDeathNotifiedForPid: number | null = null;
+  /**
+   * Ceiling on how long a dead MCP server waits for an idle window before the
+   * auto-restart fires anyway. A toolless instance cannot reply or report, so
+   * whatever a very long turn produces is stranded until the restart happens —
+   * past this point interrupting the turn costs less than staying mute.
+   */
+  private static readonly MCP_RESTART_MAX_WAIT_MS = 30 * 60_000;
+  /**
+   * Sticky "restart to revive the MCP server as soon as the pane idles" — same
+   * shape as pausePending, because the death is usually detected mid-turn when
+   * an immediate restart would destroy in-flight work. Cleared when the server
+   * turns up alive again (operator restarted, CLI reconnected) before we fire.
+   */
+  private mcpRestartPending = false;
+  private mcpRestartStaleTimer: ReturnType<typeof setTimeout> | null = null;
   /** Prevent in-flight monitor callbacks from re-arming after a pause. */
   private runtimeMonitorsFrozen = false;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
@@ -1044,6 +1059,7 @@ export class Daemon extends EventEmitter {
     if (status.state === "unknown") return;
     if (status.state === "alive") {
       this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
+      this.clearMcpRestartRequest(); // tools are back — stand down a pending auto-restart
       return;
     }
     // Dead: report once per pid, and at most once per cooldown window.
@@ -1051,8 +1067,45 @@ export class Daemon extends EventEmitter {
     if (Date.now() - this.lastMcpDeathNotifiedAt < Daemon.MCP_DEATH_COOLDOWN_MS) return;
     this.mcpDeathNotifiedForPid = status.pid;
     this.lastMcpDeathNotifiedAt = Date.now();
-    this.logger.error({ pid: status.pid }, "MCP server process is gone — instance has no agend tools");
-    this.emit("mcp_died", { name: this.name, pid: status.pid });
+    const autoRestart = this.config.mcp_auto_restart !== false;
+    this.logger.error({ pid: status.pid, autoRestart }, "MCP server process is gone — instance has no agend tools");
+    this.emit("mcp_died", { name: this.name, pid: status.pid, autoRestart });
+    if (autoRestart) this.armMcpRestartWhenIdle();
+  }
+
+  /**
+   * Arm an automatic instance restart to revive a dead MCP server. Fires on the
+   * next busy→idle edge — or immediately when the pane is already idle, which is
+   * the common case for a collab/chat instance parked between messages (no edge
+   * would ever come). A turn that outlives MCP_RESTART_MAX_WAIT_MS is
+   * force-restarted: see that constant for why staying mute costs more.
+   */
+  private armMcpRestartWhenIdle(): void {
+    if (this.mcpRestartPending) return;
+    this.mcpRestartPending = true;
+    this.mcpRestartStaleTimer = setTimeout(() => {
+      this.mcpRestartStaleTimer = null;
+      if (!this.mcpRestartPending || this.runtimeMonitorsFrozen) return;
+      this.fireMcpRestartRequest("stale_timeout");
+    }, Daemon.MCP_RESTART_MAX_WAIT_MS);
+    this.mcpRestartStaleTimer.unref?.();
+    if (this.instanceState === "idle" && this.pasteQueueDepth === 0) {
+      this.fireMcpRestartRequest("already_idle");
+    }
+  }
+
+  private fireMcpRestartRequest(trigger: "already_idle" | "idle_edge" | "stale_timeout"): void {
+    this.clearMcpRestartRequest();
+    this.logger.warn({ trigger }, "Requesting instance restart to revive its MCP server");
+    this.emit("mcp_restart_requested", { name: this.name, trigger });
+  }
+
+  private clearMcpRestartRequest(): void {
+    this.mcpRestartPending = false;
+    if (this.mcpRestartStaleTimer) {
+      clearTimeout(this.mcpRestartStaleTimer);
+      this.mcpRestartStaleTimer = null;
+    }
   }
 
   private startHealthCheck(): void {
@@ -1877,6 +1930,12 @@ export class Daemon extends EventEmitter {
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
       return;
     }
+    // A restart deferred by a dead MCP server: the turn it must not interrupt is
+    // over. Skip auto-pause evaluation this tick — the restart supersedes it.
+    if (this.mcpRestartPending && snapshot.state === "idle" && this.pasteQueueDepth === 0) {
+      this.fireMcpRestartRequest("idle_edge");
+      return;
+    }
     if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
       this.pauseRequested = true;
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
@@ -2090,6 +2149,10 @@ export class Daemon extends EventEmitter {
     this.runtimeMonitorsFrozen = true;
     if (this.healthCheckTimer) { clearTimeout(this.healthCheckTimer); this.healthCheckTimer = null; }
     if (this.errorMonitorTimer) { clearInterval(this.errorMonitorTimer); this.errorMonitorTimer = null; }
+    // A pause or stop tears the CLI down anyway — the respawn brings a fresh MCP
+    // server, so a deferred MCP-revival restart is moot (and its timer must not
+    // fire into a stopped daemon).
+    this.clearMcpRestartRequest();
     this.interactivePromptDetector.reset();
     this.stopInstanceStateMonitor();
     this.transcriptMonitor?.stop();

@@ -105,6 +105,9 @@ describe("wiring: pty_error → alert → usage row", () => {
       clearCancelButton() {},
       checkModelFailover() {},
       restartSingleInstance: async () => {},
+      // The auth_error case walks pause() → isPaused() → hasPausedMarker(dir);
+      // without this the rejection escaped the test as an unhandled error.
+      getInstanceDir: (n: string) => `/nonexistent/${n}`,
     } as unknown as LifecycleContext;
     const lifecycle = new InstanceLifecycle(ctx);
     const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }) as unknown as IncidentEventSource & EventEmitter;

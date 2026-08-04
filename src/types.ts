@@ -142,6 +142,13 @@ export interface InstanceConfig {
   startup_timeout_ms?: number;
   /** Agent communication mode: "mcp" (default) or "cli" (HTTP endpoint, no MCP server). */
   agent_mode?: "mcp" | "cli";
+  /**
+   * When the instance's MCP server dies, restart the instance automatically to
+   * bring the tools back — waiting for an idle pane first so in-flight work is
+   * not interrupted (the session is resumed, not reset). Default: true.
+   * Set false to only notify, as before.
+   */
+  mcp_auto_restart?: boolean;
   /** Hang detector override for this instance. */
   hang_detector?: HangDetectorConfig;
   /** Logical terminal size. Defaults to 120x36; set enabled=false for 80x24 compatibility. */
