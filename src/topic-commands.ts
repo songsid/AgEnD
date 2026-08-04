@@ -14,6 +14,7 @@ import { detectPlatform } from "./service-installer.js";
 import { getAgendHome, getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t } from "./locale.js";
 import { PIE_PERCENT_RE } from "./tui-glyphs.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 
 type ExecutionFleetContext = FleetContext & {
   getInstanceExecutionState?(instanceName: string): "idle" | "working" | "stuck" | null;
@@ -397,6 +398,10 @@ export class TopicCommands {
         await adapter.sendText(msg.chatId, t("instance.not_found", target), { threadId: msg.threadId });
         return true;
       }
+      if (pauseWake.action === "pause" && isGeneralInstance(this.ctx.fleetConfig, target)) {
+        await adapter.sendText(msg.chatId, GENERAL_PAUSE_ERROR, { threadId: msg.threadId });
+        return true;
+      }
       await adapter.sendText(msg.chatId, await this.runPauseWake(target, pauseWake.action), { threadId: msg.threadId });
       return true;
     }
@@ -501,6 +506,9 @@ export class TopicCommands {
   }
 
   async runPauseWake(instanceName: string, action: "pause" | "wake"): Promise<string> {
+    if (action === "pause" && isGeneralInstance(this.ctx.fleetConfig, instanceName)) {
+      return GENERAL_PAUSE_ERROR;
+    }
     try {
       const result = await this.ctx.changeInstancePauseState(instanceName, action);
       if (result === "not_idle") return t("pause.not_idle", instanceName);
