@@ -2410,8 +2410,23 @@ export class Daemon extends EventEmitter {
         this.logger.debug({ enterSettleMs }, "First delivery after ready — extending Enter settle delay");
       }
       await new Promise(r => setTimeout(r, enterSettleMs));
-      const enterAt = Date.now();
+      let enterAt = Date.now();
       await this.tmux!.sendSpecialKey("Enter");
+
+      // Kiro may expose its ready prompt before its final startup redraw. If
+      // that redraw swallows Enter, the redraw's own output makes the normal
+      // busy confirmation return true and suppresses the conditional retry.
+      // Kiro has no native input queue, so one defensive retry on the first
+      // post-ready delivery is safe and cannot mutate a queued turn.
+      if (
+        enterSettleMs > NORMAL_ENTER_SETTLE_MS
+        && this.backend?.requiresFirstDeliveryEnterRetry?.() === true
+      ) {
+        await new Promise(r => setTimeout(r, 1_000));
+        enterAt = Date.now();
+        await this.tmux!.sendSpecialKey("Enter");
+        this.logger.debug("First delivery after ready — sent defensive Enter retry");
+      }
       if (status) this.emit("message_delivered", status); // 👀
 
       // Busy queue-capable CLIs (codex) may accept paste without an idle→busy
