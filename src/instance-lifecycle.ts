@@ -183,6 +183,14 @@ export class InstanceLifecycle {
   readonly daemons = new Map<string, Daemon>();
   /** backend → last auth-error alert time, so one expiry sends one alert. */
   private lastAuthAlertAt = new Map<string, number>();
+  /**
+   * Minimum gap between MCP-revival auto-restarts of one instance. Kept here —
+   * not in the daemon — because each restart replaces the daemon object, which
+   * would take an in-daemon cooldown with it and allow a tight restart loop.
+   */
+  private static readonly MCP_AUTO_RESTART_COOLDOWN_MS = 15 * 60_000;
+  /** instanceName → time of the last MCP-revival auto-restart. */
+  private mcpAutoRestartAt = new Map<string, number>();
 
   constructor(private ctx: LifecycleContext) {}
 
@@ -308,18 +316,48 @@ export class InstanceLifecycle {
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
-    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number }) => {
+    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number; autoRestart?: boolean }) => {
       this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
       this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
       this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
       // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
-      // restore its tools — say so instead of implying self-healing. Deliberately
-      // NOT auto-restarting: that would interrupt whatever the agent is doing, and
-      // an instance whose CLI is otherwise fine may still be doing useful work.
+      // restore its tools. With mcp_auto_restart (default) the daemon requests an
+      // idle-gated restart itself — an immediate one would interrupt whatever the
+      // agent is doing. With it off, tell the operator what to run, as before.
       this.notifyIncident(name, "mcp_died",
         `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
-        + `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`);
+        + (data.autoRestart
+          ? "CLI 本身還在執行；等它閒置後會自動重啟以恢復工具（進行中的工作不會被打斷，session 會保留）。"
+          : `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`));
     }, this.ctx.logger, `daemon.mcp_died[${name}]`));
+
+    daemon.on("mcp_restart_requested", safeHandler((data: { name: string; trigger: string }) => {
+      // The daemon object dies with the restart it asks for, so the loop guard
+      // lives here: if the previous auto-restart was under the cooldown, the new
+      // MCP server evidently died right back (broken install, OOM pressure) and
+      // another attempt would just cycle the instance. Leave it to the operator —
+      // the mcp_died notification for this death has already gone out.
+      const last = this.mcpAutoRestartAt.get(name) ?? 0;
+      const now = Date.now();
+      if (now - last < InstanceLifecycle.MCP_AUTO_RESTART_COOLDOWN_MS) {
+        this.ctx.eventLog?.insert(name, "mcp_auto_restart_suppressed", { trigger: data.trigger });
+        this.ctx.logger.error({ name, trigger: data.trigger },
+          "MCP auto-restart suppressed — the previous attempt is still inside the cooldown, so the restart is not fixing it");
+        return;
+      }
+      this.mcpAutoRestartAt.set(name, now);
+      this.ctx.eventLog?.insert(name, "mcp_auto_restart", { trigger: data.trigger });
+      this.ctx.logger.warn({ name, trigger: data.trigger }, "Auto-restarting instance to revive its MCP server");
+      this.notifyIncident(name, "mcp_auto_restart",
+        `🔁 \`${name}\` 自動重啟中，以恢復 agend 工具`
+        + (data.trigger === "stale_timeout" ? "（等待閒置逾時，強制執行）" : "")
+        + "。session 會保留。");
+      // Plain restart — NOT freshStart: the session itself is healthy and must
+      // survive; the point is only to respawn the CLI so it brings up a new MCP
+      // server.
+      this.ctx.restartSingleInstance(name).catch(err =>
+        this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
+    }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
     daemon.on("interactive_prompt", safeHandler((data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
