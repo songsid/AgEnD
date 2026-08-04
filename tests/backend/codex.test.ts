@@ -132,6 +132,7 @@ describe("CodexBackend", () => {
       const shared = readFileSync(join(SHARED_CODEX_HOME, "config.toml"), "utf-8");
 
       expect(contentA).toContain("[mcp_servers.agend-codex-a]");
+      expect(contentA).toContain("tool_timeout_sec = 90");
       expect(contentA).toContain('AGEND_SOCKET_PATH = "/tmp/codex-a.sock"');
       expect(contentA).toContain('AGEND_DECISIONS = "decision-a"');
       expect(contentA).not.toContain("codex-b");

@@ -84,6 +84,7 @@ function renderMcpServer(name: string, entry: McpServerEntry, instanceName: stri
     `[mcp_servers.${mcpName}]`,
     `command = ${tomlString(entry.command)}`,
     `args = [${args}]`,
+    "tool_timeout_sec = 90",
     "",
     `[mcp_servers.${mcpName}.env]`,
     envLines,
