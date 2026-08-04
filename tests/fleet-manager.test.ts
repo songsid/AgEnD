@@ -50,6 +50,104 @@ describe("FleetManager", () => {
     });
   });
 
+  describe("deterministic adapter binding", () => {
+    const primaryConfig = {
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "PRIMARY_TOKEN",
+      group_id: "guild-primary",
+      access: { mode: "open" },
+    } as any;
+    const secondaryConfig = {
+      id: "discord-secondary",
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "SECONDARY_TOKEN",
+      group_id: "guild-secondary",
+      access: { mode: "open" },
+    } as any;
+
+    function addWorld(fm: FleetManager, config: any, adapter: any): void {
+      const id = config.id ?? config.type;
+      fm.worlds.set(id, {
+        id,
+        adapter,
+        channelConfig: config,
+        groupId: String(config.group_id ?? ""),
+      } as any);
+    }
+
+    it("uses channels[0] for an unbound fleet instance regardless of world startup order", () => {
+      const fm = new FleetManager(tmpDir);
+      const primary = { id: "discord-primary" } as any;
+      const secondary = { id: "discord-secondary" } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {
+          implicit: { working_directory: tmpDir },
+          explicit: { working_directory: tmpDir, channel_id: "discord-secondary" },
+        },
+      } as any;
+      fm.adapter = primary;
+
+      // Secondary wins the async insertion race. Configuration order must still
+      // define the primary identity.
+      addWorld(fm, secondaryConfig, secondary);
+      addWorld(fm, primaryConfig, primary);
+
+      expect(fm.primaryWorld?.id).toBe("discord-primary");
+      expect(fm.getAdapterForInstance("implicit")).toBe(primary);
+      expect(fm.getWorldForInstance("implicit")?.id).toBe("discord-primary");
+      expect(fm.getGroupIdForInstance("implicit")).toBe("guild-primary");
+      expect(fm.getAdapterForInstance("explicit")).toBe(secondary);
+
+      // A sibling bot observing the same guild must not claim either identity.
+      fm.bindInstanceAdapter("implicit", "discord-secondary", true);
+      fm.bindInstanceAdapter("explicit", "discord-primary", true);
+      expect(fm.getAdapterForInstance("implicit")).toBe(primary);
+      expect(fm.getAdapterForInstance("explicit")).toBe(secondary);
+
+      // Reconnect/replacement does not depend on insertion order or prior object identity.
+      const reconnectedPrimary = { id: "discord-primary-reconnected" } as any;
+      fm.worlds.delete("discord-primary");
+      addWorld(fm, primaryConfig, reconnectedPrimary);
+      fm.adapter = reconnectedPrimary;
+      expect(fm.getAdapterForInstance("implicit")).toBe(reconnectedPrimary);
+      expect(fm.primaryWorld?.id).toBe("discord-primary");
+    });
+
+    it("keeps ClassicBot on its persisted adapter and defaults legacy entries to channels[0]", () => {
+      const fm = new FleetManager(tmpDir);
+      const primary = { id: "discord-primary", setOpenChannels: vi.fn() } as any;
+      const secondary = { id: "discord-secondary", setOpenChannels: vi.fn() } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {},
+      } as any;
+      fm.adapter = primary;
+      addWorld(fm, secondaryConfig, secondary);
+      addWorld(fm, primaryConfig, primary);
+
+      const classic = new ClassicChannelManager(tmpDir, fm.logger);
+      classic.setPrimaryAdapterId("discord-primary");
+      classic.register("channel-primary", undefined, "classic-primary", "Primary", "owner");
+      classic.register("channel-secondary", "discord-secondary", "classic-secondary", "Secondary", "owner");
+      fm.classicChannels = classic;
+      (fm as any).reregisterClassicChannels();
+
+      expect(fm.getAdapterForInstance("classic-primary")).toBe(primary);
+      expect(fm.getAdapterForInstance("classic-secondary")).toBe(secondary);
+
+      fm.bindInstanceAdapter("classic-primary", "discord-secondary", true);
+      fm.bindInstanceAdapter("classic-secondary", "discord-primary", true);
+      expect(fm.getAdapterForInstance("classic-primary")).toBe(primary);
+      expect(fm.getAdapterForInstance("classic-secondary")).toBe(secondary);
+    });
+  });
+
   describe("IPC connection single-flight and orphan cleanup", () => {
     it("coalesces concurrent connect attempts into one live client", async () => {
       const fm = new FleetManager(tmpDir);
