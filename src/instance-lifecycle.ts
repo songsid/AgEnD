@@ -348,6 +348,9 @@ export class InstanceLifecycle {
       this.mcpAutoRestartAt.set(name, now);
       this.ctx.eventLog?.insert(name, "mcp_auto_restart", { trigger: data.trigger });
       this.ctx.logger.warn({ name, trigger: data.trigger }, "Auto-restarting instance to revive its MCP server");
+      // The restart ends whatever turn the button belonged to; a click on the
+      // leftover would target the new CLI. Retire it before tearing down.
+      this.ctx.clearCancelButton(name);
       this.notifyIncident(name, "mcp_auto_restart",
         `🔁 \`${name}\` 自動重啟中，以恢復 agend 工具`
         + (data.trigger === "stale_timeout" ? "（等待閒置逾時，強制執行）" : "")
