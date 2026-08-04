@@ -64,6 +64,7 @@ import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -817,7 +818,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const victims = selectLruEvictions(warm, cap, {
       exclude,
       isEvicting: name => this.warmCapEvicting.has(name),
-      isGeneral: name => this.fleetConfig?.instances[name]?.general_topic === true,
+      isGeneral: name => isGeneralInstance(this.fleetConfig, name),
       isIdle: name => this.getInstanceExecutionState(name) === "idle",
       lastInboundAt: name => readLastInboundAt(this.getInstanceDir(name)) ?? 0,
     });
@@ -1006,6 +1007,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await this.lifecycle.wake(name, 30_000);
       this.enforceWarmCap(name); // manual wake still respects the fleet warm cap
       return "awake";
+    }
+    if (isGeneralInstance(this.fleetConfig, name)) {
+      throw new Error(GENERAL_PAUSE_ERROR);
     }
     await this.lifecycle.pause(name);
     return this.lifecycle.isPaused(name) ? "paused" : "not_idle";

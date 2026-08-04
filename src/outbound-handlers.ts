@@ -8,6 +8,7 @@ import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycle.js";
 import type { EventLog } from "./event-log.js";
 import type { z } from "zod";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
   BroadcastArgs,
   CreateInstanceArgs,
@@ -525,6 +526,10 @@ const restartInstance: Handler = async (ctx, rawArgs, respond) => {
 const pauseInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(PauseInstanceArgs, rawArgs, "pause_instance");
   if (!v.ok) { respond(null, v.error); return; }
+  if (isGeneralInstance(ctx.fleetConfig, v.data.name)) {
+    respond(null, GENERAL_PAUSE_ERROR);
+    return;
+  }
   try {
     await ctx.lifecycle.pause(v.data.name);
     respond({ success: true, status: "paused" });

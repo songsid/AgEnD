@@ -92,6 +92,23 @@ describe("Daemon auto-pause lifecycle", () => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
 
+  it("keeps General exempt even when auto_pause_after is configured", () => {
+    const instanceDir = join(tmpdir(), `agend-general-no-auto-pause-${process.pid}-${Date.now()}`);
+    dirs.push(instanceDir);
+    mkdirSync(instanceDir, { recursive: true });
+    const daemon = new Daemon("general-discord", {
+      working_directory: "/tmp",
+      general_topic: true,
+      auto_pause_after: 1,
+      restart_policy: { max_retries: 1, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "error",
+    }, instanceDir, true, undefined, undefined, rootLogger);
+
+    expect((daemon as any).autoPauseController.observe("idle", Date.now() + 24 * 60 * 60_000))
+      .toBe(false);
+  });
+
   it("stops the pane process, preserves the window, and wakes before reuse", async () => {
     const session = `agend-auto-pause-${process.pid}-${Date.now()}`;
     const instanceDir = join(tmpdir(), session);

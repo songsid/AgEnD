@@ -67,6 +67,20 @@ describe("pause/wake topic commands", () => {
     expect(changeInstancePauseState).toHaveBeenCalledWith("worker", "wake");
   });
 
+  it("refuses to pause General even when explicitly targeted", async () => {
+    const { commands, changeInstancePauseState, sendText } = setup();
+
+    await commands.handleInstanceCommand(message("/pause general"), "general");
+
+    expect(changeInstancePauseState).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(
+      "fleet-chat",
+      "General cannot be paused",
+      { threadId: "42" },
+    );
+    expect(await commands.runPauseWake("general", "pause")).toBe("General cannot be paused");
+  });
+
   it("reports a busy instance instead of claiming it paused", async () => {
     const { commands, changeInstancePauseState } = setup();
     changeInstancePauseState.mockResolvedValue("not_idle");
