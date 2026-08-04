@@ -89,7 +89,7 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code", idle: boolean, pane = "") {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli", idle: boolean, pane = "") {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
@@ -228,6 +228,44 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(control.waitUntilIdle).toHaveBeenCalledOnce();
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
       expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("always retries the first post-restart Enter for Kiro before trusting redraw output", async () => {
+    const { backend, daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true);
+    // Simulate the regression: Kiro's final startup redraw makes the pane look
+    // busy even though it swallowed the first Enter. The ordinary conditional
+    // confirmation would therefore return true and never send the retry.
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+    (daemon as any).firstDeliveryDelay = { consume: () => 501 };
+
+    try {
+      expect(backend.supportsQueuedInput?.()).toBeUndefined();
+      expect(backend.requiresFirstDeliveryEnterRetry?.()).toBe(true);
+
+      const result = await (daemon as any).deliverMessage("first message after restart");
+
+      expect(result).toBe(true);
+      expect(tmux.pasteBuffer).toHaveBeenCalledOnce();
+      expect(tmux.sendSpecialKey.mock.calls.filter((call: string[]) => call[0] === "Enter")).toHaveLength(2);
+      expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not add the Kiro-only retry to later deliveries", async () => {
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true);
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+    (daemon as any).firstDeliveryDelay = { consume: () => 500 };
+
+    try {
+      expect(await (daemon as any).deliverMessage("later message")).toBe(true);
+      expect(tmux.sendSpecialKey.mock.calls.filter((call: string[]) => call[0] === "Enter")).toHaveLength(1);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }
