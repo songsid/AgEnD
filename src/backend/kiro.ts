@@ -12,6 +12,15 @@ export class KiroBackend implements CliBackend {
     this.binaryPath = resolveBinary("kiro-cli");
   }
 
+  requiresFirstDeliveryEnterRetry(): boolean {
+    // Kiro has no native Enter-submitted input queue. Immediately after restart
+    // its final TUI redraw can swallow the first Enter while still producing
+    // output that looks busy, so observation alone cannot decide whether the
+    // message was submitted. A second bare Enter is safe for Kiro and restores
+    // the long-standing first-delivery protection.
+    return true;
+  }
+
   buildCommand(config: CliBackendConfig): string {
     const ui = config.kiroUi ?? "legacy";
     let cmd = `${this.binaryPath} chat`;
