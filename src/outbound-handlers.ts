@@ -77,6 +77,8 @@ export interface OutboundContext {
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  /** Effective process state used to annotate cross-instance delivery results. */
+  getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   resolveInstanceModel?(name: string): {
     model: string;
     source: "instance" | "fleet-default" | "classic" | "cli-default" | "unresolved";
@@ -130,6 +132,24 @@ async function deliverToInstance(
   const ipc = ctx.instanceIpcClients.get(instanceName);
   if (!ipc) throw new Error(`Instance '${instanceName}' is not connected`);
   ipc.send(payload);
+}
+
+type TargetState = "running" | "paused" | "stopped" | "crashed";
+
+/** Resolve state before delivery so a paused wake is visible to the sender. */
+function targetState(ctx: OutboundContext, name: string): TargetState {
+  const daemon = ctx.lifecycle.daemons.get(name) as {
+    isCrashLoop?: boolean;
+    isErrorState?: boolean;
+  } | undefined;
+  // A daemon can still have a live pid while its crash-loop guard has disabled
+  // respawn. Surface that as crashed instead of promising a delivery that the
+  // pane can never process.
+  if (daemon?.isCrashLoop) return "crashed";
+  if (ctx.getInstanceStatus) return ctx.getInstanceStatus(name);
+  if (ctx.lifecycle.isPaused?.(name)) return "paused";
+  if (daemon || ctx.instanceIpcClients.has(name)) return "running";
+  return "stopped";
 }
 
 /** Cross-instance delivery retries: same shape the scheduler already uses. */
@@ -227,13 +247,23 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     }
   }
 
-  if (!targetIpc) {
-    const existsInConfig = targetName in (ctx.fleetConfig?.instances ?? {});
-    if (existsInConfig) {
-      respond(null, `Instance '${targetName}' is stopped. Use start_instance('${targetName}') to start it first.`);
-    } else {
-      respond(null, `Instance or session not found: ${targetName}`);
-    }
+  const existsInConfig = targetName in (ctx.fleetConfig?.instances ?? {})
+    || targetInstanceName in (ctx.fleetConfig?.instances ?? {});
+  if (!existsInConfig && !targetIpc) {
+    respond(null, `Instance or session not found: ${targetName}`);
+    return;
+  }
+
+  const state = targetState(ctx, targetInstanceName);
+  // Paused instances may have no live IPC while their persisted window is being
+  // woken. The FleetManager facade can still start them, so let that path run.
+  const canWakePersisted = state === "paused" && !!ctx.deliverToInstance;
+  if (state === "crashed") {
+    respond(null, `Instance '${targetName}' is crashed (target_state=crashed). Restart it before sending.`);
+    return;
+  }
+  if (state === "stopped" || (!targetIpc && !canWakePersisted)) {
+    respond(null, `Instance '${targetName}' is stopped (target_state=stopped). Use start_instance('${targetName}') to start it first.`);
     return;
   }
 
@@ -335,7 +365,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
   ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 500)}${(message ?? "").length > 500 ? " […]" : ""}`);
-  respond({ sent: true, queued: true, target: targetName, correlation_id: correlationId,
+  respond({ sent: true, queued: true, target: targetName, target_state: state,
+    ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
     ...(ctx.lifecycle.daemons.get(targetInstanceName)?.isErrorState && {
       warning: (() => {
         const daemon = ctx.lifecycle.daemons.get(targetInstanceName)!;
