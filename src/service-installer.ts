@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { execSync, spawnSync } from "node:child_process";
+import { execFileSync, execSync, spawnSync } from "node:child_process";
 import ejs from "ejs";
 const { render } = ejs;
 import { homedir, platform } from "node:os";
@@ -196,6 +196,37 @@ export function getSystemdServiceState(label: string, user = true): ServiceState
   const args = [...(user ? ["--user"] : []), "is-active", label];
   const result = spawnSync("systemctl", args, { encoding: "utf8", timeout: 5000 });
   return classifySystemdServiceState(result);
+}
+
+/**
+ * `systemctl restart` is synchronous for Type=notify units: it returns only
+ * after the replacement process sends READY=1. A large fleet can legitimately
+ * spend minutes stopping and starting its windows, so the old generic 15-second
+ * CLI timeout reported a failure while systemd kept the restart job running.
+ */
+export const SYSTEMD_RESTART_TIMEOUT_MS = 5 * 60_000;
+
+type SystemctlRunner = (
+  file: string,
+  args: string[],
+  options: { stdio: "inherit"; timeout: number },
+) => unknown;
+
+export function restartSystemdService(
+  label: string,
+  user = true,
+  run: SystemctlRunner = execFileSync,
+): boolean {
+  try {
+    run(
+      "systemctl",
+      [...(user ? ["--user"] : []), "restart", label],
+      { stdio: "inherit", timeout: SYSTEMD_RESTART_TIMEOUT_MS },
+    );
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function getServicePath(): string | null {

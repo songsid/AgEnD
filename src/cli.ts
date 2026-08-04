@@ -33,6 +33,7 @@ import {
 } from "./update-check.js";
 import { clearUpdateMarker, markUpdateInProgress } from "./update-marker.js";
 import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
+import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -1280,7 +1281,14 @@ program
     // restart` (new binary) does the 4-environment service detection (system
     // systemd → user systemd → launchd → detached pid).
     console.log("  Restarting fleet...");
-    const restartResult = spawnSync(agendPath, ["restart"], { encoding: "utf-8", timeout: 30000, stdio: "inherit" });
+    // `agend restart` may synchronously wait for a Type=notify service to finish
+    // a multi-minute stop/start and send READY=1. Keep this parent wrapper alive
+    // longer than the restart command's own bounded wait.
+    const restartResult = spawnSync(agendPath, ["restart"], {
+      encoding: "utf-8",
+      timeout: SYSTEMD_RESTART_TIMEOUT_MS + 60_000,
+      stdio: "inherit",
+    });
     if (!reportUpdateRestart(restartResult.status)) {
       // No new fleet is coming up to clear the marker — do it here, or the next
       // 15 minutes of genuine crashes would go unreported.
@@ -1419,7 +1427,13 @@ program
     // service's own HOME, which may differ from what this command resolves (sudo,
     // AGEND_HOME) — an absent pid file does NOT mean it's stopped. Ask the service
     // manager first. This is the canonical restart the `update` flow spawns.
-    const { detectPlatform, getServicePath, getSystemServicePath, getSystemdServiceState } = await import("./service-installer.js");
+    const {
+      detectPlatform,
+      getServicePath,
+      getSystemServicePath,
+      getSystemdServiceState,
+      restartSystemdService,
+    } = await import("./service-installer.js");
     const { spawn, spawnSync } = await import("node:child_process");
     const plat = detectPlatform();
     const pidPath = join(DATA_DIR, "fleet.pid");
@@ -1440,7 +1454,7 @@ program
     }
     if (systemServiceInstalled && (systemState === "running" || systemState === "stopped")) {
       run("systemctl daemon-reload");
-      if (run("systemctl restart agend")) { console.log("Service restarted (system)."); return; }
+      if (restartSystemdService("agend", false)) { console.log("Service restarted (system)."); return; }
       // Service exists → systemd will auto-retry via Restart=on-failure. Don't spawn fallback.
       console.log("  ⚠ systemd restart reported failure, but the service exists — systemd will auto-retry.");
       console.log("  Check: systemctl status agend");
@@ -1460,7 +1474,7 @@ program
     if (userServiceInstalled && (userState === "running" || userState === "stopped")) {
       run("systemctl --user daemon-reload");
       try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
-      if (run("systemctl --user restart com.agend.fleet")) { console.log("Service restarted (user)."); return; }
+      if (restartSystemdService("com.agend.fleet", true)) { console.log("Service restarted (user)."); return; }
       // Service exists → systemd will auto-retry. Don't fall through to detached spawn.
       console.log("  ⚠ systemd user service restart reported failure, but the service exists — systemd will auto-retry.");
       console.log("  Check: systemctl --user status com.agend.fleet");
