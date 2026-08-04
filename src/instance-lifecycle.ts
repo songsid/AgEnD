@@ -18,6 +18,7 @@ import type { FleetInstructionsParams } from "./instructions.js";
 import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } from "./pause-marker.js";
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
+import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -543,6 +544,11 @@ export class InstanceLifecycle {
   }
 
   async pause(name: string): Promise<void> {
+    // Final backstop shared by slash, MCP, Settings, warm-cap, and any future
+    // caller. General is the coordinator and must remain resident to route work.
+    if (isGeneralInstance(this.ctx.fleetConfig, name)) {
+      throw new Error(GENERAL_PAUSE_ERROR);
+    }
     const daemon = this.daemons.get(name);
     if (!daemon) {
       if (hasPausedMarker(this.ctx.getInstanceDir(name))) return;
