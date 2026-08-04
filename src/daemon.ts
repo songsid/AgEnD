@@ -652,6 +652,10 @@ export class Daemon extends EventEmitter {
     return this.errorWaitingForRecovery || (this.healthCheckPaused && !this.isPaused) || Daemon.tmuxServerPaused;
   }
   get isPaused(): boolean { return this.pauseWakeState !== "active"; }
+  /** Current CLI process state for status surfaces and recovery commands. */
+  getProcessStatus(): "running" | "crashed" | "stopped" {
+    return this.processStatus;
+  }
   get lastPausedAt(): number | null { return this.autoPauseController.lastPausedAt; }
   private getPauseWakeState(): typeof this.pauseWakeState { return this.pauseWakeState; }
   /** Whether this instance is in a crash loop (3+ consecutive crashes). */

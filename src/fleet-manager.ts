@@ -702,7 +702,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed" {
     if (this.lifecycle.isPaused(name)) return "paused";
+    const daemon = this.lifecycle.daemons.get(name) as { getProcessStatus?: () => "running" | "crashed" | "stopped" } | undefined;
     const processStatus = this.instanceProcessStatus.get(name);
+    // IPC can be disconnected during a respawn, so the event which announces
+    // the new live pane may be missed.  The in-process daemon is authoritative
+    // in that case; do not leave a stale `crashed` cache masking an instance
+    // that has already recovered and can answer messages.
+    const daemonStatus = daemon?.getProcessStatus?.();
+    if (daemonStatus === "running") {
+      if (processStatus) this.instanceProcessStatus.delete(name);
+      // A recovered in-process daemon is also the authority for clearing a
+      // marker left by a crash-loop/reconnect race.  This keeps standalone
+      // `agend ls` from seeing the old marker after the next API outage.
+      try { unlinkSync(join(this.getInstanceDir(name), "crash-state.json")); } catch { /* absent */ }
+      return "running";
+    }
     if (processStatus) return processStatus;
     const pidPath = join(this.getInstanceDir(name), "daemon.pid");
     if (!existsSync(pidPath)) return "stopped";
@@ -785,6 +799,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
     if (status === "running") {
       this.instanceProcessStatus.delete(name);
+      // A prior crash-loop marker is one-shot.  Successful respawn is the
+      // authoritative recovery signal even when the marker outlived an IPC
+      // disconnect and was not consumed by a new Daemon constructor.
+      try { unlinkSync(join(this.getInstanceDir(name), "crash-state.json")); } catch { /* absent */ }
       return;
     }
     if (status !== "crashed" && status !== "stopped") return;
@@ -1040,9 +1058,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     config: InstanceConfig,
     topicMode: boolean,
     kind: "fleet-topic" | "classic" = "fleet-topic",
+    /**
+     * Explicit starts (CLI/API) may resume a paused or failed daemon.  Startup
+     * and reconcile calls leave this false so a persisted pause remains paused
+     * across a fleet restart.
+     */
+    resumePaused = false,
   ): Promise<void> {
+    if (resumePaused && this.lifecycle.isPaused(name)) {
+      await this.lifecycle.wake(name, 30_000);
+      // A successful wake clears the persisted pause marker and produces a
+      // fresh instance_state snapshot.  Drop any stale process error left by a
+      // pre-pause crash so /api/fleet and `agend ls` converge on running.
+      this.instanceProcessStatus.delete(name);
+      return;
+    }
     if (this.lifecycle.isPaused(name)) {
       this.logger.info({ name }, "Persisted paused instance — skipping startup");
+      return;
+    }
+    if (this.lifecycle.daemons.has(name)) {
+      // A crash-loop daemon remains in the lifecycle map so its health monitor
+      // can expose the failure.  The old start path treated that object as
+      // already running and merely deleted the process-status cache, leaving a
+      // dead pane (and crash marker) behind.  An explicit start is a recovery
+      // request: tear down the failed daemon and build a fresh one.
+      if (resumePaused) {
+        const status = this.getInstanceStatus(name);
+        if (status === "crashed" || status === "stopped") {
+          await this.restartSingleInstance(name);
+          return;
+        }
+      }
+      this.logger.info({ name }, "Instance already running, skipping");
       return;
     }
     if (config.general_topic) {
@@ -1055,12 +1103,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       this.ensureGeneralInstructions(config.working_directory, config.backend);
     }
-    this.instanceProcessStatus.delete(name);
     await this.lifecycle.start(name, config, topicMode, {
       kind,
       backend: config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
       model: this.resolveInstanceModel(name).display,
     });
+    // Only clear a stale process status after a real start succeeded.  Clearing
+    // it before lifecycle.start() can turn a crash-loop daemon's dead pane into
+    // a falsely running instance when lifecycle.start() returns early.
+    this.instanceProcessStatus.delete(name);
+    try { unlinkSync(join(this.getInstanceDir(name), "crash-state.json")); } catch { /* consumed or absent */ }
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
   }
@@ -7097,7 +7149,7 @@ When users create specialized instances, suggest these configurations:
         (async () => {
           try {
             const topicMode = this.fleetConfig?.channel?.mode === "topic";
-            await this.startInstance(name, config, topicMode ?? false);
+            await this.startInstance(name, config, topicMode ?? false, "fleet-topic", true);
             this.emitSseEvent("status", this.getUiStatus());
             res.writeHead(200);
             res.end(JSON.stringify({ ok: true }));

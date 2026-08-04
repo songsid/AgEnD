@@ -200,7 +200,10 @@ fleet
         process.exit(1);
       }
       const topicMode = config.channel?.mode === "topic";
-      await fm.startInstance(instance, inst, topicMode);
+      // An explicit `agend fleet start <name>` is a resume request when the
+      // instance was auto/manual-paused.  Fleet startup itself still leaves
+      // persisted pauses alone.
+      await fm.startInstance(instance, inst, topicMode, "fleet-topic", true);
     } else {
       if (process.env.AGEND_HOME) {
         console.log(`  Using AGEND_HOME: ${process.env.AGEND_HOME}`);
