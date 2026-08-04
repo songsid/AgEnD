@@ -146,6 +146,40 @@ describe("FleetManager", () => {
       expect(fm.getAdapterForInstance("classic-primary")).toBe(primary);
       expect(fm.getAdapterForInstance("classic-secondary")).toBe(secondary);
     });
+
+    it("warns only for an unbound general in a multi-channel fleet", () => {
+      const fm = new FleetManager(tmpDir);
+      const warn = vi.spyOn(fm.logger, "warn");
+      const base = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {
+          ambiguous: { working_directory: tmpDir, general_topic: true },
+          explicit: { working_directory: tmpDir, general_topic: true, channel_id: "discord-secondary" },
+          worker: { working_directory: tmpDir },
+        },
+      } as any;
+
+      (fm as any).warnUnboundGeneralChannelIds(base);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          instance: "ambiguous",
+          defaultAdapter: "discord-primary",
+          availableAdapters: ["discord-primary", "discord-secondary"],
+        }),
+        expect.stringContaining("Set channel_id explicitly"),
+      );
+
+      warn.mockClear();
+      (fm as any).warnUnboundGeneralChannelIds({
+        ...base,
+        channels: [primaryConfig],
+        instances: { ambiguous: { working_directory: tmpDir, general_topic: true } },
+      });
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 
   describe("IPC connection single-flight and orphan cleanup", () => {
