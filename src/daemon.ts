@@ -2779,7 +2779,11 @@ export class Daemon extends EventEmitter {
       }
       if (this.lastChatId) {
         args.chat_id = this.lastChatId;
-        if (tool === "reply") args.thread_id = this.lastThreadId;
+        // Discord messages live in the channel/thread id, not the guild id in
+        // chat_id. This is required for react/edit as well as reply. In
+        // particular, general_topic deliberately has no configured reply thread,
+        // so FleetManager cannot reconstruct this address from fleet.yaml.
+        if (this.lastThreadId) args.thread_id = this.lastThreadId;
       }
     }
 
@@ -2792,7 +2796,16 @@ export class Daemon extends EventEmitter {
       // from prematurely resolving their pending requests when they receive the broadcast.
       const fleetReqId = `tool_${requestId}`;
       const outboundKey = fleetReqId;
-      this.ipcServer?.broadcast({ type: "fleet_outbound", tool, args, fleetRequestId: fleetReqId });
+      this.ipcServer?.broadcast({
+        type: "fleet_outbound",
+        tool,
+        args,
+        fleetRequestId: fleetReqId,
+        // Preserve the exact adapter world that supplied the chat context. An
+        // instance binding is only a fallback: persisted/runtime context can be
+        // from a secondary world, and message ids are not portable across bots.
+        adapterId: this.lastAdapterId,
+      });
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(outboundKey);
         respond(null, `Fleet outbound timed out after ${daemonBudgetMs(tool) / 1000}s`);
