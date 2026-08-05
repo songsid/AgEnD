@@ -59,6 +59,8 @@ export interface FleetContext {
   removeInstance(name: string): Promise<void>;
   getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */
+  getDashboardAccess?(): { ready: boolean; token: string | null };
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**

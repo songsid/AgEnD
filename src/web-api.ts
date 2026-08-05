@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { z } from "zod";
+import { WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -190,7 +191,7 @@ export function handleWebRequest(
   if (path.startsWith("/ui")) {
     const token = url.searchParams.get("token");
     if (token !== ctx.webToken) {
-      json(res, 401, { error: "Unauthorized" });
+      json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }
   } else {
