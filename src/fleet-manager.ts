@@ -1205,6 +1205,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     entries: [string, InstanceConfig][],
     topicMode: boolean,
   ): Promise<void> {
+    // Persisted pauses are intentionally preserved across fleet restarts. Filter
+    // them before grouping/staggering: startInstance() retains its own guard as
+    // a final backstop, but putting a no-op entry in this queue still consumes a
+    // full stagger slot for every distinct working directory.
+    const runnableEntries = entries.filter(([name]) => !this.lifecycle.isPaused(name));
+    const pausedCount = entries.length - runnableEntries.length;
+    if (pausedCount > 0) {
+      this.logger.info({ pausedCount }, "Paused instances excluded from startup queue");
+    }
+    if (runnableEntries.length === 0) return;
+
     const raw = this.fleetConfig?.defaults?.startup;
     const explicitConcurrency = raw?.concurrency;
     const staggerMs = Math.max(0, Math.min(30_000, raw?.stagger_delay_ms ?? 500));
@@ -1219,11 +1230,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else {
       const freeMemMB = Math.round(freemem() / (1024 * 1024));
       concurrency = Math.max(2, Math.min(10, Math.floor(freeMemMB / ESTIMATED_MB_PER_INSTANCE)));
-      this.logger.info({ concurrency, freeMemMB: freeMemMB, totalInstances: entries.length }, "Adaptive startup concurrency");
+      this.logger.info({ concurrency, freeMemMB: freeMemMB, totalInstances: runnableEntries.length }, "Adaptive startup concurrency");
     }
 
     const byWorkDir = new Map<string, [string, InstanceConfig][]>();
-    for (const [name, config] of entries) {
+    for (const [name, config] of runnableEntries) {
       const dir = config.working_directory;
       if (!byWorkDir.has(dir)) byWorkDir.set(dir, []);
       byWorkDir.get(dir)!.push([name, config]);
