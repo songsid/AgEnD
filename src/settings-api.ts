@@ -333,7 +333,10 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["auto_pause_after", "hang_detector", "agent_mode", "tool_set", "log_level", "lightweight", "model_failover", "display_name"]);
+  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "log_level", "lightweight", "model_failover", "display_name"]);
+  const removesInstanceOverride = (key: string, value: unknown): boolean =>
+    nullableInstanceOverrides.has(key)
+    && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));
   const rawInstancePatches = (name: string, patch: Record<string, unknown>): RawConfigPatch[] => {
     const changes: RawConfigPatch[] = [];
     for (const [key, value] of Object.entries(patch)) {
@@ -342,7 +345,7 @@ export function handleSettingsRequest(
           changes.push({ path: ["instances", name, key, nestedKey], value: nestedValue, remove: nestedValue === null });
         }
       } else {
-        changes.push({ path: ["instances", name, key], value, remove: value === null && nullableInstanceOverrides.has(key) });
+        changes.push({ path: ["instances", name, key], value, remove: removesInstanceOverride(key, value) });
       }
     }
     return changes;
@@ -365,7 +368,7 @@ export function handleSettingsRequest(
     // JSON has no `undefined`; null is the PATCH sentinel for removing an
     // optional override so the instance inherits the fleet default again.
     for (const key of nullableInstanceOverrides) {
-      if (patch[key] === null) delete mergedInst[key];
+      if (removesInstanceOverride(key, patch[key])) delete mergedInst[key];
     }
     const before = validateFleetConfig(cfg!);
     const after = validateFleetConfig({ ...cfg!, instances: { ...cfg!.instances, [name]: mergedInst } });
