@@ -1295,15 +1295,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private runnableStartupCount(fleet: FleetConfig, includeClassic: boolean): number {
-    const names = new Set(Object.keys(fleet.instances));
-    if (includeClassic) {
-      for (const channel of this.classicChannels?.getAll() ?? []) names.add(channel.instanceName);
-    }
+    const names = this.configuredStartupInstanceNames(fleet, includeClassic);
     let count = 0;
     for (const name of names) {
       if (!this.lifecycle.isPaused(name)) count++;
     }
     return count;
+  }
+
+  private configuredStartupInstanceNames(fleet: FleetConfig, includeClassic: boolean): string[] {
+    const names = new Set(Object.keys(fleet.instances));
+    if (includeClassic) {
+      for (const channel of this.classicChannels?.getAll() ?? []) names.add(channel.instanceName);
+    }
+    return [...names];
   }
 
   private restartProgressTarget(): RestartProgressTarget | null {
@@ -1880,14 +1885,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.startStatuslineWatcher(name);
       }
 
-      await progressStart;
-      const progressCompleted = await startupProgress.finish();
-
       // Notify General topic that fleet is up
-      const classicCount = this.classicChannels?.getAll().length ?? 0;
-      const total = Object.keys(fleet.instances).length + classicCount;
-      const started = this.daemons.size;
-      const allNotRunning = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
+      const configuredNames = this.configuredStartupInstanceNames(fleet, topicMode);
+      const total = configuredNames.length;
+      const started = configuredNames.filter(name => this.daemons.has(name)).length;
+      const allNotRunning = configuredNames.filter(name => !this.daemons.has(name));
       const pausedNames = allNotRunning.filter(n => this.lifecycle.isPaused(n));
       const failedNames = allNotRunning.filter(n => !this.lifecycle.isPaused(n));
       const generalName = this.findGeneralInstance();
@@ -1895,6 +1897,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const { createRequire } = await import("node:module");
       const _require = createRequire(import.meta.url);
       const agendVersion = _require("../package.json").version ?? "unknown";
+      await progressStart;
+      const progressCompleted = await startupProgress.finish({
+        running: started,
+        total,
+        version: agendVersion,
+        pausedNames,
+        failedNames,
+      });
       if (!progressCompleted && this.adapter && fleet.channel?.group_id) {
         let text: string;
         if (failedNames.length === 0 && pausedNames.length === 0) {
@@ -7005,16 +7015,23 @@ When users create specialized instances, suggest these configurations:
     }
 
     this.logger.info("Graceful restart complete");
-    const progressCompleted = await restartProgress.finish();
+    const configuredNames = this.configuredStartupInstanceNames(fleet, topicMode);
+    const total = configuredNames.length;
+    const started = configuredNames.filter(name => this.daemons.has(name)).length;
+    const allNotRunning2 = configuredNames.filter(name => !this.daemons.has(name));
+    const pausedNames2 = allNotRunning2.filter(n => this.lifecycle.isPaused(n));
+    const failedNames = allNotRunning2.filter(n => !this.lifecycle.isPaused(n));
+    const { createRequire } = await import("node:module");
+    const _require2 = createRequire(import.meta.url);
+    const agendVersion2 = _require2("../package.json").version ?? "unknown";
+    const progressCompleted = await restartProgress.finish({
+      running: started,
+      total,
+      version: agendVersion2,
+      pausedNames: pausedNames2,
+      failedNames,
+    });
     if (groupId && this.adapter) {
-      const total = Object.keys(fleet.instances).length;
-      const started = this.daemons.size;
-      const allNotRunning2 = Object.keys(fleet.instances).filter(n => !this.daemons.has(n));
-      const pausedNames2 = allNotRunning2.filter(n => this.lifecycle.isPaused(n));
-      const failedNames = allNotRunning2.filter(n => !this.lifecycle.isPaused(n));
-      const { createRequire } = await import("node:module");
-      const _require2 = createRequire(import.meta.url);
-      const agendVersion2 = _require2("../package.json").version ?? "unknown";
       let restartText: string;
       if (failedNames.length === 0 && pausedNames2.length === 0) {
         restartText = t("fleet.ready", started, total, agendVersion2);
