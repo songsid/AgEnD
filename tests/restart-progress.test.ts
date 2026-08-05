@@ -49,11 +49,21 @@ describe("RestartProgress", () => {
 
     progress.markReady();
     vi.setSystemTime(75_000);
-    expect(await progress.finish()).toBe(true);
+    expect(await progress.finish({
+      running: 6,
+      total: 9,
+      version: "2.1.2-beta.50",
+      pausedNames: ["paused-one", "paused-two"],
+      failedNames: ["failed-one"],
+    })).toBe(true);
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
       "progress-1",
-      "✅ Fleet ready — 6/6 instances started (1m 15s)",
+      [
+        "✅ Fleet ready — 6/9 instances running (1m 15s) · v2.1.2-beta.50",
+        "⏸ Paused (2): paused-one, paused-two",
+        "⚠️ Failed (1): failed-one",
+      ].join("\n"),
       "general",
     );
     expect(sendText).toHaveBeenCalledTimes(1);
