@@ -147,6 +147,134 @@ describe("FleetManager", () => {
       expect(fm.getAdapterForInstance("classic-secondary")).toBe(secondary);
     });
 
+    it("canonicalizes fleet inbound reply context even when the secondary adapter wins delivery", async () => {
+      const fm = new FleetManager(tmpDir);
+      const primary = {
+        id: "discord-primary",
+        type: "discord",
+        react: vi.fn().mockResolvedValue(undefined),
+        sendText: vi.fn().mockResolvedValue({ messageId: "reply-1", chatId: "guild-primary" }),
+      } as any;
+      const secondary = {
+        id: "discord-secondary",
+        type: "discord",
+        react: vi.fn().mockResolvedValue(undefined),
+        sendText: vi.fn().mockResolvedValue({ messageId: "wrong-reply", chatId: "guild-secondary" }),
+      } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {
+          implicit: { working_directory: tmpDir, topic_id: "topic-1" },
+        },
+      } as any;
+      fm.adapter = primary;
+      addWorld(fm, secondaryConfig, secondary);
+      addWorld(fm, primaryConfig, primary);
+      fm.routing.rebuild(fm.fleetConfig);
+
+      vi.spyOn((fm as any).topicCommands, "handleInstanceCommand").mockResolvedValue(false);
+      vi.spyOn((fm as any).topicCommands, "handleGeneralCommand").mockResolvedValue(false);
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+
+      await (fm as any).handleInboundMessage({
+        source: "discord",
+        adapterId: "discord-secondary",
+        chatId: "guild-primary",
+        threadId: "topic-1",
+        messageId: "message-1",
+        userId: "user-1",
+        username: "user",
+        text: "hello",
+        timestamp: new Date(),
+      });
+
+      const inbound = deliver.mock.calls[0][1];
+      expect(inbound.meta.adapter_id).toBe("discord-primary");
+
+      await (fm as any).handleOutboundFromInstance("implicit", {
+        type: "fleet_outbound",
+        tool: "reply",
+        args: { chat_id: "guild-primary", text: "hello back" },
+        requestId: 1,
+        adapterId: inbound.meta.adapter_id,
+      });
+      await vi.waitFor(() => expect(primary.sendText).toHaveBeenCalledOnce());
+      expect(secondary.sendText).not.toHaveBeenCalled();
+    });
+
+    it("canonicalizes General inbound reply context to its configured adapter", async () => {
+      const fm = new FleetManager(tmpDir);
+      const primary = {
+        id: "discord-primary",
+        type: "discord",
+        react: vi.fn().mockResolvedValue(undefined),
+      } as any;
+      const secondary = {
+        id: "discord-secondary",
+        type: "discord",
+        react: vi.fn().mockResolvedValue(undefined),
+      } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {
+          general: { working_directory: tmpDir, general_topic: true },
+        },
+      } as any;
+      fm.adapter = primary;
+      addWorld(fm, secondaryConfig, secondary);
+      addWorld(fm, primaryConfig, primary);
+      fm.lifecycle.daemons.set("general", {} as any);
+
+      vi.spyOn((fm as any).topicCommands, "handleInstanceCommand").mockResolvedValue(false);
+      vi.spyOn((fm as any).topicCommands, "handleGeneralCommand").mockResolvedValue(false);
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+
+      await (fm as any).handleInboundMessage({
+        source: "discord",
+        adapterId: "discord-secondary",
+        chatId: "guild-primary",
+        messageId: "message-general",
+        userId: "user-1",
+        username: "user",
+        text: "hello general",
+        timestamp: new Date(),
+      });
+
+      expect(deliver.mock.calls[0][1].meta.adapter_id).toBe("discord-primary");
+    });
+
+    it("keeps the raw inbound adapter in Classic reply context", async () => {
+      const fm = new FleetManager(tmpDir);
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {},
+      } as any;
+      const classic = new ClassicChannelManager(tmpDir, fm.logger);
+      classic.setPrimaryAdapterId("discord-primary");
+      classic.register("classic-channel", "discord-secondary", "classic-secondary", "Secondary", "owner");
+      fm.classicChannels = classic;
+
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+      await (fm as any).forwardToClassicInstance("classic-secondary", "hello", {
+        source: "discord",
+        adapterId: "discord-secondary",
+        chatId: "classic-channel",
+        threadId: "classic-channel",
+        messageId: "message-2",
+        userId: "user-1",
+        username: "user",
+        timestamp: new Date(),
+      });
+
+      expect(deliver.mock.calls[0][1].meta.adapter_id).toBe("discord-secondary");
+    });
+
     it("warns only for an unbound general in a multi-channel fleet", () => {
       const fm = new FleetManager(tmpDir);
       const warn = vi.spyOn(fm.logger, "warn");
