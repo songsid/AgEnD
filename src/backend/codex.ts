@@ -331,6 +331,15 @@ export class CodexBackend implements CliBackend {
       { pattern: /authentication|401 Unauthorized/i, type: "auth_error", action: "pause", message: "OpenAI authentication error" },
       { pattern: /insufficient_quota|billing/i, type: "quota", action: "pause", message: "OpenAI quota exceeded" },
       { pattern: /you've hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
+      {
+        // Codex reports an unknown model either as a TUI metadata fallback or
+        // as a ChatGPT-account API rejection. Use whitespace-aware phrases so
+        // capture-pane hard wraps do not hide either form.
+        pattern: /model\s+metadata\s+for\s+['"][^'"]+['"]\s+not\s+found\.\s+defaulting\s+to\s+fallback\s+metadata|model\s+is\s+not\s+supported\s+when\s+using\s+codex\s+with\s+a\s+chatgpt\s+account/i,
+        type: "model_error",
+        action: "notify",
+        message: "Codex model unavailable — use /model to switch",
+      },
       // Workspace (team) accounts report exhaustion differently from personal
       // ones — the full line is:
       //   "■ Your workspace is out of credits. Ask your workspace owner to
