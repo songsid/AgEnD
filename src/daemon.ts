@@ -1573,9 +1573,23 @@ export class Daemon extends EventEmitter {
     if (this.errorWaitingForRecovery) {
       if (looksReady()) {
         const downtime = Math.round((now - this.errorDetectedAt) / 1000);
-        const active = patterns.find(ep => Daemon.errorPatternKey(ep) === this.activeErrorPatternKey);
-        if (active) {
-          this.lastErrorCount.set(Daemon.errorPatternKey(active), countMatches(active.pattern));
+        // Re-baseline EVERY pattern, not just the one that fired. Patterns
+        // legitimately overlap — kiro prints one header ("having trouble
+        // responding") above the specific cause — and only the first match is
+        // reported before the `break`, leaving the others at a stale baseline.
+        // Rebasing just the active one meant the first scan after recovery saw
+        // count > seen on the very text we already reported and fired a second,
+        // contradictory notification ("Rate limit") for an incident the user had
+        // just been told about. Recovery means the pane is now history, so all
+        // of it is history. Deliberately NOT done at detection time: a pattern
+        // skipped for cooldown must keep its count unconsumed so it can still
+        // fire once that cooldown expires.
+        for (const ep of patterns) {
+          const seen = countMatches(ep.pattern);
+          // Only patterns actually present in the pane. Storing zeros would be a
+          // no-op for detection (count 0 === absent) but grows the map with an
+          // entry per pattern per recovery.
+          if (seen > 0) this.lastErrorCount.set(Daemon.errorPatternKey(ep), seen);
         }
         this.clearErrorRecoveryGate();
         this.logger.info({ downtime_s: downtime }, "PTY error recovered — agent is ready again");
