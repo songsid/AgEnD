@@ -120,6 +120,25 @@ describe("Settings manual lifecycle API", () => {
     const saved = ctx.fleetConfig!.instances.worker as unknown as Record<string, unknown>;
     expect(saved.hang_detector).toEqual({ enabled: false });
   });
+
+  it.each([null, "", "   "])("removes a model override sent as %j", async (model) => {
+    const { ctx } = context();
+    const instance = ctx.fleetConfig!.instances.worker as unknown as Record<string, unknown>;
+    instance.model = "gpt-5.6-sol";
+
+    const response = await request(
+      "/api/settings/fleet/instances/worker",
+      ctx,
+      "PATCH",
+      { model },
+    );
+
+    expect(response.status).toBe(200);
+    expect((ctx.fleetConfig!.instances.worker as unknown as Record<string, unknown>).model).toBeUndefined();
+    expect(ctx.saveFleetConfig).toHaveBeenCalledWith([
+      { path: ["instances", "worker", "model"], value: model, remove: true },
+    ]);
+  });
 });
 
 describe("Settings classicBot persistence", () => {

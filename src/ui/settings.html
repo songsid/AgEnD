@@ -480,7 +480,7 @@
     saveBtn.onclick = async () => {
       if (!validate()) return;
       const patch = {
-        backend: fBackend.value, model: fModel.value || undefined,
+        backend: fBackend.value, model: fModel.value.trim() || null,
         working_directory: fWd.value, channel_id: fChan.value || undefined,
         description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
         tags: tags.length ? tags : undefined, general_topic: fGeneral.checked,
