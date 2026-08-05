@@ -11,7 +11,7 @@ import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
-import { getAgendHome, getTmuxSocketName, getTmuxSessionName } from "./paths.js";
+import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
 import { t } from "./locale.js";
 import { PIE_PERCENT_RE } from "./tui-glyphs.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
@@ -343,8 +343,9 @@ export class TopicCommands {
   getDashboardText(htmlSpoiler = false): string {
     const port = this.ctx.fleetConfig?.health_port ?? 19280;
     const host = (this.ctx.fleetConfig as { hostname?: string } | null | undefined)?.hostname || "localhost";
-    let token = "";
-    try { token = readFileSync(join(getAgendHome(), "web.token"), "utf-8").trim(); } catch { /* not started yet */ }
+    const access = this.ctx.getDashboardAccess?.();
+    if (!access?.ready || !access.token) return t("dashboard.starting");
+    const token = access.token;
     const base = `http://${host}:${port}`;
     const hide = (u: string) => htmlSpoiler ? `<tg-spoiler>${u}</tg-spoiler>` : u;
     return [

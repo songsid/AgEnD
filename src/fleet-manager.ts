@@ -65,6 +65,7 @@ import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -394,6 +395,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private sseClients = new Set<import("node:http").ServerResponse>();
   private webToken: string | null = null;
   private viewToken: string | null = null;
+  private healthServerListening = false;
 
   constructor(public dataDir: string) {
     FleetManager.signalTarget = this;
@@ -1372,6 +1374,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** Initialize auth before any adapter can answer /dashboard. */
+  private initializeWebAuthTokens(): void {
+    this.webToken = loadOrCreateWebToken(this.dataDir);
+    this.viewToken = randomBytes(24).toString("hex");
+    const viewTokenPath = join(this.dataDir, "view.token");
+    writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
+    try { chmodSync(viewTokenPath, 0o600); } catch { /* best effort */ }
+    this.healthServerListening = false;
+  }
+
+  getDashboardAccess(): { ready: boolean; token: string | null } {
+    return { ready: this.healthServerListening, token: this.webToken };
+  }
+
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
     FleetManager.signalTarget = this;
@@ -1387,6 +1403,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const fleet = this.loadConfig(configPath);
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
+    this.initializeWebAuthTokens();
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
     // Set tmux socket isolation for custom AGEND_HOME
@@ -6533,6 +6550,7 @@ When users create specialized instances, suggest these configurations:
     this.controlClient = null;
 
     if (this.healthServer) {
+      this.healthServerListening = false;
       this.healthServer.close();
       this.healthServer = null;
     }
@@ -7031,24 +7049,10 @@ When users create specialized instances, suggest these configurations:
 
   private startHealthServer(port: number): void {
     this.startedAt = Date.now();
-
-    // Generate web token before server starts so auth is enforced from the first request.
-    this.webToken = randomBytes(24).toString("hex");
-    const tokenPath = join(this.dataDir, "web.token");
-    writeFileSync(tokenPath, this.webToken, { mode: 0o600 });
-    // Defensive: if file existed previously with looser perms, tighten it.
-    try {
-      chmodSync(tokenPath, 0o600);
-    } catch {
-      // best-effort
-    }
-
-    // Separate read-only token for the /view page: grants terminal-view + profile
-    // read, but never write (POSTs still require the full web token).
-    this.viewToken = randomBytes(24).toString("hex");
-    const viewTokenPath = join(this.dataDir, "view.token");
-    writeFileSync(viewTokenPath, this.viewToken, { mode: 0o600 });
-    try { chmodSync(viewTokenPath, 0o600); } catch { /* best-effort */ }
+    this.healthServerListening = false;
+    this.healthPortRetried = false;
+    // Defensive for direct/unit callers; normal startup initializes these before adapters.
+    if (!this.webToken || !this.viewToken) this.initializeWebAuthTokens();
 
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
@@ -7073,7 +7077,7 @@ When users create specialized instances, suggest these configurations:
           ?? (typeof headerToken === "string" ? headerToken : null);
         if (!this.webToken || providedToken !== this.webToken) {
           res.writeHead(401);
-          res.end(JSON.stringify({ error: "Unauthorized" }));
+          res.end(JSON.stringify({ error: WEB_TOKEN_INVALID_MESSAGE }));
           return;
         }
       }
@@ -7293,10 +7297,21 @@ When users create specialized instances, suggest these configurations:
       res.end(JSON.stringify({ error: "not found" }));
     });
 
+    const markListening = (afterTakeover = false): void => {
+      this.healthServerListening = true;
+      this.logger.info({ port }, afterTakeover
+        ? "Health endpoint listening (after takeover)"
+        : "Health endpoint listening");
+      this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
+      this.logger.info({ url: `http://localhost:${port}/view?token=${this.viewToken}` }, "Web View available");
+    };
+
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
+      this.healthServerListening = false;
       if (err.code === "EADDRINUSE") {
         if (this.healthPortRetried) {
-          this.logger.debug({ port }, "Health port still in use after takeover — skipping health endpoint");
+          this.logger.error({ err, port }, "Health port still in use after takeover — dashboard disabled");
+          this.notifyFleetError(`⚠️ Dashboard unavailable — health port ${port} is already in use. Stop the conflicting process or configure a different health_port.`);
           return;
         }
         this.healthPortRetried = true;
@@ -7315,21 +7330,15 @@ When users create specialized instances, suggest these configurations:
         }
         setTimeout(() => {
           if (!this.healthServer) return;
-          this.healthServer.listen(port, "127.0.0.1", () => {
-            this.logger.info({ port }, "Health endpoint listening (after takeover)");
-          });
+          this.healthServer.listen(port, "127.0.0.1", () => markListening(true));
         }, 1500);
         return;
       }
       this.logger.error({ err, port }, "Health server error");
+      this.notifyFleetError(`⚠️ Dashboard unavailable — health server failed: ${err.message}`);
     });
 
-    this.healthServer.listen(port, "127.0.0.1", () => {
-      this.logger.info({ port }, "Health endpoint listening");
-    });
-
-    this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
-    this.logger.info({ url: `http://localhost:${port}/view?token=${this.viewToken}` }, "Web View available");
+    this.healthServer.listen(port, "127.0.0.1", () => markListening());
   }
 
   getUiStatus(): unknown {

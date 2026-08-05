@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
+import { WEB_TOKEN_INVALID_MESSAGE } from "../src/web-auth.js";
 
 // Minimal mock ServerResponse that captures status + body.
 class CaptureRes extends ServerResponse {
@@ -145,6 +146,16 @@ describe("web-api zod validation", () => {
       ctx,
     );
     expect(res.status).toBe(400);
+  });
+});
+
+describe("web-api authentication", () => {
+  it("returns an actionable message for an invalid dashboard token", async () => {
+    const ctx = makeCtx({ webToken: "valid-token" });
+    const res = await callAndWait("GET", "/ui?token=expired-token", undefined, ctx);
+
+    expect(res.status).toBe(401);
+    expect(JSON.parse(res.body)).toEqual({ error: WEB_TOKEN_INVALID_MESSAGE });
   });
 });
 
