@@ -6,6 +6,14 @@ export interface RestartProgressTarget {
   threadId?: string;
 }
 
+export interface RestartProgressSummary {
+  running: number;
+  total: number;
+  version: string;
+  pausedNames: string[];
+  failedNames?: string[];
+}
+
 type ProgressLogger = {
   warn(data: unknown, message: string): void;
 };
@@ -68,7 +76,7 @@ export class RestartProgress {
   }
 
   /** Edit the original message to its terminal state. Returns true if it existed. */
-  async finish(): Promise<boolean> {
+  async finish(summary?: RestartProgressSummary): Promise<boolean> {
     if (!this.enabled) return false;
     this.finished = true;
     if (this.updateTimer) {
@@ -76,9 +84,17 @@ export class RestartProgress {
       this.updateTimer = null;
     }
     if (!this.target || !this.messageId) return false;
-    this.enqueueEdit(
-      `✅ Fleet ready — ${this.ready}/${this.total} instances started (${formatElapsed(Date.now() - this.startedAt)})`,
-    );
+    const elapsed = formatElapsed(Date.now() - this.startedAt);
+    const lines = summary
+      ? [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`]
+      : [`✅ Fleet ready — ${this.ready}/${this.total} instances started (${elapsed})`];
+    if (summary?.pausedNames.length) {
+      lines.push(`⏸ Paused (${summary.pausedNames.length}): ${summary.pausedNames.join(", ")}`);
+    }
+    if (summary?.failedNames?.length) {
+      lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
+    }
+    this.enqueueEdit(lines.join("\n"));
     await this.editChain;
     return true;
   }
