@@ -66,6 +66,7 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -1204,6 +1205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async startInstancesWithConcurrency(
     entries: [string, InstanceConfig][],
     topicMode: boolean,
+    onReady?: (name: string) => void,
   ): Promise<void> {
     // Persisted pauses are intentionally preserved across fleet restarts. Filter
     // them before grouping/staggering: startInstance() retains its own guard as
@@ -1274,9 +1276,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           lastStartAt = Date.now();
           (async () => {
             for (const [name, config] of group) {
-              await this.startInstance(name, config, topicMode).catch((err) =>
-                this.logger.error({ err, name }, "Failed to start instance"),
-              );
+              try {
+                await this.startInstance(name, config, topicMode);
+                if (this.daemons.has(name)) onReady?.(name);
+              } catch (err) {
+                this.logger.error({ err, name }, "Failed to start instance");
+              }
             }
           })().finally(() => {
             running--;
@@ -1287,6 +1292,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       };
       startNext();
     });
+  }
+
+  private runnableStartupCount(fleet: FleetConfig, includeClassic: boolean): number {
+    const names = new Set(Object.keys(fleet.instances));
+    if (includeClassic) {
+      for (const channel of this.classicChannels?.getAll() ?? []) names.add(channel.instanceName);
+    }
+    let count = 0;
+    for (const name of names) {
+      if (!this.lifecycle.isPaused(name)) count++;
+    }
+    return count;
+  }
+
+  private restartProgressTarget(): RestartProgressTarget | null {
+    const generalName = this.findGeneralInstance();
+    if (!generalName) return null;
+    const adapter = this.getAdapterForInstance(generalName);
+    const chatId = this.getGroupIdForInstance(generalName);
+    if (!adapter || !chatId) return null;
+    const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
+    return {
+      adapter,
+      chatId,
+      threadId: topicId != null ? String(topicId) : undefined,
+    };
   }
 
   async stopInstance(name: string): Promise<void> {
@@ -1401,6 +1432,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
+    const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
     this.startupComplete = false;
     // Cleared here, not at the end of doStopAll: a stop has an async tail, and
@@ -1699,11 +1731,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const allEntries = Object.entries(fleet.instances);
     const generals = allEntries.filter(([_, cfg]) => cfg.general_topic);
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
+    const startupProgress = new RestartProgress(
+      this.runnableStartupCount(fleet, topicMode),
+      startupStartedAt,
+      this.logger,
+    );
 
     if (generals.length > 0) {
       for (const [name, cfg] of generals) {
         try {
           await this.startInstance(name, cfg, topicMode);
+          if (this.daemons.has(name)) startupProgress.markReady();
         } catch (err) {
           this.logger.error({ err, name }, "Failed to start general instance");
           const errorMsg = err instanceof Error ? err.message : String(err);
@@ -1716,6 +1754,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
         }
       }
+    }
+
+    // The adapter must exist before General can receive the progress message.
+    // Start it after General is ready, in parallel with the remaining CLIs, so
+    // progress is visible without adding adapter startup time to the critical path.
+    let adapterStartup: Promise<void> | null = null;
+    let progressStart: Promise<boolean> = Promise.resolve(false);
+    if (topicMode && (fleet.channel || fleet.channels?.length)) {
+      // An adapter becoming reachable during startup can receive messages; make
+      // all existing topic ids routable before opening that inbound path.
+      this.routing.rebuild(fleet);
+      this.reregisterClassicChannels();
+      adapterStartup = (async () => {
+        try {
+          await this.startSharedAdapter(fleet);
+        } catch (err) {
+          this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
+        }
+      })();
+      progressStart = adapterStartup.then(() => startupProgress.start(this.restartProgressTarget()));
     }
 
     // The systemd watchdog answers exactly one question: is this process still
@@ -1746,16 +1804,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Phase 2: Start remaining instances with staggered concurrency
     if (others.length > 0) {
-      await this.startInstancesWithConcurrency(others, topicMode);
+      await this.startInstancesWithConcurrency(others, topicMode, () => startupProgress.markReady());
     }
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
-
-      try {
-        await this.startSharedAdapter(fleet);
-      } catch (err) {
-        this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
-      }
+      await adapterStartup;
 
       // Bind every fleet instance deterministically. Explicit channel_id wins;
       // otherwise channels[0] is authoritative. Do not infer identity from
@@ -1799,21 +1852,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Start classic channel instances (parallel, concurrency 3)
       if (this.classicChannels) {
         const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const channels = this.classicChannels.getAll();
+        const channels = this.classicChannels.getAll()
+          .filter(ch => !this.lifecycle.isPaused(ch.instanceName));
         const concurrency = 3;
         let idx = 0;
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
-          await Promise.allSettled(batch.map(ch =>
-            this.startClassicInstance(
-              ch.instanceName,
-              this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-              this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-              this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-              this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-            ).catch(err =>
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
-          ));
+          await Promise.allSettled(batch.map(async ch => {
+            try {
+              await this.startClassicInstance(
+                ch.instanceName,
+                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
+                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+              );
+              if (this.daemons.has(ch.instanceName)) startupProgress.markReady();
+            } catch (err) {
+              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
+            }
+          }));
           idx += concurrency;
         }
       }
@@ -1821,6 +1879,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       for (const name of Object.keys(fleet.instances)) {
         this.startStatuslineWatcher(name);
       }
+
+      await progressStart;
+      const progressCompleted = await startupProgress.finish();
 
       // Notify General topic that fleet is up
       const classicCount = this.classicChannels?.getAll().length ?? 0;
@@ -1834,7 +1895,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const { createRequire } = await import("node:module");
       const _require = createRequire(import.meta.url);
       const agendVersion = _require("../package.json").version ?? "unknown";
-      if (this.adapter && fleet.channel?.group_id) {
+      if (!progressCompleted && this.adapter && fleet.channel?.group_id) {
         let text: string;
         if (failedNames.length === 0 && pausedNames.length === 0) {
           text = t("fleet.ready", started, total, agendVersion);
@@ -6837,6 +6898,10 @@ When users create specialized instances, suggest these configurations:
     }
 
     this.logger.info("All instances idle — restarting...");
+    const restartStartedAt = Date.now();
+    // Capture the live adapter/topic before General's daemon is stopped. The
+    // channel adapter remains connected throughout an in-process restart.
+    const progressTarget = this.restartProgressTarget();
 
     this.clearStatuslineWatchers();
 
@@ -6867,17 +6932,28 @@ When users create specialized instances, suggest these configurations:
     const fleet = this.loadConfig(this.configPath);
     this.fleetConfig = fleet;
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
+    const restartProgress = new RestartProgress(
+      this.runnableStartupCount(fleet, topicMode),
+      restartStartedAt,
+      this.logger,
+    );
 
     // Phase 1: generals first
     const restartEntries = Object.entries(fleet.instances);
     const restartGenerals = restartEntries.filter(([_, cfg]) => cfg.general_topic);
     const restartOthers = restartEntries.filter(([_, cfg]) => !cfg.general_topic);
     for (const [name, cfg] of restartGenerals) {
-      await this.startInstance(name, cfg, topicMode).catch(err =>
-        this.logger.error({ err, name }, "Failed to start general instance"));
+      try {
+        await this.startInstance(name, cfg, topicMode);
+        if (this.daemons.has(name)) restartProgress.markReady();
+      } catch (err) {
+        this.logger.error({ err, name }, "Failed to start general instance");
+      }
     }
+    // General is ready again; now its topic can own the live progress message.
+    await restartProgress.start(progressTarget);
     if (restartOthers.length > 0) {
-      await this.startInstancesWithConcurrency(restartOthers, topicMode);
+      await this.startInstancesWithConcurrency(restartOthers, topicMode, () => restartProgress.markReady());
     }
 
     if (topicMode) {
@@ -6888,21 +6964,26 @@ When users create specialized instances, suggest these configurations:
       // Restart classic channel instances (killed during orphan cleanup)
       if (this.classicChannels) {
         const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const channels = this.classicChannels.getAll();
+        const channels = this.classicChannels.getAll()
+          .filter(ch => !this.lifecycle.isPaused(ch.instanceName));
         const concurrency = 3;
         let idx = 0;
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
-          await Promise.allSettled(batch.map(ch =>
-            this.startClassicInstance(
-              ch.instanceName,
-              this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-              this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-              this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-              this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-            ).catch(err =>
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance"))
-          ));
+          await Promise.allSettled(batch.map(async ch => {
+            try {
+              await this.startClassicInstance(
+                ch.instanceName,
+                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
+                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+              );
+              if (this.daemons.has(ch.instanceName)) restartProgress.markReady();
+            } catch (err) {
+              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
+            }
+          }));
           idx += concurrency;
         }
       }
@@ -6913,6 +6994,7 @@ When users create specialized instances, suggest these configurations:
     }
 
     this.logger.info("Graceful restart complete");
+    const progressCompleted = await restartProgress.finish();
     if (groupId && this.adapter) {
       const total = Object.keys(fleet.instances).length;
       const started = this.daemons.size;
@@ -6931,8 +7013,10 @@ When users create specialized instances, suggest these configurations:
         restartText = t("fleet.ready_with_failed", started, total, agendVersion2, failedNames.join(", "))
           + (pausedNames2.length > 0 ? `\n⏸ Paused: ${pausedNames2.join(", ")}` : "");
       }
-      await this.adapter.sendText(String(groupId), restartText, notifyOpts)
-        .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
+      if (!progressCompleted) {
+        await this.adapter.sendText(String(groupId), restartText, notifyOpts)
+          .catch(e => this.logger.warn({ err: e }, "Failed to post restart completion notification"));
+      }
 
       // Notify each instance's channel — staggered to avoid rate limit storm
       const instances = Object.entries(this.fleetConfig?.instances ?? {});
