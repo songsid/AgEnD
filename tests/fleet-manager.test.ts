@@ -1353,6 +1353,38 @@ instances:
     expect(reloaded.fleetConfig!.instances.worker.log_level).toBe("info");
   });
 
+  it("treats removal of an inherited nested override as an idempotent YAML patch", () => {
+    const fm = new FleetManager(tmpDir);
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, `defaults:
+  hang_detector:
+    enabled: true
+    timeout_minutes: 15
+instances:
+  worker:
+    working_directory: /tmp/worker
+    model: gpt-5.6-sol
+`);
+    fm.loadConfig(configPath);
+
+    // Settings sends this removal when the instance inherits the timeout. The
+    // raw instance has no hang_detector mapping, even though effective config
+    // does; yaml.deleteIn used to throw "Expected YAML collection" here.
+    expect(() => fm.saveFleetConfig([
+      { path: ["instances", "worker", "hang_detector", "timeout_minutes"], value: null, remove: true },
+    ])).not.toThrow();
+
+    const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(saved.defaults.hang_detector.timeout_minutes).toBe(15);
+    expect(saved.instances.worker.hang_detector).toBeUndefined();
+
+    // A later /model write must still work after the no-op nested removal.
+    fm.fleetConfig!.instances.worker.model = "gpt-5.6-luna";
+    expect(() => fm.saveFleetConfig()).not.toThrow();
+    const switched = yaml.load(readFileSync(configPath, "utf8")) as any;
+    expect(switched.instances.worker.model).toBe("gpt-5.6-luna");
+  });
+
   it("keeps a legacy channel in its original shape when patching access", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");

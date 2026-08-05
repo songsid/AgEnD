@@ -93,4 +93,20 @@ describe("persistent dashboard token", () => {
     (fm as any).healthServer = null;
     await close(blocker);
   });
+
+  it("serves favicon probes without requiring the dashboard token", async () => {
+    const fm = new FleetManager(tempDir());
+    (fm as any).initializeWebAuthTokens();
+    (fm as any).startHealthServer(0);
+
+    await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
+    const server = (fm as any).healthServer as Server;
+    const address = server.address();
+    expect(address && typeof address !== "string").toBe(true);
+    const response = await fetch(`http://127.0.0.1:${(address as { port: number }).port}/favicon.ico`);
+
+    expect(response.status).toBe(204);
+    await close(server);
+    (fm as any).healthServer = null;
+  });
 });

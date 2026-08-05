@@ -4159,7 +4159,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // the before/after runtime diff cannot observe.
     for (const patch of explicitPatches) {
       if (patch.remove) {
-        this.rawFleetDocument.deleteIn(patch.path);
+        // YAML's deleteIn throws when an inherited nested key has no raw parent
+        // (or a legacy scalar occupies that parent). Removing an override which
+        // is already absent is an idempotent no-op, not a failed Settings save.
+        if (this.rawFleetDocument.hasIn(patch.path)) {
+          this.rawFleetDocument.deleteIn(patch.path);
+        }
       } else {
         const before = this.rawFleetDocument.getIn(patch.path);
         this.patchFleetDocument(this.rawFleetDocument, patch.path, before, patch.value);
@@ -4191,7 +4196,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.patchFleetDocument(document, [...path, i], before[i], after[i]);
       }
       // Remove from the end so YAML sequence indexes do not shift underneath us.
-      for (let i = before.length - 1; i >= after.length; i--) document.deleteIn([...path, i]);
+      for (let i = before.length - 1; i >= after.length; i--) {
+        const itemPath = [...path, i];
+        if (document.hasIn(itemPath)) document.deleteIn(itemPath);
+      }
       for (let i = shared; i < after.length; i++) document.setIn([...path, i], after[i]);
       return;
     }
@@ -4213,7 +4221,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     if (after === undefined) {
-      document.deleteIn(path);
+      // Effective config contains inherited objects that may not exist in the
+      // raw YAML at all. yaml.deleteIn() is not idempotent for a missing nested
+      // parent, so guard it explicitly.
+      if (document.hasIn(path)) document.deleteIn(path);
     } else if (path.length === 0) {
       document.contents = document.createNode(after);
     } else {
@@ -7151,6 +7162,16 @@ When users create specialized instances, suggest these configurations:
 
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
+      const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
+
+      // Browsers request this automatically and AgEnD does not ship an icon.
+      // It is neither user data nor an API route, so do not turn the harmless
+      // probe into a noisy web-token 401 in the browser console.
+      if (req.method === "GET" && requestPath === "/favicon.ico") {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
 
       // Public health probe — no auth required.
       if (req.method === "GET" && req.url === "/health") {
