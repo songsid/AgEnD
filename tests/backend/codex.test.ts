@@ -207,6 +207,29 @@ describe("CodexBackend", () => {
     );
   });
 
+  describe("getErrorPatterns", () => {
+    const modelError = (pane: string) => new CodexBackend(TEST_DIR)
+      .getErrorPatterns()
+      .find(({ pattern }) => pattern.test(pane));
+
+    it.each([
+      "⚠ Model metadata for 'unknown-model' not found. Defaulting to fallback metadata",
+      `■ {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'unknown-model' model is not supported when using Codex with a ChatGPT account."}}`,
+    ])("notifies for Codex model errors: %s", (pane) => {
+      expect(modelError(pane)).toMatchObject({
+        type: "model_error",
+        action: "notify",
+      });
+    });
+
+    it("still detects a model rejection after tmux hard-wraps it", () => {
+      expect(modelError([
+        `■ {"type":"error","status":400,"error":{"message":"The 'unknown-model' model is not`,
+        `supported when using Codex with a ChatGPT account."}}`,
+      ].join("\n"))).toMatchObject({ type: "model_error", action: "notify" });
+    });
+  });
+
   describe("cleanup — AGENTS.md", () => {
     it("removes marker block from AGENTS.md", () => {
       const agentsMd = join(WORK_DIR, "AGENTS.md");
