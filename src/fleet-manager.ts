@@ -3324,7 +3324,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               user_id: msg.userId,
               ts: msg.timestamp.toISOString(),
               thread_id: "",
-              adapter_id: msg.adapterId,
+              // Fleet instances have an authoritative adapter binding. Multiple
+              // bots in one guild can observe the same inbound message, so the
+              // adapter whose event wins dedup is not necessarily the bot that
+              // owns this instance.
+              adapter_id: this.getInstanceAdapterId(generalInstance) ?? msg.adapterId,
               source: msg.source,
               ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
               ...generalReactions.meta,
@@ -3428,7 +3432,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           user_id: msg.userId,
           ts: msg.timestamp.toISOString(),
           thread_id: msg.threadId ?? "",
-          adapter_id: msg.adapterId,
+          // Canonicalize the reply context to the configured world. Whichever
+          // sibling bot wins inbound dedup must not decide which bot replies.
+          adapter_id: this.getInstanceAdapterId(instanceName) ?? msg.adapterId,
           source: msg.source,
           ...(msg.replyToText ? { reply_to_text: msg.replyToText } : {}),
           ...reactions.meta,
