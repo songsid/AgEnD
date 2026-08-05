@@ -153,7 +153,6 @@ export class KiroBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      { pattern: /having trouble responding/i, type: "rate_limit", action: "notify", message: "Rate limit (having trouble responding)" },
       { pattern: /model.*not available|Please use '\/model'/i, type: "model_error", action: "notify", message: "Model unavailable — use /model to switch" },
       { pattern: /Response timed out/i, type: "timeout", action: "notify", message: "Kiro response timed out (generation too long) — please try again", skipCooldown: true, skipRecoveryWait: true },
       // Session/login expiry. kiro had NO auth pattern, so an expired login was
@@ -163,10 +162,24 @@ export class KiroBackend implements CliBackend {
       // rather than guessed. Deliberately specific — bare "Unauthorized"/"Not
       // logged in" would false-positive on an agent merely discussing auth code.
       {
-        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token/i,
+        // Ordering is load-bearing: the monitor takes the FIRST matching pattern,
+        // and kiro prints `Kiro is having trouble responding right now:` as the
+        // header for *every* failure kind — so the generic entry (now last) used
+        // to swallow auth failures and label them "Rate limit". Worse than the
+        // wrong label: classified as rate_limit it only notified, so the
+        // auth auto-pause never fired and the instance kept feeding messages to a
+        // CLI that could not answer (issue #440).
+        //
+        // `No token` / `dispatch failure` are what an expired-or-missing login
+        // actually prints at runtime; the other three come from the kiro-cli
+        // binary. The No-token alternative is anchored to kiro's numbered error
+        // list (`   2: dispatch failure (other): No token`) rather than matched as
+        // a bare keyword, because this fleet maintains AgEnD and an agent quoting
+        // this very error must not pause itself.
+        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token|^\s*\d+:\s*(?:dispatch failure[^\n]*?)?No token\s*$/im,
         type: "auth_error",
         action: "pause",
-        message: "Kiro session expired — run `kiro-cli login` to restore all kiro instances",
+        message: "Kiro login is missing or expired — run `kiro-cli login` to restore all kiro instances",
       },
       // #384: the AgEnD MCP server died, or something wrote non-JSON-RPC to its
       // stdout and kiro dropped the connection. kiro keeps running and keeps
@@ -196,6 +209,25 @@ export class KiroBackend implements CliBackend {
         // resolveErrorMessage formats the LAST match in the pane, and kiro prints
         // the stdout sentence after the transport line, so the name is usually not
         // in the match that gets formatted.
+      },
+      // Real throttling, matched on the exceptions kiro actually raises (all four
+      // are present in the binary) rather than on the shared header.
+      {
+        pattern: /ThrottlingException|TooManyRequestsException|RequestThrottledException|SlowDownException/,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro is being throttled by the service — retry shortly",
+      },
+      // LAST on purpose: this header wraps every failure kind, so it must only
+      // catch what nothing above explained. Message no longer claims a rate limit
+      // — that assertion is what sent operators looking at quota for an auth bug.
+      // (Dedup is keyed by `type:pattern.source`, so this keeps its own baseline
+      // independent of the throttling entry above.)
+      {
+        pattern: /having trouble responding/i,
+        type: "rate_limit",
+        action: "notify",
+        message: "Kiro reported a failure — see the instance pane for the cause",
       },
     ];
   }
