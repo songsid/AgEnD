@@ -2516,19 +2516,23 @@ export class Daemon extends EventEmitter {
       let enterAt = Date.now();
       await this.tmux!.sendSpecialKey("Enter");
 
-      // Kiro may expose its ready prompt before its final startup redraw. If
-      // that redraw swallows Enter, the redraw's own output makes the normal
-      // busy confirmation return true and suppresses the conditional retry.
-      // Kiro has no native input queue, so one defensive retry on the first
-      // post-ready delivery is safe and cannot mutate a queued turn.
-      if (
-        enterSettleMs > NORMAL_ENTER_SETTLE_MS
-        && this.backend?.requiresFirstDeliveryEnterRetry?.() === true
-      ) {
+      // Kiro's legacy TUI can swallow Enter while it is still processing a large
+      // paste — not only during the post-ready redraw (#479): on slower hosts it
+      // happens on ordinary deliveries too (v2.1.2 stable, WSL2 + tmux 3.4).
+      // The busy confirmation below cannot be trusted to catch that: it accepts
+      // ANY output after Enter, and the paste's own late render satisfies it, so
+      // the message is confirmed ✅ while the text sits unsubmitted. Kiro has no
+      // native input queue and a bare Enter is a no-op both at an empty prompt
+      // and during generation (both verified live on kiro-cli 2.16.1), so the
+      // defensive retry runs on EVERY delivery — which is also what the legacy
+      // pasteText path has always done for queue-less backends. enterAt is
+      // re-baselined to the second Enter so leftover paste-render output between
+      // the two cannot be what "confirms" the submission.
+      if (this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         enterAt = Date.now();
         await this.tmux!.sendSpecialKey("Enter");
-        this.logger.debug("First delivery after ready — sent defensive Enter retry");
+        this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
       }
       if (status) this.emit("message_delivered", status); // 👀
 

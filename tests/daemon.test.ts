@@ -244,7 +244,7 @@ describe("Daemon backend-native input queue delivery", () => {
 
     try {
       expect(backend.supportsQueuedInput?.()).toBeUndefined();
-      expect(backend.requiresFirstDeliveryEnterRetry?.()).toBe(true);
+      expect(backend.requiresDeliveryEnterRetry?.()).toBe(true);
 
       const result = await (daemon as any).deliverMessage("first message after restart");
 
@@ -257,7 +257,14 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
-  it("does not add the Kiro-only retry to later deliveries", async () => {
+  it("retries Enter on later Kiro deliveries too — the swallow is not startup-only", async () => {
+    // DELIBERATE ASSERTION FLIP (was: "does not add the Kiro-only retry to later
+    // deliveries"). v2.1.2 stable field report: on a slow WSL2 host a large paste
+    // is still rendering when the single Enter lands, kiro's legacy input swallows
+    // it, and the paste's own late output satisfies confirmBusyAfterEnter — the
+    // message is confirmed while its text sits unsubmitted. A bare extra Enter is
+    // a no-op for kiro at an empty prompt AND during generation (verified live),
+    // so every delivery gets the defensive retry.
     const { daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true);
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
@@ -265,6 +272,20 @@ describe("Daemon backend-native input queue delivery", () => {
 
     try {
       expect(await (daemon as any).deliverMessage("later message")).toBe(true);
+      expect(tmux.sendSpecialKey.mock.calls.filter((call: string[]) => call[0] === "Enter")).toHaveLength(2);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not add the Kiro retry to backends without the capability", async () => {
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+    (daemon as any).firstDeliveryDelay = { consume: () => 500 };
+
+    try {
+      expect(await (daemon as any).deliverMessage("plain message")).toBe(true);
       expect(tmux.sendSpecialKey.mock.calls.filter((call: string[]) => call[0] === "Enter")).toHaveLength(1);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
