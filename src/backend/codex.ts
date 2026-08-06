@@ -1,6 +1,7 @@
 import {
   chmodSync,
   closeSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -8,6 +9,7 @@ import {
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   statSync,
   symlinkSync,
   unlinkSync,
@@ -253,10 +255,28 @@ export class CodexBackend implements CliBackend {
    * files is intentionally unchanged. Only config.toml (which contains MCP
    * capabilities and AGEND_DECISIONS) becomes private to this instance.
    */
+  /** Session dirs every instance must share with the terminal CLI (#506). */
+  private static readonly SHARED_SESSION_DIRS = ["sessions", "archived_sessions"] as const;
+
   private prepareIsolatedHome(): void {
     mkdirSync(this.isolatedCodexHome, { recursive: true, mode: 0o700 });
     chmodSync(this.isolatedCodexHome, 0o700);
-    if (this.sharedCodexHome === this.isolatedCodexHome || !existsSync(this.sharedCodexHome)) return;
+    if (this.sharedCodexHome === this.isolatedCodexHome) return;
+
+    // The session dirs must exist in the SHARED home before the symlink pass:
+    // on a fresh install they don't yet, so no link was created, and the first
+    // archive made Codex create a REAL dir in the instance-private home — a
+    // permanent fork the terminal CLI could never see (#506). mkdir -p is
+    // EEXIST-safe under concurrent instance startup.
+    for (const dir of CodexBackend.SHARED_SESSION_DIRS) {
+      try { mkdirSync(join(this.sharedCodexHome, dir), { recursive: true, mode: 0o700 }); } catch { /* best effort */ }
+    }
+
+    // Heal homes that already forked: merge the private real dir back into the
+    // shared one (never overwriting), then replace it with the symlink.
+    for (const dir of CodexBackend.SHARED_SESSION_DIRS) {
+      this.migrateDivergedSessionDir(dir);
+    }
 
     for (const name of readdirSync(this.sharedCodexHome)) {
       if (name === "config.toml" || name === AGEND_MCP_CLEANUP_LOCK || name.startsWith(".config.toml.")) continue;
@@ -270,6 +290,45 @@ export class CodexBackend implements CliBackend {
         // State/cache links are compatibility aids; config isolation must not
         // fail merely because a concurrently-created cache entry disappeared.
       }
+    }
+  }
+
+  /**
+   * One-time heal for an instance whose isolated home grew a REAL session dir
+   * (#506): merge it into the shared home without overwriting anything, and
+   * only after both the copy and the removal succeed put the symlink in its
+   * place. Any failure keeps the private dir — sessions are never the thing
+   * sacrificed for tidiness — and logs what happened.
+   */
+  private migrateDivergedSessionDir(name: string): void {
+    const target = join(this.isolatedCodexHome, name);
+    let st: ReturnType<typeof lstatSync>;
+    try {
+      st = lstatSync(target);
+    } catch {
+      return; // absent — the symlink pass below will create the link
+    }
+    if (st.isSymbolicLink()) return; // already correct
+    if (!st.isDirectory()) {
+      console.warn(`[agend] codex-home/${name} is neither a symlink nor a directory — leaving it untouched`);
+      return;
+    }
+
+    const shared = join(this.sharedCodexHome, name);
+    try {
+      mkdirSync(shared, { recursive: true, mode: 0o700 });
+      // cp -rn semantics: collisions keep the shared copy. Session rollout
+      // filenames are timestamp+uuid, so a genuine collision means the same
+      // file — skipping is lossless either way.
+      cpSync(target, shared, { recursive: true, force: false, errorOnExist: false });
+      rmSync(target, { recursive: true });
+      symlinkSync(shared, target, "dir");
+      console.warn(`[agend] migrated diverged codex ${name} into shared home: ${shared}`);
+    } catch (err) {
+      // Keep whatever is left of the private dir. The copy never overwrites, so
+      // a retry on next start is safe; worst case is duplicated files in the
+      // shared home, never lost ones.
+      console.warn(`[agend] codex ${name} migration failed — keeping the instance-private dir (${(err as Error).message})`);
     }
   }
 
