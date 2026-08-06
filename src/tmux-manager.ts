@@ -105,6 +105,30 @@ export class TmuxManager {
   // === Instance window methods ===
 
   async createWindow(command: string, cwd: string, windowName?: string): Promise<string> {
+    if (windowName) {
+      const sameName = (await TmuxManager.listWindows(this.sessionName))
+        .filter(window => window.name === windowName);
+      if (sameName.length > 0) {
+        // Reuse one exact window id instead of creating another window with the
+        // same display name. `respawn-window -k` is atomic from tmux's point of
+        // view and, unlike kill-then-new, cannot destroy the session when this is
+        // its last window. Remove any older duplicates left by previous buggy
+        // respawns before reusing the survivor.
+        const survivor = sameName.find(window => window.id === this.windowId) ?? sameName[0];
+        for (const stale of sameName) {
+          if (stale.id === survivor.id) continue;
+          await new TmuxManager(this.sessionName, stale.id, this.logicalSize).killWindow();
+        }
+        this.windowId = survivor.id;
+        await this.respawnWindow(command, cwd);
+        await exec("tmux", TmuxManager.tmuxArgs([
+          "set-window-option", "-t", `${this.sessionName}:${this.windowId}`,
+          "allow-rename", "off",
+        ])).catch(() => {});
+        return this.windowId;
+      }
+    }
+
     const args = ["new-window", "-a", "-t", this.sessionName, "-c", cwd];
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
@@ -202,23 +226,30 @@ export class TmuxManager {
    */
   async getPaneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> {
     if (!this.windowId) return null;
-    try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
-        "list-panes", "-t", `${this.sessionName}:${this.windowId}`,
-        "-F", "#{pane_dead} #{pane_dead_status}",
-      ]));
-      const line = stdout.trim().split("\n")[0];
-      if (!line) return null;
-      const parts = line.split(" ");
-      const dead = parts[0];
-      if (dead === "1") {
-        const code = parseInt(parts[1], 10);
-        return { alive: false, exitCode: Number.isNaN(code) ? undefined : code };
+    // Kiro CLI 2.8.0 can coincide with a transient tmux `list-panes` failure
+    // while its TUI is redrawing. A single failed query must not be treated as
+    // a vanished window. Retry locally; the daemon also performs a slower
+    // liveness recheck before classifying a crash.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+          "list-panes", "-t", `${this.sessionName}:${this.windowId}`,
+          "-F", "#{pane_dead} #{pane_dead_status}",
+        ]));
+        const line = stdout.trim().split("\n")[0];
+        if (!line) return null;
+        const parts = line.split(" ");
+        const dead = parts[0];
+        if (dead === "1") {
+          const code = parseInt(parts[1], 10);
+          return { alive: false, exitCode: Number.isNaN(code) ? undefined : code };
+        }
+        return { alive: true };
+      } catch {
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 100));
       }
-      return { alive: true };
-    } catch {
-      return null;
     }
+    return null;
   }
 
   /** Return tmux's effective window geometry and sizing policy (diagnostics/tests). */

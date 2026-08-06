@@ -30,6 +30,19 @@ describe("TmuxManager", () => {
     });
   });
 
+  it("reuses one window id instead of leaving duplicate same-name windows", async () => {
+    const first = new TmuxManager(session, "");
+    const firstId = await first.createWindow("sleep 30", "/tmp", "dedupe-window");
+    const replacement = new TmuxManager(session, "");
+    const replacementId = await replacement.createWindow("sleep 30", "/tmp", "dedupe-window");
+
+    const matches = (await TmuxManager.listWindows(session))
+      .filter(window => window.name === "dedupe-window");
+    expect(replacementId).toBe(firstId);
+    expect(matches).toEqual([{ id: replacementId, name: "dedupe-window" }]);
+    expect(await replacement.getPaneStatus()).toEqual({ alive: true });
+  });
+
   it("keeps a per-instance size stable while the control client is attached", async () => {
     const tm = new TmuxManager(session, "", { columns: 132, rows: 40 });
     await tm.createWindow("sleep 30", "/tmp", "stable-size");

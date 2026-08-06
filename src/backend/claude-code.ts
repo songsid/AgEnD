@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -25,7 +25,14 @@ export class ClaudeCodeBackend implements CliBackend {
     if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
 
     const sessionIdFile = join(this.instanceDir, "session-id");
-    if (!config.skipResume && existsSync(sessionIdFile)) {
+    // `session-id` belongs to the instance, not the backend. A ClassicBot can
+    // switch from Kiro (or another CLI) to Claude while retaining that marker.
+    // Claude's bare `--continue` then looks for a conversation in this cwd and
+    // exits when the workspace has never had a Claude session. Treat Claude's
+    // own project transcript as the source of truth instead of the generic
+    // marker alone. This also makes an empty/missing Classic workspace start
+    // fresh rather than entering a resume crash loop.
+    if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory)) {
       cmd += " --continue";
     }
 
@@ -42,6 +49,19 @@ export class ClaudeCodeBackend implements CliBackend {
     }
 
     return cmd;
+  }
+
+  private hasProjectSession(workingDirectory: string): boolean {
+    const cwd = workingDirectory.trim();
+    if (!cwd) return false;
+    const configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
+    const encodedCwd = resolve(cwd).replaceAll("/", "-");
+    try {
+      return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
+        .some(entry => entry.isFile() && entry.name.endsWith(".jsonl"));
+    } catch {
+      return false;
+    }
   }
 
   writeConfig(config: CliBackendConfig): void {
