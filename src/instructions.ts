@@ -55,7 +55,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "close with a short line like `.` — some backends error on a turn with no text at all.",
       "",
       "## Mentioning Users & Bots",
-      "- Discord: `<@USER_ID>` (e.g. `<@368442276000694273>`). Extract the id from the `id:` field in the message header.",
+      "- Discord: `<@USER_ID>` (e.g. `<@123456789012345678>`). Extract the id from the `id:` field in the message header.",
       "- Telegram: `@username` (plain text).",
       "- When notifying a specific user in a channel, include their mention in the reply text.",
       "- To mention another bot in collab mode, use the same format with the bot's user ID.",

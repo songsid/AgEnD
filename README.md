@@ -180,7 +180,7 @@ Control which Discord servers can use ClassicBot via `~/.agend/classicBot.yaml`:
 defaults:
   backend: claude-code
   allowed_guilds:              # Only these servers can /start
-    - "1496855124440780912"
+    - "123456789012345678"
     - "9876543210123456789"
 ```
 

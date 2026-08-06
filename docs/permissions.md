@@ -136,11 +136,11 @@ Message arrives
 channel:
   access:
     mode: locked
-    allowed_users: ["951494522"]
+    allowed_users: ["987654321"]
 
 # classicBot.yaml
 defaults:
-  admin_users: ["951494522", "368442276000694273"]
+  admin_users: ["987654321", "123456789012345678"]
   # allowed_guilds/groups/users: omitted = allow all
 ```
 
@@ -148,8 +148,8 @@ defaults:
 ```yaml
 # classicBot.yaml
 defaults:
-  admin_users: ["951494522"]
-  allowed_guilds: ["1496407196106494055"]  # Discord servers
-  allowed_groups: ["-5222823063"]          # Telegram groups
-  allowed_users: ["951494522"]             # TG private chat
+  admin_users: ["987654321"]
+  allowed_guilds: ["234567890123456789"]  # Discord servers
+  allowed_groups: ["-1001234567890"]      # Telegram groups
+  allowed_users: ["987654321"]            # TG private chat
 ```
