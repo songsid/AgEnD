@@ -123,12 +123,14 @@ export interface CliBackend {
   supportsQueuedInput?(): boolean;
 
   /**
-   * Whether the first submission after startup needs a defensive second Enter.
-   * Some TUIs expose their prompt before their final redraw is complete; output
-   * from that redraw can look like a successful idle→busy transition even when
-   * the first Enter was swallowed. Absent means false.
+   * Whether every submission needs a defensive second Enter. Some TUIs swallow
+   * Enter while still processing a paste (a startup redraw, or a large paste on
+   * a slow host) while emitting output that looks like a successful idle→busy
+   * transition — so the swallow cannot be reliably observed. Only meaningful
+   * for backends without a native input queue, where a bare Enter is a no-op
+   * at an empty prompt and during generation. Absent means false.
    */
-  requiresFirstDeliveryEnterRetry?(): boolean;
+  requiresDeliveryEnterRetry?(): boolean;
 
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
