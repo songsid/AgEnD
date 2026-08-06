@@ -1208,8 +1208,6 @@ export class Daemon extends EventEmitter {
             this.emitSupervisionEnded("the CLI exited normally (code 0)", "Nothing crashed — start it again when you need it.");
             return;
           }
-          this.setProcessStatus("crashed");
-
           // Distinguish tmux server crash from single window crash.
           // nullReason records *why* getPaneStatus returned null (for diagnosing
           // whether this was a real window loss or a transient query failure).
@@ -1247,13 +1245,26 @@ export class Daemon extends EventEmitter {
               nullReason = "no_window";
               try {
                 const windows = await TmuxManager.listWindows(this.tmuxSessionName);
-                if (windows.some(w => w.name === this.name)) nullReason = "window_present_query_glitch";
+                const currentWindowId = this.tmux.getWindowId();
+                if (windows.some(w => w.id === currentWindowId)) {
+                  // The exact window still exists, so `list-panes` was the query
+                  // that glitched. Keep the process/state intact and retry on
+                  // the next health tick instead of killing a live Kiro TUI.
+                  this.logger.warn(
+                    { windowId: currentWindowId },
+                    `${cliLabel} pane status unavailable but window is present — deferring crash recovery`,
+                  );
+                  scheduleNext();
+                  return;
+                }
+                if (windows.some(w => w.name === this.name)) nullReason = "same_name_other_window";
               } catch { nullReason = "query_error"; }
               this.logger.warn({ exitCode, nullReason }, `${cliLabel} window not found (tmux server alive)`);
             }
           } else {
             this.logger.warn({ exitCode }, `${cliLabel} process exited`);
           }
+          this.setProcessStatus("crashed");
 
           // Capture last output before killing. Best-effort even when the pane is
           // gone (paneStatus null) — gives the crash record something to diagnose

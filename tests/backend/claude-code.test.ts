@@ -7,6 +7,8 @@ import { isModelCompatible, validateModel } from "../../src/backend/types.js";
 
 const TEST_DIR = "/tmp/ccd-test-claude-backend";
 const WORK_DIR = "/tmp/ccd-test-workdir";
+const CLAUDE_DIR = "/tmp/ccd-test-claude-config";
+const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {
@@ -28,10 +30,15 @@ describe("ClaudeCodeBackend", () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
+    mkdirSync(CLAUDE_DIR, { recursive: true });
+    process.env.CLAUDE_CONFIG_DIR = CLAUDE_DIR;
   });
   afterEach(() => {
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(WORK_DIR, { recursive: true, force: true });
+    rmSync(CLAUDE_DIR, { recursive: true, force: true });
+    if (originalClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
   });
 
   describe("buildCommand", () => {
@@ -51,10 +58,25 @@ describe("ClaudeCodeBackend", () => {
 
     it("uses --continue when session-id file exists to bypass the session picker", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "sess-123");
+      const projectDir = join(CLAUDE_DIR, "projects", WORK_DIR.replaceAll("/", "-"));
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, "sess-123.jsonl"), "{}\n");
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain("--continue");
       expect(cmd).not.toContain("--resume");
+    });
+
+    it("starts fresh when a generic session marker has no Claude transcript in the workspace", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "kiro-session");
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      expect(backend.buildCommand(makeConfig())).not.toContain("--continue");
+    });
+
+    it("starts fresh when workingDirectory is empty", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "stale-session");
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      expect(backend.buildCommand(makeConfig({ workingDirectory: "" }))).not.toContain("--continue");
     });
 
     it("does not include --system-prompt (prompt injected via MCP instructions)", () => {
