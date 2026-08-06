@@ -11,6 +11,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
+| `/usage` | Show AI subscription usage | All |
 | `/compact` | Compact agent context | All |
 | `/cancel` | Interrupt agent generation | All |
 | `/save` | Save agent session | All |
@@ -20,6 +21,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard) | Admin |
+| 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -54,6 +56,7 @@ Registered globally via `client.application.commands.set()`.
 | `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
+| `/usage` | Show AI subscription usage | All |
 | `/cancel` | Interrupt agent generation | All |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
@@ -61,6 +64,8 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/compact` | Compact agent context | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
+| 🔒 `/model` | Change backend model (select menu) | Admin |
+| 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
