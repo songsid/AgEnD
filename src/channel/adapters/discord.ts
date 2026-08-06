@@ -213,35 +213,62 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const username = msg.author.username;
       let text = msg.content;
 
-      // Handle forwarded messages (messageSnapshots) and embeds
-      if (!text) {
-        const parts: string[] = [];
-        // Forwarded message snapshots (Discord forward feature)
-        if ((msg as any).messageSnapshots?.size > 0) {
-          for (const [, snap] of (msg as any).messageSnapshots) {
-            if (snap.message?.content) parts.push(snap.message.content);
-            if (snap.message?.embeds?.length) {
-              for (const e of snap.message.embeds) {
-                if (e.title) parts.push(e.title);
-                if (e.description) parts.push(e.description);
-              }
+      // Handle forwarded messages (messageSnapshots) and embeds.
+      //
+      // NOT gated on empty content: a forward WITH a comment used to skip this
+      // block entirely, silently dropping the forwarded text and images. The
+      // forwarded payload matters regardless of whether the forwarder added
+      // their own words.
+      const forwardedParts: string[] = [];
+      // Images that arrive as embeds rather than attachments — a forwarded
+      // image is often re-materialized by Discord as an embed of type "image".
+      // Only that type: "rich"/"link" (link previews) and "video"/"gifv" are
+      // not images and must not be downloaded as such.
+      const embedImageUrls: string[] = [];
+      const collectImageEmbeds = (embeds: readonly any[] | undefined): void => {
+        for (const e of embeds ?? []) {
+          const type = e?.data?.type ?? e?.type;
+          if (type !== "image") continue;
+          const url = e?.url ?? e?.data?.url ?? e?.thumbnail?.url;
+          if (typeof url === "string" && url && !embedImageUrls.includes(url)) {
+            embedImageUrls.push(url);
+          }
+        }
+      };
+
+      if ((msg as any).messageSnapshots?.size > 0) {
+        for (const [, snap] of (msg as any).messageSnapshots) {
+          if (snap.message?.content) forwardedParts.push(snap.message.content);
+          if (snap.message?.embeds?.length) {
+            collectImageEmbeds(snap.message.embeds);
+            for (const e of snap.message.embeds) {
+              if (e.title) forwardedParts.push(e.title);
+              if (e.description) forwardedParts.push(e.description);
             }
-            // Forward attachments (images, files) into the main message
-            if (snap.message?.attachments?.size > 0) {
-              for (const [, att] of snap.message.attachments) {
-                msg.attachments.set(att.id, att);
-              }
+          }
+          // Forward attachments (images, files) into the main message
+          if (snap.message?.attachments?.size > 0) {
+            for (const [, att] of snap.message.attachments) {
+              msg.attachments.set(att.id, att);
             }
           }
         }
+      }
+      collectImageEmbeds(msg.embeds);
+
+      if (forwardedParts.length > 0) {
+        const forwarded = forwardedParts.join("\n");
+        // A bare forward reads as the forwarded text itself (unchanged
+        // behaviour); a forward with a comment keeps both, labelled.
+        text = text ? `${text}\n[Forwarded]\n${forwarded}` : forwarded;
+      } else if (!text && msg.embeds.length > 0) {
         // Rich embeds (links, bot messages, etc.)
-        if (parts.length === 0 && msg.embeds.length > 0) {
-          for (const e of msg.embeds) {
-            if (e.title) parts.push(e.title);
-            if (e.description) parts.push(e.description);
-            if (e.fields?.length) {
-              for (const f of e.fields) parts.push(`${f.name}: ${f.value}`);
-            }
+        const parts: string[] = [];
+        for (const e of msg.embeds) {
+          if (e.title) parts.push(e.title);
+          if (e.description) parts.push(e.description);
+          if (e.fields?.length) {
+            for (const f of e.fields) parts.push(`${f.name}: ${f.value}`);
           }
         }
         if (parts.length > 0) text = parts.join("\n");
@@ -259,6 +286,24 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         size: att.size,
         filename: att.name ?? undefined,
       }));
+
+      // Embed images become synthetic photo attachments so the normal download
+      // path (attachment-handler → downloadAttachment → image_path) serves them
+      // without knowing where the bytes came from. Their synthetic ids are
+      // registered in attachmentUrls exactly like real attachment ids.
+      embedImageUrls.forEach((url, i) => {
+        const base = url.split("/").pop()?.split("?")[0] ?? "image";
+        const ext = base.includes(".") ? base.slice(base.lastIndexOf(".") + 1).toLowerCase() : "";
+        const fileId = `embed-img-${messageId}-${i}`;
+        attachments.push({
+          kind: "photo",
+          fileId,
+          mime: ext ? `image/${ext === "jpg" ? "jpeg" : ext}` : undefined,
+          size: 0, // unknown — embeds carry no byte size
+          filename: base,
+        });
+        this.attachmentUrls.set(fileId, url);
+      });
 
       // Store attachment URLs for later download
       for (const att of msg.attachments.values()) {
