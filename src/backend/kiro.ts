@@ -12,12 +12,13 @@ export class KiroBackend implements CliBackend {
     this.binaryPath = resolveBinary("kiro-cli");
   }
 
-  requiresFirstDeliveryEnterRetry(): boolean {
-    // Kiro has no native Enter-submitted input queue. Immediately after restart
-    // its final TUI redraw can swallow the first Enter while still producing
-    // output that looks busy, so observation alone cannot decide whether the
-    // message was submitted. A second bare Enter is safe for Kiro and restores
-    // the long-standing first-delivery protection.
+  requiresDeliveryEnterRetry(): boolean {
+    // Kiro has no native Enter-submitted input queue, and its TUI can swallow
+    // Enter while still processing a paste (post-restart redraw, or a large
+    // paste on a slow host) while producing output that looks busy — so
+    // observation alone cannot decide whether the message was submitted. A
+    // second bare Enter is safe for Kiro on every delivery: verified live that
+    // it is a no-op both at an empty prompt and during generation.
     return true;
   }
 
