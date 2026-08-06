@@ -4,7 +4,50 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.1.1] - Unreleased
+## [2.1.2] - 2026-08-06
+
+### Added
+- **`/usage` slash command** — check AI subscription usage directly from chat. Shows Claude, Codex, Kiro, Antigravity, and Grok quota in each platform's native rich format (progress bar). Same permission as `/ctx` (no admin gate).
+- **`get_usage` MCP tool** — agents can query their own subscription usage. Also available as `agend-agent usage` for CLI-mode agents.
+- **AI Usage Panel in `/view`** — 📊 button shows usage panel for all configured backends. Disable with `web.usage_panel: false`.
+- **`/effort` slash command** — adjust AI reasoning effort at runtime (low/medium/high/xhigh/max). TG: inline keyboard. DC: select menu. Admin only. Supported across all 6 backends. Codex effort levels are per-model.
+- **`get_effort` MCP tool** — query current effort level and strategy. `/status` shows effort column.
+- **Reactions as context** — DC/TG reactions are stored in a database and included in the next turn's context, not forwarded as messages. Both directions (user→agent, bot→user). `defaults.reactions_enabled` controls this.
+- **Live progress line** — while an agent works, the delivery status message shows the running tool name and elapsed time. Configurable: `defaults.progress_min_elapsed` (seconds, default 30). Shows Kiro's running tool read directly from the pane.
+- **Tab completion** — `agend attach <tab>` completes instance names (bash and zsh).
+- **Fleet memory report** — `agend ls` footer shows fleet-wide memory total.
+- **MCP auto-restart on idle** — when an MCP server dies, AgEnD waits for the instance to go idle then restarts it automatically (crash-loop guard + restart mutex).
+- **Singleton fleet startup** — `fleet.lock` prevents duplicate fleet processes from starting.
+- **Fleet event loop unblocked** — child processes (sdNotify, etc.) no longer block the main event loop. Watchdog ping is async.
+- **Restart progress in General** — live progress of fleet startup: version, instance count, paused list.
+- **Startup skips paused queue** — paused instances are excluded from startup launch queue (~50s faster on large fleets).
+- **Interactive prompt detection** — detects stalled sudo/Y-N prompts and notifies General.
+
+### Fixed
+- **At-least-once message delivery** — cross-instance and scheduled messages retry up to 3 times; final failure is visible to the agent.
+- **Cancel button lifecycle** — 4 safety nets (dead daemon, restart, silent reporter, 24h cap). Fixed: spinner, double-observe, post-before-delete ordering, restart mutex, grace retirement.
+- **Reply dedup** — 60-second window prevents duplicate replies caused by rate-limit timeouts.
+- **General coordinators always warm** — General and multi-channel generals cannot be auto-paused.
+- **Delivery routing** — replies use the configured adapter; classic instances route through their bound adapter.
+- **pane write serialisation** — all writes into a tmux pane are serialised to prevent interleaving.
+- **SQLite hardened** — busy timeouts, corrupt-tolerant event log, bounded query history.
+- **Fleet health honest** — `/health` returns 503 when any instance is degraded. `READY=1` is only sent after all generals are up.
+- **Error isolation** — one instance's crash no longer takes down the fleet process. ClassicBot errors route to General.
+- **Kiro login failure** — no longer misreported as a rate limit.
+- **Dashboard token persistent** — `/dashboard` URLs remain valid after fleet restart.
+- **agy busy pattern** — Antigravity now has a real busy pattern instead of always-true.
+- **Grok/Claude/Codex pattern fixes** — idle detection for edge cases, model error detection, annual key reading.
+- **Dead window cleanup** — stale tmux window registrations are retired automatically.
+- **Startup dialog guard** — user messages are not pasted into startup dialogs.
+- **Secret file mode warning** — warns when a credentials file cannot be made owner-only.
+
+### Changed
+- **Cross-instance delivery** — fire-and-queue (non-blocking) instead of awaiting delivery, reducing caller wait time.
+- **`defaults.effort`** — new config field for default effort level.
+- **`defaults.progress_min_elapsed`** — seconds before live progress shows (default 30).
+- **`web.usage_panel`** — show/hide usage panel in `/view` (default `true`).
+
+## [2.1.1] - 2026-07-29
 
 ### Added
 - **AI usage panel on /view** — 📊 button opens a panel showing live subscription usage for the CLI backends logged in on this machine (Claude session/weekly %, Codex windows/credits, Grok weekly pool, Kiro monthly + bonus/gift credits and Amazon Q subscription). New `GET /api/ai-usage` endpoint (5-min cache); disable with `web.usage_panel: false`. Claude/Codex/Grok provider logic vendored from ai-usage-board/OpenUsage (MIT, see `src/usage/LICENSE.md`); Kiro provider is original research.
