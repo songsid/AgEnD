@@ -290,11 +290,11 @@ channels:
   general-chat:                 # Channel key（用於推導 instance 名稱：classic-general-chat）
     channelId: "1234567890"     # Discord channel ID
     backend: gemini-cli         # 可選：覆蓋此 channel 的預設 backend
-    createdBy: "368442276000694273"
+    createdBy: "123456789012345678"
     createdAt: "2026-04-12T02:00:00Z"
   dev-help:
     channelId: "9876543210"     # 未設定 backend → 使用 defaults.backend
-    createdBy: "368442276000694273"
+    createdBy: "123456789012345678"
     createdAt: "2026-04-12T02:10:00Z"
 ```
 
