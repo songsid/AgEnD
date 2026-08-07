@@ -157,7 +157,7 @@ describe("writeMessageToPane settle routing", () => {
       log_level: "silent",
     } as any, instanceDir, false, { getReadyPattern: () => /❯/ } as any, control as any,
       { child: () => logger } as any);
-    return { daemon, instanceDir };
+    return { daemon, instanceDir, logger };
   }
 
   it("holds Enter until quiet for a queue-less delivery on a slow-rendering TUI", async () => {
@@ -222,6 +222,38 @@ describe("writeMessageToPane settle routing", () => {
       // Paste-visible verification then confirms via capturePane.
       await vi.advanceTimersByTimeAsync(2_000);
       expect(await pending).toBe(true);
+    } finally {
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a failed tmux Enter command immediately with its stderr", async () => {
+    vi.useFakeTimers();
+    const control = fakeControl();
+    const { daemon, instanceDir, logger } = makeDaemon(control);
+    const failed = vi.fn();
+    daemon.on("message_failed", failed);
+    (daemon as any).tmux = {
+      pasteBuffer: async () => true,
+      sendSpecialKey: async () => false,
+      getLastSendSpecialKeyError: () => "client is read-only",
+    };
+    try {
+      const pending = (daemon as any).writeMessageToPane(
+        "hello world",
+        "@1",
+        false,
+        { chatId: "chat", messageId: "message" },
+      ) as Promise<boolean>;
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await pending).toBe(false);
+      expect(failed).toHaveBeenCalledOnce();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: "initial-submit", tmuxError: "client is read-only" }),
+        "tmux send-keys Enter failed during message delivery",
+      );
     } finally {
       vi.useRealTimers();
       rmSync(instanceDir, { recursive: true, force: true });
