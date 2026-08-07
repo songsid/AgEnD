@@ -15,14 +15,13 @@ export class OpenCodeBackend implements CliBackend {
     // Use per-instance config via OPENCODE_CONFIG env (set in writeConfig)
     let cmd = this.binaryPath;
 
-    // Resume last session if skipResume is not set
+    // Resume only a session explicitly persisted for this instance. OpenCode's
+    // --continue is global and can hijack an unrelated session from another cwd.
     if (!config.skipResume) {
       const sessionIdFile = join(this.instanceDir, "session-id");
       if (existsSync(sessionIdFile)) {
         const sid = readFileSync(sessionIdFile, "utf-8").trim();
         if (sid) cmd += ` --session ${sid}`;
-      } else {
-        cmd += " --continue";
       }
     }
 
