@@ -190,6 +190,9 @@
       usageTitle: "📊 AI Usage", usageEmpty: "No AI CLI logins found on this machine.",
       usageUpdated: "updated", usageRefresh: "Refresh", usageHigh: "high", usageNear: "near limit",
       usageMoveUp: "Move up", usageMoveDown: "Move down",
+      tooltipBackend: "Backend: {value}", tooltipStatus: "Status: {value}", tooltipContext: "Context: {value}",
+      tooltipUnavailable: "Unavailable", statusRunning: "Running", statusPaused: "Paused",
+      statusStopped: "Stopped", statusCrashed: "Crashed", statusUnknown: "Unknown",
       usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data." },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
@@ -202,6 +205,9 @@
       usageTitle: "📊 AI 訂閱用量", usageEmpty: "本機沒有偵測到已登入的 AI CLI。",
       usageUpdated: "更新於", usageRefresh: "重新整理", usageHigh: "偏高", usageNear: "接近上限",
       usageMoveUp: "上移", usageMoveDown: "下移",
+      tooltipBackend: "後端：{value}", tooltipStatus: "狀態：{value}", tooltipContext: "上下文：{value}",
+      tooltipUnavailable: "無資料", statusRunning: "運行中", statusPaused: "已暫停",
+      statusStopped: "已停止", statusCrashed: "已崩潰", statusUnknown: "未知",
       usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
@@ -330,11 +336,11 @@
     antigravity: "Antigravity",
     opencode: "OpenCode",
   };
-  const STATUS_LABELS = {
-    running: "Running",
-    paused: "Paused",
-    stopped: "Stopped",
-    crashed: "Crashed",
+  const STATUS_LABEL_KEYS = {
+    running: "statusRunning",
+    paused: "statusPaused",
+    stopped: "statusStopped",
+    crashed: "statusCrashed",
   };
 
   function backendLabel(backend) {
@@ -351,12 +357,15 @@
   function instanceTooltip(it) {
     const context = typeof it.context_pct === "number" && Number.isFinite(it.context_pct)
       ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%`
-      : "Unavailable";
+      : T("tooltipUnavailable");
+    const statusKey = STATUS_LABEL_KEYS[it.status];
+    const status = statusKey ? T(statusKey) : it.status || T("statusUnknown");
+    const translated = (key, value) => T(key).replace("{value}", value);
     const lines = [
       it.instance_name,
-      `Backend: ${backendLabel(it.backend)}`,
-      `Status: ${STATUS_LABELS[it.status] || it.status || "Unknown"}`,
-      `Context: ${context}`,
+      translated("tooltipBackend", backendLabel(it.backend)),
+      translated("tooltipStatus", status),
+      translated("tooltipContext", context),
     ];
     if (typeof it.description === "string" && it.description.trim()) {
       lines.push("", it.description.trim());
@@ -735,7 +744,7 @@
   q("helpBtn").onclick = () => setHelp(!q("helpPanel").classList.contains("open"));
   q("helpClose").onclick = () => setHelp(false);
   q("helpBackdrop").onclick = () => setHelp(false);
-  q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); };
+  q("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); applyI18n(); renderList(); };
   q("densityBtn").onclick = cycleDensity;
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") setHelp(false); });
 
