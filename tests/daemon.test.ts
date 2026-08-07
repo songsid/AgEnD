@@ -102,6 +102,10 @@ describe("Daemon backend-native input queue delivery", () => {
       // the queue; see the "wedged pane" case below.
       waitUntilIdle: vi.fn().mockResolvedValue(true),
       hasOutputSince: vi.fn(() => false),
+      // Adaptive paste settle: no observable output → it degrades to the fixed
+      // fallback delay, which these tests already zero via firstDeliveryDelay.
+      getLastOutputAt: vi.fn(() => undefined),
+      getObservationResetAt: vi.fn(() => 0),
     };
     const daemon = new Daemon(
       `${backendName}-queue-test`,
