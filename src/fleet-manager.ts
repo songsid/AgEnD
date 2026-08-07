@@ -3267,9 +3267,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await this.handleClassicChannelMessage(classicName, syntheticMsg);
             return;
           }
-          // Strip @bot from text and forward as /chat
-          const cleanText = botUser ? text.replace(new RegExp(`@${botUser}`, "gi"), "").trim() : text;
-          if (cleanText.startsWith("/raw") && !this.classicChannels.isAdmin(msg.userId)) {
+          // Keep the bot's own @mention visible to the agent as a self-marker
+          // instead of stripping it (#498). Telegram never delivers a bot its
+          // own messages, so the marker cannot echo back into a loop.
+          const tgSelfMentionRe = botUser ? new RegExp(`@${botUser}`, "gi") : null;
+          const strippedText = tgSelfMentionRe ? text.replace(tgSelfMentionRe, "").trim() : text;
+          const cleanText = tgSelfMentionRe ? text.replace(tgSelfMentionRe, `@${botUser} (you)`).trim() : text;
+          if (strippedText.startsWith("/raw") && !this.classicChannels.isAdmin(msg.userId)) {
             await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/raw"));
             return;
           }
@@ -5454,9 +5458,17 @@ When users create specialized instances, suggest these configurations:
         return;
       }
 
-      // Strip the @mention from text
-      const cleanText = text.replace(new RegExp(`<@${adapterBotUserId}>`, "g"), "").trim();
-      if (!cleanText && !msg.attachments?.length) return;
+      // Rewrite the bot's own @mention into a readable self-marker instead of
+      // stripping it (#498): when several people are tagged in one message the
+      // agent must see that it is among them. Loop safety does not depend on
+      // this strip — the adapter drops the bot's own messages on inbound, so a
+      // reply containing the marker (or even a raw self-mention) never
+      // re-enters this path.
+      const selfMentionRe = new RegExp(`<@${adapterBotUserId}>`, "g");
+      const strippedText = text.replace(selfMentionRe, "").trim();
+      if (!strippedText && !msg.attachments?.length) return;
+      const selfMarker = mentionWorld?.botUsername ? `@${mentionWorld.botUsername} (you)` : `${mentionTag} (you)`;
+      const cleanText = text.replace(selfMentionRe, selfMarker).trim();
 
       const classicAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter;
       const collabReactChatId = msg.threadId ?? msg.chatId;
@@ -5465,8 +5477,9 @@ When users create specialized instances, suggest these configurations:
           .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
       }
 
-      // Block /raw bypass
-      if (cleanText.startsWith("/raw ")) return;
+      // Block /raw bypass — check the mention-stripped text so the self-marker
+      // prefix can't be used to sneak "/raw" past this gate.
+      if (strippedText.startsWith("/raw ")) return;
 
       // Attachments already saved at the top of the collab block.
       if (saved && classicAdapter && collabReactChatId && msg.messageId) {
