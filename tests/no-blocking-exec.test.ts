@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile, execFileSync } from "node:child_process";
@@ -43,25 +43,44 @@ describe("event loop liveness during child processes", () => {
 
 describe("runBackendDoctor", () => {
   it("resolves to a string instead of throwing when the CLI is unavailable", async () => {
-    // `agend` is not on PATH in the test environment, so this exercises the failure
-    // branch — which must return the message, not reject into the caller.
-    const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-doctor-")));
-    const result = await (fm as unknown as { runBackendDoctor(): Promise<string> }).runBackendDoctor();
-    expect(typeof result).toBe("string");
-    expect(result.length).toBeGreaterThan(0);
+    // Do not depend on what happens to be installed on the developer/CI host.
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-"));
+    const emptyPath = mkdtempSync(join(tmpdir(), "agend-empty-path-"));
+    const originalPath = process.env.PATH;
+    process.env.PATH = emptyPath;
+    try {
+      const fm = new FleetManager(dataDir);
+      const result = await (fm as unknown as { runBackendDoctor(): Promise<string> }).runBackendDoctor();
+      expect(result).toContain("agend CLI not found in PATH");
+    } finally {
+      process.env.PATH = originalPath;
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(emptyPath, { recursive: true, force: true });
+    }
   });
 
   it("does not block the event loop", async () => {
-    const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-doctor-")));
+    // A missing executable can reject before the first timer tick, which says
+    // nothing about whether execFile is blocking. Use a deterministic slow fake.
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-"));
+    const binDir = mkdtempSync(join(tmpdir(), "agend-doctor-bin-"));
+    const fakeAgend = join(binDir, "agend");
+    writeFileSync(fakeAgend, "#!/bin/sh\n/bin/sleep 0.1\nprintf 'doctor complete\\n'\n");
+    chmodSync(fakeAgend, 0o755);
+    const originalPath = process.env.PATH;
+    process.env.PATH = binDir;
+    const fm = new FleetManager(dataDir);
     let ticks = 0;
     const timer = setInterval(() => { ticks++; }, 5);
     try {
-      await (fm as unknown as { runBackendDoctor(): Promise<string> }).runBackendDoctor();
+      const result = await (fm as unknown as { runBackendDoctor(): Promise<string> }).runBackendDoctor();
+      expect(result).toBe("doctor complete\n");
     } finally {
       clearInterval(timer);
+      process.env.PATH = originalPath;
+      rmSync(dataDir, { recursive: true, force: true });
+      rmSync(binDir, { recursive: true, force: true });
     }
-    // Even a fast failure yields at least one tick, because the await hands control
-    // back to the loop — an execSync call would yield zero.
-    expect(ticks).toBeGreaterThan(0);
+    expect(ticks).toBeGreaterThan(5);
   });
 });
