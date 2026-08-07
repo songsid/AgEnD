@@ -604,19 +604,18 @@ const backend = program.command("backend").description("Backend diagnostics");
 backend
   .command("doctor")
   .description("Check backend prerequisites and configuration")
-  .argument("[backend]", "Backend to check (claude-code, codex, gemini-cli, opencode, kiro-cli)", "claude-code")
+  .argument("[backend]", "Backend to check (claude-code, codex, opencode, kiro-cli, antigravity, grok, gemini-cli [deprecated])", "claude-code")
   .action(async (backendName: string) => {
-    const backends: Record<string, { binary: string; label: string; install: string; auth: string }> = {
-      "claude-code": { binary: "claude", label: "Claude Code", install: "npm i -g @anthropic-ai/claude-code", auth: "claude (OAuth) or ANTHROPIC_API_KEY" },
-      "codex": { binary: "codex", label: "OpenAI Codex", install: "npm i -g @openai/codex", auth: "OPENAI_API_KEY" },
-      "gemini-cli": { binary: "gemini", label: "Gemini CLI", install: "npm i -g @google/gemini-cli", auth: "gemini (Google OAuth)" },
-      "opencode": { binary: "opencode", label: "OpenCode", install: "go install github.com/opencode-ai/opencode@latest", auth: "Configure provider API key" },
-      "kiro-cli": { binary: "kiro-cli", label: "Kiro CLI", install: "brew install --cask kiro-cli", auth: "kiro-cli login (AWS Builder ID)" },
-    };
-    const info = backends[backendName];
+    // Single source of truth for backend metadata — a hand-copied list here is
+    // how the doctor previously drifted (missing antigravity/grok entirely).
+    const { BACKENDS } = await import("./setup-wizard.js");
+    const info = BACKENDS.find(b => b.id === backendName);
     if (!info) {
-      console.error(`Unknown backend: ${backendName}. Available: ${Object.keys(backends).join(", ")}`);
+      console.error(`Unknown backend: ${backendName}. Available: ${BACKENDS.map(b => b.id).join(", ")}`);
       process.exit(1);
+    }
+    if (info.deprecated) {
+      console.warn(`⚠️  ${info.label} is deprecated (stops 2026-06-18). Consider switching to backend: antigravity`);
     }
 
     let issues = 0;

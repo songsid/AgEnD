@@ -233,10 +233,10 @@ export function handleWebRequest(
   // ── Backend detection ─────────────────────────────────
 
   if (method === "GET" && path === "/ui/backends") {
-    const BACKENDS = [
+    const BACKENDS: Array<{ name: string; binary: string; deprecated?: boolean }> = [
       { name: "claude-code", binary: "claude" },
       { name: "codex", binary: "codex" },
-      { name: "gemini-cli", binary: "gemini" },
+      { name: "gemini-cli", binary: "gemini", deprecated: true },
       { name: "opencode", binary: "opencode" },
       { name: "kiro-cli", binary: "kiro-cli" },
       { name: "antigravity", binary: "agy" },
@@ -249,7 +249,7 @@ export function handleWebRequest(
       // synchronous and run in the fleet process, so a hung lookup on a broken
       // PATH entry (a dead NFS mount) would block the event loop indefinitely.
       try { binPath = execFileSync("which", [b.binary], { stdio: "pipe", timeout: 2000 }).toString().trim(); installed = true; } catch { /* not installed */ }
-      return { name: b.name, binary: b.binary, installed, path: binPath };
+      return { name: b.name, binary: b.binary, installed, path: binPath, deprecated: b.deprecated ?? false };
     });
     json(res, 200, { backends });
     return true;

@@ -118,7 +118,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Grok Build** — removed experimental markers; now stable.
 - **Shared logger** — replaces per-instance worker threads.
 
-## [2.0.11] - Unreleased
+## [2.0.11] - 2026-07-08
 
 ### Added
 - **`/dashboard` command** — admin-only, returns View/Settings/WebUI URLs. DC: ephemeral reply. TG: spoiler-wrapped token.

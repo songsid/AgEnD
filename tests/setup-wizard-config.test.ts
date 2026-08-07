@@ -35,7 +35,7 @@ describe("buildFleetConfig", () => {
   it("allowed_users roundtrip: string input matches number comparison", () => {
     const config = buildFleetConfig({
       ...defaults,
-      allowedUsers: ["1047180393"],
+      allowedUsers: ["1234567890"],
     });
 
     // Serialize to YAML and parse back (simulates fleet.yaml load)
@@ -51,15 +51,15 @@ describe("buildFleetConfig", () => {
     );
 
     // Telegram adapter sends number, must match string in config
-    expect(am.isAllowed(1047180393)).toBe(true);
-    expect(am.isAllowed("1047180393")).toBe(true);
+    expect(am.isAllowed(1234567890)).toBe(true);
+    expect(am.isAllowed("1234567890")).toBe(true);
     expect(am.isAllowed(999)).toBe(false);
   });
 
   it("allowed_users with number input also works", () => {
     const config = buildFleetConfig({
       ...defaults,
-      allowedUsers: [1047180393],
+      allowedUsers: [1234567890],
     });
 
     const yamlStr = yaml.dump(config);
@@ -70,8 +70,8 @@ describe("buildFleetConfig", () => {
       join(tmpDir, "access2.json"),
     );
 
-    expect(am.isAllowed("1047180393")).toBe(true);
-    expect(am.isAllowed(1047180393)).toBe(true);
+    expect(am.isAllowed("1234567890")).toBe(true);
+    expect(am.isAllowed(1234567890)).toBe(true);
   });
 
   it("backend selection writes correct config", () => {

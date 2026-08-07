@@ -45,8 +45,9 @@ not a regression you just introduced.
 ## Tests
 
 ```bash
-npm test              # vitest, watch
-npm test -- --run     # single pass
+npm test              # vitest run — full suite, single pass
+npm run test:watch    # vitest watch mode
+npm run test:e2e      # e2e suite (e2e/vitest.config.e2e.ts)
 npx vitest run tests/some-file.test.ts
 ```
 
@@ -70,9 +71,10 @@ confusing "dist fails but src passes" report once source moves on.
 ## Verifying before a PR
 
 ```bash
-npx tsc --noEmit
+npm run typecheck        # tsc --noEmit
+npm run typecheck:tests  # tsc --noEmit -p tsconfig.test.json
 npm run build
-npm test -- --run
+npm test
 ```
 
 `tsc --noEmit` and `npm run build` never construct a `FleetManager`, so they are safe
