@@ -56,13 +56,19 @@ export class TmuxManager {
   // === Static session-level methods ===
 
   static async ensureSession(name: string): Promise<void> {
-    if (await TmuxManager.sessionExists(name)) return;
-    try {
-      await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
-    } catch (err) {
-      if (String(err).includes("duplicate session")) return;
-      throw err;
+    if (!(await TmuxManager.sessionExists(name))) {
+      try {
+        await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
+      } catch (err) {
+        if (!String(err).includes("duplicate session")) throw err;
+      }
     }
+
+    // This is deliberately a session option, not `set-option -g`: enabling the
+    // global default would also change tmux sessions that AgEnD does not own.
+    await exec("tmux", TmuxManager.tmuxArgs([
+      "set-option", "-t", name, "mouse", "on",
+    ]));
   }
 
   static async sessionExists(name: string): Promise<boolean> {
