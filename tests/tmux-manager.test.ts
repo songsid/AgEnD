@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { describe, it, expect, afterAll } from "vitest";
 import {
   LEGACY_TMUX_LOGICAL_SIZE,
@@ -5,6 +7,8 @@ import {
   resolveTmuxLogicalSize,
 } from "../src/tmux-manager.js";
 import { TmuxControlClient } from "../src/tmux-control.js";
+
+const exec = promisify(execFile);
 
 describe("TmuxManager", () => {
   const session = `ccd-test-${Date.now()}`;
@@ -16,6 +20,22 @@ describe("TmuxManager", () => {
   it("creates and detects session", async () => {
     await TmuxManager.ensureSession(session);
     expect(await TmuxManager.sessionExists(session)).toBe(true);
+  });
+
+  it("enables mouse mode for both new and existing AgEnD sessions", async () => {
+    const showMouse = async (): Promise<string> => {
+      const { stdout } = await exec("tmux", [
+        "show-options", "-v", "-t", session, "mouse",
+      ]);
+      return stdout.trim();
+    };
+
+    expect(await showMouse()).toBe("on");
+    await exec("tmux", ["set-option", "-t", session, "mouse", "off"]);
+    expect(await showMouse()).toBe("off");
+
+    await TmuxManager.ensureSession(session);
+    expect(await showMouse()).toBe("on");
   });
 
   it("creates window and checks alive", async () => {
