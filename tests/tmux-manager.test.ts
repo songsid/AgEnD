@@ -112,6 +112,25 @@ describe("TmuxManager", () => {
     expect(output).toContain("hello world");
   });
 
+  it("submits pasted input while the shared control client is attached", async () => {
+    const tm = new TmuxManager(session, "");
+    await tm.createWindow("cat", "/tmp", "control-send-keys");
+    const control = new TmuxControlClient(session, 100);
+    control.start();
+    try {
+      // tmux 3.7 rejects send-keys when the session's only attached client is
+      // read-only. This is the production shape: paste-buffer succeeds, then
+      // Enter used to fail with "client is read-only" and leave text stranded.
+      await new Promise(r => setTimeout(r, 500));
+      expect(await tm.pasteBuffer("control-client-enter-regression")).toBe(true);
+      expect(await tm.sendSpecialKey("Enter")).toBe(true);
+      await new Promise(r => setTimeout(r, 300));
+      expect(await tm.capturePane()).toContain("control-client-enter-regression");
+    } finally {
+      control.stop();
+    }
+  });
+
   it("kills window", async () => {
     const tm = new TmuxManager(session, "");
     const wid = await tm.createWindow("sleep 30", "/tmp");
