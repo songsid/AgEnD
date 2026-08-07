@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Message } from "discord.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { AccessManager } from "../src/channel/access-manager.js";
@@ -75,6 +76,75 @@ describe("Discord forwarded message images", () => {
     client.emit("messageCreate", msg);
     return seen;
   }
+
+  function realDiscordJsForward(content = "look at this"): Message {
+    const now = new Date().toISOString();
+    return new Message(client, {
+      id: "1500000000000000001",
+      channel_id: "topic-1",
+      guild_id: "guild-1",
+      author: { id: "user-1", username: "hanhanv", discriminator: "0", avatar: null, bot: false },
+      content,
+      timestamp: now,
+      edited_timestamp: null,
+      tts: false,
+      mention_everyone: false,
+      mentions: [],
+      mention_roles: [],
+      attachments: [],
+      embeds: [],
+      pinned: false,
+      type: 0,
+      flags: 16_384,
+      message_reference: {
+        type: 1,
+        message_id: "1500000000000000005",
+        channel_id: "origin-channel",
+        guild_id: "guild-1",
+      },
+      message_snapshots: [{
+        message: {
+          type: 0,
+          content: "original text",
+          mentions: [],
+          mention_roles: [],
+          attachments: [{
+            id: "1500000000000000007",
+            filename: "photo.png",
+            size: 123,
+            url: "https://cdn.example/photo.png",
+            proxy_url: "https://media.example/photo.png",
+            content_type: "image/png",
+          }],
+          embeds: [],
+          timestamp: now,
+          edited_timestamp: null,
+          flags: 0,
+          components: [],
+          sticker_items: [],
+        },
+      }],
+    } as any);
+  }
+
+  it("reads discord.js' normalized MessageSnapshot shape", async () => {
+    const msg = realDiscordJsForward();
+    const snapshot = msg.messageSnapshots.first() as any;
+
+    // discord.js unwraps APIMessageSnapshot.message. The value in the
+    // Collection is Message-like and does NOT have another `.message` layer.
+    expect(snapshot.message).toBeUndefined();
+    expect(snapshot.attachments.size).toBe(1);
+
+    const got = await inbound(msg);
+
+    expect(got.attachments).toEqual([
+      expect.objectContaining({ kind: "photo", fileId: "1500000000000000007" }),
+    ]);
+    expect(got.text).toContain("original text");
+    expect((adapter as any).attachmentUrls.get("1500000000000000007"))
+      .toBe("https://cdn.example/photo.png");
+  });
 
   it("delivers a forwarded snapshot attachment image even when the forwarder added a comment", async () => {
     // The regression case: content non-empty used to skip snapshot handling.
