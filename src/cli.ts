@@ -23,7 +23,7 @@ import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
 import { readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { hasPausedMarker } from "./pause-marker.js";
-import { PIE_PERCENT_RE } from "./tui-glyphs.js";
+import { clampContextPercent, parseContextPercent } from "./context-percent.js";
 import { COMPLETION_SHELLS, completionScript, type CompletionShell } from "./completion.js";
 import {
   getUpdateSelector,
@@ -1954,42 +1954,17 @@ function formatTimeSince(isoStr: string): string {
 }
 
 /**
- * Universal context-% parser for `agend ls` (all backends). Kept in sync with
- * parseContextPercent() in topic-commands.ts — same formats, bottom-up so the
+ * Universal context-% parser for `agend ls` (all backends). Shared with
+ * topic-commands.ts so CLI and fleet surfaces cannot drift. It scans bottom-up so the
  * most recent prompt wins:
  *   kiro classic "8% !>" / TUI "◑ 1%" (any pie glyph) / bracket "[8%]" / prompt "8% ❯"
  *   codex "Context N% left" (remaining → 100-N) or "Context N% used"
  *   opencode "1.2K (6%)"
  *   grok "12K / 500K" (used tokens / context window)
- * Duplicated (not imported) so this CLI entry point stays free of the daemon's
- * dependency graph. All returned values are context USED (low % = fresh).
+ * The parser is in a dependency-light module, keeping this CLI entry point free
+ * of the daemon's dependency graph. All values are context USED (low % = fresh).
  */
-const defaultParser = (output: string): number | null => {
-  const lines = output.split("\n");
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    const left = line.match(/Context\s+(\d+)%\s+left/i);
-    if (left) return 100 - parseInt(left[1], 10);
-    const ratio = line.match(/(\d+\.?\d*[KkMm]?)\s*\/\s*(\d+\.?\d*[KkMm]?)/);
-    if (ratio) {
-      const tokenCount = (value: string): number => {
-        const suffix = value.at(-1)?.toLowerCase();
-        const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : 1;
-        return parseFloat(value) * multiplier;
-      };
-      const used = tokenCount(ratio[1]);
-      const total = tokenCount(ratio[2]);
-      if (Number.isFinite(used) && Number.isFinite(total) && total > 0) return used / total * 100;
-    }
-    const m = line.match(/(\d+)%.*[!❯>]/)
-      || line.match(PIE_PERCENT_RE)
-      || line.match(/\[(\d+)%\]/)
-      || line.match(/Context\s+(\d+)%\s+used/i)
-      || line.match(/\d+(?:\.\d+)?[KM]?\s*\((\d+)%\)/);
-    if (m) return parseInt(m[1], 10);
-  }
-  return null;
-};
+const defaultParser = parseContextPercent;
 
 /** Optional backend-specific overrides; none needed — defaultParser covers all. */
 const contextParsers: Record<string, (output: string) => number | null> = {};
@@ -2126,7 +2101,7 @@ async function lsAction(opts: { json?: boolean; namesOnly?: boolean }): Promise<
         try {
           if (existsSync(statusFile)) {
             const data = JSON.parse(readFileSync(statusFile, "utf-8"));
-            context = data.context_window?.used_percentage ?? null;
+            context = clampContextPercent(data.context_window?.used_percentage);
           }
         } catch { /* ignore */ }
       }
