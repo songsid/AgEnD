@@ -23,6 +23,28 @@ describe("context parsers for kiro / grok / codex", () => {
     expect(ratio?.percentage).toBeCloseTo(13.4);
     expect(parseContextPercent("  67K / 500K │ 0/4 ✓")).toBeCloseTo(13.4);
   });
+
+  it("ignores an impossible prose ratio below Grok's real title bar", () => {
+    const pane = [
+      "branch ~/repo [Click here to Upgrade] 153K / 500K │ 4/4 ✓",
+      "agent discussion: compare 200K / 11.1K records",
+    ].join("\n");
+    expect(parseTokenContextRatio(pane)?.percentage).toBeCloseTo(30.6);
+    expect(parseContextPercent(pane)).toBeCloseTo(30.6);
+  });
+
+  it("ignores an impossible percent below Kiro's real statusline", () => {
+    const pane = [
+      "kiro_default · auto · ◕ 63% · λ",
+      "projected growth is 133% > last year",
+    ].join("\n");
+    expect(parseContextPercent(pane)).toBe(63);
+  });
+
+  it("returns null when a pane contains only impossible context candidates", () => {
+    expect(parseTokenContextRatio("200K / 11.1K")).toBeNull();
+    expect(parseContextPercent("Context 133% used\nContext 140% left")).toBeNull();
+  });
 });
 
 describe("resolveInstanceContext", () => {
@@ -37,6 +59,17 @@ describe("resolveInstanceContext", () => {
     expect(readStatuslineContextPct(dataDir, inst)).toBeCloseTo(41.2);
     const { context } = resolveInstanceContext(dataDir, inst, "claude-code", { bypassCache: true });
     expect(context).toBeCloseTo(41.2);
+  });
+
+  it("clamps a trusted statusline reading to the user-visible range", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "ctx-resolve-clamp-"));
+    const inst = "claude-overflow";
+    mkdirSync(join(dataDir, "instances", inst), { recursive: true });
+    writeFileSync(
+      join(dataDir, "instances", inst, "statusline.json"),
+      JSON.stringify({ context_window: { used_percentage: 133 } }),
+    );
+    expect(readStatuslineContextPct(dataDir, inst)).toBe(100);
   });
 
   it("does not use statusline.json for non-claude backends (stale after switch)", () => {
