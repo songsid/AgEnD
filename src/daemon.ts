@@ -34,6 +34,9 @@ const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "sta
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
+// Tools whose success proves the agent got a message out this turn. While any
+// of these succeeded, a dead-MCP proxy reply would double-post — suppress it.
+const TURN_REPLY_TOOLS = new Set(["reply", "send_to_instance", "report_result", "request_information", "delegate_task", "broadcast"]);
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
@@ -453,6 +456,50 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
       .slice(0, 200));
 }
 
+/**
+ * Distill a pane capture into text worth relaying as a proxy reply.
+ *
+ * Used when the MCP server died and the turn ended with no reply: the agent's
+ * final answer exists only on screen. Everything up to and including the last
+ * line of the inbound message we pasted is cut (the reply starts after it),
+ * lines with no letters or digits are dropped (borders, separators, spinners,
+ * bare prompts), and the ready-prompt line is dropped by pattern. Returns null
+ * when what remains is trivial — a proxy message must carry an answer, not
+ * chrome. Secrets are redacted by sanitizePaneTail, same as stuck diagnostics.
+ */
+export function extractProxyReplyText(pane: string, opts: {
+  inboundMarker?: string;
+  readyPattern?: RegExp | null;
+  maxLines?: number;
+  maxChars?: number;
+} = {}): string | null {
+  const lines = sanitizePaneTail(pane, opts.maxLines ?? 40);
+  const marker = opts.inboundMarker?.trim();
+  // Require a distinctive marker: a short one ("ok") would match agent text.
+  if (marker && marker.length >= 8) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (lines[i].includes(marker)) { lines.splice(0, i + 1); break; }
+    }
+  }
+  const ready = opts.readyPattern
+    ? new RegExp(opts.readyPattern.source, opts.readyPattern.flags.replace(/[gy]/g, ""))
+    : null;
+  const kept = lines.filter(line => {
+    const t = line.trim();
+    if (!t) return true; // keep paragraph breaks; collapsed below
+    if (!/[\p{L}\p{N}]/u.test(t)) return false;
+    if (ready && ready.test(line)) return false;
+    return true;
+  });
+  const text = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  // Trivial = nothing an operator could read as an answer.
+  const meaningful = text.replace(/[^\p{L}\p{N}]/gu, "");
+  if (meaningful.length < 2) return null;
+  const maxChars = opts.maxChars ?? 3000;
+  // The end of the turn is the answer — when over budget, keep the tail.
+  return text.length > maxChars ? text.slice(text.length - maxChars) : text;
+}
+
 export type InteractivePromptKind = "sudo_password" | "password" | "confirmation" | "press_enter";
 
 export interface InteractivePromptDetection {
@@ -598,6 +645,15 @@ export class Daemon extends EventEmitter {
   private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
   private statePollInFlight = false;
+  // ── Dead-MCP proxy reply: per-turn evidence ─────────────────────────────
+  // Set when an inbound message lands in the CLI; cleared on the idle edge that
+  // ends the turn. With a dead MCP server and no successful channel tool call in
+  // between, the agent's answer exists only on screen — the daemon relays it.
+  private turnHadInbound = false;
+  private turnOutboundDelivered = false;
+  private turnCorrelationId: string | undefined;
+  private turnInboundMarker: string | undefined;
+  private proxyReplySeq = 0;
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
   /**
@@ -1944,6 +2000,9 @@ export class Daemon extends EventEmitter {
       // tool_result (interrupted, crashed, cancelled), which would otherwise leave
       // the last tool pinned to the progress line for the rest of the session.
       this.publishActivity(null);
+      // Must run before the mcpRestartPending branch below: the pane text is the
+      // only copy of the answer, and the revival restart is about to clear it.
+      this.maybeProxyReplyOnTurnEnd(pane);
     }
 
     if (snapshot.state !== previous) {
@@ -1975,6 +2034,97 @@ export class Daemon extends EventEmitter {
     if (!this.pauseRequested && this.pasteQueueDepth === 0 && this.autoPauseController.observe(snapshot.state)) {
       this.pauseRequested = true;
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
+    }
+  }
+
+  /**
+   * An inbound message is in the CLI — the turn it starts owns the proxy-reply
+   * evidence. Called after deliverMessage confirms the paste, not on arrival: a
+   * message can arrive mid-turn and sit queued, and marking at arrival would let
+   * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
+   */
+  private markTurnStarted(meta: Record<string, string>, deliveredText: string): void {
+    this.turnHadInbound = true;
+    this.turnOutboundDelivered = false;
+    this.turnCorrelationId = meta.correlation_id || undefined;
+    // The last non-empty line of what we pasted: everything on screen after it
+    // is the agent's own output.
+    this.turnInboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+  }
+
+  /**
+   * Turn ended (busy→idle edge): if the MCP server is dead and none of the
+   * channel tools verifiably delivered anything this turn, the agent's answer is
+   * stranded on screen — relay it. The daemon's own IPC route to the fleet
+   * manager does not pass through the dead MCP server. Consuming the turn state
+   * here (edge-triggered, then reset) is what makes it at most once per turn.
+   */
+  private maybeProxyReplyOnTurnEnd(pane?: string): void {
+    const hadInbound = this.turnHadInbound;
+    const delivered = this.turnOutboundDelivered;
+    const correlationId = this.turnCorrelationId;
+    const inboundMarker = this.turnInboundMarker;
+    this.turnHadInbound = false;
+    this.turnOutboundDelivered = false;
+    this.turnCorrelationId = undefined;
+    this.turnInboundMarker = undefined;
+    if (!hadInbound || delivered || this.isPaused) return;
+    if (this.config.mcp_proxy_reply === false) return;
+    // "dead" only: unknown means not started or exited cleanly — never proxy on it.
+    if (mcpServerState(this.instanceDir).state !== "dead") return;
+    void this.sendProxyReply(pane, inboundMarker, correlationId);
+  }
+
+  /** Relay the pane's final text to the channel, marked as a daemon proxy reply. */
+  private async sendProxyReply(pane: string | undefined, inboundMarker: string | undefined, correlationId: string | undefined): Promise<void> {
+    try {
+      // The idle capture normally hands its pane in; fall back only when the
+      // edge came from a path without one.
+      if (pane === undefined) pane = await this.tmux?.capturePane();
+      if (!pane) return;
+      const text = extractProxyReplyText(pane, { inboundMarker, readyPattern: this.instanceStateReadyPattern });
+      if (!text) {
+        this.logger.debug("Dead-MCP proxy reply skipped — pane tail is trivial");
+        return;
+      }
+      let body = `⚠️ [MCP unavailable — proxy reply]\n\n${text}`;
+      if (correlationId) body += `\n\n(correlation_id: ${correlationId})`;
+      const args: Record<string, unknown> = { text: body };
+      // Same context-bound routing as the reply tool in handleToolCall.
+      if (this.lastChatId) {
+        args.chat_id = this.lastChatId;
+        if (this.lastThreadId) args.thread_id = this.lastThreadId;
+      }
+      this.logger.warn({ correlationId }, "MCP server dead and the turn sent no reply — relaying the pane text as a proxy reply");
+      this.emit("mcp_proxy_reply", { name: this.name, correlationId });
+      const adapters = this.messageBus.getAllAdapters();
+      if (adapters.length > 0) {
+        routeToolCall(adapters[0], "reply", args, this.lastThreadId, (_result, error) => {
+          if (error) this.logger.error({ error }, "Dead-MCP proxy reply failed");
+        });
+        return;
+      }
+      if (!this.ipcServer) return;
+      const fleetReqId = `proxyreply_${++this.proxyReplySeq}`;
+      this.ipcServer.broadcast({
+        type: "fleet_outbound",
+        tool: "reply",
+        args,
+        fleetRequestId: fleetReqId,
+        adapterId: this.lastAdapterId,
+      });
+      const timeout = setTimeout(() => {
+        this.pendingIpcRequests.delete(fleetReqId);
+        this.logger.error("Dead-MCP proxy reply timed out waiting for the fleet manager");
+      }, daemonBudgetMs("reply"));
+      timeout.unref?.();
+      this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+        clearTimeout(timeout);
+        if (respMsg.error) this.logger.error({ error: respMsg.error }, "Dead-MCP proxy reply failed");
+        else this.logger.info("Dead-MCP proxy reply delivered");
+      });
+    } catch (err) {
+      this.logger.error({ err: (err as Error).message }, "Dead-MCP proxy reply attempt failed");
     }
   }
 
@@ -2345,7 +2495,7 @@ export class Daemon extends EventEmitter {
       const rawText = content.slice(5);
       this.logger.info({ user }, "Raw paste from topic mode user");
       this.pasteLock = this.pasteLock.then(async () => {
-        await this.deliverMessage(rawText);
+        if (await this.deliverMessage(rawText)) this.markTurnStarted(meta, rawText);
       }).catch(err => {
         this.logger.warn({ err: (err as Error).message }, "pasteLock raw delivery error");
       });
@@ -2407,7 +2557,7 @@ export class Daemon extends EventEmitter {
         const status = (chatId && messageId)
           ? { chatId: meta.thread_id || chatId, messageId }
           : undefined;
-        await this.deliverMessage(formatted, status);
+        if (await this.deliverMessage(formatted, status)) this.markTurnStarted(meta, formatted);
       } finally {
         this.pasteQueueDepth--;
       }
@@ -2737,6 +2887,11 @@ export class Daemon extends EventEmitter {
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string) => {
+      // A message that verifiably went out stands down the dead-MCP proxy reply
+      // for this turn: the agent proved it can still speak for itself.
+      if (!error && result != null && TURN_REPLY_TOOLS.has(tool)) {
+        this.turnOutboundDelivered = true;
+      }
       this.ipcServer?.send(socket, { requestId, result, error });
     };
 

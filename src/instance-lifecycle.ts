@@ -331,6 +331,14 @@ export class InstanceLifecycle {
           : `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`));
     }, this.ctx.logger, `daemon.mcp_died[${name}]`));
 
+    daemon.on("mcp_proxy_reply", safeHandler((data: { name: string; correlationId?: string }) => {
+      // The message itself goes out through the daemon's fleet_outbound path;
+      // this is the audit trail that it happened (and why the channel saw a ⚠️).
+      this.ctx.eventLog?.insert(name, "mcp_proxy_reply", { correlationId: data.correlationId });
+      this.ctx.logger.warn({ name, correlationId: data.correlationId },
+        "MCP dead at turn end with no reply — daemon relayed the pane text to the channel");
+    }, this.ctx.logger, `daemon.mcp_proxy_reply[${name}]`));
+
     daemon.on("mcp_restart_requested", safeHandler((data: { name: string; trigger: string }) => {
       // The daemon object dies with the restart it asks for, so the loop guard
       // lives here: if the previous auto-restart was under the cooldown, the new
