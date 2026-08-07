@@ -4386,8 +4386,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
       return stripAnsi(stdout) || "No output";
     } catch (err) {
-      const e = err as { stdout?: string; message?: string };
-      return stripAnsi(e.stdout ?? e.message ?? "Doctor failed");
+      const e = err as { code?: string; stdout?: string; message?: string };
+      const output = stripAnsi(e.stdout ?? "").trim();
+      if (output) return output;
+      if (e.code === "ENOENT") {
+        return "Backend doctor unavailable — agend CLI not found in PATH";
+      }
+      return stripAnsi(e.message ?? "").trim() || "Doctor failed";
     }
   }
 
