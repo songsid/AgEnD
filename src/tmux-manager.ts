@@ -30,6 +30,7 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
 
 export class TmuxManager {
   private windowId: string;
+  private lastSendSpecialKeyError: string | null = null;
 
   // Socket isolation: null = use tmux default socket (backward compatible).
   // Set to a name to use `-L <name>` for custom AGEND_HOME isolation.
@@ -286,10 +287,22 @@ export class TmuxManager {
   }
 
   async sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q"): Promise<boolean> {
+    this.lastSendSpecialKeyError = null;
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", `${this.sessionName}:${this.windowId}`, key]));
       return true;
-    } catch { return false; }
+    } catch (err) {
+      const stderr = err && typeof err === "object" && "stderr" in err
+        ? String((err as { stderr?: unknown }).stderr ?? "").trim()
+        : "";
+      this.lastSendSpecialKeyError = stderr || (err instanceof Error ? err.message : String(err));
+      return false;
+    }
+  }
+
+  /** Diagnostic from the most recent failed sendSpecialKey call. */
+  getLastSendSpecialKeyError(): string | null {
+    return this.lastSendSpecialKeyError;
   }
 
   /**

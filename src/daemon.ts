@@ -2736,6 +2736,17 @@ export class Daemon extends EventEmitter {
    * precisely so the lock's scope is visible at the call site rather than being
    * an invariant maintained by comments.
    */
+  private async sendDeliveryEnter(phase: string): Promise<boolean> {
+    const sent = await this.tmux!.sendSpecialKey("Enter");
+    if (!sent) {
+      this.logger.error({
+        phase,
+        tmuxError: this.tmux!.getLastSendSpecialKeyError() ?? "unknown tmux send-keys failure",
+      }, "tmux send-keys Enter failed during message delivery");
+    }
+    return sent;
+  }
+
   private async writeMessageToPane(
     formatted: string,
     initialWindowId: string | undefined,
@@ -2777,7 +2788,10 @@ export class Daemon extends EventEmitter {
         settle = { settleMs: fallbackMs, observedPostPasteOutput: false, capHit: false, usedFallback: true };
       }
       let enterAt = Date.now();
-      await this.tmux!.sendSpecialKey("Enter");
+      if (!(await this.sendDeliveryEnter("initial-submit"))) {
+        if (status) this.emit("message_failed", status); // ❌
+        return false;
+      }
 
       // Kiro's legacy TUI can swallow Enter while it is still processing a large
       // paste — not only during the post-ready redraw (#479): on slower hosts it
@@ -2794,10 +2808,12 @@ export class Daemon extends EventEmitter {
       let enterRetry = false;
       if (this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
-        enterAt = Date.now();
-        await this.tmux!.sendSpecialKey("Enter");
-        enterRetry = true;
-        this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
+        const retryAt = Date.now();
+        if (await this.sendDeliveryEnter("queue-less-defensive-retry")) {
+          enterAt = retryAt;
+          enterRetry = true;
+          this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
+        }
       }
       this.logger.debug({
         observedPostPasteOutput: settle.observedPostPasteOutput,
@@ -2832,13 +2848,19 @@ export class Daemon extends EventEmitter {
         }
         await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
         const retryAt = Date.now();
-        await this.tmux!.sendSpecialKey("Enter");
+        if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery"))) {
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
         if (windowId && this.controlClient) {
           let becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
           if (!becameBusy) {
             this.logger.warn("No idle→busy after idle-gated redelivery — re-sending Enter once");
             const retry2At = Date.now();
-            await this.tmux!.sendSpecialKey("Enter");
+            if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery-retry"))) {
+              if (status) this.emit("message_failed", status); // ❌
+              return false;
+            }
             becameBusy = await this.confirmBusyAfterEnter(windowId, retry2At);
           }
           if (becameBusy) {
@@ -2859,7 +2881,10 @@ export class Daemon extends EventEmitter {
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
           const retryAt = Date.now();
-          await this.tmux!.sendSpecialKey("Enter");
+          if (!(await this.sendDeliveryEnter("idle-to-busy-retry"))) {
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
           becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
         }
         if (becameBusy) {
@@ -2876,7 +2901,7 @@ export class Daemon extends EventEmitter {
       } else {
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
-        await this.tmux!.sendSpecialKey("Enter");
+        await this.sendDeliveryEnter("unobserved-defensive-retry");
         if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
       }
       return true;
