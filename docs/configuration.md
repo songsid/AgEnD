@@ -19,6 +19,7 @@ Located at `~/.agend/fleet.yaml`. The primary configuration file for the fleet.
 | `templates` | object | no | — | Reusable fleet deployment templates |
 | `profiles` | object | no | — | Reusable backend/model presets |
 | `health_port` | number | no | `19280` | HTTP health endpoint port |
+| `web` | object | no | — | Web UI feature toggles — `web.usage_panel: false` hides the AI subscription usage panel on /view and disables `/api/ai-usage` (default `true`) |
 
 ---
 
@@ -96,7 +97,9 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |
-| `tool_set` | string | `"full"` | MCP tool profile: `"full"` (20), `"standard"` (8), `"minimal"` (3) |
+| `tool_set` | string | `"full"` | MCP tool profile: `"full"` (46 tools), `"standard"` (18), `"minimal"` (4), `"general"` (25, dispatcher profile used by General instances) |
+| `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies. `false` = notify only. |
+| `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
 | `systemPrompt` | string | — | Custom system prompt (supports `file:path` syntax) |
 | `workflow` | string \| false | `"builtin"` | Workflow template: `"builtin"`, `"file:path"`, inline, or `false` |

@@ -692,11 +692,13 @@ export async function runQuickstart(): Promise<void> {
       process.exit(1);
     } else if (found.length === 1) {
       backend = found[0].id;
-      console.log(`  ${green("✓")} Detected: ${found[0].label} ${dim(`(${found[0].binary})`)}`);
+      const depNote = found[0].deprecated ? ` ${yellow("(⚠️ deprecated)")}` : "";
+      console.log(`  ${green("✓")} Detected: ${found[0].label}${depNote} ${dim(`(${found[0].binary})`)}`);
     } else {
       console.log("  Multiple backends detected:");
       for (let i = 0; i < found.length; i++) {
-        console.log(`    ${i + 1}. ${found[i].label} ${dim(`(${found[i].binary})`)}`);
+        const dep = found[i].deprecated ? ` ${yellow("(⚠️ deprecated)")}` : "";
+        console.log(`    ${i + 1}. ${found[i].label}${dep} ${dim(`(${found[i].binary})`)}`);
       }
       const choice = await rl.question(`  Choose [1]: `);
       const idx = Math.max(0, Math.min(found.length - 1, parseInt(choice || "1", 10) - 1));

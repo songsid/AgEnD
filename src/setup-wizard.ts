@@ -228,7 +228,16 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
 
 // ── Prerequisite checks ──────────────────────────────────
 
-export const BACKENDS = [
+export const BACKENDS: Array<{
+  id: string;
+  binary: string;
+  label: string;
+  installUrl: string;
+  install: string;
+  auth: string;
+  /** Still accepted in fleet.yaml, but not offered to new users without a warning label. */
+  deprecated?: boolean;
+}> = [
   { id: "claude-code", binary: "claude", label: "Claude Code",
     installUrl: "https://code.claude.com/docs/en/quickstart",
     install: "curl -fsSL https://claude.ai/install.sh | bash",
@@ -237,7 +246,7 @@ export const BACKENDS = [
     installUrl: "https://developers.openai.com/codex/quickstart",
     install: "npm i -g @openai/codex",
     auth: "codex (ChatGPT login) or set OPENAI_API_KEY" },
-  { id: "gemini-cli", binary: "gemini", label: "Gemini CLI",
+  { id: "gemini-cli", binary: "gemini", label: "Gemini CLI", deprecated: true,
     installUrl: "https://github.com/google-gemini/gemini-cli",
     install: "npm i -g @google/gemini-cli",
     auth: "gemini (Google OAuth)" },
@@ -300,7 +309,7 @@ export async function runSetupWizard(): Promise<void> {
   const backendIdx = await choose(
     rl,
     "Which AI coding agent?",
-    BACKENDS.map(b => ({ label: b.label, hint: b.binary })),
+    BACKENDS.map(b => ({ label: b.deprecated ? `${b.label} (⚠️ deprecated)` : b.label, hint: b.binary })),
     0,
   );
   const selectedBackend = BACKENDS[backendIdx];

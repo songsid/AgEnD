@@ -8,13 +8,15 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 
 | Command | Description | Permission |
 |---------|-------------|------------|
-| `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
 | `/compact` | Compact agent context | All |
-| `/cancel` | Interrupt agent generation | All |
-| `/save` | Save agent session | All |
+| `/cancel` | Interrupt agent generation (handled, not in menu) | All |
+| `/save` | Save agent session (handled, not in menu) | All |
+| 🔒 `/status` | Show fleet status and costs | Admin |
+| 🔒 `/pause` | Pause an idle instance | Admin |
+| 🔒 `/wake` | Wake a paused instance | Admin |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
@@ -32,6 +34,11 @@ Registered via `setMyCommands` with `scope: default`.
 | 🔒 `/start` | Start an agent in this chat | Admin |
 | 🔒 `/stop` | Stop the agent | Admin |
 | 🔒 `/compact` | Compact agent context | Admin |
+| 🔒 `/model` | Switch model | Admin |
+| 🔒 `/effort` | Set reasoning effort | Admin |
+| 🔒 `/pause` | Pause the agent | Admin |
+| 🔒 `/wake` | Wake the agent | Admin |
+| `/ctx` | Show context usage | All |
 
 ### Telegram ClassicBot — unregistered commands
 
@@ -53,20 +60,21 @@ Registered globally via `client.application.commands.set()`.
 | `/start` | Start an agent in this channel | All |
 | `/stop` | Stop the agent in this channel | All |
 | `/chat <message>` | Send a message to the agent | All |
-| `/status` | Show fleet status and costs | All |
 | `/sysinfo` | System diagnostics | All |
 | `/ctx` | Show agent context usage | All |
 | `/usage` | Show AI subscription usage | All |
 | `/cancel` | Interrupt agent generation | All |
+| 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
+| 🔒 `/status` | Show fleet status and costs | Admin |
+| 🔒 `/pause [instance]` | Pause an idle instance | Admin |
+| 🔒 `/wake [instance]` | Wake a paused instance | Admin |
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/compact` | Compact agent context | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
-| 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (select menu) | Admin |
-| 🔒 `/model` | Change backend model (select menu) | Admin |
 | 🔒 `/save <filename>` | Save the agent's conversation | Admin |
 | 🔒 `/load <filename>` | Load a saved conversation | Admin |
 
@@ -77,7 +85,7 @@ Registered globally via `client.application.commands.set()`.
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
 Fleet-level commands — requires fleet admin:
-- `/restart`, `/update`, `/doctor`, `/collab`
+- `/status`, `/restart`, `/update`, `/doctor`, `/collab`, `/pause`, `/wake`, `/model`, `/effort`
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
@@ -95,7 +103,7 @@ Permission varies by platform/mode:
 ### All Users
 
 No permission check:
-- `/status`, `/sysinfo`, `/ctx`
+- `/sysinfo`, `/ctx`
 - TG @mention conversation
 - DC `/start`, `/stop`, `/chat`
 

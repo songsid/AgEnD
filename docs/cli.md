@@ -4,9 +4,9 @@
 
 | Command | Description |
 |---------|-------------|
-| `/status` | Show fleet status, context %, and costs |
+| `/status` | Show fleet status, context %, and costs (admin only) |
 | `/restart` | In-process restart all instances (no process exit) |
-| `/upgrade` | Exit process to apply new code (requires launchd/systemd auto-restart) |
+| `/update` | Update AgEnD to the latest version (admin only) |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status) |
 | `/pause` | Manually pause an instance (admin only) |
 | `/wake` | Wake a paused instance (admin only) |
@@ -21,8 +21,8 @@ agend stop                      # Stop AgEnD service
 agend restart                   # Restart AgEnD service
 agend update                    # Update AgEnD to latest version and restart
 agend update --beta             # Install from beta channel instead of latest
-agend update --version 1.23.0   # Install a specific version
-agend update --skip-install     # Skip npm install, only restart service
+agend update --version 2.1.2    # Install a specific version
+agend update --force            # Force reinstall and restart even when already up to date
 agend reload                    # Hot-reload config (sends SIGHUP to fleet process)
 ```
 
@@ -94,17 +94,22 @@ Names come from `agend ls --names-only`, so completion offers exactly the instan
 `attach` accepts — including ClassicBot instances that only exist in `classicBot.yaml`.
 Each TAB press runs that command (~90ms).
 
-## Backend diagnostics
+## Diagnostics & validation
 
 ```bash
+agend doctor                    # Run fleet health diagnostics
+agend doctor mcp                # Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH)
+agend health                    # Fleet health check — shows problems and diagnostics
+agend validate                  # Validate fleet.yaml and classicBot.yaml
 agend backend doctor [backend]  # Check backend environment (binary, auth, tmux, TERM)
-agend backend trust <backend>   # Pre-trust working directories (avoid Gemini CLI trust dialogs)
+agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust dialogs)
 ```
 
 ## Web Dashboard
 
 ```bash
 agend web                       # Open Web UI dashboard in browser
+agend view                      # Open the read-only View dashboard in browser
 ```
 
 ## Schedules
@@ -149,7 +154,6 @@ agend topic unbind <name>       # Unbind instance from topic
 
 ```bash
 agend access list <name>        # List allowed users
-agend access add <name> <uid>   # Add allowed user
 agend access remove <name> <uid> # Remove user
 agend access lock <name>        # Lock instance access (whitelist only)
 agend access unlock <name>      # Unlock instance access (enable pairing)

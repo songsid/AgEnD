@@ -182,3 +182,21 @@ describe("web chat delivery", () => {
     }));
   });
 });
+
+describe("backend detection endpoint", () => {
+  it("GET /ui/backends marks gemini-cli deprecated and nothing else", async () => {
+    const ctx = makeCtx();
+    const res = await callAndWait("GET", "/ui/backends", undefined, ctx);
+
+    expect(res.status).toBe(200);
+    const { backends } = JSON.parse(res.body) as { backends: Array<{ name: string; deprecated: boolean }> };
+
+    const gemini = backends.find(b => b.name === "gemini-cli");
+    expect(gemini?.deprecated).toBe(true);
+    for (const b of backends) {
+      if (b.name !== "gemini-cli") expect(b.deprecated).toBe(false);
+    }
+    // The recommended replacements must be offered
+    expect(backends.map(b => b.name)).toEqual(expect.arrayContaining(["antigravity", "grok"]));
+  });
+});

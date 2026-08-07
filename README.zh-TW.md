@@ -116,14 +116,14 @@ graph LR
 - Telegram bot token（[@BotFather](https://t.me/BotFather)）或 Discord bot token
 - Groq API key（選用，語音轉文字用）
 
-> **⚠️** 所有 CLI 後端都以 `--dangerously-skip-permissions`（或等效參數）執行。詳見 [Security](SECURITY.md)。
+> **⚠️** 所有 CLI 後端都以 `--dangerously-skip-permissions`（或等效參數）執行。詳見 [Security](docs/SECURITY.zh-TW.md)。
 
 ## 文件
 
 - [Features](docs/features.md) — 功能詳細說明
 - [CLI Reference](docs/cli.md) — 所有指令與選項
 - [Configuration](docs/configuration.zh-TW.md) — fleet.yaml 完整設定參考
-- [Security](SECURITY.md) — 信任模型與安全強化
+- [Security](docs/SECURITY.zh-TW.md) — 信任模型與安全強化
 - [開發環境設定](docs/development.md) — 開發 AgEnD 本身
 
 ## 已知限制

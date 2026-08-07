@@ -131,7 +131,7 @@ graph LR
 - Telegram bot token ([@BotFather](https://t.me/BotFather)) or Discord bot token
 - Groq API key (optional, for voice)
 
-> **⚠️** All CLI backends run with `--dangerously-skip-permissions` (or equivalent). See [Security](SECURITY.md).
+> **⚠️** All CLI backends run with `--dangerously-skip-permissions` (or equivalent). See [Security](docs/SECURITY.md).
 
 > **WSL (Windows Subsystem for Linux):** Fully supported. The install script auto-detects WSL and avoids using Windows `node.exe` from PATH. If you encounter PATH issues, add to `/etc/wsl.conf`:
 > ```ini
@@ -145,7 +145,7 @@ graph LR
 - [Features](docs/features.md) — detailed feature documentation
 - [CLI Reference](docs/cli.md) — all commands and options
 - [Configuration](docs/configuration.md) — fleet.yaml complete reference
-- [Security](SECURITY.md) — trust model and hardening
+- [Security](docs/SECURITY.md) — trust model and hardening
 - [Development Setup](docs/development.md) — working on AgEnD itself
 
 ## Discord ClassicBot

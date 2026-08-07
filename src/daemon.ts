@@ -683,12 +683,8 @@ export class Daemon extends EventEmitter {
   private lastAdapterId: string | undefined;
   // Pending ack: react 🫡 on first transcript activity after receiving a message
   private pendingAckMessage: { chatId: string; messageId: string } | null = null;
-  // Tool status tracking for channel adapter
   /** Last activity published to the fleet manager; null when nothing is running. */
   private currentActivity: string | null = null;
-  private toolStatusMessageId: string | null = null;
-  private toolStatusLines: string[] = [];
-  private toolStatusDebounce: ReturnType<typeof setTimeout> | null = null;
   // Session identity: map IPC socket → sessionName (from mcp_ready)
   private socketSessionNames = new Map<import("node:net").Socket, string>();
   // Crash recovery
@@ -1014,9 +1010,6 @@ export class Daemon extends EventEmitter {
         void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta)).catch(err => {
           this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
         });
-      } else if (msg.type === "fleet_tool_status_ack") {
-        // Fleet manager sent us the messageId for our tool status message
-        this.toolStatusMessageId = msg.messageId as string;
       } else if (msg.type === "query_instance_state") {
         const snapshot = this.getInstanceStateSnapshot();
         this.ipcServer?.send(socket, {
@@ -1886,7 +1879,6 @@ export class Daemon extends EventEmitter {
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     this.freezeRuntimeMonitors();
-    if (this.toolStatusDebounce) { clearTimeout(this.toolStatusDebounce); this.toolStatusDebounce = null; }
     this.pendingIpcRequests.clear();
     if (this.adapter) await this.adapter.stop();
 
@@ -2512,47 +2504,6 @@ export class Daemon extends EventEmitter {
     if (name === "Agent") return "Agent (subagent)";
     if (name.startsWith("mcp__agend__")) return ""; // skip channel tools
     return name;
-  }
-
-  private addToolStatus(name: string, input: unknown, state: "running" | "done"): void {
-    const summary = this.summarizeTool(name, input);
-    if (!summary) return; // skip empty (e.g., channel tools)
-
-    if (state === "running") {
-      this.toolStatusLines.push(`⏳ ${summary}`);
-    } else {
-      // Mark the last matching tool as done
-      for (let i = this.toolStatusLines.length - 1; i >= 0; i--) {
-        if (this.toolStatusLines[i].includes(name) && this.toolStatusLines[i].startsWith("⏳")) {
-          this.toolStatusLines[i] = this.toolStatusLines[i].replace("⏳", "✅");
-          break;
-        }
-      }
-    }
-    this.debouncedSendToolStatus();
-  }
-
-  /** Debounce tool status updates to avoid channel rate limits */
-  private debouncedSendToolStatus(): void {
-    if (this.toolStatusDebounce) clearTimeout(this.toolStatusDebounce);
-    this.toolStatusDebounce = setTimeout(() => this.sendToolStatus(), 500);
-  }
-
-  private sendToolStatus(): void {
-    const text = this.toolStatusLines.join("\n");
-    if (!text) return;
-
-    this.ipcServer?.broadcast({
-      type: "fleet_tool_status",
-      instanceName: this.name,
-      text,
-      editMessageId: this.toolStatusMessageId,
-    });
-  }
-
-  /** Called by fleet manager when tool status message is sent (returns messageId) */
-  setToolStatusMessageId(messageId: string): void {
-    this.toolStatusMessageId = messageId;
   }
 
   /**
@@ -3468,8 +3419,6 @@ export class Daemon extends EventEmitter {
     this.beginSpawn();
     let resumedSuccessfully = false;
     try {
-    this.toolStatusLines = [];
-    this.toolStatusMessageId = null;
     if (!this.backend) {
       throw new Error("No backend configured — cannot spawn CLI window");
     }

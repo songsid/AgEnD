@@ -2750,8 +2750,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
           await this.handleOutboundFromInstance(name, msg);
-        } else if (msg.type === "fleet_tool_status") {
-          this.handleToolStatusFromInstance(name, msg);
         } else if (msg.type === "fleet_schedule_create" || msg.type === "fleet_schedule_list" ||
                    msg.type === "fleet_schedule_update" || msg.type === "fleet_schedule_delete") {
           this.handleScheduleCrud(name, msg);
@@ -3620,34 +3618,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const isClassic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined;
     if (isClassic) {
       ClassicChannelManager.logMessage(instanceName, "bot", args.text as string ?? "", new Date());
-    }
-  }
-
-  /** Handle tool status update from a daemon instance */
-  private handleToolStatusFromInstance(instanceName: string, msg: Record<string, unknown>): void {
-    const statusAdapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    if (!statusAdapter) return;
-
-    const text = msg.text as string;
-    const editMessageId = msg.editMessageId as string | null;
-    const senderSessionName = msg.senderSessionName as string | undefined;
-    const senderInstanceName = senderSessionName && this.fleetConfig?.instances[senderSessionName]
-      ? senderSessionName
-      : null;
-    const routingConfig = senderInstanceName
-      ? this.fleetConfig?.instances[senderInstanceName]
-      : (senderSessionName ? undefined : this.fleetConfig?.instances[instanceName]);
-    const threadId = routingConfig?.topic_id ? String(routingConfig.topic_id) : undefined;
-    const chatId = statusAdapter.getChatId();
-    if (!chatId) return;
-
-    if (editMessageId) {
-      statusAdapter.editMessage(chatId, editMessageId, text, threadId).catch(e => this.logger.debug({ err: e }, "Failed to edit tool status message"));
-    } else {
-      statusAdapter.sendText(chatId, text, { threadId }).then((sent) => {
-        const ipc = this.instanceIpcClients.get(instanceName);
-        ipc?.send({ type: "fleet_tool_status_ack", messageId: sent.messageId });
-      }).catch(e => this.logger.warn({ err: e }, "Failed to send tool status message"));
     }
   }
 
