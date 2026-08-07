@@ -322,8 +322,15 @@ export class TmuxControlClient extends EventEmitter {
     // not defense in depth: instance windows use `window-size latest` (see
     // TmuxManager.applyLogicalSize) so a human `tmux attach` can resize them, and
     // without `ignore-size` this client would collapse them to 80 columns.
+    //
+    // Do NOT add `-r` here. tmux 3.7 tightened read-only client handling so an
+    // otherwise unrelated `tmux send-keys -t <pane> Enter` resolves this sole
+    // attached client, rejects the key with "client is read-only", and leaves a
+    // successfully pasted message sitting unsubmitted. The control process is a
+    // trusted child whose stdin is owned by this FleetManager; writable control
+    // mode does not grant a capability the same OS user does not already have.
     this.proc = spawn("tmux", tmuxArgs([
-      "-C", "attach", "-f", "ignore-size", "-t", this.sessionName, "-r",
+      "-C", "attach", "-f", "ignore-size", "-t", this.sessionName,
     ]), {
       stdio: ["pipe", "pipe", "pipe"],
     });
