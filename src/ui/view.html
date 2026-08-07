@@ -322,11 +322,46 @@
     return n || it.instance_name;
   }
 
+  const BACKEND_LABELS = {
+    "claude-code": "Claude Code",
+    "kiro-cli": "Kiro CLI",
+    codex: "Codex",
+    grok: "Grok Build",
+    antigravity: "Antigravity",
+    opencode: "OpenCode",
+  };
+  const STATUS_LABELS = {
+    running: "Running",
+    paused: "Paused",
+    stopped: "Stopped",
+    crashed: "Crashed",
+  };
+
+  function backendLabel(backend) {
+    return BACKEND_LABELS[backend] || backend || "Unknown";
+  }
+
   function backendIconHtml(backend) {
     const known = new Set(["claude-code", "kiro-cli", "codex", "grok", "antigravity", "opencode"]);
     const id = known.has(backend) ? backend : "other";
-    const label = backend || "unknown backend";
-    return `<span class="cli-icon cli-${id}" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
+    const label = backendLabel(backend);
+    return `<span class="cli-icon cli-${id}" title="${esc(label)}" aria-label="Backend: ${esc(label)}"></span>`;
+  }
+
+  function instanceTooltip(it) {
+    const context = typeof it.context_pct === "number" && Number.isFinite(it.context_pct)
+      ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%`
+      : "Unavailable";
+    const lines = [
+      it.instance_name,
+      `Backend: ${backendLabel(it.backend)}`,
+      `Status: ${STATUS_LABELS[it.status] || it.status || "Unknown"}`,
+      `Context: ${context}`,
+    ];
+    if (typeof it.description === "string" && it.description.trim()) {
+      lines.push("", it.description.trim());
+    }
+    return lines.join("\n");
   }
 
   // Compute display order: persisted sort-order first (by index), then any
@@ -382,6 +417,7 @@
         el.className = "inst" + (name === current ? " active" : "");
         el.draggable = true;
         el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
+        el.title = instanceTooltip(it);
         el.onclick = () => select(name);
         wireDrag(el, { type: "instance", name, group: g });
         list.appendChild(el);
