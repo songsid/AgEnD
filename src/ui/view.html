@@ -28,6 +28,14 @@
   .dot.running { background: #3fb950; } .dot.stopped { background: #6e7681; } .dot.crashed { background: #f85149; }
   .inst .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inst .pct { color: var(--dim); font-size: 11px; }
+  .cli-icon { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,.24); box-shadow: 0 0 0 1px rgba(0,0,0,.18); }
+  .cli-claude-code { background: #c678dd; }
+  .cli-kiro-cli { background: #58a6ff; }
+  .cli-codex { background: #3fb950; }
+  .cli-grok { background: #0d1117; border-color: #f0f6fc; }
+  .cli-antigravity { background: #f85149; }
+  .cli-opencode { background: #f0f6fc; }
+  .cli-other { background: #6e7681; }
 
   /* Main */
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
@@ -86,9 +94,13 @@
   /* AI usage panel (shares .help-panel chrome) */
   .u-provider { margin: 14px 0 4px; padding-top: 10px; border-top: 1px solid var(--border); }
   .u-provider:first-of-type { border-top: none; padding-top: 0; }
-  .u-head { display: flex; align-items: baseline; gap: 8px; }
+  .u-head { display: flex; align-items: center; gap: 8px; }
   .u-head .u-name { font-size: 14px; font-weight: 600; }
   .u-head .u-plan { color: var(--dim); font-size: 11px; }
+  .u-order { display: flex; gap: 3px; margin-left: auto; }
+  .u-move { width: 24px; height: 22px; border: 1px solid var(--border); border-radius: 5px; background: none; color: var(--dim); cursor: pointer; line-height: 1; }
+  .u-move:hover:not(:disabled) { color: var(--fg); border-color: var(--accent); }
+  .u-move:disabled { opacity: .25; cursor: default; }
   .u-metric { margin: 8px 0; }
   .u-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; }
   .u-row .u-label { color: var(--dim); flex: 1; min-width: 0; }
@@ -160,11 +172,9 @@
 
 <script>
 (() => {
-  // GET routes are open (no token). Writes (profile/avatar/sort-order POST)
-  // require the web.token, which the user enters in the edit panel; we keep it
-  // in localStorage. A ?token= URL param is still honored as a fallback.
+  // GET routes are open (no token). Profile/avatar writes require web.token;
+  // visual ordering is browser-local and never leaves localStorage.
   const urlToken = new URLSearchParams(location.search).get("token") || "";
-  const webToken = () => localStorage.getItem("agend_web_token") || urlToken;
   const q = (id) => document.getElementById(id);
 
   // ── i18n ──
@@ -174,22 +184,24 @@
       saveHint: "Viewing is open (read-only). Saving requires the web.token (~/.agend/web.token).", helpTitle: "📖 Help",
       help1: "Pick an instance on the left → its live terminal shows on the right",
       help2: "Click a group header ▼/▶ to collapse/expand", help3: "✏️ Edit changes display name, role, description",
-      help4: "Drag to reorder (needs web.token permission)",
+      help4: "Drag groups or instances to reorder them in this browser",
       help5: "Click ⤢ to cycle font density: Fit → Comfortable → Compact",
       densityFit: "Fit", densityComfortable: "Comfortable", densityCompact: "Compact", densityLabel: "Font density",
       usageTitle: "📊 AI Usage", usageEmpty: "No AI CLI logins found on this machine.",
       usageUpdated: "updated", usageRefresh: "Refresh", usageHigh: "high", usageNear: "near limit",
+      usageMoveUp: "Move up", usageMoveDown: "Move down",
       usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data." },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
       saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
       help1: "左側選 instance → 右側顯示即時 terminal 畫面",
       help2: "點 group header ▼/▶ 收合/展開", help3: "✏️ Edit 可修改顯示名稱、角色、描述",
-      help4: "拖曳可調整順序（需 web.token 權限）",
+      help4: "拖曳 group 或 instance 可調整此瀏覽器的顯示順序",
       help5: "點 ⤢ 循環切換字級密度：剛好填滿 → 舒適 → 精簡",
       densityFit: "剛好填滿", densityComfortable: "舒適", densityCompact: "精簡", densityLabel: "字級密度",
       usageTitle: "📊 AI 訂閱用量", usageEmpty: "本機沒有偵測到已登入的 AI CLI。",
       usageUpdated: "更新於", usageRefresh: "重新整理", usageHigh: "偏高", usageNear: "接近上限",
+      usageMoveUp: "上移", usageMoveDown: "下移",
       usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
@@ -228,9 +240,9 @@
   let sortInsts = new Map();    // instanceName -> sort_index (within its group)
   let groupNames = [];          // group display order (computed)
   let instByGroup = new Map();  // group -> [instance_name, …] display order (computed)
-  let writable = false;         // whether the current web.token can POST
-  let probed = false;
   let dragItem = null;          // { type:'group'|'instance', name, group }
+  const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order";
+  const USAGE_ORDER_KEY = "agend_view_usage_order";
 
   const api = (path) => urlToken ? `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(urlToken)}` : path;
 
@@ -310,6 +322,13 @@
     return n || it.instance_name;
   }
 
+  function backendIconHtml(backend) {
+    const known = new Set(["claude-code", "kiro-cli", "codex", "grok", "antigravity", "opencode"]);
+    const id = known.has(backend) ? backend : "other";
+    const label = backend || "unknown backend";
+    return `<span class="cli-icon cli-${id}" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
+  }
+
   // Compute display order: persisted sort-order first (by index), then any
   // new/unsorted groups & instances by the tag+alpha fallback. Stored in
   // groupNames / instByGroup so drag handlers can mutate + persist them.
@@ -349,10 +368,10 @@
       const isCollapsed = collapsed.has(g);
       const header = document.createElement("div");
       header.className = "group-header";
-      header.draggable = writable;
+      header.draggable = true;
       header.innerHTML = `<span class="caret">${isCollapsed ? "▶" : "▼"}</span><span>${esc(g)}</span><span class="gcount">${names.length}</span>`;
       header.onclick = () => { if (collapsed.has(g)) collapsed.delete(g); else collapsed.add(g); renderList(); };
-      if (writable) wireDrag(header, { type: "group", name: g });
+      wireDrag(header, { type: "group", name: g });
       list.appendChild(header);
       if (isCollapsed) continue;
 
@@ -361,10 +380,10 @@
         if (!it) continue;
         const el = document.createElement("div");
         el.className = "inst" + (name === current ? " active" : "");
-        el.draggable = writable;
-        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>`;
+        el.draggable = true;
+        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
         el.onclick = () => select(name);
-        if (writable) wireDrag(el, { type: "instance", name, group: g });
+        wireDrag(el, { type: "instance", name, group: g });
         list.appendChild(el);
       }
     }
@@ -426,35 +445,25 @@
     return rows;
   }
 
-  async function persistOrder() {
+  function persistOrder() {
     // Mirror into the local maps so a mid-flight refresh doesn't revert.
     sortGroups = new Map(groupNames.map((g, i) => [g, i]));
     sortInsts = new Map();
     for (const g of groupNames) (instByGroup.get(g) || []).forEach((n, j) => sortInsts.set(n, j));
-    try {
-      const r = await fetch("/api/sort-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": webToken() },
-        body: JSON.stringify(orderRows()),
-      });
-      if (r.status === 401) { writable = false; renderList(); }
-    } catch { /* transient */ }
+    try { localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(orderRows())); }
+    catch { /* ordering still applies for this page even if storage is unavailable */ }
   }
 
-  // Probe write permission by POSTing the current order (idempotent for a
-  // web-token user; 401 without a valid web.token → drag stays disabled).
-  // Re-run after the user enters a web.token so drag-sort lights up.
-  async function probeWrite() {
-    if (!webToken()) { if (writable) { writable = false; renderList(); } return; }
+  function restoreSidebarOrder() {
+    sortGroups = new Map(); sortInsts = new Map();
     try {
-      const r = await fetch("/api/sort-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Agend-Token": webToken() },
-        body: JSON.stringify(orderRows()),
-      });
-      const nowWritable = r.ok;
-      if (nowWritable !== writable) { writable = nowWritable; renderList(); }
-    } catch { /* leave disabled */ }
+      const rows = JSON.parse(localStorage.getItem(SIDEBAR_ORDER_KEY) || "[]");
+      if (!Array.isArray(rows)) return;
+      for (const row of rows) {
+        if (row.item_type === "group" && typeof row.item_name === "string") sortGroups.set(row.item_name, Number(row.sort_index) || 0);
+        else if (row.item_type === "instance" && typeof row.item_name === "string") sortInsts.set(row.item_name, Number(row.sort_index) || 0);
+      }
+    } catch { /* ignore invalid browser-local state */ }
   }
 
   function renderCard() {
@@ -496,20 +505,13 @@
 
   async function loadRoster() {
     try {
-      const [pr, so] = await Promise.all([fetch(api("/api/profiles")), fetch(api("/api/sort-order"))]);
+      const pr = await fetch(api("/api/profiles"));
       if (!pr.ok) throw new Error("HTTP " + pr.status);
       roster = await pr.json();
       rosterByName = new Map(roster.map(r => [r.instance_name, r]));
-      const soRows = so.ok ? await so.json() : [];
-      sortGroups = new Map(); sortInsts = new Map();
-      for (const row of soRows) {
-        if (row.item_type === "group") sortGroups.set(row.item_name, row.sort_index);
-        else if (row.item_type === "instance") sortInsts.set(row.item_name, row.sort_index);
-      }
       if (!current && roster.length) current = roster[0].instance_name;
       computeOrder();
       renderList(); renderCard();
-      if (!probed) { probed = true; probeWrite(); }
     } catch (e) { q("pre").textContent = "Failed to load roster: " + e.message + "\n(Is the fleet running?)"; }
   }
 
@@ -684,7 +686,6 @@
       }
       q("msg").className = "ok"; q("msg").textContent = "Saved";
       await loadRoster();
-      probeWrite();  // web.token now stored — enable drag-sort
       setTimeout(exitEdit, 500);
     } catch (e) { q("msg").className = "err"; q("msg").textContent = e.message; }
   }
@@ -705,6 +706,33 @@
   // ── AI usage panel ────────────────────────────────────
   let usageData = null;
   let usageTimer = null;
+  let usageOrder = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(USAGE_ORDER_KEY) || "[]");
+    if (Array.isArray(saved)) usageOrder = saved.filter(v => typeof v === "string");
+  } catch { /* ignore invalid browser-local state */ }
+
+  function providerKey(provider) { return String(provider.id || provider.name || ""); }
+  function orderedUsageProviders(providers) {
+    const rank = new Map(usageOrder.map((id, i) => [id, i]));
+    return providers.map((provider, index) => ({ provider, index })).sort((a, b) => {
+      const ar = rank.has(providerKey(a.provider)) ? rank.get(providerKey(a.provider)) : Infinity;
+      const br = rank.has(providerKey(b.provider)) ? rank.get(providerKey(b.provider)) : Infinity;
+      return ar === br ? a.index - b.index : ar - br;
+    }).map(entry => entry.provider);
+  }
+
+  function moveUsageProvider(id, delta) {
+    if (!usageData || !Array.isArray(usageData.providers)) return;
+    const ids = orderedUsageProviders(usageData.providers).map(providerKey);
+    const from = ids.indexOf(id), to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    usageOrder = ids;
+    try { localStorage.setItem(USAGE_ORDER_KEY, JSON.stringify(usageOrder)); }
+    catch { /* ordering still applies for this page even if storage is unavailable */ }
+    renderUsage();
+  }
 
   function usageResetText(iso) {
     if (!iso) return "";
@@ -741,10 +769,15 @@
     const box = q("usageContent");
     if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>${T("usageTitle")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
     let html = `<h3>${T("usageTitle")}</h3>`;
-    if (!usageData.providers.length) html += `<div class="u-err">${T("usageEmpty")}</div>`;
-    for (const p of usageData.providers) {
+    const providers = orderedUsageProviders(usageData.providers);
+    if (!providers.length) html += `<div class="u-err">${T("usageEmpty")}</div>`;
+    for (let index = 0; index < providers.length; index++) {
+      const p = providers[index];
+      const key = providerKey(p);
       html += `<div class="u-provider"><div class="u-head"><span class="u-name">${esc(p.name)}</span>` +
-        (p.plan ? `<span class="u-plan">${esc(p.plan)}</span>` : "") + `</div>`;
+        (p.plan ? `<span class="u-plan">${esc(p.plan)}</span>` : "") +
+        `<span class="u-order"><button class="u-move" data-provider="${esc(key)}" data-delta="-1" title="${T("usageMoveUp")}" aria-label="${T("usageMoveUp")}"${index === 0 ? " disabled" : ""}>↑</button>` +
+        `<button class="u-move" data-provider="${esc(key)}" data-delta="1" title="${T("usageMoveDown")}" aria-label="${T("usageMoveDown")}"${index === providers.length - 1 ? " disabled" : ""}>↓</button></span></div>`;
       if (p.status === "error") html += `<div class="u-err">${esc(p.error || "error")}</div>`;
       else {
         html += (p.metrics || []).map(usageMetricHtml).join("");
@@ -758,6 +791,9 @@
     const at = new Date(usageData.fetchedAt).toLocaleTimeString();
     html += `<div class="u-foot"><span>${T("usageUpdated")} ${esc(at)}</span><button id="usageRefresh">${T("usageRefresh")}</button></div>`;
     box.innerHTML = html;
+    box.querySelectorAll(".u-move").forEach(button => {
+      button.onclick = () => moveUsageProvider(button.dataset.provider, Number(button.dataset.delta));
+    });
     const rb = q("usageRefresh");
     if (rb) rb.onclick = () => loadUsage(true);
   }
@@ -794,6 +830,7 @@
   if (window.ResizeObserver) new ResizeObserver(scheduleFit).observe(q("term"));
   applyI18n();
   applyCardExpanded(cardExpanded);
+  restoreSidebarOrder();
 
   // ── Boot ──────────────────────────────────────────────
   loadRoster().then(() => { refreshPane(); });
