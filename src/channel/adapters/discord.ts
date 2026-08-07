@@ -236,19 +236,41 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         }
       };
 
-      if ((msg as any).messageSnapshots?.size > 0) {
-        for (const [, snap] of (msg as any).messageSnapshots) {
-          if (snap.message?.content) forwardedParts.push(snap.message.content);
-          if (snap.message?.embeds?.length) {
-            collectImageEmbeds(snap.message.embeds);
-            for (const e of snap.message.embeds) {
+      const messageSnapshots = (msg as any).messageSnapshots;
+      if (messageSnapshots?.size > 0) {
+        // Keep this diagnostic structural only: forwarded content and signed CDN
+        // URLs may be private. It is deliberately JSON so reports from differing
+        // discord.js versions are directly comparable without logging payloads.
+        console.debug(`[discord] forwarded payload structure: ${JSON.stringify({
+          messageSnapshots: [...messageSnapshots.values()].map((value: any) => {
+            const snapshot = value?.message ?? value;
+            return {
+              shape: value?.message ? "api-wrapper" : "discordjs-message",
+              attachments: snapshot?.attachments?.size ?? snapshot?.attachments?.length ?? 0,
+              embeds: snapshot?.embeds?.length ?? 0,
+              embedTypes: (snapshot?.embeds ?? []).map((embed: any) => embed?.data?.type ?? embed?.type ?? null),
+            };
+          }),
+          outerEmbeds: msg.embeds.map((embed: any) => embed?.data?.type ?? embed?.type ?? null),
+        })}`);
+
+        for (const [, value] of messageSnapshots) {
+          // The Discord gateway API uses { message: APIMessageSnapshotFields },
+          // but discord.js unwraps that layer while constructing Message and
+          // stores MessageSnapshot values directly in messageSnapshots. Accept
+          // the raw wrapper too for compatibility with hand-built integrations.
+          const snapshot = value?.message ?? value;
+          if (snapshot?.content) forwardedParts.push(snapshot.content);
+          if (snapshot?.embeds?.length) {
+            collectImageEmbeds(snapshot.embeds);
+            for (const e of snapshot.embeds) {
               if (e.title) forwardedParts.push(e.title);
               if (e.description) forwardedParts.push(e.description);
             }
           }
           // Forward attachments (images, files) into the main message
-          if (snap.message?.attachments?.size > 0) {
-            for (const [, att] of snap.message.attachments) {
+          if (snapshot?.attachments?.size > 0) {
+            for (const [, att] of snapshot.attachments) {
               msg.attachments.set(att.id, att);
             }
           }
