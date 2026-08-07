@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.3] - 2026-08-07
+
+### Added
+- **tmux 3.7b compatibility** — removed `-r` (read-only) flag from control client, which conflicted with tmux 3.7's new read-only enforcement. Added adaptive paste settle for timing differences (#519, #521).
+- **View UI overhaul** — CLI backend icons per instance; instance tooltips with i18n; `/usage` reordered Claude→Codex→Grok→Kiro→Antigravity (#511–513, #514).
+- **MCP dead proxy reply** — when the MCP server is unreachable, the daemon can forward agent pane output as a response. **Opt-in only** (`mcp_proxy_reply: true`); default `false` because raw pane output may contain secrets. Cross-instance inbound never triggers this (#515–516).
+- **tmux mouse scroll** — `agend attach` enables mouse mode; scroll up to read history (#508).
+- **Discord forwarded images** — images from forwarded messages and embeds are now delivered. Fixed `discord.js` messageSnapshots API (no `.message` wrapper) (#505, #518).
+
+### Fixed
+- **Kiro Enter retry** — defensive Enter is re-sent on every delivery, not just the first (#504).
+- **claude-code classic crash** — fixed crash when tmux window name collides with existing window (#503).
+- **Codex session symlink** — migrates legacy session paths; co-located symlinks for CLI and daemon (#507).
+- **ctx% > 100%** — parser now reads the real title bar instead of matching chat content (#509).
+- **Bot @mention preserved** — `@BotName` kept as `@BotName (you)` in context (#510).
+- **TG command menu** — command registration corrected (#517).
+
 ## [2.1.2] - 2026-08-06
 
 ### Added
