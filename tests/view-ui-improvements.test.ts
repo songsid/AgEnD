@@ -12,6 +12,17 @@ describe("View UI improvements", () => {
     expect(html).toContain('${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
   });
 
+  it("uses human-readable backend labels in icons and instance tooltips", () => {
+    expect(html).toContain('"claude-code": "Claude Code"');
+    expect(html).toContain('"kiro-cli": "Kiro CLI"');
+    expect(html).toContain('grok: "Grok Build"');
+    expect(html).toContain('el.title = instanceTooltip(it)');
+    expect(html).toContain('`Backend: ${backendLabel(it.backend)}`');
+    expect(html).toContain('`Status: ${STATUS_LABELS[it.status] || it.status || "Unknown"}`');
+    expect(html).toContain('`Context: ${context}`');
+    expect(html).toContain('lines.push("", it.description.trim())');
+  });
+
   it("persists sidebar sorting only in browser localStorage", () => {
     expect(html).toContain('const SIDEBAR_ORDER_KEY = "agend_view_sidebar_order"');
     expect(html).toContain("localStorage.setItem(SIDEBAR_ORDER_KEY, JSON.stringify(orderRows()))");
