@@ -2044,6 +2044,11 @@ export class Daemon extends EventEmitter {
    * the PREVIOUS turn's idle edge consume (and reset) the new turn's state.
    */
   private markTurnStarted(meta: Record<string, string>, deliveredText: string): void {
+    // Channel turns only. A cross-instance inbound (from_instance, empty
+    // chat_id) does not update lastChatId, so its proxy reply would land in
+    // whatever USER topic spoke to this instance last — the wrong audience for
+    // a task result, and a stale one (sol's review of #515).
+    if (meta.from_instance || !meta.chat_id) return;
     this.turnHadInbound = true;
     this.turnOutboundDelivered = false;
     this.turnCorrelationId = meta.correlation_id || undefined;
@@ -2069,7 +2074,8 @@ export class Daemon extends EventEmitter {
     this.turnCorrelationId = undefined;
     this.turnInboundMarker = undefined;
     if (!hadInbound || delivered || this.isPaused) return;
-    if (this.config.mcp_proxy_reply === false) return;
+    // Opt-in: raw pane text can carry secrets past the regex redaction.
+    if (this.config.mcp_proxy_reply !== true) return;
     // "dead" only: unknown means not started or exited cleanly — never proxy on it.
     if (mcpServerState(this.instanceDir).state !== "dead") return;
     void this.sendProxyReply(pane, inboundMarker, correlationId);
