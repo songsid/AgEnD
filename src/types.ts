@@ -149,6 +149,13 @@ export interface InstanceConfig {
    * Set false to only notify, as before.
    */
   mcp_auto_restart?: boolean;
+  /**
+   * When the MCP server is dead at the end of a turn and the agent sent no
+   * reply through any channel tool, the daemon relays the pane's final text to
+   * the channel itself (marked ⚠️ as a proxy reply) — the daemon's IPC path to
+   * the fleet manager does not go through the dead MCP server. Default: true.
+   */
+  mcp_proxy_reply?: boolean;
   /** Hang detector override for this instance. */
   hang_detector?: HangDetectorConfig;
   /** Logical terminal size. Defaults to 120x36; set enabled=false for 80x24 compatibility. */
