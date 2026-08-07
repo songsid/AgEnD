@@ -33,6 +33,27 @@ describe("OpenCodeBackend", () => {
     rmSync(WORK_DIR, { recursive: true, force: true });
   });
 
+  describe("buildCommand", () => {
+    it("starts a new cwd-local session when no persisted session id exists", () => {
+      const backend = new OpenCodeBackend(TEST_DIR);
+
+      const command = backend.buildCommand(makeConfig());
+
+      expect(command).not.toContain("--continue");
+      expect(command).not.toContain("--session");
+    });
+
+    it("resumes the explicitly persisted instance session", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "session-123\n");
+      const backend = new OpenCodeBackend(TEST_DIR);
+
+      const command = backend.buildCommand(makeConfig());
+
+      expect(command).toContain("--session session-123");
+      expect(command).not.toContain("--continue");
+    });
+  });
+
   describe("writeConfig", () => {
     it("writes fleet-instructions.md and adds to instructions", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
