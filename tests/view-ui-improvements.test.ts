@@ -17,9 +17,15 @@ describe("View UI improvements", () => {
     expect(html).toContain('"kiro-cli": "Kiro CLI"');
     expect(html).toContain('grok: "Grok Build"');
     expect(html).toContain('el.title = instanceTooltip(it)');
-    expect(html).toContain('`Backend: ${backendLabel(it.backend)}`');
-    expect(html).toContain('`Status: ${STATUS_LABELS[it.status] || it.status || "Unknown"}`');
-    expect(html).toContain('`Context: ${context}`');
+    expect(html).toContain('tooltipBackend: "Backend: {value}"');
+    expect(html).toContain('tooltipBackend: "後端：{value}"');
+    expect(html).toContain('tooltipStatus: "狀態：{value}"');
+    expect(html).toContain('tooltipContext: "上下文：{value}"');
+    expect(html).toContain('statusRunning: "運行中"');
+    expect(html).toContain('translated("tooltipBackend", backendLabel(it.backend))');
+    expect(html).toContain('translated("tooltipStatus", status)');
+    expect(html).toContain('translated("tooltipContext", context)');
+    expect(html).toContain("applyI18n(); renderList();");
     expect(html).toContain('lines.push("", it.description.trim())');
   });
 
