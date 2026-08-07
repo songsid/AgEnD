@@ -410,8 +410,12 @@ const SPAWN_SETTLE_MAX_WAIT_MS = 60_000;
 
 /**
  * One-shot timing gate for the first paste after a CLI reaches its ready
- * prompt. Recent tmux versions expose a short interval where the prompt is
- * visible but the TUI can still swallow Enter while completing its redraw.
+ * prompt. A TUI that is still completing its first redraw can swallow Enter.
+ *
+ * Since the adaptive settle (see {@link waitForPasteSettle}) this value is the
+ * *fallback* wait — it governs only deliveries where the pane's output cannot
+ * be observed (no control mode, native-queue handoff, mid-wait reconnect, or a
+ * paste that never visibly renders).
  */
 export class FirstDeliveryDelay {
   private readyAt = 0;
@@ -428,6 +432,96 @@ export class FirstDeliveryDelay {
     return this.readyAt > 0 && now - this.readyAt < FIRST_DELIVERY_WINDOW_MS
       ? FIRST_ENTER_SETTLE_MS
       : NORMAL_ENTER_SETTLE_MS;
+  }
+}
+
+/** Output must stay quiet this long after a paste before Enter is sent. */
+const PASTE_QUIET_MS = 500;
+/** Hard ceiling on the adaptive settle, measured from the paste itself. */
+const PASTE_SETTLE_CAP_MS = 3_000;
+const PASTE_SETTLE_POLL_MS = 100;
+
+/** The slice of TmuxControlClient the adaptive paste settle reads. */
+export interface PasteSettleObservation {
+  getLastOutputAt(windowId: string): number | undefined;
+  getObservationResetAt(): number;
+}
+
+export interface PasteSettleResult {
+  /** Actual paste→Enter wait, measured from when the settle wait began. */
+  settleMs: number;
+  /** Whether the pane visibly reacted to the paste at all. */
+  observedPostPasteOutput: boolean;
+  /** True when the hard cap ended the wait while output was still flowing. */
+  capHit: boolean;
+  /** True when the fixed fallback delay governed the wait instead of quiet. */
+  usedFallback: boolean;
+}
+
+/**
+ * Wait until the pane has finished reacting to a paste before Enter is sent.
+ *
+ * A fixed post-paste delay is a bet that the TUI has consumed the paste by the
+ * time it expires. The first delivery after CLI startup is where that bet loses
+ * (#309): the TUI's first render is its slowest, and an Enter that lands while
+ * it is still chewing on the bracketed paste is absorbed by its paste handling
+ * instead of submitting. (Investigated as a tmux 3.7b regression; the 3.6b→3.7b
+ * source diff shows no timing change on the paste path, so the race is ours to
+ * absorb — and observing the pane beats guessing regardless of tmux version.)
+ *
+ * So: watch `lastOutputAt` and send Enter only once the paste's own render has
+ * been quiet for {@link PASTE_QUIET_MS}. Bounded both ways —
+ *
+ * - never earlier than the legacy fixed delay when the paste produces no
+ *   observable output at all (`usedFallback`), so panes that don't echo keep
+ *   their long-standing behaviour;
+ * - never later than {@link PASTE_SETTLE_CAP_MS} after the paste (`capHit`),
+ *   so a chatty pane cannot stall delivery.
+ *
+ * A control-mode reconnect during the wait wipes the output timeline; "quiet"
+ * is then indistinguishable from "blind", so the wait degrades to the fixed
+ * fallback delay rather than trusting evidence it no longer has.
+ */
+export async function waitForPasteSettle(
+  client: PasteSettleObservation,
+  windowId: string,
+  pasteStartedAt: number,
+  fallbackMs: number,
+): Promise<PasteSettleResult> {
+  const settleStart = Date.now();
+  const fallbackDeadline = settleStart + fallbackMs;
+  const capDeadline = pasteStartedAt + PASTE_SETTLE_CAP_MS;
+  let observed = false;
+
+  for (;;) {
+    const now = Date.now();
+
+    if (client.getObservationResetAt() > pasteStartedAt) {
+      const remaining = fallbackDeadline - now;
+      if (remaining > 0) await new Promise(r => setTimeout(r, remaining));
+      return { settleMs: Date.now() - settleStart, observedPostPasteOutput: observed, capHit: false, usedFallback: true };
+    }
+
+    const last = client.getLastOutputAt(windowId);
+    if (last != null && last > pasteStartedAt) {
+      observed = true;
+      if (now - last >= PASTE_QUIET_MS) {
+        return { settleMs: now - settleStart, observedPostPasteOutput: true, capHit: false, usedFallback: false };
+      }
+    } else if (now >= fallbackDeadline) {
+      return { settleMs: now - settleStart, observedPostPasteOutput: false, capHit: false, usedFallback: true };
+    }
+
+    if (now >= capDeadline) {
+      return { settleMs: now - settleStart, observedPostPasteOutput: observed, capHit: true, usedFallback: false };
+    }
+
+    // Sleep to the next decision point, at most one poll tick — so the normal
+    // paths return at their exact deadlines instead of a poll-width late.
+    let wake = capDeadline;
+    if (last != null && last > pasteStartedAt) wake = Math.min(wake, last + PASTE_QUIET_MS);
+    else wake = Math.min(wake, fallbackDeadline);
+    await new Promise(r => setTimeout(r, Math.min(PASTE_SETTLE_POLL_MS, Math.max(1, wake - now))));
   }
 }
 
@@ -2653,6 +2747,7 @@ export class Daemon extends EventEmitter {
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const pasteStartedAt = Date.now();
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
         this.logger.warn({ attempt }, "pasteBuffer failed — recovering window and backing off");
@@ -2661,14 +2756,26 @@ export class Daemon extends EventEmitter {
         continue;
       }
 
-      // Settle the bracketed paste, then submit. The first delivery immediately
-      // after ready gets a longer one-shot delay because the TUI may still be
-      // completing its final redraw even though the prompt already matched.
-      const enterSettleMs = this.firstDeliveryDelay.consume();
-      if (enterSettleMs > NORMAL_ENTER_SETTLE_MS) {
-        this.logger.debug({ enterSettleMs }, "First delivery after ready — extending Enter settle delay");
+      // Settle the bracketed paste, then submit. When control mode can observe
+      // the pane, wait for the paste's own render to go quiet instead of
+      // trusting a fixed delay (see waitForPasteSettle). The fixed delays —
+      // including the longer one-shot first-delivery value, because the TUI may
+      // still be completing its final redraw even though the prompt already
+      // matched — remain the fallback when output cannot be observed.
+      const fallbackMs = this.firstDeliveryDelay.consume();
+      if (fallbackMs > NORMAL_ENTER_SETTLE_MS) {
+        this.logger.debug({ fallbackMs }, "First delivery after ready — extending fallback settle delay");
       }
-      await new Promise(r => setTimeout(r, enterSettleMs));
+      let settle: PasteSettleResult;
+      if (!handingOffToNativeQueue && windowId && this.controlClient) {
+        settle = await waitForPasteSettle(this.controlClient, windowId, pasteStartedAt, fallbackMs);
+      } else {
+        // The codex native-queue handoff keeps its long-standing fixed timing:
+        // that paste lands while the CLI is busy generating, so its output never
+        // goes quiet and an adaptive wait would only ever hit the cap.
+        await new Promise(r => setTimeout(r, fallbackMs));
+        settle = { settleMs: fallbackMs, observedPostPasteOutput: false, capHit: false, usedFallback: true };
+      }
       let enterAt = Date.now();
       await this.tmux!.sendSpecialKey("Enter");
 
@@ -2684,12 +2791,21 @@ export class Daemon extends EventEmitter {
       // pasteText path has always done for queue-less backends. enterAt is
       // re-baselined to the second Enter so leftover paste-render output between
       // the two cannot be what "confirms" the submission.
+      let enterRetry = false;
       if (this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         enterAt = Date.now();
         await this.tmux!.sendSpecialKey("Enter");
+        enterRetry = true;
         this.logger.debug("Sent defensive Enter retry (queue-less TUI can swallow the first)");
       }
+      this.logger.debug({
+        observedPostPasteOutput: settle.observedPostPasteOutput,
+        settleMs: settle.settleMs,
+        capHit: settle.capHit,
+        usedFallback: settle.usedFallback,
+        enterRetry,
+      }, "Delivery settle telemetry");
       if (status) this.emit("message_delivered", status); // 👀
 
       // Busy queue-capable CLIs (codex) may accept paste without an idle→busy
