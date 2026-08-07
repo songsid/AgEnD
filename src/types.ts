@@ -153,7 +153,12 @@ export interface InstanceConfig {
    * When the MCP server is dead at the end of a turn and the agent sent no
    * reply through any channel tool, the daemon relays the pane's final text to
    * the channel itself (marked ⚠️ as a proxy reply) — the daemon's IPC path to
-   * the fleet manager does not go through the dead MCP server. Default: true.
+   * the fleet manager does not go through the dead MCP server.
+   *
+   * Default: false (opt-in). A raw pane capture can contain secrets that the
+   * regex redaction does not recognize; only enable this on instances whose
+   * screen content is safe to mirror into the channel. Applies to channel
+   * (user) turns only — cross-instance turns never trigger it.
    */
   mcp_proxy_reply?: boolean;
   /** Hang detector override for this instance. */
