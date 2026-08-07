@@ -1,11 +1,26 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+
+/** Minimal surface of node:sqlite we use (loaded lazily — Node <22.13 lacks it). */
+interface SqliteModule {
+  DatabaseSync: new (path: string, options: { readOnly: boolean }) => {
+    prepare(sql: string): { all(...params: unknown[]): unknown[] };
+    close(): void;
+  };
+}
 
 export class OpenCodeBackend implements CliBackend {
   readonly binaryName = "opencode";
   private binaryPath: string;
+  /** cwd of the last spawn — getSessionId matches OpenCode's session rows by directory. */
+  private workingDirectory: string | null = null;
+  /** Session id passed via --session at the last spawn, if any. */
+  private launchedSessionId: string | null = null;
+  /** Epoch ms of the last spawn — sessions created before it belong to someone else. */
+  private launchedAt: number | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("opencode");
@@ -14,6 +29,9 @@ export class OpenCodeBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     // Use per-instance config via OPENCODE_CONFIG env (set in writeConfig)
     let cmd = this.binaryPath;
+    this.workingDirectory = config.workingDirectory;
+    this.launchedSessionId = null;
+    this.launchedAt = Date.now();
 
     // Resume only a session explicitly persisted for this instance. OpenCode's
     // --continue is global and can hijack an unrelated session from another cwd.
@@ -21,7 +39,10 @@ export class OpenCodeBackend implements CliBackend {
       const sessionIdFile = join(this.instanceDir, "session-id");
       if (existsSync(sessionIdFile)) {
         const sid = readFileSync(sessionIdFile, "utf-8").trim();
-        if (sid) cmd += ` --session ${sid}`;
+        if (sid) {
+          cmd += ` --session ${sid}`;
+          this.launchedSessionId = sid;
+        }
       }
     }
 
@@ -93,10 +114,61 @@ export class OpenCodeBackend implements CliBackend {
   }
 
   getSessionId(): string | null {
+    const discovered = this.discoverSessionId();
+    if (discovered) return discovered;
+    // Fallback: the id persisted by a previous save (also covers the daemon-start
+    // path where a stale window from the previous run is saved before any spawn
+    // in this process has captured workingDirectory).
     try {
       const f = join(this.instanceDir, "session-id");
       return readFileSync(f, "utf-8").trim() || null;
     } catch { return null; }
+  }
+
+  /**
+   * Find this instance's OpenCode session in opencode's own sqlite DB
+   * ($XDG_DATA_HOME/opencode/opencode.db, table `session` with id/directory/
+   * timestamps). OpenCode never exports the id of a TUI session anywhere the
+   * daemon can read directly, so this is the discovery source that lets
+   * saveSessionId → session-id file → `--session <id>` resume work at all.
+   *
+   * A row is only accepted when it matches the spawn this backend performed:
+   * same directory AND (created after our launch, or the exact id we resumed
+   * with). A session someone created manually in the same cwd before our spawn
+   * can therefore never be adopted — the hijack #525 removed must not return
+   * through this path.
+   *
+   * Requires node:sqlite (unflagged since Node 22.13); on older runtimes this
+   * quietly returns null and resume simply stays unavailable.
+   */
+  private discoverSessionId(): string | null {
+    if (!this.workingDirectory || this.launchedAt === null) return null;
+    try {
+      const sqlite = (process as { getBuiltinModule?: (id: string) => unknown })
+        .getBuiltinModule?.("node:sqlite") as SqliteModule | undefined;
+      if (!sqlite) return null;
+      const dataHome = process.env.XDG_DATA_HOME || join(homedir(), ".local", "share");
+      const dbPath = join(dataHome, "opencode", "opencode.db");
+      if (!existsSync(dbPath)) return null;
+      const db = new sqlite.DatabaseSync(dbPath, { readOnly: true });
+      try {
+        // parent_id IS NULL excludes subagent child sessions. LIMIT 10 keeps the
+        // scan bounded; the active session is the newest by time_updated anyway.
+        const rows = db.prepare(
+          "SELECT id, time_created FROM session WHERE directory = ? AND parent_id IS NULL ORDER BY time_updated DESC LIMIT 10",
+        ).all(this.workingDirectory) as Array<{ id: string; time_created: number }>;
+        for (const row of rows) {
+          if (row.id === this.launchedSessionId) return row.id;
+          if (row.time_created >= this.launchedAt) return row.id;
+        }
+        return null;
+      } finally {
+        db.close();
+      }
+    } catch {
+      // DB busy/locked, sqlite unavailable, schema drift — resume is best-effort.
+      return null;
+    }
   }
 
   getQuitCommand(): string { return "/quit"; }
