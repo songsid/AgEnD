@@ -916,60 +916,100 @@ export class TopicCommands {
 
     for (const ch of telegramChannels) {
       const botToken = process.env[ch.bot_token_env];
-      if (!botToken || !ch.group_id) continue;
+      if (!botToken || !ch.group_id) {
+        this.ctx.logger.warn({
+          adapterId: ch.id ?? ch.type,
+          hasBotToken: !!botToken,
+          hasGroupId: !!ch.group_id,
+        }, "Skipping Telegram bot-command registration — token or group_id is missing");
+        continue;
+      }
 
       try {
-        // Register admin commands for the forum group
-        await fetch(
-          `https://api.telegram.org/bot${botToken}/setMyCommands`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              commands: [
-                { command: "status", description: "🔒 Fleet status, per-instance costs and health" },
-                { command: "sysinfo", description: "System diagnostics" },
-                { command: "dashboard", description: "🔒 Get dashboard URLs" },
-                { command: "ctx", description: "Show context usage" },
-                { command: "compact", description: "Compact agent context" },
-                { command: "model", description: "🔒 Switch model (admin only)" },
-                { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
-                { command: "pause", description: "🔒 Pause an idle instance" },
-                { command: "wake", description: "🔒 Wake a paused instance" },
-                { command: "restart", description: "🔒 Graceful restart all instances" },
-                { command: "collab", description: "🔒 Toggle bot/webhook mode" },
-                { command: "update", description: "🔒 Update AgEnD to latest" },
-                { command: "doctor", description: "🔒 Run health diagnostics" },
-                { command: "usage", description: "AI subscription usage" },
-              ],
-              scope: { type: "chat", chat_id: ch.group_id },
-            }),
-          },
-        );
+        const fleetCommands = [
+          { command: "status", description: "🔒 Fleet status, per-instance costs and health" },
+          { command: "sysinfo", description: "System diagnostics" },
+          { command: "dashboard", description: "🔒 Get dashboard URLs" },
+          { command: "ctx", description: "Show context usage" },
+          { command: "compact", description: "Compact agent context" },
+          { command: "model", description: "🔒 Switch model (admin only)" },
+          { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
+          { command: "pause", description: "🔒 Pause an idle instance" },
+          { command: "wake", description: "🔒 Wake a paused instance" },
+          { command: "restart", description: "🔒 Graceful restart all instances" },
+          { command: "collab", description: "🔒 Toggle bot/webhook mode" },
+          { command: "update", description: "🔒 Update AgEnD to latest" },
+          { command: "doctor", description: "🔒 Run health diagnostics" },
+          { command: "usage", description: "AI subscription usage" },
+        ];
 
-        // Register classic bot commands for private chats and all groups
-        await fetch(
-          `https://api.telegram.org/bot${botToken}/setMyCommands`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              commands: [
-                { command: "start", description: "🔒 Start an agent in this chat" },
-                { command: "stop", description: "🔒 Stop the agent" },
-                { command: "compact", description: "🔒 Compact agent context" },
-                { command: "model", description: "🔒 Switch model (admin only)" },
-                { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
-                { command: "pause", description: "🔒 Pause the agent" },
-                { command: "wake", description: "🔒 Wake the agent" },
-                { command: "ctx", description: "Show context usage" },
-              ],
-              scope: { type: "default" },
-            }),
-          },
-        );
+        const setCommands = async (
+          commands: Array<{ command: string; description: string }>,
+          scope: Record<string, string | number>,
+        ): Promise<void> => {
+          const response = await fetch(
+            `https://api.telegram.org/bot${botToken}/setMyCommands`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ commands, scope }),
+            },
+          );
+          type TelegramApiResponse = { ok?: boolean; result?: boolean; description?: string };
+          let result: TelegramApiResponse | null = null;
+          try {
+            result = await response.json() as TelegramApiResponse;
+          } catch { /* handled by the validation below */ }
+          // fetch() resolves on Telegram 4xx/5xx. Without checking both layers we
+          // logged a successful registration while Telegram kept the old (often
+          // four-command) menu indefinitely.
+          if (!response.ok || result?.ok !== true || result.result !== true) {
+            throw new Error(
+              `Telegram setMyCommands failed (${response.status}): ${result?.description ?? "invalid Bot API response"}`,
+            );
+          }
+        };
 
-        this.ctx.logger.info({ adapterId: ch.id ?? ch.type }, "Registered bot commands: /status (forum), /start /stop (default)");
+        const classicCommands = [
+          { command: "start", description: "🔒 Start an agent in this chat" },
+          { command: "stop", description: "🔒 Stop the agent" },
+          { command: "compact", description: "🔒 Compact agent context" },
+          { command: "model", description: "🔒 Switch model (admin only)" },
+          { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
+          { command: "pause", description: "🔒 Pause the agent" },
+          { command: "wake", description: "🔒 Wake the agent" },
+          { command: "ctx", description: "Show context usage" },
+        ];
+
+        // A chat_administrators scope has higher precedence than the chat scope.
+        // Keep both synchronized so a stale admin-only list from BotFather or an
+        // older deployment cannot hide newly added commands from fleet admins.
+        // Try every scope even if one fails: a bad fleet chat id must not prevent
+        // the default Classic menu from being refreshed (or vice versa).
+        const registrations: Array<{
+          commands: Array<{ command: string; description: string }>;
+          scope: Record<string, string | number>;
+        }> = [
+          { commands: fleetCommands, scope: { type: "chat", chat_id: ch.group_id } },
+          { commands: fleetCommands, scope: { type: "chat_administrators", chat_id: ch.group_id } },
+          { commands: classicCommands, scope: { type: "default" } },
+        ];
+        const failures: Error[] = [];
+        for (const registration of registrations) {
+          try {
+            await setCommands(registration.commands, registration.scope);
+          } catch (err) {
+            failures.push(err instanceof Error ? err : new Error(String(err)));
+          }
+        }
+        if (failures.length > 0) {
+          throw new AggregateError(failures, failures.map(error => error.message).join("; "));
+        }
+
+        this.ctx.logger.info({
+          adapterId: ch.id ?? ch.type,
+          fleetCommandCount: fleetCommands.length,
+        }, "Registered Telegram bot commands for fleet chat/admin and Classic default scopes");
       } catch (err) {
         this.ctx.logger.warn({ err, adapterId: ch.id ?? ch.type }, "Failed to register bot commands (non-fatal)");
       }
