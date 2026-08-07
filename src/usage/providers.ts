@@ -1109,10 +1109,10 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
 
 const PROVIDERS: { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> }[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
-  { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
   { id: "grok", name: "Grok", fetch: fetchGrokUsage },
   { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
+  { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
 ];
 
 /** Fetch every provider in parallel. Providers without local credentials are
