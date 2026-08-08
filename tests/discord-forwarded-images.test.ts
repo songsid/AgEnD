@@ -187,15 +187,20 @@ describe("Discord forwarded message images", () => {
     expect((adapter as any).attachmentUrls.get("embed-img-message-1-0")).toBe("https://cdn.example/pic.jpg");
   });
 
-  it("collects multiple image embeds as multiple photos, deduplicated by URL", async () => {
-    const msg = fakeMessage({
-      content: "three embeds, two distinct",
-      embeds: [
-        { data: { type: "image" }, url: "https://cdn.example/a.png" },
-        { data: { type: "image" }, url: "https://cdn.example/b.webp" },
-        { data: { type: "image" }, url: "https://cdn.example/a.png" }, // duplicate
-      ],
+  it("collects multiple forwarded image embeds as multiple photos, deduplicated by URL", async () => {
+    const snapshots = new FakeCollection<any>();
+    snapshots.set("snap-1", {
+      message: {
+        content: "three embeds, two distinct",
+        embeds: [
+          { data: { type: "image" }, url: "https://cdn.example/a.png" },
+          { data: { type: "image" }, url: "https://cdn.example/b.webp" },
+          { data: { type: "image" }, url: "https://cdn.example/a.png" }, // duplicate
+        ],
+        attachments: new FakeCollection<any>(),
+      },
     });
+    const msg = fakeMessage({ messageSnapshots: snapshots });
 
     const got = await inbound(msg);
 
@@ -205,6 +210,21 @@ describe("Discord forwarded message images", () => {
       "embed-img-message-1-1",
     ]);
     expect(got.attachments.map((a: any) => a.mime)).toEqual(["image/png", "image/webp"]);
+  });
+
+  it("does not turn an ordinary URL auto-embed into an attachment", async () => {
+    const msg = fakeMessage({
+      content: "https://www.image2url.com/example.gif",
+      embeds: [
+        { data: { type: "image" }, url: "https://www.image2url.com/example.gif" },
+      ],
+    });
+
+    const got = await inbound(msg);
+
+    expect(got.text).toBe("https://www.image2url.com/example.gif");
+    expect(got.attachments).toBeUndefined();
+    expect((adapter as any).attachmentUrls.size).toBe(0);
   });
 
   it("ignores link-preview / video / gifv embeds — they are not images", async () => {

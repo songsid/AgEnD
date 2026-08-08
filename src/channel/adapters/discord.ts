@@ -276,7 +276,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           }
         }
       }
-      collectImageEmbeds(msg.embeds);
+      // Do not collect images from the outer message's embeds. Discord creates
+      // those automatically for ordinary image URLs, and treating them as
+      // attachments would download content the user only linked. Forwarded
+      // images are collected exclusively from messageSnapshots above.
 
       if (forwardedParts.length > 0) {
         const forwarded = forwardedParts.join("\n");
