@@ -117,6 +117,8 @@ export interface LifecycleContext {
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
   notifyInstanceTopic(name: string, text: string): void;
+  /** Notify the blocked instance and offer an interactive assist action in General. */
+  notifyInteractivePrompt(name: string, kind: string): Promise<void>;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
   isClassicInstance?(name: string): boolean;
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
@@ -370,22 +372,14 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
-    daemon.on("interactive_prompt", safeHandler((data: { name: string; kind: string; prompt: string }) => {
+    daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
       this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");
-      const general = this.findGeneralInstance();
-      if (!general) {
-        this.ctx.logger.warn({ name }, "Interactive prompt has no General topic notification target");
+      if (this.ctx.isPlannedRestart()) {
+        this.ctx.logger.info({ name }, "Interactive prompt notification suppressed — planned restart in progress");
         return;
       }
-      const label = data.kind === "sudo_password" || data.kind === "password"
-        ? "sudo password"
-        : data.kind === "press_enter" ? "Press Enter" : "Y/N confirmation";
-      this.notifyIncident(
-        general,
-        "interactive_prompt",
-        `⚠️ \`${name}\` 正在等待人工輸入（${label}）。General 可以透過 tmux attach 查看並協助操作。\n請勿在 Telegram/Discord 傳送密碼。`,
-      );
+      await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
 
     daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
