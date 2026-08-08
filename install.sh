@@ -244,6 +244,20 @@ fi
 info "AgEnD $(agend --version) installed"
 info "Discord plugin $(npm list -g @songsid/agend-plugin-discord --depth=0 2>/dev/null | grep agend-plugin-discord | sed 's/.*@//' || echo 'unknown') installed"
 
+# ── Shell completion ───────────────────────────────────────
+# bash: static file in bash-completion's completions dir — no rc file touched,
+#   idempotent, zero shell-startup cost. Opt out: AGEND_NO_COMPLETION=1
+# zsh: needs an rc line, which this non-interactive script only adds when the
+#   user explicitly authorizes it with AGEND_MODIFY_RC=1; otherwise agend
+#   prints the one-liner to add manually.
+if [ -z "${AGEND_NO_COMPLETION:-}" ] && command_exists agend; then
+  if [ -n "${AGEND_MODIFY_RC:-}" ]; then
+    agend completion install --modify-rc || true
+  else
+    agend completion install || true
+  fi
+fi
+
 # ── Ensure binaries are accessible without nvm sourced ────
 # Root user: create symlinks in /usr/local/bin (for systemd, cron, non-login shells)
 # Normal user: nvm PATH in .bashrc/.profile is sufficient

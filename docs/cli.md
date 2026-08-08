@@ -71,11 +71,30 @@ Tab-completes instance names for `agend attach` and `agend fleet start|stop|rest
 and subcommand names elsewhere.
 
 ```bash
+agend completion install        # Recommended: set it up automatically
 agend completion bash           # Print the bash script
 agend completion zsh            # Print the zsh script
 ```
 
-Install by adding one line to your shell rc file:
+`completion install` detects your shell(s) and does the least invasive thing
+that works:
+
+- **bash** — writes a static file to
+  `~/.local/share/bash-completion/completions/agend` (system dir when root).
+  No rc file is touched, reruns are idempotent, and there is no shell-startup
+  cost — bash-completion lazy-loads it on first `<TAB>`.
+- **zsh** — prints the one-liner to add, because enabling it means editing
+  `~/.zshrc`. Pass `--modify-rc` to let it append a marker-guarded line for
+  you (added at most once). Root installs write
+  `/usr/share/zsh/site-functions/_agend` instead and skip the rc entirely.
+
+The installer runs automatically at the end of `install.sh` (opt out with
+`AGEND_NO_COMPLETION=1`; authorize the zsh rc line with `AGEND_MODIFY_RC=1`)
+and is offered during `agend quickstart`. `agend update` refreshes
+already-installed completion files so they track the new version's commands —
+it never installs anything new.
+
+Manual alternative — add one line to your shell rc file:
 
 ```bash
 # bash — ~/.bashrc

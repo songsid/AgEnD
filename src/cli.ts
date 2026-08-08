@@ -1281,6 +1281,20 @@ program
       }
     }
 
+    // ── Refresh installed shell completions ──
+    // The completion script embeds this version's subcommand names, so a
+    // previously installed static file goes stale on update. --refresh only
+    // rewrites artifacts that already exist — an update never starts
+    // installing completions the user didn't ask for. Run through the NEW
+    // binary so the regenerated names are the new version's.
+    try {
+      spawnSync(agendPath, ["completion", "install", "--refresh"], {
+        encoding: "utf-8",
+        timeout: 15_000,
+        stdio: "ignore",
+      });
+    } catch { /* cosmetic — never block an update on completion refresh */ }
+
     // ── Restart fleet ──
     // Run the restart through the NEWLY-INSTALLED binary (agendPath), not inline.
     // The inline restart would execute the OLD binary's code — exactly the logic
@@ -2313,29 +2327,63 @@ program
 
 program
   .command("completion")
-  .description("Print a shell completion script (bash or zsh)")
-  .argument("<shell>", `Shell to generate for (${COMPLETION_SHELLS.join(", ")})`)
+  .description("Print a shell completion script, or install it (bash or zsh)")
+  .argument("<target>", `"install", or a shell to print for (${COMPLETION_SHELLS.join(", ")})`)
+  .argument("[shell]", "with install: limit to one shell (default: detect)")
+  .option("--modify-rc", "with install: authorize adding the zsh eval line to ~/.zshrc")
+  .option("--refresh", "with install: only rewrite artifacts that already exist (used by agend update)")
   .addHelpText("after", `
-Install:
+Recommended:
+  agend completion install          # bash: static file, no rc edit; zsh: prints what to do
+  agend completion install --modify-rc   # also add the zsh line to ~/.zshrc
+
+Manual (fallback):
   bash   echo 'eval "$(agend completion bash)"' >> ~/.bashrc
   zsh    echo 'eval "$(agend completion zsh)"'  >> ~/.zshrc
 
 Then reload the shell. Tab-completes instance names for \`agend attach\` and
 \`agend fleet start|stop|restart\`, and subcommands elsewhere.`)
-  .action((shell: string) => {
-    if (!(COMPLETION_SHELLS as readonly string[]).includes(shell)) {
-      console.error(`Unsupported shell: ${shell}. Supported: ${COMPLETION_SHELLS.join(", ")}`);
-      process.exit(2);
-    }
+  .action(async (target: string, shellArg: string | undefined, opts: { modifyRc?: boolean; refresh?: boolean }) => {
     // Subcommand names come from commander itself, so the script can't drift
     // out of sync with the CLI the way a hardcoded list would.
     const fleetCmd = program.commands.find(c => c.name() === "fleet");
-    console.log(completionScript(shell as CompletionShell, {
+    const spec = {
       topLevel: program.commands.map(c => c.name()),
       fleetSub: fleetCmd?.commands.map(c => c.name()) ?? [],
       instanceCommands: ["attach"],
       fleetInstanceCommands: ["start", "stop", "restart"],
-    }));
+    };
+
+    if (target === "install") {
+      const { detectShells, installCompletions } = await import("./completion-install.js");
+      const { zshCompletion } = await import("./completion.js");
+      if (shellArg && !(COMPLETION_SHELLS as readonly string[]).includes(shellArg)) {
+        console.error(`Unsupported shell: ${shellArg}. Supported: ${COMPLETION_SHELLS.join(", ")}`);
+        process.exit(2);
+      }
+      const shells = shellArg ? [shellArg as CompletionShell] : detectShells();
+      if (shells.length === 0) {
+        console.log("  No bash or zsh detected — nothing to install.");
+        return;
+      }
+      const results = installCompletions(
+        { bash: completionScript("bash", spec), zshFpath: zshCompletion(spec, "fpath") },
+        shells,
+        { modifyRc: opts.modifyRc, refresh: opts.refresh },
+      );
+      for (const r of results) {
+        if (r.status === "hint") console.log(`  ${r.shell}: ${r.hint}`);
+        else if (r.status === "skipped") { /* refresh mode, nothing was installed before */ }
+        else console.log(`  ${r.shell}: completion ${r.status}${r.path ? ` (${r.path})` : ""}`);
+      }
+      return;
+    }
+
+    if (!(COMPLETION_SHELLS as readonly string[]).includes(target)) {
+      console.error(`Unsupported target: ${target}. Supported: install, ${COMPLETION_SHELLS.join(", ")}`);
+      process.exit(2);
+    }
+    console.log(completionScript(target as CompletionShell, spec));
   });
 
 program

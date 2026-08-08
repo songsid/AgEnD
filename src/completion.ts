@@ -88,10 +88,20 @@ complete -F _agend_completion agend
 `;
 }
 
-export function zshCompletion(spec: CompletionSpec): string {
-  return `# agend zsh completion — eval "$(agend completion zsh)"
+/**
+ * @param variant "eval" is sourced from a live shell (via the rc line) and
+ *   registers itself with `compdef`; "fpath" is a `_agend` file dropped into
+ *   a directory on fpath, where the `#compdef` header does the registering
+ *   and the file body is executed as the completion function itself.
+ */
+export function zshCompletion(spec: CompletionSpec, variant: "eval" | "fpath" = "eval"): string {
+  const header = variant === "fpath"
+    ? "#compdef agend\n# agend zsh completion — installed by `agend completion install`"
+    : `# agend zsh completion — eval "$(agend completion zsh)"
 # Requires compinit to have run first (put \`autoload -Uz compinit && compinit\`
-# above this line in ~/.zshrc).
+# above this line in ~/.zshrc).`;
+  const footer = variant === "fpath" ? `_agend "$@"` : "compdef _agend agend";
+  return `${header}
 #
 # compadd is used rather than _values/_describe because it is the lowest-level
 # primitive and filters by the current prefix on its own — fewer moving parts.
@@ -128,7 +138,7 @@ _agend() {
     (( \${#instances} )) && compadd -a instances
   fi
 }
-compdef _agend agend
+${footer}
 `;
 }
 
