@@ -282,6 +282,16 @@ export class InstanceLifecycle {
         this.ctx.eventLog?.insert(name, "hang_detected", {});
         this.ctx.logger.warn({ name }, "Instance appears hung");
 
+        if (this.ctx.isPlannedRestart()) {
+          // A graceful stop makes every pane look frozen; alerting on that (with
+          // a restart button, no less) during `agend update` is pure noise. The
+          // same suppression interactive-prompt and normal-exit already apply.
+          // Checked BEFORE the task nudge: injecting new work into a CLI that is
+          // being shut down would only delay the stop.
+          this.ctx.logger.info({ name }, "Hang notification suppressed — planned restart in progress");
+          return;
+        }
+
         // Check if instance has claimed tasks — nudge it to continue
         const claimedTasks = this.ctx.listClaimedTasks(name);
         if (claimedTasks.length > 0) {
@@ -298,13 +308,6 @@ export class InstanceLifecycle {
           }
         }
 
-        if (this.ctx.isPlannedRestart()) {
-          // A graceful stop makes every pane look frozen; alerting on that (with
-          // a restart button, no less) during `agend update` is pure noise. The
-          // same suppression interactive-prompt and normal-exit already apply.
-          this.ctx.logger.info({ name }, "Hang notification suppressed — planned restart in progress");
-          return;
-        }
         await this.ctx.sendHangNotification(name, data?.unchangedForMs);
         this.ctx.webhookEmit("hang", name);
       }, this.ctx.logger, `hangDetector[${name}]`));

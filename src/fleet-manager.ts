@@ -1408,9 +1408,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceProcessStatus.delete(name);
     this.lastDeliveryAt.delete(name);
     // A pending hang/exit/assist offer refers to the instance being torn down;
-    // left alone it would stay clickable for the rest of its 15 minutes.
+    // left alone it would stay clickable for the rest of its 15 minutes. Clear
+    // again AFTER the stop completes: the teardown itself can emit hang /
+    // interactive-prompt / clean-exit events whose handlers post fresh prompts
+    // while the stop is still awaiting (the TOCTOU sol's review called out).
     this.clearNoncePromptsForInstance(name);
-    return this.lifecycle.stop(name);
+    try {
+      return await this.lifecycle.stop(name);
+    } finally {
+      this.clearNoncePromptsForInstance(name);
+    }
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
@@ -4700,7 +4707,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     extra?: Pick<NonceButtonEntry, "generalName" | "promptKind">;
     timeoutMs?: number;
   }): Promise<string | null> {
-    const nonce = randomBytes(8).toString("hex");
+    // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
+    // callback_data cap still holds: longest id is "interactive-assist:" (19)
+    // + 32 hex + ":confirm" (8) = 59 bytes.
+    const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
       prefix: opts.prefix,
       instanceName: opts.instanceName,
@@ -4768,7 +4778,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
     if (!data.callbackData.startsWith(prefix)) return null;
     const match = data.callbackData.match(actionRe);
-    const pending = match ? this.pendingNonceButtons.get(match[1]) : undefined;
+    let pending = match ? this.pendingNonceButtons.get(match[1]) : undefined;
+    // The map is shared across prompt kinds. A nonce that resolves to an entry
+    // of a DIFFERENT kind is not a usable capability for this handler — treat
+    // it as stale rather than acting across kinds (fail closed).
+    if (pending && pending.prefix !== prefix) pending = undefined;
     if (!match || !pending) {
       const adapter = receivingAdapter ?? this.adapter;
       adapter?.editMessageRemoveButtons?.(
@@ -5024,9 +5038,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
+    // Fail closed on a malformed entry. generalName is set at posting time for
+    // every interactive-assist entry; its absence means entry confusion, and
+    // falling back to the blocked instance would type the assist text into the
+    // very terminal prompt this feature exists to keep humans in front of.
+    const generalName = pending.generalName;
+    if (!generalName) {
+      this.logger.error({ instanceName: pending.instanceName },
+        "Interactive-assist entry has no General target — refusing to deliver");
+      await this.retireNonceButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("interactive.delivery_failed", pending.instanceName),
+      );
+      return true;
+    }
+
     // Injecting into General while General itself is blocked would type into the
     // terminal prompt instead of the agent input. Fail safe and require attach.
-    if (pending.instanceName === pending.generalName) {
+    if (pending.instanceName === generalName) {
       await this.retireNonceButtons(
         pending,
         pending.messageId ?? data.messageId,
@@ -5041,9 +5071,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       t("interactive.confirmed", pending.instanceName),
     );
 
-    // Set at posting time for every interactive-assist entry; the fallback only
-    // defends against a foreign-prefix entry reaching this handler.
-    const generalName = pending.generalName ?? pending.instanceName;
     try {
       await this.deliverToInstance(generalName, {
         type: "fleet_inbound",
@@ -5606,15 +5633,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     const adapterId = this.getInstanceAdapterId(instanceName);
-    // World-aware group resolution — getChannelConfig(...).group_id resolves to
-    // the wrong (or no) group on channels[]-configured fleets whose legacy
-    // channel: block is empty; getGroupIdForInstance prefers the live world.
-    const chatId = this.getGroupIdForInstance(instanceName);
+    // Same three-way addressing as sendCancelButton: fleet topic → group+thread,
+    // Classic → its own channel (Classic instances are absent from
+    // fleetConfig.instances, so the topic path can never address them), else the
+    // world group flat. getGroupIdForInstance (not getChannelConfig().group_id)
+    // because on channels[]-configured fleets the legacy channel: block is empty.
+    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const groupId = this.getGroupIdForInstance(instanceName) || undefined;
+    let chatId: string | undefined;
+    let threadId: string | undefined;
+    if (topicId != null && groupId) {
+      chatId = String(groupId);
+      threadId = String(topicId);
+    } else {
+      chatId = this.classicChannels?.getChannelIdByInstance(instanceName);
+      if (!chatId && groupId) chatId = String(groupId);
+    }
     if (!adapter || !adapterId || !chatId) {
       this.logger.warn({ instanceName, adapterId, chatId }, "Cannot address hang notification");
       return;
     }
-    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
     const instanceHangConfig = (this.fleetConfig?.instances[instanceName] as (InstanceConfig & {
       hang_detector?: { timeout_minutes?: number };
     }) | undefined)?.hang_detector;
@@ -5634,7 +5672,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter,
       adapterId,
       chatId,
-      threadId: topicId != null ? String(topicId) : undefined,
+      threadId,
       message: t("hang.detected", instanceName, unchangedMinutes),
       choices: [
         { action: "restart", label: t("hang.restart") },

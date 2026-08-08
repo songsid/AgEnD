@@ -105,8 +105,8 @@ describe("hang notification buttons", () => {
     // The callback data is capability-shaped, not identity-shaped: a 128-bit
     // nonce instead of the forgeable instance name.
     const ids = notifyAlert.mock.calls[0][1].choices.map((c: { id: string }) => c.id);
-    expect(ids[0]).toMatch(/^hang:[0-9a-f]{16}:restart$/);
-    expect(ids[1]).toMatch(/^hang:[0-9a-f]{16}:wait$/);
+    expect(ids[0]).toMatch(/^hang:[0-9a-f]{32}:restart$/);
+    expect(ids[1]).toMatch(/^hang:[0-9a-f]{32}:wait$/);
   });
 
   it("admin Force-restart is consumed once and goes through restartSingleInstance", async () => {
@@ -266,5 +266,167 @@ describe("hang notification buttons", () => {
     planned = false;
     hangDetector.emit("hang", { unchangedForMs: 60_000 });
     await vi.waitFor(() => expect(sendHangNotification).toHaveBeenCalledWith("worker", 60_000));
+  });
+});
+
+describe("sol review findings — regression pins", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "agend-hang-sol-"));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    setLocale("en");
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function baseFm() {
+    const notifyAlert = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      id: "telegram-main",
+      type: "telegram",
+      sendText: vi.fn().mockResolvedValue({ messageId: "n", chatId: "c" }),
+      notifyAlert,
+      editMessageRemoveButtons,
+      editMessage: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    const fm = new FleetManager(dir);
+    fm.fleetConfig = {
+      defaults: {},
+      channels: [{
+        id: "telegram-main", type: "telegram", mode: "topic", group_id: "fleet-group",
+        bot_token_env: "TEST_TOKEN", access: { mode: "locked", allowed_users: ["admin"] },
+      }],
+      instances: {
+        general: { general_topic: true, topic_id: "general-topic", working_directory: dir },
+        worker: { topic_id: "worker-topic", working_directory: dir },
+      },
+    } as any;
+    fm.adapter = adapter;
+    fm.worlds.set("telegram-main", {
+      id: "telegram-main", adapter, groupId: "fleet-group",
+      channelConfig: fm.fleetConfig.channels![0],
+    } as any);
+    fm.lifecycle.daemons.set("general", {} as any);
+    return { fm, adapter, notifyAlert, editMessageRemoveButtons };
+  }
+
+  it("addresses a Classic instance's hang alert to its own channel, not the fleet group root", async () => {
+    // Classic instances are absent from fleetConfig.instances, so the previous
+    // getGroupIdForInstance-only resolution posted their buttons into the fleet
+    // group root (finding 1). The classic manager knows the real channel.
+    const { fm, notifyAlert } = baseFm();
+    (fm as any).classicChannels = {
+      getChannelIdByInstance: (name: string) => (name === "classic-bot" ? "classic-channel-9" : undefined),
+      getAdapterIdByInstance: () => "telegram-main",
+    };
+
+    await fm.sendHangNotification("classic-bot", 5 * 60_000);
+
+    expect(notifyAlert).toHaveBeenCalledWith(
+      "classic-channel-9",
+      expect.objectContaining({ type: "hang", instanceName: "classic-bot" }),
+      undefined, // no thread — Classic channels are flat
+    );
+  });
+
+  it("clears a prompt that was posted WHILE the stop was in flight (TOCTOU)", async () => {
+    // The teardown itself can emit events whose handlers post fresh prompts
+    // after the pre-stop clear ran (finding 2). The post-stop clear in finally
+    // must sweep those too.
+    const { fm, notifyAlert, editMessageRemoveButtons } = baseFm();
+    const restartSingleInstance = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
+    vi.spyOn(fm.lifecycle, "stop").mockImplementation(async () => {
+      await fm.sendHangNotification("worker"); // teardown-triggered prompt
+    });
+
+    await fm.stopInstance("worker");
+
+    // The mid-stop prompt was posted... and then collapsed by the finally clear.
+    expect(notifyAlert).toHaveBeenCalledTimes(1);
+    expect(editMessageRemoveButtons).toHaveBeenCalled();
+    // The strongest assertion: nothing pending survives, so a click does nothing.
+    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    await (fm as any).handleHangPrompt({
+      callbackData: restartId, chatId: "fleet-group", threadId: "worker-topic",
+      messageId: "m1", userId: "admin",
+    }, "telegram-main");
+    expect(restartSingleInstance).not.toHaveBeenCalled();
+    expect((fm as any).pendingNonceButtons.size).toBe(0);
+  });
+
+  it("a nonce from one prompt kind cannot drive another kind's handler (cross-kind fail closed)", async () => {
+    // One shared map holds every kind (finding 4): a hang-shaped callback
+    // carrying an exit-restart nonce must be treated as stale, not act.
+    const { fm, notifyAlert } = baseFm();
+    const restartSingleInstance = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
+    await fm.notifyNormalExit("worker");
+    const exitRestartId = notifyAlert.mock.calls.at(-1)![1].choices[0].id as string;
+    const nonce = exitRestartId.split(":")[1];
+
+    await (fm as any).handleHangPrompt({
+      callbackData: `hang:${nonce}:restart`, chatId: "fleet-group",
+      threadId: "general-topic", messageId: "m1", userId: "admin",
+    }, "telegram-main");
+
+    expect(restartSingleInstance).not.toHaveBeenCalled();
+    expect((fm as any).pendingNonceButtons.size).toBe(1); // the real entry survives
+  });
+
+  it("a confirm on an assist entry without a General target fails closed", async () => {
+    const { fm, notifyAlert, editMessageRemoveButtons } = baseFm();
+    const deliverToInstance = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+    await fm.notifyInteractivePrompt("worker", "login");
+    const confirmId = notifyAlert.mock.calls.at(-1)![1].choices[0].id as string;
+    // Simulate entry confusion: the field a correct posting always sets is gone.
+    const entry = (fm as any).pendingNonceButtons.get(confirmId.split(":")[1]);
+    delete entry.generalName;
+
+    await (fm as any).handleInteractivePromptAssist({
+      callbackData: confirmId, chatId: "fleet-group", threadId: "general-topic",
+      messageId: "m1", userId: "admin",
+    }, "telegram-main");
+
+    // Refused: nothing delivered anywhere — especially not to the blocked pane.
+    expect(deliverToInstance).not.toHaveBeenCalled();
+    expect(editMessageRemoveButtons).toHaveBeenLastCalledWith(
+      "fleet-group", "m1", expect.stringContaining("Could not deliver"), "general-topic",
+    );
+  });
+
+  it("planned restart suppresses the claimed-task nudge, not just the alert", async () => {
+    // Finding 3: the nudge ran before the planned-restart check, injecting new
+    // work into a CLI that is being shut down.
+    const ipcSend = vi.fn();
+    const sendHangNotification = vi.fn().mockResolvedValue(undefined);
+    const ctx = {
+      fleetConfig: { defaults: {}, instances: {} },
+      logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+      dataDir: dir,
+      eventLog: { insert: vi.fn() },
+      isPlannedRestart: () => true,
+      sendHangNotification,
+      listClaimedTasks: () => [{ id: "t1", title: "important work" }],
+      instanceIpcClients: new Map([["worker", { connected: true, send: ipcSend }]]),
+      webhookEmit: vi.fn(),
+      setTopicIcon: vi.fn(),
+      clearCancelButton: vi.fn(),
+      checkModelFailover: vi.fn(),
+    } as unknown as LifecycleContext;
+    const lifecycle = new InstanceLifecycle(ctx);
+    const hangDetector = new EventEmitter();
+    const daemon = Object.assign(new EventEmitter(), {
+      getHangDetector: () => hangDetector,
+      requestPauseWhenIdle: vi.fn(),
+    });
+    lifecycle.attachIncidentHandlers("worker", daemon as any);
+
+    hangDetector.emit("hang", { unchangedForMs: 60_000 });
+    await new Promise(r => setTimeout(r, 10));
+
+    expect(ipcSend).not.toHaveBeenCalled();
+    expect(sendHangNotification).not.toHaveBeenCalled();
   });
 });
