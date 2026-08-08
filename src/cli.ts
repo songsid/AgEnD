@@ -31,7 +31,7 @@ import {
   reportUpdateRestart,
   shouldSkipUpdate,
 } from "./update-check.js";
-import { clearUpdateMarker, markUpdateInProgress } from "./update-marker.js";
+import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
 
@@ -1166,6 +1166,7 @@ program
 
     if (shouldSkipUpdate(pkgVersion, targetVersion, opts.force)) {
       console.log(`\n  ✓ Already up to date (v${pkgVersion})\n`);
+      setUpdateProgressStage(DATA_DIR, "complete", { version: pkgVersion });
       return;
     }
 
@@ -1183,10 +1184,13 @@ program
     // dies here does not silence real alerts.
     markUpdateInProgress(DATA_DIR);
     const failUpdate = (message: string): never => {
-      clearUpdateMarker(DATA_DIR);
+      if (!setUpdateProgressStage(DATA_DIR, "failed", { error: message.trim() })) {
+        clearUpdateMarker(DATA_DIR);
+      }
       console.error(message);
       process.exit(1);
     };
+    setUpdateProgressStage(DATA_DIR, "downloading");
 
     // Detect and remove stale npm link (local build that shadows global install)
     try {
@@ -1260,6 +1264,7 @@ program
     }
     const newVersion = (verifyResult.stdout ?? "").trim();
     console.log(`  ✓ Installed: ${newVersion}`);
+    setUpdateProgressStage(DATA_DIR, "installed", { version: newVersion.replace(/^v/, "") });
 
     // ── Update service file ──
     if (agendPath) {
@@ -1283,6 +1288,7 @@ program
     // restart` (new binary) does the 4-environment service detection (system
     // systemd → user systemd → launchd → detached pid).
     console.log("  Restarting fleet...");
+    setUpdateProgressStage(DATA_DIR, "stopping", { version: newVersion.replace(/^v/, "") });
     // `agend restart` may synchronously wait for a Type=notify service to finish
     // a multi-minute stop/start and send READY=1. Keep this parent wrapper alive
     // longer than the restart command's own bounded wait.
@@ -1294,7 +1300,9 @@ program
     if (!reportUpdateRestart(restartResult.status)) {
       // No new fleet is coming up to clear the marker — do it here, or the next
       // 15 minutes of genuine crashes would go unreported.
-      clearUpdateMarker(DATA_DIR);
+      if (!setUpdateProgressStage(DATA_DIR, "failed", { error: "fleet restart failed" })) {
+        clearUpdateMarker(DATA_DIR);
+      }
       process.exitCode = 1;
     }
   });

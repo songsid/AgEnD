@@ -1,4 +1,6 @@
 import type { ChannelAdapter } from "./channel/types.js";
+import { t } from "./locale.js";
+import { updateElapsedSeconds } from "./update-progress.js";
 
 export interface RestartProgressTarget {
   adapter: ChannelAdapter;
@@ -18,6 +20,10 @@ type ProgressLogger = {
   warn(data: unknown, message: string): void;
 };
 
+export interface RestartProgressOptions {
+  mode?: "restart" | "update";
+}
+
 function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(seconds / 60);
@@ -35,13 +41,16 @@ export class RestartProgress {
   private updateTimer: ReturnType<typeof setInterval> | null = null;
   private editChain: Promise<void> = Promise.resolve();
   private finished = false;
+  private readonly mode: "restart" | "update";
 
   constructor(
     readonly total: number,
     private readonly startedAt: number,
     private readonly logger: ProgressLogger,
+    options: RestartProgressOptions = {},
   ) {
-    this.enabled = total > 5;
+    this.mode = options.mode ?? "restart";
+    this.enabled = this.mode === "update" || total > 5;
   }
 
   /** May be called before the channel adapter is ready; progress is retained. */
@@ -75,6 +84,18 @@ export class RestartProgress {
     }
   }
 
+  /** Adopt the pre-update message after the new fleet process reconnects. */
+  async resume(target: RestartProgressTarget | null, messageId: string): Promise<boolean> {
+    if (!this.enabled || this.mode !== "update" || !target || !messageId || this.finished) return false;
+    this.target = target;
+    this.messageId = messageId;
+    this.enqueueEdit(t("update.progress.starting", updateElapsedSeconds(this.startedAt)));
+    await this.editChain;
+    this.updateTimer = setInterval(() => this.queueProgressEdit(), 1_000);
+    this.updateTimer.unref?.();
+    return true;
+  }
+
   /** Edit the original message to its terminal state. Returns true if it existed. */
   async finish(summary?: RestartProgressSummary): Promise<boolean> {
     if (!this.enabled) return false;
@@ -85,9 +106,11 @@ export class RestartProgress {
     }
     if (!this.target || !this.messageId) return false;
     const elapsed = formatElapsed(Date.now() - this.startedAt);
-    const lines = summary
-      ? [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`]
-      : [`✅ Fleet ready — ${this.ready}/${this.total} instances started (${elapsed})`];
+    const lines = this.mode === "update" && summary
+      ? [t("update.progress.complete", summary.version, summary.running, summary.total, updateElapsedSeconds(this.startedAt))]
+      : summary
+        ? [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`]
+        : [`✅ Fleet ready — ${this.ready}/${this.total} instances started (${elapsed})`];
     if (summary?.pausedNames.length) {
       lines.push(`⏸ Paused (${summary.pausedNames.length}): ${summary.pausedNames.join(", ")}`);
     }
@@ -104,7 +127,10 @@ export class RestartProgress {
   private queueProgressEdit(): void {
     if (this.finished || !this.target || !this.messageId) return;
     this.lastReportedReady = this.ready;
-    this.enqueueEdit(`🔄 Fleet restarting — ${this.ready}/${this.total} ready...`);
+    const text = this.mode === "update"
+      ? t("update.progress.instances", this.ready, this.total, updateElapsedSeconds(this.startedAt))
+      : `🔄 Fleet restarting — ${this.ready}/${this.total} ready...`;
+    this.enqueueEdit(text);
   }
 
   private enqueueEdit(text: string): void {

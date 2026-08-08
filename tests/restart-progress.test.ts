@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RestartProgress } from "../src/restart-progress.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
+import { setLocale } from "../src/locale.js";
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
+  setLocale("en");
 });
 
 function setup(total: number) {
@@ -84,5 +86,73 @@ describe("RestartProgress", () => {
       undefined,
     );
     await progress.finish();
+  });
+
+  it("adopts the pre-update message, reports every second, and finishes it in place", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(10_000);
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const adapter = { editMessage } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(2, 0, { warn: vi.fn() }, { mode: "update" });
+
+    progress.markReady();
+    expect(await progress.resume({ adapter, chatId: "fleet", threadId: "general" }, "update-1")).toBe(true);
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet",
+      "update-1",
+      "🚀 Starting fleet... (10s)",
+      "general",
+    );
+
+    vi.setSystemTime(11_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet",
+      "update-1",
+      "⏳ Starting... 1/2 instances (12s)",
+      "general",
+    );
+
+    progress.markReady();
+    vi.setSystemTime(25_000);
+    expect(await progress.finish({
+      running: 2,
+      total: 3,
+      version: "2.1.4-beta.2",
+      pausedNames: ["sleeping"],
+    })).toBe(true);
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet",
+      "update-1",
+      [
+        "✅ Fleet restarted — v2.1.4-beta.2, 2/3 instances running (25s)",
+        "⏸ Paused (1): sleeping",
+      ].join("\n"),
+      "general",
+    );
+  });
+
+  it("localizes update progress through the existing fleet locale", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(3_000);
+    setLocale("zh-TW");
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const adapter = { editMessage } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(1, 0, { warn: vi.fn() }, { mode: "update" });
+
+    await progress.resume({ adapter, chatId: "fleet" }, "update-zh");
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet",
+      "update-zh",
+      "🚀 啟動 Fleet... (3s)",
+      undefined,
+    );
+    await progress.finish({ running: 1, total: 1, version: "2.1.4", pausedNames: [] });
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet",
+      "update-zh",
+      "✅ Fleet 已重啟 — v2.1.4, 1/1 instances running (3s)",
+      undefined,
+    );
   });
 });

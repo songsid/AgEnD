@@ -444,7 +444,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               respond: async (reply: string) => { try { const m = await interaction.editReply(reply); return m.id; } catch { return undefined; } },
             });
           } else {
-            await interaction.deferReply({ ephemeral: true });
+            // /update progress must survive the fleet process restart. A public
+            // bot message can be re-fetched and edited by the new process;
+            // Discord ephemeral interaction replies cannot.
+            await interaction.deferReply({ ephemeral: interaction.commandName !== "update" });
             // Extract options as key-value pairs for fleet-manager
             const options: Record<string, string | boolean> = {};
             for (const opt of interaction.options.data) {
@@ -458,7 +461,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               userId: interaction.user.id,
               username,
               options,
-              respond: async (reply: string) => { try { await this._editReplyLong(interaction, reply); } catch { /* expired */ } },
+              respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
                   .setCustomId(CLASSIC_START_BACKEND_SELECT_ID)
@@ -607,17 +610,18 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
    * table readable); long text goes into embed(s) whose description allows 4096
    * chars, with followUp embeds for anything beyond that.
    */
-  private async _editReplyLong(interaction: ChatInputCommandInteraction, reply: string): Promise<void> {
+  private async _editReplyLong(interaction: ChatInputCommandInteraction, reply: string): Promise<string | undefined> {
     const EMBED_MAX = 4096;
     if (reply.length <= DISCORD_MAX_LENGTH) {
-      await interaction.editReply({ content: reply, components: [] });
-      return;
+      const message = await interaction.editReply({ content: reply, components: [] });
+      return message.id;
     }
     const chunks = splitText(reply, EMBED_MAX);
-    await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
+    const message = await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
     for (let i = 1; i < chunks.length; i++) {
       await interaction.followUp({ ephemeral: true, embeds: [{ description: chunks[i] }] });
     }
+    return message.id;
   }
 
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {

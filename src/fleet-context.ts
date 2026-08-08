@@ -61,6 +61,9 @@ export interface FleetContext {
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */
   getDashboardAccess?(): { ready: boolean; token: string | null };
+  /** Persist and edit one `/update` message across the fleet process restart. */
+  beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
+  failUpdateProgress?(message: string): void;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**
