@@ -43,7 +43,7 @@ describe("Classic effective backend surfaces", () => {
     expect(text).not.toContain("claude-code");
   });
 
-  it("/compact and /save use the effective Classic backend", async () => {
+  it("/compact, /clear and /save use the effective Classic backend", async () => {
     const sent: unknown[] = [];
     const getBackendByInstance = vi.fn((_name: string, fleetDefault?: string) => fleetDefault ?? "claude-code");
     const commands = new TopicCommands({
@@ -61,11 +61,13 @@ describe("Classic effective backend surfaces", () => {
     } as any);
 
     await commands.sendCompact("classic-room");
+    await commands.sendClear("classic-room");
     await commands.sendSave("classic-room", "snapshot");
 
     expect(getBackendByInstance).toHaveBeenCalledWith("classic-room", "kiro-cli");
     expect(sent).toEqual([
       { type: "raw_paste", content: "/compact" },
+      { type: "raw_paste", content: "/clear" },
       { type: "raw_paste", content: "/chat save snapshot" },
     ]);
   });

@@ -184,6 +184,7 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   // agy has no summarizing /compact — "/clear" is the only manual context reset
   // (full reset; agy also auto-summarizes at a token threshold).
   getCompactCommand(): string { return "/clear"; }
+  getClearCommand(): string { return "/clear"; }
 
   // agy's documented interrupt is Ctrl+C (2-stage: 2nd press exits the CLI).
   // Escape also stops streams and can't exit the app, so it's the safer cancel.

@@ -474,6 +474,7 @@ export class CodexBackend implements CliBackend {
   getQuitCommand(): string { return "/quit"; }
 
   getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): string { return "/clear"; }
 
   getCancelKey(): string { return "Escape"; }
 

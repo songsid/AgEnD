@@ -550,6 +550,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           { name: "doctor", description: "🔒 " + t("slash.doctor") },
           { name: "usage", description: t("slash.usage") },
           { name: "compact", description: "🔒 " + t("slash.compact") },
+          { name: "clear", description: "🔒 " + t("slash.clear") },
           {
             name: "model", description: "🔒 Switch model (admin only)",
           },

@@ -269,6 +269,7 @@ export class KiroBackend implements CliBackend {
   getQuitCommand(): string { return "/quit"; }
 
   getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): string { return "/clear"; }
 
   // kiro's in-session `/model` opens an interactive picker (not a one-shot
   // command), so a runtime paste can't select a specific model — use restart.

@@ -119,6 +119,7 @@ export class GeminiCliBackend implements CliBackend {
 
   // Deprecated backend; preserve prior behavior (/compact + Escape).
   getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): null { return null; }
 
   getCancelKey(): string { return "Escape"; }
 

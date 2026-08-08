@@ -98,6 +98,30 @@ export function compactCommandForBackend(backend: string): string {
 }
 
 /**
+ * Full conversation-reset command for a backend NAME. Keep this routing-only
+ * lookup in sync with CliBackend.getClearCommand(); the fleet process does not
+ * own the backend object that lives inside each daemon.
+ */
+export function clearCommandForBackend(backend: string): string | null {
+  switch (backend) {
+    case "claude-code":
+    case "codex":
+    case "kiro-cli":
+    case "antigravity":
+    case "opencode":
+    case "mock":
+      return "/clear";
+    case "grok":
+      return "/new";
+    case "gemini-cli":
+    default:
+      return null;
+  }
+}
+
+export const CLEAR_UNSUPPORTED_MSG = "⚠️ Clear not supported for this backend";
+
+/**
  * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
  * MOST RECENT prompt wins (a captured scrollback may hold several). Covers the
  * common CLI prompt formats:
@@ -434,6 +458,18 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/clear" || text.startsWith("/clear@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return true;
+      }
+      const result = await this.sendClear(instanceName);
+      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/cancel" || text.startsWith("/cancel@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -527,6 +563,20 @@ export class TopicCommands {
       const cmd = compactCommandForBackend(backend);
       ipc.send({ type: "raw_paste", content: cmd });
       return `🗜️ Compact command sent (\`${cmd}\`).`;
+    }
+    return "❌ Instance not connected (IPC unavailable)";
+  }
+
+  /** Send the backend-appropriate full conversation reset through raw_paste. */
+  async sendClear(instanceName: string): Promise<string> {
+    const backend = this.effectiveBackend(instanceName);
+    const cmd = clearCommandForBackend(backend);
+    if (!cmd) return CLEAR_UNSUPPORTED_MSG;
+
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (ipc?.connected) {
+      ipc.send({ type: "raw_paste", content: cmd });
+      return `🧹 Clear command sent (\`${cmd}\`).`;
     }
     return "❌ Instance not connected (IPC unavailable)";
   }
@@ -932,6 +982,7 @@ export class TopicCommands {
           { command: "dashboard", description: "🔒 Get dashboard URLs" },
           { command: "ctx", description: "Show context usage" },
           { command: "compact", description: "Compact agent context" },
+          { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
           { command: "pause", description: "🔒 Pause an idle instance" },
@@ -974,6 +1025,7 @@ export class TopicCommands {
           { command: "start", description: "🔒 Start an agent in this chat" },
           { command: "stop", description: "🔒 Stop the agent" },
           { command: "compact", description: "🔒 Compact agent context" },
+          { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
           { command: "pause", description: "🔒 Pause the agent" },

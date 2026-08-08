@@ -228,6 +228,13 @@ export interface CliBackend {
   getCompactCommand(): string;
 
   /**
+   * In-session command that starts a fresh conversation and discards the
+   * current conversation context. Return null when the backend has no known,
+   * verified equivalent. Used by the admin-only /clear fleet command.
+   */
+  getClearCommand(): string | null;
+
+  /**
    * The tmux key that interrupts the CLI's current generation WITHOUT quitting —
    * "Escape" for most, "C-c" (Ctrl+C) for kiro-cli. Used by the cancel button and
    * /cancel. Values are tmux send-keys names.

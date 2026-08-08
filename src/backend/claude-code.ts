@@ -215,6 +215,7 @@ export class ClaudeCodeBackend implements CliBackend {
   getQuitCommand(): string { return "/exit"; }
 
   getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): string { return "/clear"; }
 
   getCancelKey(): string { return "Escape"; }
 
