@@ -855,6 +855,30 @@ export async function runQuickstart(): Promise<void> {
       console.log(`  Start the fleet: ${bold("agend fleet start")}`);
     }
 
+    // Shell completion. bash costs nothing to say yes to (a static file, no
+    // rc edit); zsh is asked separately because it appends a line to ~/.zshrc.
+    // Runs `agend completion install` as a subprocess: the script generator
+    // needs the commander program, which lives in the cli entry module —
+    // importing that from here would re-run its top-level parse().
+    try {
+      const { detectShells } = await import("./completion-install.js");
+      const shells = detectShells();
+      if (shells.length > 0) {
+        const wantsCompletion = await rl.question(`\n  Install shell tab completion (${shells.join(", ")})? [Y/n] `);
+        if (!wantsCompletion || wantsCompletion.toLowerCase() === "y" || wantsCompletion.toLowerCase() === "yes") {
+          const args = ["completion", "install"];
+          if (shells.includes("zsh")) {
+            const rcAnswer = await rl.question("  zsh needs one line in ~/.zshrc — add it? [Y/n] ");
+            if (!rcAnswer || rcAnswer.toLowerCase() === "y" || rcAnswer.toLowerCase() === "yes") args.push("--modify-rc");
+          }
+          const { spawnSync } = await import("node:child_process");
+          spawnSync(process.execPath, [process.argv[1], ...args], { stdio: "inherit", timeout: 15_000 });
+        }
+      }
+    } catch (err) {
+      console.log(`  ${yellow("⚠")}  Completion setup skipped (${(err as Error).message})`);
+    }
+
     console.log("");
     const hasDiscord = platforms.some(p => p.type === "discord");
     if (hasDiscord) {
