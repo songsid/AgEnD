@@ -174,6 +174,7 @@ export class OpenCodeBackend implements CliBackend {
   getQuitCommand(): string { return "/quit"; }
 
   getCompactCommand(): string { return "/compact"; }
+  getClearCommand(): string { return "/clear"; }
 
   // OpenCode's default session_interrupt keybinding is Escape (Ctrl+C exits).
   getCancelKey(): string { return "Escape"; }

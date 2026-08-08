@@ -667,6 +667,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await data.respond(await this.topicCommands.runPauseWake(target, action));
   }
 
+  /** Admin-only full conversation reset for fleet-topic and Classic instances. */
+  private async handleClearSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.isModelAdmin(data.userId, data.channelId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    const name = this.resolveSlashTarget(data.channelId, adapterId);
+    if (!name) {
+      await data.respond(t("classic.no_agent"));
+      return;
+    }
+    await data.respond(await this.topicCommands.sendClear(name));
+  }
+
   /** Get the adapter bound to an instance, falling back to primary adapter */
   getAdapterForInstance(name: string): ChannelAdapter | null {
     const worldId = this.getInstanceAdapterId(name);
@@ -2279,6 +2293,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
+      } else if (data.command === "clear") {
+        await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
         await this.handleModelSlash(data, adapterId);
       } else if (data.command === "effort") {
@@ -2555,6 +2571,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await data.respond(t("save.sent", `/chat load ${filename}`, name));
       } else if (data.command === "model") {
         await this.handleModelSlash(data, adapterId);
+      } else if (data.command === "clear") {
+        await this.handleClearSlash(data, adapterId);
       } else if (data.command === "effort") {
         await this.handleEffortSlash(data, adapterId);
       } else if (data.command === "cancel") {
@@ -3205,6 +3223,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           }
           const result = await this.topicCommands.sendCompact(compactName);
           await msgAdapter?.sendText(chatId, result);
+          return;
+        }
+
+        // Handle /clear command (admin only) — unlike /compact this starts a
+        // fresh conversation and intentionally discards the current history.
+        if (text === "/clear" || text.startsWith("/clear@")) {
+          if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
+            await msgAdapter?.sendText(chatId, t("cmd.admin_required", "/clear"));
+            return;
+          }
+          const clearName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!clearName) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          await msgAdapter?.sendText(chatId, await this.topicCommands.sendClear(clearName));
           return;
         }
 
