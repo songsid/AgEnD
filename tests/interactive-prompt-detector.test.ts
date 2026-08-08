@@ -53,8 +53,8 @@ describe("InteractivePromptDetector", () => {
 });
 
 describe("interactive prompt incident routing", () => {
-  it("notifies General rather than the blocked instance", () => {
-    const notifyInstanceTopic = vi.fn();
+  it("delegates the two-channel notification to FleetManager", async () => {
+    const notifyInteractivePrompt = vi.fn().mockResolvedValue(undefined);
     const eventInsert = vi.fn();
     const ctx = {
       fleetConfig: {
@@ -67,7 +67,7 @@ describe("interactive prompt incident routing", () => {
       logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
       eventLog: { insert: eventInsert },
       isPlannedRestart: () => false,
-      notifyInstanceTopic,
+      notifyInteractivePrompt,
       setTopicIcon: vi.fn(),
       webhookEmit: vi.fn(),
       clearCancelButton: vi.fn(),
@@ -85,11 +85,8 @@ describe("interactive prompt incident routing", () => {
       prompt: "[sudo] password for han:",
     });
 
+    await vi.waitFor(() => expect(notifyInteractivePrompt).toHaveBeenCalledTimes(1));
     expect(eventInsert).toHaveBeenCalledWith("worker", "interactive_prompt", { kind: "sudo_password" });
-    expect(notifyInstanceTopic).toHaveBeenCalledTimes(1);
-    expect(notifyInstanceTopic).toHaveBeenCalledWith(
-      "general",
-      expect.stringMatching(/worker.*sudo password.*tmux attach/s),
-    );
+    expect(notifyInteractivePrompt).toHaveBeenCalledWith("worker", "sudo_password");
   });
 });

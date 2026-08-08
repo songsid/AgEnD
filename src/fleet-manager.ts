@@ -219,6 +219,18 @@ interface CancelButtonEntry {
   lastProgressText?: string;
 }
 
+interface InteractivePromptAssistEntry {
+  instanceName: string;
+  generalName: string;
+  kind: string;
+  adapterId: string;
+  adapter: ChannelAdapter;
+  chatId: string;
+  threadId?: string;
+  messageId?: string;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 interface AdapterCallbackData {
   callbackData: string;
   chatId: string;
@@ -264,6 +276,8 @@ const CLASSIC_BACKEND_SELECTION_TIMEOUT_MS = 60_000;
 const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
+const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
+const INTERACTIVE_ASSIST_TIMEOUT_MS = 15 * 60_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -356,6 +370,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
   private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  /** One-shot General assistance buttons for stable interactive terminal prompts. */
+  private pendingInteractivePromptAssists = new Map<string, InteractivePromptAssistEntry>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -2209,6 +2225,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleInteractivePromptAssist(data, adapterId)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
       if (await this.handleEffortSelection(data)) return;
@@ -2492,6 +2509,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleInteractivePromptAssist(data, adapterId)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
       if (await this.handleEffortSelection(data)) return;
@@ -4580,6 +4598,204 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  private interactivePromptLabel(kind: string): string {
+    const key = `interactive.kind.${kind}`;
+    const translated = t(key);
+    return translated === key ? kind.replaceAll("_", " ") : translated;
+  }
+
+  /**
+   * Surface a stable terminal prompt in both places that matter:
+   * - the blocked instance gets a plain pointer to General;
+   * - General gets one-shot Confirm/Cancel controls on its own bound adapter.
+   *
+   * Only the prompt category crosses channels. The captured terminal line can
+   * contain usernames or secret-adjacent text and stays in daemon.log.
+   */
+  async notifyInteractivePrompt(instanceName: string, kind: string): Promise<void> {
+    this.notifyInstanceTopic(instanceName, t("interactive.instance_notice", instanceName));
+    // Multi-world fleets can have one General per bot/platform. Route the assist
+    // request to the General bound to the same adapter as the blocked instance.
+    const generalName = this.findGeneralInstance(this.getInstanceAdapterId(instanceName));
+    if (!generalName) {
+      this.logger.warn({ instanceName }, "Interactive prompt has no General topic notification target");
+      return;
+    }
+
+    const adapterId = this.getInstanceAdapterId(generalName);
+    const adapter = this.getAdapterForInstance(generalName);
+    const chatId = this.getGroupIdForInstance(generalName);
+    const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
+    const threadId = topicId != null ? String(topicId) : undefined;
+    if (!adapter || !adapterId || !chatId) {
+      this.logger.warn({ instanceName, generalName, adapterId, chatId },
+        "Cannot address interactive prompt assistance controls");
+      return;
+    }
+
+    const nonce = randomBytes(8).toString("hex");
+    const label = this.interactivePromptLabel(kind);
+    const entry: InteractivePromptAssistEntry = {
+      instanceName,
+      generalName,
+      kind,
+      adapterId,
+      adapter,
+      chatId,
+      threadId,
+    };
+    entry.timer = setTimeout(() => {
+      const pending = this.pendingInteractivePromptAssists.get(nonce);
+      if (pending !== entry) return;
+      this.pendingInteractivePromptAssists.delete(nonce);
+      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
+        entry.adapter.editMessageRemoveButtons(
+          entry.chatId,
+          entry.messageId,
+          t("interactive.expired", entry.instanceName),
+          entry.threadId,
+        ).catch(err => this.logger.debug({ err, instanceName }, "Failed to expire interactive prompt controls"));
+      }
+    }, INTERACTIVE_ASSIST_TIMEOUT_MS);
+    entry.timer.unref?.();
+    this.pendingInteractivePromptAssists.set(nonce, entry);
+
+    try {
+      const sent = await adapter.notifyAlert(chatId, {
+        type: "interactive_prompt",
+        instanceName,
+        message: t("interactive.general_notice", instanceName, label),
+        choices: [
+          { id: `${INTERACTIVE_ASSIST_CALLBACK_PREFIX}${nonce}:confirm`, label: t("interactive.confirm") },
+          { id: `${INTERACTIVE_ASSIST_CALLBACK_PREFIX}${nonce}:cancel`, label: t("interactive.cancel") },
+        ],
+      }, threadId ? { threadId } : undefined);
+      entry.messageId = sent.messageId;
+    } catch (err) {
+      this.pendingInteractivePromptAssists.delete(nonce);
+      if (entry.timer) clearTimeout(entry.timer);
+      this.logger.warn({ err, instanceName, generalName }, "Failed to send interactive prompt assistance controls");
+    }
+  }
+
+  private async retireInteractivePromptButtons(
+    pending: InteractivePromptAssistEntry,
+    messageId: string,
+    text: string,
+  ): Promise<void> {
+    if (!pending.adapter.editMessageRemoveButtons) {
+      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
+        "Adapter cannot remove interactive prompt controls");
+      return;
+    }
+    try {
+      await pending.adapter.editMessageRemoveButtons(
+        pending.chatId,
+        messageId,
+        text,
+        pending.threadId,
+      );
+    } catch (err) {
+      // The action was already atomically consumed. An edit failure must not
+      // prevent Confirm from reaching General or make Cancel actionable again.
+      this.logger.warn({ err, instanceName: pending.instanceName },
+        "Failed to retire interactive prompt controls");
+    }
+  }
+
+  /** Consume a General assist button exactly once. */
+  private async handleInteractivePromptAssist(data: AdapterCallbackData, callbackAdapterId: string): Promise<boolean> {
+    if (!data.callbackData.startsWith(INTERACTIVE_ASSIST_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^interactive-assist:([0-9a-f]+):(confirm|cancel)$/);
+    if (!match) return true;
+    const pending = this.pendingInteractivePromptAssists.get(match[1]);
+    if (!pending) return true;
+
+    // Bind the capability to the exact message/world that created it. Telegram
+    // keyboards are visible to everyone, so the click also requires fleet admin.
+    if (pending.adapterId !== callbackAdapterId
+      || data.chatId !== pending.chatId
+      || (pending.threadId != null && data.threadId !== pending.threadId)
+      || (pending.messageId != null && data.messageId !== pending.messageId)
+      || !data.userId
+      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
+      this.logger.warn({ instanceName: pending.instanceName, userId: data.userId },
+        "Rejected unauthorized or mismatched interactive prompt callback");
+      return true;
+    }
+
+    // Claim before any await: double clicks and duplicate callback delivery can
+    // never inject two messages into General.
+    this.pendingInteractivePromptAssists.delete(match[1]);
+    if (pending.timer) clearTimeout(pending.timer);
+
+    const action = match[2] as "confirm" | "cancel";
+    this.eventLog?.insert(pending.instanceName, "interactive_prompt_assist", {
+      action,
+      userId: data.userId,
+      generalName: pending.generalName,
+    });
+    if (action === "cancel") {
+      await this.retireInteractivePromptButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("interactive.ignored", pending.instanceName),
+      );
+      return true;
+    }
+
+    // Injecting into General while General itself is blocked would type into the
+    // terminal prompt instead of the agent input. Fail safe and require attach.
+    if (pending.instanceName === pending.generalName) {
+      await this.retireInteractivePromptButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("interactive.self_assist", pending.instanceName),
+      );
+      return true;
+    }
+
+    await this.retireInteractivePromptButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("interactive.confirmed", pending.instanceName),
+    );
+
+    try {
+      await this.deliverToInstance(pending.generalName, {
+        type: "fleet_inbound",
+        content: t("interactive.assist_request", pending.instanceName, this.interactivePromptLabel(pending.kind)),
+        targetSession: pending.generalName,
+        meta: {
+          chat_id: pending.chatId,
+          message_id: pending.messageId ?? data.messageId,
+          user: "AgEnD",
+          user_id: data.userId,
+          ts: new Date().toISOString(),
+          thread_id: pending.threadId ?? "",
+          adapter_id: pending.adapterId,
+          source: pending.adapter.type,
+        },
+      }, {
+        // This is system-generated work, not a live user message. Queue behind
+        // General's current turn so Kiro/Claude do not lose it while busy.
+        isCrossInstance: true,
+      });
+      this.logger.info({ instanceName: pending.instanceName, generalName: pending.generalName },
+        "Interactive prompt assistance delivered to General");
+    } catch (err) {
+      this.logger.warn({ err, instanceName: pending.instanceName, generalName: pending.generalName },
+        "Failed to deliver interactive prompt assistance to General");
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("interactive.delivery_failed", pending.instanceName),
+        pending.threadId,
+      );
+    }
+    return true;
+  }
+
   // ── Cancel button ────────────────────────────────────────────────────
   // Sent after delivering a user message to an instance; clicking it (or
   // /cancel) sends Escape to the instance's pane to interrupt generation.
@@ -6630,6 +6846,10 @@ When users create specialized instances, suggest these configurations:
     }
     for (const pending of this.pendingClassicStarts.values()) clearTimeout(pending.timer);
     this.pendingClassicStarts.clear();
+    for (const pending of this.pendingInteractivePromptAssists.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+    }
+    this.pendingInteractivePromptAssists.clear();
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
