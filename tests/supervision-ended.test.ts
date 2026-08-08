@@ -19,19 +19,20 @@ describe("supervision_ended is reported to the operator", () => {
     const instanceDir = mkdtempSync(join(tmpdir(), "agend-sup-"));
     const daemon = Object.create(Daemon.prototype) as EventEmitter & {
       name: string;
-      emitSupervisionEnded(reason: string, remedy: string): void;
+      emitSupervisionEnded(reason: string, remedy: string, exitCode?: number): void;
     };
     EventEmitter.call(daemon as unknown as EventEmitter);
     Object.assign(daemon, { name: "alpha", instanceDir });
 
     const seen: unknown[] = [];
     daemon.on("supervision_ended", d => seen.push(d));
-    daemon.emitSupervisionEnded("the CLI exited normally (code 0)", "Start it again when you need it.");
+    daemon.emitSupervisionEnded("the CLI exited normally (code 0)", "Start it again when you need it.", 0);
 
     expect(seen).toEqual([{
       name: "alpha",
       reason: "the CLI exited normally (code 0)",
       remedy: "Start it again when you need it.",
+      exitCode: 0,
     }]);
   });
 });

@@ -238,6 +238,16 @@ interface InteractivePromptAssistEntry {
   timer?: ReturnType<typeof setTimeout>;
 }
 
+interface ExitRestartPromptEntry {
+  instanceName: string;
+  adapterId: string;
+  adapter: ChannelAdapter;
+  chatId: string;
+  threadId?: string;
+  messageId?: string;
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 interface AdapterCallbackData {
   callbackData: string;
   chatId: string;
@@ -285,6 +295,8 @@ const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const INTERACTIVE_ASSIST_TIMEOUT_MS = 15 * 60_000;
+const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
+const EXIT_RESTART_TIMEOUT_MS = 15 * 60_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -379,6 +391,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
   /** One-shot General assistance buttons for stable interactive terminal prompts. */
   private pendingInteractivePromptAssists = new Map<string, InteractivePromptAssistEntry>();
+  /** Admin-only restart/ignore controls for clean CLI exits. */
+  private pendingExitRestartPrompts = new Map<string, ExitRestartPromptEntry>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -2331,6 +2345,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleExitRestartPrompt(data, adapterId)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
@@ -2605,6 +2620,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleExitRestartPrompt(data, adapterId)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
@@ -4682,6 +4698,145 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter.sendText(String(groupId), text, extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
     }
+  }
+
+  /** A clean exit is intentional from the CLI's perspective, but often not from
+   * the operator's. Keep the instance notice passive and put the action in the
+   * same-world General topic where an administrator can make the choice. */
+  async notifyNormalExit(instanceName: string): Promise<void> {
+    this.notifyInstanceTopic(instanceName, t("exit.instance_notice", instanceName));
+
+    const worldId = this.getInstanceAdapterId(instanceName);
+    const generalName = this.findGeneralInstance(worldId);
+    if (!generalName) {
+      this.logger.warn({ instanceName, worldId }, "Normal CLI exit has no General notification target");
+      return;
+    }
+    const adapterId = this.getInstanceAdapterId(generalName);
+    const adapter = this.getAdapterForInstance(generalName);
+    const chatId = this.getGroupIdForInstance(generalName);
+    const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
+    const threadId = topicId != null ? String(topicId) : undefined;
+    if (!adapter || !adapterId || !chatId) {
+      this.logger.warn({ instanceName, generalName, adapterId, chatId },
+        "Cannot address normal-exit restart controls");
+      return;
+    }
+
+    const nonce = randomBytes(8).toString("hex");
+    const entry: ExitRestartPromptEntry = { instanceName, adapterId, adapter, chatId, threadId };
+    entry.timer = setTimeout(() => {
+      const pending = this.pendingExitRestartPrompts.get(nonce);
+      if (pending !== entry) return;
+      this.pendingExitRestartPrompts.delete(nonce);
+      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
+        entry.adapter.editMessageRemoveButtons(
+          entry.chatId,
+          entry.messageId,
+          t("exit.expired", entry.instanceName),
+          entry.threadId,
+        ).catch(err => this.logger.debug({ err, instanceName }, "Failed to expire normal-exit controls"));
+      }
+    }, EXIT_RESTART_TIMEOUT_MS);
+    entry.timer.unref?.();
+    this.pendingExitRestartPrompts.set(nonce, entry);
+
+    try {
+      const sent = await adapter.notifyAlert(chatId, {
+        type: "exit_restart",
+        instanceName,
+        message: t("exit.general_notice", instanceName),
+        choices: [
+          { id: `${EXIT_RESTART_CALLBACK_PREFIX}${nonce}:restart`, label: t("exit.restart") },
+          { id: `${EXIT_RESTART_CALLBACK_PREFIX}${nonce}:ignore`, label: t("exit.ignore") },
+        ],
+      }, threadId ? { threadId } : undefined);
+      entry.messageId = sent.messageId;
+    } catch (err) {
+      this.pendingExitRestartPrompts.delete(nonce);
+      if (entry.timer) clearTimeout(entry.timer);
+      this.logger.warn({ err, instanceName, generalName }, "Failed to send normal-exit restart controls");
+    }
+  }
+
+  private async retireExitRestartButtons(
+    pending: ExitRestartPromptEntry,
+    messageId: string,
+    text: string,
+  ): Promise<void> {
+    if (!pending.adapter.editMessageRemoveButtons) {
+      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
+        "Adapter cannot remove normal-exit controls");
+      return;
+    }
+    try {
+      await pending.adapter.editMessageRemoveButtons(
+        pending.chatId,
+        messageId,
+        text,
+        pending.threadId,
+      );
+    } catch (err) {
+      this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire normal-exit controls");
+    }
+  }
+
+  /** Consume a clean-exit Restart/Ignore button exactly once. */
+  private async handleExitRestartPrompt(data: AdapterCallbackData, callbackAdapterId: string): Promise<boolean> {
+    if (!data.callbackData.startsWith(EXIT_RESTART_CALLBACK_PREFIX)) return false;
+    const match = data.callbackData.match(/^exit-restart:([0-9a-f]+):(restart|ignore)$/);
+    if (!match) return true;
+    const pending = this.pendingExitRestartPrompts.get(match[1]);
+    if (!pending) return true;
+    if (pending.adapterId !== callbackAdapterId
+      || data.chatId !== pending.chatId
+      || (pending.threadId != null && data.threadId !== pending.threadId)
+      || (pending.messageId != null && data.messageId !== pending.messageId)
+      || !data.userId
+      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
+      this.logger.warn({ instanceName: pending.instanceName, userId: data.userId },
+        "Rejected unauthorized or mismatched normal-exit callback");
+      return true;
+    }
+
+    this.pendingExitRestartPrompts.delete(match[1]);
+    if (pending.timer) clearTimeout(pending.timer);
+    const action = match[2] as "restart" | "ignore";
+    this.eventLog?.insert(pending.instanceName, "normal_exit_action", { action, userId: data.userId });
+    if (action === "ignore") {
+      await this.retireExitRestartButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("exit.ignored", pending.instanceName),
+      );
+      return true;
+    }
+
+    await this.retireExitRestartButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("exit.restarting", pending.instanceName),
+    );
+    try {
+      await this.restartSingleInstance(pending.instanceName);
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("exit.restarted", pending.instanceName),
+        pending.threadId,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error({ err, instanceName: pending.instanceName }, "Normal-exit restart failed");
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("exit.restart_failed", pending.instanceName, message),
+        pending.threadId,
+      ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
+        "Failed to show normal-exit restart error"));
+    }
+    return true;
   }
 
   private interactivePromptLabel(kind: string): string {
@@ -6936,6 +7091,10 @@ When users create specialized instances, suggest these configurations:
       if (pending.timer) clearTimeout(pending.timer);
     }
     this.pendingInteractivePromptAssists.clear();
+    for (const pending of this.pendingExitRestartPrompts.values()) {
+      if (pending.timer) clearTimeout(pending.timer);
+    }
+    this.pendingExitRestartPrompts.clear();
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();

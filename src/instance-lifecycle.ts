@@ -119,6 +119,8 @@ export interface LifecycleContext {
   notifyInstanceTopic(name: string, text: string): void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
+  /** Notify a clean CLI exit and offer an admin-only restart action in General. */
+  notifyNormalExit(name: string): Promise<void>;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
   isClassicInstance?(name: string): boolean;
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
@@ -287,11 +289,21 @@ export class InstanceLifecycle {
       this.notifyIncident(name, "snapshot_failed", t("inst.restarted_no_context", name));
     }, this.ctx.logger, `daemon.snapshot_failed[${name}]`));
 
-    daemon.on("supervision_ended", safeHandler((data: { name: string; reason: string; remedy: string }) => {
+    daemon.on("supervision_ended", safeHandler(async (data: { name: string; reason: string; remedy: string; exitCode?: number }) => {
       // The instance is dead and nothing will restart it. Say so where the operator
       // is looking, and mark the topic — otherwise messages routed here just queue
       // or fail with a bare ❌ and the dashboard still looks normal.
       this.ctx.eventLog?.insert(name, "supervision_ended", { reason: data.reason });
+      if (data.exitCode === 0) {
+        this.ctx.logger.info({ name, exitCode: data.exitCode }, "CLI exited normally and will not restart automatically");
+        if (this.ctx.isPlannedRestart()) {
+          this.ctx.logger.info({ name }, "Normal-exit controls suppressed — planned restart in progress");
+        } else {
+          await this.ctx.notifyNormalExit(name);
+        }
+        this.ctx.setTopicIcon(name, "red");
+        return;
+      }
       this.ctx.logger.error({ name, reason: data.reason }, "Instance is no longer supervised");
       this.notifyIncident(
         name,
