@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -151,5 +151,74 @@ describe("progressMinElapsedMs", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── Tool progress in the bubble (feat/tool-progress-steering) ──────────────
+
+describe("bubbleText — the ONE composer for ticker and tool progress", () => {
+  // #528 trap 2: v2.1.2's ticker rendered only its own header, so the first
+  // elapsed tick after a progress push WIPED the tool list from the bubble.
+  // Both writers now render through bubbleText; these tests pin that a header
+  // refresh can never lose the list.
+  it("keeps the tool list when only elapsed time advances (the ticker path)", () => {
+    const list = "🧪 執行測試\n📄 讀取檔案：src/daemon.ts";
+    const beforeTick = FleetManager.bubbleText(60_000, undefined, 30_000, list);
+    const afterTick = FleetManager.bubbleText(120_000, undefined, 30_000, list);
+    expect(beforeTick).toContain(list);
+    expect(afterTick).toContain(list); // the elapsed tick must NOT wipe the list
+    expect(afterTick).toContain("已進行 2m 00s");
+  });
+
+  it("renders header-only when no progress exists (unchanged legacy shape)", () => {
+    expect(FleetManager.bubbleText(120_000, undefined, 30_000, undefined))
+      .toBe(FleetManager.progressText(120_000, undefined, 30_000));
+  });
+
+  it("drops the redundant single-line activity once a list exists", () => {
+    const withList = FleetManager.bubbleText(120_000, "$ npm test", 30_000, "🧪 執行測試");
+    expect(withList).not.toContain("$ npm test");
+    expect(withList).toContain("🧪 執行測試");
+    const withoutList = FleetManager.bubbleText(120_000, "$ npm test", 30_000, undefined);
+    expect(withoutList).toContain("$ npm test");
+  });
+
+  it("shows the list even below the elapsed threshold", () => {
+    const text = FleetManager.bubbleText(5_000, undefined, 30_000, "🧪 執行測試");
+    expect(text).toContain("👀 處理中…");
+    expect(text).toContain("🧪 執行測試");
+  });
+});
+
+describe("/steer registration covers dispatch (#528 trap 5)", () => {
+  // A Discord slash handler without a registration is invisible: the command
+  // works if you type it blind but does not exist in the picker. Pin that the
+  // registered name, the dispatch branches, and the locale keys all exist.
+  const read = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf-8");
+
+  it("registers /steer with a required message option on the Discord adapter", () => {
+    const src = read("channel/adapters/discord.ts");
+    expect(src).toMatch(/name: "steer"/);
+    expect(src.slice(src.indexOf('name: "steer"'))).toMatch(/required: true/);
+  });
+
+  it("dispatches steer in every slash_command handler that dispatches compact", () => {
+    const src = read("fleet-manager.ts");
+    const compactSites = src.match(/data\.command === "compact"/g)?.length ?? 0;
+    const steerSites = src.match(/data\.command === "steer"/g)?.length ?? 0;
+    expect(steerSites).toBe(compactSites);
+    expect(steerSites).toBeGreaterThanOrEqual(3);
+  });
+
+  it("has locale strings for every steer-facing message, in both languages", () => {
+    const src = read("locale.ts");
+    for (const key of ['"slash.steer"', '"steer.usage"', '"steer.sent"', '"steer.not_connected"']) {
+      expect(src.match(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length ?? 0).toBe(2);
+    }
+  });
+
+  it("registers /steer in the Telegram command menus (fleet + classic)", () => {
+    const src = read("topic-commands.ts");
+    expect(src.match(/command: "steer"/g)?.length ?? 0).toBe(2);
   });
 });

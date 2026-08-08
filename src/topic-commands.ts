@@ -458,6 +458,23 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/steer" || text.startsWith("/steer ") || text.startsWith("/steer@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      // Deliberately NOT admin-gated: anyone who can speak in this topic can
+      // already send the instance a message; /steer only changes WHEN it lands
+      // (mid-turn instead of after), and it goes through the full [user:]
+      // formatting — unlike /raw, which bypasses it and is gated.
+      const content = text.replace(/^\/steer(@\S+)?/, "").trim();
+      if (!content) {
+        await adapter.sendText(msg.chatId, t("steer.usage"), { threadId: msg.threadId });
+        return true;
+      }
+      const result = this.sendSteer(instanceName, content, msg);
+      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/clear" || text.startsWith("/clear@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -565,6 +582,34 @@ export class TopicCommands {
       return `🗜️ Compact command sent (\`${cmd}\`).`;
     }
     return "❌ Instance not connected (IPC unavailable)";
+  }
+
+  /**
+   * Steer: interject a message into the instance's CURRENT turn. The daemon
+   * pastes it into the busy CLI instead of queueing for idle (falling back to
+   * the queue if the TUI swallows busy input — see Daemon.steerMessage).
+   */
+  sendSteer(
+    instanceName: string,
+    content: string,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
+  ): string {
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (!ipc?.connected) return t("steer.not_connected");
+    ipc.send({
+      type: "steer",
+      content,
+      meta: {
+        chat_id: msg.chatId,
+        message_id: msg.messageId ?? "",
+        user: msg.username,
+        user_id: msg.userId,
+        thread_id: msg.threadId ?? "",
+        adapter_id: msg.adapterId ?? "",
+        source: msg.source,
+      },
+    });
+    return t("steer.sent", instanceName);
   }
 
   /** Send the backend-appropriate full conversation reset through raw_paste. */
@@ -982,6 +1027,7 @@ export class TopicCommands {
           { command: "dashboard", description: "🔒 Get dashboard URLs" },
           { command: "ctx", description: "Show context usage" },
           { command: "compact", description: "Compact agent context" },
+          { command: "steer", description: "Interject into the current task" },
           { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
@@ -1025,6 +1071,7 @@ export class TopicCommands {
           { command: "start", description: "🔒 Start an agent in this chat" },
           { command: "stop", description: "🔒 Stop the agent" },
           { command: "compact", description: "🔒 Compact agent context" },
+          { command: "steer", description: "Interject into the current task" },
           { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },

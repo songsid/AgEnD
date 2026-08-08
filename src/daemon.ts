@@ -10,6 +10,8 @@ import { mcpServerState } from "./mcp-liveness.js";
 import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
+import { createTranscriptSource } from "./transcript-sources.js";
+import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
@@ -779,6 +781,17 @@ export class Daemon extends EventEmitter {
   private lastBuiltInstructions = "";
   private pasteQueueDepth = 0;
   private firstDeliveryDelay = new FirstDeliveryDelay();
+  /** Orders /steer pastes against each other. Deliberately NOT pasteLock:
+   *  a steer must not queue behind the normal deliveries it exists to
+   *  overtake. Pane-level exclusion still comes from paneWriteLock inside
+   *  deliverMessage, so a steer and a normal delivery can never interleave
+   *  their PTY writes — the steer just doesn't wait for idle. */
+  private steerLock: Promise<void> = Promise.resolve();
+  /** Tool lines shown in the channel processing bubble for the current turn. */
+  private readonly turnProgress = new ProgressAccumulator();
+  private lastProgressBroadcast = "";
+  private progressBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastProgressBroadcastAt = 0;
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private readonly interactivePromptDetector = new InteractivePromptDetector();
@@ -1004,6 +1017,9 @@ export class Daemon extends EventEmitter {
             this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
           });
         }
+      } else if (msg.type === "steer") {
+        const meta = (msg.meta ?? {}) as Record<string, string>;
+        this.steerMessage(msg.content as string, meta);
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
@@ -1107,8 +1123,15 @@ export class Daemon extends EventEmitter {
       rotateLogIfNeeded(outputLog);
       await this.tmux.pipeOutput(outputLog).catch(() => {});
 
-      // 4. Transcript monitor
-      this.transcriptMonitor = new TranscriptMonitor(this.instanceDir, this.logger);
+      // 4. Transcript monitor. claude-code is handled inside the monitor
+      // (statusline transcript); codex/kiro/opencode read their CLI's own
+      // conversation store via a pluggable source. Backends with no known
+      // source stay inert exactly as before.
+      this.transcriptMonitor = new TranscriptMonitor(
+        this.instanceDir,
+        this.logger,
+        createTranscriptSource(this.config.backend ?? "claude-code", this.config.working_directory),
+      );
 
       // 5. Wire transcript events
       const ackIfPending = () => {
@@ -1124,6 +1147,7 @@ export class Daemon extends EventEmitter {
         this.recordRecentEvent({ type: "tool_use", name, preview: this.summarizeTool(name, input) });
         this.recordRecentToolActivity(this.summarizeTool(name, input));
         this.publishActivity(this.summarizeTool(name, input));
+        this.recordToolProgress(name, input);
       });
       this.transcriptMonitor.on("tool_result", (name: string, _output: unknown) => {
         this.recordRecentEvent({ type: "tool_result", name });
@@ -2086,6 +2110,7 @@ export class Daemon extends EventEmitter {
       // tool_result (interrupted, crashed, cancelled), which would otherwise leave
       // the last tool pinned to the progress line for the rest of the session.
       this.publishActivity(null);
+      this.resetToolProgress();
       // Must run before the mcpRestartPending branch below: the pane text is the
       // only copy of the answer, and the revival restart is about to clear it.
       this.maybeProxyReplyOnTurnEnd(pane);
@@ -2478,6 +2503,69 @@ export class Daemon extends EventEmitter {
     });
   }
 
+  /** Effective tool_progress level, hardened against junk config values. */
+  private toolProgressLevel(): "off" | "standard" | "verbose" {
+    const raw = this.config.tool_progress;
+    return raw === "off" || raw === "verbose" ? raw : "standard";
+  }
+
+  /**
+   * Accumulate one semantic progress line for the channel bubble and schedule
+   * a coalesced broadcast. Separate from publishActivity on purpose: that one
+   * is the single-line statusline detail (terse, operator-facing), this is the
+   * multi-line channel list (semantic, argument-free at `standard`) — see
+   * tool-progress.ts for why the two labellers must not merge.
+   */
+  private recordToolProgress(name: string, input: unknown): void {
+    const level = this.toolProgressLevel();
+    if (level === "off") return;
+    if (this.turnProgress.add(summarizeProgress(name, input, level))) {
+      this.scheduleProgressBroadcast();
+    }
+  }
+
+  /** Coalesce progress broadcasts: at most one per 3s, trailing edge kept. */
+  private scheduleProgressBroadcast(): void {
+    const MIN_INTERVAL_MS = 3_000;
+    const since = Date.now() - this.lastProgressBroadcastAt;
+    if (since >= MIN_INTERVAL_MS) {
+      this.broadcastToolProgress();
+      return;
+    }
+    if (this.progressBroadcastTimer) return;
+    this.progressBroadcastTimer = setTimeout(() => {
+      this.progressBroadcastTimer = null;
+      this.broadcastToolProgress();
+    }, MIN_INTERVAL_MS - since);
+    this.progressBroadcastTimer.unref?.();
+  }
+
+  private broadcastToolProgress(): void {
+    const rendered = this.turnProgress.render();
+    if (rendered === this.lastProgressBroadcast) return;
+    this.lastProgressBroadcast = rendered;
+    this.lastProgressBroadcastAt = Date.now();
+    this.ipcServer?.broadcast({
+      type: "instance_progress",
+      instanceName: this.name,
+      progress: rendered,
+    });
+  }
+
+  /** New turn (or turn over): drop the list and tell the fleet to clear it. */
+  private resetToolProgress(): void {
+    if (this.progressBroadcastTimer) {
+      clearTimeout(this.progressBroadcastTimer);
+      this.progressBroadcastTimer = null;
+    }
+    this.turnProgress.reset();
+    if (this.lastProgressBroadcast !== "") {
+      this.lastProgressBroadcast = "";
+      this.lastProgressBroadcastAt = Date.now();
+      this.ipcServer?.broadcast({ type: "instance_progress", instanceName: this.name, progress: "" });
+    }
+  }
+
   /**
    * Options for every system-initiated paste (startup notice, session snapshot,
    * runtime-dialog keys).
@@ -2504,6 +2592,86 @@ export class Daemon extends EventEmitter {
     if (name === "Agent") return "Agent (subagent)";
     if (name.startsWith("mcp__agend__")) return ""; // skip channel tools
     return name;
+  }
+
+  /**
+   * The one place an inbound message grows its metadata wrapper ([user:]/
+   * [from:] prefix, pending reactions, handoff metadata, reply instructions).
+   * Both the normal queued path (pushChannelMessage) and /steer go through
+   * here — a steered message must read EXACTLY like a queued one to the
+   * agent, or the two drift apart in what the agent is told about replying.
+   */
+  private formatInboundMessage(content: string, meta: Record<string, string>): string {
+    const user = meta.user || "unknown";
+    const fromInstance = meta.from_instance;
+
+    let formatted: string;
+    if (fromInstance) {
+      // #77: show the sender's display name for readability, keeping the machine
+      // instance name in parens so the recipient's send_to_instance target is valid.
+      const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
+      formatted = `[from:${fromLabel}] ${content}`;
+      formatted += renderHandoffMetadata(meta);
+      // A delegated task that requires a reply must not read like a chatty FYI —
+      // the "you may stay silent" line is for the latter only.
+      formatted += meta.requires_reply === "true"
+        ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
+        : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
+    } else {
+      const via = meta.source ? ` via ${meta.source}` : "";
+      const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
+      formatted = `[user:${user}${via}${idTag}] ${content}`;
+      // Reactions queued since the last real message (#432). One leading line of
+      // context, present only when something is pending — a reaction no longer
+      // costs a turn of its own.
+      if (meta.pending_reactions) {
+        formatted = `[Recent reactions: ${meta.pending_reactions}]\n${formatted}`;
+      }
+      formatted += renderHandoffMetadata(meta);
+      formatted += "\n(Reply using the reply tool — do NOT respond with direct text)";
+    }
+    if (meta.reply_to_text) {
+      formatted += `\n(reply_to: "${meta.reply_to_text}")`;
+    }
+    return formatted;
+  }
+
+  /**
+   * /steer: interject into the CURRENT turn instead of queueing for idle.
+   *
+   * Differences from pushChannelMessage, and nothing else:
+   *  - serialized on steerLock, not pasteLock — it must overtake, not queue
+   *  - deliverMessage runs with { steer: true }, which takes the busy branch
+   *    that pastes immediately (the codex native-queue transaction) instead of
+   *    waiting for idle. Verification and silent-loss fallback are the ones
+   *    that path already has: pane-capture visibility check, then one
+   *    idle-gated redelivery — so on a TUI that swallows busy input the steer
+   *    degrades to "next message after this turn", never silently vanishes.
+   *
+   * The steered text goes through formatInboundMessage so the agent sees a
+   * normal inbound message, with a steering notice prepended for context.
+   */
+  steerMessage(content: string, meta: Record<string, string>): void {
+    this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
+    this.pendingWork.recordInbound();
+    this.recordRecentUserMessage(content, meta);
+
+    const formatted = "[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]\n"
+      + this.formatInboundMessage(content, meta);
+    const chatId = meta.chat_id;
+    const messageId = meta.message_id;
+    const status = (chatId && messageId)
+      ? { chatId: meta.thread_id || chatId, messageId }
+      : undefined;
+
+    this.steerLock = this.steerLock.then(async () => {
+      await this.wake();
+      if (await this.deliverMessage(formatted, status, { steer: true })) {
+        this.markTurnStarted(meta, formatted);
+      }
+    }).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "steer delivery error");
+    });
   }
 
   /**
@@ -2553,34 +2721,7 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    let formatted: string;
-    if (fromInstance) {
-      // #77: show the sender's display name for readability, keeping the machine
-      // instance name in parens so the recipient's send_to_instance target is valid.
-      const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
-      formatted = `[from:${fromLabel}] ${content}`;
-      formatted += renderHandoffMetadata(meta);
-      // A delegated task that requires a reply must not read like a chatty FYI —
-      // the "you may stay silent" line is for the latter only.
-      formatted += meta.requires_reply === "true"
-        ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
-        : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
-    } else {
-      const via = meta.source ? ` via ${meta.source}` : "";
-      const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
-      formatted = `[user:${user}${via}${idTag}] ${content}`;
-      // Reactions queued since the last real message (#432). One leading line of
-      // context, present only when something is pending — a reaction no longer
-      // costs a turn of its own.
-      if (meta.pending_reactions) {
-        formatted = `[Recent reactions: ${meta.pending_reactions}]\n${formatted}`;
-      }
-      formatted += renderHandoffMetadata(meta);
-      formatted += "\n(Reply using the reply tool — do NOT respond with direct text)";
-    }
-    if (meta.reply_to_text) {
-      formatted += `\n(reply_to: "${meta.reply_to_text}")`;
-    }
+    const formatted = this.formatInboundMessage(content, meta);
 
     // Serialize deliveries: each message waits for the previous to complete,
     // and each waits for the CLI to be idle before pasting. Messages are never
@@ -2608,6 +2749,9 @@ export class Daemon extends EventEmitter {
         const status = (chatId && messageId)
           ? { chatId: meta.thread_id || chatId, messageId }
           : undefined;
+        // A fresh delivery begins a fresh turn — its bubble must not inherit
+        // the previous turn's tool list.
+        this.resetToolProgress();
         if (await this.deliverMessage(formatted, status)) this.markTurnStarted(meta, formatted);
       } finally {
         this.pasteQueueDepth--;
@@ -2634,7 +2778,11 @@ export class Daemon extends EventEmitter {
    * immediately and own the application-level queue themselves. The pasteLock remains
    * serial in both cases so separate PTY writes can never overlap.
    */
-  private async deliverMessage(formatted: string, status?: { chatId: string; messageId: string }): Promise<boolean> {
+  private async deliverMessage(
+    formatted: string,
+    status?: { chatId: string; messageId: string },
+    opts?: { steer?: boolean },
+  ): Promise<boolean> {
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
     if (fenceCount % 2 !== 0) {
@@ -2655,9 +2803,16 @@ export class Daemon extends EventEmitter {
     // normal Enter input has steering/interrupt semantics in several other CLIs.
     if (windowId && this.controlClient && !this.controlClient.isIdle(windowId)) {
       if (status) this.emit("message_queued", status);
-      if (supportsQueuedInput) {
+      if (supportsQueuedInput || opts?.steer) {
+        // Native queue (codex), or an explicit /steer: hand the complete
+        // paste+Enter transaction to the busy CLI now. For steer this is the
+        // point — the user asked to interject, and the transaction's
+        // visibility check + idle-gated fallback catch TUIs that swallow
+        // busy input (see steerMessage).
         handingOffToNativeQueue = true;
-        this.logger.debug("CLI busy — handing message to backend-native input queue");
+        this.logger.debug(
+          opts?.steer ? "CLI busy — steering into the running turn" : "CLI busy — handing message to backend-native input queue",
+        );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
         const becameIdle = await this.controlClient.waitUntilIdle(windowId);
