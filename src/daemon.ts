@@ -1348,7 +1348,11 @@ export class Daemon extends EventEmitter {
             this.logger.info("CLI exited normally (code 0) — pausing health check");
             await this.tmux.killWindow();
             this.healthCheckPaused = true;
-            this.emitSupervisionEnded("the CLI exited normally (code 0)", "Nothing crashed — start it again when you need it.");
+            this.emitSupervisionEnded(
+              "the CLI exited normally (code 0)",
+              "Nothing crashed — start it again when you need it.",
+              0,
+            );
             return;
           }
           // Distinguish tmux server crash from single window crash.
@@ -1603,8 +1607,13 @@ export class Daemon extends EventEmitter {
    * `crash_loop` already had this treatment; this is the same bridge for the other
    * four, carrying a human-readable cause and the operator's next step.
    */
-  private emitSupervisionEnded(reason: string, remedy: string): void {
-    this.emit("supervision_ended", { name: this.name, reason, remedy });
+  private emitSupervisionEnded(reason: string, remedy: string, exitCode?: number): void {
+    this.emit("supervision_ended", {
+      name: this.name,
+      reason,
+      remedy,
+      ...(exitCode !== undefined ? { exitCode } : {}),
+    });
   }
 
   private setProcessStatus(status: "running" | "crashed" | "stopped"): void {
