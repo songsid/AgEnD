@@ -127,6 +127,19 @@ describe("handleInboundReaction stores instead of delivering", () => {
     }
   });
 
+  it("ignores the camera emoji without suppressing other user reactions", async () => {
+    const { internals, cleanup } = makeFleet();
+    try {
+      await internals.handleInboundReaction(reaction({ emoji: "📷" }));
+      expect(internals.eventLog.pendingReactions("alpha")).toBeNull();
+
+      await internals.handleInboundReaction(reaction({ emoji: "📸", messageId: "msg-camera" }));
+      expect(internals.eventLog.pendingReactions("alpha")?.summary).toContain("📸");
+    } finally {
+      cleanup();
+    }
+  });
+
   it("ignores a reaction in an unrouted channel", async () => {
     const { internals, cleanup } = makeFleet(null);
     try {

@@ -191,6 +191,12 @@ const PROGRESS_ACTIVITY_MAX_CHARS = 48;
  */
 const DELIVERY_STATUS_EMOJIS = new Set(["👀", "⏳", "✅", "❌"]);
 /**
+ * Reactions that are neither delivery plumbing nor meaningful conversational
+ * feedback. Keep this separate from DELIVERY_STATUS_EMOJIS so adding a UI-only
+ * emoji never changes the documented delivery-state protocol.
+ */
+const IGNORED_REACTION_EMOJIS = new Set(["📷"]);
+/**
  * How long a delivery waits out a disconnected instance IPC before giving up.
  *
  * Sized for a daemon restart (socket close → respawn → CLI ready), which is the
@@ -3060,6 +3066,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (DELIVERY_STATUS_EMOJIS.has(r.emoji)) {
       this.logger.debug({ emoji: r.emoji, user: r.username }, "Ignoring delivery-status emoji as a reaction");
+      return;
+    }
+    if (IGNORED_REACTION_EMOJIS.has(r.emoji)) {
+      this.logger.debug({ emoji: r.emoji, user: r.username }, "Ignoring non-contextual emoji reaction");
       return;
     }
 
