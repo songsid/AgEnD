@@ -88,6 +88,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       }
     }
 
+    if (value.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(value.tool_progress))) {
+      err(`${path}.tool_progress`, "must be off, standard, or verbose");
+    }
+
     if (value.effort !== undefined) {
       const e = value.effort;
       if (typeof e !== "string" || !/^(low|medium|high|xhigh|max)$/.test(e.trim().toLowerCase())) {

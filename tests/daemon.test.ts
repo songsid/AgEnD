@@ -621,3 +621,114 @@ describe("Daemon error monitor recovery", () => {
     expect((daemon as any).activeErrorPatternKey).toBeNull();
   });
 });
+
+describe("Daemon /steer delivery", () => {
+  function makeSteerDaemon(backendName: "claude-code" | "codex", idle: boolean, pane = "") {
+    const instanceDir = join(tmpdir(), `agend-steer-${backendName}-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@steer");
+
+    const backend = createBackend(backendName, instanceDir);
+    const control = {
+      isIdle: vi.fn(() => idle),
+      waitUntilIdle: vi.fn().mockResolvedValue(true),
+      hasOutputSince: vi.fn(() => true),
+      getLastOutputAt: vi.fn(() => undefined),
+      getObservationResetAt: vi.fn(() => 0),
+    };
+    const daemon = new Daemon(
+      `${backendName}-steer-test`,
+      makeConfig(),
+      instanceDir,
+      false,
+      backend,
+      control as any,
+      rootLogger,
+    );
+    const tmux = {
+      pasteBuffer: vi.fn().mockResolvedValue(true),
+      sendSpecialKey: vi.fn().mockResolvedValue(true),
+      capturePane: vi.fn().mockResolvedValue(pane),
+    };
+    (daemon as any).tmux = tmux;
+    (daemon as any).firstDeliveryDelay = { consume: () => 0 };
+    return { control, daemon, tmux };
+  }
+
+  it("pastes into a BUSY non-queue CLI immediately instead of waiting for idle", async () => {
+    // The point of /steer: claude-code has no supportsQueuedInput, so a normal
+    // delivery would block on waitUntilIdle. steer takes the immediate-paste
+    // transaction (the same one codex native-queue handoff uses), whose pane
+    // visibility check confirms the text landed.
+    const { control, daemon, tmux } = makeSteerDaemon(
+      "claude-code", false,
+      "✻ thinking…\n[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]",
+    );
+    const confirmed = vi.fn();
+    daemon.on("message_confirmed", confirmed);
+
+    const result = await (daemon as any).deliverMessage(
+      "[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]\n[user:han] focus",
+      { chatId: "c", messageId: "m" },
+      { steer: true },
+    );
+
+    expect(result).toBe(true);
+    expect(control.waitUntilIdle).not.toHaveBeenCalled();
+    expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+    expect(confirmed).toHaveBeenCalled();
+  }, 15_000);
+
+  it("falls back to the idle-gated queue when the busy TUI swallows the paste", async () => {
+    // kiro-style swallow: the pasted text never shows up in the pane. The steer
+    // must degrade to "next message after this turn", not vanish silently.
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "✻ thinking… nothing else");
+    const confirmed = vi.fn();
+    daemon.on("message_confirmed", confirmed);
+
+    const result = await (daemon as any).deliverMessage(
+      "[STEERING] steer that will be swallowed by the TUI redraw",
+      { chatId: "c", messageId: "m" },
+      { steer: true },
+    );
+
+    expect(result).toBe(true);
+    expect(control.waitUntilIdle).toHaveBeenCalled(); // the fallback path
+    expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2); // busy paste + idle re-paste
+    expect(confirmed).toHaveBeenCalled();
+  }, 15_000);
+
+  it("delivers steer to an IDLE pane exactly like a normal message", async () => {
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", true);
+    const result = await (daemon as any).deliverMessage("steer while idle", undefined, { steer: true });
+    expect(result).toBe(true);
+    expect(control.waitUntilIdle).not.toHaveBeenCalled();
+    expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+  }, 15_000);
+
+  it("steerMessage wraps content with the STEERING banner and the normal [user:] format", async () => {
+    const { daemon } = makeSteerDaemon("claude-code", true);
+    const seen: Array<{ formatted: string; opts: unknown }> = [];
+    (daemon as any).deliverMessage = vi.fn(async (formatted: string, _s: unknown, opts: unknown) => {
+      seen.push({ formatted, opts });
+      return true;
+    });
+    (daemon as any).wake = vi.fn(async () => {});
+
+    (daemon as any).steerMessage("focus on tests", {
+      chat_id: "chat-9", message_id: "msg-9", user: "han", user_id: "u1",
+      thread_id: "topic-9", adapter_id: "discord-main", source: "discord",
+    });
+    await (daemon as any).steerLock;
+
+    expect(seen).toHaveLength(1);
+    const { formatted, opts } = seen[0];
+    expect(opts).toMatchObject({ steer: true });
+    expect(formatted).toContain("[STEERING");
+    // Identical wrapper to a queued inbound (#528 trap 6): user prefix with
+    // source and id, handoff metadata, and the reply-tool instruction.
+    expect(formatted).toContain("[user:han via discord, id:u1] focus on tests");
+    expect(formatted).toContain("(message_id: msg-9)");
+    expect(formatted).toContain("Reply using the reply tool");
+  });
+});

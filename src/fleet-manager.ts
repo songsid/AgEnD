@@ -173,6 +173,8 @@ const CANCEL_BTN_LEDGER_FILE = "cancel-buttons.json";
  * exactly one progress message per turn, and it is the cancel button itself.
  */
 const PROGRESS_UPDATE_INTERVAL_MS = 60_000;
+/** Floor between tool-progress-driven bubble edits (Telegram flood safety). */
+const TOOL_PROGRESS_EDIT_MIN_MS = 4_000;
 /** Elapsed time is only shown once work has clearly outlasted a quick answer. */
 /**
  * Default delay before the button starts showing elapsed time. Configurable via
@@ -232,6 +234,10 @@ interface CancelButtonEntry {
   progressTimer?: ReturnType<typeof setInterval>;
   /** Last text written, so an unchanged tick skips the API call. */
   lastProgressText?: string;
+  /** Last actual edit, for coalescing tool-progress edits between ticks. */
+  lastProgressEditAt?: number;
+  /** Pending coalesced tool-progress edit. */
+  progressEditTimer?: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -391,6 +397,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly replyDeduper = new ReplyDeduper();
   /** instanceName → what it is doing right now, when the backend can tell us. */
   private instanceActivity = new Map<string, string>();
+  /** instanceName → this turn's tool list (multi-line), for the bubble. */
+  private instanceProgress = new Map<string, string>();
   /** instanceName → tail of deliveries waiting for its IPC to come back. */
   private ipcWaitTails = new Map<string, Promise<void>>();
   /** instanceName → restart currently executing; concurrent callers join it. */
@@ -2466,6 +2474,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
+      } else if (data.command === "steer") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const steerText = String(data.options?.message ?? "").trim();
+        if (!steerText) { await data.respond(t("steer.usage")); return; }
+        // chat_id/message_id stay empty: a slash interaction has no channel
+        // message to react to, and an empty chat_id keeps updateLastChat from
+        // rerouting the instance's replies to the slash context.
+        const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
       } else if (data.command === "clear") {
         await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
@@ -2562,6 +2583,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
+        await data.respond(result);
+      } else if (data.command === "steer") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const steerText = String(data.options?.message ?? "").trim();
+        if (!steerText) { await data.respond(t("steer.usage")); return; }
+        // chat_id/message_id stay empty: a slash interaction has no channel
+        // message to react to, and an empty chat_id keeps updateLastChat from
+        // rerouting the instance's replies to the slash context.
+        const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
         await data.respond(result);
       }
     }, this.logger, "adapter.slash_command"));
@@ -2813,6 +2847,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!name) { await data.respond(t("classic.no_agent")); return; }
         const result = await this.topicCommands.sendCompact(name);
         await data.respond(result);
+      } else if (data.command === "steer") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const steerText = String(data.options?.message ?? "").trim();
+        if (!steerText) { await data.respond(t("steer.usage")); return; }
+        // chat_id/message_id stay empty: a slash interaction has no channel
+        // message to react to, and an empty chat_id keeps updateLastChat from
+        // rerouting the instance's replies to the slash context.
+        const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
@@ -2924,6 +2971,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceProcessStatus(name, msg.status);
         } else if (msg.type === "instance_activity") {
           this.cacheInstanceActivity(name, msg.activity as string | null);
+        } else if (msg.type === "instance_progress") {
+          this.cacheInstanceProgress(name, (msg.progress as string) || null);
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {
@@ -3366,6 +3415,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return;
           }
           const result = await this.topicCommands.sendCompact(compactName);
+          await msgAdapter?.sendText(chatId, result);
+          return;
+        }
+
+        // /steer — interject into the running turn. Not admin-gated: anyone who
+        // can talk to this agent can send it a message; steer only changes when
+        // it lands, and it keeps the full [user:] formatting (unlike /raw).
+        if (text === "/steer" || text.startsWith("/steer ") || text.startsWith("/steer@")) {
+          const steerName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!steerName) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          const steerContent = text.replace(/^\/steer(@\S+)?/, "").trim();
+          if (!steerContent) {
+            await msgAdapter?.sendText(chatId, t("steer.usage"));
+            return;
+          }
+          const result = this.topicCommands.sendSteer(steerName, steerContent, msg);
           await msgAdapter?.sendText(chatId, result);
           return;
         }
@@ -5493,6 +5561,93 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Cache the turn's tool-progress list and push it into the instance's live
+   * bubble, coalesced so a burst of tool events cannot flood the Bot API
+   * (Telegram's flood limit is per-chat across ALL forum topics, so edits are
+   * rate-limited per bubble AND ride behind the daemon-side 3s coalescer).
+   */
+  private cacheInstanceProgress(name: string, progress: string | null): void {
+    if (progress) this.instanceProgress.set(name, progress);
+    else this.instanceProgress.delete(name);
+    for (const entry of this.cancelButtons.values()) {
+      if (entry.instanceName === name) this.scheduleProgressEdit(entry);
+    }
+  }
+
+  /** At most one progress-driven edit per bubble per TOOL_PROGRESS_EDIT_MIN_MS. */
+  private scheduleProgressEdit(entry: CancelButtonEntry): void {
+    const since = Date.now() - (entry.lastProgressEditAt ?? 0);
+    if (since >= TOOL_PROGRESS_EDIT_MIN_MS) {
+      this.refreshBubble(entry);
+      return;
+    }
+    if (entry.progressEditTimer) return; // trailing edit already scheduled
+    entry.progressEditTimer = setTimeout(() => {
+      entry.progressEditTimer = undefined;
+      this.refreshBubble(entry);
+    }, TOOL_PROGRESS_EDIT_MIN_MS - since);
+    entry.progressEditTimer.unref?.();
+  }
+
+  /**
+   * The ONE composer for the bubble text. Both writers — the elapsed-time
+   * ticker and the tool-progress push — go through here; two independent
+   * renderers editing the same message is how the progress list used to get
+   * wiped by the next elapsed tick (#528 trap 2).
+   */
+  private composeBubbleText(entry: CancelButtonEntry): string {
+    return FleetManager.bubbleText(
+      Date.now() - (entry.startedAt ?? Date.now()),
+      this.instanceActivity.get(entry.instanceName),
+      this.progressMinElapsedMs(),
+      this.instanceProgress.get(entry.instanceName),
+    );
+  }
+
+  /** Pure composition of header + tool list, exposed for tests. */
+  static bubbleText(
+    elapsedMs: number,
+    activity: string | undefined,
+    minElapsedMs: number,
+    progress: string | undefined,
+  ): string {
+    const header = FleetManager.progressText(
+      elapsedMs,
+      // The single-line activity detail is redundant once a tool list exists.
+      progress ? undefined : activity,
+      minElapsedMs,
+    );
+    return progress ? `${header}\n${progress}` : header;
+  }
+
+  /** Recompose and edit the bubble in place; skips when nothing changed. */
+  private refreshBubble(entry: CancelButtonEntry): void {
+    if (!this.cancelButtons.has(entry.messageId)) {
+      clearInterval(entry.progressTimer);
+      return;
+    }
+    const text = this.composeBubbleText(entry);
+    if (text === entry.lastProgressText) return; // nothing changed — skip the API call
+    const adapter = this.getAdapterForInstance(entry.instanceName) ?? this.adapter;
+    if (!adapter?.editAlert) return;
+
+    entry.lastProgressText = text;
+    entry.lastProgressEditAt = Date.now();
+    adapter.editAlert(entry.chatId, entry.messageId, {
+      type: "cancel",
+      instanceName: entry.instanceName,
+      message: text,
+      choices: [{ id: `cancel:${entry.instanceName}`, label: t("cancel.button") }],
+    }, entry.threadId ? { threadId: entry.threadId } : undefined)
+      .catch(err => {
+        // A failed progress edit must never escalate: the button still works and
+        // the next tick retries. Common causes are a deleted message or a
+        // rate limit.
+        this.logger.debug({ err, instanceName: entry.instanceName }, "Progress edit failed");
+      });
+  }
+
+  /**
    * Refresh the button's text in place while the instance keeps working.
    *
    * Uses `editAlert`, NOT `editMessage`: on Telegram the latter omits reply_markup,
@@ -5510,34 +5665,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private startProgressTicker(entry: CancelButtonEntry): void {
-    const tick = () => {
-      if (!this.cancelButtons.has(entry.messageId)) {
-        clearInterval(entry.progressTimer);
-        return;
-      }
-      const text = FleetManager.progressText(
-        Date.now() - (entry.startedAt ?? Date.now()),
-        this.instanceActivity.get(entry.instanceName),
-        this.progressMinElapsedMs(),
-      );
-      if (text === entry.lastProgressText) return; // nothing changed — skip the API call
-      const adapter = this.getAdapterForInstance(entry.instanceName) ?? this.adapter;
-      if (!adapter?.editAlert) return;
-
-      entry.lastProgressText = text;
-      adapter.editAlert(entry.chatId, entry.messageId, {
-        type: "cancel",
-        instanceName: entry.instanceName,
-        message: text,
-        choices: [{ id: `cancel:${entry.instanceName}`, label: t("cancel.button") }],
-      }, entry.threadId ? { threadId: entry.threadId } : undefined)
-        .catch(err => {
-          // A failed progress edit must never escalate: the button still works and
-          // the next tick retries. Common causes are a deleted message or a
-          // rate limit.
-          this.logger.debug({ err, instanceName: entry.instanceName }, "Progress edit failed");
-        });
-    };
+    const tick = () => this.refreshBubble(entry);
     entry.progressTimer = setInterval(tick, PROGRESS_UPDATE_INTERVAL_MS);
     entry.progressTimer.unref?.();
     // One extra tick right when the threshold passes, so a 30s threshold shows
@@ -5601,6 +5729,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (entry.retryTimer) clearTimeout(entry.retryTimer);
     if (entry.idleCheckTimer) clearInterval(entry.idleCheckTimer);
     if (entry.progressTimer) clearInterval(entry.progressTimer);
+    if (entry.progressEditTimer) clearTimeout(entry.progressEditTimer);
     if (entry.replyGraceTimer) clearTimeout(entry.replyGraceTimer);
     this.cancelButtons.delete(entry.messageId);
     this.persistCancelButtons();
