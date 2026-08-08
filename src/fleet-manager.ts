@@ -32,7 +32,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
+import type { AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
@@ -226,19 +226,16 @@ interface CancelButtonEntry {
   lastProgressText?: string;
 }
 
-interface InteractivePromptAssistEntry {
-  instanceName: string;
-  generalName: string;
-  kind: string;
-  adapterId: string;
-  adapter: ChannelAdapter;
-  chatId: string;
-  threadId?: string;
-  messageId?: string;
-  timer?: ReturnType<typeof setTimeout>;
-}
-
-interface ExitRestartPromptEntry {
+/**
+ * One pending nonce-armed button prompt (hang restart offer, interactive-prompt
+ * assist, clean-exit restart offer). All three share the same lifecycle:
+ * posted with a 128-bit nonce in the callback data, admin-gated and bound to
+ * the exact message/world that created them, expired after
+ * NONCE_BUTTON_TIMEOUT_MS, consumed exactly once.
+ */
+interface NonceButtonEntry {
+  /** Callback prefix including the colon, e.g. "exit-restart:". */
+  prefix: string;
   instanceName: string;
   adapterId: string;
   adapter: ChannelAdapter;
@@ -246,6 +243,12 @@ interface ExitRestartPromptEntry {
   threadId?: string;
   messageId?: string;
   timer?: ReturnType<typeof setTimeout>;
+  /** Text the buttons collapse to when the offer lapses (expiry or instance stop). */
+  expiredText: string;
+  /** interactive-assist only: the General that will receive the assist request. */
+  generalName?: string;
+  /** interactive-assist only: detected prompt kind (login/permission/...). */
+  promptKind?: string;
 }
 
 interface AdapterCallbackData {
@@ -294,9 +297,10 @@ const CLASSIC_BACKEND_CALLBACK_PREFIX = "classic-backend:";
 const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
-const INTERACTIVE_ASSIST_TIMEOUT_MS = 15 * 60_000;
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
-const EXIT_RESTART_TIMEOUT_MS = 15 * 60_000;
+const HANG_CALLBACK_PREFIX = "hang:";
+/** One lifetime for every nonce-armed button prompt (hang / assist / exit). */
+const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -389,10 +393,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
   private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
   private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  /** One-shot General assistance buttons for stable interactive terminal prompts. */
-  private pendingInteractivePromptAssists = new Map<string, InteractivePromptAssistEntry>();
-  /** Admin-only restart/ignore controls for clean CLI exits. */
-  private pendingExitRestartPrompts = new Map<string, ExitRestartPromptEntry>();
+  /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
+  private pendingNonceButtons = new Map<string, NonceButtonEntry>();
 
   // Model failover state
   private failoverActive = new Map<string, string>(); // instance → current failover model
@@ -1405,6 +1407,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.instanceStateCache.delete(name);
     this.instanceProcessStatus.delete(name);
     this.lastDeliveryAt.delete(name);
+    // A pending hang/exit/assist offer refers to the instance being torn down;
+    // left alone it would stay clickable for the rest of its 15 minutes.
+    this.clearNoncePromptsForInstance(name);
     return this.lifecycle.stop(name);
   }
 
@@ -2345,29 +2350,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
-      if (await this.handleExitRestartPrompt(data, adapterId)) return;
-      if (await this.handleInteractivePromptAssist(data, adapterId)) return;
+      if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
       if (await this.handleEffortSelection(data)) return;
-      if (data.callbackData.startsWith("hang:")) {
-        const parts = data.callbackData.split(":");
-        const action = parts[1];
-        const instanceName = parts[2];
-        if (action === "restart") {
-          await this.stopInstance(instanceName);
-          const config = this.fleetConfig?.instances[instanceName];
-          if (config) {
-            const topicMode = this.fleetConfig?.channel?.mode === "topic";
-            await this.startInstance(instanceName, config, topicMode);
-            // startInstance already calls connectIpcToInstance
-          }
-          this.adapter?.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`, data.threadId).catch(() => {});
-        } else {
-          this.adapter?.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`, data.threadId).catch(() => {});
-        }
-        return;
-      }
+      if (await this.handleHangPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (data.callbackData.startsWith("cancel:")) {
         this.handleCancelClick(data.callbackData.slice("cancel:".length), this.adapter, data);
         return;
@@ -2620,28 +2608,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
-      if (await this.handleExitRestartPrompt(data, adapterId)) return;
-      if (await this.handleInteractivePromptAssist(data, adapterId)) return;
+      if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
+      if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
       if (await this.handleClassicBackendSelection(data)) return;
       if (await this.handleModelSelection(data)) return;
       if (await this.handleEffortSelection(data)) return;
-      if (data.callbackData.startsWith("hang:")) {
-        const parts = data.callbackData.split(":");
-        const action = parts[1];
-        const instanceName = parts[2];
-        if (action === "restart") {
-          await this.stopInstance(instanceName);
-          const config = this.fleetConfig?.instances[instanceName];
-          if (config) {
-            const topicMode = this.fleetConfig?.channel?.mode === "topic";
-            await this.startInstance(instanceName, config, topicMode);
-          }
-          adapter.editMessage(data.chatId, data.messageId, `🔄 ${instanceName} restarted.`, data.threadId).catch(() => {});
-        } else {
-          adapter.editMessage(data.chatId, data.messageId, `⏳ Continuing to wait for ${instanceName}.`, data.threadId).catch(() => {});
-        }
-        return;
-      }
+      if (await this.handleHangPrompt(data, adapterId, adapter)) return;
       if (data.callbackData.startsWith("cancel:")) {
         this.handleCancelClick(data.callbackData.slice("cancel:".length), adapter, data);
         return;
@@ -4700,6 +4672,179 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  // ── Nonce-armed button prompts (hang / interactive-assist / exit-restart) ──
+  //
+  // One shared lifecycle for every "notification with decision buttons":
+  // post with a 128-bit nonce, arm a 15-min expiry, bind the click to the
+  // exact adapter+chat+thread+message that created it, require fleet admin,
+  // consume exactly once. The three features differ only in what they post
+  // and what a consumed click does.
+
+  /**
+   * Post decision buttons whose callback ids are `<prefix><nonce>:<action>`.
+   * The entry is registered before the send and rolled back if the send
+   * fails, so a nonce in the map always refers to a message that exists (or
+   * is about to). Returns the nonce, or null when the alert could not be sent.
+   */
+  private async postNonceButtonPrompt(opts: {
+    prefix: string;
+    alertType: AlertData["type"];
+    instanceName: string;
+    adapter: ChannelAdapter;
+    adapterId: string;
+    chatId: string;
+    threadId?: string;
+    message: string;
+    choices: Array<{ action: string; label: string }>;
+    expiredText: string;
+    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind">;
+    timeoutMs?: number;
+  }): Promise<string | null> {
+    const nonce = randomBytes(8).toString("hex");
+    const entry: NonceButtonEntry = {
+      prefix: opts.prefix,
+      instanceName: opts.instanceName,
+      adapterId: opts.adapterId,
+      adapter: opts.adapter,
+      chatId: opts.chatId,
+      threadId: opts.threadId,
+      expiredText: opts.expiredText,
+      ...opts.extra,
+    };
+    entry.timer = setTimeout(() => {
+      const pending = this.pendingNonceButtons.get(nonce);
+      if (pending !== entry) return;
+      this.pendingNonceButtons.delete(nonce);
+      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
+        entry.adapter.editMessageRemoveButtons(
+          entry.chatId,
+          entry.messageId,
+          entry.expiredText,
+          entry.threadId,
+        ).catch(err => this.logger.debug({ err, instanceName: entry.instanceName, prefix: entry.prefix },
+          "Failed to expire button prompt"));
+      }
+    }, opts.timeoutMs ?? NONCE_BUTTON_TIMEOUT_MS);
+    entry.timer.unref?.();
+    this.pendingNonceButtons.set(nonce, entry);
+
+    try {
+      const sent = await opts.adapter.notifyAlert(opts.chatId, {
+        type: opts.alertType,
+        instanceName: opts.instanceName,
+        message: opts.message,
+        choices: opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label })),
+      }, opts.threadId ? { threadId: opts.threadId } : undefined);
+      entry.messageId = sent.messageId;
+      return nonce;
+    } catch (err) {
+      this.pendingNonceButtons.delete(nonce);
+      if (entry.timer) clearTimeout(entry.timer);
+      this.logger.warn({ err, instanceName: opts.instanceName, prefix: opts.prefix },
+        "Failed to send button prompt");
+      return null;
+    }
+  }
+
+  /**
+   * Claim a nonce-armed callback exactly once.
+   *
+   * Returns:
+   *  - null       — the callback is not for this prefix; try the next handler
+   *  - "consumed" — for this prefix but stale/denied/malformed; stop dispatch
+   *  - the entry+action — the click is authorized and now claimed (removed
+   *    from the map before any await, so double clicks cannot act twice)
+   *
+   * A stale click (expired nonce, or a pre-upgrade button whose payload no
+   * longer parses) collapses the clicked message so the dead button stops
+   * inviting clicks — the same courtesy the cancel button extends.
+   */
+  private consumeNonceCallback(
+    prefix: string,
+    actionRe: RegExp,
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
+    if (!data.callbackData.startsWith(prefix)) return null;
+    const match = data.callbackData.match(actionRe);
+    const pending = match ? this.pendingNonceButtons.get(match[1]) : undefined;
+    if (!match || !pending) {
+      const adapter = receivingAdapter ?? this.adapter;
+      adapter?.editMessageRemoveButtons?.(
+        data.chatId,
+        data.messageId,
+        t("buttons.stale"),
+        data.threadId,
+      ).catch(() => { /* message may be gone — nothing to collapse */ });
+      return "consumed";
+    }
+
+    // Bind the capability to the exact message/world that created it. Telegram
+    // keyboards are visible to everyone, so the click also requires fleet admin.
+    if (pending.adapterId !== callbackAdapterId
+      || data.chatId !== pending.chatId
+      || (pending.threadId != null && data.threadId !== pending.threadId)
+      || (pending.messageId != null && data.messageId !== pending.messageId)
+      || !data.userId
+      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
+      // Deliberately does NOT consume the nonce: the real admin can still click.
+      this.logger.warn({ instanceName: pending.instanceName, prefix, userId: data.userId },
+        "Rejected unauthorized or mismatched button callback");
+      return "consumed";
+    }
+
+    // Claim before any await: double clicks and duplicate callback delivery can
+    // never act twice.
+    this.pendingNonceButtons.delete(match[1]);
+    if (pending.timer) clearTimeout(pending.timer);
+    return { entry: pending, action: match[2] };
+  }
+
+  /** Collapse a consumed prompt's buttons into a final status line. */
+  private async retireNonceButtons(
+    pending: NonceButtonEntry,
+    messageId: string,
+    text: string,
+  ): Promise<void> {
+    if (!pending.adapter.editMessageRemoveButtons) {
+      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
+        "Adapter cannot remove prompt buttons");
+      return;
+    }
+    try {
+      await pending.adapter.editMessageRemoveButtons(
+        pending.chatId,
+        messageId,
+        text,
+        pending.threadId,
+      );
+    } catch (err) {
+      // The action was already atomically consumed. An edit failure must not
+      // undo that or make the button actionable again.
+      this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons");
+    }
+  }
+
+  /**
+   * Drop every pending prompt that refers to an instance being stopped or
+   * restarted — a restart offer for an instance the operator just restarted
+   * (or an assist for one they stopped) must not stay clickable for the rest
+   * of its 15 minutes.
+   */
+  clearNoncePromptsForInstance(instanceName: string): void {
+    for (const [nonce, entry] of this.pendingNonceButtons) {
+      if (entry.instanceName !== instanceName) continue;
+      this.pendingNonceButtons.delete(nonce);
+      if (entry.timer) clearTimeout(entry.timer);
+      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
+        entry.adapter.editMessageRemoveButtons(entry.chatId, entry.messageId, entry.expiredText, entry.threadId)
+          .catch(err => this.logger.debug({ err, instanceName, prefix: entry.prefix },
+            "Failed to collapse prompt during instance stop"));
+      }
+    }
+  }
+
   /** A clean exit is intentional from the CLI's perspective, but often not from
    * the operator's. Keep the instance notice passive and put the action in the
    * same-world General topic where an administrator can make the choice. */
@@ -4723,88 +4868,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const nonce = randomBytes(8).toString("hex");
-    const entry: ExitRestartPromptEntry = { instanceName, adapterId, adapter, chatId, threadId };
-    entry.timer = setTimeout(() => {
-      const pending = this.pendingExitRestartPrompts.get(nonce);
-      if (pending !== entry) return;
-      this.pendingExitRestartPrompts.delete(nonce);
-      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
-        entry.adapter.editMessageRemoveButtons(
-          entry.chatId,
-          entry.messageId,
-          t("exit.expired", entry.instanceName),
-          entry.threadId,
-        ).catch(err => this.logger.debug({ err, instanceName }, "Failed to expire normal-exit controls"));
-      }
-    }, EXIT_RESTART_TIMEOUT_MS);
-    entry.timer.unref?.();
-    this.pendingExitRestartPrompts.set(nonce, entry);
-
-    try {
-      const sent = await adapter.notifyAlert(chatId, {
-        type: "exit_restart",
-        instanceName,
-        message: t("exit.general_notice", instanceName),
-        choices: [
-          { id: `${EXIT_RESTART_CALLBACK_PREFIX}${nonce}:restart`, label: t("exit.restart") },
-          { id: `${EXIT_RESTART_CALLBACK_PREFIX}${nonce}:ignore`, label: t("exit.ignore") },
-        ],
-      }, threadId ? { threadId } : undefined);
-      entry.messageId = sent.messageId;
-    } catch (err) {
-      this.pendingExitRestartPrompts.delete(nonce);
-      if (entry.timer) clearTimeout(entry.timer);
-      this.logger.warn({ err, instanceName, generalName }, "Failed to send normal-exit restart controls");
-    }
-  }
-
-  private async retireExitRestartButtons(
-    pending: ExitRestartPromptEntry,
-    messageId: string,
-    text: string,
-  ): Promise<void> {
-    if (!pending.adapter.editMessageRemoveButtons) {
-      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
-        "Adapter cannot remove normal-exit controls");
-      return;
-    }
-    try {
-      await pending.adapter.editMessageRemoveButtons(
-        pending.chatId,
-        messageId,
-        text,
-        pending.threadId,
-      );
-    } catch (err) {
-      this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire normal-exit controls");
-    }
+    await this.postNonceButtonPrompt({
+      prefix: EXIT_RESTART_CALLBACK_PREFIX,
+      alertType: "exit_restart",
+      instanceName,
+      adapter,
+      adapterId,
+      chatId,
+      threadId,
+      message: t("exit.general_notice", instanceName),
+      choices: [
+        { action: "restart", label: t("exit.restart") },
+        { action: "ignore", label: t("exit.ignore") },
+      ],
+      expiredText: t("exit.expired", instanceName),
+    });
   }
 
   /** Consume a clean-exit Restart/Ignore button exactly once. */
-  private async handleExitRestartPrompt(data: AdapterCallbackData, callbackAdapterId: string): Promise<boolean> {
-    if (!data.callbackData.startsWith(EXIT_RESTART_CALLBACK_PREFIX)) return false;
-    const match = data.callbackData.match(/^exit-restart:([0-9a-f]+):(restart|ignore)$/);
-    if (!match) return true;
-    const pending = this.pendingExitRestartPrompts.get(match[1]);
-    if (!pending) return true;
-    if (pending.adapterId !== callbackAdapterId
-      || data.chatId !== pending.chatId
-      || (pending.threadId != null && data.threadId !== pending.threadId)
-      || (pending.messageId != null && data.messageId !== pending.messageId)
-      || !data.userId
-      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
-      this.logger.warn({ instanceName: pending.instanceName, userId: data.userId },
-        "Rejected unauthorized or mismatched normal-exit callback");
-      return true;
-    }
+  private async handleExitRestartPrompt(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      EXIT_RESTART_CALLBACK_PREFIX,
+      /^exit-restart:([0-9a-f]+):(restart|ignore)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending, action } = claimed;
 
-    this.pendingExitRestartPrompts.delete(match[1]);
-    if (pending.timer) clearTimeout(pending.timer);
-    const action = match[2] as "restart" | "ignore";
     this.eventLog?.insert(pending.instanceName, "normal_exit_action", { action, userId: data.userId });
     if (action === "ignore") {
-      await this.retireExitRestartButtons(
+      await this.retireNonceButtons(
         pending,
         pending.messageId ?? data.messageId,
         t("exit.ignored", pending.instanceName),
@@ -4812,7 +4912,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
-    await this.retireExitRestartButtons(
+    await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("exit.restarting", pending.instanceName),
@@ -4874,110 +4974,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const nonce = randomBytes(8).toString("hex");
     const label = this.interactivePromptLabel(kind);
-    const entry: InteractivePromptAssistEntry = {
+    await this.postNonceButtonPrompt({
+      prefix: INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+      alertType: "interactive_prompt",
       instanceName,
-      generalName,
-      kind,
-      adapterId,
       adapter,
+      adapterId,
       chatId,
       threadId,
-    };
-    entry.timer = setTimeout(() => {
-      const pending = this.pendingInteractivePromptAssists.get(nonce);
-      if (pending !== entry) return;
-      this.pendingInteractivePromptAssists.delete(nonce);
-      if (entry.messageId && entry.adapter.editMessageRemoveButtons) {
-        entry.adapter.editMessageRemoveButtons(
-          entry.chatId,
-          entry.messageId,
-          t("interactive.expired", entry.instanceName),
-          entry.threadId,
-        ).catch(err => this.logger.debug({ err, instanceName }, "Failed to expire interactive prompt controls"));
-      }
-    }, INTERACTIVE_ASSIST_TIMEOUT_MS);
-    entry.timer.unref?.();
-    this.pendingInteractivePromptAssists.set(nonce, entry);
-
-    try {
-      const sent = await adapter.notifyAlert(chatId, {
-        type: "interactive_prompt",
-        instanceName,
-        message: t("interactive.general_notice", instanceName, label),
-        choices: [
-          { id: `${INTERACTIVE_ASSIST_CALLBACK_PREFIX}${nonce}:confirm`, label: t("interactive.confirm") },
-          { id: `${INTERACTIVE_ASSIST_CALLBACK_PREFIX}${nonce}:cancel`, label: t("interactive.cancel") },
-        ],
-      }, threadId ? { threadId } : undefined);
-      entry.messageId = sent.messageId;
-    } catch (err) {
-      this.pendingInteractivePromptAssists.delete(nonce);
-      if (entry.timer) clearTimeout(entry.timer);
-      this.logger.warn({ err, instanceName, generalName }, "Failed to send interactive prompt assistance controls");
-    }
-  }
-
-  private async retireInteractivePromptButtons(
-    pending: InteractivePromptAssistEntry,
-    messageId: string,
-    text: string,
-  ): Promise<void> {
-    if (!pending.adapter.editMessageRemoveButtons) {
-      this.logger.warn({ instanceName: pending.instanceName, adapterId: pending.adapterId },
-        "Adapter cannot remove interactive prompt controls");
-      return;
-    }
-    try {
-      await pending.adapter.editMessageRemoveButtons(
-        pending.chatId,
-        messageId,
-        text,
-        pending.threadId,
-      );
-    } catch (err) {
-      // The action was already atomically consumed. An edit failure must not
-      // prevent Confirm from reaching General or make Cancel actionable again.
-      this.logger.warn({ err, instanceName: pending.instanceName },
-        "Failed to retire interactive prompt controls");
-    }
+      message: t("interactive.general_notice", instanceName, label),
+      choices: [
+        { action: "confirm", label: t("interactive.confirm") },
+        { action: "cancel", label: t("interactive.cancel") },
+      ],
+      expiredText: t("interactive.expired", instanceName),
+      extra: { generalName, promptKind: kind },
+    });
   }
 
   /** Consume a General assist button exactly once. */
-  private async handleInteractivePromptAssist(data: AdapterCallbackData, callbackAdapterId: string): Promise<boolean> {
-    if (!data.callbackData.startsWith(INTERACTIVE_ASSIST_CALLBACK_PREFIX)) return false;
-    const match = data.callbackData.match(/^interactive-assist:([0-9a-f]+):(confirm|cancel)$/);
-    if (!match) return true;
-    const pending = this.pendingInteractivePromptAssists.get(match[1]);
-    if (!pending) return true;
+  private async handleInteractivePromptAssist(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      INTERACTIVE_ASSIST_CALLBACK_PREFIX,
+      /^interactive-assist:([0-9a-f]+):(confirm|cancel)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending, action } = claimed;
 
-    // Bind the capability to the exact message/world that created it. Telegram
-    // keyboards are visible to everyone, so the click also requires fleet admin.
-    if (pending.adapterId !== callbackAdapterId
-      || data.chatId !== pending.chatId
-      || (pending.threadId != null && data.threadId !== pending.threadId)
-      || (pending.messageId != null && data.messageId !== pending.messageId)
-      || !data.userId
-      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
-      this.logger.warn({ instanceName: pending.instanceName, userId: data.userId },
-        "Rejected unauthorized or mismatched interactive prompt callback");
-      return true;
-    }
-
-    // Claim before any await: double clicks and duplicate callback delivery can
-    // never inject two messages into General.
-    this.pendingInteractivePromptAssists.delete(match[1]);
-    if (pending.timer) clearTimeout(pending.timer);
-
-    const action = match[2] as "confirm" | "cancel";
     this.eventLog?.insert(pending.instanceName, "interactive_prompt_assist", {
       action,
       userId: data.userId,
       generalName: pending.generalName,
     });
     if (action === "cancel") {
-      await this.retireInteractivePromptButtons(
+      await this.retireNonceButtons(
         pending,
         pending.messageId ?? data.messageId,
         t("interactive.ignored", pending.instanceName),
@@ -4988,7 +5027,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Injecting into General while General itself is blocked would type into the
     // terminal prompt instead of the agent input. Fail safe and require attach.
     if (pending.instanceName === pending.generalName) {
-      await this.retireInteractivePromptButtons(
+      await this.retireNonceButtons(
         pending,
         pending.messageId ?? data.messageId,
         t("interactive.self_assist", pending.instanceName),
@@ -4996,17 +5035,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
-    await this.retireInteractivePromptButtons(
+    await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
       t("interactive.confirmed", pending.instanceName),
     );
 
+    // Set at posting time for every interactive-assist entry; the fallback only
+    // defends against a foreign-prefix entry reaching this handler.
+    const generalName = pending.generalName ?? pending.instanceName;
     try {
-      await this.deliverToInstance(pending.generalName, {
+      await this.deliverToInstance(generalName, {
         type: "fleet_inbound",
-        content: t("interactive.assist_request", pending.instanceName, this.interactivePromptLabel(pending.kind)),
-        targetSession: pending.generalName,
+        content: t("interactive.assist_request", pending.instanceName, this.interactivePromptLabel(pending.promptKind ?? "")),
+        targetSession: generalName,
         meta: {
           chat_id: pending.chatId,
           message_id: pending.messageId ?? data.messageId,
@@ -5563,11 +5605,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    if (!adapter) return;
-    const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
-    const groupId = channelCfg?.group_id;
-    if (!groupId) return;
-    const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    const adapterId = this.getInstanceAdapterId(instanceName);
+    // World-aware group resolution — getChannelConfig(...).group_id resolves to
+    // the wrong (or no) group on channels[]-configured fleets whose legacy
+    // channel: block is empty; getGroupIdForInstance prefers the live world.
+    const chatId = this.getGroupIdForInstance(instanceName);
+    if (!adapter || !adapterId || !chatId) {
+      this.logger.warn({ instanceName, adapterId, chatId }, "Cannot address hang notification");
+      return;
+    }
+    const topicId = this.fleetConfig?.instances[instanceName]?.topic_id;
     const instanceHangConfig = (this.fleetConfig?.instances[instanceName] as (InstanceConfig & {
       hang_detector?: { timeout_minutes?: number };
     }) | undefined)?.hang_detector;
@@ -5580,17 +5627,81 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.setTopicIcon(instanceName, "red");
 
-    await adapter.notifyAlert(String(groupId), {
-      type: "hang",
+    await this.postNonceButtonPrompt({
+      prefix: HANG_CALLBACK_PREFIX,
+      alertType: "hang",
       instanceName,
-      message: `⚠️ ${instanceName} may be stuck — pane unchanged for ${unchangedMinutes}min, ready prompt not recognized`,
+      adapter,
+      adapterId,
+      chatId,
+      threadId: topicId != null ? String(topicId) : undefined,
+      message: t("hang.detected", instanceName, unchangedMinutes),
       choices: [
-        { id: `hang:restart:${instanceName}`, label: "🔄 Force restart" },
-        { id: `hang:wait:${instanceName}`, label: "⏳ Keep waiting" },
+        { action: "restart", label: t("hang.restart") },
+        { action: "wait", label: t("hang.wait") },
       ],
-    }, {
-      threadId: threadId != null ? String(threadId) : undefined,
-    }).catch(e => this.logger.warn({ err: e }, "Failed to send hang notification"));
+      expiredText: t("hang.expired", instanceName),
+    });
+  }
+
+  /**
+   * Consume a hang Force-restart / Keep-waiting button exactly once. Restart
+   * goes through restartSingleInstance — serialized against concurrent restart
+   * sources, and with a Classic-instance fallback (the previous hand-rolled
+   * stop+start silently left Classic instances stopped while reporting
+   * "restarted").
+   */
+  private async handleHangPrompt(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      HANG_CALLBACK_PREFIX,
+      /^hang:([0-9a-f]+):(restart|wait)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending, action } = claimed;
+
+    this.eventLog?.insert(pending.instanceName, "hang_action", { action, userId: data.userId });
+    if (action === "wait") {
+      await this.retireNonceButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("hang.waiting", pending.instanceName),
+      );
+      return true;
+    }
+
+    await this.retireNonceButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("hang.restarting", pending.instanceName),
+    );
+    try {
+      await this.restartSingleInstance(pending.instanceName);
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("hang.restarted", pending.instanceName),
+        pending.threadId,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error({ err, instanceName: pending.instanceName }, "Hang force-restart failed");
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("hang.restart_failed", pending.instanceName, message),
+        pending.threadId,
+      ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
+        "Failed to show hang restart error"));
+    }
+    return true;
   }
 
   // ── Topic icon + auto-archive ─────────────────────────────────────────────
@@ -7087,14 +7198,10 @@ When users create specialized instances, suggest these configurations:
     }
     for (const pending of this.pendingClassicStarts.values()) clearTimeout(pending.timer);
     this.pendingClassicStarts.clear();
-    for (const pending of this.pendingInteractivePromptAssists.values()) {
+    for (const pending of this.pendingNonceButtons.values()) {
       if (pending.timer) clearTimeout(pending.timer);
     }
-    this.pendingInteractivePromptAssists.clear();
-    for (const pending of this.pendingExitRestartPrompts.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-    }
-    this.pendingExitRestartPrompts.clear();
+    this.pendingNonceButtons.clear();
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
