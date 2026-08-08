@@ -4,9 +4,12 @@ import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  beginUpdateProgress,
   clearUpdateMarker,
   isUpdateInProgress,
   markUpdateInProgress,
+  readUpdateProgress,
+  setUpdateProgressStage,
   UPDATE_MARKER_MAX_AGE_MS,
 } from "../src/update-marker.js";
 import { InstanceLifecycle, type LifecycleContext, type IncidentEventSource } from "../src/instance-lifecycle.js";
@@ -61,6 +64,46 @@ describe("update marker", () => {
     // Losing the marker costs a few spurious alerts; it must not abort an upgrade.
     expect(() => markUpdateInProgress(join(dir, "does", "not", "exist"))).not.toThrow();
     expect(isUpdateInProgress(join(dir, "does", "not", "exist"))).toBe(false);
+  });
+
+  it("preserves the channel progress target when the CLI marks and advances the update", () => {
+    beginUpdateProgress(dir, {
+      adapterId: "discord-main",
+      chatId: "guild-1",
+      threadId: "general-topic",
+      messageId: "progress-1",
+    }, 1_800_000_000_000);
+
+    markUpdateInProgress(dir, 1_800_000_000_999);
+    expect(setUpdateProgressStage(dir, "downloading")).toBe(true);
+    expect(setUpdateProgressStage(dir, "installed", { version: "2.1.4-beta.2" })).toBe(true);
+
+    expect(readUpdateProgress(dir)).toMatchObject({
+      startedAt: 1_800_000_000_000,
+      progress: {
+        stage: "installed",
+        version: "2.1.4-beta.2",
+        target: {
+          adapterId: "discord-main",
+          chatId: "guild-1",
+          threadId: "general-topic",
+          messageId: "progress-1",
+        },
+      },
+    });
+  });
+
+  it("does not suppress real incidents after an update reaches a terminal failure", () => {
+    beginUpdateProgress(dir, { adapterId: "telegram", chatId: "1", messageId: "2" });
+    setUpdateProgressStage(dir, "downloading");
+    setUpdateProgressStage(dir, "failed", { error: "npm registry unavailable" });
+
+    expect(readUpdateProgress(dir)?.progress).toMatchObject({
+      stage: "failed",
+      failedStage: "downloading",
+      error: "npm registry unavailable",
+    });
+    expect(isUpdateInProgress(dir)).toBe(false);
   });
 });
 

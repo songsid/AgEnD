@@ -807,12 +807,14 @@ export class TopicCommands {
       return;
     }
 
-    await adapter.sendText(chatId, t("update.running"), { threadId });
+    const sent = await adapter.sendText(chatId, t("update.progress.preparing", 0), { threadId });
+    this.ctx.beginUpdateProgress?.(adapter, chatId, threadId, sent.messageId);
 
     const currentVersion: string = createRequire(import.meta.url)("../package.json").version ?? "";
     const updateCmd = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
     const { spawn } = await import("node:child_process");
     const child = spawn("sh", ["-c", `sleep 2 && ${updateCmd}`], { detached: true, stdio: "ignore" });
+    child.once("error", err => this.ctx.failUpdateProgress?.(err.message));
     child.unref();
   }
 

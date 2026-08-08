@@ -5,7 +5,14 @@ import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
-import { clearUpdateMarker, isUpdateInProgress } from "./update-marker.js";
+import {
+  beginUpdateProgress as persistUpdateProgress,
+  clearUpdateMarker,
+  isUpdateInProgress,
+  readUpdateProgress,
+  setUpdateProgressStage,
+} from "./update-marker.js";
+import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { ReplyDeduper } from "./reply-dedup.js";
@@ -397,6 +404,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private healthServer: Server | null = null;
   private healthPortRetried = false;
   private updateCheckTimer: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval> | null = null;
+  private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
+  private updateProgressEditRunning = false;
+  private lastUpdateProgressText: string | null = null;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
@@ -681,6 +691,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       target = requested;
     }
     await data.respond(await this.topicCommands.runPauseWake(target, action));
+  }
+
+  private async handleUpdateSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
+    if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+      await data.respond(t("not_authorized"));
+      return;
+    }
+    const messageId = await data.respond(t("update.progress.preparing", 0));
+    const adapter = this.adapters.get(adapterId) ?? this.adapter;
+    if (messageId && adapter) {
+      const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
+      this.beginUpdateProgress(adapter, chatId, data.channelId, messageId);
+    }
+    const { spawn } = await import("node:child_process");
+    const currentVersion = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
+    const command = currentVersion.includes("beta") ? "agend update --beta" : "agend update";
+    const child = spawn("sh", ["-c", `sleep 2 && ${command}`], { detached: true, stdio: "ignore" });
+    child.once("error", err => this.failUpdateProgress(err.message));
+    child.unref();
   }
 
   /** Admin-only full conversation reset for fleet-topic and Classic instances. */
@@ -1465,6 +1495,60 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ready: this.healthServerListening, token: this.webToken };
   }
 
+  beginUpdateProgress(adapter: ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void {
+    persistUpdateProgress(this.dataDir, {
+      adapterId: adapter.id,
+      chatId,
+      ...(threadId ? { threadId } : {}),
+      messageId,
+    });
+    this.lastUpdateProgressText = null;
+    this.startUpdateProgressMonitor(adapter);
+  }
+
+  failUpdateProgress(message: string): void {
+    setUpdateProgressStage(this.dataDir, "failed", { error: message });
+  }
+
+  /** The old fleet edits CLI install stages; the new fleet adopts the same message below. */
+  private startUpdateProgressMonitor(initialAdapter?: ChannelAdapter): void {
+    if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
+    const tick = async () => {
+      if (this.updateProgressEditRunning) return;
+      const marker = readUpdateProgress(this.dataDir);
+      if (!marker) {
+        if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
+        this.updateProgressTimer = null;
+        return;
+      }
+      const target = marker.progress.target;
+      const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
+      if (!adapter) return;
+      const text = formatUpdateProgress(marker);
+      if (text === this.lastUpdateProgressText) return;
+      this.updateProgressEditRunning = true;
+      try {
+        await adapter.editMessage(target.chatId, target.messageId, text, target.threadId);
+        this.lastUpdateProgressText = text;
+        if (marker.progress.stage === "failed" || marker.progress.stage === "complete") {
+          clearUpdateMarker(this.dataDir);
+          if (this.updateProgressTimer) clearInterval(this.updateProgressTimer);
+          this.updateProgressTimer = null;
+        }
+      } catch (err) {
+        this.logger.warn({ err }, "Failed to edit update progress");
+      } finally {
+        this.updateProgressEditRunning = false;
+      }
+    };
+    void tick();
+    // Poll stages faster than the elapsed-time display. npm verification and
+    // service-file refresh can be short; 200ms prevents those stages from being
+    // skipped while the text cache still limits normal edits to once per second.
+    this.updateProgressTimer = setInterval(() => void tick(), 200);
+    this.updateProgressTimer.unref?.();
+  }
+
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
     const startupStartedAt = Date.now();
@@ -1481,6 +1565,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const fleet = this.loadConfig(configPath);
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
+    const savedUpdateProgress = readUpdateProgress(this.dataDir);
+    const pendingUpdateProgress = savedUpdateProgress
+      && savedUpdateProgress.progress.stage !== "failed"
+      && savedUpdateProgress.progress.stage !== "complete"
+      ? savedUpdateProgress
+      : null;
+    if (pendingUpdateProgress) {
+      setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
+    }
     this.initializeWebAuthTokens();
     const topicMode = fleet.channel?.mode === "topic" || !!fleet.channels?.some(ch => ch.mode === "topic");
 
@@ -1768,8 +1861,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const others = allEntries.filter(([_, cfg]) => !cfg.general_topic);
     const startupProgress = new RestartProgress(
       this.runnableStartupCount(fleet, topicMode),
-      startupStartedAt,
+      pendingUpdateProgress?.startedAt ?? startupStartedAt,
       this.logger,
+      { mode: pendingUpdateProgress ? "update" : "restart" },
     );
 
     if (generals.length > 0) {
@@ -1808,7 +1902,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
         }
       })();
-      progressStart = adapterStartup.then(() => startupProgress.start(this.restartProgressTarget()));
+      progressStart = adapterStartup.then(() => {
+        if (pendingUpdateProgress) {
+          const saved = pendingUpdateProgress.progress.target;
+          const adapter = this.adapters.get(saved.adapterId);
+          const target = adapter ? {
+            adapter,
+            chatId: saved.chatId,
+            threadId: saved.threadId,
+          } : null;
+          return startupProgress.resume(target, saved.messageId);
+        }
+        return startupProgress.start(this.restartProgressTarget());
+      });
     }
 
     // The systemd watchdog answers exactly one question: is this process still
@@ -2356,17 +2462,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ? t("collab.on.classic")
           : t("collab.off.classic"));
       } else if (data.command === "update") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(t("update.running"));
-        const { spawn } = await import("node:child_process");
-        const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
-        const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
-        const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
-        child.unref();
+        await this.handleUpdateSlash(data, adapterId);
       } else if (data.command === "doctor") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
@@ -2630,17 +2726,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           ? t("collab.on.classic")
           : t("collab.off.classic"));
       } else if (data.command === "update") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(t("update.running"));
-        const { spawn } = await import("node:child_process");
-        const _cv = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"), "utf-8")).version ?? "";
-        const _cmd = _cv.includes("beta") ? "agend update --beta" : "agend update";
-        const child = spawn("sh", ["-c", `sleep 2 && ${_cmd}`], { detached: true, stdio: "ignore" });
-        child.unref();
+        await this.handleUpdateSlash(data, adapterId);
       } else if (data.command === "doctor") {
         const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
         if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
