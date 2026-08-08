@@ -143,6 +143,8 @@ type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
   requestPauseWhenIdle(): void;
+  /** Present on real daemons; hang buttons attach only when it returns one. */
+  getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
 }
 
 /** Arguments accepted by handleCreate — mirrors CreateInstanceArgs in outbound-schemas.ts
@@ -274,6 +276,43 @@ export class InstanceLifecycle {
    * means a real tmux window, which is why this rule went untested before.
    */
   attachIncidentHandlers(name: string, daemon: IncidentEventSource): void {
+    const hangDetector = daemon.getHangDetector?.();
+    if (hangDetector) {
+      hangDetector.on("hang", safeHandler(async (data?: { unchangedForMs?: number }) => {
+        this.ctx.eventLog?.insert(name, "hang_detected", {});
+        this.ctx.logger.warn({ name }, "Instance appears hung");
+
+        if (this.ctx.isPlannedRestart()) {
+          // A graceful stop makes every pane look frozen; alerting on that (with
+          // a restart button, no less) during `agend update` is pure noise. The
+          // same suppression interactive-prompt and normal-exit already apply.
+          // Checked BEFORE the task nudge: injecting new work into a CLI that is
+          // being shut down would only delay the stop.
+          this.ctx.logger.info({ name }, "Hang notification suppressed — planned restart in progress");
+          return;
+        }
+
+        // Check if instance has claimed tasks — nudge it to continue
+        const claimedTasks = this.ctx.listClaimedTasks(name);
+        if (claimedTasks.length > 0) {
+          const task = claimedTasks[0];
+          this.ctx.eventLog?.insert(name, "idle_task_nudge", { taskId: task.id, taskTitle: task.title });
+          // Inject nudge message into the instance's CLI session
+          const ipc = this.ctx.instanceIpcClients.get(name);
+          if (ipc?.connected) {
+            ipc.send({
+              type: "fleet_inbound",
+              content: `[system] You have a claimed task: "${task.title}" (#${task.id}). Continue working on it, or use task(done) / task(update, status=blocked) to update status.`,
+              meta: { chat_id: "", thread_id: "", ts: new Date().toISOString() },
+            });
+          }
+        }
+
+        await this.ctx.sendHangNotification(name, data?.unchangedForMs);
+        this.ctx.webhookEmit("hang", name);
+      }, this.ctx.logger, `hangDetector[${name}]`));
+    }
+
     daemon.on("crash_respawn", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "crash_respawn", {});
       this.ctx.logger.warn({ name }, "Instance crashed and respawned");
@@ -514,32 +553,6 @@ export class InstanceLifecycle {
     await daemon.start();
     this.daemons.set(name, daemon);
 
-    const hangDetector = daemon.getHangDetector();
-    if (hangDetector) {
-      hangDetector.on("hang", safeHandler(async (data?: { unchangedForMs?: number }) => {
-        this.ctx.eventLog?.insert(name, "hang_detected", {});
-        this.ctx.logger.warn({ name }, "Instance appears hung");
-
-        // Check if instance has claimed tasks — nudge it to continue
-        const claimedTasks = this.ctx.listClaimedTasks(name);
-        if (claimedTasks.length > 0) {
-          const task = claimedTasks[0];
-          this.ctx.eventLog?.insert(name, "idle_task_nudge", { taskId: task.id, taskTitle: task.title });
-          // Inject nudge message into the instance's CLI session
-          const ipc = this.ctx.instanceIpcClients.get(name);
-          if (ipc?.connected) {
-            ipc.send({
-              type: "fleet_inbound",
-              content: `[system] You have a claimed task: "${task.title}" (#${task.id}). Continue working on it, or use task(done) / task(update, status=blocked) to update status.`,
-              meta: { chat_id: "", thread_id: "", ts: new Date().toISOString() },
-            });
-          }
-        }
-
-        await this.ctx.sendHangNotification(name, data?.unchangedForMs);
-        this.ctx.webhookEmit("hang", name);
-      }, this.ctx.logger, `hangDetector[${name}]`));
-    }
 
     daemon.on("auto_pause_requested", safeHandler(async () => {
       await this.pause(name);
