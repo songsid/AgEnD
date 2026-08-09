@@ -55,7 +55,11 @@ export class ClaudeCodeBackend implements CliBackend {
     const cwd = workingDirectory.trim();
     if (!cwd) return false;
     const configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
-    const encodedCwd = resolve(cwd).replaceAll("/", "-");
+    // Claude Code keys ~/.claude/projects by replacing every non-ASCII
+    // alphanumeric character in the absolute cwd with "-". Replacing only
+    // path separators misses dots (notably ~/.agend), underscores and spaces,
+    // so AgEnD would falsely conclude that an existing transcript was absent.
+    const encodedCwd = resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-");
     try {
       return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
         .some(entry => entry.isFile() && entry.name.endsWith(".jsonl"));
