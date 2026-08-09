@@ -1,7 +1,27 @@
 import { join, resolve } from "node:path";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+
+/** Mirror Claude Code's ~/.claude/projects key for a working directory. */
+function claudeProjectKey(cwd: string): string {
+  let canonical = resolve(cwd);
+  try { canonical = realpathSync(canonical); } catch { /* Claude also falls back to the unresolved absolute path */ }
+
+  // Claude Code replaces every non-ASCII alphanumeric character, not only
+  // separators. A slash-only replacement misses dots (notably ~/.agend),
+  // underscores and spaces, falsely making an existing transcript look absent.
+  const sanitized = canonical.replace(/[^a-zA-Z0-9]/g, "-");
+  if (sanitized.length <= 200) return sanitized;
+
+  // Claude bounds long project keys to a 200-character prefix plus its stable
+  // Java-style string hash. Keep this rare case aligned as well.
+  let hash = 0;
+  for (let i = 0; i < canonical.length; i++) {
+    hash = ((hash << 5) - hash + canonical.charCodeAt(i)) | 0;
+  }
+  return `${sanitized.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
 
 
 export class ClaudeCodeBackend implements CliBackend {
@@ -55,11 +75,7 @@ export class ClaudeCodeBackend implements CliBackend {
     const cwd = workingDirectory.trim();
     if (!cwd) return false;
     const configDir = process.env.CLAUDE_CONFIG_DIR?.trim() || join(homedir(), ".claude");
-    // Claude Code keys ~/.claude/projects by replacing every non-ASCII
-    // alphanumeric character in the absolute cwd with "-". Replacing only
-    // path separators misses dots (notably ~/.agend), underscores and spaces,
-    // so AgEnD would falsely conclude that an existing transcript was absent.
-    const encodedCwd = resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-");
+    const encodedCwd = claudeProjectKey(cwd);
     try {
       return readdirSync(join(configDir, "projects", encodedCwd), { withFileTypes: true })
         .some(entry => entry.isFile() && entry.name.endsWith(".jsonl"));

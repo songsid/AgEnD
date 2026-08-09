@@ -80,6 +80,18 @@ describe("ClaudeCodeBackend", () => {
       expect(backend.buildCommand(makeConfig({ workingDirectory }))).toContain("--continue");
     });
 
+    it("matches Claude's bounded project key for a working directory over 200 characters", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "sess-long");
+      const workingDirectory = `/tmp/${"a".repeat(210)}`;
+      const encoded = `-tmp-${"a".repeat(195)}-de6m7t`;
+      const projectDir = join(CLAUDE_DIR, "projects", encoded);
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, "sess-long.jsonl"), "{}\n");
+
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      expect(backend.buildCommand(makeConfig({ workingDirectory }))).toContain("--continue");
+    });
+
     it("starts fresh when a generic session marker has no Claude transcript in the workspace", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "kiro-session");
       const backend = new ClaudeCodeBackend(TEST_DIR);
