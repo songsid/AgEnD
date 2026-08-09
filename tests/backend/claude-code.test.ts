@@ -58,13 +58,38 @@ describe("ClaudeCodeBackend", () => {
 
     it("uses --continue when session-id file exists to bypass the session picker", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "sess-123");
-      const projectDir = join(CLAUDE_DIR, "projects", WORK_DIR.replaceAll("/", "-"));
+      const projectDir = join(CLAUDE_DIR, "projects", "-tmp-ccd-test-workdir");
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(projectDir, "sess-123.jsonl"), "{}\n");
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain("--continue");
       expect(cmd).not.toContain("--resume");
+    });
+
+    it("matches Claude's project key for hidden and underscored working directories", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "sess-special");
+      const workingDirectory = join(WORK_DIR, ".agend", "with_under_score");
+      mkdirSync(workingDirectory, { recursive: true });
+      // Claude Code encodes dots and underscores as well as path separators.
+      const projectDir = join(CLAUDE_DIR, "projects", "-tmp-ccd-test-workdir--agend-with-under-score");
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, "sess-special.jsonl"), "{}\n");
+
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      expect(backend.buildCommand(makeConfig({ workingDirectory }))).toContain("--continue");
+    });
+
+    it("matches Claude's bounded project key for a working directory over 200 characters", () => {
+      writeFileSync(join(TEST_DIR, "session-id"), "sess-long");
+      const workingDirectory = `/tmp/${"a".repeat(210)}`;
+      const encoded = `-tmp-${"a".repeat(195)}-de6m7t`;
+      const projectDir = join(CLAUDE_DIR, "projects", encoded);
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(join(projectDir, "sess-long.jsonl"), "{}\n");
+
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      expect(backend.buildCommand(makeConfig({ workingDirectory }))).toContain("--continue");
     });
 
     it("starts fresh when a generic session marker has no Claude transcript in the workspace", () => {
