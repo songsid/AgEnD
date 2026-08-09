@@ -6891,13 +6891,12 @@ When users create specialized instances, suggest these configurations:
     } catch { /* default restart */ }
     const warn = isModelCompatible(backendName, model) ? "" : `⚠️ "${model}" doesn't match ${backendName}'s usual pattern — passing through anyway.\n`;
 
-    if (strategy === "runtime") {
-      if (!this.instanceIpcClients.get(instanceName)) return `${warn}❌ ${instanceName} is not running.`;
-      this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
-      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).${this.effortSuffix(instanceName)}`;
+    if (strategy === "runtime" && !this.instanceIpcClients.get(instanceName)) {
+      return `${warn}❌ ${instanceName} is not running.`;
     }
 
-    // restart: persist the model so the respawned CLI launches with it.
+    // Persist either way: a runtime switch must survive the next respawn too,
+    // or the instance silently reverts to the CLI default after a fleet restart.
     let persisted = false;
     if (this.fleetConfig?.instances[instanceName]) {
       this.fleetConfig.instances[instanceName].model = model;
@@ -6907,6 +6906,12 @@ When users create specialized instances, suggest these configurations:
       persisted = true;
     }
     if (!persisted) return `${warn}❌ Could not set model for ${instanceName}.`;
+
+    if (strategy === "runtime") {
+      this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
+      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).${this.effortSuffix(instanceName)}`;
+    }
+
     await this.restartSingleInstance(instanceName);
     return `${warn}✅ Set ${instanceName} to \`${model}\` and restarted.${this.effortSuffix(instanceName)}`;
   }
