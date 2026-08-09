@@ -1446,6 +1446,17 @@ export class Daemon extends EventEmitter {
               } catch (err) {
                 this.logger.error({ err: (err as Error).message }, "Recovery from background session conflict failed");
               }
+              // Keep the loop alive: every health-check exit must either
+              // scheduleNext() or deliberately set healthCheckPaused. This one
+              // did neither, so a recovered instance ran UNMONITORED (while
+              // isHealthCheckEffectivelyPaused still said monitoring was on)
+              // until the next pause→wake cycle or fleet restart. The next tick
+              // does the right thing in both outcomes: a healthy new window
+              // passes the alive check, and a failed recovery hits the dead
+              // window again with backgroundSessionRecoveryAttempted set — so
+              // it falls through to the normal crash handling (crash counting,
+              // backoff, supervision_ended when retries are exhausted).
+              scheduleNext();
               return; // Don't count as crash
             }
             // Already attempted recovery — fall through to normal crash handling
