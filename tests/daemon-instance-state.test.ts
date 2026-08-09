@@ -260,3 +260,89 @@ describe("sanitizePaneTail", () => {
     expect(tail).toContain("normal prompt >");
   });
 });
+
+describe("background-session recovery keeps the health loop alive", () => {
+  // The recovery path's `return` used to skip both scheduleNext() and
+  // healthCheckPaused — the one exit that did neither. A recovered instance
+  // then ran unmonitored (while isHealthCheckEffectivelyPaused still reported
+  // monitoring as active) until the next pause→wake cycle or fleet restart.
+  function makeRecoveryDaemon(maxRetries: number) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-bg-recovery-"));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("bg-recovery-test", {
+      working_directory: "/tmp",
+      restart_policy: {
+        max_retries: maxRetries,
+        backoff: "linear",
+        reset_after: 0,
+        health_check_interval_ms: 25,
+      },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "silent",
+    } as any, instanceDir, false, { binaryName: "claude" } as any, undefined,
+      { child: () => logger } as any);
+    const tmux = {
+      getPaneStatus: vi.fn(async () => ({ alive: false, exitCode: 1 })),
+      capturePaneWithHistory: vi.fn(async () =>
+        "Error: Session is currently running as a background agent"),
+      killWindow: vi.fn(async () => {}),
+    };
+    (daemon as any).tmux = tmux;
+    (daemon as any).stopInstanceStateMonitor = vi.fn();
+    // setProcessStatus("running") starts the real pane-state monitor, which
+    // needs a full backend + control client; not what these tests exercise.
+    (daemon as any).startInstanceStateMonitor = vi.fn();
+    return { daemon, instanceDir };
+  }
+
+  it("re-arms the next tick after a successful recovery", async () => {
+    vi.useFakeTimers();
+    const { daemon, instanceDir } = makeRecoveryDaemon(3);
+    const spawn = vi.fn(async () => {});
+    (daemon as any).spawnClaudeWindow = spawn;
+    const respawned = vi.fn();
+    daemon.on("crash_respawn", respawned);
+
+    try {
+      (daemon as any).startHealthCheck();
+      await vi.advanceTimersByTimeAsync(25);     // tick 1 fires
+      await vi.advanceTimersByTimeAsync(2_000);  // recovery's internal settle sleep
+
+      expect(spawn).toHaveBeenCalledOnce();
+      expect(respawned).toHaveBeenCalledOnce();
+      // The loop must stay alive to watch the NEW window...
+      expect((daemon as any).healthCheckTimer).not.toBeNull();
+      // ...and this is monitoring-continues, not the deliberate-stop pattern.
+      expect((daemon as any).healthCheckPaused).toBe(false);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls through to normal crash handling on the tick after a failed recovery", async () => {
+    vi.useFakeTimers();
+    const { daemon, instanceDir } = makeRecoveryDaemon(0);
+    (daemon as any).spawnClaudeWindow = vi.fn(async () => { throw new Error("spawn failed"); });
+    const supervisionEnded = vi.fn();
+    daemon.on("supervision_ended", supervisionEnded);
+
+    try {
+      (daemon as any).startHealthCheck();
+      await vi.advanceTimersByTimeAsync(25);     // tick 1: recovery attempt fails
+      await vi.advanceTimersByTimeAsync(2_000);  // settle sleep inside the attempt
+      expect((daemon as any).healthCheckTimer).not.toBeNull(); // loop survived the failure
+
+      await vi.advanceTimersByTimeAsync(25);     // tick 2: attempted-flag set → normal crash path
+      // max_retries 0 → the normal path deliberately stops AND says so — the
+      // failed recovery ends in a supervised stop, not a silent zombie.
+      expect((daemon as any).healthCheckPaused).toBe(true);
+      expect(supervisionEnded).toHaveBeenCalledOnce();
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+});
