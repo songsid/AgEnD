@@ -5887,142 +5887,28 @@ You route tasks, manage instances, enforce policies, and synthesize results.
 Do NOT modify project files directly — delegate file changes to the project's instance.
 You CAN write code snippets, explain code, and answer technical questions directly.
 
------
+## Task Routing
 
-## Task Classification
+- **Handle directly**: no file/exec access needed, answerable from knowledge, ≤2 reasoning steps (Q&A, translation, status queries, code snippets).
+- **Delegate to 1 instance**: scoped to one project/repo, needs file access or execution.
+- **Coordinate multiple**: spans repos, outputs feed each other, or parallel helps (max 3 per task).
 
-Classify every incoming request before acting.
+Instance discovery order: list_teams() → list_instances() → describe_instance() → create_instance() only if nothing fits. Prefer reuse; never duplicate a running instance.
 
-### Handle Directly (ALL conditions must be true)
+## Reply Contract
 
-- No file system access needed
-- No external execution needed
-- Answerable from static knowledge
-- ≤ 2 reasoning steps
-
-Examples: Q&A, translation, fleet status queries, explaining a concept, writing code snippets.
-
-### Delegate to 1 Instance
-
-- Task scoped to a single project or repo
-- Requires file access, code changes, or execution
-
-### Coordinate Multiple Instances
-
-- Task spans multiple repos or domains
-- Requires outputs from one instance to feed into another
-- Benefits from parallel execution (max 3 instances per task)
-
------
-
-## Instance Discovery (in this order)
-1. list_teams()        → reuse existing teams first
-2. list_instances()    → find by working_directory, description, or tags
-3. describe_instance() → confirm capabilities before delegating
-4. create_instance()   → only if no suitable instance exists
-
-Rules: prefer reuse over creation. Do NOT create duplicates of running instances.
-
------
-
-## Delegation Protocol
-
-Every delegation via send_to_instance() MUST include:
-
-1. Task scope — what exactly to do, bounded clearly
-2. Expected output — what to return and in what form
-3. Policy reminder — "Follow Development Workflow policy" (for code tasks)
-
-### Loop Prevention
-
-- Never re-delegate a task back to the instance that sent it to you
-- If a task has bounced 3 times, stop and solve locally or reduce scope
-
-### Execution Strategy
-
-Parallel — use only when tasks are independent with no shared state
-Sequential — use when one task's output feeds into the next
-
------
-
-## Result Handling
-
-When an instance reports back, classify the outcome:
-
-- Success → Summarize key results for user. Omit internal coordination noise.
-- Partial → State what succeeded, what remains, proposed next steps.
-- Failure → Retry up to 2 times. If still failing: try alternative instance, reduce scope, or return partial result clearly marked.
-- No response → Ping again after reasonable wait. If still silent: report to user with options.
-
-### Output to User
-
-Every final response to the user should contain:
-
-- Result — the actual answer or deliverable
-- Gaps — anything incomplete or unresolved (omit if none)
-
------
-
-## Shared Decisions
-
-Use post_decision() / list_decisions() for any choice that affects more than 1 instance, changes an API contract, introduces a new dependency, or alters deployment process.
-
-When instances disagree, collect both viewpoints, make a decision, and record it via post_decision.
-
------
+Every final response to the user contains: the result (the actual answer or deliverable) and gaps (anything incomplete — omit if none). Summarize instance reports; omit internal coordination noise.
 
 ## After Restart
 
-After a restart, run this sequence BEFORE processing any new messages:
-1. list_instances()   → rebuild fleet awareness
-2. list_teams()       → restore team structure
-3. list_decisions()   → reload policies and conventions
+BEFORE processing any new messages: 1. list_instances() 2. list_teams() 3. list_decisions(). Only then handle requests.
 
-Only then handle incoming requests.
+## Playbooks (on-demand skills)
 
------
-
-## Development Workflow Policy
-
-All code changes across the fleet should follow this workflow.
-The coordinator enforces compliance but does not perform these steps directly.
-Remind instances of this policy when delegating code tasks.
-
-### Workflow Stages
-Design Proposed → Design Approved → Implementation → Submit for Review → Under Review → Approved → Merge
-
-### Policy Rules
-
-1. Design before code — developer sends design proposal to reviewer before implementation. Consensus required before proceeding.
-2. Challenger pairing — every code task should have a developer + reviewer. Reviewer actively questions decisions and finds risks.
-3. Verify by execution — backend/CLI changes must be tested by running them. Do not trust documentation alone.
-4. Independent review — every merge requires code review from someone other than the author.
-5. Root cause first — bug fixes require confirmed root cause before proposing a fix.
-6. Merge conditions: tests pass, reviewer approved, branch and worktree cleaned up.
-
-### Specialist Instance Rules
-
-- Execute within defined scope only
-- Return structured output: result, assumptions, uncertainties, verification status
-- Do NOT create new instances without coordinator approval
-
------
-
-## Team Management
-
-- Always check existing teams before creating new ones
-- Default to ephemeral teams (created for a specific task, dissolved after completion)
-- Clean up ephemeral teams and instances after task completion
-
------
-
-## Instance Configuration Tips
-
-When users create specialized instances, suggest these configurations:
-
-- **Reviewer instances**: Add \`pre_task_command: "/chat load reviewer-base"\` to reset context before each review, preventing influence from previous conversations.
-- **Collab mode**: For multi-bot channels, use \`/collab\` to enable @mention-based triggering.
-- **Cost control**: Set per-instance \`cost_guard\` for expensive backends.
+Detailed procedures live in your skills — consult them when the situation comes up rather than from memory:
+- **delegation-playbook** — delegation protocol, loop prevention, parallel vs sequential, result/failure handling, team management, instance configuration tips.
+- **development-workflow** — the fleet-wide code-change policy you enforce when delegating code tasks.
+Plus the operational skills (fleet-health, instance-lifecycle, scheduling, session-management, …).
 `;
 
   /** Ensure the general instance has its project instructions file + knowledge */
@@ -6039,49 +5925,140 @@ When users create specialized instances, suggest these configurations:
     this.syncGeneralKnowledge(workDir, backend);
   }
 
+  /**
+   * Where each backend natively loads on-demand skills from, relative to the
+   * workspace. Backends without a native skill mechanism (opencode, grok,
+   * antigravity, gemini-cli) are deliberately absent: dropping files a CLI
+   * never reads is clutter, not capability. Unknown directories are ignored
+   * by older CLI versions, so publishing is fail-open across upgrades.
+   */
+  private static SKILLS_DIR_SEGMENTS: Record<string, string[]> = {
+    "kiro-cli": [".kiro", "skills"],
+    "claude-code": [".claude", "skills"],
+    "codex": [".agents", "skills"],
+  };
+
   /** Copy general-knowledge steering + skills to the general instance's workspace */
   private syncGeneralKnowledge(workDir: string, backend: string): void {
     const knowledgeDir = join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
     if (!existsSync(knowledgeDir)) return;
 
-    // Sync steering files → .kiro/steering/ (or workDir root for non-kiro)
-    const steeringDir = backend === "kiro-cli"
-      ? join(workDir, ".kiro", "steering")
-      : workDir;
-    mkdirSync(steeringDir, { recursive: true });
-    const srcSteering = join(knowledgeDir, "steering");
-    if (existsSync(srcSteering)) {
-      for (const file of readdirSync(srcSteering)) {
-        if (!file.endsWith(".md")) continue;
-        const src = join(srcSteering, file);
+    this.syncGeneralSteering(workDir, backend, join(knowledgeDir, "steering"));
+
+    const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
+    if (skillSegments) {
+      this.syncManagedSkills(join(workDir, ...skillSegments), join(knowledgeDir, "skills"));
+    }
+
+    this.logger.debug({ knowledgeDir, workDir, backend }, "Synced general knowledge files");
+  }
+
+  /**
+   * Steering (always-on rules like core-rules.md). Kiro loads a native
+   * steering directory; every other backend gets the content embedded into
+   * its instructions file (CLAUDE.md / AGENTS.md / …) inside a managed marker
+   * block — the previous behavior dropped bare .md files in the workspace
+   * root, which no CLI ever read. The block is replaced in place on every
+   * sync, so rule updates reach EXISTING workspaces; everything the user
+   * wrote outside the markers is preserved byte-for-byte.
+   */
+  private syncGeneralSteering(workDir: string, backend: string, srcSteering: string): void {
+    if (!existsSync(srcSteering)) return;
+    const files = readdirSync(srcSteering).filter(f => f.endsWith(".md")).sort();
+    if (files.length === 0) return;
+
+    if (backend === "kiro-cli") {
+      const steeringDir = join(workDir, ".kiro", "steering");
+      mkdirSync(steeringDir, { recursive: true });
+      for (const file of files) {
         const dest = join(steeringDir, file);
-        const newContent = readFileSync(src, "utf-8");
-        try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
+        const newContent = readFileSync(join(srcSteering, file), "utf-8");
+        try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
         writeFileSync(dest, newContent);
       }
+      return;
     }
 
-    // Sync skills → .kiro/skills/ (kiro-cli only)
-    if (backend === "kiro-cli") {
-      const srcSkills = join(knowledgeDir, "skills");
-      if (existsSync(srcSkills)) {
-        const destSkills = join(workDir, ".kiro", "skills");
-        mkdirSync(destSkills, { recursive: true });
-        for (const skillDir of readdirSync(srcSkills)) {
-          const skillSrc = join(srcSkills, skillDir);
-          if (!existsSync(join(skillSrc, "SKILL.md"))) continue;
-          const skillDest = join(destSkills, skillDir);
-          mkdirSync(skillDest, { recursive: true });
-          const src = join(skillSrc, "SKILL.md");
-          const dest = join(skillDest, "SKILL.md");
-          const newContent = readFileSync(src, "utf-8");
-          try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch {}
-          writeFileSync(dest, newContent);
-        }
+    const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
+    const instructionsPath = join(workDir, filename);
+    const body = files.map(f => readFileSync(join(srcSteering, f), "utf-8").trim()).join("\n\n");
+    const block = `${FleetManager.STEERING_BLOCK_BEGIN}\n${body}\n${FleetManager.STEERING_BLOCK_END}`;
+
+    let existing = "";
+    try { existing = existsSync(instructionsPath) ? readFileSync(instructionsPath, "utf-8") : ""; } catch { /* treat as empty */ }
+    const beginAt = existing.indexOf(FleetManager.STEERING_BLOCK_BEGIN);
+    const endAt = existing.indexOf(FleetManager.STEERING_BLOCK_END);
+    let next: string;
+    if (beginAt !== -1 && endAt !== -1 && endAt > beginAt) {
+      next = existing.slice(0, beginAt) + block + existing.slice(endAt + FleetManager.STEERING_BLOCK_END.length);
+    } else {
+      next = existing.trimEnd() + (existing.trim() ? "\n\n" : "") + block + "\n";
+    }
+    if (next !== existing) {
+      mkdirSync(dirname(instructionsPath), { recursive: true });
+      writeFileSync(instructionsPath, next);
+    }
+  }
+
+  private static STEERING_BLOCK_BEGIN = "<!-- >>> agend:core-rules — managed by AgEnD; edits inside this block are overwritten -->";
+  private static STEERING_BLOCK_END = "<!-- <<< agend:core-rules -->";
+
+  /**
+   * Publish AgEnD's bundled skills into a CLI's native skills directory,
+   * owning ONLY what we published. A manifest records which skill names AgEnD
+   * wrote; a bundled rename/removal deletes the stale managed copy, while a
+   * skill the user created by hand is never listed and therefore never
+   * touched — even if a future bundle happens to reuse its name (the sync
+   * then skips it and logs, rather than overwrite the user's work).
+   */
+  private syncManagedSkills(destSkills: string, srcSkills: string): void {
+    if (!existsSync(srcSkills)) return;
+    mkdirSync(destSkills, { recursive: true });
+    const manifestPath = join(destSkills, ".agend-managed-skills.json");
+    let previouslyManaged: string[] = [];
+    try {
+      const parsed = JSON.parse(readFileSync(manifestPath, "utf-8"));
+      if (Array.isArray(parsed)) previouslyManaged = parsed.filter(n => typeof n === "string");
+    } catch { /* first sync, or corrupt manifest — treat as owning nothing */ }
+
+    const bundled = readdirSync(srcSkills)
+      .filter(name => existsSync(join(srcSkills, name, "SKILL.md")))
+      .sort();
+    const managed: string[] = [];
+
+    for (const name of bundled) {
+      const destDir = join(destSkills, name);
+      const dest = join(destDir, "SKILL.md");
+      const isOurs = previouslyManaged.includes(name) || !existsSync(destDir);
+      if (!isOurs) {
+        // Name collision with a user-authored skill: theirs wins, loudly.
+        this.logger.warn({ skill: name, destSkills },
+          "Skipping bundled skill — a skill of this name exists but was not published by AgEnD");
+        continue;
+      }
+      managed.push(name);
+      const newContent = readFileSync(join(srcSkills, name, "SKILL.md"), "utf-8");
+      try { if (existsSync(dest) && readFileSync(dest, "utf-8") === newContent) continue; } catch { /* rewrite */ }
+      mkdirSync(destDir, { recursive: true });
+      writeFileSync(dest, newContent);
+    }
+
+    // Remove managed skills that are no longer bundled (rename/retirement).
+    for (const stale of previouslyManaged) {
+      if (bundled.includes(stale)) continue;
+      try {
+        rmSync(join(destSkills, stale), { recursive: true, force: true });
+        this.logger.info({ skill: stale, destSkills }, "Removed retired AgEnD-managed skill");
+      } catch (err) {
+        this.logger.debug({ err, skill: stale }, "Failed to remove retired managed skill");
       }
     }
 
-    this.logger.debug({ knowledgeDir, steeringDir }, "Synced general knowledge files");
+    try {
+      writeFileSync(manifestPath, JSON.stringify(managed, null, 2) + "\n");
+    } catch (err) {
+      this.logger.debug({ err, manifestPath }, "Failed to write managed-skills manifest");
+    }
   }
 
   /** Fetch forum topic icon stickers and pick emoji IDs for each state */

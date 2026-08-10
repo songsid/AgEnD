@@ -19,6 +19,40 @@ export interface FleetInstructionsParams {
   cliInstructions?: string;
 }
 
+/**
+ * Compact contract for the MCP server's `instructions` field.
+ *
+ * Some CLIs truncate MCP instructions aggressively (Claude Code cuts around
+ * 2KB), so this variant carries ONLY the rules an agent cannot recover from
+ * breaking mid-turn: which tool answers whom, when a turn is over, and the
+ * fire-and-queue rule. Everything else — workflow, decisions, collaboration
+ * niceties — travels on the additive system-prompt path
+ * (fleet-instructions.md), which every backend has and nothing truncates.
+ * Keep this under 2048 bytes; tests pin the budget.
+ */
+export function buildMcpCoreInstructions(params: FleetInstructionsParams): string {
+  const { instanceName, workingDirectory, runtimeIdentity } = params;
+  const runtime = runtimeIdentity
+    ? ` Runtime: kind=${runtimeIdentity.kind}, backend=${runtimeIdentity.backend}, model=${runtimeIdentity.model}.`
+    : "";
+  return [
+    `You are **${instanceName}** in an AgEnD fleet. Working directory: \`${workingDirectory}\`.${runtime}`,
+    "",
+    "## Reply contract",
+    "- `[user:name via platform, id:ID]` → answer with the `reply` tool. Never direct text.",
+    "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`.",
+    "- A turn ends only after that tool call — post your conclusion, then close with a short line like `.`.",
+    "- Nothing to add on a cross-instance message? Staying silent is valid.",
+    "",
+    "## Cross-instance protocol",
+    "- `delegate_task` → work silently → `report_result` (echo correlation_id). No ack messages in between.",
+    "- Send returns `{ sent, queued }` immediately — the fleet owns delivery. NEVER re-send because a reply said `queued` or an IPC wait timed out.",
+    "- You only have file access under your own working directory; everything cross-instance goes through fleet tools.",
+    "",
+    "Full fleet guidance (workflow, decisions, collaboration rules) is in your system instructions.",
+  ].join("\n");
+}
+
 export function buildFleetInstructions(params: FleetInstructionsParams): string {
   const { instanceName, workingDirectory, runtimeIdentity, displayName, description, customPrompt } = params;
   const sections: string[] = [];
