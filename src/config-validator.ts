@@ -51,6 +51,30 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
     if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");
     if (value.model_failover !== undefined && (!Array.isArray(value.model_failover) || !value.model_failover.every(v => typeof v === "string" && v.length > 0))) err(`${path}.model_failover`, "must be a list of non-empty model names");
+    if (value.backend_options !== undefined) {
+      if (!isObj(value.backend_options)) {
+        err(`${path}.backend_options`, "must be a mapping keyed by backend name");
+      } else {
+        for (const [backendName, settings] of Object.entries(value.backend_options)) {
+          const optionPath = `${path}.backend_options.${backendName}`;
+          if (!KNOWN_BACKENDS.includes(backendName)) {
+            warn(optionPath, "unknown backend namespace — option will be ignored");
+            continue;
+          }
+          if (!isObj(settings)) {
+            err(optionPath, "must be a mapping");
+            continue;
+          }
+          if (backendName === "codex" && settings.provider !== undefined) {
+            if (typeof settings.provider !== "string") {
+              err(`${optionPath}.provider`, "must be a string");
+            } else if (!/^[A-Za-z0-9._-]+$/.test(settings.provider)) {
+              err(`${optionPath}.provider`, `invalid value ${JSON.stringify(settings.provider)}`);
+            }
+          }
+        }
+      }
+    }
     if (value.progress_min_elapsed !== undefined) {
       const v = value.progress_min_elapsed;
       if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {

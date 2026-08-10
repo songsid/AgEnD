@@ -42,6 +42,8 @@ export interface CliBackendConfig {
   agentMode?: "mcp" | "cli";
   /** Health server port for CLI mode (agend-agent connects here). */
   agentPort?: number;
+  /** Per-backend options merged from fleet defaults + instance config (e.g. { provider: "glm" }). */
+  backendOptions?: Record<string, unknown>;
 }
 
 /** Action to take when an error pattern is detected in PTY output. */

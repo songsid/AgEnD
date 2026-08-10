@@ -64,6 +64,25 @@ describe("CodexBackend", () => {
       expect(cmd).toContain("--full-auto");
       expect(cmd).not.toContain("--dangerously-bypass-approvals-and-sandbox");
     });
+
+    it("includes model_provider when backendOptions.provider is set", () => {
+      const backend = new CodexBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig({ backendOptions: { provider: "glm" } }));
+      expect(cmd).toContain('-c model_provider="glm"');
+    });
+
+    it("does not include model_provider when backendOptions.provider is absent", () => {
+      const backend = new CodexBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig());
+      expect(cmd).not.toContain("model_provider");
+    });
+
+    it("includes both model and model_provider when both are set", () => {
+      const backend = new CodexBackend(TEST_DIR);
+      const cmd = backend.buildCommand(makeConfig({ model: "o3", backendOptions: { provider: "glm" } }));
+      expect(cmd).toContain('-c model="o3"');
+      expect(cmd).toContain('-c model_provider="glm"');
+    });
   });
 
   describe("per-instance MCP isolation", () => {

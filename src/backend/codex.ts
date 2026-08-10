@@ -154,6 +154,10 @@ export class CodexBackend implements CliBackend {
       warnIfModelMismatch("codex", model);
       cmd += ` -c model="${model}"`;
     }
+    if (config.backendOptions?.provider) {
+      const provider = String(config.backendOptions.provider);
+      cmd += ` -c model_provider="${provider}"`;
+    }
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore
     // still load every globally registered AgEnD MCP server.

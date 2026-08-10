@@ -167,6 +167,8 @@ export interface InstanceConfig {
   terminal?: TerminalConfig;
   /** Command to paste raw before each user message (e.g. "/chat load base.json") */
   pre_task_command?: string;
+  /** Per-backend options keyed by backend name (e.g. { codex: { provider: "glm" } }) */
+  backend_options?: Record<string, Record<string, unknown>>;
 }
 
 export interface WebhookConfig {
