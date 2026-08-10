@@ -111,7 +111,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,
     "Update fleet-wide defaults (backend, model, auto_pause_after). Saves to fleet.yaml."],
   ["create_instance", schemas.CreateInstanceArgs,
-    "Create a new instance bound to a project directory with a channel topic. If directory is omitted, a workspace is auto-created at ~/.agend/workspaces/<instance-name>."],
+    "Create a new instance bound to a project directory with a channel topic. If directory is omitted, a workspace is auto-created at ~/.agend/workspaces/<instance-name>. Use backend_options.codex.provider (for example, 'glm') to select a Codex custom provider."],
   ["delete_instance", schemas.DeleteInstanceArgs,
     "Delete an instance: stop daemon, remove config, optionally delete topic."],
   ["replace_instance", schemas.ReplaceInstanceArgs,

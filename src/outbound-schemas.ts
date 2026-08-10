@@ -254,6 +254,9 @@ export const CreateInstanceArgs = z.object({
   ),
   backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok"]).optional()
     .describe("CLI backend to use. Defaults to claude-code."),
+  backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
+    "Backend-specific options keyed by backend name. For a Codex custom provider, use { codex: { provider: \"glm\" } }.",
+  ),
   branch: z.string().optional().describe(
     "Git branch name. When specified, creates a git worktree from the directory's repo and uses it as the working directory. If the branch doesn't exist, it will be created.",
   ),
