@@ -95,4 +95,16 @@ export interface FleetContext {
     chatId: string,
     threadId?: string,
   ): Promise<string | null>;
+
+  /**
+   * Post a nonce-armed confirmation before the destructive `/clear` command.
+   * Returns null when the buttons were posted, otherwise a user-facing error.
+   */
+  promptClearConfirmation?(
+    instanceName: string,
+    channelId: string,
+    adapter: import("./channel/types.js").ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null>;
 }

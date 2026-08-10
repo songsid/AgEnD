@@ -43,7 +43,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, CLEAR_UNSUPPORTED_MSG, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -234,10 +234,11 @@ interface CancelButtonEntry {
 
 /**
  * One pending nonce-armed button prompt (hang restart offer, interactive-prompt
- * assist, clean-exit restart offer). All three share the same lifecycle:
+ * assist, clean-exit restart offer, destructive clear confirmation). They share
+ * the same lifecycle:
  * posted with a 128-bit nonce in the callback data, admin-gated and bound to
  * the exact message/world that created them, expired after
- * NONCE_BUTTON_TIMEOUT_MS, consumed exactly once.
+ * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
   /** Callback prefix including the colon, e.g. "exit-restart:". */
@@ -255,6 +256,8 @@ interface NonceButtonEntry {
   generalName?: string;
   /** interactive-assist only: detected prompt kind (login/permission/...). */
   promptKind?: string;
+  /** clear-confirm only: channel used to re-check fleet/Classic admin rights. */
+  authChannelId?: string;
 }
 
 interface AdapterCallbackData {
@@ -305,7 +308,9 @@ const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const HANG_CALLBACK_PREFIX = "hang:";
-/** One lifetime for every nonce-armed button prompt (hang / assist / exit). */
+const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
+const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
+/** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
@@ -746,7 +751,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(t("classic.no_agent"));
       return;
     }
-    await data.respond(await this.topicCommands.sendClear(name));
+    const adapter = this.adapters.get(adapterId) ?? this.adapter;
+    if (!adapter) {
+      await data.respond(t("clear.prompt_unavailable"));
+      return;
+    }
+    const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
+    const fallback = await this.promptClearConfirmation(
+      name,
+      data.channelId,
+      adapter,
+      chatId,
+      data.channelId,
+    );
+    await data.respond(fallback ?? t("clear.confirm_posted"));
   }
 
   /** Get the adapter bound to an instance, falling back to primary adapter */
@@ -2363,6 +2381,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClassicBackendSelection(data)) return;
@@ -2621,6 +2640,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
       if (await this.handleClassicBackendSelection(data)) return;
@@ -3347,7 +3367,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
             return;
           }
-          await msgAdapter?.sendText(chatId, await this.topicCommands.sendClear(clearName));
+          if (!msgAdapter) return;
+          const fallback = await this.promptClearConfirmation(
+            clearName,
+            chatId,
+            msgAdapter,
+            chatId,
+          );
+          if (fallback) await msgAdapter.sendText(chatId, fallback);
           return;
         }
 
@@ -4689,12 +4716,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  // ── Nonce-armed button prompts (hang / interactive-assist / exit-restart) ──
+  // ── Nonce-armed button prompts (hang / assist / exit / clear) ──
   //
   // One shared lifecycle for every "notification with decision buttons":
-  // post with a 128-bit nonce, arm a 15-min expiry, bind the click to the
+  // post with a 128-bit nonce, arm a bounded expiry, bind the click to the
   // exact adapter+chat+thread+message that created it, require fleet admin,
-  // consume exactly once. The three features differ only in what they post
+  // consume exactly once. The features differ only in what they post
   // and what a consumed click does.
 
   /**
@@ -4714,7 +4741,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     message: string;
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
-    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind">;
+    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId">;
     timeoutMs?: number;
   }): Promise<string | null> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -4806,12 +4833,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Bind the capability to the exact message/world that created it. Telegram
     // keyboards are visible to everyone, so the click also requires fleet admin.
+    const isAuthorized = data.userId
+      ? pending.authChannelId
+        ? this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)
+        : this.isFleetAdmin(data.userId, callbackAdapterId)
+      : false;
     if (pending.adapterId !== callbackAdapterId
       || data.chatId !== pending.chatId
       || (pending.threadId != null && data.threadId !== pending.threadId)
       || (pending.messageId != null && data.messageId !== pending.messageId)
-      || !data.userId
-      || !this.isFleetAdmin(data.userId, callbackAdapterId)) {
+      || !isAuthorized) {
       // Deliberately does NOT consume the nonce: the real admin can still click.
       this.logger.warn({ instanceName: pending.instanceName, prefix, userId: data.userId },
         "Rejected unauthorized or mismatched button callback");
@@ -4848,6 +4879,92 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // undo that or make the button actionable again.
       this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons");
     }
+  }
+
+  /** Post the destructive `/clear` confirmation in the invoking channel. */
+  async promptClearConfirmation(
+    instanceName: string,
+    channelId: string,
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<string | null> {
+    if (!this.topicCommands.supportsClear(instanceName)) return CLEAR_UNSUPPORTED_MSG;
+
+    const adapterId = adapter.id;
+    if (!adapterId) return t("clear.prompt_unavailable");
+    const nonce = await this.postNonceButtonPrompt({
+      prefix: CLEAR_CONFIRM_CALLBACK_PREFIX,
+      alertType: "clear_confirm",
+      instanceName,
+      adapter,
+      adapterId,
+      chatId,
+      threadId,
+      message: t("clear.confirm_message", instanceName),
+      choices: [
+        { action: "confirm", label: t("clear.confirm") },
+        { action: "cancel", label: t("clear.cancel") },
+      ],
+      expiredText: t("clear.expired", instanceName),
+      extra: { authChannelId: channelId },
+      timeoutMs: CLEAR_CONFIRM_TIMEOUT_MS,
+    });
+    return nonce ? null : t("clear.prompt_unavailable");
+  }
+
+  /** Consume `/clear` Confirm/Cancel exactly once; only Confirm reaches IPC. */
+  private async handleClearConfirmation(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      CLEAR_CONFIRM_CALLBACK_PREFIX,
+      /^clear-confirm:([0-9a-f]+):(confirm|cancel)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending, action } = claimed;
+
+    this.eventLog?.insert(pending.instanceName, "clear_action", { action, userId: data.userId });
+    if (action === "cancel") {
+      await this.retireNonceButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        t("clear.cancelled", pending.instanceName),
+      );
+      return true;
+    }
+
+    await this.retireNonceButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("clear.clearing", pending.instanceName),
+    );
+    try {
+      const result = await this.topicCommands.sendClear(pending.instanceName);
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        result,
+        pending.threadId,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error({ err, instanceName: pending.instanceName }, "Clear command failed");
+      await pending.adapter.editMessage(
+        pending.chatId,
+        pending.messageId ?? data.messageId,
+        t("clear.failed", pending.instanceName, message),
+        pending.threadId,
+      ).catch(editErr => this.logger.warn({ err: editErr, instanceName: pending.instanceName },
+        "Failed to show clear command error"));
+    }
+    return true;
   }
 
   /**

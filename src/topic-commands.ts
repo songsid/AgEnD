@@ -465,8 +465,18 @@ export class TopicCommands {
         await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
         return true;
       }
-      const result = await this.sendClear(instanceName);
-      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      if (!this.ctx.promptClearConfirmation) {
+        await adapter.sendText(msg.chatId, t("clear.prompt_unavailable"), { threadId: msg.threadId });
+        return true;
+      }
+      const fallback = await this.ctx.promptClearConfirmation(
+        instanceName,
+        msg.threadId ?? msg.chatId,
+        adapter,
+        msg.chatId,
+        msg.threadId,
+      );
+      if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       return true;
     }
 
@@ -567,6 +577,11 @@ export class TopicCommands {
     return "❌ Instance not connected (IPC unavailable)";
   }
 
+  /** Whether the instance backend exposes a verified full-reset command. */
+  supportsClear(instanceName: string): boolean {
+    return clearCommandForBackend(this.effectiveBackend(instanceName)) !== null;
+  }
+
   /** Send the backend-appropriate full conversation reset through raw_paste. */
   async sendClear(instanceName: string): Promise<string> {
     const backend = this.effectiveBackend(instanceName);
@@ -576,9 +591,9 @@ export class TopicCommands {
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
       ipc.send({ type: "raw_paste", content: cmd });
-      return `🧹 Clear command sent (\`${cmd}\`).`;
+      return t("clear.sent", cmd);
     }
-    return "❌ Instance not connected (IPC unavailable)";
+    return t("clear.not_connected");
   }
 
   /** Send a backend-appropriate session-save command to a fleet-topic instance. */
