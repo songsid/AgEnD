@@ -155,6 +155,8 @@ export interface LifecycleCreateArgs {
   description?: string;
   model?: string;
   backend?: string;
+  /** Backend-specific launch options, e.g. { codex: { provider: "glm" } }. */
+  backend_options?: Record<string, Record<string, unknown>>;
   branch?: string;
   detach?: boolean;
   worktree_path?: string;
@@ -973,6 +975,7 @@ export class InstanceLifecycle {
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(args.model ? { model: args.model } : {}),
         ...(args.backend ? { backend: args.backend } : {}),
+        ...(args.backend_options ? { backend_options: args.backend_options } : {}),
         ...(args.model_failover ? { model_failover: args.model_failover } : {}),
         ...(args.tool_set ? { tool_set: args.tool_set } : {}),
         ...(args.skipPermissions != null ? { skipPermissions: args.skipPermissions } : {}),
