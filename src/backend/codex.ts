@@ -17,7 +17,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
@@ -155,8 +155,8 @@ export class CodexBackend implements CliBackend {
       cmd += ` -c model="${model}"`;
     }
     if (config.backendOptions?.provider) {
-      const provider = String(config.backendOptions.provider);
-      cmd += ` -c model_provider="${provider}"`;
+      const provider = validateProvider(String(config.backendOptions.provider));
+      cmd += ` -c ${shellQuote(`model_provider="${provider}"`)}`;
     }
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore

@@ -370,6 +370,14 @@ export function validateModel(model: string): string {
   return model;
 }
 
+/** Guard a provider name before embedding it in a shell command. */
+export function validateProvider(provider: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(provider)) {
+    throw new Error(`Invalid provider name: "${provider}" — only alphanumeric, underscore, hyphen allowed`);
+  }
+  return provider;
+}
+
 /** Known model prefixes/patterns per backend. Used only for advisory warnings. */
 const BACKEND_MODEL_PATTERNS: Record<string, RegExp> = {
   "claude-code": /^(sonnet|opus|haiku|opusplan|best|fable|claude)/i,

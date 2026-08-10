@@ -68,8 +68,17 @@ describe("CodexBackend", () => {
     it("includes model_provider when backendOptions.provider is set", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ backendOptions: { provider: "glm" } }));
-      expect(cmd).toContain('-c model_provider="glm"');
+      expect(cmd).toContain(`-c 'model_provider="glm"'`);
     });
+
+    it.each(["glm;rm", "glm$HOME", "glm provider"])(
+      "rejects unsafe provider name %j",
+      (provider) => {
+        const backend = new CodexBackend(TEST_DIR);
+        expect(() => backend.buildCommand(makeConfig({ backendOptions: { provider } })))
+          .toThrow("Invalid provider name");
+      },
+    );
 
     it("does not include model_provider when backendOptions.provider is absent", () => {
       const backend = new CodexBackend(TEST_DIR);
@@ -81,7 +90,7 @@ describe("CodexBackend", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "o3", backendOptions: { provider: "glm" } }));
       expect(cmd).toContain('-c model="o3"');
-      expect(cmd).toContain('-c model_provider="glm"');
+      expect(cmd).toContain(`-c 'model_provider="glm"'`);
     });
   });
 

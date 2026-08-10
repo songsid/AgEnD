@@ -1,3 +1,5 @@
+import { validateProvider } from "./backend/types.js";
+
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
  *
@@ -68,8 +70,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {
               err(`${optionPath}.provider`, "must be a string");
-            } else if (!/^[A-Za-z0-9._-]+$/.test(settings.provider)) {
-              err(`${optionPath}.provider`, `invalid value ${JSON.stringify(settings.provider)}`);
+            } else {
+              try {
+                validateProvider(settings.provider);
+              } catch (error) {
+                err(`${optionPath}.provider`, error instanceof Error ? error.message : String(error));
+              }
             }
           }
         }

@@ -234,7 +234,7 @@ describe("validateFleetConfig — backend_options", () => {
       },
     });
     expect(result.errors.length).toBe(1);
-    expect(result.errors[0].message).toContain("invalid value");
+    expect(result.errors[0].message).toContain("Invalid provider name");
     expect(result.errors[0].message).toContain("bad provider!");
   });
 
