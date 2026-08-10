@@ -1,0 +1,234 @@
+---
+import Base from '../layouts/Base.astro';
+
+const locale = 'en' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const img = (name: string) => `${base}setup/${name}`;
+const zhHref = `${base}zh-tw/setup-telegram/`;
+const discordHref = `${base}setup-discord/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={base} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; Back to home</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Bot setup · Telegram</span>
+        <a href={zhHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">中文</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Telegram Bot Setup</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        AgEnD talks to you through a Telegram bot in a Forum-mode group: each agent instance gets
+        its own Topic. This guide walks you through creating the bot, preparing the group, and
+        collecting the two values <code class="font-mono text-accent">agend quickstart</code> asks for —
+        your <b class="text-text-primary">Bot Token</b> and your <b class="text-text-primary">User ID</b>.
+        Takes about 5 minutes.
+      </p>
+    </div>
+
+    <!-- What you'll need -->
+    <div class="mb-14 rounded-2xl border border-border bg-surface p-6">
+      <div class="font-semibold text-text-primary mb-3">What you'll end up with</div>
+      <ul class="space-y-2 text-sm text-text-secondary">
+        <li>• A bot token like <code class="font-mono text-accent">123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code></li>
+        <li>• A private group with <b class="text-text-primary">Topics</b> enabled, with your bot as an admin</li>
+        <li>• Your numeric Telegram User ID (used to lock the bot to you)</li>
+      </ul>
+    </div>
+
+    <!-- Steps -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">Step-by-step</h2>
+    <div class="space-y-6 mb-14">
+      <!-- Step 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">Create the bot with BotFather</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>In Telegram, search for <a href="https://t.me/BotFather" class="text-accent hover:underline">@BotFather</a> and open a chat.</li>
+          <li>Send <code class="font-mono text-accent">/newbot</code>.</li>
+          <li>Enter a display name, then a username — it must end with <code class="font-mono text-accent">bot</code>.</li>
+          <li>BotFather replies with your <b class="text-text-primary">Bot Token</b>. Keep it somewhere safe.</li>
+        </ol>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-4">AGEND_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          You don't need to set this by hand — <code class="font-mono text-accent">agend quickstart</code> prompts for it
+          and writes it to your config. Treat the token like a password: anyone who has it controls your bot.
+        </p>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">Turn off Group Privacy</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          By default a bot only receives messages starting with <code class="font-mono text-accent">/</code> or messages that
+          @mention it. AgEnD needs to read everything you type, so privacy mode must be off.
+        </p>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>Send <code class="font-mono text-accent">/mybots</code> to BotFather.</li>
+          <li>Pick your bot → <b class="text-text-primary">Bot Settings</b> → <b class="text-text-primary">Group Privacy</b>.</li>
+          <li>Choose <b class="text-text-primary">Turn off</b>.</li>
+        </ol>
+        <div class="mt-4 grid sm:grid-cols-2 gap-4">
+          <figure>
+            <img src={img('telegram-01-group-privacy.png')} alt="BotFather Bot Settings menu with Group Privacy highlighted" width="428" height="485" loading="lazy" class="rounded-lg border border-border w-full" />
+            <figcaption class="mt-2 text-xs text-text-muted">Bot Settings → Group Privacy</figcaption>
+          </figure>
+          <figure>
+            <img src={img('telegram-02-privacy-off.png')} alt="BotFather confirming that privacy mode is disabled for the bot" width="388" height="135" loading="lazy" class="rounded-lg border border-border w-full" />
+            <figcaption class="mt-2 text-xs text-text-muted">Confirmation: privacy mode is disabled</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">Create a group and enable Topics</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>Create a new group in Telegram (a private one, just for you and the bot).</li>
+          <li>Open the group settings by tapping the group name.</li>
+          <li>Tap <b class="text-text-primary">Edit</b> (the pencil icon).</li>
+          <li>Turn on <b class="text-text-primary">Topics</b>. Each conversation now lives in its own Topic — that's how AgEnD separates instances.</li>
+        </ol>
+        <div class="mt-4 rounded-lg border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">Topics require a supergroup.</b> Telegram usually upgrades a group automatically.
+          If the Topics switch isn't there, set the group to Public once and then back to Private — that forces the upgrade.
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">4</span>
+          <h3 class="font-semibold text-text-primary">Add the bot to the group as an admin</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside mb-4">
+          <li>In the group, tap <b class="text-text-primary">Add Members</b> and search for your bot's username.</li>
+          <li>Group settings → <b class="text-text-primary">Administrators</b> → <b class="text-text-primary">Add Admin</b>.</li>
+          <li>Select your bot and grant the permissions below.</li>
+        </ol>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr class="text-text-primary border-b border-border">
+                <th class="py-2 pr-4 font-semibold">Permission</th>
+                <th class="py-2 pr-4 font-semibold">Required?</th>
+                <th class="py-2 font-semibold">Why</th>
+              </tr>
+            </thead>
+            <tbody class="text-text-secondary">
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Manage Topics</td><td class="py-2 pr-4 text-success">Required</td><td class="py-2">Create and manage the per-instance Topics</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Send Messages</td><td class="py-2 pr-4 text-success">Required</td><td class="py-2">Reply inside Topics</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Edit Messages</td><td class="py-2 pr-4 text-success">Required</td><td class="py-2">Live progress updates on sent messages</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Delete Messages</td><td class="py-2 pr-4">Recommended</td><td class="py-2">Housekeeping / cleaning up noise</td></tr>
+              <tr><td class="py-2 pr-4 font-mono">Pin Messages</td><td class="py-2 pr-4">Optional</td><td class="py-2">Pin important messages</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 rounded-lg border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">The bot must be an admin with Manage Topics</b> — otherwise it cannot create new Topics
+          and new instances will silently fail to appear.
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">5</span>
+          <h3 class="font-semibold text-text-primary">Get your User ID</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          Your User ID is what locks the bot down to you — it goes into <code class="font-mono text-accent">fleet.yaml</code> under
+          access control. Without it, anyone who finds your bot could drive your agents.
+        </p>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>Search for <a href="https://t.me/userinfobot" class="text-accent hover:underline">@userinfobot</a> in Telegram.</li>
+          <li>Send it any message.</li>
+          <li>It replies with your User ID — a plain number.</li>
+        </ol>
+        <figure class="mt-4 max-w-xs">
+          <img src={img('telegram-03-userinfobot.png')} alt="Searching for @userinfobot in the Telegram search bar" width="239" height="59" loading="lazy" class="rounded-lg border border-border w-full" />
+          <figcaption class="mt-2 text-xs text-text-muted">Search for @userinfobot</figcaption>
+        </figure>
+        <p class="text-sm text-text-secondary mt-4">
+          <code class="font-mono text-accent">agend quickstart</code> asks for this and writes it out for you:
+        </p>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-3">channel:
+  access:
+    mode: locked
+    allowed_users:
+      - '951494522'    # your user ID</pre>
+        <p class="text-sm text-text-secondary mt-3">Add more IDs to the list if you want to share the fleet with teammates.</p>
+      </div>
+
+      <!-- Step 6 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
+          <h3 class="font-semibold text-text-primary">Run quickstart and start the fleet</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Telegram, paste the token, paste your user ID
+agend fleet start     # launch</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          Then send a message in the group's General topic. If the bot answers, you're done — start
+          adding project instances from there.
+        </p>
+      </div>
+    </div>
+
+    <!-- Troubleshooting -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">Troubleshooting</h2>
+    <div class="overflow-x-auto mb-14 rounded-xl border border-border bg-surface p-5">
+      <table class="w-full text-sm text-left border-collapse">
+        <thead>
+          <tr class="text-text-primary border-b border-border">
+            <th class="py-2 pr-4 font-semibold">Symptom</th>
+            <th class="py-2 pr-4 font-semibold">Cause</th>
+            <th class="py-2 font-semibold">Fix</th>
+          </tr>
+        </thead>
+        <tbody class="text-text-secondary">
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot doesn't reply</td>
+            <td class="py-3 pr-4">Bot isn't an admin</td>
+            <td class="py-3">Group settings → Administrators → add the bot</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">New Topics aren't created</td>
+            <td class="py-3 pr-4">Missing <span class="font-mono">Manage Topics</span></td>
+            <td class="py-3">Edit the bot's admin rights and enable Manage Topics</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot receives nothing</td>
+            <td class="py-3 pr-4">Group Privacy still on</td>
+            <td class="py-3">BotFather → <span class="font-mono">/mybots</span> → Bot Settings → Group Privacy → Turn off</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Wrong group ID format</td>
+            <td class="py-3 pr-4">Truncated ID</td>
+            <td class="py-3">Supergroup IDs start with <span class="font-mono">-100</span>, e.g. <span class="font-mono">-1001234567890</span></td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4">A teammate can't use the bot</td>
+            <td class="py-3 pr-4">Only one user allowed</td>
+            <td class="py-3">Add their user ID to <span class="font-mono">allowed_users</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      Prefer Discord? See the <a href={discordHref} class="text-accent hover:underline">Discord bot setup guide</a>.
+      On Windows, the <a href={`${base}install-windows/`} class="text-accent hover:underline">Windows installation guide</a> covers the rest.
+    </div>
+  </section>
+</Base>

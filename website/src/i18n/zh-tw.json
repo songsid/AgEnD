@@ -135,6 +135,13 @@
       "text": "參閱 Windows 安裝指南",
       "href": "/install-windows/"
     },
+    "botSetup": {
+      "label": "還沒建立 bot？",
+      "telegram": "Telegram bot 設定教學",
+      "telegramHref": "/zh-tw/setup-telegram/",
+      "discord": "Discord bot 設定教學",
+      "discordHref": "/zh-tw/setup-discord/"
+    },
     "step1": {
       "label": "安裝",
       "cmd": "npm install -g @songsid/agend"
