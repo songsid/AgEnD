@@ -31,7 +31,8 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("context window · 23% used")).toBe(true);
     expect(pattern.test("OpenAI Codex (v0.117.0)")).toBe(true);
     expect(pattern.test("> Write unit tests")).toBe(true);
-    expect(pattern.test("› Summarize recent commits\n\nContext 36% left")).toBe(true);
+    expect(pattern.test("›")).toBe(true);
+    expect(pattern.test("› Summarize recent commits")).toBe(true);
     // Must NOT match trust dialog's ›
     expect(pattern.test("› 1. Yes, continue")).toBe(false);
   });

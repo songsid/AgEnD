@@ -383,9 +383,11 @@ export class CodexBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    // Startup/header: "OpenAI Codex". Daily prompt: a line beginning with ">".
+    // Startup/header: "OpenAI Codex". Prompt glyph is ">" on older Codex and
+    // "›" (U+203A) on newer releases. Exclude numbered menu selections so a
+    // trust/confirmation dialog is not mistaken for an idle input prompt.
     // Statusline variants report either "% left" or "% used" while idle.
-    return /% left|% used|OpenAI Codex|^>/m;
+    return /% left|% used|OpenAI Codex|^[>›](?!\s*\d+\.)/m;
   }
 
   getErrorPatterns(): ErrorPattern[] {
