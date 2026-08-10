@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { loadFleetConfig } from "../src/config.js";
+import { validateFleetConfig } from "../src/config-validator.js";
 import { writeFileSync, mkdirSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -163,5 +164,109 @@ instances:
     const fleet = loadFleetConfig(join(tmpDir, "nonexistent-fleet.yaml"));
     expect(fleet.instances).toEqual({});
     expect(fleet.defaults).toEqual({});
+  });
+
+  it("deep-merges backend_options from defaults into instances", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(
+      fleetPath,
+      `defaults:
+  backend_options:
+    codex:
+      provider: openai
+instances:
+  glm-coder:
+    working_directory: /home/user/glm-coder
+    backend: codex
+    backend_options:
+      codex:
+        provider: glm
+`
+    );
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.defaults.backend_options?.codex.provider).toBe("openai");
+    expect(fleet.instances["glm-coder"].backend_options?.codex.provider).toBe("glm");
+  });
+
+  it("preserves default backend_options when instance does not override", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(
+      fleetPath,
+      `defaults:
+  backend_options:
+    codex:
+      provider: openai
+instances:
+  default-coder:
+    working_directory: /home/user/default-coder
+    backend: codex
+`
+    );
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.instances["default-coder"].backend_options?.codex.provider).toBe("openai");
+  });
+});
+
+describe("validateFleetConfig — backend_options", () => {
+  it("passes for valid provider", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        "glm-coder": {
+          working_directory: "/tmp",
+          backend: "codex",
+          backend_options: { codex: { provider: "glm" } },
+        } as any,
+      },
+    });
+    expect(result.errors).toEqual([]);
+  });
+
+  it("errors on invalid provider characters", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        "bad-coder": {
+          working_directory: "/tmp",
+          backend: "codex",
+          backend_options: { codex: { provider: "bad provider!" } },
+        } as any,
+      },
+    });
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0].message).toContain("Invalid provider name");
+    expect(result.errors[0].message).toContain("bad provider!");
+  });
+
+  it("errors on non-string provider", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        "bad-coder": {
+          working_directory: "/tmp",
+          backend: "codex",
+          backend_options: { codex: { provider: 123 } },
+        } as any,
+      },
+    });
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0].message).toContain("must be a string");
+  });
+
+  it("warns on unknown backend namespace", () => {
+    const result = validateFleetConfig({
+      defaults: {},
+      instances: {
+        "test": {
+          working_directory: "/tmp",
+          backend_options: { unknown_backend: { foo: "bar" } },
+        } as any,
+      },
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toContainEqual({
+      path: "instances.test.backend_options.unknown_backend",
+      message: "unknown backend namespace — option will be ignored",
+    });
   });
 });

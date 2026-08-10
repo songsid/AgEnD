@@ -3336,6 +3336,9 @@ export class Daemon extends EventEmitter {
 
     const agentPort = parseInt(process.env.AGEND_PORT ?? "19280", 10);
 
+    const backendName = this.config.backend ?? "claude-code";
+    const backendOptions = this.config.backend_options?.[backendName];
+
     return {
       workingDirectory: this.config.working_directory,
       instanceDir: this.instanceDir,
@@ -3355,6 +3358,7 @@ export class Daemon extends EventEmitter {
       instructions,
       agentMode: isCliMode ? "cli" : "mcp",
       agentPort: isCliMode ? agentPort : undefined,
+      backendOptions,
     };
   }
 

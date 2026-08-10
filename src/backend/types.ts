@@ -42,6 +42,8 @@ export interface CliBackendConfig {
   agentMode?: "mcp" | "cli";
   /** Health server port for CLI mode (agend-agent connects here). */
   agentPort?: number;
+  /** Per-backend options merged from fleet defaults + instance config (e.g. { provider: "glm" }). */
+  backendOptions?: Record<string, unknown>;
 }
 
 /** Action to take when an error pattern is detected in PTY output. */
@@ -366,6 +368,14 @@ export function validateModel(model: string): string {
     throw new Error(`Invalid model name: ${JSON.stringify(model)} — must match ${SAFE_MODEL_RE}`);
   }
   return model;
+}
+
+/** Guard a provider name before embedding it in a shell command. */
+export function validateProvider(provider: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(provider)) {
+    throw new Error(`Invalid provider name: "${provider}" — only alphanumeric, underscore, hyphen allowed`);
+  }
+  return provider;
 }
 
 /** Known model prefixes/patterns per backend. Used only for advisory warnings. */
