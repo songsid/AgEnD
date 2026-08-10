@@ -18,7 +18,7 @@ import { basename, dirname, join } from "node:path";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
-import { buildFleetInstructions } from "../instructions.js";
+import { buildMcpCoreInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
 import { mcpTimeoutMs } from "./ipc-timeouts.js";
 
@@ -199,17 +199,11 @@ function ipcRequest(
 // ---------------------------------------------------------------------------
 
 function buildMcpInstructions(): string {
-  const workflowEnv = process.env.AGEND_WORKFLOW;
-  let workflow: string | false | undefined;
-  if (workflowEnv === "false") workflow = false;
-  else if (workflowEnv) workflow = workflowEnv;
-
-  let decisions: { title: string; content: string }[] | undefined;
-  if (process.env.AGEND_DECISIONS) {
-    try { decisions = JSON.parse(process.env.AGEND_DECISIONS); } catch { /* skip */ }
-  }
-
-  return buildFleetInstructions({
+  // Compact on purpose: Claude Code truncates MCP instructions around 2KB, so
+  // this carries only the non-negotiable contract. The full guidance
+  // (workflow, decisions, custom prompt) rides the additive system-prompt
+  // path, which every backend has and nothing truncates.
+  return buildMcpCoreInstructions({
     instanceName: process.env.AGEND_INSTANCE_NAME ?? "unknown",
     workingDirectory: process.env.AGEND_WORKING_DIR ?? process.cwd(),
     runtimeIdentity: {
@@ -217,11 +211,6 @@ function buildMcpInstructions(): string {
       backend: process.env.AGEND_BACKEND ?? "unknown",
       model: process.env.AGEND_MODEL ?? "default",
     },
-    displayName: process.env.AGEND_DISPLAY_NAME,
-    description: process.env.AGEND_DESCRIPTION,
-    customPrompt: process.env.AGEND_CUSTOM_PROMPT,
-    workflow,
-    decisions,
   });
 }
 
