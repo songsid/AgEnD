@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, copyFileSync, readdirSync, unlinkSync, statSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { getAgendHome } from "./paths.js";
@@ -78,6 +78,19 @@ interface ClassicBotYaml {
   }>;
 }
 
+interface ClassicAdapterIdentity {
+  id: string;
+  type: string;
+}
+
+interface LoadedClassicChannel {
+  channel: ClassicChannel;
+  /** The adapter persisted in YAML. Undefined means pre-multi-bot legacy data. */
+  persistedAdapterId?: string;
+  /** Platform inferred from the externally assigned chat/channel id. */
+  inferredType?: "telegram" | "discord";
+}
+
 const YAML_HEADER = `# ClassicBot Configuration
 # Available backends: claude-code, gemini-cli, codex, opencode, kiro-cli, antigravity, grok
 `;
@@ -96,6 +109,23 @@ export function classicInstanceName(sanitizedName: string, channelId: string, ad
 }
 
 /**
+ * Infer the platform which issued a Classic channel id.
+ *
+ * Telegram group ids are negative. Telegram private-chat ids are positive but
+ * fit in 52 bits (at most 16 decimal digits), while Discord snowflakes are
+ * currently 17-20 decimal digits. Anything else is deliberately left unknown
+ * so custom/future adapters retain the backwards-compatible primary fallback.
+ */
+export function inferClassicChannelType(channelId: string): "telegram" | "discord" | undefined {
+  const value = channelId.trim();
+  if (!/^-?\d+$/.test(value)) return undefined;
+  if (value.startsWith("-")) return "telegram";
+  if (value.length >= 17 && value.length <= 20) return "discord";
+  if (value.length >= 1 && value.length <= 16) return "telegram";
+  return undefined;
+}
+
+/**
  * Manages classic bot channel lifecycle — register/unregister/persist.
  * Persists to ~/.agend/classicBot.yaml with per-channel backend override.
  * YAML keys are channelId to avoid duplicate name collisions.
@@ -108,8 +138,10 @@ export class ClassicChannelManager {
   private defaults: { backend?: string; model?: string; auto_pause_after?: number; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
   private readonly configPath: string;
   private lastMtime = 0;
-  /** The primary (channels[0]) adapter id. Legacy entries migrate to it; it also names without a suffix. */
+  /** The primary (channels[0]) adapter id. It names without a suffix. */
   private primaryAdapterId?: string;
+  /** Config-order adapter identities, used to migrate legacy rows by platform. */
+  private adapters: ClassicAdapterIdentity[] = [];
 
   constructor(private dataDir: string, private logger: Logger) {
     this.configPath = join(dataDir, "classicBot.yaml");
@@ -117,15 +149,31 @@ export class ClassicChannelManager {
   }
 
   /**
-   * Record which adapter is primary. Migrates any legacy (adapterId-less)
-   * entries onto it and rewrites the file in the new format. Idempotent.
+   * Backwards-compatible single-adapter configuration used by tests and older
+   * callers. Production startup supplies the complete adapter list through
+   * {@link configureAdapters} so legacy rows can be matched by platform.
    */
   setPrimaryAdapterId(adapterId: string): void {
-    if (this.primaryAdapterId === adapterId) return;
-    this.primaryAdapterId = adapterId;
-    const hadLegacy = [...this.channels.values()].some(ch => ch.adapterId === undefined);
-    this.load();          // re-derive keys/names now that the primary id is known
-    if (hadLegacy) this.save(); // persist the upgraded format once
+    this.configureAdapters([{ id: adapterId, type: adapterId }]);
+  }
+
+  /**
+   * Configure all adapters in fleet.yaml order, then migrate/repair persisted
+   * Classic registrations. The full list matters when the primary adapter is
+   * a different platform from a legacy channel.
+   */
+  configureAdapters(adapters: ReadonlyArray<{ id?: string; type: string }>): void {
+    const identities = adapters.map(adapter => ({ id: adapter.id ?? adapter.type, type: adapter.type }));
+    const primaryAdapterId = identities[0]?.id;
+    const unchanged = this.primaryAdapterId === primaryAdapterId
+      && this.adapters.length === identities.length
+      && this.adapters.every((adapter, index) => adapter.id === identities[index]?.id && adapter.type === identities[index]?.type);
+    if (unchanged) return;
+
+    this.primaryAdapterId = primaryAdapterId;
+    this.adapters = identities;
+    const repaired = this.load();
+    if (repaired && this.backupBeforeAdapterRepair()) this.save();
   }
 
   /** Map key for a (channelId, adapterId) pair. adapterId-less = legacy entry (pre-migration). */
@@ -147,48 +195,178 @@ export class ClassicChannelManager {
     const exact = this.channels.get(this.compositeKey(channelId, adapterId));
     if (exact) return exact;
     if (adapterId && adapterId === this.primaryAdapterId) {
-      return this.channels.get(this.compositeKey(channelId, undefined));
+      const legacy = this.channels.get(this.compositeKey(channelId, undefined));
+      if (!legacy) return undefined;
+      const inferredType = inferClassicChannelType(channelId);
+      const primaryType = this.adapterType(adapterId);
+      // A known cross-platform legacy row must wait for its owning adapter to
+      // return; never expose it to the current primary merely as a fallback.
+      if (inferredType && primaryType && inferredType !== primaryType) return undefined;
+      return legacy;
     }
     return undefined;
   }
 
-  private load(): void {
-    if (!existsSync(this.configPath)) return;
+  /** Type of a configured adapter id, including historical default ids. */
+  private adapterType(adapterId: string | undefined): string | undefined {
+    if (!adapterId) return undefined;
+    return this.adapters.find(adapter => adapter.id === adapterId)?.type
+      ?? (adapterId === "telegram" || adapterId === "discord" ? adapterId : undefined);
+  }
+
+  /** Deterministically choose the first configured adapter for a platform. */
+  private adapterForType(type: string | undefined): string | undefined {
+    if (!type) return undefined;
+    const primary = this.adapters.find(adapter => adapter.id === this.primaryAdapterId);
+    if (primary?.type === type) return primary.id;
+    return this.adapters.find(adapter => adapter.type === type)?.id;
+  }
+
+  /** Preserve the pre-repair file once; instance/workspace data is never deleted. */
+  private backupBeforeAdapterRepair(): boolean {
+    const backupPath = `${this.configPath}.pre-adapter-repair.bak`;
+    if (existsSync(backupPath) || !existsSync(this.configPath)) return true;
+    try {
+      copyFileSync(this.configPath, backupPath);
+      return true;
+    } catch (err) {
+      this.logger.warn({ err, backupPath }, "Failed to back up classicBot.yaml before adapter repair");
+      return false;
+    }
+  }
+
+  /**
+   * Load the persisted registry. Returns true when it migrated/repaired data
+   * and the caller should write the normalized registry back to disk.
+   */
+  private load(): boolean {
+    if (!existsSync(this.configPath)) return false;
     try {
       const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
-      if (!raw) return;
+      if (!raw) return false;
       this.defaults = raw.defaults ?? {};
       this.channels.clear();
+      let repaired = false;
       if (raw.channels) {
+        const loaded: LoadedClassicChannel[] = [];
         for (const [key, val] of Object.entries(raw.channels)) {
           // Old format: key IS the channelId, no adapterId/instanceName fields.
           const channelId = val.channelId ?? key;
-          const adapterId = val.adapterId ?? this.primaryAdapterId; // migrate legacy → primary
+          const inferredType = inferClassicChannelType(channelId);
+          const inferredAdapterId = this.adapterForType(inferredType);
+          // Prefer the adapter whose platform issued the id. Unknown/custom ids
+          // retain the historical primary fallback.
+          const adapterId = val.adapterId
+            ?? (inferredType ? inferredAdapterId : this.primaryAdapterId);
           const name = val.name ?? channelId;
-          // Non-primary adapters carry a suffix; primary/legacy keep the historical name.
-          const suffixAdapter = adapterId && adapterId !== this.primaryAdapterId ? adapterId : undefined;
+          // An explicit non-primary registration carries a suffix. A legacy
+          // registration always keeps its historical unsuffixed instance name
+          // even when platform inference moves it away from channels[0].
+          const suffixAdapter = val.adapterId && adapterId !== this.primaryAdapterId ? adapterId : undefined;
           const instanceName = val.instanceName ?? classicInstanceName(sanitizeInstanceName(name), channelId, suffixAdapter);
-          this.channels.set(this.compositeKey(channelId, adapterId), {
-            channelId,
-            adapterId,
-            name,
-            instanceName,
-            backend: val.backend,
-            model: val.model,
-            autoPauseAfter: val.auto_pause_after,
-            collab: val.collab,
-            preTaskCommand: val.pre_task_command,
-            contextLines: val.context_lines,
-            createdAt: val.createdAt ?? "",
-            createdBy: val.createdBy ?? "",
+          loaded.push({
+            persistedAdapterId: val.adapterId,
+            inferredType,
+            channel: {
+              channelId,
+              adapterId,
+              name,
+              instanceName,
+              backend: val.backend,
+              model: val.model,
+              autoPauseAfter: val.auto_pause_after,
+              collab: val.collab,
+              preTaskCommand: val.pre_task_command,
+              contextLines: val.context_lines,
+              createdAt: val.createdAt ?? "",
+              createdBy: val.createdBy ?? "",
+            },
           });
+        }
+
+        for (const entry of loaded) {
+          const { channel, persistedAdapterId, inferredType } = entry;
+          const inferredAdapterId = this.adapterForType(inferredType);
+          const persistedType = this.adapterType(persistedAdapterId);
+          const isLegacy = persistedAdapterId === undefined;
+          const isCrossPlatformMisbind = !!(
+            persistedAdapterId
+            && inferredType
+            && inferredAdapterId
+            && persistedType
+            && persistedType !== inferredType
+          );
+
+          if (isLegacy && channel.adapterId) {
+            repaired = true;
+            this.logger.warn(
+              { channelId: channel.channelId, adapterId: channel.adapterId, instanceName: channel.instanceName, inferredType },
+              "Migrated legacy Classic channel to inferred adapter",
+            );
+          }
+          if (isLegacy && inferredType && !channel.adapterId) {
+            this.logger.warn(
+              { channelId: channel.channelId, inferredType, instanceName: channel.instanceName },
+              "Classic legacy channel has no configured adapter for its platform; leaving it unbound",
+            );
+          }
+
+          if (isCrossPlatformMisbind) {
+            const correctlyBound = loaded.filter(candidate =>
+              candidate !== entry
+              && candidate.channel.channelId === channel.channelId
+              && candidate.persistedAdapterId !== undefined
+              && this.adapterType(candidate.persistedAdapterId) === inferredType,
+            );
+            if (correctlyBound.length > 0) {
+              // A post-migration /start already created the right registration.
+              // Keep the live/correct target, drop only the phantom registry row;
+              // its instance/workspace remains on disk for manual recovery.
+              repaired = true;
+              this.logger.warn({
+                channelId: channel.channelId,
+                staleAdapterId: persistedAdapterId,
+                staleInstanceName: channel.instanceName,
+                activeAdapters: correctlyBound.map(candidate => candidate.persistedAdapterId),
+                activeInstances: correctlyBound.map(candidate => candidate.channel.instanceName),
+              }, "Removed phantom Classic channel registration; instance data retained on disk");
+              continue;
+            }
+
+            channel.adapterId = inferredAdapterId;
+            repaired = true;
+            this.logger.warn({
+              channelId: channel.channelId,
+              fromAdapterId: persistedAdapterId,
+              toAdapterId: inferredAdapterId,
+              instanceName: channel.instanceName,
+            }, "Repaired cross-platform Classic channel adapter binding");
+          }
+
+          const mapKey = this.compositeKey(channel.channelId, channel.adapterId);
+          const existing = this.channels.get(mapKey);
+          if (existing) {
+            // Malformed/hand-edited duplicates: prefer the already normalized
+            // explicit row and keep all instance data on disk.
+            repaired = true;
+            this.logger.warn({
+              channelId: channel.channelId,
+              adapterId: channel.adapterId,
+              keptInstanceName: existing.instanceName,
+              ignoredInstanceName: channel.instanceName,
+            }, "Ignored duplicate Classic channel registration; instance data retained on disk");
+            continue;
+          }
+          this.channels.set(mapKey, channel);
         }
       }
       this.rebuildChannelIds();
       this.lastMtime = statSync(this.configPath).mtimeMs;
       this.logger.info({ count: this.channels.size }, "Loaded classic channels");
+      return repaired;
     } catch (err) {
       this.logger.warn({ err }, "Failed to load classicBot.yaml");
+      return false;
     }
   }
 
@@ -222,13 +400,15 @@ export class ClassicChannelManager {
     const mtime = statSync(this.configPath).mtimeMs;
     if (mtime <= this.lastMtime) return false;
     this.logger.info("classicBot.yaml changed — reloading");
-    this.load();
+    const repaired = this.load();
+    if (repaired && this.backupBeforeAdapterRepair()) this.save();
     return true;
   }
 
   /** Reload immediately after an authenticated settings write. */
   reloadFromDisk(): void {
-    this.load();
+    const repaired = this.load();
+    if (repaired && this.backupBeforeAdapterRepair()) this.save();
   }
 
   getDefaults(): { backend?: string } { return this.defaults; }

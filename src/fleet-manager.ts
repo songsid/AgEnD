@@ -1676,8 +1676,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // routing does NOT go through the routing engine (single-key, can't hold two
     // bots in one channel) — it resolves per-bot via getInstanceByChannel.
     this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
-    const primaryCh = fleet.channels?.[0] ?? fleet.channel;
-    if (primaryCh) this.classicChannels.setPrimaryAdapterId(primaryCh.id ?? primaryCh.type);
+    const classicAdapters = fleet.channels?.length ? fleet.channels : (fleet.channel ? [fleet.channel] : []);
+    this.classicChannels.configureAdapters(classicAdapters);
     // Restore the persisted bot binding so replies/cancel go through the right
     // bot after a restart (before this, inbound would re-bind lazily).
     for (const ch of this.classicChannels.getAll()) {
