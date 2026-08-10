@@ -1260,7 +1260,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.warn({ name }, "antigravity backend does not support MCP instructions — general dispatcher will not work correctly");
         this.notifyInstanceTopic(name, "⚠️ antigravity backend is not supported for General instances (no MCP instructions injection). Switch to claude-code or kiro-cli.");
       }
-      this.ensureGeneralInstructions(config.working_directory, config.backend);
+      this.ensureGeneralInstructions(config.working_directory, config.backend, name);
     }
     await this.lifecycle.start(name, config, topicMode, {
       kind,
@@ -1864,7 +1864,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const generalDir = join(getAgendHome(), name);
       mkdirSync(generalDir, { recursive: true });
       const backendName = fleet.defaults.backend ?? "claude-code";
-      this.ensureGeneralInstructions(generalDir, backendName);
+      this.ensureGeneralInstructions(generalDir, backendName, name);
       fleet.instances[name] = {
         ...DEFAULT_INSTANCE_CONFIG,
         working_directory: generalDir,
@@ -5877,6 +5877,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "gemini-cli": "GEMINI.md",
     "opencode": "AGENTS.md",
     "kiro-cli": ".kiro/steering/project.md",
+    // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
+    // same files their writeConfig() appends fleet instructions to.
+    "grok": "AGENTS.md",
+    "antigravity": ".agents/agents.md",
     "mock": "CLAUDE.md",
   };
 
@@ -5912,8 +5916,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 `;
 
   /** Ensure the general instance has its project instructions file + knowledge */
-  private ensureGeneralInstructions(workDir: string, backendName?: string): void {
+  private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
+    // Some backends relocate their real cwd (agy moves hidden paths to
+    // ~/agend-workspaces/<name>). Instructions and skills must land where the
+    // CLI actually runs, not where fleet.yaml points.
+    try {
+      const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
+        .resolveWorkingDirectory?.(workDir, instanceName);
+      if (resolved) workDir = resolved;
+    } catch { /* unknown backend name — keep the raw path */ }
     const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
     const filePath = join(workDir, filename);
     mkdirSync(dirname(filePath), { recursive: true });
@@ -5936,6 +5948,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     "kiro-cli": [".kiro", "skills"],
     "claude-code": [".claude", "skills"],
     "codex": [".agents", "skills"],
+    // Live-verified: OpenCode and Antigravity scan .agents/skills; Grok's
+    // vendor-canonical location is .grok/skills.
+    "opencode": [".agents", "skills"],
+    "grok": [".grok", "skills"],
+    "antigravity": [".agents", "skills"],
   };
 
   /** Copy general-knowledge steering + skills to the general instance's workspace */
