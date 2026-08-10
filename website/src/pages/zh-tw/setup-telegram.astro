@@ -1,0 +1,232 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const locale = 'zh-tw' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const img = (name: string) => `${base}setup/${name}`;
+const enHref = `${base}setup-telegram/`;
+const discordHref = `${base}zh-tw/setup-discord/`;
+const homeHref = `${base}zh-tw/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={homeHref} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; 回首頁</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Bot 設定 · Telegram</span>
+        <a href={enHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">English</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Telegram Bot 設定教學</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        AgEnD 透過 Telegram bot 跟你溝通：Group 開啟 Topics 後，每個 agent instance 各自佔一個 Topic。
+        這份教學帶你建立 bot、把 Group 準備好，並取得 <code class="font-mono text-accent">agend quickstart</code>
+        會問你的兩個值 —— <b class="text-text-primary">Bot Token</b> 和你的 <b class="text-text-primary">User ID</b>。
+        大約 5 分鐘。
+      </p>
+    </div>
+
+    <!-- 成果 -->
+    <div class="mb-14 rounded-2xl border border-border bg-surface p-6">
+      <div class="font-semibold text-text-primary mb-3">做完你會有</div>
+      <ul class="space-y-2 text-sm text-text-secondary">
+        <li>• 一組 bot token，格式像 <code class="font-mono text-accent">123456789:ABCdefGHIjklMNOpqrsTUVwxyz</code></li>
+        <li>• 一個已開啟 <b class="text-text-primary">Topics</b> 的私人 Group，bot 已是 admin</li>
+        <li>• 你的 Telegram User ID（純數字，用來把 bot 鎖給你自己用）</li>
+      </ul>
+    </div>
+
+    <!-- 步驟 -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">操作步驟</h2>
+    <div class="space-y-6 mb-14">
+      <!-- 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">用 BotFather 建立 Bot</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>在 Telegram 搜尋 <a href="https://t.me/BotFather" class="text-accent hover:underline">@BotFather</a> 並開始對話。</li>
+          <li>輸入 <code class="font-mono text-accent">/newbot</code>。</li>
+          <li>依提示輸入 Bot 名稱（顯示名稱）和 username —— username 必須以 <code class="font-mono text-accent">bot</code> 結尾。</li>
+          <li>BotFather 會回傳 <b class="text-text-primary">Bot Token</b>，先存起來。</li>
+        </ol>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-4">AGEND_BOT_TOKEN=123456789:ABCdefGHIjklMNOpqrsTUVwxyz</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          不用自己動手寫檔案 —— <code class="font-mono text-accent">agend quickstart</code> 會問你 token 並寫進設定。
+          Token 等同密碼，拿到的人就能完全操控你的 bot。
+        </p>
+      </div>
+
+      <!-- 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">關閉 Group Privacy（隱私模式）</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          預設 Bot 只收得到 <code class="font-mono text-accent">/</code> 開頭的指令和被 @ 提及的訊息。
+          AgEnD 需要讀所有訊息，所以隱私模式一定要關。
+        </p>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>對 BotFather 輸入 <code class="font-mono text-accent">/mybots</code>。</li>
+          <li>選擇你的 Bot → <b class="text-text-primary">Bot Settings</b> → <b class="text-text-primary">Group Privacy</b>。</li>
+          <li>選 <b class="text-text-primary">Turn off</b>。</li>
+        </ol>
+        <div class="mt-4 grid sm:grid-cols-2 gap-4">
+          <figure>
+            <img src={img('telegram-01-group-privacy.png')} alt="BotFather 的 Bot Settings 選單，Group Privacy 選項" width="428" height="485" loading="lazy" class="rounded-lg border border-border w-full" />
+            <figcaption class="mt-2 text-xs text-text-muted">Bot Settings → Group Privacy</figcaption>
+          </figure>
+          <figure>
+            <img src={img('telegram-02-privacy-off.png')} alt="BotFather 顯示隱私模式已關閉" width="388" height="135" loading="lazy" class="rounded-lg border border-border w-full" />
+            <figcaption class="mt-2 text-xs text-text-muted">確認訊息：隱私模式已關閉</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">建立 Group 並開啟 Topics</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>在 Telegram 建立一個新 Group（私人的，只有你和 bot）。</li>
+          <li>點擊 Group 名稱進入設定。</li>
+          <li>點 <b class="text-text-primary">Edit</b>（鉛筆圖示）。</li>
+          <li>開啟 <b class="text-text-primary">Topics</b>。開啟後每個對話都在獨立 Topic 裡 —— AgEnD 就是靠這個區分 instance。</li>
+        </ol>
+        <div class="mt-4 rounded-lg border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">Topics 需要 Group 是 Supergroup。</b>
+          建立 Group 後 Telegram 通常會自動升級；如果找不到 Topics 開關，先把 Group 設為 Public 再改回 Private 就會升級。
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">4</span>
+          <h3 class="font-semibold text-text-primary">把 Bot 加入 Group 並設為 Admin</h3>
+        </div>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside mb-4">
+          <li>在 Group 中點 <b class="text-text-primary">Add Members</b>，搜尋你的 bot username 並加入。</li>
+          <li>Group 設定 → <b class="text-text-primary">Administrators</b> → <b class="text-text-primary">Add Admin</b>。</li>
+          <li>選擇你的 bot，授予下表權限。</li>
+        </ol>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm text-left border-collapse">
+            <thead>
+              <tr class="text-text-primary border-b border-border">
+                <th class="py-2 pr-4 font-semibold">權限</th>
+                <th class="py-2 pr-4 font-semibold">必要性</th>
+                <th class="py-2 font-semibold">用途</th>
+              </tr>
+            </thead>
+            <tbody class="text-text-secondary">
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Manage Topics</td><td class="py-2 pr-4 text-success">必要</td><td class="py-2">建立／管理每個 instance 的 Topic</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Send Messages</td><td class="py-2 pr-4 text-success">必要</td><td class="py-2">在 Topic 中回覆訊息</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Edit Messages</td><td class="py-2 pr-4 text-success">必要</td><td class="py-2">編輯已發送訊息（進度更新）</td></tr>
+              <tr class="border-b border-border/50"><td class="py-2 pr-4 font-mono">Delete Messages</td><td class="py-2 pr-4">建議開啟</td><td class="py-2">清理訊息</td></tr>
+              <tr><td class="py-2 pr-4 font-mono">Pin Messages</td><td class="py-2 pr-4">選用</td><td class="py-2">釘選重要訊息</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-4 rounded-lg border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">Bot 必須是 Admin 且有 Manage Topics 權限</b>，否則無法自動建立新 Topic，新 instance 會默默地出不來。
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">5</span>
+          <h3 class="font-semibold text-text-primary">取得你的 User ID</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-3">
+          User ID 用於 <code class="font-mono text-accent">fleet.yaml</code> 的存取控制，把 bot 鎖給你自己用。
+          沒設的話，任何人找到你的 bot 就能操控你的 agent。
+        </p>
+        <ol class="space-y-2 text-sm text-text-secondary list-decimal list-inside">
+          <li>在 Telegram 搜尋 <a href="https://t.me/userinfobot" class="text-accent hover:underline">@userinfobot</a>。</li>
+          <li>對它發送任意訊息。</li>
+          <li>它會回覆你的 User ID（純數字）。</li>
+        </ol>
+        <figure class="mt-4 max-w-xs">
+          <img src={img('telegram-03-userinfobot.png')} alt="在 Telegram 搜尋欄輸入 @userinfobot" width="239" height="59" loading="lazy" class="rounded-lg border border-border w-full" />
+          <figcaption class="mt-2 text-xs text-text-muted">搜尋 @userinfobot</figcaption>
+        </figure>
+        <p class="text-sm text-text-secondary mt-4">
+          <code class="font-mono text-accent">agend quickstart</code> 會問你這個值並自動寫入：
+        </p>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary mt-3">channel:
+  access:
+    mode: locked
+    allowed_users:
+      - '951494522'    # 你的 user ID</pre>
+        <p class="text-sm text-text-secondary mt-3">要跟同事共用的話，把他們的 User ID 一起加進清單。</p>
+      </div>
+
+      <!-- 6 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
+          <h3 class="font-semibold text-text-primary">執行 quickstart 並啟動 fleet</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Telegram，貼上 token 和你的 user ID
+agend fleet start     # 啟動</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          接著在 Group 的 General topic 傳一則訊息。Bot 有回你就完成了，之後就能陸續加專案 instance。
+        </p>
+      </div>
+    </div>
+
+    <!-- 常見問題 -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">常見問題</h2>
+    <div class="overflow-x-auto mb-14 rounded-xl border border-border bg-surface p-5">
+      <table class="w-full text-sm text-left border-collapse">
+        <thead>
+          <tr class="text-text-primary border-b border-border">
+            <th class="py-2 pr-4 font-semibold">問題</th>
+            <th class="py-2 pr-4 font-semibold">原因</th>
+            <th class="py-2 font-semibold">解法</th>
+          </tr>
+        </thead>
+        <tbody class="text-text-secondary">
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot 不回覆</td>
+            <td class="py-3 pr-4">Bot 未設為 Admin</td>
+            <td class="py-3">Group 設定 → Administrators → 加入 Bot</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">無法建立 Topic</td>
+            <td class="py-3 pr-4">缺少 <span class="font-mono">Manage Topics</span></td>
+            <td class="py-3">編輯 Bot 的 Admin 權限，開啟 Manage Topics</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot 收不到訊息</td>
+            <td class="py-3 pr-4">Group Privacy 還開著</td>
+            <td class="py-3">BotFather → <span class="font-mono">/mybots</span> → Bot Settings → Group Privacy → Turn off</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Group ID 格式錯</td>
+            <td class="py-3 pr-4">沒用完整 ID</td>
+            <td class="py-3">Supergroup ID 以 <span class="font-mono">-100</span> 開頭，例如 <span class="font-mono">-1001234567890</span></td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4">同事無法使用</td>
+            <td class="py-3 pr-4">只允許一個 user</td>
+            <td class="py-3">把他的 User ID 加到 <span class="font-mono">allowed_users</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      想用 Discord？看 <a href={discordHref} class="text-accent hover:underline">Discord Bot 設定教學</a>。
+      Windows 使用者可參考 <a href={`${base}zh-tw/install-windows/`} class="text-accent hover:underline">Windows 安裝指南</a>。
+    </div>
+  </section>
+</Base>

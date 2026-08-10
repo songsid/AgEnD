@@ -11,6 +11,9 @@ const steps = [data.quickstart.step1, data.quickstart.step2, data.quickstart.ste
 const base = import.meta.env.BASE_URL;
 const win = data.quickstart.windows;
 const winHref = `${base.replace(/\/$/, '')}${win.href}`;
+const bot = data.quickstart.botSetup;
+const botTgHref = `${base.replace(/\/$/, '')}${bot.telegramHref}`;
+const botDcHref = `${base.replace(/\/$/, '')}${bot.discordHref}`;
 ---
 
 <section id="quickstart" class="py-28 relative noise">
@@ -30,6 +33,12 @@ const winHref = `${base.replace(/\/$/, '')}${win.href}`;
       <p class="text-center text-sm mt-2">
         <span class="text-text-muted">{win.label}</span>
         <a href={winHref} class="text-accent hover:underline ml-1">{win.text}</a>
+      </p>
+      <p class="text-center text-sm mt-2">
+        <span class="text-text-muted">{bot.label}</span>
+        <a href={botTgHref} class="text-accent hover:underline ml-1">{bot.telegram}</a>
+        <span class="text-text-muted mx-1">·</span>
+        <a href={botDcHref} class="text-accent hover:underline">{bot.discord}</a>
       </p>
     </div>
 

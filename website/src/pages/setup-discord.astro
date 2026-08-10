@@ -1,0 +1,238 @@
+---
+import Base from '../layouts/Base.astro';
+
+const locale = 'en' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const img = (name: string) => `${base}setup/${name}`;
+const zhHref = `${base}zh-tw/setup-discord/`;
+const telegramHref = `${base}setup-telegram/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={base} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; Back to home</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Bot setup · Discord</span>
+        <a href={zhHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">中文</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Discord Bot Setup</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        AgEnD runs on Discord through your own bot application: a forum channel gives each agent
+        instance its own thread, and ClassicBot slash commands work in any text channel.
+        This guide covers creating the server, creating the application, and getting the
+        <b class="text-text-primary">Bot Token</b> that <code class="font-mono text-accent">agend quickstart</code> asks for.
+        Takes about 5 minutes.
+      </p>
+      <p class="mt-3 text-sm text-text-muted">
+        Screenshots are from a Traditional Chinese Discord client; the English labels are named in the text.
+      </p>
+    </div>
+
+    <!-- Step 0: dedicated server -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Use a dedicated server</h2>
+    <div class="mb-6 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">Create a brand-new Discord server just for AgEnD, and don't invite anyone else.</b>
+      Everyone who can post in the channels can drive your agents, and your agents can read and write
+      files in your projects. Treat the server as a terminal on your machine.
+    </div>
+    <div class="grid sm:grid-cols-2 gap-4 mb-14">
+      <figure>
+        <img src={img('discord-01-new-server.png')} alt="The plus button at the bottom of the Discord server sidebar" width="111" height="166" loading="lazy" class="rounded-lg border border-border" />
+        <figcaption class="mt-2 text-xs text-text-muted">Sidebar → <b class="text-text-secondary">+</b> (Add a Server)</figcaption>
+      </figure>
+      <figure>
+        <img src={img('discord-02-create-own.png')} alt="Discord server creation dialog with the Create My Own option" width="456" height="565" loading="lazy" class="rounded-lg border border-border w-full" />
+        <figcaption class="mt-2 text-xs text-text-muted">Choose <b class="text-text-secondary">Create My Own</b> and finish the wizard</figcaption>
+      </figure>
+    </div>
+
+    <!-- Steps -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">Create the bot application</h2>
+    <div class="space-y-6 mb-14">
+      <!-- Step 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">Open the Developer Portal</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          Sign in at <a href="https://discord.com/developers/applications" class="text-accent hover:underline">discord.com/developers/applications</a>
+          and click <b class="text-text-primary">New Application</b>.
+        </p>
+        <img src={img('discord-03-portal.png')} alt="Discord Developer Portal applications list with the New Application button" width="853" height="233" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- Step 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">Name the application</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          Give it any name — this becomes your bot's display name in Discord. Accept the terms and create it.
+        </p>
+        <img src={img('discord-04-app-info.png')} alt="Dialog for entering a new Discord application name" width="428" height="222" loading="lazy" class="rounded-lg border border-border" />
+      </div>
+
+      <!-- Step 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">Copy the Bot Token</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          Go to the <b class="text-text-primary">Bot</b> tab → <b class="text-text-primary">Reset Token</b> → copy the value.
+          Discord shows a token exactly once, so save it now — <code class="font-mono text-accent">agend quickstart</code> will ask for it.
+        </p>
+        <img src={img('discord-05-bot-token.png')} alt="Discord Bot tab showing the Reset Token button" width="1031" height="665" loading="lazy" class="rounded-lg border border-border w-full" />
+        <div class="mt-4 rounded-lg border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">Never commit or share the token.</b> Anyone holding it fully controls your bot.
+          If it leaks, hit <b class="text-text-primary">Reset Token</b> and re-run <code class="font-mono text-accent">agend quickstart</code>.
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">4</span>
+          <h3 class="font-semibold text-text-primary">Enable the privileged intents</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          Still on the <b class="text-text-primary">Bot</b> tab, scroll to <b class="text-text-primary">Privileged Gateway Intents</b>.
+          AgEnD needs <b class="text-text-primary">Message Content Intent</b> to read your messages at all —
+          without it the bot connects but never sees what you type. Turning on all three (as pictured) is
+          also fine and avoids surprises later. Click <b class="text-text-primary">Save Changes</b>.
+        </p>
+        <img src={img('discord-06-intents.png')} alt="Discord Privileged Gateway Intents section with all three toggles enabled" width="1242" height="578" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- Step 5 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">5</span>
+          <h3 class="font-semibold text-text-primary">Open OAuth2 → URL Generator</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          This is where you build the invite link for your bot.
+        </p>
+        <img src={img('discord-07-oauth2-url-generator.png')} alt="Discord OAuth2 section with URL Generator selected" width="1066" height="595" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- Step 6 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
+          <h3 class="font-semibold text-text-primary">Select the scopes</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          Check <code class="font-mono text-accent">bot</code> and <code class="font-mono text-accent">applications.commands</code>.
+          The second one is what makes <code class="font-mono text-accent">/start</code>, <code class="font-mono text-accent">/chat</code>
+          and <code class="font-mono text-accent">/stop</code> available.
+        </p>
+        <img src={img('discord-08-scopes.png')} alt="OAuth2 scope checkboxes with bot and applications.commands selected" width="1219" height="558" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- Step 7 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">7</span>
+          <h3 class="font-semibold text-text-primary">Select the bot permissions</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          In <b class="text-text-primary">Bot Permissions</b>, tick <b class="text-text-primary">Administrator</b>.
+          On your own dedicated server this is the simplest option — the bot has to create channels and threads,
+          manage messages, and post everywhere.
+        </p>
+        <img src={img('discord-09-admin-permission.png')} alt="OAuth2 bot permissions with Administrator checked" width="1208" height="471" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- Step 8 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">8</span>
+          <h3 class="font-semibold text-text-primary">Invite the bot to your server</h3>
+        </div>
+        <p class="text-sm text-text-secondary">
+          Copy the generated URL at the bottom of the page, paste it into your browser, and pick the
+          server you created in step 0. The bot appears offline until AgEnD is running — that's expected.
+        </p>
+      </div>
+
+      <!-- Step 9 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
+          <h3 class="font-semibold text-text-primary">Run quickstart and start the fleet</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # pick Discord, paste the bot token
+agend fleet start     # launch</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          Quickstart sets up both <code class="font-mono text-accent">fleet.yaml</code> and
+          <code class="font-mono text-accent">classicBot.yaml</code>. Send a message in the server so the bot
+          detects the channel and your user, and you're live.
+        </p>
+      </div>
+    </div>
+
+    <!-- Joining someone else's server -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">Adding the bot to a server you don't own</h2>
+    <p class="text-sm text-text-secondary mb-4">
+      If you only want ClassicBot slash commands (<code class="font-mono text-accent">/start</code>,
+      <code class="font-mono text-accent">/chat</code>, <code class="font-mono text-accent">/stop</code>) in an existing
+      server, Administrator is not needed. Grant the narrower set below instead.
+    </p>
+    <img src={img('discord-10-external-bot-permissions.png')} alt="A narrower set of Discord bot permissions, without Administrator" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
+    <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+      Control which servers may use ClassicBot with <code class="font-mono text-accent">allowed_guilds</code> in
+      <code class="font-mono text-accent">~/.agend/classicBot.yaml</code>. Leaving it empty allows every server the bot is in.
+      <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
+  backend: claude-code
+  allowed_guilds:
+    - "123456789012345678"</pre>
+    </div>
+
+    <!-- Troubleshooting -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">Troubleshooting</h2>
+    <div class="overflow-x-auto mb-14 rounded-xl border border-border bg-surface p-5">
+      <table class="w-full text-sm text-left border-collapse">
+        <thead>
+          <tr class="text-text-primary border-b border-border">
+            <th class="py-2 pr-4 font-semibold">Symptom</th>
+            <th class="py-2 pr-4 font-semibold">Cause</th>
+            <th class="py-2 font-semibold">Fix</th>
+          </tr>
+        </thead>
+        <tbody class="text-text-secondary">
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot is online but ignores messages</td>
+            <td class="py-3 pr-4">Message Content Intent off</td>
+            <td class="py-3">Bot tab → Privileged Gateway Intents → enable → Save Changes → restart the fleet</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Slash commands don't show up</td>
+            <td class="py-3 pr-4">Missing <span class="font-mono">applications.commands</span> scope</td>
+            <td class="py-3">Re-generate the invite URL with that scope and re-invite the bot</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot can't create channels or threads</td>
+            <td class="py-3 pr-4">Insufficient permissions</td>
+            <td class="py-3">Give it Administrator on your own server, or grant Manage Channels / Manage Threads</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4"><span class="font-mono">/start</span> rejected in a server</td>
+            <td class="py-3 pr-4">Server not whitelisted</td>
+            <td class="py-3">Add the guild ID to <span class="font-mono">allowed_guilds</span> in <span class="font-mono">classicBot.yaml</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      Prefer Telegram? See the <a href={telegramHref} class="text-accent hover:underline">Telegram bot setup guide</a>.
+      On Windows, the <a href={`${base}install-windows/`} class="text-accent hover:underline">Windows installation guide</a> covers the rest.
+    </div>
+  </section>
+</Base>

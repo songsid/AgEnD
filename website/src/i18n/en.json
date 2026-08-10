@@ -135,6 +135,13 @@
       "text": "See the Windows Installation Guide",
       "href": "/install-windows/"
     },
+    "botSetup": {
+      "label": "Need to create the bot first?",
+      "telegram": "Telegram bot setup",
+      "telegramHref": "/setup-telegram/",
+      "discord": "Discord bot setup",
+      "discordHref": "/setup-discord/"
+    },
     "step1": {
       "label": "Install",
       "cmd": "npm install -g @songsid/agend"

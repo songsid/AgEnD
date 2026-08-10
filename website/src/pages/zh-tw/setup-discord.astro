@@ -1,0 +1,231 @@
+---
+import Base from '../../layouts/Base.astro';
+
+const locale = 'zh-tw' as const;
+const rawBase = import.meta.env.BASE_URL;
+const base = rawBase.endsWith('/') ? rawBase : `${rawBase}/`;
+const img = (name: string) => `${base}setup/${name}`;
+const enHref = `${base}setup-discord/`;
+const telegramHref = `${base}zh-tw/setup-telegram/`;
+const homeHref = `${base}zh-tw/`;
+---
+
+<Base locale={locale}>
+  <section class="mx-auto max-w-3xl px-6 pt-28 pb-16">
+    <!-- Header -->
+    <div class="mb-10">
+      <a href={homeHref} class="text-sm text-text-secondary hover:text-text-primary transition-colors">&larr; 回首頁</a>
+      <div class="mt-4 flex items-center justify-between gap-4">
+        <span class="text-xs font-mono uppercase tracking-wider text-accent">Bot 設定 · Discord</span>
+        <a href={enHref} class="text-sm text-text-secondary border border-border rounded-lg px-3 py-1.5 hover:text-text-primary hover:border-text-secondary transition-colors">English</a>
+      </div>
+      <h1 class="mt-3 text-4xl font-extrabold tracking-tight text-text-primary">Discord Bot 設定教學</h1>
+      <p class="mt-4 text-lg text-text-secondary leading-relaxed">
+        AgEnD 在 Discord 上靠你自己的 bot application 運作：forum 頻道讓每個 agent instance 各佔一個 thread，
+        ClassicBot 的斜線指令則可在任何文字頻道使用。這份教學帶你開 server、建立 application，
+        並取得 <code class="font-mono text-accent">agend quickstart</code> 會問你的 <b class="text-text-primary">Bot Token</b>。
+        大約 5 分鐘。
+      </p>
+    </div>
+
+    <!-- 專用 server -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">開一個專用的 Discord Server</h2>
+    <div class="mb-6 rounded-xl border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+      <b class="text-text-primary">請開一個全新的 Discord Server 專門給 AgEnD 用，不要邀請其他人。</b>
+      任何能在頻道發言的人都能操控你的 agent，而 agent 能讀寫你專案裡的檔案 ——
+      把這個 server 當成你電腦上的終端機看待。
+    </div>
+    <div class="grid sm:grid-cols-2 gap-4 mb-14">
+      <figure>
+        <img src={img('discord-01-new-server.png')} alt="Discord 左側欄底部的加號（新增伺服器）" width="111" height="166" loading="lazy" class="rounded-lg border border-border" />
+        <figcaption class="mt-2 text-xs text-text-muted">左側欄 → <b class="text-text-secondary">+</b>（新增伺服器）</figcaption>
+      </figure>
+      <figure>
+        <img src={img('discord-02-create-own.png')} alt="Discord 建立伺服器對話框，選擇「建立自己的」" width="456" height="565" loading="lazy" class="rounded-lg border border-border w-full" />
+        <figcaption class="mt-2 text-xs text-text-muted">選擇<b class="text-text-secondary">建立自己的</b>，走完精靈</figcaption>
+      </figure>
+    </div>
+
+    <!-- 步驟 -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">建立 Bot Application</h2>
+    <div class="space-y-6 mb-14">
+      <!-- 1 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">1</span>
+          <h3 class="font-semibold text-text-primary">登入 Developer Portal</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          到 <a href="https://discord.com/developers/applications" class="text-accent hover:underline">discord.com/developers/applications</a>
+          登入，點 <b class="text-text-primary">New Application</b>。
+        </p>
+        <img src={img('discord-03-portal.png')} alt="Discord Developer Portal 的 application 列表與 New Application 按鈕" width="853" height="233" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- 2 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">2</span>
+          <h3 class="font-semibold text-text-primary">設定應用程式基本資訊</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          取個名字（這會成為 bot 在 Discord 的顯示名稱），同意條款後建立。
+        </p>
+        <img src={img('discord-04-app-info.png')} alt="輸入 Discord application 名稱的對話框" width="428" height="222" loading="lazy" class="rounded-lg border border-border" />
+      </div>
+
+      <!-- 3 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">3</span>
+          <h3 class="font-semibold text-text-primary">取得 Bot Token</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          進入 <b class="text-text-primary">Bot</b> 頁籤 → <b class="text-text-primary">Reset Token</b> → 複製。
+          Discord 只會顯示一次，馬上存下來 —— <code class="font-mono text-accent">agend quickstart</code> 會用到。
+        </p>
+        <img src={img('discord-05-bot-token.png')} alt="Discord Bot 頁籤的 Reset Token 按鈕" width="1031" height="665" loading="lazy" class="rounded-lg border border-border w-full" />
+        <div class="mt-4 rounded-lg border border-error/30 bg-error/5 p-4 text-sm text-text-secondary">
+          <b class="text-text-primary">絕對不要 commit 或外流 token。</b>拿到的人可以完全操控你的 bot。
+          真的洩漏了就按 <b class="text-text-primary">Reset Token</b>，再跑一次 <code class="font-mono text-accent">agend quickstart</code>。
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">4</span>
+          <h3 class="font-semibold text-text-primary">開啟 Privileged Intents</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          還在 <b class="text-text-primary">Bot</b> 頁籤，往下找 <b class="text-text-primary">Privileged Gateway Intents</b>。
+          AgEnD 必須要有 <b class="text-text-primary">Message Content Intent</b> 才讀得到你的訊息 ——
+          沒開的話 bot 連得上線但看不到你打什麼。三個一起開（如圖）也沒問題，可以少踩後面的雷。
+          最後按 <b class="text-text-primary">Save Changes</b>。
+        </p>
+        <img src={img('discord-06-intents.png')} alt="Discord Privileged Gateway Intents 三個開關全部開啟" width="1242" height="578" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- 5 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">5</span>
+          <h3 class="font-semibold text-text-primary">進入 OAuth2 → URL Generator</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">在這裡產生 bot 的邀請連結。</p>
+        <img src={img('discord-07-oauth2-url-generator.png')} alt="Discord OAuth2 區塊，選擇 URL Generator" width="1066" height="595" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- 6 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">6</span>
+          <h3 class="font-semibold text-text-primary">勾選 Scopes</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          勾 <code class="font-mono text-accent">bot</code> 和 <code class="font-mono text-accent">applications.commands</code>。
+          後者才會有 <code class="font-mono text-accent">/start</code>、<code class="font-mono text-accent">/chat</code>、
+          <code class="font-mono text-accent">/stop</code> 這些斜線指令。
+        </p>
+        <img src={img('discord-08-scopes.png')} alt="OAuth2 scope 勾選 bot 與 applications.commands" width="1219" height="558" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- 7 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">7</span>
+          <h3 class="font-semibold text-text-primary">設定 Bot 權限</h3>
+        </div>
+        <p class="text-sm text-text-secondary mb-4">
+          在 <b class="text-text-primary">Bot Permissions</b> 勾 <b class="text-text-primary">Administrator</b>（管理員）。
+          在自己的專用 server 上這是最省事的選擇 —— bot 需要建立頻道與 thread、管理訊息、在各處發言。
+        </p>
+        <img src={img('discord-09-admin-permission.png')} alt="OAuth2 bot 權限勾選 Administrator" width="1208" height="471" loading="lazy" class="rounded-lg border border-border w-full" />
+      </div>
+
+      <!-- 8 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">8</span>
+          <h3 class="font-semibold text-text-primary">邀請 Bot 到你的 Server</h3>
+        </div>
+        <p class="text-sm text-text-secondary">
+          複製頁面底部產生的 URL，貼到瀏覽器，選你剛開的 server。
+          在 AgEnD 啟動前 bot 會顯示離線，這是正常的。
+        </p>
+      </div>
+
+      <!-- 9 -->
+      <div class="rounded-xl border border-border bg-surface p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-bg text-sm font-bold">9</span>
+          <h3 class="font-semibold text-text-primary">執行 quickstart 並啟動 fleet</h3>
+        </div>
+        <pre class="bg-raised border border-border rounded-lg p-4 overflow-x-auto text-sm font-mono text-text-primary">agend quickstart      # 選 Discord，貼上 bot token
+agend fleet start     # 啟動</pre>
+        <p class="text-sm text-text-secondary mt-3">
+          quickstart 會一起設好 <code class="font-mono text-accent">fleet.yaml</code> 和
+          <code class="font-mono text-accent">classicBot.yaml</code>。在 server 傳一則訊息讓 bot 偵測頻道和你的帳號，就上線了。
+        </p>
+      </div>
+    </div>
+
+    <!-- 外部 server -->
+    <h2 class="text-2xl font-bold text-text-primary mb-5">加到別人的 Server（外部 Bot 權限）</h2>
+    <p class="text-sm text-text-secondary mb-4">
+      如果只是要在既有 server 用 ClassicBot 斜線指令（<code class="font-mono text-accent">/start</code>、
+      <code class="font-mono text-accent">/chat</code>、<code class="font-mono text-accent">/stop</code>），
+      <b class="text-text-primary">不需要管理員權限</b>，給下圖這組較小的權限就好。
+    </p>
+    <img src={img('discord-10-external-bot-permissions.png')} alt="不含管理員的較小 Discord bot 權限組合" width="1568" height="754" loading="lazy" class="rounded-lg border border-border w-full mb-4" />
+    <div class="mb-14 rounded-xl border border-accent/30 bg-accent-dim p-4 text-sm text-text-secondary">
+      用 <code class="font-mono text-accent">~/.agend/classicBot.yaml</code> 的 <code class="font-mono text-accent">allowed_guilds</code>
+      控制哪些 server 可以使用 ClassicBot。留空 = bot 所在的所有 server 都可以。
+      <pre class="bg-raised border border-border rounded-lg p-3 overflow-x-auto text-sm font-mono text-text-primary mt-3">defaults:
+  backend: claude-code
+  allowed_guilds:
+    - "123456789012345678"</pre>
+    </div>
+
+    <!-- 常見問題 -->
+    <h2 class="text-2xl font-bold text-text-primary mb-6">常見問題</h2>
+    <div class="overflow-x-auto mb-14 rounded-xl border border-border bg-surface p-5">
+      <table class="w-full text-sm text-left border-collapse">
+        <thead>
+          <tr class="text-text-primary border-b border-border">
+            <th class="py-2 pr-4 font-semibold">問題</th>
+            <th class="py-2 pr-4 font-semibold">原因</th>
+            <th class="py-2 font-semibold">解法</th>
+          </tr>
+        </thead>
+        <tbody class="text-text-secondary">
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot 上線但不理訊息</td>
+            <td class="py-3 pr-4">Message Content Intent 沒開</td>
+            <td class="py-3">Bot 頁籤 → Privileged Gateway Intents → 開啟 → Save Changes → 重啟 fleet</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">看不到斜線指令</td>
+            <td class="py-3 pr-4">缺 <span class="font-mono">applications.commands</span> scope</td>
+            <td class="py-3">重新產生含該 scope 的邀請 URL，再邀請一次</td>
+          </tr>
+          <tr class="border-b border-border/50">
+            <td class="py-3 pr-4">Bot 無法建立頻道或 thread</td>
+            <td class="py-3 pr-4">權限不足</td>
+            <td class="py-3">在自己的 server 給 Administrator，或至少開 Manage Channels / Manage Threads</td>
+          </tr>
+          <tr>
+            <td class="py-3 pr-4"><span class="font-mono">/start</span> 被拒絕</td>
+            <td class="py-3 pr-4">Server 未在白名單</td>
+            <td class="py-3">把 guild ID 加進 <span class="font-mono">classicBot.yaml</span> 的 <span class="font-mono">allowed_guilds</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="border-t border-border pt-8 text-sm text-text-muted">
+      想用 Telegram？看 <a href={telegramHref} class="text-accent hover:underline">Telegram Bot 設定教學</a>。
+      Windows 使用者可參考 <a href={`${base}zh-tw/install-windows/`} class="text-accent hover:underline">Windows 安裝指南</a>。
+    </div>
+  </section>
+</Base>
