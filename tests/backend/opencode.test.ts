@@ -87,34 +87,16 @@ describe("OpenCodeBackend", () => {
   });
 
   describe("getSessionId", () => {
-    const sqlite = (process as { getBuiltinModule?: (id: string) => unknown })
-      .getBuiltinModule?.("node:sqlite") as
-      | { DatabaseSync: new (path: string, opts?: { readOnly?: boolean }) => {
-          exec(sql: string): void;
-          prepare(sql: string): { run(...params: unknown[]): unknown };
-          close(): void;
-        } }
-      | undefined;
-    const DATA_HOME = join(TEST_DIR, "xdg-data");
-    let savedXdg: string | undefined;
-
-    function seedDb(rows: Array<{ id: string; directory: string; parentId?: string | null; created: number; updated: number }>): void {
-      mkdirSync(join(DATA_HOME, "opencode"), { recursive: true });
-      const db = new sqlite!.DatabaseSync(join(DATA_HOME, "opencode", "opencode.db"));
-      db.exec("CREATE TABLE IF NOT EXISTS session (id TEXT PRIMARY KEY, directory TEXT NOT NULL, parent_id TEXT, time_created INTEGER NOT NULL, time_updated INTEGER NOT NULL)");
-      const insert = db.prepare("INSERT INTO session (id, directory, parent_id, time_created, time_updated) VALUES (?, ?, ?, ?, ?)");
-      for (const r of rows) insert.run(r.id, r.directory, r.parentId ?? null, r.created, r.updated);
-      db.close();
+    // Discovery reads `opencode session list --format json` — the official
+    // CLI output — via the listSessions() seam, which these tests stub with
+    // fixture rows (shape verified against opencode 1.18.15: id, title,
+    // updated, created, projectId, directory; global list, newest first).
+    function stubSessions(
+      backend: OpenCodeBackend,
+      rows: Array<{ id: string; directory: string; created?: number; updated?: number; parentID?: string }> | null,
+    ): void {
+      (backend as unknown as { listSessions: () => typeof rows }).listSessions = () => rows;
     }
-
-    beforeEach(() => {
-      savedXdg = process.env.XDG_DATA_HOME;
-      process.env.XDG_DATA_HOME = DATA_HOME;
-    });
-    afterEach(() => {
-      if (savedXdg === undefined) delete process.env.XDG_DATA_HOME;
-      else process.env.XDG_DATA_HOME = savedXdg;
-    });
 
     it("falls back to the persisted session-id file before any spawn", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "ses_persisted\n");
@@ -127,20 +109,20 @@ describe("OpenCodeBackend", () => {
       expect(backend.getSessionId()).toBeNull();
     });
 
-    it.skipIf(!sqlite)("discovers the session created in our cwd after spawn", () => {
+    it("discovers the session created in our cwd after spawn", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
-      seedDb([
-        { id: "ses_ours", directory: WORK_DIR, created: Date.now() + 1000, updated: Date.now() + 2000 },
+      stubSessions(backend, [
         { id: "ses_other_dir", directory: "/somewhere/else", created: Date.now() + 1000, updated: Date.now() + 3000 },
+        { id: "ses_ours", directory: WORK_DIR, created: Date.now() + 1000, updated: Date.now() + 2000 },
       ]);
       expect(backend.getSessionId()).toBe("ses_ours");
     });
 
-    it.skipIf(!sqlite)("checkpoints a lazily-created session on the first idle edge", () => {
+    it("checkpoints a lazily-created session on the first idle edge", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
-      seedDb([
+      stubSessions(backend, [
         { id: "ses_runtime", directory: WORK_DIR, created: Date.now() + 1000, updated: Date.now() + 2000 },
       ]);
       const daemon = new Daemon("test-oc", {
@@ -162,48 +144,50 @@ describe("OpenCodeBackend", () => {
       expect(readFileSync(join(TEST_DIR, "session-id"), "utf-8")).toBe("ses_runtime");
     });
 
-    it.skipIf(!sqlite)("never adopts a session created before our spawn (hijack guard)", () => {
+    it("never adopts a session created before our spawn (hijack guard)", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
-      seedDb([
+      stubSessions(backend, [
         { id: "ses_manual_older", directory: WORK_DIR, created: Date.now() - 60_000, updated: Date.now() + 5000 },
       ]);
       expect(backend.getSessionId()).toBeNull();
     });
 
-    it.skipIf(!sqlite)("accepts the exact session we resumed with despite its old creation time", () => {
+    it("accepts the exact session we resumed with despite its old creation time", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "ses_resumed");
       const backend = new OpenCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain("--session ses_resumed");
-      seedDb([
+      stubSessions(backend, [
         { id: "ses_resumed", directory: WORK_DIR, created: Date.now() - 60_000, updated: Date.now() + 1000 },
       ]);
       expect(backend.getSessionId()).toBe("ses_resumed");
     });
 
-    it.skipIf(!sqlite)("ignores subagent child sessions", () => {
+    it("ignores subagent child sessions", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
-      seedDb([
-        { id: "ses_child", directory: WORK_DIR, parentId: "ses_parent", created: Date.now() + 1000, updated: Date.now() + 5000 },
+      stubSessions(backend, [
+        { id: "ses_child", directory: WORK_DIR, parentID: "ses_parent", created: Date.now() + 1000, updated: Date.now() + 5000 },
       ]);
       expect(backend.getSessionId()).toBeNull();
     });
 
-    it.skipIf(!sqlite)("prefers the most recently updated qualifying session (post-/new tracking)", () => {
+    it("prefers the most recently updated qualifying session (post-/new tracking)", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
-      seedDb([
+      // Deliberately NOT newest-first: discovery must sort, not trust CLI order.
+      stubSessions(backend, [
         { id: "ses_first", directory: WORK_DIR, created: Date.now() + 1000, updated: Date.now() + 2000 },
         { id: "ses_second", directory: WORK_DIR, created: Date.now() + 3000, updated: Date.now() + 4000 },
       ]);
       expect(backend.getSessionId()).toBe("ses_second");
     });
 
-    it.skipIf(!sqlite)("returns null when the DB does not exist", () => {
+    it("returns null when the CLI listing fails", () => {
       const backend = new OpenCodeBackend(TEST_DIR);
       backend.buildCommand(makeConfig());
+      stubSessions(backend, null);
       expect(backend.getSessionId()).toBeNull();
     });
   });
