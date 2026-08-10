@@ -734,6 +734,7 @@ export class Daemon extends EventEmitter {
   private instanceStateReadyPattern: RegExp | null = null;
   private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
+  private sessionCheckpointWarningEmitted = false;
   private statePollInFlight = false;
   // ── Dead-MCP proxy reply: per-turn evidence ─────────────────────────────
   // Set when an inbound message lands in the CLI; cleared on the idle edge that
@@ -2097,6 +2098,15 @@ export class Daemon extends EventEmitter {
   private applyInstanceStateSnapshot(snapshot: InstanceStateSnapshot, pane?: string): void {
     const previous = this.instanceState;
     this.instanceState = snapshot.state;
+
+    // OpenCode creates its session lazily on the first submitted message.
+    // Waiting until stop/pause to persist that id loses resume state when the
+    // fleet is SIGKILLed or the host reboots.
+    // Idle observations are safe checkpoints; the 60s safety sweep also gives
+    // us a bounded retry if session creation produced no visible state edge.
+    if (snapshot.state === "idle" && this.backend?.binaryName === "opencode") {
+      this.saveSessionId();
+    }
 
     // Only a transition back to idle completes pending work. Repeated idle
     // observations between enqueue and paste must not clear a newer inbound.
@@ -3700,9 +3710,25 @@ export class Daemon extends EventEmitter {
     // When a resume failure has forced a fresh start, don't persist the stale id
     // back from statusline.json — that would re-arm --continue and re-loop.
     if (this.skipResume) return;
-    const sid = this.backend?.getSessionId();
-    if (sid) {
-      writeFileSync(join(this.instanceDir, "session-id"), sid);
+    try {
+      const sid = this.backend?.getSessionId();
+      if (!sid) return;
+      const path = join(this.instanceDir, "session-id");
+      // Idle observations happen after turns. Avoid needless writes (and mtime
+      // churn) while still updating the marker when /new changes the session.
+      try {
+        if (readFileSync(path, "utf-8").trim() === sid) return;
+      } catch { /* first checkpoint */ }
+      writeFileSync(path, sid);
+      this.sessionCheckpointWarningEmitted = false;
+      this.logger.debug("Session id checkpointed");
+    } catch (err) {
+      // Session discovery is best-effort and must never break the pane state
+      // monitor. Existing stop/pause checkpoints get another chance later.
+      if (!this.sessionCheckpointWarningEmitted) {
+        this.sessionCheckpointWarningEmitted = true;
+        this.logger.warn({ err: (err as Error).message }, "Session id checkpoint failed");
+      }
     }
   }
 

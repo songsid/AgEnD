@@ -3,9 +3,13 @@ import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node
 import { join } from "node:path";
 import { OpenCodeBackend } from "../../src/backend/opencode.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
+import { Daemon } from "../../src/daemon.js";
+import pino from "pino";
+import type { Logger } from "../../src/logger.js";
 
 const TEST_DIR = "/tmp/ccd-test-opencode-backend";
 const WORK_DIR = "/tmp/ccd-test-opencode-workdir";
+const rootLogger = pino({ level: "silent" }) as Logger;
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {
@@ -131,6 +135,31 @@ describe("OpenCodeBackend", () => {
         { id: "ses_other_dir", directory: "/somewhere/else", created: Date.now() + 1000, updated: Date.now() + 3000 },
       ]);
       expect(backend.getSessionId()).toBe("ses_ours");
+    });
+
+    it.skipIf(!sqlite)("checkpoints a lazily-created session on the first idle edge", () => {
+      const backend = new OpenCodeBackend(TEST_DIR);
+      backend.buildCommand(makeConfig());
+      seedDb([
+        { id: "ses_runtime", directory: WORK_DIR, created: Date.now() + 1000, updated: Date.now() + 2000 },
+      ]);
+      const daemon = new Daemon("test-oc", {
+        working_directory: WORK_DIR,
+        restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+        context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+        log_level: "silent",
+      } as any, TEST_DIR, false, backend, undefined, rootLogger) as Daemon & Record<string, any>;
+
+      daemon.instanceState = "working";
+      const now = Date.now();
+      daemon.applyInstanceStateSnapshot({
+        state: "idle",
+        unchangedForMs: 0,
+        observedAt: now,
+        stateChangedAt: now,
+      });
+
+      expect(readFileSync(join(TEST_DIR, "session-id"), "utf-8")).toBe("ses_runtime");
     });
 
     it.skipIf(!sqlite)("never adopts a session created before our spawn (hijack guard)", () => {
