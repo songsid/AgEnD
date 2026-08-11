@@ -25,6 +25,7 @@ Use the **Task Board** (`task` tool) for multi-step work:
 ## Context Protection
 
 - **Images**: Use your CLI's built-in subagent/task feature to read images (saves main context). Do NOT use `create_instance` or `delegate_task` for this.
+- **Reactions**: When reacting to messages, avoid these AgEnD system emojis: 👀 ⏳ ✅ ❌ (used for delivery status). Use other emojis instead (e.g. 👍 🎉 for acknowledgment).
 - **Large searches**: use subagents (Agent tool) instead of reading many files directly
 - **Big codebases**: glob/grep for specific targets, don't read entire directories
 - **Long conversations**: summarize decisions into Shared Decisions before context fills up
