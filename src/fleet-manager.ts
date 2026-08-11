@@ -238,6 +238,10 @@ interface CancelButtonEntry {
   lastProgressEditAt?: number;
   /** Pending coalesced tool-progress edit. */
   progressEditTimer?: ReturnType<typeof setTimeout>;
+  /** Last non-empty semantic tool list rendered into this bubble. Kept on the
+   * entry (rather than only in the per-instance live cache) so the daemon's
+   * end-of-turn reset cannot erase the history immediately before retirement. */
+  toolProgress?: string;
 }
 
 /**
@@ -3857,7 +3861,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.getInstanceIdle(instanceName)) {
       this.clearCancelButton(instanceName);
     } else {
-      void this.sendCancelButton(instanceName).then(() => this.armReplyGrace(instanceName));
+      void this.sendCancelButton(instanceName, undefined, true).then(() => this.armReplyGrace(instanceName));
     }
     this.reactDone(instanceName);
     const replyTo = this.lastInboundUser.get(instanceName) ?? "user";
@@ -5407,7 +5411,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
-  async sendCancelButton(instanceName: string, correlationId?: string): Promise<void> {
+  async sendCancelButton(instanceName: string, correlationId?: string, preserveProgress = false): Promise<void> {
     // Post first, retire after (see the tail of this method). Retiring up front
     // meant that from the delete until the new message came back — a chat API
     // round trip, and every reply goes through here — the instance had NO live
@@ -5468,6 +5472,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // not re-edit identical text — which put a "(edited)" mark on Discord
         // with nothing visibly changed.
         lastProgressText: "👀 處理中…",
+        // A reply can re-post the same in-flight bubble below the reply. Carry
+        // its current list into that replacement; fresh inbound work must start
+        // empty even if the daemon's reset broadcast is still in flight.
+        toolProgress: preserveProgress ? this.instanceProgress.get(instanceName) : undefined,
       };
       this.startProgressTicker(entry);
       // Idle-check backstop: every 5min, if the instance is idle, retire the
@@ -5570,12 +5578,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (progress) this.instanceProgress.set(name, progress);
     else this.instanceProgress.delete(name);
     for (const entry of this.cancelButtons.values()) {
-      if (entry.instanceName === name) this.scheduleProgressEdit(entry);
+      if (entry.instanceName !== name) continue;
+      // Empty means the daemon completed/reset the turn. Clear the live cache
+      // for the next turn, but retain this bubble's last non-empty list so its
+      // retirement can preserve the history instead of deleting the message.
+      if (progress) entry.toolProgress = progress;
+      this.scheduleProgressEdit(entry);
     }
   }
 
   /** At most one progress-driven edit per bubble per TOOL_PROGRESS_EDIT_MIN_MS. */
   private scheduleProgressEdit(entry: CancelButtonEntry): void {
+    if (entry.retiring) return;
     const since = Date.now() - (entry.lastProgressEditAt ?? 0);
     if (since >= TOOL_PROGRESS_EDIT_MIN_MS) {
       this.refreshBubble(entry);
@@ -5600,7 +5614,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Date.now() - (entry.startedAt ?? Date.now()),
       this.instanceActivity.get(entry.instanceName),
       this.progressMinElapsedMs(),
-      this.instanceProgress.get(entry.instanceName),
+      entry.toolProgress,
     );
   }
 
@@ -5622,7 +5636,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Recompose and edit the bubble in place; skips when nothing changed. */
   private refreshBubble(entry: CancelButtonEntry): void {
-    if (!this.cancelButtons.has(entry.messageId)) {
+    if (entry.retiring || !this.cancelButtons.has(entry.messageId)) {
       clearInterval(entry.progressTimer);
       return;
     }
@@ -5719,7 +5733,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deleteButtonMessage(entry)
       .then(() => {
         this.discardButton(entry);
-        this.logger.info({ instanceName: entry.instanceName, messageId: entry.messageId }, "Cancel button removed");
+        this.logger.info(
+          { instanceName: entry.instanceName, messageId: entry.messageId, historyPreserved: Boolean(entry.toolProgress) },
+          "Cancel button retired",
+        );
       })
       .catch((err: Error) => this.scheduleButtonRetry(entry, err));
   }
@@ -5807,11 +5824,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     entry.retryTimer = setTimeout(() => this.attemptButtonDelete(entry), CANCEL_BTN_RETRY_INTERVAL_MS);
   }
 
-  /** Delete one button's message via its own adapter. Resolves on success,
+  /** Retire one cancel bubble via its own adapter. A bubble that accumulated
+   * tool progress is kept as a read-only history message; a plain bubble keeps
+   * the legacy delete/edit-to-checkmark behavior. Resolves on success and
    * rejects on failure so the caller can retry. */
   private deleteButtonMessage(e: CancelButtonEntry): Promise<void> {
     const adapter = (e.adapterId ? this.worlds.get(e.adapterId)?.adapter : undefined) ?? this.adapter;
     if (!adapter) return Promise.reject(new Error("no adapter for cancel button"));
+    if (e.toolProgress && adapter.editMessageRemoveButtons) {
+      return adapter.editMessageRemoveButtons(
+        e.chatId,
+        e.messageId,
+        this.composeBubbleText(e),
+        e.threadId,
+      );
+    }
     if (adapter.deleteMessage) return adapter.deleteMessage(e.chatId, e.messageId, e.threadId);
     if (adapter.editMessageRemoveButtons) return adapter.editMessageRemoveButtons(e.chatId, e.messageId, "✅", e.threadId);
     return adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId);
