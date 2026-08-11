@@ -7,6 +7,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -25,6 +26,7 @@ const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
 const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
 const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
+const SQLITE_SIDECAR_RE = /-(?:wal|shm|journal)$/;
 
 /**
  * Remove AgEnD-owned MCP tables from a Codex TOML config without touching
@@ -282,8 +284,35 @@ export class CodexBackend implements CliBackend {
       this.migrateDivergedSessionDir(dir);
     }
 
+    // Older versions linked SQLite's WAL/SHM files independently of their
+    // base database. If the base file had already been created privately,
+    // that split one SQLite database across two homes and caused CANTOPEN (or
+    // worse, cross-database journal recovery). Remove only links AgEnD made to
+    // the matching shared-home path; real private sidecars remain untouched.
+    const healedSidecars: string[] = [];
+    for (const name of readdirSync(this.isolatedCodexHome)) {
+      if (!SQLITE_SIDECAR_RE.test(name)) continue;
+      const target = join(this.isolatedCodexHome, name);
+      try {
+        if (!lstatSync(target).isSymbolicLink()) continue;
+        const linkTarget = resolve(dirname(target), readlinkSync(target));
+        if (linkTarget !== join(this.sharedCodexHome, name)) continue;
+        unlinkSync(target);
+        healedSidecars.push(name);
+      } catch {
+        // A concurrent process may remove an ephemeral sidecar/link first.
+      }
+    }
+    if (healedSidecars.length > 0) {
+      console.warn(`[agend] removed unsafe Codex SQLite sidecar links: ${healedSidecars.join(", ")}`);
+    }
+
     for (const name of readdirSync(this.sharedCodexHome)) {
       if (name === "config.toml" || name === AGEND_MCP_CLEANUP_LOCK || name.startsWith(".config.toml.")) continue;
+      // SQLite resolves a symlinked base DB to the shared path and creates its
+      // own adjacent sidecars there. Linking sidecars separately is redundant
+      // for shared bases and corrupts the file set for private bases.
+      if (SQLITE_SIDECAR_RE.test(name)) continue;
       const source = join(this.sharedCodexHome, name);
       const target = join(this.isolatedCodexHome, name);
       if (existsSync(target)) continue;
