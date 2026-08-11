@@ -1,0 +1,8 @@
+title = "AgEnD gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Known fake JWT used to verify progress-log redaction"
+paths = ['''^tests/tool-progress\.test\.ts$''']
