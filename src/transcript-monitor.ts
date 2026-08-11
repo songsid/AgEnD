@@ -3,19 +3,37 @@ import { open, stat } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
+import type { TranscriptSource } from "./transcript-sources.js";
 
+/**
+ * Emits tool_use / tool_result / assistant_text events off the CLI's own
+ * conversation record.
+ *
+ * Two modes:
+ *  - claude-code (default): follow the transcript JSONL named by
+ *    statusline.json, with a persisted byte offset. Built in because it
+ *    predates the pluggable sources.
+ *  - other backends: delegate to a {@link TranscriptSource} (codex rollouts,
+ *    kiro session JSONL, opencode sqlite — see transcript-sources.ts).
+ */
 export class TranscriptMonitor extends EventEmitter {
-  private fd: number | null = null;
   private byteOffset: number = 0;
   private transcriptPath: string | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private offsetFile: string;
   private polling = false; // reentry guard for pollIncrement
 
-  constructor(private instanceDir: string, private logger: Logger) {
+  constructor(
+    private instanceDir: string,
+    private logger: Logger,
+    private source: TranscriptSource | null = null,
+  ) {
     super();
     this.offsetFile = join(instanceDir, "transcript-offset");
-    this.loadOffset();
+    // Persisted offsets are only meaningful for the claude-code transcript;
+    // sources re-resolve and re-baseline themselves (a stale byte offset into
+    // a codex rollout that no longer exists would be nonsense).
+    if (!this.source) this.loadOffset();
   }
 
   private loadOffset(): void {
@@ -31,6 +49,7 @@ export class TranscriptMonitor extends EventEmitter {
   }
 
   private saveOffset(): void {
+    if (this.source) return;
     try {
       writeFileSync(this.offsetFile, JSON.stringify({
         offset: this.byteOffset,
@@ -61,28 +80,53 @@ export class TranscriptMonitor extends EventEmitter {
     if (this.polling) return;
     this.polling = true;
     try {
-      await this._doPoll();
+      if (this.source) {
+        await this.pollSource();
+      } else {
+        await this._doPoll();
+      }
     } finally {
       this.polling = false;
     }
   }
 
+  private async pollSource(): Promise<void> {
+    try {
+      const events = await this.source!.poll();
+      for (const use of events.toolUses) this.emit("tool_use", use.name, use.input);
+      for (const result of events.toolResults) this.emit("tool_result", result.name, undefined);
+      for (const text of events.assistantTexts) this.emit("assistant_text", text);
+    } catch (err) {
+      this.logger.debug({ err }, "TranscriptSource poll error");
+    }
+  }
+
   private async _doPoll(): Promise<void> {
-    if (!this.transcriptPath) {
-      this.transcriptPath = await this.resolveTranscriptPath();
-      if (!this.transcriptPath) return;
-      // If we have a saved offset for a different path, reset
-      // If no saved offset, skip to end (first run)
-      if (this.byteOffset === 0) {
+    // Always compare against the freshly resolved path — never just "do I
+    // have a path". A resumed claude-code writes a NEW transcript after a
+    // restart; a monitor pinned to the persisted previous path watches a file
+    // that never grows again and reports nothing, with no error (#528 trap 1).
+    const current = await this.resolveTranscriptPath();
+    if (current && current !== this.transcriptPath) {
+      const replacedKnownTranscript = this.transcriptPath !== null;
+      this.transcriptPath = current;
+      if (replacedKnownTranscript) {
+        // Work resumed during our own startup must be observable → read the
+        // replacement from the top.
+        this.byteOffset = 0;
+        this.saveOffset();
+      } else {
+        // First-ever attach: baseline to EOF so history does not replay.
         try {
-          const initial = await stat(this.transcriptPath);
-          this.byteOffset = initial.size;
-          this.saveOffset();
-          return;
-        } catch { return; }
+          this.byteOffset = (await stat(current)).size;
+        } catch {
+          this.byteOffset = 0;
+        }
+        this.saveOffset();
+        return;
       }
     }
-    if (!existsSync(this.transcriptPath)) return;
+    if (!this.transcriptPath || !existsSync(this.transcriptPath)) return;
 
     try {
       const stats = await stat(this.transcriptPath);
@@ -155,6 +199,7 @@ export class TranscriptMonitor extends EventEmitter {
   resetOffset(): void {
     this.byteOffset = 0;
     this.transcriptPath = null;
+    this.source?.reset();
     this.saveOffset();
   }
 }

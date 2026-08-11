@@ -120,6 +120,12 @@ export interface InstanceConfig {
   kiro_ui?: "legacy" | "tui" | "v3";
   /** MCP tool profile: "full" (20 tools), "standard" (8), "minimal" (3). Default: "full" */
   tool_set?: string;
+  /**
+   * Tool-progress detail shown in the channel processing bubble.
+   * "standard" (default) shows semantic labels with no shell arguments;
+   * "verbose" adds truncated command previews; "off" disables the list.
+   */
+  tool_progress?: "off" | "standard" | "verbose";
   /** Skip non-essential subsystems (transcript monitor, context guardian, approval server, prompt detector) */
   lightweight?: boolean;
   /** System prompt — supports comma-separated file: paths for modularization */
