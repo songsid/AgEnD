@@ -241,6 +241,9 @@ describe("retiring a tool-progress bubble preserves its history", () => {
         expect.stringContaining(history),
         "123",
       );
+      const retainedText = editMessageRemoveButtons.mock.calls[0][2] as string;
+      expect(retainedText).toMatch(/^🧾 工具歷程 \(記錄至 /);
+      expect(retainedText).not.toContain("處理中");
       expect(deleteMessage).not.toHaveBeenCalled();
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -279,6 +282,7 @@ describe("retiring a tool-progress bubble preserves its history", () => {
       await vi.waitFor(() => expect(internals.cancelButtons.size).toBe(0));
       expect(editMessageRemoveButtons).toHaveBeenCalledTimes(2);
       expect(editMessageRemoveButtons.mock.calls[1][2]).toContain(history);
+      expect(editMessageRemoveButtons.mock.calls[1][2]).not.toContain("處理中");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
