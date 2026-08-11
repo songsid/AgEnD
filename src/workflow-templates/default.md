@@ -24,7 +24,7 @@ Use the **Task Board** (`task` tool) for multi-step work:
 
 ## Context Protection
 
-- **Images**: Always use subagents to read/analyze images. Never read image files directly in your main context — they consume massive token budget. Delegate image reading to a subagent and receive only the text summary back.
+- **Images**: Use your CLI's built-in subagent/task feature to read images (saves main context). Do NOT use `create_instance` or `delegate_task` for this.
 - **Large searches**: use subagents (Agent tool) instead of reading many files directly
 - **Big codebases**: glob/grep for specific targets, don't read entire directories
 - **Long conversations**: summarize decisions into Shared Decisions before context fills up
