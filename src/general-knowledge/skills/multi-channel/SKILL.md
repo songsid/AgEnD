@@ -1,6 +1,7 @@
 ---
 name: multi-channel
 description: Setting up multiple platforms (Telegram + Discord) with proper general routing
+roles: [general]
 ---
 
 ## Multi-Channel Setup

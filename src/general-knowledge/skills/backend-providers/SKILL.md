@@ -1,6 +1,7 @@
 ---
 name: backend-providers
 description: Configure custom model providers when creating or editing AgEnD Codex or OpenCode instances. Use for local, OpenAI-compatible, GLM, or other non-default provider endpoints and for backend_options provider selection.
+roles: [general]
 ---
 
 # Backend Providers

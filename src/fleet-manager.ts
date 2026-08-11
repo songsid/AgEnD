@@ -77,6 +77,8 @@ import { RestartProgress, type RestartProgressTarget } from "./restart-progress.
 
 import { getTmuxSession } from "./config.js";
 
+type ManagedSkillRole = "general" | "worker";
+
 export function resolveReplyThreadId(
   argsThreadId: unknown,
   instanceConfig?: InstanceConfig,
@@ -1252,19 +1254,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name }, "Instance already running, skipping");
       return;
     }
+    const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
     if (config.general_topic) {
       // antigravity (agy) does not read MCP instructions — fleet context and
       // routing instructions are not injected, so it cannot act as a dispatcher.
-      const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
       if (backend === "antigravity") {
         this.logger.warn({ name }, "antigravity backend does not support MCP instructions — general dispatcher will not work correctly");
         this.notifyInstanceTopic(name, "⚠️ antigravity backend is not supported for General instances (no MCP instructions injection). Switch to claude-code or kiro-cli.");
       }
-      this.ensureGeneralInstructions(config.working_directory, config.backend, name);
+      this.ensureGeneralInstructions(config.working_directory, backend, name);
+    } else if (kind === "fleet-topic") {
+      // Workers get only role-eligible on-demand skills. Classic instances are
+      // deliberately excluded: their workspace and conversation lifecycle are
+      // managed independently from fleet-topic workers.
+      try {
+        const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
+        this.syncRoleSkills(skillsWorkDir, backend, "worker");
+      } catch (err) {
+        // Skill publishing is additive. A read-only or temporarily unavailable
+        // workspace must not turn an otherwise valid worker startup into a
+        // fleet outage.
+        this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
+      }
     }
     await this.lifecycle.start(name, config, topicMode, {
       kind,
-      backend: config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code",
+      backend,
       model: this.resolveInstanceModel(name).display,
     });
     // Only clear a stale process status after a real start succeeded.  Clearing
@@ -5918,6 +5933,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Ensure the general instance has its project instructions file + knowledge */
   private ensureGeneralInstructions(workDir: string, backendName?: string, instanceName?: string): void {
     const backend = backendName ?? "claude-code";
+    workDir = this.resolveKnowledgeWorkDir(workDir, backend, instanceName);
+    const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
+    const filePath = join(workDir, filename);
+    mkdirSync(dirname(filePath), { recursive: true });
+    if (!existsSync(filePath)) {
+      writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
+      this.logger.info({ filePath }, "Created general instance instructions file");
+    }
+    // Sync bundled knowledge files to general's steering and skills directories.
+    this.syncGeneralKnowledge(workDir, backend);
+  }
+
+  /** Resolve the workspace path a backend actually uses before publishing knowledge. */
+  private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
     // Some backends relocate their real cwd (agy moves hidden paths to
     // ~/agend-workspaces/<name>). Instructions and skills must land where the
     // CLI actually runs, not where fleet.yaml points.
@@ -5926,15 +5955,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         .resolveWorkingDirectory?.(workDir, instanceName);
       if (resolved) workDir = resolved;
     } catch { /* unknown backend name — keep the raw path */ }
-    const filename = FleetManager.INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
-    const filePath = join(workDir, filename);
-    mkdirSync(dirname(filePath), { recursive: true });
-    if (!existsSync(filePath)) {
-      writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
-      this.logger.info({ filePath }, "Created general instance instructions file");
-    }
-    // Sync bundled knowledge files to general's steering directory
-    this.syncGeneralKnowledge(workDir, backend);
+    return workDir;
   }
 
   /**
@@ -5955,19 +5976,26 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     "antigravity": [".agents", "skills"],
   };
 
-  /** Copy general-knowledge steering + skills to the general instance's workspace */
+  /** Copy general-knowledge steering + all role-eligible skills to General. */
   private syncGeneralKnowledge(workDir: string, backend: string): void {
     const knowledgeDir = join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
     if (!existsSync(knowledgeDir)) return;
 
     this.syncGeneralSteering(workDir, backend, join(knowledgeDir, "steering"));
 
-    const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
-    if (skillSegments) {
-      this.syncManagedSkills(join(workDir, ...skillSegments), join(knowledgeDir, "skills"));
-    }
+    this.syncRoleSkills(workDir, backend, "general", knowledgeDir);
 
     this.logger.debug({ knowledgeDir, workDir, backend }, "Synced general knowledge files");
+  }
+
+  /** Publish only the bundled skills eligible for an instance role. */
+  private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string): void {
+    const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
+    if (!skillSegments) return;
+    const root = knowledgeDir ?? join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
+    if (!existsSync(root)) return;
+    this.syncManagedSkills(join(workDir, ...skillSegments), join(root, "skills"), role);
+    this.logger.debug({ workDir, backend, role }, "Synced role-based bundled skills");
   }
 
   /**
@@ -6028,7 +6056,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * touched — even if a future bundle happens to reuse its name (the sync
    * then skips it and logs, rather than overwrite the user's work).
    */
-  private syncManagedSkills(destSkills: string, srcSkills: string): void {
+  private syncManagedSkills(destSkills: string, srcSkills: string, role: ManagedSkillRole): void {
     if (!existsSync(srcSkills)) return;
     mkdirSync(destSkills, { recursive: true });
     const manifestPath = join(destSkills, ".agend-managed-skills.json");
@@ -6041,9 +6069,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const bundled = readdirSync(srcSkills)
       .filter(name => existsSync(join(srcSkills, name, "SKILL.md")))
       .sort();
+    const eligible = bundled.filter(name => {
+      const roles = this.readManagedSkillRoles(join(srcSkills, name, "SKILL.md"));
+      // General is the coordinator and receives both coordinator and worker
+      // playbooks. Workers receive only skills explicitly marked for workers.
+      return role === "general" || roles.includes("worker");
+    });
     const managed: string[] = [];
 
-    for (const name of bundled) {
+    for (const name of eligible) {
       const destDir = join(destSkills, name);
       const dest = join(destDir, "SKILL.md");
       const isOurs = previouslyManaged.includes(name) || !existsSync(destDir);
@@ -6060,9 +6094,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       writeFileSync(dest, newContent);
     }
 
-    // Remove managed skills that are no longer bundled (rename/retirement).
+    // Remove managed skills that are no longer bundled OR no longer eligible
+    // for this role. This makes a shared → general-only metadata change take
+    // effect on the next worker startup instead of leaving stale capability.
     for (const stale of previouslyManaged) {
-      if (bundled.includes(stale)) continue;
+      if (eligible.includes(stale)) continue;
       try {
         rmSync(join(destSkills, stale), { recursive: true, force: true });
         this.logger.info({ skill: stale, destSkills }, "Removed retired AgEnD-managed skill");
@@ -6075,6 +6111,33 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       writeFileSync(manifestPath, JSON.stringify(managed, null, 2) + "\n");
     } catch (err) {
       this.logger.debug({ err, manifestPath }, "Failed to write managed-skills manifest");
+    }
+  }
+
+  /** Read AgEnD's roles extension from SKILL.md YAML frontmatter. */
+  private readManagedSkillRoles(skillPath: string): ManagedSkillRole[] {
+    const fallback: ManagedSkillRole[] = ["general"];
+    try {
+      const content = readFileSync(skillPath, "utf-8");
+      const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+      if (!match) return fallback;
+      const document = parseDocument(match[1]);
+      if (document.errors.length > 0) throw document.errors[0];
+      const frontmatter = document.toJS() as { roles?: unknown } | null;
+      if (!frontmatter || frontmatter.roles === undefined) return fallback;
+      if (!Array.isArray(frontmatter.roles)) throw new Error("roles must be an array");
+      const roles = [...new Set(frontmatter.roles)]
+        .filter((value): value is ManagedSkillRole => value === "general" || value === "worker");
+      if (roles.length !== frontmatter.roles.length || roles.length === 0) {
+        throw new Error("roles must contain only general and/or worker");
+      }
+      return roles;
+    } catch (err) {
+      // Fail closed for workers: malformed or unknown metadata keeps the
+      // backwards-compatible General-only behavior instead of leaking an
+      // administrative skill into worker workspaces.
+      this.logger.warn({ err, skillPath }, "Invalid bundled skill roles — defaulting to General only");
+      return fallback;
     }
   }
 

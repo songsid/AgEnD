@@ -1,6 +1,7 @@
 ---
 name: delegation-playbook
 description: Delegation protocol, loop prevention, parallel vs sequential execution, result/failure handling, team management, and instance configuration tips for the fleet coordinator
+roles: [general]
 ---
 
 ## Delegation Protocol

@@ -1,10 +1,12 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { buildMcpCoreInstructions } from "../src/instructions.js";
+import { DEFAULT_INSTANCE_CONFIG } from "../src/config.js";
+import type { InstanceConfig } from "../src/types.js";
 
 // Skills used to reach only Kiro General (.kiro/skills); Claude and Codex have
 // native on-demand skill directories too (.claude/skills, .agents/skills) and
@@ -42,9 +44,14 @@ describe("cross-backend skill publishing", () => {
     expect(existsSync(join(workDir, skillsDir, "delegation-playbook", "SKILL.md"))).toBe(true);
     expect(existsSync(join(workDir, skillsDir, "development-workflow", "SKILL.md"))).toBe(true);
     expect(existsSync(join(workDir, skillsDir, "fleet-health", "SKILL.md"))).toBe(true);
+    // General receives worker-only playbooks too so it understands the worker contract.
+    expect(existsSync(join(workDir, skillsDir, "worker-collaboration", "SKILL.md"))).toBe(true);
     // The manifest records ownership for future syncs.
     const manifest = JSON.parse(readFileSync(join(workDir, skillsDir, ".agend-managed-skills.json"), "utf-8"));
-    expect(manifest).toContain("delegation-playbook");
+    const bundled = readdirSync(join(process.cwd(), "src", "general-knowledge", "skills"))
+      .filter(name => existsSync(join(process.cwd(), "src", "general-knowledge", "skills", name, "SKILL.md")))
+      .sort();
+    expect(manifest).toEqual(bundled);
   });
 
   it("publishes no skills for backends without a native skill mechanism", () => {
@@ -110,6 +117,98 @@ describe("cross-backend skill publishing", () => {
     const first = readFileSync(skillPath, "utf-8");
     sync("codex");
     expect(readFileSync(skillPath, "utf-8")).toBe(first);
+  });
+
+  it("worker startup publishes only shared and worker skills", async () => {
+    const config: InstanceConfig = {
+      ...DEFAULT_INSTANCE_CONFIG,
+      working_directory: workDir,
+      backend: "codex",
+    };
+    (fm as any).fleetConfig = { defaults: {}, instances: { worker: config } };
+    vi.spyOn((fm as any).lifecycle, "start").mockResolvedValue(undefined);
+    vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
+
+    await fm.startInstance("worker", config, false, "fleet-topic");
+
+    const skills = join(workDir, ".agents", "skills");
+    const published = readdirSync(skills)
+      .filter(name => !name.startsWith("."))
+      .sort();
+    expect(published).toEqual([
+      "cross-instance-messaging",
+      "model-discovery",
+      "scheduling",
+      "session-management",
+      "tui-effort",
+      "worker-collaboration",
+    ]);
+    expect(existsSync(join(skills, "delegation-playbook"))).toBe(false);
+    expect((fm as any).lifecycle.start).toHaveBeenCalledOnce();
+  });
+
+  it("Classic startup does not publish bundled skills", async () => {
+    const config: InstanceConfig = {
+      ...DEFAULT_INSTANCE_CONFIG,
+      working_directory: workDir,
+      backend: "codex",
+      lightweight: true,
+    };
+    (fm as any).fleetConfig = { defaults: {}, instances: {} };
+    vi.spyOn((fm as any).lifecycle, "start").mockResolvedValue(undefined);
+    vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
+
+    await fm.startInstance("classic-test", config, false, "classic");
+
+    expect(existsSync(join(workDir, ".agents", "skills"))).toBe(false);
+  });
+
+  it("does not block worker startup when additive skill publishing fails", async () => {
+    const config: InstanceConfig = {
+      ...DEFAULT_INSTANCE_CONFIG,
+      working_directory: workDir,
+      backend: "codex",
+    };
+    (fm as any).fleetConfig = { defaults: {}, instances: { worker: config } };
+    vi.spyOn(fm as any, "syncRoleSkills").mockImplementation(() => {
+      throw new Error("read-only workspace");
+    });
+    const lifecycleStart = vi.spyOn((fm as any).lifecycle, "start").mockResolvedValue(undefined);
+    vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
+
+    await expect(fm.startInstance("worker", config, false, "fleet-topic")).resolves.toBeUndefined();
+    expect(lifecycleStart).toHaveBeenCalledOnce();
+  });
+
+  it("treats missing roles as General-only for backward compatibility", () => {
+    const source = join(workDir, "source");
+    const legacy = join(source, "legacy-skill");
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, "SKILL.md"), "---\nname: legacy-skill\ndescription: Legacy metadata\n---\n");
+
+    const workerDest = join(workDir, "worker-skills");
+    (fm as any).syncManagedSkills(workerDest, source, "worker");
+    expect(existsSync(join(workerDest, "legacy-skill"))).toBe(false);
+
+    const generalDest = join(workDir, "general-skills");
+    (fm as any).syncManagedSkills(generalDest, source, "general");
+    expect(existsSync(join(generalDest, "legacy-skill", "SKILL.md"))).toBe(true);
+  });
+
+  it("removes a managed worker skill when its role becomes General-only", () => {
+    const source = join(workDir, "source");
+    const skill = join(source, "changing-skill");
+    const dest = join(workDir, "worker-skills");
+    mkdirSync(skill, { recursive: true });
+    writeFileSync(join(skill, "SKILL.md"), "---\nname: changing-skill\ndescription: Test\nroles: [worker]\n---\n");
+    (fm as any).syncManagedSkills(dest, source, "worker");
+    expect(existsSync(join(dest, "changing-skill"))).toBe(true);
+
+    writeFileSync(join(skill, "SKILL.md"), "---\nname: changing-skill\ndescription: Test\nroles: [general]\n---\n");
+    (fm as any).syncManagedSkills(dest, source, "worker");
+
+    expect(existsSync(join(dest, "changing-skill"))).toBe(false);
+    expect(JSON.parse(readFileSync(join(dest, ".agend-managed-skills.json"), "utf-8"))).toEqual([]);
   });
 });
 

@@ -1,6 +1,7 @@
 ---
 name: fleet-restart
 description: Fleet restart types, recovery from tmux crash, rate limit handling, safe update
+roles: [general]
 ---
 
 ## Fleet Restart & Recovery

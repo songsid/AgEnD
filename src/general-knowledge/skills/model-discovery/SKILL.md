@@ -1,6 +1,7 @@
 ---
 name: model-discovery
 description: Set and discover models — pass-through to the CLI, no AgEnD allowlist gate
+roles: [general, worker]
 ---
 
 ## How to set a model

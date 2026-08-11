@@ -1,6 +1,7 @@
 ---
 name: scheduling
 description: Cron, one-shot, and silent schedules via the schedule MCP tools
+roles: [general, worker]
 ---
 
 ## Tools
