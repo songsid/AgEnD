@@ -5527,16 +5527,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   static progressText(elapsedMs: number, activity?: string | null, minElapsedMs = PROGRESS_MIN_ELAPSED_MS): string {
     if (elapsedMs < minElapsedMs) return "👀 處理中…";
-    const totalSeconds = Math.floor(elapsedMs / 1000);
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    const elapsed = minutes >= 60
-      ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-      : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+    const elapsed = FleetManager.formatProgressElapsed(elapsedMs);
     const detail = FleetManager.sanitizeActivity(activity);
     return detail
       ? `⏳ 處理中… (已進行 ${elapsed} · ${detail})`
       : `⏳ 處理中… (已進行 ${elapsed})`;
+  }
+
+  /** Render elapsed time consistently in live and retained progress bubbles. */
+  private static formatProgressElapsed(elapsedMs: number): string {
+    const totalSeconds = Math.floor(elapsedMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return minutes >= 60
+      ? `${Math.floor(minutes / 60)}h ${minutes % 60}m`
+      : `${minutes}m ${String(seconds).padStart(2, "0")}s`;
+  }
+
+  /** Final read-only form of a bubble that contains semantic tool history.
+   * Neutral wording is intentional: the same retirement primitive is used for
+   * normal completion, a mid-turn bubble replacement, and user cancellation,
+   * so claiming every retained checkpoint is "completed" would be false. */
+  private composeRetiredBubbleText(entry: CancelButtonEntry): string {
+    const elapsed = FleetManager.formatProgressElapsed(
+      Date.now() - (entry.startedAt ?? Date.now()),
+    );
+    return `🧾 工具歷程 (記錄至 ${elapsed})\n${entry.toolProgress}`;
   }
 
   /**
@@ -5835,10 +5851,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return adapter.editMessageRemoveButtons(
         e.chatId,
         e.messageId,
-        this.composeBubbleText(e),
+        this.composeRetiredBubbleText(e),
         e.threadId,
       );
     }
+    // All production adapters currently implement editMessageRemoveButtons.
+    // A third-party adapter without it degrades to the legacy delete behavior:
+    // removing a live Cancel control is safer than retaining an actionable,
+    // untracked button forever.
     if (adapter.deleteMessage) return adapter.deleteMessage(e.chatId, e.messageId, e.threadId);
     if (adapter.editMessageRemoveButtons) return adapter.editMessageRemoveButtons(e.chatId, e.messageId, "✅", e.threadId);
     return adapter.editMessage(e.chatId, e.messageId, "✅", e.threadId);
