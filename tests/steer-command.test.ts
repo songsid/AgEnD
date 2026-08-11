@@ -25,7 +25,7 @@ function setup() {
     adapters: new Map(),
     fleetConfig: {
       defaults: {},
-      instances: { worker: { backend: "opencode", working_directory: "/tmp" } },
+      instances: { worker: { backend: "codex", working_directory: "/tmp" } },
     },
     instanceIpcClients: new Map([
       ["worker", { connected: true, send: ipcSend }],
@@ -88,6 +88,26 @@ describe("/steer topic command", () => {
     expect(ipcSend).not.toHaveBeenCalled();
     expect(String(sendText.mock.calls[0][1])).toContain("❌");
   });
+
+  it.each(["kiro-cli", "opencode", "antigravity"])(
+    "tells the user plainly that %s does not support /steer, and sends nothing",
+    async (backend) => {
+      const ipcSend = vi.fn();
+      const sendText = vi.fn().mockResolvedValue({ messageId: "r", chatId: "c" });
+      const commands = new TopicCommands({
+        adapter: { sendText },
+        adapters: new Map(),
+        fleetConfig: { defaults: {}, instances: { worker: { backend, working_directory: "/tmp" } } },
+        instanceIpcClients: new Map([["worker", { connected: true, send: ipcSend }]]),
+        isFleetAdmin: () => false,
+      } as any);
+
+      expect(await commands.handleInstanceCommand(inbound("/steer do it"), "worker")).toBe(true);
+      // An honest refusal, not a silent queue fallback masquerading as a steer.
+      expect(ipcSend).not.toHaveBeenCalled();
+      expect(String(sendText.mock.calls[0][1])).toContain("not supported");
+    },
+  );
 
   it("handles the /steer@botname form", async () => {
     const { commands, ipcSend } = setup();

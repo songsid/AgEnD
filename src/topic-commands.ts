@@ -604,11 +604,25 @@ export class TopicCommands {
    * pastes it into the busy CLI instead of queueing for idle (falling back to
    * the queue if the TUI swallows busy input — see Daemon.steerMessage).
    */
+  /**
+   * Backends whose TUI accepts a busy-pane paste as steering input,
+   * live-verified: claude-code and codex buffer-then-submit at the turn
+   * boundary, grok accepts it in its input line. kiro's legacy TUI swallows
+   * the paste outright, and opencode/antigravity are unverified — for those
+   * the user gets an honest "not supported" instead of a silent queue
+   * fallback that looks like a steer but behaves like a normal message.
+   */
+  private static STEER_SUPPORTED_BACKENDS = new Set(["claude-code", "codex", "grok", "mock"]);
+
   sendSteer(
     instanceName: string,
     content: string,
     msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
   ): string {
+    const backend = this.effectiveBackend(instanceName);
+    if (!TopicCommands.STEER_SUPPORTED_BACKENDS.has(backend)) {
+      return t("steer.unsupported", backend);
+    }
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (!ipc?.connected) return t("steer.not_connected");
     ipc.send({

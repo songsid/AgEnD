@@ -212,7 +212,7 @@ describe("/steer registration covers dispatch (#528 trap 5)", () => {
 
   it("has locale strings for every steer-facing message, in both languages", () => {
     const src = read("locale.ts");
-    for (const key of ['"slash.steer"', '"steer.usage"', '"steer.sent"', '"steer.not_connected"']) {
+    for (const key of ['"slash.steer"', '"steer.usage"', '"steer.sent"', '"steer.not_connected"', '"steer.unsupported"']) {
       expect(src.match(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length ?? 0).toBe(2);
     }
   });
