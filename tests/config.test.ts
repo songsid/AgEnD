@@ -270,3 +270,10 @@ describe("validateFleetConfig — backend_options", () => {
     });
   });
 });
+
+describe("tool_progress default", () => {
+  it("defaults to off — an update must not start broadcasting tool activity unasked", async () => {
+    const { DEFAULT_INSTANCE_CONFIG } = await import("../src/config.js");
+    expect(DEFAULT_INSTANCE_CONFIG.tool_progress).toBe("off");
+  });
+});
