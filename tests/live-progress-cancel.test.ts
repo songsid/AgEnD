@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -187,6 +187,101 @@ describe("bubbleText — the ONE composer for ticker and tool progress", () => {
     const text = FleetManager.bubbleText(5_000, undefined, 30_000, "🧪 執行測試");
     expect(text).toContain("👀 處理中…");
     expect(text).toContain("🧪 執行測試");
+  });
+});
+
+describe("retiring a tool-progress bubble preserves its history", () => {
+  function makeFleet() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-progress-retire-"));
+    const fm = new FleetManager(dir);
+    const notifyAlert = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "g1", threadId: "123" });
+    const editAlert = vi.fn().mockResolvedValue(undefined);
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const deleteMessage = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      id: "telegram",
+      type: "telegram",
+      notifyAlert,
+      editAlert,
+      editMessageRemoveButtons,
+      deleteMessage,
+    };
+    (fm as any).fleetConfig = {
+      defaults: { progress_min_elapsed: 0 },
+      channel: { group_id: "g1" },
+      instances: { alpha: { working_directory: "/tmp", topic_id: "123" } },
+    };
+    (fm as any).adapter = adapter;
+    return {
+      dir,
+      fm,
+      internals: fm as any,
+      notifyAlert,
+      editMessageRemoveButtons,
+      deleteMessage,
+    };
+  }
+
+  it("removes only the button after the daemon clears its completed turn", async () => {
+    const { dir, internals, editMessageRemoveButtons, deleteMessage } = makeFleet();
+    try {
+      const history = "🧪 執行測試\n📄 讀取檔案：src/daemon.ts";
+      await internals.sendCancelButton("alpha");
+      internals.cacheInstanceProgress("alpha", history);
+
+      // The daemon resets progress immediately before broadcasting the idle
+      // edge. This used to erase the list, then delete the whole bubble.
+      internals.cacheInstanceProgress("alpha", null);
+      internals.clearCancelButton("alpha");
+
+      await vi.waitFor(() => expect(internals.cancelButtons.size).toBe(0));
+      expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+        "g1",
+        "m1",
+        expect.stringContaining(history),
+        "123",
+      );
+      expect(deleteMessage).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the legacy delete behavior when no tool progress was shown", async () => {
+    const { dir, internals, editMessageRemoveButtons, deleteMessage } = makeFleet();
+    try {
+      await internals.sendCancelButton("alpha");
+      internals.clearCancelButton("alpha");
+
+      await vi.waitFor(() => expect(internals.cancelButtons.size).toBe(0));
+      expect(deleteMessage).toHaveBeenCalledWith("g1", "m1", "123");
+      expect(editMessageRemoveButtons).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("carries tool history when a mid-turn reply re-posts the bubble", async () => {
+    const { dir, internals, notifyAlert, editMessageRemoveButtons } = makeFleet();
+    try {
+      notifyAlert
+        .mockResolvedValueOnce({ messageId: "m1", chatId: "g1", threadId: "123" })
+        .mockResolvedValueOnce({ messageId: "m2", chatId: "g1", threadId: "123" });
+      const history = "🔧 呼叫工具：reply\n🧪 執行測試";
+      await internals.sendCancelButton("alpha");
+      internals.cacheInstanceProgress("alpha", history);
+
+      await internals.sendCancelButton("alpha", undefined, true);
+      await vi.waitFor(() => expect(internals.cancelButtons.has("m1")).toBe(false));
+      internals.cacheInstanceProgress("alpha", null);
+      internals.clearCancelButton("alpha");
+
+      await vi.waitFor(() => expect(internals.cancelButtons.size).toBe(0));
+      expect(editMessageRemoveButtons).toHaveBeenCalledTimes(2);
+      expect(editMessageRemoveButtons.mock.calls[1][2]).toContain(history);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
