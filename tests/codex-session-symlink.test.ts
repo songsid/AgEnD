@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import Database from "better-sqlite3";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CodexBackend } from "../src/backend/codex.js";
@@ -107,5 +108,101 @@ describe("diverged instance (#506 migration)", () => {
 
     expect(lstatSync(isolated("sessions")).isSymbolicLink()).toBe(true);
     expect(lstatSync(isolated("sessions")).mtimeMs).toBe(before);
+  });
+});
+
+describe("SQLite sidecar isolation", () => {
+  it("links a shared base database but never its WAL or SHM sidecars", () => {
+    mkdirSync(sharedHome, { recursive: true });
+    writeFileSync(join(sharedHome, "queue_1.sqlite"), "shared base");
+    writeFileSync(join(sharedHome, "queue_1.sqlite-wal"), "shared wal");
+    writeFileSync(join(sharedHome, "queue_1.sqlite-shm"), "shared shm");
+
+    prepare();
+
+    expect(lstatSync(isolated("queue_1.sqlite")).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(isolated("queue_1.sqlite"))).toBe(join(sharedHome, "queue_1.sqlite"));
+    expect(existsSync(isolated("queue_1.sqlite-wal"))).toBe(false);
+    expect(existsSync(isolated("queue_1.sqlite-shm"))).toBe(false);
+  });
+
+  it("keeps sidecars local when the isolated base database is private and remains openable", () => {
+    mkdirSync(sharedHome, { recursive: true });
+    mkdirSync(isolated(), { recursive: true });
+
+    const shared = new Database(join(sharedHome, "queue_1.sqlite"));
+    try {
+      shared.pragma("journal_mode = WAL");
+      shared.exec("CREATE TABLE shared_only (value INTEGER); INSERT INTO shared_only VALUES (1)");
+
+      const privateDb = new Database(isolated("queue_1.sqlite"));
+      privateDb.pragma("journal_mode = WAL");
+      privateDb.exec("CREATE TABLE private_only (value INTEGER); INSERT INTO private_only VALUES (9)");
+      privateDb.close();
+
+      prepare();
+
+      expect(lstatSync(isolated("queue_1.sqlite")).isSymbolicLink()).toBe(false);
+      expect(existsSync(isolated("queue_1.sqlite-wal"))).toBe(false);
+      expect(existsSync(isolated("queue_1.sqlite-shm"))).toBe(false);
+      const reopened = new Database(isolated("queue_1.sqlite"));
+      try {
+        expect(reopened.prepare("SELECT value FROM private_only").pluck().get()).toBe(9);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      shared.close();
+    }
+  });
+
+  it("heals legacy WAL and SHM links that point into the shared home", () => {
+    mkdirSync(sharedHome, { recursive: true });
+    mkdirSync(isolated(), { recursive: true });
+    writeFileSync(join(sharedHome, "state_5.sqlite"), "shared base");
+    writeFileSync(join(sharedHome, "state_5.sqlite-wal"), "shared wal");
+    writeFileSync(join(sharedHome, "state_5.sqlite-shm"), "shared shm");
+    writeFileSync(isolated("state_5.sqlite"), "private base");
+    symlinkSync(join(sharedHome, "state_5.sqlite-wal"), isolated("state_5.sqlite-wal"));
+    symlinkSync(join(sharedHome, "state_5.sqlite-shm"), isolated("state_5.sqlite-shm"));
+
+    prepare();
+
+    expect(lstatSync(isolated("state_5.sqlite")).isSymbolicLink()).toBe(false);
+    expect(readFileSync(isolated("state_5.sqlite"), "utf-8")).toBe("private base");
+    expect(existsSync(isolated("state_5.sqlite-wal"))).toBe(false);
+    expect(existsSync(isolated("state_5.sqlite-shm"))).toBe(false);
+  });
+
+  it("does not remove real private sidecars", () => {
+    mkdirSync(sharedHome, { recursive: true });
+    mkdirSync(isolated(), { recursive: true });
+    writeFileSync(join(sharedHome, "local.sqlite-wal"), "shared wal");
+    writeFileSync(join(sharedHome, "local.sqlite-shm"), "shared shm");
+    writeFileSync(isolated("local.sqlite-wal"), "private wal");
+    writeFileSync(isolated("local.sqlite-shm"), "private shm");
+
+    prepare();
+
+    expect(readFileSync(isolated("local.sqlite-wal"), "utf-8")).toBe("private wal");
+    expect(readFileSync(isolated("local.sqlite-shm"), "utf-8")).toBe("private shm");
+  });
+
+  it("never links rollback journals and heals an existing shared-home journal link", () => {
+    mkdirSync(sharedHome, { recursive: true });
+    mkdirSync(isolated(), { recursive: true });
+    writeFileSync(join(sharedHome, "shared.sqlite"), "shared base");
+    writeFileSync(join(sharedHome, "shared.sqlite-journal"), "shared journal");
+    writeFileSync(join(sharedHome, "private.sqlite"), "other shared base");
+    writeFileSync(join(sharedHome, "private.sqlite-journal"), "other shared journal");
+    writeFileSync(isolated("private.sqlite"), "private base");
+    symlinkSync(join(sharedHome, "private.sqlite-journal"), isolated("private.sqlite-journal"));
+
+    prepare();
+
+    expect(lstatSync(isolated("shared.sqlite")).isSymbolicLink()).toBe(true);
+    expect(existsSync(isolated("shared.sqlite-journal"))).toBe(false);
+    expect(lstatSync(isolated("private.sqlite")).isSymbolicLink()).toBe(false);
+    expect(existsSync(isolated("private.sqlite-journal"))).toBe(false);
   });
 });
