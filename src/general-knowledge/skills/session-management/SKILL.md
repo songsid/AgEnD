@@ -1,7 +1,7 @@
 ---
 name: session-management
 description: Session stores, forking, and auth-pause recovery
-roles: [general, worker]
+roles: [general]
 ---
 
 ## Auth failure (auto-pause)

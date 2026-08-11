@@ -19,5 +19,6 @@ Use fleet tools only (`send_to_instance`, `delegate_task`, `request_information`
 
 ## Task flow
 
-- `delegate_task` → silent work → `report_result` (zero ack-only pings)
+- Coordinator flow: `delegate_task` → silent work → `report_result` (zero ack-only pings).
+- Worker flow: finish with `report_result`, or use `request_information` when blocked. A normal worker must not call `delegate_task` or re-delegate work.
 - Cross-instance traffic is `[from:name]` → answer with `send_to_instance` / `report_result`, never `reply`
