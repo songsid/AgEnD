@@ -1,6 +1,7 @@
 ---
 name: instance-lifecycle
 description: restart vs replace vs pause/wake; when to use each
+roles: [general]
 ---
 
 ## Restart vs Replace

@@ -1,6 +1,7 @@
 ---
 name: fleet-health
 description: Check instance health and what an agent is doing; recover a stuck instance
+roles: [general]
 ---
 
 ## Check health

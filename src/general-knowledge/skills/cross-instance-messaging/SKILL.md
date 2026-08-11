@@ -1,6 +1,7 @@
 ---
 name: cross-instance-messaging
 description: Fire-and-queue cross-instance tools — send once, never resend on queued
+roles: [general, worker]
 ---
 
 ## How to send

@@ -1,6 +1,7 @@
 ---
 name: development-workflow
 description: The fleet-wide code-change policy the coordinator enforces when delegating code tasks — stages, review pairing, merge conditions
+roles: [general]
 ---
 
 All code changes across the fleet should follow this workflow.

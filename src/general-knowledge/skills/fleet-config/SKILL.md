@@ -1,6 +1,7 @@
 ---
 name: fleet-config
 description: fleet.yaml and classicBot.yaml structure, validation, common mistakes
+roles: [general]
 ---
 
 ## Configuration Quick Reference
