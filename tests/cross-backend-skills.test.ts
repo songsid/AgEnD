@@ -93,6 +93,48 @@ describe("cross-backend skill publishing", () => {
     expect(existsSync(join(workDir, ".claude", "skills", "delegation-playbook", "SKILL.md"))).toBe(true);
   });
 
+  it("adopts and refreshes pre-manifest Kiro General skills on upgrade", () => {
+    const skills = join(workDir, ".kiro", "skills");
+    const legacyFleetHealth = join(skills, "fleet-health", "SKILL.md");
+    const legacyModelDiscovery = join(skills, "model-discovery", "SKILL.md");
+    mkdirSync(join(skills, "fleet-health"), { recursive: true });
+    mkdirSync(join(skills, "model-discovery"), { recursive: true });
+    writeFileSync(legacyFleetHealth, "legacy fleet-health content\n");
+    writeFileSync(legacyModelDiscovery, "legacy model-discovery content\n");
+    expect(existsSync(join(skills, ".agend-managed-skills.json"))).toBe(false);
+
+    sync("kiro-cli");
+
+    const source = join(process.cwd(), "src", "general-knowledge", "skills");
+    expect(readFileSync(legacyFleetHealth, "utf-8")).toBe(
+      readFileSync(join(source, "fleet-health", "SKILL.md"), "utf-8"),
+    );
+    expect(readFileSync(legacyModelDiscovery, "utf-8")).toBe(
+      readFileSync(join(source, "model-discovery", "SKILL.md"), "utf-8"),
+    );
+    const manifest = JSON.parse(readFileSync(join(skills, ".agend-managed-skills.json"), "utf-8"));
+    expect(manifest).toContain("fleet-health");
+    expect(manifest).toContain("model-discovery");
+  });
+
+  it("does not adopt legacy Kiro skills when the directory also has a user skill", () => {
+    const skills = join(workDir, ".kiro", "skills");
+    const collision = join(skills, "fleet-health", "SKILL.md");
+    const userSkill = join(skills, "my-notes", "SKILL.md");
+    mkdirSync(join(skills, "fleet-health"), { recursive: true });
+    mkdirSync(join(skills, "my-notes"), { recursive: true });
+    writeFileSync(collision, "user-edited fleet-health\n");
+    writeFileSync(userSkill, "my private notes\n");
+
+    sync("kiro-cli");
+
+    expect(readFileSync(collision, "utf-8")).toBe("user-edited fleet-health\n");
+    expect(readFileSync(userSkill, "utf-8")).toBe("my private notes\n");
+    const manifest = JSON.parse(readFileSync(join(skills, ".agend-managed-skills.json"), "utf-8"));
+    expect(manifest).not.toContain("fleet-health");
+    expect(manifest).not.toContain("my-notes");
+  });
+
   it("removes a previously managed skill that is no longer bundled, and only that", () => {
     sync("claude-code");
     const skills = join(workDir, ".claude", "skills");
@@ -139,8 +181,6 @@ describe("cross-backend skill publishing", () => {
       "cross-instance-messaging",
       "model-discovery",
       "scheduling",
-      "session-management",
-      "tui-effort",
       "worker-collaboration",
     ]);
     expect(existsSync(join(skills, "delegation-playbook"))).toBe(false);

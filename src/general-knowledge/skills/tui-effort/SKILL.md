@@ -1,7 +1,7 @@
 ---
 name: tui-effort
 description: 在 Kiro CLI TUI instance 中，透過 tmux 查看或設定模型的 reasoning effort
-roles: [general, worker]
+roles: [general]
 ---
 
 # Kiro TUI Effort

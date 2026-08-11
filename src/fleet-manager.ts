@@ -5994,7 +5994,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!skillSegments) return;
     const root = knowledgeDir ?? join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
     if (!existsSync(root)) return;
-    this.syncManagedSkills(join(workDir, ...skillSegments), join(root, "skills"), role);
+    // Before managed-skill manifests existed, only Kiro General received
+    // bundled skills. Allow that one legacy layout to be adopted so upgrades
+    // can keep those copies current; other backends never had unmanaged
+    // AgEnD-published skills and must retain the normal user-ownership guard.
+    const adoptLegacyUnmanaged = backend === "kiro-cli" && role === "general";
+    this.syncManagedSkills(
+      join(workDir, ...skillSegments),
+      join(root, "skills"),
+      role,
+      adoptLegacyUnmanaged,
+    );
     this.logger.debug({ workDir, backend, role }, "Synced role-based bundled skills");
   }
 
@@ -6054,12 +6064,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * wrote; a bundled rename/removal deletes the stale managed copy, while a
    * skill the user created by hand is never listed and therefore never
    * touched — even if a future bundle happens to reuse its name (the sync
-   * then skips it and logs, rather than overwrite the user's work).
+   * then skips it and logs, rather than overwrite the user's work). The sole
+   * migration exception is the pre-manifest Kiro General layout explicitly
+   * selected by adoptLegacyUnmanaged.
    */
-  private syncManagedSkills(destSkills: string, srcSkills: string, role: ManagedSkillRole): void {
+  private syncManagedSkills(
+    destSkills: string,
+    srcSkills: string,
+    role: ManagedSkillRole,
+    adoptLegacyUnmanaged = false,
+  ): void {
     if (!existsSync(srcSkills)) return;
     mkdirSync(destSkills, { recursive: true });
     const manifestPath = join(destSkills, ".agend-managed-skills.json");
+    const hadManifest = existsSync(manifestPath);
     let previouslyManaged: string[] = [];
     try {
       const parsed = JSON.parse(readFileSync(manifestPath, "utf-8"));
@@ -6069,6 +6087,26 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const bundled = readdirSync(srcSkills)
       .filter(name => existsSync(join(srcSkills, name, "SKILL.md")))
       .sort();
+
+    // Pre-manifest Kiro General copied bundled skills directly into
+    // .kiro/skills. If every existing skill is still a bundled name, this is
+    // the unambiguous legacy layout: adopt it once, update it below, and write
+    // the ownership manifest. Any extra skill name keeps the directory fully
+    // on the user-owned/collision path.
+    if (!hadManifest && adoptLegacyUnmanaged) {
+      const existing = readdirSync(destSkills, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && existsSync(join(destSkills, entry.name, "SKILL.md")))
+        .map(entry => entry.name)
+        .sort();
+      if (existing.length > 0 && existing.every(name => bundled.includes(name))) {
+        previouslyManaged = existing;
+        this.logger.info(
+          { skills: existing, destSkills },
+          "Adopted legacy AgEnD skills into managed ownership",
+        );
+      }
+    }
+
     const eligible = bundled.filter(name => {
       const roles = this.readManagedSkillRoles(join(srcSkills, name, "SKILL.md"));
       // General is the coordinator and receives both coordinator and worker
