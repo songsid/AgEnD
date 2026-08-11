@@ -2533,10 +2533,12 @@ export class Daemon extends EventEmitter {
     });
   }
 
-  /** Effective tool_progress level, hardened against junk config values. */
+  /** Effective tool_progress level, hardened against junk config values.
+   *  Off unless explicitly enabled: an update must never make bubbles start
+   *  listing tool activity the operator did not ask to broadcast. */
   private toolProgressLevel(): "off" | "standard" | "verbose" {
     const raw = this.config.tool_progress;
-    return raw === "off" || raw === "verbose" ? raw : "standard";
+    return raw === "standard" || raw === "verbose" ? raw : "off";
   }
 
   /**

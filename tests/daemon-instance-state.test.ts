@@ -346,3 +346,53 @@ describe("background-session recovery keeps the health loop alive", () => {
     }
   });
 });
+
+describe("tool_progress opt-in gate", () => {
+  function makeGateDaemon(toolProgress?: string) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-tp-gate-"));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("tp-gate", {
+      working_directory: "/tmp",
+      ...(toolProgress ? { tool_progress: toolProgress } : {}),
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      log_level: "silent",
+    } as any, instanceDir, false, { binaryName: "claude" } as any, undefined,
+      { child: () => logger } as any);
+    return { daemon, instanceDir };
+  }
+
+  it.each([
+    [undefined, "off"],
+    ["standard", "standard"],
+    ["verbose", "verbose"],
+    ["garbage", "off"], // junk config values fail closed too
+  ])("config %s → effective level %s", (configured, effective) => {
+    const { daemon, instanceDir } = makeGateDaemon(configured as string | undefined);
+    try {
+      expect((daemon as any).toolProgressLevel()).toBe(effective);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("off means recordToolProgress accumulates nothing", () => {
+    const { daemon, instanceDir } = makeGateDaemon(undefined);
+    try {
+      (daemon as any).recordToolProgress("Bash", { command: "npm test" });
+      expect((daemon as any).turnProgress.isEmpty()).toBe(true);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("standard (explicit) accumulates", () => {
+    const { daemon, instanceDir } = makeGateDaemon("standard");
+    try {
+      (daemon as any).recordToolProgress("Bash", { command: "npm test" });
+      expect((daemon as any).turnProgress.isEmpty()).toBe(false);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+});
