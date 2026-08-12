@@ -4075,7 +4075,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Resolve display name for an instance, fallback to instance name. */
   resolveDisplayName(instanceName: string): string {
-    return this.fleetConfig?.instances[instanceName]?.display_name ?? instanceName;
+    return this.fleetConfig?.instances[instanceName]?.display_name
+      ?? this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName)?.displayName
+      ?? instanceName;
+  }
+
+  /** Persist identity to the instance's actual config store. Classic instances
+   * are registry rows in classicBot.yaml, not fleet.yaml instance entries. */
+  private setInstanceDisplayName(instanceName: string, displayName: string): boolean {
+    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    if (fleetInstance) {
+      fleetInstance.display_name = displayName;
+      this.saveFleetConfig();
+      return true;
+    }
+    return this.classicChannels?.setDisplayNameByInstance(instanceName, displayName) ?? false;
+  }
+
+  private setInstanceDescription(instanceName: string, description: string): boolean {
+    const fleetInstance = this.fleetConfig?.instances[instanceName];
+    if (fleetInstance) {
+      fleetInstance.description = description;
+      this.saveFleetConfig();
+      return true;
+    }
+    return this.classicChannels?.setDescriptionByInstance(instanceName, description) ?? false;
   }
 
   private handleSetDisplayName(instanceName: string, msg: Record<string, unknown>): void {
@@ -4090,8 +4114,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    this.fleetConfig.instances[instanceName].display_name = displayName;
-    this.saveFleetConfig();
+    if (!this.setInstanceDisplayName(instanceName, displayName)) {
+      ipc.send({ type: "fleet_display_name_response", fleetRequestId, error: `Instance '${instanceName}' not found` });
+      return;
+    }
     this.logger.info({ instanceName, displayName }, "Display name set");
     ipc.send({ type: "fleet_display_name_response", fleetRequestId, result: { display_name: displayName } });
   }
@@ -4108,8 +4134,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    this.fleetConfig.instances[instanceName].description = description;
-    this.saveFleetConfig();
+    if (!this.setInstanceDescription(instanceName, description)) {
+      ipc.send({ type: "fleet_description_response", fleetRequestId, error: `Instance '${instanceName}' not found` });
+      return;
+    }
     this.logger.info({ instanceName, description: description.slice(0, 80) }, "Description set");
     ipc.send({ type: "fleet_description_response", fleetRequestId, result: { description } });
   }
@@ -4232,16 +4260,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async handleSetDisplayNameHttp(instance: string, name: string): Promise<unknown> {
     if (!this.fleetConfig) return { error: "Fleet config not available" };
     if (!name || name.length > 30) return { error: "Name must be 1-30 characters" };
-    this.fleetConfig.instances[instance].display_name = name;
-    this.saveFleetConfig();
+    if (!this.setInstanceDisplayName(instance, name)) return { error: `Instance '${instance}' not found` };
     return { display_name: name };
   }
 
   async handleSetDescriptionHttp(instance: string, description: string): Promise<unknown> {
     if (!this.fleetConfig) return { error: "Fleet config not available" };
     if (!description) return { error: "Description cannot be empty" };
-    this.fleetConfig.instances[instance].description = description;
-    this.saveFleetConfig();
+    if (!this.setInstanceDescription(instance, description)) return { error: `Instance '${instance}' not found` };
     return { description };
   }
 
@@ -7512,6 +7538,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.daemons.has(instanceName)) return;
     const workDir = join(getAgendHome(), "workspaces", instanceName);
     ensureWorkspaceGit(workDir);
+    const classicIdentity = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
       ...this.fleetConfig?.defaults,
@@ -7519,6 +7546,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       lightweight: true,
       ...(backend ? { backend } : {}),
       ...(model ? { model } : {}),
+      ...(classicIdentity?.displayName ? { display_name: classicIdentity.displayName } : {}),
+      ...(classicIdentity?.description ? { description: classicIdentity.description } : {}),
       ...(autoPauseAfter !== undefined ? { auto_pause_after: autoPauseAfter } : {}),
       ...(preTaskCommand ? { pre_task_command: preTaskCommand } : {}),
     };

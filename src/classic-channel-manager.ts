@@ -49,6 +49,8 @@ export interface ClassicChannel {
   instanceName: string;
   backend?: string;
   model?: string;
+  displayName?: string;
+  description?: string;
   autoPauseAfter?: number;
   collab?: boolean;
   preTaskCommand?: string;
@@ -69,6 +71,8 @@ interface ClassicBotYaml {
     name?: string;
     backend?: string;
     model?: string;
+    display_name?: string;
+    description?: string;
     auto_pause_after?: number;
     context_lines?: number;
     collab?: boolean;
@@ -274,6 +278,8 @@ export class ClassicChannelManager {
               instanceName,
               backend: val.backend,
               model: val.model,
+              displayName: val.display_name,
+              description: val.description,
               autoPauseAfter: val.auto_pause_after,
               collab: val.collab,
               preTaskCommand: val.pre_task_command,
@@ -384,6 +390,8 @@ export class ClassicChannelManager {
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
+      if (ch.displayName) entry.display_name = ch.displayName;
+      if (ch.description) entry.description = ch.description;
       if (ch.autoPauseAfter !== undefined) entry.auto_pause_after = ch.autoPauseAfter;
       if (ch.contextLines) entry.context_lines = ch.contextLines;
       if (ch.collab) entry.collab = ch.collab;
@@ -444,6 +452,30 @@ export class ClassicChannelManager {
   setModelByInstance(instanceName: string, model: string): boolean {
     for (const ch of this.channels.values()) {
       if (ch.instanceName === instanceName) { ch.model = model; this.save(); return true; }
+    }
+    return false;
+  }
+
+  /** Persist agent-selected identity for a Classic instance. */
+  setDisplayNameByInstance(instanceName: string, displayName: string): boolean {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) {
+        ch.displayName = displayName;
+        this.save();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Persist agent-selected role/description for a Classic instance. */
+  setDescriptionByInstance(instanceName: string, description: string): boolean {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) {
+        ch.description = description;
+        this.save();
+        return true;
+      }
     }
     return false;
   }
