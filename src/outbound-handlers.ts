@@ -54,7 +54,16 @@ export interface OutboundContext {
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
   readonly classicChannels: {
-    getAll(): { instanceName: string; name: string; backend?: string; model?: string; channelId: string; adapterId?: string }[];
+    getAll(): {
+      instanceName: string;
+      name: string;
+      backend?: string;
+      model?: string;
+      displayName?: string;
+      description?: string;
+      channelId: string;
+      adapterId?: string;
+    }[];
     getChannelIdByInstance?(name: string): string | undefined;
     getBackendByInstance?(name: string, fleetDefault?: string): string;
     getModel?(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined;
@@ -417,8 +426,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         instance_state: ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
         working_directory: "",
         topic_id: ch.channelId as any,
-        display_name: `classic: ${ch.name}`,
-        description: `ClassicBot channel (${ch.name})`,
+        display_name: ch.displayName ?? `classic: ${ch.name}`,
+        description: ch.description ?? `ClassicBot channel (${ch.name})`,
         backend: ctx.classicChannels.getBackendByInstance?.(
           ch.instanceName,
           ctx.fleetConfig?.defaults?.backend,
