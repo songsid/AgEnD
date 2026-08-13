@@ -327,6 +327,7 @@ export function activateService(plistPath: string, pidPath: string): void {
     execSync(`launchctl enable ${domain}/${label}`, { stdio: "inherit" });
   } else {
     const serviceName = plistPath.replace(/.*\//, "").replace(/\.service$/, "");
+    execSync("systemctl --user daemon-reload", { stdio: "inherit" });
     execSync(`systemctl --user enable --now ${serviceName}`, { stdio: "inherit" });
   }
 }

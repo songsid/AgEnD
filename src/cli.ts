@@ -1270,7 +1270,10 @@ program
     if (agendPath) {
       try {
         // Use the NEW binary to install service (old binary's templates may be deleted)
-        const installResult = spawnSync(agendPath, ["install"], { encoding: "utf-8", timeout: 15000 });
+        // `agend install` activates by default. During update the existing
+        // restart stage owns stop/start and progress reporting, so only refresh
+        // the service file here to avoid restarting the fleet twice.
+        const installResult = spawnSync(agendPath, ["install", "--no-activate"], { encoding: "utf-8", timeout: 15000 });
         if (installResult.status === 0) {
           console.log(`  ✓ Service updated`);
         } else {
@@ -1344,7 +1347,8 @@ program
 program
   .command("install")
   .description("Install as system service")
-  .option("--activate", "Stop manual fleet and load the service immediately")
+  .option("--activate", "Deprecated; service activation is now the default")
+  .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
     const { installService, activateService, detectPlatform } = await import(
       "./service-installer.js"
@@ -1358,17 +1362,23 @@ program
       logPath: join(DATA_DIR, "fleet.log"),
     });
     console.log(`Service installed at: ${svcPath}`);
-    if (opts.activate) {
+    if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
-      activateService(svcPath, pidPath);
-      console.log("Service activated.");
-    } else {
-      const plat = detectPlatform();
-      if (plat === "macos") {
-        console.log(`Run: launchctl load ${svcPath}`);
-      } else {
-        console.log(`Run: systemctl --user enable --now com.agend.fleet`);
+      try {
+        activateService(svcPath, pidPath);
+        console.log("✅ Fleet service installed and running.");
+      } catch (err) {
+        console.error(`❌ Fleet service was installed but could not be started: ${(err as Error).message}`);
+        const plat = detectPlatform();
+        if (plat === "macos") {
+          console.error(`Run manually: launchctl load ${svcPath}`);
+        } else {
+          console.error("Run manually: systemctl --user daemon-reload && systemctl --user enable --now com.agend.fleet");
+        }
+        process.exitCode = 1;
       }
+    } else {
+      console.log("Service file updated (activation skipped).");
     }
   });
 
