@@ -1444,7 +1444,7 @@ instances:
   // Classic-channel model precedence moved to tests/model-resolve.test.ts, which
   // covers the whole resolveInstanceModel() chain against a real FleetManager.
 
-  it("persists explicit instance overrides even when they equal inherited defaults", () => {
+  it("strips non-identity overrides equal to inherited defaults and keeps effective values", () => {
     const fm = new FleetManager(tmpDir);
     const configPath = join(tmpDir, "fleet.yaml");
     writeFileSync(configPath, `defaults:
@@ -1468,10 +1468,11 @@ instances:
     ]);
 
     const saved = yaml.load(readFileSync(configPath, "utf8")) as any;
-    expect(saved.instances.worker.auto_pause_after).toBe(30);
-    expect(saved.instances.worker.hang_detector.timeout_minutes).toBe(15);
-    expect(saved.instances.worker.tool_set).toBe("full");
-    expect(saved.instances.worker.log_level).toBe("info");
+    expect(saved.instances.worker.auto_pause_after).toBeUndefined();
+    expect(saved.instances.worker.hang_detector).toBeUndefined();
+    expect(saved.instances.worker.tool_set).toBeUndefined();
+    expect(saved.instances.worker.log_level).toBeUndefined();
+    expect(readFileSync(`${configPath}.bak`, "utf8")).toContain("working_directory: /tmp/worker");
 
     const reloaded = new FleetManager(tmpDir);
     reloaded.loadConfig(configPath);

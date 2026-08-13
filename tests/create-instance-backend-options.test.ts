@@ -63,6 +63,13 @@ describe("create_instance backend_options", () => {
     };
     const instance = saved.instances["glm-worker-t901"];
     expect(instance.backend_options).toEqual({ codex: { provider: "glm" } });
+    // create_instance builds an effective runtime object, but persistence must
+    // not serialize AgEnD's built-in defaults as per-instance boilerplate.
+    expect(instance).not.toHaveProperty("restart_policy");
+    expect(instance).not.toHaveProperty("context_guardian");
+    expect(instance).not.toHaveProperty("terminal");
+    expect(instance).not.toHaveProperty("log_level");
+    expect(instance).not.toHaveProperty("mcp_auto_restart");
 
     const backend = new CodexBackend(fm.getInstanceDir("glm-worker-t901"));
     const commandConfig: CliBackendConfig = {
