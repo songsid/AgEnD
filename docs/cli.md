@@ -184,8 +184,8 @@ agend access pair <name> <uid>  # Generate pairing code
 ```bash
 agend quickstart                # Simplified setup (recommended for new users)
 agend init                      # Full interactive setup wizard
-agend install                   # Install as system service (launchd/systemd)
-agend install --activate        # Install and start immediately
+agend install                   # Install, enable, and start system service (launchd/systemd)
+agend install --no-activate     # Only write/update the service file
 agend uninstall                 # Remove system service
 agend export [path]             # Export config for device migration
 agend export --full [path]      # Export config + all instance data

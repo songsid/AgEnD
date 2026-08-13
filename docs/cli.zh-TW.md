@@ -80,8 +80,8 @@ agend access unlock <name>      # 解鎖實例存取（開啟配對模式）
 
 ```bash
 agend init                      # 互動式設定精靈
-agend install                   # 安裝為系統服務 (launchd/systemd)
-agend install --activate        # 安裝並立即啟動服務
+agend install                   # 安裝、啟用並啟動系統服務 (launchd/systemd)
+agend install --no-activate     # 只寫入/更新 service 檔案
 agend uninstall                 # 移除系統服務
 agend export [path]             # 匯出配置以用於遷移
 agend import <file>             # 從匯出檔案匯入配置
