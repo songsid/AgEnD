@@ -195,6 +195,13 @@ export const GetUsageArgs = z.object({
   force: z.boolean().optional().describe("Bypass the 5-minute cache and fetch fresh data (rate-limited by vendors — use sparingly)"),
 });
 
+export const ListModelsArgs = z.object({
+  backend: NonEmptyString.optional()
+    .describe("Backend to list the account catalog for (claude-code, kiro-cli, codex, grok, opencode, antigravity). Defaults to the fleet default backend."),
+  instance_name: NonEmptyString.optional()
+    .describe("List through this instance's own backend config instead. Prefer this before setting a model on an existing instance — an instance on a custom provider can have a different catalog from the account."),
+});
+
 export const GetInstanceLogsArgs = z.object({
   name: NonEmptyString.describe("The instance name to get logs for"),
   lines: z.number().optional().describe("Number of lines to return (default: 50)"),

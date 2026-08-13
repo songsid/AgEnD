@@ -102,6 +102,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Get the reasoning-effort setting for an instance: the level in force, the levels its CLI backend accepts, and whether changing it takes effect immediately or needs a restart. Defaults to yourself."],
   ["get_usage", schemas.GetUsageArgs,
     "Get AI subscription usage for the CLI backends logged in on this machine (Claude/Codex/Grok/Kiro). Returns per-provider metrics — use it to notice you are close to a limit and warn the user."],
+  ["list_models", schemas.ListModelsArgs,
+    "List the models a backend actually offers, before naming one in create_instance or update_instance_config. Pass instance_name to read the catalog through an existing instance's own config — an instance on a custom provider can offer a different set than the account. `scope` tells you which you got. An empty list is not a failure: model names are passed through to the CLI."],
   ["get_instance_logs", schemas.GetInstanceLogsArgs,
     "Read the last N lines of an instance's output log (default 50)."],
   ["get_fleet_config", schemas.GetFleetConfigArgs,
@@ -164,7 +166,7 @@ export const TOOL_SETS: Record<string, string[]> = {
     // Channel I/O (users talk to general, and send it images/files)
     "reply", "react", "edit_message", "download_attachment",
     // Discovery — the documented dispatch preamble
-    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort",
+    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
     // Dispatch
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
     // Bring capacity online (reuse-first, but it may need to create/start)
