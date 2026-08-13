@@ -121,6 +121,19 @@ export class KiroBackend implements CliBackend {
     );
   }
 
+  getBusyPattern(): RegExp {
+    // Live legacy-UI capture (2026-08-13): Kiro leaves its ordinary ready
+    // statusline ("64% λ !>") on screen while the model is generating, and
+    // paints a separate braille-spinner line such as "⠹ Thinking...".  The
+    // ready marker therefore cannot distinguish idle from thinking by itself.
+    //
+    // Keep this deliberately line-shaped and glyph-gated.  A bare `Thinking`
+    // match would pin the pane in working whenever an answer merely discussed
+    // thinking.  The spinner is U+2800..U+28ff; Kiro currently uses ASCII three
+    // dots, but accept the single ellipsis used by adjacent TUI versions too.
+    return /^\s*[\u2800-\u28ff]\s+(?:Thinking|Working)(?:\.{3}|…)\s*$/im;
+  }
+
   /**
    * The tool kiro is running right now, for the live progress line.
    *

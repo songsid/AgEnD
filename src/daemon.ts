@@ -57,6 +57,8 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
+/** A foreground server/port-forward should hand control back or be acknowledged. */
+export const DEFAULT_BLOCKING_PROCESS_GRACE_MS = 2 * 60_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
 
 /** Minimum gap between "health check is failing" notifications for one instance. */
@@ -304,13 +306,15 @@ export class PaneStateMachine {
    *   working" and a finished turn would not be seen as idle until the next 60s
    *   safety sweep. Output timestamps are the honest liveness signal here, and
    *   the caller has them.
+   * @param opts.forceBusy the backend has positively identified a still-running
+   *   foreground tool even though its TUI keeps an old ready footer visible.
    */
   observe(
     pane: string,
     now = Date.now(),
-    opts: { settled?: boolean; changeAt?: number } = {},
+    opts: { settled?: boolean; changeAt?: number; forceBusy?: boolean } = {},
   ): InstanceStateSnapshot {
-    const { settled = false, changeAt = now } = opts;
+    const { settled = false, changeAt = now, forceBusy = false } = opts;
     const paneHash = createHash("sha256").update(pane).digest("hex");
     const firstObservation = this.lastPaneHash === null;
     const paneChanged = this.lastPaneHash !== paneHash;
@@ -320,7 +324,10 @@ export class PaneStateMachine {
     }
     this.lastObservedAt = now;
 
-    const ready = this.isReady(pane);
+    // Some TUIs keep their ready footer visible while a foreground tool owns
+    // stdin. Backends can positively identify that tool from the pane; in that
+    // case the old prompt must not clear pending work or retire Cancel.
+    const ready = !forceBusy && this.isReady(pane);
     const nextState: InstanceState = firstObservation
       ? ready ? "idle" : "working"
       : paneChanged && !settled
@@ -669,6 +676,78 @@ export class InteractivePromptDetector {
   }
 }
 
+export interface BlockingProcessDetection {
+  activity: string;
+  evidence: string;
+  blockedForMs: number;
+}
+
+const BLOCKING_PROCESS_PATTERNS: ReadonlyArray<RegExp> = [
+  // kubectl port-forward (including a backgrounded child whose inherited
+  // stdout keeps the parent shell tool open).
+  /^\s*(?:Forwarding from\s+(?:127\.0\.0\.1|localhost|\[::1\]):\d+\s+->\s+\d+|Handling connection for\s+\d+)\s*$/im,
+  // Common development servers. Keep these line-shaped and require an address
+  // or port so prose such as "the server is running" does not arm the detector.
+  /^\s*(?:(?:INFO:\s*)?Uvicorn running on|Serving HTTP on|Listening on|Server (?:is )?(?:listening|running) (?:at|on)|Application startup complete[^\n]*(?:port|https?:\/\/))[^\n]*(?:https?:\/\/|\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::\]|port)\b)[^\n]*$/im,
+];
+
+/**
+ * Detect a foreground shell tool which has become a long-lived server.
+ *
+ * Unlike the generic pane-stuck clock, this clock deliberately survives new
+ * output: access logs and `Handling connection` lines are exactly why a
+ * foreground server can remain blocked forever without ever looking silent.
+ * Once a server marker is seen, the still-running tool identity is the stable
+ * signal; the marker may scroll out of the 32-row pane.
+ */
+export class BlockingProcessDetector {
+  private activity: string | null = null;
+  private evidence: string | null = null;
+  private detectedAt = 0;
+  private notified = false;
+
+  constructor(private readonly graceMs = DEFAULT_BLOCKING_PROCESS_GRACE_MS) {}
+
+  observe(pane: string, activity: string | null, now = Date.now()): BlockingProcessDetection | null {
+    const shellActivity = activity && /^(?:shell|bash|exec_command|terminal|command)(?::|$)/i.test(activity);
+    if (!shellActivity) {
+      this.reset();
+      return null;
+    }
+
+    if (activity !== this.activity) {
+      this.reset();
+      this.activity = activity;
+    }
+
+    if (!this.evidence) {
+      const tail = sanitizePaneTail(pane, 40).join("\n");
+      for (const pattern of BLOCKING_PROCESS_PATTERNS) {
+        const match = tail.match(pattern);
+        if (!match) continue;
+        this.evidence = match[0].trim().slice(0, 200);
+        this.detectedAt = now;
+        break;
+      }
+    }
+
+    if (!this.evidence || this.notified || now - this.detectedAt < this.graceMs) return null;
+    this.notified = true;
+    return {
+      activity,
+      evidence: this.evidence,
+      blockedForMs: now - this.detectedAt,
+    };
+  }
+
+  reset(): void {
+    this.activity = null;
+    this.evidence = null;
+    this.detectedAt = 0;
+    this.notified = false;
+  }
+}
+
 export class Daemon extends EventEmitter {
   private logger: Logger;
   private tmuxSessionName: string;
@@ -796,6 +875,7 @@ export class Daemon extends EventEmitter {
   // PTY error pattern monitoring
   private errorMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private readonly interactivePromptDetector = new InteractivePromptDetector();
+  private readonly blockingProcessDetector = new BlockingProcessDetector();
   /** Same 5-min gate the error monitor uses, so a dead MCP server alerts once. */
   private static readonly MCP_DEATH_COOLDOWN_MS = 5 * 60_000;
   private lastMcpDeathNotifiedAt = 0;
@@ -1713,6 +1793,25 @@ export class Daemon extends EventEmitter {
           // Continue scanning real errors in this same snapshot.
         }
 
+        // If a backend can derive activity from this exact pane, trust its
+        // explicit null (tool completed) instead of falling back to a possibly
+        // stale transcript activity from the previous scan.
+        const paneActivity = this.backend?.getPaneActivity
+          ? this.backend.getPaneActivity(pane)
+          : this.currentActivity;
+        const hasPendingWork = this.pendingWork.hasPendingWork();
+        if (!hasPendingWork) this.blockingProcessDetector.reset();
+        const blockingProcess = hasPendingWork
+          ? this.blockingProcessDetector.observe(pane, paneActivity, Date.now())
+          : null;
+        if (blockingProcess) {
+          // Reuse the hang-notification bridge: it offers explicit Restart/Wait
+          // choices and, unlike pty_error, does not retire a still-useful Cancel
+          // button merely because a foreground process owns stdin.
+          this.logger.warn(blockingProcess, "Foreground process is blocking the agent input loop");
+          this.hangDetector?.emit("hang", { unchangedForMs: blockingProcess.blockedForMs });
+        }
+
         // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
         for (const dialog of dialogs) {
           if (!dialog.pattern.test(pane)) continue;
@@ -2341,6 +2440,7 @@ export class Daemon extends EventEmitter {
       // mismatched spinner frame was enough to report idle mid-turn.
       const settled = this.instanceStateLastOutputAt === 0
         || captureStartedAt - this.instanceStateLastOutputAt >= this.instanceStateIdleDebounceMs;
+      const paneActivity = this.backend?.getPaneActivity?.(pane) ?? null;
       // The two times are genuinely different and both matter: the content
       // changed when tmux reported output (observedChangeAt), but idle/stuck are
       // decisions about *now*. The old double-observe expressed that by calling
@@ -2348,6 +2448,7 @@ export class Daemon extends EventEmitter {
       const snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
         settled,
         changeAt: observedChangeAt,
+        forceBusy: paneActivity !== null,
       });
       this.applyInstanceStateSnapshot(snapshot, pane);
 
@@ -2356,7 +2457,7 @@ export class Daemon extends EventEmitter {
       // extra tmux call. Cadence is the capture cadence (idle debounce + the 60s
       // safety sweep), which matches the progress ticker's own 60s interval.
       if (this.backend?.getPaneActivity) {
-        this.publishActivity(snapshot.state === "idle" ? null : this.backend.getPaneActivity(pane));
+        this.publishActivity(snapshot.state === "idle" ? null : paneActivity);
       }
 
       if (snapshot.state === "idle") {
@@ -2487,6 +2588,7 @@ export class Daemon extends EventEmitter {
     // fire into a stopped daemon).
     this.clearMcpRestartRequest();
     this.interactivePromptDetector.reset();
+    this.blockingProcessDetector.reset();
     this.stopInstanceStateMonitor();
     this.transcriptMonitor?.stop();
     this.guardian?.stop();
@@ -2515,9 +2617,9 @@ export class Daemon extends EventEmitter {
    * Tell the fleet manager what this instance is doing right now, for the live
    * progress line on the cancel button.
    *
-   * Purely cosmetic — nothing decides anything from it, so it is fine that only
-   * backends with a transcript feed report at all (claude-code today). For the
-   * rest the progress line keeps showing just elapsed time.
+   * Primarily cosmetic. The foreground-process detector also uses a current
+   * shell activity as one of several positive signals, but never makes a state
+   * decision from an arbitrary activity label alone.
    *
    * Repeats are dropped: the ticker only edits the channel message when the text
    * changes, and a stream of identical broadcasts would defeat that.

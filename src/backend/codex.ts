@@ -421,9 +421,35 @@ export class CodexBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      { pattern: /rate limit|429 Too Many Requests/i, type: "rate_limit", action: "failover", message: "OpenAI rate limit reached" },
-      { pattern: /authentication|401 Unauthorized/i, type: "auth_error", action: "pause", message: "OpenAI authentication error" },
-      { pattern: /insufficient_quota|billing/i, type: "quota", action: "pause", message: "OpenAI quota exceeded" },
+      // Specific quota codes must precede the generic HTTP 429 classifier:
+      // OpenAI returns insufficient_quota with status 429, but switching models
+      // cannot repair an exhausted account and would only start a failover loop.
+      {
+        pattern: /^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?\b(?:insufficient_quota|billing_hard_limit_reached|exceeded\s+your\s+current\s+quota)\b/im,
+        type: "quota",
+        action: "pause",
+        message: "OpenAI quota exceeded",
+      },
+      {
+        // Pane history contains the agent's own prose, source code and search
+        // results. Bare `rate limit` used to fail over an otherwise healthy
+        // Codex merely for discussing this regex. Match machine-readable API
+        // forms or an error-decorated terminal line instead.
+        pattern: /^\s*unexpected\s+status\s+429\b|^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*429\b|\b(?:rate_limit_exceeded|too_many_requests)\b|\brate limit(?:ed| exceeded| reached)?\b|\btoo many requests\b)/im,
+        type: "rate_limit",
+        action: "failover",
+        message: "OpenAI rate limit reached",
+      },
+      {
+        // Same false-positive boundary as rate limits: `authentication` is a
+        // normal English/code word. Require a structured 401/code or a
+        // decorated CLI error line before pausing every instance on the shared
+        // credential.
+        pattern: /^\s*unexpected\s+status\s+401\b|^\s*(?:■|⚠|Error:|API Error:)\s*[\s\S]{0,240}?(?:["'](?:status|code)["']\s*:\s*401\b|\b(?:invalid_api_key|authentication_error)\b|\b401\s+Unauthorized\b|\bauthentication (?:failed|error)\b|\binvalid api key\b)/im,
+        type: "auth_error",
+        action: "pause",
+        message: "OpenAI authentication error",
+      },
       { pattern: /you've hit your usage limit/i, type: "quota", action: "pause", message: "Codex usage limit reached — upgrade plan required" },
       {
         // Codex reports an unknown model either as a TUI metadata fallback or
