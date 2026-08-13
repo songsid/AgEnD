@@ -16,7 +16,7 @@ import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
 import { readFleetMemory, type FleetMemory } from "./process-memory.js";
 import { ReplyDeduper } from "./reply-dedup.js";
-import { isScalar, parseDocument } from "yaml";
+import { isMap, isScalar, parseDocument } from "yaml";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -74,6 +74,7 @@ import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
+import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -1641,6 +1642,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
 
     const fleet = this.loadConfig(configPath);
+    this.slimFleetConfigAtStartup();
     setLocale(detectLocale(fleet)); // user-facing text language (fleet.yaml defaults.locale / timezone)
     const savedUpdateProgress = readUpdateProgress(this.dataDir);
     const pendingUpdateProgress = savedUpdateProgress
@@ -4404,7 +4406,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * Patch only values changed in the effective config into the original YAML
-   * document. Unknown keys, explicit overrides and comments remain untouched.
+   * document. Unknown keys and comments remain untouched; redundant
+   * non-identity instance leaves are canonicalized to inheritance afterward.
    */
   saveFleetConfig(explicitPatches: RawConfigPatch[] = []): void {
     if (!this.fleetConfig || !this.configPath) return;
@@ -4427,9 +4430,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.fleetConfig,
     );
 
-    // Settings edits are expressed against the raw config. Persist them even
-    // when the chosen override equals the inherited effective value, a case
-    // the before/after runtime diff cannot observe.
+    // Settings edits are expressed against the raw config, so apply them before
+    // canonicalization. A non-identity value equal to its inherited default is
+    // intentionally stored as inheritance rather than an explicit duplicate.
     for (const patch of explicitPatches) {
       if (patch.remove) {
         // YAML's deleteIn throws when an inherited nested key has no raw parent
@@ -4444,7 +4447,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    const rawAfterPatches = this.rawFleetDocument.toJS() as RawFleetConfig;
+    const redundantPaths = collectRedundantInstanceDefaultPaths(rawAfterPatches);
+    for (const path of redundantPaths) {
+      if (this.rawFleetDocument.hasIn(path)) this.rawFleetDocument.deleteIn(path);
+      // Avoid leaving empty operational maps such as `terminal: {}` while
+      // preserving the instance mapping itself and all surrounding comments.
+      for (let depth = path.length - 1; depth > 2; depth--) {
+        const parentPath = path.slice(0, depth);
+        const parent = this.rawFleetDocument.getIn(parentPath, true);
+        if (!isMap(parent) || parent.items.length > 0) break;
+        this.rawFleetDocument.deleteIn(parentPath);
+      }
+    }
+
     const output = String(this.rawFleetDocument);
+    if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
     const tempPath = `${this.configPath}.tmp-${process.pid}`;
     writeFileSync(tempPath, output, "utf-8");
     if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
@@ -4452,7 +4470,43 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
-    this.logger.info({ path: this.configPath }, "Saved fleet config (lossless patch)");
+    this.logger.info(
+      { path: this.configPath, strippedDefaults: redundantPaths.length },
+      "Saved fleet config (lossless patch)",
+    );
+  }
+
+  /** One-time upgrade migration; invalid YAML is never rewritten. */
+  private slimFleetConfigAtStartup(): void {
+    const redundantPaths = collectRedundantInstanceDefaultPaths(this.rawFleetConfig);
+    if (redundantPaths.length === 0) return;
+    const validation = validateFleetConfig(this.rawFleetConfig);
+    if (!validation.valid) {
+      this.logger.warn(
+        { errors: validation.errors, redundantDefaults: redundantPaths.length },
+        "Skipping fleet.yaml default slimming because the raw config is invalid",
+      );
+      return;
+    }
+    try {
+      this.saveFleetConfig();
+      this.logger.info(
+        { strippedDefaults: redundantPaths.length, backup: `${this.configPath}.bak` },
+        "Slimmed redundant instance defaults in fleet.yaml",
+      );
+    } catch (err) {
+      // A migration must not turn a previously bootable fleet into an outage.
+      this.logger.warn({ err }, "Could not slim fleet.yaml; continuing with the original config");
+    }
+  }
+
+  private writeFleetConfigBackup(source: string): void {
+    if (!this.configPath) return;
+    const backupPath = `${this.configPath}.bak`;
+    const tempPath = `${backupPath}.tmp-${process.pid}`;
+    writeFileSync(tempPath, source, "utf-8");
+    if (existsSync(this.configPath)) chmodSync(tempPath, statSync(this.configPath).mode);
+    renameSync(tempPath, backupPath);
   }
 
   private patchFleetDocument(
@@ -4505,7 +4559,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (isScalar(currentNode) && (after === null || typeof after !== "object")) {
         currentNode.value = after;
       } else {
-        document.setIn(path, after);
+        // Use a YAML collection node for newly-added objects. Passing the raw
+        // object creates a scalar wrapper: it serializes, but nested hasIn /
+        // deleteIn cannot traverse it (notably when slimming create_instance).
+        document.setIn(path, after !== null && typeof after === "object"
+          ? document.createNode(after)
+          : after);
       }
     }
   }

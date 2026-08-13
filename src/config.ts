@@ -75,6 +75,16 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
   log_level: "info",
 };
 
+/** Effective instance defaults, including AgEnD built-ins and fleet overrides. */
+export function getEffectiveInstanceDefaults(
+  fleetDefaults: Partial<InstanceConfig> = {},
+): Partial<InstanceConfig> {
+  return deepMergeGeneric(
+    DEFAULT_INSTANCE_CONFIG as Partial<InstanceConfig>,
+    fleetDefaults,
+  );
+}
+
 /** Validate IANA timezone string. Throws if invalid. */
 export function validateTimezone(tz: string, field: string): void {
   try {
@@ -117,7 +127,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
 
   for (const [name, overrides] of Object.entries(rawInstances)) {
     const merged = deepMergeGeneric(
-      deepMergeGeneric(DEFAULT_INSTANCE_CONFIG as Partial<InstanceConfig>, fleetDefaults),
+      getEffectiveInstanceDefaults(fleetDefaults),
       overrides,
     ) as Partial<InstanceConfig>;
 
