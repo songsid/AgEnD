@@ -29,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **AI Usage Panel in `/view`** — 📊 button shows usage panel for all configured backends. Disable with `web.usage_panel: false`.
 - **`/effort` slash command** — adjust AI reasoning effort at runtime (low/medium/high/xhigh/max). TG: inline keyboard. DC: select menu. Admin only. Supported across all 6 backends. Codex effort levels are per-model.
 - **`get_effort` MCP tool** — query current effort level and strategy. `/status` shows effort column.
-- **Reactions as context** — DC/TG reactions are stored in a database and included in the next turn's context, not forwarded as messages. Both directions (user→agent, bot→user). `defaults.reactions_enabled` controls this.
+- **Reactions as context** — DC/TG reactions are stored in a database and included in the next turn's context, not forwarded as messages. Both directions (user→agent, bot→user). ~~`defaults.reactions_enabled` controls this.~~ **[correction, 2026-08-13]** No such toggle was ever implemented — `reactions_enabled` has zero references in source history; this feature is unconditionally on. Treat the original wording as a documentation error, not a removed feature.
 - **Live progress line** — while an agent works, the delivery status message shows the running tool name and elapsed time. Configurable: `defaults.progress_min_elapsed` (seconds, default 30). Shows Kiro's running tool read directly from the pane.
 - **Tab completion** — `agend attach <tab>` completes instance names (bash and zsh).
 - **Fleet memory report** — `agend ls` footer shows fleet-wide memory total.

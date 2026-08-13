@@ -665,6 +665,21 @@ Also configurable via the Settings web page: **Runtime & Resources → auto_paus
 | Large fleet (cost-sensitive) | `10` — aggressive pause |
 | Always-on requirement | `0` or omit |
 
+## Warm Cap (LRU Evict)
+
+Fleet-wide cap on how many instances may be simultaneously **warm** (resident — tmux window + CLI process running), independent of `auto_pause_after`'s per-instance idle timer.
+
+- Configure with `defaults.warm_cap` (number, default `0` = unlimited).
+- When the count of running instances exceeds the cap, the **least-recently-active idle instance** is auto-paused (LRU eviction) to make room.
+- `general` instances (and anything running) are never evicted — only idle, non-general instances are candidates.
+- Complements `auto_pause_after`: that pauses an instance after *it* has been idle long enough; `warm_cap` pauses the *oldest idle* instance the moment the fleet-wide resident count goes over budget, even if no single instance has hit its own idle threshold yet.
+- Paused-by-eviction instances wake the same way as any other paused instance — see [Auto-Pause & Wake](#auto-pause--wake).
+
+```yaml
+defaults:
+  warm_cap: 15   # at most 15 instances resident at once; excess idle instances get evicted
+```
+
 ## IPC + adapter auto-reconnect
 
 When network interruptions cause IPC connections or Telegram/Discord adapters to drop, AgEnD automatically recovers:

@@ -77,6 +77,9 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `scheduler.retry_count` | number | — | Schedule retry count |
 | `scheduler.retry_interval_ms` | number | — | Schedule retry interval |
 | `webhooks` | WebhookConfig[] | — | Outbound webhook notifications |
+| `warm_cap` | number | `0` (unlimited) | Fleet-wide cap on simultaneously warm (running) instances. When the running count exceeds it, the least-recently-active idle instance is auto-paused. `general` instances are never evicted. Complementary to `auto_pause_after` (time-based). |
+| `progress_min_elapsed` | number | `30` | Seconds before the live-progress line / cancel button starts showing elapsed time. |
+| `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
 
 ---
 
@@ -97,7 +100,13 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |
-| `tool_set` | string | `"full"` | MCP tool profile: `"full"` (46 tools), `"standard"` (18), `"minimal"` (4), `"general"` (25, dispatcher profile used by General instances) |
+| `tool_set` | string | `"full"` | MCP tool profile: `"full"` (46 tools), `"standard"` (18), `"minimal"` (4). Not user-settable: `"general"` (25 tools, dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
+| `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
+| `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Runtime override via the `/effort` command — see [commands.md](./commands.md). |
+| `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. |
+| `terminal.enabled` | boolean | `true` | Logical terminal size feature toggle. `false` pins the window to tmux's historical 80x24 for compatibility. |
+| `terminal.columns` | number | `120` | Terminal width when `terminal.enabled` is `true`. |
+| `terminal.rows` | number | `36` | Terminal height when `terminal.enabled` is `true`. |
 | `mcp_auto_restart` | boolean | `true` | Restart the instance (idle-gated, session resumed) when its MCP server dies. `false` = notify only. |
 | `mcp_proxy_reply` | boolean | `false` | Opt-in: when the MCP server is dead at end of turn and no reply was sent, the daemon relays the pane's final text to the channel (marked ⚠️ as proxy reply). Off by default — raw pane text can leak content redaction doesn't catch. |
 | `lightweight` | boolean | `false` | Skip non-essential subsystems |
