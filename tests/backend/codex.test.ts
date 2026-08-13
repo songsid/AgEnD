@@ -236,7 +236,7 @@ describe("CodexBackend", () => {
   });
 
   describe("getErrorPatterns", () => {
-    const modelError = (pane: string) => new CodexBackend(TEST_DIR)
+    const matchingError = (pane: string) => new CodexBackend(TEST_DIR)
       .getErrorPatterns()
       .find(({ pattern }) => pattern.test(pane));
 
@@ -244,17 +244,49 @@ describe("CodexBackend", () => {
       "⚠ Model metadata for 'unknown-model' not found. Defaulting to fallback metadata",
       `■ {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'unknown-model' model is not supported when using Codex with a ChatGPT account."}}`,
     ])("notifies for Codex model errors: %s", (pane) => {
-      expect(modelError(pane)).toMatchObject({
+      expect(matchingError(pane)).toMatchObject({
         type: "model_error",
         action: "notify",
       });
     });
 
     it("still detects a model rejection after tmux hard-wraps it", () => {
-      expect(modelError([
+      expect(matchingError([
         `■ {"type":"error","status":400,"error":{"message":"The 'unknown-model' model is not`,
         `supported when using Codex with a ChatGPT account."}}`,
       ].join("\n"))).toMatchObject({ type: "model_error", action: "notify" });
+    });
+
+    it.each([
+      `■ {"type":"error","status":429,"error":{"type":"rate_limit_exceeded","message":"Too many requests"}}`,
+      "Error: rate limit reached for gpt-5.6-sol",
+      "unexpected status 429 Too Many Requests",
+    ])("fails over on a real Codex rate-limit error: %s", (pane) => {
+      expect(matchingError(pane)).toMatchObject({ type: "rate_limit", action: "failover" });
+    });
+
+    it.each([
+      `■ {"type":"error","status":401,"error":{"type":"authentication_error","message":"Unauthorized"}}`,
+      "API Error: authentication failed",
+      "unexpected status 401 Unauthorized",
+    ])("pauses on a real Codex authentication error: %s", (pane) => {
+      expect(matchingError(pane)).toMatchObject({ type: "auth_error", action: "pause" });
+    });
+
+    it("classifies insufficient_quota before its enclosing HTTP 429", () => {
+      const pane = `■ {"status":429,"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}`;
+      expect(matchingError(pane)).toMatchObject({ type: "quota", action: "pause" });
+    });
+
+    it.each([
+      "We need to document authentication and 401 handling.",
+      "The service has a rate limit and billing dashboard.",
+      "const status = 429; // Too Many Requests is retried",
+      "This test says 401 Unauthorized should pause the daemon.",
+      `const fixture = {"status":429,"error":{"type":"rate_limit_exceeded"}};`,
+      `expect(body.error.type).toBe("authentication_error");`,
+    ])("does not treat ordinary agent prose/source as a Codex incident: %s", (pane) => {
+      expect(matchingError(pane)).toBeUndefined();
     });
   });
 
