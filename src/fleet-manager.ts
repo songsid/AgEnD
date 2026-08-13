@@ -246,6 +246,26 @@ interface CancelButtonEntry {
 }
 
 /**
+ * Answer shape for `list_models`. `scope` reports where the LIST came from —
+ * "instance" only when it was read through that instance's own backend config,
+ * "global" for the account/CLI catalog — so a caller can tell an authoritative
+ * per-instance list from a best-effort account-wide one.
+ */
+export interface ModelCatalog {
+  backend: string;
+  scope: "instance" | "global";
+  /** Set whenever an instance was asked about, even if the list is global. */
+  instance?: string;
+  current_model: string | null;
+  models: import("./backend/types.js").ModelOption[];
+  /** "cache" = startup probe cache, "live" = probed now, "fallback" = none available. */
+  source: "cache" | "live" | "fallback";
+  probed_at?: string;
+  /** Caveat the caller should read before trusting the list. */
+  note?: string;
+}
+
+/**
  * One pending nonce-armed button prompt (hang restart offer, interactive-prompt
  * assist, clean-exit restart offer, destructive clear confirmation). They share
  * the same lifecycle:
@@ -6893,6 +6913,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!be.probeCLIEnv) return null;
       const probed = await be.probeCLIEnv({ workingDirectory: "", instanceDir: join(getAgendHome(), "cli-env"), instanceName: `probe-${backend}`, mcpServers: {} });
       const env: import("./backend/types.js").CliEnv = { backend, probedAt: Date.now(), ...probed };
+      // An empty result must never overwrite a catalog we already have. Some
+      // probes hit the network (`agy models` fetches, 5s cap), so a slow moment
+      // returns [] — and writing that would blank the list for the whole 24h
+      // TTL, long after the CLI recovered. Observed live: a good 11-model
+      // antigravity cache replaced by an empty one. Keep the known models and
+      // let the fresher currentModel/version through.
+      if (!env.models?.length) {
+        const previous = this.readCliEnv(backend);
+        if (previous?.models?.length) env.models = previous.models;
+      }
       const path = this.cliEnvPath(backend);
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, JSON.stringify(env, null, 2));
@@ -6923,6 +6953,111 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Cache miss / stale / forced refresh → probe live (also refreshes the cache).
     const env = await this.probeBackend(backendName);
     return env?.models ?? [];
+  }
+
+  /**
+   * Model catalog behind the `list_models` tool.
+   *
+   * The two scopes are not cosmetic. "global" is the account/CLI catalog served
+   * from the startup probe cache; "instance" is resolved through that instance's
+   * OWN backend config, and for a Codex instance on a custom provider that is a
+   * different catalog entirely — `listModels()` reads models_cache.json out of
+   * the instance's private CODEX_HOME. Answering such an instance with the
+   * account list would name models its CLI rejects, which is exactly the
+   * mistake this tool exists to prevent.
+   *
+   * `scope` always describes where the returned LIST came from, not what was
+   * asked for: an instance query that falls back to the account catalog reports
+   * scope "global" and says so in `note`, rather than implying instance-level
+   * accuracy it does not have.
+   *
+   * Never throws — a model listing is an aid, and failing it must not fail a turn.
+   */
+  async listModelCatalog(opts: { backend?: string; instanceName?: string } = {}): Promise<ModelCatalog> {
+    const { instanceName } = opts;
+    if (instanceName) {
+      const backend = this.backendNameForInstance(instanceName);
+      const resolved = this.resolveInstanceModel(instanceName);
+      const currentModel = resolved.source === "unresolved" ? null : resolved.model;
+      const provider = this.customProviderFor(instanceName, backend);
+
+      const scoped = await this.instanceScopedModels(instanceName, backend);
+      if (scoped.length) {
+        return {
+          backend, scope: "instance", instance: instanceName,
+          current_model: currentModel, models: scoped, source: "live",
+          ...(provider ? { note: `Catalog read through this instance's ${backend} provider "${provider}" — it may differ from the account catalog.` } : {}),
+        };
+      }
+      // No instance-local catalog (never launched, or the backend has no
+      // per-instance list). The account catalog is the best available answer,
+      // but it is labelled honestly rather than dressed up as instance scope.
+      const global = await this.globalModelCatalog(backend);
+      return {
+        ...global, instance: instanceName, current_model: currentModel,
+        note: provider
+          ? `No instance-local catalog yet; showing the account catalog, which may NOT match this instance's ${backend} provider "${provider}".`
+          : "No instance-local catalog yet; showing the account catalog.",
+      };
+    }
+    return this.globalModelCatalog(opts.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+  }
+
+  /** The custom provider an instance overrides its backend with, if any. */
+  private customProviderFor(instanceName: string, backend: string): string | null {
+    const opts = this.fleetConfig?.instances?.[instanceName]?.backend_options?.[backend]
+      ?? this.fleetConfig?.defaults?.backend_options?.[backend];
+    const provider = (opts as { provider?: unknown } | undefined)?.provider;
+    return typeof provider === "string" && provider.trim() ? provider.trim() : null;
+  }
+
+  /** Ask a backend for its catalog using ONE instance's real config. Never throws. */
+  private async instanceScopedModels(instanceName: string, backend: string): Promise<import("./backend/types.js").ModelOption[]> {
+    try {
+      const inst = this.fleetConfig?.instances?.[instanceName];
+      const instanceDir = this.getInstanceDir(instanceName);
+      const be = createBackend(backend, instanceDir);
+      if (!be.listModels) return [];
+      return await be.listModels({
+        workingDirectory: inst?.working_directory ?? "",
+        instanceDir,
+        instanceName,
+        mcpServers: {},
+        model: inst?.model,
+        backendOptions: inst?.backend_options?.[backend] ?? this.fleetConfig?.defaults?.backend_options?.[backend],
+      }) ?? [];
+    } catch {
+      // listModels is documented never to throw, but a backend constructor can
+      // (missing binary). A catalog is an aid; degrade to the account list.
+      return [];
+    }
+  }
+
+  /** Account-wide catalog: probe cache first, live probe on miss. */
+  private async globalModelCatalog(backend: string): Promise<ModelCatalog> {
+    const cached = this.readCliEnv(backend);
+    if (cached?.models?.length) {
+      return {
+        backend, scope: "global", current_model: cached.currentModel ?? null,
+        models: cached.models, source: "cache",
+        probed_at: new Date(cached.probedAt).toISOString(),
+      };
+    }
+    const env = await this.probeBackend(backend);
+    if (env?.models?.length) {
+      return {
+        backend, scope: "global", current_model: env.currentModel ?? null,
+        models: env.models, source: "live",
+        probed_at: new Date(env.probedAt).toISOString(),
+      };
+    }
+    // Reported rather than thrown: "we could not enumerate" is a useful answer,
+    // and the caller can still set a model by name (AgEnD passes it through).
+    return {
+      backend, scope: "global", current_model: env?.currentModel ?? null,
+      models: [], source: "fallback",
+      note: `Could not enumerate models for ${backend} (CLI missing, not logged in, or it offers no list). Model names are passed through to the CLI, so a known-good name still works.`,
+    };
   }
 
   /** `/model` slash handler (admin only). No arg → DC menu; `/model <name>` → apply directly. */

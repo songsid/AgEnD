@@ -33,6 +33,7 @@ import {
   GetInstanceLogsArgs,
   GetEffortArgs,
   GetUsageArgs,
+  ListModelsArgs,
   GetFleetConfigArgs,
   UpdateInstanceConfigArgs,
   UpdateFleetDefaultsArgs,
@@ -94,6 +95,7 @@ export interface OutboundContext {
     display: string;
     reason?: string;
   };
+  listModelCatalog?(opts: { backend?: string; instanceName?: string }): Promise<import("./fleet-manager.js").ModelCatalog>;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -677,6 +679,32 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
   }
 };
 
+/**
+ * Enumerate a backend's models. Read-only and best-effort by design: the
+ * catalog is an aid for picking a name, and AgEnD passes model strings through
+ * to the CLI regardless, so an empty list is a reportable answer rather than an
+ * error. The one real error is naming an instance that does not exist — that is
+ * a mistake in the call, and silently answering with the fleet default backend
+ * would hide it.
+ */
+const listModels: Handler = async (ctx, rawArgs, respond) => {
+  const v = validateArgs(ListModelsArgs, rawArgs, "list_models");
+  if (!v.ok) { respond(null, v.error); return; }
+  const { backend, instance_name } = v.data;
+  if (!ctx.listModelCatalog) { respond(null, "list_models is unavailable on this fleet"); return; }
+
+  if (instance_name) {
+    const known = Boolean(ctx.fleetConfig?.instances?.[instance_name])
+      || (ctx.classicChannels?.getAll() ?? []).some(c => c.instanceName === instance_name);
+    if (!known) { respond(null, `Instance not found: ${instance_name}`); return; }
+  }
+  try {
+    respond(await ctx.listModelCatalog({ backend, instanceName: instance_name }));
+  } catch (err) {
+    respond(null, `Model listing failed: ${(err as Error).message}`);
+  }
+};
+
 const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(GetInstanceLogsArgs, rawArgs, "get_instance_logs");
   if (!v.ok) { respond(null, v.error); return; }
@@ -1243,6 +1271,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["get_fleet_status", getFleetStatus],
   ["get_effort", getEffort],
   ["get_usage", getUsage],
+  ["list_models", listModels],
   ["get_instance_logs", getInstanceLogs],
   ["get_fleet_config", getFleetConfig],
   ["update_instance_config", updateInstanceConfig],
