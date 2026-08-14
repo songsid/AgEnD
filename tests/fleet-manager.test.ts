@@ -75,6 +75,17 @@ describe("FleetManager", () => {
     expect(fm.getActiveUsageProviderIds().has("antigravity")).toBe(false);
   });
 
+  it("uses claude-code when neither the instance nor fleet defaults specify a backend", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: { "default-backend": { working_directory: tmpDir } },
+    } as any;
+    fm.lifecycle.daemons.set("default-backend", { getProcessStatus: () => "running" } as any);
+
+    expect([...fm.getActiveUsageProviderIds()]).toEqual(["claude"]);
+  });
+
   describe("deterministic adapter binding", () => {
     const primaryConfig = {
       id: "discord-primary",

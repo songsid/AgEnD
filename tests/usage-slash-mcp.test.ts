@@ -55,6 +55,11 @@ describe("formatUsageSummary", () => {
     const text = formatUsageSummary(PAYLOAD);
     expect(text).not.toMatch(/\*\*|__|<b>|```/);
   });
+
+  it("explains when no active backend has usage tracking", () => {
+    expect(formatUsageSummary({ ...PAYLOAD, providers: [] }))
+      .toContain("No active backends with usage tracking");
+  });
 });
 
 describe("getUsageSnapshot", () => {

@@ -979,7 +979,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
       // loadFleetConfig() has already merged the fleet default into each row.
-      add(name, config.backend ?? this.fleetConfig?.defaults?.backend);
+      add(name, config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
     }
     for (const channel of this.classicChannels?.getAll() ?? []) {
       add(

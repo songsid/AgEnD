@@ -182,6 +182,9 @@ export async function getUsageSnapshot(force = false, providerIds?: Iterable<str
  */
 export function formatUsageSummary(payload: UsagePayload): string {
   const lines: string[] = ["📊 AI subscription usage"];
+  if (payload.providers.length === 0) {
+    lines.push("No active backends with usage tracking");
+  }
   for (const provider of payload.providers) {
     const name = provider.plan ? `${provider.name} (${provider.plan})` : provider.name;
     if (provider.status === "no-credentials") {
