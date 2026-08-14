@@ -145,6 +145,8 @@ const CANCEL_BTN_IDLE_RETIRE_GRACE_MS = 2_000;
  * button alone (the idle edge retires it when the run really ends).
  */
 const REPLY_RETIRE_GRACE_MS = 2 * 60_000;
+/** Bound for the daemon to capture the pane and answer a post-reply state query. */
+const REPLY_STATE_REFRESH_TIMEOUT_MS = 2_000;
 /**
  * The daemon only broadcasts execution state on TRANSITIONS, so a long
  * single-state run sends nothing for hours. The idle backstop therefore pokes a
@@ -1077,6 +1079,45 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const timeout = setTimeout(() => finish(false), timeoutMs);
       const queryTimer = setInterval(query, 1_000);
       query();
+    });
+  }
+
+  /**
+   * Ask the daemon to capture the pane before answering, then wait for any state
+   * report produced after this request. The ordinary query is intentionally
+   * cache-only (idle gates call it frequently); this opt-in refresh is reserved
+   * for lifecycle decisions where a stale state would strand UI.
+   */
+  private refreshInstanceExecutionState(instanceName: string, timeoutMs: number): Promise<boolean> {
+    const ipc = this.instanceIpcClients.get(instanceName);
+    if (!ipc?.connected) return Promise.resolve(false);
+    const previous = this.instanceStateCache.get(instanceName);
+
+    return new Promise(resolve => {
+      let settled = false;
+      const finish = (refreshed: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        const waiters = this.instanceIdleWaiters.get(instanceName);
+        waiters?.delete(check);
+        if (waiters?.size === 0) this.instanceIdleWaiters.delete(instanceName);
+        resolve(refreshed);
+      };
+      const check = () => {
+        if (this.instanceStateCache.get(instanceName) !== previous) finish(true);
+      };
+      const waiters = this.instanceIdleWaiters.get(instanceName) ?? new Set<() => void>();
+      waiters.add(check);
+      this.instanceIdleWaiters.set(instanceName, waiters);
+      const timeout = setTimeout(() => finish(false), timeoutMs);
+      timeout.unref?.();
+      const sent = ipc.send({
+        type: "query_instance_state",
+        requestId: `reply-grace-${Date.now()}`,
+        refresh: true,
+      });
+      if (!sent) finish(false);
     });
   }
 
@@ -5815,8 +5856,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /**
    * After a reply: give the instance REPLY_RETIRE_GRACE_MS to resume working; if
-   * it has not, retire its button. Re-arming replaces the previous timer, so a
-   * burst of replies ends with exactly one pending check.
+   * it has not, retire its button. The daemon is asked for a fresh pane capture
+   * before deciding. Reading only the transition cache stranded the first
+   * post-restart bubble when its startup "working" report never got a matching
+   * idle edge. Re-arming replaces the previous timer, so a burst of replies ends
+   * with exactly one pending check.
    */
   private armReplyGrace(instanceName: string): void {
     for (const entry of this.cancelButtons.values()) {
@@ -5825,12 +5869,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       entry.replyGraceTimer = setTimeout(() => {
         entry.replyGraceTimer = undefined;
         if (!this.cancelButtons.has(entry.messageId)) return;
-        if (!this.getInstanceIdle(instanceName)) return; // resumed — a long run keeps its button
-        this.logger.info({ instanceName, messageId: entry.messageId }, "Cancel button retired — no work resumed after reply");
-        this.retireButton(entry);
+        void this.finishReplyGrace(instanceName, entry);
       }, REPLY_RETIRE_GRACE_MS);
       entry.replyGraceTimer.unref?.();
     }
+  }
+
+  private async finishReplyGrace(instanceName: string, entry: CancelButtonEntry): Promise<void> {
+    const refreshed = await this.refreshInstanceExecutionState(
+      instanceName,
+      REPLY_STATE_REFRESH_TIMEOUT_MS,
+    );
+    if (!this.cancelButtons.has(entry.messageId) || entry.retiring) return;
+    if (!refreshed) {
+      // Fail safe: without an authoritative answer, retain a potentially live
+      // Cancel button. The 5-minute/30-minute/24-hour safety nets still apply.
+      this.logger.debug(
+        { instanceName, messageId: entry.messageId },
+        "Cancel reply-grace state refresh timed out",
+      );
+      return;
+    }
+    if (!this.getInstanceIdle(instanceName)) return; // genuine long run keeps its button
+    this.logger.info(
+      { instanceName, messageId: entry.messageId },
+      "Cancel button retired — no work resumed after reply",
+    );
+    this.retireButton(entry);
   }
 
   /** Retire (delete) every cancel button belonging to an instance. */

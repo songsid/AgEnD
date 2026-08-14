@@ -154,6 +154,53 @@ describe("Daemon event-driven pane monitor", () => {
       rmSync(instanceDir, { recursive: true, force: true });
     }
   });
+
+  it("refreshes the pane before answering an authoritative state query", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-query-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const control = new EventEmitter();
+    let pane = "thinking";
+    const tmux = { getWindowId: () => "@1", capturePane: vi.fn(async () => pane) };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("query-test", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: true, timeout_minutes: 15, idle_debounce_ms: 10 },
+      log_level: "silent",
+    } as any, instanceDir, false, { getReadyPattern: () => /READY/ } as any, control as any,
+      { child: () => logger } as any);
+    (daemon as any).tmux = tmux;
+    const send = vi.fn();
+    (daemon as any).ipcServer = { send };
+
+    try {
+      (daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(daemon.getInstanceState()).toBe("working");
+
+      // No control-mode output arrives for this redraw, which is the startup
+      // race behind #520. A cache-only query would still answer "working".
+      pane = "READY";
+      await (daemon as any).respondToInstanceStateQuery(
+        { requestId: "reply-grace-1", refresh: true },
+        {} as any,
+      );
+
+      expect(tmux.capturePane).toHaveBeenCalledTimes(2);
+      expect(send).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+        type: "instance_state_response",
+        requestId: "reply-grace-1",
+        state: "idle",
+      }));
+    } finally {
+      (daemon as any).stopInstanceStateMonitor();
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("Daemon process liveness", () => {

@@ -18,6 +18,7 @@ type Internals = {
   getInstanceStatus(name: string): string;
   getInstanceExecutionState(name: string): string | null;
   instanceStateCache: Map<string, { state: string }>;
+  instanceIpcClients: Map<string, { connected: boolean; send(msg: Record<string, unknown>): boolean }>;
   lifecycle: { isPaused(name: string): boolean };
   cancelButtons: Map<string, Record<string, unknown>>;
   cacheInstanceExecutionState(name: string, msg: Record<string, unknown>): void;
@@ -114,7 +115,25 @@ describe("idle-edge cancel-button retirement grace", () => {
 });
 
 describe("issue 2 — reply grace", () => {
-  it("keeps the button when work resumed within the grace, retires when it did not", () => {
+  function installStateRefresh(
+    internals: Internals,
+    state: "idle" | "working" | "stuck",
+  ): ReturnType<typeof vi.fn> {
+    const send = vi.fn((msg: Record<string, unknown>) => {
+      expect(msg).toMatchObject({ type: "query_instance_state", refresh: true });
+      internals.cacheInstanceExecutionState("alpha", {
+        state,
+        unchangedForMs: 0,
+        observedAt: Date.now(),
+        stateChangedAt: Date.now(),
+      });
+      return true;
+    });
+    internals.instanceIpcClients.set("alpha", { connected: true, send });
+    return send;
+  }
+
+  it("keeps the button when work resumed within the grace, retires when it did not", async () => {
     vi.useFakeTimers();
     try {
       const { internals } = makeFleet();
@@ -126,21 +145,46 @@ describe("issue 2 — reply grace", () => {
 
       // Reply lands while busy → grace armed. Work resumes → check is a no-op.
       internals.instanceStateCache.set("alpha", { state: "working" });
+      installStateRefresh(internals, "working");
       internals.armReplyGrace("alpha");
-      vi.advanceTimersByTime(2 * 60_000 + 1);
+      await vi.advanceTimersByTimeAsync(2 * 60_000 + 1);
       expect(retire).not.toHaveBeenCalled();
 
       // Second reply; this time the turn actually ended.
+      installStateRefresh(internals, "idle");
       internals.armReplyGrace("alpha");
-      internals.instanceStateCache.set("alpha", { state: "idle" });
-      vi.advanceTimersByTime(2 * 60_000 + 1);
+      await vi.advanceTimersByTimeAsync(2 * 60_000 + 1);
       expect(retire).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it("re-arming replaces the timer — a burst of replies ends with one check", () => {
+  it("refreshes a stale post-startup working state before retiring the replacement button", async () => {
+    vi.useFakeTimers();
+    try {
+      const { internals } = makeFleet();
+      const retire = vi.fn();
+      internals.retireButton = retire;
+      const entry = { instanceName: "alpha", messageId: "m1" } as Record<string, unknown>;
+      internals.cancelButtons.set("m1", entry);
+      // This is the #520 shape: the reply replacement inherited the startup
+      // "working" cache, while the pane itself has already settled to idle.
+      internals.instanceStateCache.set("alpha", { state: "working" });
+      const send = installStateRefresh(internals, "idle");
+
+      internals.armReplyGrace("alpha");
+      await vi.advanceTimersByTimeAsync(2 * 60_000 + 1);
+
+      expect(send).toHaveBeenCalledOnce();
+      expect(retire).toHaveBeenCalledOnce();
+      expect(retire).toHaveBeenCalledWith(entry);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-arming replaces the timer — a burst of replies ends with one check", async () => {
     vi.useFakeTimers();
     try {
       const { internals } = makeFleet();
@@ -149,6 +193,7 @@ describe("issue 2 — reply grace", () => {
       const entry = { instanceName: "alpha", messageId: "m1" } as Record<string, unknown>;
       internals.cancelButtons.set("m1", entry);
       internals.instanceStateCache.set("alpha", { state: "idle" });
+      installStateRefresh(internals, "idle");
 
       internals.armReplyGrace("alpha");
       vi.advanceTimersByTime(60_000);
@@ -156,7 +201,7 @@ describe("issue 2 — reply grace", () => {
       vi.advanceTimersByTime(90_000);   // 2.5min after first, 1.5min after second
       expect(retire).not.toHaveBeenCalled();
 
-      vi.advanceTimersByTime(31_000);
+      await vi.advanceTimersByTimeAsync(31_000);
       expect(retire).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -172,6 +217,7 @@ describe("issue 2 — reply grace", () => {
       const entry = { instanceName: "alpha", messageId: "m1" } as Record<string, unknown>;
       internals.cancelButtons.set("m1", entry);
       internals.instanceStateCache.set("alpha", { state: "idle" });
+      installStateRefresh(internals, "idle");
 
       internals.armReplyGrace("alpha");
       internals.cancelButtons.delete("m1"); // idle edge got there first
