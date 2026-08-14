@@ -87,6 +87,25 @@ describe("GET /api/ai-usage", () => {
     vi.useRealTimers();
   });
 
+  it("filters the web panel to providers used by running or paused instances", async () => {
+    setUsageFetcherForTests(async () => ({
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      providers: [
+        { id: "claude", name: "Claude", status: "ok" as const, metrics: [] },
+        { id: "codex", name: "Codex", status: "ok" as const, metrics: [] },
+        { id: "antigravity", name: "Antigravity", status: "ok" as const, metrics: [] },
+      ],
+    }));
+    const { res, out } = fakeRes();
+    const ctx = fakeCtx({ getActiveUsageProviderIds: () => new Set(["codex"]) });
+
+    handleUsageRequest(fakeReq(), res, urlFor("/api/ai-usage"), ctx);
+    await out.done;
+
+    expect(out.code).toBe(200);
+    expect(JSON.parse(out.body).providers.map((provider: { id: string }) => provider.id)).toEqual(["codex"]);
+  });
+
   it("keeps last-good Kiro data during rollover and refreshes after 30 seconds", async () => {
     vi.useFakeTimers();
     try {

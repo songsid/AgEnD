@@ -2,7 +2,7 @@
  * AI usage HTTP API.
  *
  *   GET /api/ai-usage → { fetchedAt, providers: [...] } — live subscription
- *   usage for the CLI backends logged in on this machine (see providers.ts).
+ *   usage for providers used by running or paused instances (see providers.ts).
  *
  * Auth: read-only GET, open like the other /view data routes (the caller's
  * global token gate exempts isUsagePath, mirroring isViewPath). Server binds
@@ -19,9 +19,33 @@ import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
   readonly logger: Logger;
+  /** Providers used by running or paused fleet/Classic instances. */
+  getActiveUsageProviderIds?(): ReadonlySet<string>;
 }
 
 export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
+
+/** Map runtime backend names to the subscription provider row they consume. */
+export function usageProviderIdForBackend(backend: string | undefined): string | null {
+  switch (backend) {
+    case "claude-code": return "claude";
+    case "codex": return "codex";
+    case "grok": return "grok";
+    case "kiro-cli": return "kiro";
+    case "antigravity": return "antigravity";
+    default: return null;
+  }
+}
+
+/** Filter a cached all-provider snapshot without mutating the shared cache. */
+export function filterUsageProviders(
+  payload: UsagePayload,
+  providerIds?: Iterable<string>,
+): UsagePayload {
+  if (!providerIds) return payload;
+  const active = providerIds instanceof Set ? providerIds : new Set(providerIds);
+  return { ...payload, providers: payload.providers.filter(provider => active.has(provider.id)) };
+}
 
 const CACHE_MS = 5 * 60 * 1000;
 /** Token rollover is routine and normally heals within seconds. */
@@ -144,8 +168,8 @@ async function usage(force: boolean): Promise<UsagePayload> {
  * surfaces, because the 5-minute TTL exists to protect vendor rate limits and a
  * second entry point that bypassed it would defeat that.
  */
-export function getUsageSnapshot(force = false): Promise<UsagePayload> {
-  return usage(force);
+export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>): Promise<UsagePayload> {
+  return filterUsageProviders(await usage(force), providerIds);
 }
 
 /**
@@ -158,6 +182,9 @@ export function getUsageSnapshot(force = false): Promise<UsagePayload> {
  */
 export function formatUsageSummary(payload: UsagePayload): string {
   const lines: string[] = ["📊 AI subscription usage"];
+  if (payload.providers.length === 0) {
+    lines.push("No active backends with usage tracking");
+  }
   for (const provider of payload.providers) {
     const name = provider.plan ? `${provider.name} (${provider.plan})` : provider.name;
     if (provider.status === "no-credentials") {
@@ -226,7 +253,7 @@ export function handleUsageRequest(
     return true;
   }
 
-  usage(url.searchParams.has("force"))
+  getUsageSnapshot(url.searchParams.has("force"), ctx.getActiveUsageProviderIds?.())
     .then(payload => json(res, 200, payload))
     .catch(err => {
       ctx.logger.debug({ err }, "ai-usage fetch failed");

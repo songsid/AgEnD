@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 import { formatUsageSummary, getUsageSnapshot, setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-api.js";
 import { TOOLS, TOOL_SETS } from "../src/channel/mcp-tools.js";
 import { GetUsageArgs } from "../src/outbound-schemas.js";
+import { TopicCommands } from "../src/topic-commands.js";
 
 /**
  * `/usage` (slash, admin-only) and `get_usage` (MCP) expose the same data the
@@ -54,6 +55,11 @@ describe("formatUsageSummary", () => {
     const text = formatUsageSummary(PAYLOAD);
     expect(text).not.toMatch(/\*\*|__|<b>|```/);
   });
+
+  it("explains when no active backend has usage tracking", () => {
+    expect(formatUsageSummary({ ...PAYLOAD, providers: [] }))
+      .toContain("No active backends with usage tracking");
+  });
 });
 
 describe("getUsageSnapshot", () => {
@@ -79,6 +85,32 @@ describe("getUsageSnapshot", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("/usage active backend filter", () => {
+  it("renders only providers used by running or paused instances", async () => {
+    setUsageFetcherForTests(async () => PAYLOAD);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "usage" });
+    const commands = new TopicCommands({
+      adapter: { type: "discord", sendText },
+      fleetConfig: { defaults: {}, instances: {} },
+      getActiveUsageProviderIds: () => new Set(["codex"]),
+    } as any);
+
+    expect(await commands.handleGeneralCommand({
+      text: "/usage",
+      chatId: "guild",
+      threadId: "topic",
+      userId: "user",
+    } as any)).toBe(true);
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    const rendered = sendText.mock.calls[0][1] as string;
+    expect(rendered).toContain("Codex");
+    expect(rendered).not.toContain("Claude");
+    expect(rendered).not.toContain("Grok");
+    expect(rendered).not.toContain("Kiro");
   });
 });
 

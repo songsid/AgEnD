@@ -50,6 +50,42 @@ describe("FleetManager", () => {
     });
   });
 
+  it("collects usage providers from running and paused fleet and Classic instances", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" },
+      instances: {
+        "fleet-codex": { working_directory: tmpDir, backend: "codex" },
+        "fleet-default": { working_directory: tmpDir },
+        "paused-claude": { working_directory: tmpDir, backend: "claude-code" },
+        "stopped-agy": { working_directory: tmpDir, backend: "antigravity" },
+      },
+    } as any;
+    fm.lifecycle.daemons.set("fleet-codex", { getProcessStatus: () => "running" } as any);
+    fm.lifecycle.daemons.set("fleet-default", { getProcessStatus: () => "running" } as any);
+    vi.spyOn(fm.lifecycle, "isPaused").mockImplementation(name => name === "paused-claude");
+
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    classicChannels.register("channel-1", "discord", "classic-room", "Room", "owner", "grok");
+    fm.classicChannels = classicChannels;
+    fm.lifecycle.daemons.set("classic-room", { getProcessStatus: () => "running" } as any);
+
+    expect([...fm.getActiveUsageProviderIds()].sort()).toEqual(["claude", "codex", "grok", "kiro"]);
+    expect(fm.getActiveUsageProviderIds().has("antigravity")).toBe(false);
+  });
+
+  it("uses claude-code when neither the instance nor fleet defaults specify a backend", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: { "default-backend": { working_directory: tmpDir } },
+    } as any;
+    fm.lifecycle.daemons.set("default-backend", { getProcessStatus: () => "running" } as any);
+
+    expect([...fm.getActiveUsageProviderIds()]).toEqual(["claude"]);
+  });
+
   describe("deterministic adapter binding", () => {
     const primaryConfig = {
       id: "discord-primary",
