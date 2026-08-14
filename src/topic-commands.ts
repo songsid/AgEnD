@@ -690,8 +690,8 @@ export class TopicCommands {
   }
 
   /**
-   * `/usage` — AI subscription usage for every CLI backend logged in on this
-   * machine, one compact message. Same permission level as /ctx (none): whoever
+   * `/usage` — AI subscription usage for CLI backends used by running or paused
+   * instances, one compact message. Same permission level as /ctx (none): whoever
    * can talk to the fleet may see how much headroom it has left. Vendor rate
    * limits are protected by the shared 5-minute cache, not by gating callers.
    */
@@ -701,7 +701,7 @@ export class TopicCommands {
     try {
       const { getUsageSnapshot } = await import("./usage/usage-api.js");
       const { renderUsageHtml, renderUsageMarkdown } = await import("./usage/format-rich.js");
-      const payload = await getUsageSnapshot();
+      const payload = await getUsageSnapshot(false, this.ctx.getActiveUsageProviderIds?.());
       // Each platform gets its native rich format: Telegram needs parse_mode
       // HTML; Discord renders Markdown in plain content. Anything else falls back
       // to Markdown, which degrades to readable text.

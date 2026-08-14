@@ -62,7 +62,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
-import { handleUsageRequest, isUsagePath } from "./usage/usage-api.js";
+import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -961,6 +961,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // can still contain the old ready marker and must never surface as Idle.
     if (this.instanceProcessStatus.has(name)) return null;
     return this.instanceStateCache.get(name)?.state ?? null;
+  }
+
+  /**
+   * Subscription providers currently relevant to this fleet. Stopped/crashed
+   * rows do not keep a usage card alive, while persisted paused instances do.
+   * Classic channels use their effective backend merge chain, not the raw row.
+   */
+  getActiveUsageProviderIds(): ReadonlySet<string> {
+    const providers = new Set<string>();
+    const add = (name: string, backend: string | undefined) => {
+      const status = this.getInstanceStatus(name);
+      if (status !== "running" && status !== "paused") return;
+      const provider = usageProviderIdForBackend(backend);
+      if (provider) providers.add(provider);
+    };
+
+    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      // loadFleetConfig() has already merged the fleet default into each row.
+      add(name, config.backend ?? this.fleetConfig?.defaults?.backend);
+    }
+    for (const channel of this.classicChannels?.getAll() ?? []) {
+      add(
+        channel.instanceName,
+        this.classicChannels?.getBackendByInstance(
+          channel.instanceName,
+          this.fleetConfig?.defaults?.backend,
+        ),
+      );
+    }
+    return providers;
   }
 
   isClassicInstance(name: string): boolean {
@@ -2646,7 +2676,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const { getUsageSnapshot } = await import("./usage/usage-api.js");
           const { renderUsageMarkdown } = await import("./usage/format-rich.js");
           // slash_command is Discord-only; editReply renders Markdown natively.
-          await data.respond(renderUsageMarkdown(await getUsageSnapshot()));
+          await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
@@ -2909,7 +2939,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           const { getUsageSnapshot } = await import("./usage/usage-api.js");
           const { renderUsageMarkdown } = await import("./usage/format-rich.js");
           // slash_command is Discord-only; editReply renders Markdown natively.
-          await data.respond(renderUsageMarkdown(await getUsageSnapshot()));
+          await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }

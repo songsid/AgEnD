@@ -87,6 +87,8 @@ export interface OutboundContext {
   clearCancelButton?(instanceName: string): void;
   clearCancelButtonByCorrelation?(correlationId: string): void;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
+  /** Subscription provider IDs used by running or paused fleet/Classic instances. */
+  getActiveUsageProviderIds?(): ReadonlySet<string>;
   /** Effective process state used to annotate cross-instance delivery results. */
   getInstanceStatus?(name: string): "running" | "paused" | "stopped" | "crashed";
   resolveInstanceModel?(name: string): {
@@ -673,7 +675,7 @@ const getUsage: Handler = async (ctx, rawArgs, respond) => {
   try {
     // Same structure as GET /api/ai-usage, same 5-minute cache behind it.
     const { getUsageSnapshot } = await import("./usage/usage-api.js");
-    respond(await getUsageSnapshot(v.data.force === true));
+    respond(await getUsageSnapshot(v.data.force === true, ctx.getActiveUsageProviderIds?.()));
   } catch (err) {
     respond(null, `Usage fetch failed: ${(err as Error).message}`);
   }

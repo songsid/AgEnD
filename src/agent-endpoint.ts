@@ -196,7 +196,10 @@ export async function dispatchAgentOperation(
   // print something readable without owning the formatting.
   if (op === "usage") {
     const { getUsageSnapshot, formatUsageSummary } = await import("./usage/usage-api.js");
-    const payload = await getUsageSnapshot(args.force === true || args.force === "true");
+    const payload = await getUsageSnapshot(
+      args.force === true || args.force === "true",
+      ctx.getActiveUsageProviderIds?.(),
+    );
     return { formatted: formatUsageSummary(payload), ...payload };
   }
 

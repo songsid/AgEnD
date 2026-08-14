@@ -42,6 +42,8 @@ export interface FleetContext {
 
   getSysInfo(): SysInfo;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
+  /** Subscription provider IDs used by running or paused fleet/Classic instances. */
+  getActiveUsageProviderIds?(): ReadonlySet<string>;
   toggleFleetCollab(instanceName: string): boolean;
   /** Apply a model to an instance (runtime paste or persist + restart). Returns a status string. */
   applyModel(instanceName: string, model: string): Promise<string>;
