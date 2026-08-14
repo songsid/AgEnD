@@ -1108,16 +1108,7 @@ export class Daemon extends EventEmitter {
           this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
         });
       } else if (msg.type === "query_instance_state") {
-        const snapshot = this.getInstanceStateSnapshot();
-        this.ipcServer?.send(socket, {
-          type: "instance_state_response",
-          requestId: msg.requestId,
-          instanceName: this.name,
-          ...snapshot,
-          state: this.isPaused ? "paused" : snapshot.state,
-          processStatus: this.processStatus,
-          pausedAt: this.lastPausedAt,
-        });
+        void this.respondToInstanceStateQuery(msg, socket);
       }
     });
 
@@ -2089,6 +2080,36 @@ export class Daemon extends EventEmitter {
       observedAt: Date.now(),
       stateChangedAt: Date.now(),
     };
+  }
+
+  /**
+   * Answer a FleetManager state query. Most callers only need the cached state,
+   * but lifecycle decisions such as post-reply Cancel retirement need an
+   * authoritative pane observation: after startup the last transition can stay
+   * "working" even though the CLI has since settled without emitting another
+   * control-mode output record.
+   */
+  private async respondToInstanceStateQuery(
+    msg: Record<string, unknown>,
+    socket: import("node:net").Socket,
+  ): Promise<void> {
+    try {
+      if (msg.refresh === true) {
+        await this.captureAndEvaluateInstanceState("state_query");
+      }
+      const snapshot = this.getInstanceStateSnapshot();
+      this.ipcServer?.send(socket, {
+        type: "instance_state_response",
+        requestId: msg.requestId,
+        instanceName: this.name,
+        ...snapshot,
+        state: this.isPaused ? "paused" : snapshot.state,
+        processStatus: this.processStatus,
+        pausedAt: this.lastPausedAt,
+      });
+    } catch (err) {
+      this.logger.debug({ err: (err as Error).message }, "Instance state query failed");
+    }
   }
 
   /** Gracefully stop the CLI while keeping its remain-on-exit tmux window. */
