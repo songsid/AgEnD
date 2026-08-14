@@ -127,11 +127,13 @@ export class KiroBackend implements CliBackend {
     // paints a separate braille-spinner line such as "⠹ Thinking...".  The
     // ready marker therefore cannot distinguish idle from thinking by itself.
     //
-    // Keep this deliberately line-shaped and glyph-gated.  A bare `Thinking`
-    // match would pin the pane in working whenever an answer merely discussed
-    // thinking.  The spinner is U+2800..U+28ff; Kiro currently uses ASCII three
-    // dots, but accept the single ellipsis used by adjacent TUI versions too.
-    return /^\s*[\u2800-\u28ff]\s+(?:Thinking|Working)(?:\.{3}|…)\s*$/im;
+    // Kiro does not always erase the spinner row after a turn. A multiline
+    // search across the whole pane therefore treated a historical spinner as
+    // live forever, even when a newer `72% λ !>` prompt was visible below it.
+    // The live spinner is the last non-blank row in every captured working
+    // frame; require that position so completed-turn history cannot veto ready.
+    // Use horizontal whitespace explicitly — `\s` would cross row boundaries.
+    return /(?:^|\n)[ \t]*[\u2800-\u28ff][ \t]+(?:Thinking|Working)(?:\.{3}|…)[ \t]*(?:\n[ \t]*)*$/i;
   }
 
   /**

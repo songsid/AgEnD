@@ -16,6 +16,26 @@ const IDLE_PANE = [
   "Ask a question or describe a task",
 ].join("\n");
 
+// Captured from doupo-leader after a completed report_result (2026-08-14).
+// Kiro left the old spinner in the visible pane, then painted a fresh ready
+// footer below it. #572's pane-wide busy match pinned this state as working
+// until the 15-minute stuck deadline fired.
+const IDLE_WITH_STALE_SPINNER = [
+  "72% λ !>",
+  "[from:worker] completed report",
+  "",
+  "⠹ Thinking...",
+  "> 完成。",
+  "Running tool report_result with the param",
+  " - Completed in 0.15s",
+  "",
+  "> .",
+  "",
+  " ▸ Credits: 2.41 • Time: 42s",
+  "",
+  "72% λ !>",
+].join("\n");
+
 describe("KiroBackend ready/busy patterns (#548)", () => {
   const backend = new KiroBackend("/tmp/agend-kiro-busy-test");
 
@@ -41,6 +61,21 @@ describe("KiroBackend ready/busy patterns (#548)", () => {
     "64% λ !>",
   ])("does not pin normal prose/status as busy: %s", (line) => {
     expect(backend.getBusyPattern().test(line)).toBe(false);
+  });
+
+  it("ignores a stale spinner when a completed turn and ready footer follow it", () => {
+    expect(backend.getReadyPattern().test(IDLE_WITH_STALE_SPINNER)).toBe(true);
+    expect(backend.getBusyPattern().test(IDLE_WITH_STALE_SPINNER)).toBe(false);
+    expect(backend.getPaneActivity(IDLE_WITH_STALE_SPINNER)).toBeNull();
+
+    const machine = new PaneStateMachine(
+      backend.getReadyPattern(),
+      10 * 60_000,
+      0,
+      backend.getBusyPattern(),
+    );
+    expect(machine.observe(WORKING_PANE, 1, { settled: true }).state).toBe("working");
+    expect(machine.observe(IDLE_WITH_STALE_SPINNER, 2_001, { settled: true }).state).toBe("idle");
   });
 
   it("keeps the pane working after the 2s idle debounce until the spinner disappears", () => {
