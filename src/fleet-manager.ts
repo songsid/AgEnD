@@ -4,6 +4,7 @@ import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import {
   beginUpdateProgress as persistUpdateProgress,
@@ -203,6 +204,35 @@ const DELIVERY_STATUS_EMOJIS = new Set(["👀", "⏳", "✅", "❌"]);
  * emoji never changes the documented delivery-state protocol.
  */
 const IGNORED_REACTION_EMOJIS = new Set(["📷"]);
+
+const HOT_INSTANCE_CONFIG_KEYS = new Set<keyof InstanceConfig>([
+  "tool_progress",
+  "mcp_proxy_reply",
+  "auto_pause_after",
+  "warm_cap",
+  "display_name",
+  "description",
+  "tags",
+  "log_level",
+]);
+
+function splitHotColdConfig(config: InstanceConfig): {
+  hot: Partial<InstanceConfig>;
+  cold: Partial<InstanceConfig>;
+} {
+  const hot: Partial<InstanceConfig> = {};
+  const cold: Partial<InstanceConfig> = {};
+  for (const [key, value] of Object.entries(config) as Array<[keyof InstanceConfig, InstanceConfig[keyof InstanceConfig]]>) {
+    (HOT_INSTANCE_CONFIG_KEYS.has(key) ? hot : cold)[key] = value as never;
+  }
+  return { hot, cold };
+}
+
+function hotConfigUpdate(config: InstanceConfig): Record<string, unknown> {
+  const update: Record<string, unknown> = {};
+  for (const key of HOT_INSTANCE_CONFIG_KEYS) update[key] = config[key] ?? null;
+  return update;
+}
 /**
  * How long a delivery waits out a disconnected instance IPC before giving up.
  *
@@ -8103,7 +8133,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /**
    * Hot-reload: re-read fleet.yaml and reconcile running instances.
    * Starts new, stops removed, restarts modified instances.
-   * Fleet-level config (access, cost_guard, etc.) requires /restart to take effect.
+   * Whitelisted runtime fields are pushed into live daemons; all other instance
+   * fields, plus cold fleet-level settings, retain restart semantics.
    */
   private async reconcileInstances(): Promise<void> {
     if (!this.configPath) return;
@@ -8161,9 +8192,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
 
-    // Detect fleet-level config changes and warn
-    const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldConfig?.defaults });
-    const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: this.fleetConfig?.defaults });
+    // Detect fleet-level changes which still need a restart. Hot defaults are
+    // reconciled below and must not produce a misleading restart warning.
+    const oldDefaultCold = oldConfig?.defaults
+      ? splitHotColdConfig(oldConfig.defaults as InstanceConfig).cold
+      : {};
+    const newDefaultCold = this.fleetConfig?.defaults
+      ? splitHotColdConfig(this.fleetConfig.defaults as InstanceConfig).cold
+      : {};
+    const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldDefaultCold });
+    const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: newDefaultCold });
     if (oldFleetLevel !== newFleetLevel) {
       this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
     }
@@ -8178,7 +8216,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       }
     }
 
-    // Start new + restart modified instances
+    // Start new + reconcile modified instances. Hot values are always sent as a
+    // complete snapshot: Settings mutates FleetManager's config before SIGHUP,
+    // so an old/new diff alone can miss the live daemon's stale value.
     for (const [name, config] of Object.entries(newInstances)) {
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance
@@ -8186,15 +8226,34 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         await this.startInstance(name, config, topicMode).catch(err =>
           this.logger.error({ err, name }, "Failed to start new instance"));
       } else if (oldConfig?.instances[name]) {
-        // Restart if any config field changed
-        if (JSON.stringify(oldConfig.instances[name]) !== JSON.stringify(config)) {
+        const daemon = this.daemons.get(name)!;
+        const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
+        const oldParts = splitHotColdConfig(runtimeConfig);
+        const newParts = splitHotColdConfig(config);
+        // Every field not explicitly classified hot is cold by default.
+        if (!isDeepStrictEqual(oldParts.cold, newParts.cold)) {
           this.logger.info({ name }, "Instance config changed — restarting");
           await this.stopInstance(name).catch(() => {});
           await this.startInstance(name, config, topicMode).catch(err =>
             this.logger.error({ err, name }, "Failed to restart modified instance"));
+        } else if (!isDeepStrictEqual(oldParts.hot, newParts.hot)) {
+          const update = hotConfigUpdate(config);
+          const ipc = this.instanceIpcClients.get(name);
+          const sent = ipc?.connected === true && ipc.send({ type: "config_update", config: update });
+          if (!sent) {
+            // Daemon is in-process, so a reconnect gap must not leave runtime
+            // state stale. Normal operation still uses the explicit IPC contract.
+            daemon.applyConfigUpdate(update);
+            this.logger.warn({ name }, "Config-update IPC unavailable — applied hot config in-process");
+          }
+          this.logger.info({ name, fields: [...HOT_INSTANCE_CONFIG_KEYS] }, "Instance hot config reloaded");
         }
       }
     }
+
+    // warm_cap is fleet-owned; enforce the reloaded value immediately against
+    // currently idle instances instead of waiting for a future state edge.
+    this.enforceWarmCap();
 
     this.logger.info({ running: this.daemons.size, configured: Object.keys(newInstances).length }, "Reconcile complete");
   }

@@ -194,7 +194,7 @@
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
       runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
-      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
+      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -212,7 +212,7 @@
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
-      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
+      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -353,6 +353,11 @@
     button.disabled = false;
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
+  const HOT_FIELDS = new Set(["tool_progress", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"]);
+  const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  function changedFields(next, baseline) {
+    return Object.fromEntries(Object.entries(next).filter(([key, value]) => !sameValue(value, baseline[key])));
+  }
   function overrideControl(inst, key, input, inheritedValue, impactKind = "instance") {
     const inherited = !hasOwn(inst, key);
     const toggle = el("input", { type: "checkbox" }); toggle.checked = inherited;
@@ -455,6 +460,7 @@
     const hang = overrideControl(hangHolder, "value", el("input", { type: "number", min: "0.1", step: "0.5", value: hangRaw.timeout_minutes ?? defaults.hang_detector?.timeout_minutes ?? 15 }), defaults.hang_detector?.timeout_minutes ?? 15);
     const agentMode = overrideControl(inst, "agent_mode", select(inst.agent_mode || defaults.agent_mode || "mcp", ["mcp", "cli"]), defaults.agent_mode || "mcp");
     const toolSet = overrideControl(inst, "tool_set", select(inst.tool_set || defaults.tool_set || "full", ["full", "standard", "minimal"]), defaults.tool_set || "full");
+    const toolProgress = overrideControl(inst, "tool_progress", select(inst.tool_progress || defaults.tool_progress || "off", ["off", "standard", "verbose"]), defaults.tool_progress || "off", "now");
     const logLevel = overrideControl(inst, "log_level", select(inst.log_level || defaults.log_level || "info", ["trace", "debug", "info", "warn", "error"]), defaults.log_level || "info");
     const fLightweight = el("input", { type: "checkbox" }); fLightweight.checked = inst.lightweight ?? defaults.lightweight ?? false;
     const lightweight = overrideControl(inst, "lightweight", fLightweight, defaults.lightweight ?? false);
@@ -474,12 +480,12 @@
       saveBtn.disabled = !(validAuto && validHang);
       return !saveBtn.disabled;
     };
-    for (const ctl of [auto, hang, agentMode, toolSet, logLevel, lightweight, failover, displayName]) {
+    for (const ctl of [auto, hang, agentMode, toolSet, toolProgress, logLevel, lightweight, failover, displayName]) {
       ctl.input.addEventListener("input", validate); ctl.input.addEventListener("change", validate); ctl.toggle.addEventListener("change", validate);
     }
     saveBtn.onclick = async () => {
       if (!validate()) return;
-      const patch = {
+      const nextPatch = {
         backend: fBackend.value, model: fModel.value.trim() || null,
         working_directory: fWd.value, channel_id: fChan.value || undefined,
         description: fDesc.value || undefined, systemPrompt: fSys.value || undefined,
@@ -488,11 +494,31 @@
         hang_detector: { timeout_minutes: hang.toggle.checked ? null : Number(hang.input.value) },
         agent_mode: agentMode.toggle.checked ? null : agentMode.input.value,
         tool_set: toolSet.toggle.checked ? null : toolSet.input.value,
+        tool_progress: toolProgress.toggle.checked ? null : toolProgress.input.value,
         log_level: logLevel.toggle.checked ? null : logLevel.input.value,
         lightweight: lightweight.toggle.checked ? null : lightweight.input.checked,
         model_failover: failover.toggle.checked ? null : (failover.input.value.trim() ? [failover.input.value.trim()] : []),
         display_name: displayName.toggle.checked ? null : displayName.input.value.trim(),
       };
+      const patch = changedFields(nextPatch, {
+        backend: inst.backend || defaults.backend || "claude-code",
+        model: inst.model?.trim() || null,
+        working_directory: inst.working_directory || "",
+        channel_id: inst.channel_id || undefined,
+        description: inst.description || undefined,
+        systemPrompt: inst.systemPrompt || undefined,
+        tags: inst.tags?.length ? inst.tags : undefined,
+        general_topic: !!inst.general_topic,
+        auto_pause_after: hasOwn(inst, "auto_pause_after") ? inst.auto_pause_after : null,
+        hang_detector: { timeout_minutes: hasOwn(hangRaw, "timeout_minutes") ? hangRaw.timeout_minutes : null },
+        agent_mode: hasOwn(inst, "agent_mode") ? inst.agent_mode : null,
+        tool_set: hasOwn(inst, "tool_set") ? inst.tool_set : null,
+        tool_progress: hasOwn(inst, "tool_progress") ? inst.tool_progress : null,
+        log_level: hasOwn(inst, "log_level") ? inst.log_level : null,
+        lightweight: hasOwn(inst, "lightweight") ? inst.lightweight : null,
+        model_failover: hasOwn(inst, "model_failover") ? inst.model_failover : null,
+        display_name: hasOwn(inst, "display_name") ? inst.display_name : null,
+      });
       state.fleet.instances[name] = { ...inst, ...patch };
       for (const [key, value] of Object.entries(patch)) if (value === null) delete state.fleet.instances[name][key];
       if (patch.hang_detector?.timeout_minutes === null) {
@@ -501,7 +527,7 @@
       }
       stageChange(`agent:${name}`, {
         label: `Update ${shortName(name, state.fleet.instances[name])}`,
-        impact: "instance",
+        impact: Object.keys(patch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance",
         apply: () => api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) }),
       });
       editing = null; renderAgents();
@@ -515,7 +541,7 @@
         el("div", {}, el("label", {}, t("model"), impact("instance")), fModel)),
       el("label", {}, t("workingDir"), impact("instance")), fWd,
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), auto.row, autoFeedback)),
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), auto.row, autoFeedback)),
       el("div", { class: "advanced-only" },
         el("div", { class: "sub", style: "margin:14px 0 6px;font-weight:600" }, "Advanced Agent settings"),
         el("div", { class: "grid2" },
@@ -523,7 +549,8 @@
         el("div", {}, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`), hang.row, hangFeedback),
         el("div", {}, el("label", {}, t("agentMode")), agentMode.row),
         el("div", {}, el("label", {}, t("toolSet")), toolSet.row),
-        el("div", {}, el("label", {}, t("logLevel")), logLevel.row),
+        el("div", {}, el("label", {}, t("toolProgress"), impact("now")), toolProgress.row),
+        el("div", {}, el("label", {}, t("logLevel"), impact("now")), logLevel.row),
         el("div", {}, el("label", {}, t("lightweight")), lightweight.row),
         el("div", {}, el("label", {}, t("modelFailover")), failover.row, failoverFeedback)),
         el("label", {}, t("systemPrompt"), impact("instance")), fSys,
@@ -778,6 +805,11 @@
     state.fleet.defaults = state.fleet.defaults || {};
     state.classic.defaults = state.classic.defaults || {};
     const d = state.fleet.defaults, c = state.classic.defaults;
+    // The controls below mutate their arrays in place. Keep raw snapshots so
+    // changing one hot default does not also stage untouched access settings as
+    // a fleet restart.
+    const originalChannels = structuredClone(channels());
+    const originalClassicDefaults = structuredClone(c);
     const hang = d.hang_detector || {};
     const startup = d.startup || {};
     const primary = channels()[0];
@@ -790,6 +822,7 @@
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
     const fAgentMode = select(d.agent_mode || "mcp", ["mcp", "cli"]);
     const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
+    const fToolProgress = select(d.tool_progress || "off", ["off", "standard", "verbose"]);
     const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
     const fLocale = el("select");
     const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: d.auto_pause_after ?? 0, placeholder: "0 = disabled" });
@@ -820,23 +853,49 @@
     saveBtn.textContent = "Review changes";
     saveBtn.onclick = () => {
       if (!validate()) return;
-      const defaultsPatch = {
+      const nextDefaults = {
         backend: fBackend.value,
         model: fModel.value || undefined,
         locale: fLocale.value,
         auto_pause_after: Number(fAutoPause.value),
         agent_mode: fAgentMode.value,
         tool_set: fToolSet.value,
+        tool_progress: fToolProgress.value,
         log_level: fLogLevel.value,
         hang_detector: { enabled: fHangEnabled.checked, timeout_minutes: Number(fHangTimeout.value) },
         startup: { concurrency: Number(fConcurrency.value), stagger_delay_ms: Number(fStagger.value) },
       };
-      const classicPatch = { backend: fClassicBackend.value, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds };
+      const defaultsPatch = changedFields(nextDefaults, {
+        backend: d.backend || "claude-code",
+        model: d.model || undefined,
+        locale: d.locale || "",
+        auto_pause_after: d.auto_pause_after ?? 0,
+        agent_mode: d.agent_mode || "mcp",
+        tool_set: d.tool_set || "full",
+        tool_progress: d.tool_progress || "off",
+        log_level: d.log_level || "info",
+        hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? 15 },
+        startup: { concurrency: startup.concurrency ?? 10, stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
+      });
+      const classicPatch = changedFields(
+        { backend: fClassicBackend.value, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds },
+        {
+          backend: originalClassicDefaults.backend || d.backend || "claude-code",
+          admin_users: originalClassicDefaults.admin_users || [],
+          allowed_guilds: originalClassicDefaults.allowed_guilds || [],
+        },
+      );
       state.fleet.defaults = { ...d, ...defaultsPatch };
       state.classic.defaults = { ...c, ...classicPatch };
-      stageChange("defaults:fleet", { label: "Update Agent defaults", impact: "instance", apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
-      if (primary) stageChange("connections:primary", { label: "Update primary connection access", impact: "fleet", apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(channels()) }) });
-      stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
+      if (Object.keys(defaultsPatch).length > 0) {
+        stageChange("defaults:fleet", { label: "Update Agent defaults", impact: Object.keys(defaultsPatch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance", apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
+      }
+      if (primary && !sameValue(channels(), originalChannels)) {
+        stageChange("connections:primary", { label: "Update primary connection access", impact: "fleet", apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(channels()) }) });
+      }
+      if (Object.keys(classicPatch).length > 0) {
+        stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
+      }
       msg.innerHTML = `<span class="s">Ready to apply</span>`;
     };
 
@@ -851,7 +910,7 @@
           el("div", { class: "field" }, el("label", {}, t("language"), impact("now")), fLocale),
           el("div", { class: "field" }, el("label", {}, t("defaultBackend"), impact("instance")), fBackend),
           el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("instance")), fModel),
-          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), fAutoPause, autoFeedback))),
+          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), fAutoPause, autoFeedback))),
       section("ClassicBot", true,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("instance")), fClassicBackend)),
@@ -863,7 +922,8 @@
       section(t("runtimeResources"), false,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("instance")), fToolSet),
-          el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("instance")), fLogLevel),
+          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fToolProgress),
+          el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("now")), fLogLevel),
           el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("instance")), fAgentMode))),
       section(t("detection"), false,
         el("div", { class: "grid2" },

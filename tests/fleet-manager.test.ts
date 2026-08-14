@@ -492,6 +492,102 @@ describe("FleetManager", () => {
     await vi.waitFor(() => expect(reconcile).toHaveBeenCalledTimes(2));
   });
 
+  it("sends hot config over IPC without stopping the running instance", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, [
+      "defaults:",
+      "  tool_progress: off",
+      "instances:",
+      "  one:",
+      "    working_directory: /tmp/one",
+      "",
+    ].join("\n"));
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one);
+    const daemon = { getConfigSnapshot: () => runtimeConfig, applyConfigUpdate: vi.fn() } as any;
+    const send = vi.fn(() => true);
+    fm.lifecycle.daemons.set("one", daemon);
+    (fm as any).instanceIpcClients.set("one", { connected: true, send });
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+
+    // Settings PATCH mutates FleetManager.fleetConfig before it persists and
+    // sends SIGHUP. The runtime daemon still has the old value, so reconcile
+    // must apply the effective value even when old/new config objects now agree.
+    Object.assign(fm.fleetConfig!.instances.one, {
+      tool_progress: "standard",
+      mcp_proxy_reply: true,
+      auto_pause_after: 4,
+      warm_cap: 8,
+      display_name: "One",
+      description: "Hot worker",
+      tags: ["hot", "worker"],
+      log_level: "debug",
+    });
+    writeFileSync(configPath, [
+      "defaults:",
+      "  tool_progress: standard",
+      "  mcp_proxy_reply: true",
+      "  auto_pause_after: 4",
+      "  warm_cap: 8",
+      "  log_level: debug",
+      "instances:",
+      "  one:",
+      "    working_directory: /tmp/one",
+      "    display_name: One",
+      "    description: Hot worker",
+      "    tags: [hot, worker]",
+      "",
+    ].join("\n"));
+    await (fm as any).reconcileInstances();
+
+    expect(send).toHaveBeenCalledWith({
+      type: "config_update",
+      config: expect.objectContaining({
+        tool_progress: "standard",
+        mcp_proxy_reply: true,
+        auto_pause_after: 4,
+        warm_cap: 8,
+        display_name: "One",
+        description: "Hot worker",
+        tags: ["hot", "worker"],
+        log_level: "debug",
+      }),
+    });
+    expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["backend", "kiro-cli"],
+    ["working_directory", "/tmp/two"],
+  ])("restarts when the cold field %s changes", async (field, value) => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, "instances:\n  one:\n    backend: codex\n    working_directory: /tmp/one\n");
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one);
+    fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => runtimeConfig } as any);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+
+    // Mirror Settings PATCH's pre-SIGHUP in-memory mutation.
+    (fm.fleetConfig!.instances.one as any)[field] = value;
+    writeFileSync(configPath, [
+      "instances:",
+      "  one:",
+      `    backend: ${field === "backend" ? value : "codex"}`,
+      `    working_directory: ${field === "working_directory" ? value : "/tmp/one"}`,
+      "",
+    ].join("\n"));
+    await (fm as any).reconcileInstances();
+
+    expect(stop).toHaveBeenCalledWith("one");
+    expect(start).toHaveBeenCalledWith("one", expect.objectContaining({ [field]: value }), false);
+  });
+
   it("keeps the running config when hot reload reads an empty fleet", async () => {
     const configPath = join(tmpDir, "fleet.yaml");
     writeFileSync(configPath, "instances:\n  one:\n    working_directory: /tmp/one\n  two:\n    working_directory: /tmp/two\n");

@@ -139,6 +139,34 @@ describe("Settings manual lifecycle API", () => {
       { path: ["instances", "worker", "model"], value: model, remove: true },
     ]);
   });
+
+  it("persists and removes the tool_progress instance override", async () => {
+    const { ctx } = context();
+
+    const enabled = await request(
+      "/api/settings/fleet/instances/worker",
+      ctx,
+      "PATCH",
+      { tool_progress: "verbose" },
+    );
+    expect(enabled.status).toBe(200);
+    expect(ctx.fleetConfig!.instances.worker.tool_progress).toBe("verbose");
+    expect(ctx.saveFleetConfig).toHaveBeenLastCalledWith([
+      { path: ["instances", "worker", "tool_progress"], value: "verbose", remove: false },
+    ]);
+
+    const inherited = await request(
+      "/api/settings/fleet/instances/worker",
+      ctx,
+      "PATCH",
+      { tool_progress: null },
+    );
+    expect(inherited.status).toBe(200);
+    expect(ctx.fleetConfig!.instances.worker.tool_progress).toBeUndefined();
+    expect(ctx.saveFleetConfig).toHaveBeenLastCalledWith([
+      { path: ["instances", "worker", "tool_progress"], value: null, remove: true },
+    ]);
+  });
 });
 
 describe("Settings classicBot persistence", () => {
