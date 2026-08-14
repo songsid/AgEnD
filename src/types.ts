@@ -122,8 +122,9 @@ export interface InstanceConfig {
   tool_set?: string;
   /**
    * Tool-progress detail shown in the channel processing bubble.
-   * "standard" (default) shows semantic labels with no shell arguments;
+   * "standard" shows semantic labels with no shell arguments;
    * "verbose" adds truncated command previews; "off" disables the list.
+   * Defaults to "off" so upgrades do not start broadcasting tool activity.
    */
   tool_progress?: "off" | "standard" | "verbose";
   /** Skip non-essential subsystems (transcript monitor, context guardian, approval server, prompt detector) */

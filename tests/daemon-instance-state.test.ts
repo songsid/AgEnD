@@ -406,7 +406,7 @@ describe("tool_progress opt-in gate", () => {
       log_level: "silent",
     } as any, instanceDir, false, { binaryName: "claude" } as any, undefined,
       { child: () => logger } as any);
-    return { daemon, instanceDir };
+    return { daemon, instanceDir, logger };
   }
 
   it.each([
@@ -438,6 +438,62 @@ describe("tool_progress opt-in gate", () => {
     try {
       (daemon as any).recordToolProgress("Bash", { command: "npm test" });
       expect((daemon as any).turnProgress.isEmpty()).toBe(false);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("hot-updates the production daemon gate and clears progress across levels", () => {
+    const { daemon, instanceDir } = makeGateDaemon("verbose");
+    try {
+      (daemon as any).recordToolProgress("Bash", { command: "printf secret-preview" });
+      expect((daemon as any).turnProgress.isEmpty()).toBe(false);
+
+      daemon.updateToolProgress("standard");
+      expect((daemon as any).toolProgressLevel()).toBe("standard");
+      expect((daemon as any).turnProgress.isEmpty()).toBe(true);
+
+      daemon.updateToolProgress("off");
+      (daemon as any).recordToolProgress("Bash", { command: "npm test" });
+      expect((daemon as any).turnProgress.isEmpty()).toBe(true);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("applies only whitelisted config_update fields and reconfigures live controllers", () => {
+    const { daemon, instanceDir, logger } = makeGateDaemon("off");
+    try {
+      daemon.applyConfigUpdate({
+        tool_progress: "verbose",
+        mcp_proxy_reply: true,
+        auto_pause_after: 4,
+        warm_cap: 7,
+        display_name: "Sentinel",
+        description: "runtime hot",
+        tags: ["one", "two"],
+        log_level: "debug",
+        backend: "kiro-cli", // cold/unlisted: must not be accepted over IPC
+      });
+
+      const snapshot = daemon.getConfigSnapshot();
+      expect(snapshot).toMatchObject({
+        tool_progress: "verbose",
+        mcp_proxy_reply: true,
+        auto_pause_after: 4,
+        warm_cap: 7,
+        display_name: "Sentinel",
+        description: "runtime hot",
+        tags: ["one", "two"],
+        log_level: "debug",
+      });
+      expect(snapshot.backend).toBeUndefined();
+      expect((daemon as any).autoPauseController.thresholdMs).toBe(4 * 60_000);
+      expect(logger.level).toBe("debug");
+
+      (daemon as any).autoPauseController.lastActivityAt = 123;
+      daemon.applyConfigUpdate({ auto_pause_after: 4 });
+      expect((daemon as any).autoPauseController.lastActivityAt).toBe(123);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }

@@ -168,11 +168,17 @@ export class AutoPauseController {
   private pausedAt: number | null = null;
 
   constructor(
-    private readonly thresholdMs: number,
+    private thresholdMs: number,
     private lastActivityAt = Date.now(),
   ) {}
 
   recordActivity(now = Date.now()): void {
+    this.lastActivityAt = now;
+  }
+
+  /** Apply a new idle threshold and start a fresh countdown from this update. */
+  reconfigure(thresholdMs: number, now = Date.now()): void {
+    this.thresholdMs = Math.max(0, thresholdMs);
     this.lastActivityAt = now;
   }
 
@@ -1098,6 +1104,8 @@ export class Daemon extends EventEmitter {
             this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
           });
         }
+      } else if (msg.type === "config_update") {
+        this.applyConfigUpdate(msg.config);
       } else if (msg.type === "steer") {
         const meta = (msg.meta ?? {}) as Record<string, string>;
         this.steerMessage(msg.content as string, meta);
@@ -2662,6 +2670,72 @@ export class Daemon extends EventEmitter {
   private toolProgressLevel(): "off" | "standard" | "verbose" {
     const raw = this.config.tool_progress;
     return raw === "standard" || raw === "verbose" ? raw : "off";
+  }
+
+  /**
+   * Apply a tool-progress setting without restarting the CLI session.
+   *
+   * Drop the current accumulator at the boundary: verbose entries may contain
+   * command previews which must not survive a downgrade to standard/off, and a
+   * newly enabled level should start with a clean, internally consistent list.
+   */
+  updateToolProgress(level: InstanceConfig["tool_progress"]): void {
+    const previous = this.toolProgressLevel();
+    this.config.tool_progress = level;
+    if (this.toolProgressLevel() !== previous) this.resetToolProgress();
+  }
+
+  /** Snapshot the configuration actually owned by this live daemon. */
+  getConfigSnapshot(): InstanceConfig {
+    return structuredClone(this.config);
+  }
+
+  /**
+   * Apply the whitelisted hot configuration carried by FleetManager IPC.
+   * null removes an optional value; invalid/unlisted fields are ignored rather
+   * than allowing another client on the per-instance socket to mutate cold
+   * process/session settings.
+   */
+  applyConfigUpdate(value: unknown): void {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const update = value as Record<string, unknown>;
+
+    if (update.tool_progress === null || ["off", "standard", "verbose"].includes(String(update.tool_progress))) {
+      this.updateToolProgress(update.tool_progress === null ? undefined : update.tool_progress as InstanceConfig["tool_progress"]);
+    }
+    if (typeof update.mcp_proxy_reply === "boolean") this.config.mcp_proxy_reply = update.mcp_proxy_reply;
+    else if (update.mcp_proxy_reply === null) delete this.config.mcp_proxy_reply;
+    if (typeof update.warm_cap === "number" && Number.isInteger(update.warm_cap) && update.warm_cap >= 0) this.config.warm_cap = update.warm_cap;
+    else if (update.warm_cap === null) delete this.config.warm_cap;
+
+    const nextAutoPause = typeof update.auto_pause_after === "number"
+      && Number.isFinite(update.auto_pause_after)
+      && update.auto_pause_after >= 0
+      ? update.auto_pause_after
+      : update.auto_pause_after === null ? 0 : undefined;
+    if (nextAutoPause !== undefined) {
+      const previousAutoPause = typeof this.config.auto_pause_after === "number" ? this.config.auto_pause_after : 0;
+      if (update.auto_pause_after === null) delete this.config.auto_pause_after;
+      else this.config.auto_pause_after = nextAutoPause;
+      if (nextAutoPause !== previousAutoPause) {
+        const isGeneral = this.config.general_topic === true || this.name === "general";
+        this.autoPauseController.reconfigure((isGeneral ? 0 : nextAutoPause) * 60_000);
+      }
+    }
+
+    for (const key of ["display_name", "description"] as const) {
+      if (typeof update[key] === "string") this.config[key] = update[key] as string;
+      else if (update[key] === null) delete this.config[key];
+    }
+    if (Array.isArray(update.tags) && update.tags.every(tag => typeof tag === "string")) this.config.tags = [...update.tags] as string[];
+    else if (update.tags === null) delete this.config.tags;
+    if (["trace", "debug", "info", "warn", "error"].includes(String(update.log_level))) {
+      const level = update.log_level as InstanceConfig["log_level"];
+      if (this.config.log_level !== level) {
+        this.config.log_level = level;
+        this.logger.level = level;
+      }
+    }
   }
 
   /**
