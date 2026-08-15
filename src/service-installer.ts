@@ -121,22 +121,107 @@ export function renderSystemdUnit(vars: ServiceVars): string {
   return render(template, withDefaults(vars));
 }
 
+export interface ServiceInfo {
+  installed: boolean;
+  path: string | null;
+  manager: "systemd --user" | "launchd";
+  enabled: boolean | null;
+  active: boolean | null;
+}
+
+/** Empty input follows the CLI's [Y/n] default. */
+export function isServiceRemovalConfirmed(answer: string): boolean {
+  return /^\s*(?:y|yes)?\s*$/i.test(answer);
+}
+
+function servicePathForLabel(label: string): string {
+  return detectPlatform() === "macos"
+    ? join(process.env.HOME ?? homedir(), "Library/LaunchAgents", `${label}.plist`)
+    : join(process.env.HOME ?? homedir(), ".config/systemd/user", `${label}.service`);
+}
+
+/** Inspect the user service without changing it. `null` means manager unavailable. */
+export function inspectService(label = SERVICE_LABEL): ServiceInfo {
+  const plat = detectPlatform();
+  const path = servicePathForLabel(label);
+  const manager = plat === "macos" ? "launchd" : "systemd --user";
+  if (!existsSync(path)) return { installed: false, path: null, manager, enabled: null, active: null };
+
+  if (plat === "macos") {
+    const uid = process.getuid?.() ?? 501;
+    const domain = `gui/${uid}`;
+    const activeResult = spawnSync("launchctl", ["print", `${domain}/${label}`], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const disabledResult = spawnSync("launchctl", ["print-disabled", domain], {
+      encoding: "utf8",
+      timeout: 5000,
+    });
+    const active = activeResult.error || activeResult.status == null ? null : activeResult.status === 0;
+    let enabled: boolean | null = null;
+    if (!disabledResult.error && disabledResult.status === 0) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      enabled = !new RegExp(`"${escaped}"\\s*=>\\s*true`).test(String(disabledResult.stdout ?? ""));
+    }
+    return { installed: true, path, manager, enabled, active };
+  }
+
+  const activeResult = spawnSync("systemctl", ["--user", "is-active", label], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  const serviceState = classifySystemdServiceState(activeResult);
+  const enabledResult = spawnSync("systemctl", ["--user", "is-enabled", label], {
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  const enabledDetails = `${enabledResult.stderr ?? ""} ${enabledResult.error?.message ?? ""}`.toLowerCase();
+  const enabled = enabledResult.error
+    || enabledResult.status == null
+    || /failed to connect to bus|no medium found|transport endpoint|connection refused|system has not been booted/.test(enabledDetails)
+    ? null
+    : /^enabled(?:-runtime)?$/.test(String(enabledResult.stdout ?? "").trim());
+  return {
+    installed: true,
+    path,
+    manager,
+    enabled,
+    active: serviceState === "unavailable" ? null : serviceState === "running",
+  };
+}
+
 export function uninstallService(label: string): boolean {
   const plat = detectPlatform();
+  const path = servicePathForLabel(label);
+  if (!existsSync(path)) return false;
+
   if (plat === "macos") {
-    const plistPath = join(process.env.HOME!, "Library/LaunchAgents", `${label}.plist`);
-    if (existsSync(plistPath)) {
-      unlinkSync(plistPath);
-      return true;
+    const uid = process.getuid?.() ?? 501;
+    const domain = `gui/${uid}`;
+    spawnSync("launchctl", ["bootout", `${domain}/${label}`], { stdio: "ignore", timeout: 5000 });
+    const disabled = spawnSync("launchctl", ["disable", `${domain}/${label}`], { encoding: "utf8", timeout: 5000 });
+    if (disabled.error || disabled.status !== 0) {
+      throw new Error(`launchctl could not disable ${label}: ${String(disabled.stderr ?? disabled.error?.message ?? "unknown error").trim()}`);
     }
   } else {
-    const unitPath = join(process.env.HOME!, ".config/systemd/user", `${label}.service`);
-    if (existsSync(unitPath)) {
-      unlinkSync(unitPath);
-      return true;
+    // `disable --now` both stops the live unit and removes its enablement links.
+    // Fail closed before unlinking: deleting the unit after a D-Bus failure can
+    // leave an untracked service process running until the next login/reboot.
+    const disabled = spawnSync("systemctl", ["--user", "disable", "--now", label], {
+      encoding: "utf8",
+      timeout: 15_000,
+    });
+    if (disabled.error || disabled.status !== 0) {
+      throw new Error(`systemctl could not disable/stop ${label}: ${String(disabled.stderr ?? disabled.error?.message ?? "unknown error").trim()}`);
     }
   }
-  return false;
+
+  unlinkSync(path);
+  if (plat === "linux") {
+    spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore", timeout: 5000 });
+  }
+  return true;
 }
 
 export function installService(vars: ServiceVars): string {
@@ -230,14 +315,8 @@ export function restartSystemdService(
 }
 
 export function getServicePath(): string | null {
-  const plat = detectPlatform();
-  if (plat === "macos") {
-    const p = join(process.env.HOME!, "Library/LaunchAgents", `${SERVICE_LABEL}.plist`);
-    return existsSync(p) ? p : null;
-  } else {
-    const p = join(process.env.HOME!, ".config/systemd/user", `${SERVICE_LABEL}.service`);
-    return existsSync(p) ? p : null;
-  }
+  const path = servicePathForLabel(SERVICE_LABEL);
+  return existsSync(path) ? path : null;
 }
 
 /** Legacy/root installs may use a system-level unit instead of the user unit. */

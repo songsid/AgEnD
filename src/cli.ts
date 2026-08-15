@@ -814,9 +814,16 @@ program
   .action(async (check?: string) => {
     if (check === "mcp") {
       await doctorMcp();
-    } else {
+    } else if (check) {
       console.log("Usage: agend doctor mcp");
       console.log("  mcp  — Check fleet MCP health (IPC sockets, MCP configs, backends)");
+      process.exitCode = 2;
+    } else {
+      const { inspectService } = await import("./service-installer.js");
+      const { collectDoctorReport, formatDoctorReport } = await import("./doctor.js");
+      const report = await collectDoctorReport(DATA_DIR, inspectService());
+      console.log(formatDoctorReport(report));
+      if (report.errors > 0) process.exitCode = 1;
     }
   });
 
@@ -1385,13 +1392,55 @@ program
 program
   .command("uninstall")
   .description("Remove system service")
-  .action(async () => {
-    const { uninstallService } = await import("./service-installer.js");
-    const removed = uninstallService("com.agend.fleet");
-    if (removed) {
-      console.log("Service uninstalled");
-    } else {
-      console.log("No service found to uninstall");
+  .option("-f, --force", "Skip confirmation (for CI/automation)")
+  .action(async (opts: { force?: boolean }) => {
+    const { inspectService, isServiceRemovalConfirmed, uninstallService } = await import("./service-installer.js");
+    const service = inspectService("com.agend.fleet");
+    if (!service.installed) {
+      console.log("No AgEnD service found");
+      return;
+    }
+
+    const state = (value: boolean | null, yes: string, no: string) => value == null ? "unknown" : value ? yes : no;
+    console.log("AgEnD service found:");
+    console.log(`  Manager: ${service.manager}`);
+    console.log(`  Path: ${service.path}`);
+    console.log(`  Enabled: ${state(service.enabled, "yes", "no")}`);
+    console.log(`  Active: ${state(service.active, "running", "inactive")}`);
+
+    if (!opts.force && !process.stdin.isTTY) {
+      console.log("Non-interactive session — re-run with --force");
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!opts.force) {
+      const { createInterface } = await import("node:readline/promises");
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      let answer = "";
+      try {
+        answer = await rl.question("Remove service? [Y/n] ");
+      } catch {
+        console.log("Service removal cancelled. Re-run with --force for non-interactive use.");
+        return;
+      } finally {
+        rl.close();
+      }
+      if (!isServiceRemovalConfirmed(answer)) {
+        console.log("Service removal cancelled.");
+        return;
+      }
+    }
+
+    try {
+      if (uninstallService("com.agend.fleet")) {
+        console.log("Service disabled, stopped, and removed.");
+      } else {
+        console.log("No AgEnD service found");
+      }
+    } catch (err) {
+      console.error(`Failed to uninstall service: ${(err as Error).message}`);
+      process.exitCode = 1;
     }
   });
 
