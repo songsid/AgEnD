@@ -95,6 +95,61 @@ instances:
     ]));
   });
 
+  it("skips the in-process mock backend instead of reporting a missing binary", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-enhance-"));
+    roots.push(dataDir);
+    writeFileSync(join(dataDir, "fleet.yaml"), "defaults:\n  backend: mock\ninstances:\n  test: {}\n");
+    const commands: string[] = [];
+    const report = await collectDoctorReport(dataDir, {
+      installed: false,
+      path: null,
+      manager: "systemd --user",
+      enabled: null,
+      active: null,
+    }, {
+      env: { TERM: "xterm" },
+      platform: "linux",
+      processAlive: () => false,
+      connectSocket: async () => false,
+      run: (file, args) => {
+        commands.push([file, ...args].join(" "));
+        return file === "tmux" && args[0] === "-V"
+          ? commandResult(0, "tmux 3.7\n")
+          : commandResult(1);
+      },
+    });
+
+    expect(commands.some(command => command.startsWith("mock "))).toBe(false);
+    expect(report.checks.some(check => check.label === "backend mock")).toBe(false);
+  });
+
+  it("explains that an unavailable user service manager is common over SSH without D-Bus", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-enhance-"));
+    roots.push(dataDir);
+    const report = await collectDoctorReport(dataDir, {
+      installed: true,
+      path: "/tmp/com.agend.fleet.service",
+      manager: "systemd --user",
+      enabled: null,
+      active: null,
+    }, {
+      env: { TERM: "xterm" },
+      platform: "linux",
+      processAlive: () => false,
+      connectSocket: async () => false,
+      run: (file, args) => file === "tmux" && args[0] === "-V"
+        ? commandResult(0, "tmux 3.7\n")
+        : file === "claude"
+          ? commandResult(0, "claude 1\n")
+          : commandResult(1),
+    });
+
+    expect(report.checks.filter(check => check.label === "enabled" || check.label === "active"))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ detail: expect.stringContaining("SSH without a user D-Bus session") }),
+      ]));
+  });
+
   it("connects to a real Unix IPC socket", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-doctor-socket-"));
     roots.push(root);

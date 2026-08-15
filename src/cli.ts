@@ -1394,7 +1394,7 @@ program
   .description("Remove system service")
   .option("-f, --force", "Skip confirmation (for CI/automation)")
   .action(async (opts: { force?: boolean }) => {
-    const { inspectService, uninstallService } = await import("./service-installer.js");
+    const { inspectService, isServiceRemovalConfirmed, uninstallService } = await import("./service-installer.js");
     const service = inspectService("com.agend.fleet");
     if (!service.installed) {
       console.log("No AgEnD service found");
@@ -1408,6 +1408,12 @@ program
     console.log(`  Enabled: ${state(service.enabled, "yes", "no")}`);
     console.log(`  Active: ${state(service.active, "running", "inactive")}`);
 
+    if (!opts.force && !process.stdin.isTTY) {
+      console.log("Non-interactive session — re-run with --force");
+      process.exitCode = 1;
+      return;
+    }
+
     if (!opts.force) {
       const { createInterface } = await import("node:readline/promises");
       const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -1420,7 +1426,7 @@ program
       } finally {
         rl.close();
       }
-      if (!/^\s*(?:y|yes)?\s*$/i.test(answer)) {
+      if (!isServiceRemovalConfirmed(answer)) {
         console.log("Service removal cancelled.");
         return;
       }

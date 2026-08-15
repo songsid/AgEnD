@@ -114,6 +114,8 @@ export async function collectDoctorReport(
     backendIds.add(config.backend ?? defaultBackend);
   }
   for (const id of backendIds) {
+    // `mock` is an in-process test backend and deliberately has no CLI binary.
+    if (id === "mock") continue;
     const backend = BACKENDS.find(item => item.id === id);
     if (!backend) {
       add("Prerequisites", "error", `backend ${id}`, "unknown backend");
@@ -146,18 +148,21 @@ export async function collectDoctorReport(
   if (!service.installed) {
     add("Service", "warn", "installed", "no AgEnD service found — run: agend install");
   } else {
+    const managerUnavailable = service.manager === "systemd --user"
+      ? "unknown — systemd --user unavailable (common over SSH without a user D-Bus session)"
+      : "unknown (service manager unavailable)";
     add("Service", "ok", "installed", `${service.manager}: ${service.path}`);
     add(
       "Service",
       service.enabled === true ? "ok" : "warn",
       "enabled",
-      service.enabled == null ? "unknown (service manager unavailable)" : service.enabled ? "yes" : "no — run: agend install",
+      service.enabled == null ? managerUnavailable : service.enabled ? "yes" : "no — run: agend install",
     );
     add(
       "Service",
       service.active === true ? "ok" : "warn",
       "active",
-      service.active == null ? "unknown (service manager unavailable)" : service.active ? "running" : "inactive — run: agend start",
+      service.active == null ? managerUnavailable : service.active ? "running" : "inactive — run: agend start",
     );
   }
 

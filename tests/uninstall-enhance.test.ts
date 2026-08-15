@@ -11,6 +11,7 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { isServiceRemovalConfirmed } from "../src/service-installer.js";
 
 const roots: string[] = [];
 
@@ -40,9 +41,11 @@ esac
 `);
   chmodSync(systemctl, 0o755);
 
+  const cliPath = resolve("src/cli.ts");
+  const cliArgs = ["uninstall", ...(options.args ?? [])];
   const result = spawnSync(
     process.execPath,
-    ["--import", "tsx", resolve("src/cli.ts"), "uninstall", ...(options.args ?? [])],
+    ["--import", "tsx", cliPath, ...cliArgs],
     {
       cwd: process.cwd(),
       encoding: "utf8",
@@ -69,24 +72,17 @@ afterEach(() => {
 describe("agend uninstall", () => {
   it("reports cleanly when no service is installed", () => {
     const { result, log } = runUninstall();
-    expect(result.status).toBe(0);
+    expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
     expect(result.stdout).toContain("No AgEnD service found");
     expect(existsSync(log)).toBe(false);
   });
 
-  it("shows service state and honours a negative confirmation", () => {
-    const { result, unit, log } = runUninstall({ installed: true, input: "n\n" });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Path:");
-    expect(result.stdout).toContain("Enabled: yes");
-    expect(result.stdout).toContain("Active: running");
-    expect(result.stdout).toContain("Remove service? [Y/n]");
-    expect(result.stdout).toContain("Service removal cancelled.");
-    expect(existsSync(unit)).toBe(true);
-    expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
-      "--user is-active com.agend.fleet",
-      "--user is-enabled com.agend.fleet",
-    ]);
+  it("treats blank/yes as confirmation and no as cancellation", () => {
+    expect(isServiceRemovalConfirmed("")).toBe(true);
+    expect(isServiceRemovalConfirmed(" y ")).toBe(true);
+    expect(isServiceRemovalConfirmed("YES")).toBe(true);
+    expect(isServiceRemovalConfirmed("n")).toBe(false);
+    expect(isServiceRemovalConfirmed("no")).toBe(false);
   });
 
   it("disables, stops, and removes the service with --force", () => {
@@ -103,12 +99,19 @@ describe("agend uninstall", () => {
     ]);
   });
 
-  it("uses yes as the default confirmation", () => {
-    const { result, unit } = runUninstall({ installed: true, input: "\n" });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Remove service? [Y/n]");
-    expect(result.stdout).toContain("Service disabled, stopped, and removed.");
-    expect(existsSync(unit)).toBe(false);
+  it("fails closed before prompting in a non-interactive session", () => {
+    const { result, unit, log } = runUninstall({ installed: true });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("Path:");
+    expect(result.stdout).toContain("Enabled: yes");
+    expect(result.stdout).toContain("Active: running");
+    expect(result.stdout).toContain("Non-interactive session — re-run with --force");
+    expect(result.stdout).not.toContain("Remove service?");
+    expect(existsSync(unit)).toBe(true);
+    expect(readFileSync(log, "utf8").trim().split("\n")).toEqual([
+      "--user is-active com.agend.fleet",
+      "--user is-enabled com.agend.fleet",
+    ]);
   });
 
   it("keeps the unit file when the service manager cannot stop it", () => {

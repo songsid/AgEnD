@@ -129,6 +129,11 @@ export interface ServiceInfo {
   active: boolean | null;
 }
 
+/** Empty input follows the CLI's [Y/n] default. */
+export function isServiceRemovalConfirmed(answer: string): boolean {
+  return /^\s*(?:y|yes)?\s*$/i.test(answer);
+}
+
 function servicePathForLabel(label: string): string {
   return detectPlatform() === "macos"
     ? join(process.env.HOME ?? homedir(), "Library/LaunchAgents", `${label}.plist`)
