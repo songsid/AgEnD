@@ -30,6 +30,7 @@ function setup(backend = "claude-code", connected = true) {
     instanceIpcClients: new Map([
       ["worker", { connected, send: ipcSend }],
     ]),
+    getDeliveryEpoch: () => 7,
     isFleetAdmin: () => false,
   } as any);
   return { commands, ipcSend, sendText };
@@ -44,6 +45,7 @@ describe("/btw topic command", () => {
     expect(ipcSend).toHaveBeenCalledWith({
       type: "btw",
       content: "what changed?",
+      delivery_epoch: 7,
       meta: {
         chat_id: "fleet-chat",
         message_id: "message-1",

@@ -647,6 +647,7 @@ export class TopicCommands {
     ipc.send({
       type: "steer",
       content,
+      delivery_epoch: this.ctx.getDeliveryEpoch?.(instanceName) ?? undefined,
       meta: {
         chat_id: msg.chatId,
         message_id: msg.messageId ?? "",
@@ -673,6 +674,7 @@ export class TopicCommands {
     ipc.send({
       type: "btw",
       content,
+      delivery_epoch: this.ctx.getDeliveryEpoch?.(instanceName) ?? undefined,
       meta: {
         chat_id: msg.chatId,
         message_id: msg.messageId ?? "",

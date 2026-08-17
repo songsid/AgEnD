@@ -6255,7 +6255,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  private getDeliveryEpoch(instanceName: string): number {
+  getDeliveryEpoch(instanceName: string): number {
     return this.deliveryEpochs.get(instanceName) ?? 0;
   }
 

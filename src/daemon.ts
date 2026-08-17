@@ -2950,9 +2950,10 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Claude Code /btw: submit a native side-question command immediately while
-   * leaving the active turn untouched. It shares the /steer serialization and
-   * busy-pane delivery mechanics, but deliberately adds no AgEnD wrapper.
+   * /btw: submit a separately-labelled side question immediately while asking
+   * the agent not to change the active task. Claude's native `/btw` opens a
+   * branchAndResume panel whose answer never reaches the channel or transcript,
+   * so channel delivery intentionally uses a normal wrapped inbound instead.
    */
   btwMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -2960,7 +2961,8 @@ export class Daemon extends EventEmitter {
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const command = `/btw ${content}`;
+    const formatted = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n"
+      + this.formatInboundMessage(content, meta);
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
     const status = (chatId && messageId)
@@ -2971,8 +2973,8 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      if (await this.deliverMessage(command, status, { steer: true, deliveryEpoch })) {
-        this.markTurnStarted(meta, command);
+      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
+        this.markTurnStarted(meta, formatted);
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "btw delivery error");
