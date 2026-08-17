@@ -127,6 +127,74 @@ describe("Daemon backend-native input queue delivery", () => {
     return { backend, control, daemon, instanceDir, tmux };
   }
 
+  it("drops pre-cancel channel and raw deliveries but keeps post-cancel input", async () => {
+    const { daemon, instanceDir } = makeDeliveryDaemon("claude-code", true);
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstStarted = new Promise<void>(resolve => { markFirstStarted = resolve; });
+    const firstBlocked = new Promise<void>(resolve => { releaseFirst = resolve; });
+    const delivered: string[] = [];
+    let calls = 0;
+    (daemon as any).deliverMessage = vi.fn(async (text: string) => {
+      delivered.push(text);
+      if (++calls === 1) {
+        markFirstStarted();
+        await firstBlocked;
+      }
+      return true;
+    });
+    const meta = { from_instance: "sender", user: "sender", chat_id: "" };
+
+    try {
+      daemon.pushChannelMessage("already started", meta);
+      await firstStarted;
+
+      daemon.pushChannelMessage("queued before cancel", meta);
+      (daemon as any).queueRawPaste("silent schedule before cancel");
+      daemon.clearPendingDeliveries();
+
+      // New input can arrive before the current PTY transaction finishes. It
+      // captures the new epoch and must survive behind the invalidated entries.
+      daemon.pushChannelMessage("late IPC delivery from old epoch", meta, undefined, 0);
+      daemon.pushChannelMessage("user input after cancel", meta);
+      (daemon as any).queueRawPaste("silent schedule after cancel");
+      releaseFirst();
+      await (daemon as any).pasteLock;
+
+      expect(delivered.some(text => text.includes("already started"))).toBe(true);
+      expect(delivered.some(text => text.includes("queued before cancel"))).toBe(false);
+      expect(delivered.some(text => text.includes("late IPC delivery from old epoch"))).toBe(false);
+      expect(delivered).not.toContain("silent schedule before cancel");
+      expect(delivered.some(text => text.includes("user input after cancel"))).toBe(true);
+      expect(delivered).toContain("silent schedule after cancel");
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cancels a delivery that entered the idle wait but has not pasted yet", async () => {
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", false);
+    let releaseIdleWait!: (idle: boolean) => void;
+    control.waitUntilIdle.mockImplementation(() => new Promise<boolean>(resolve => {
+      releaseIdleWait = resolve;
+    }));
+
+    try {
+      daemon.pushChannelMessage("waiting but not pasted", {
+        from_instance: "sender", user: "sender", chat_id: "",
+      });
+      await vi.waitFor(() => expect(control.waitUntilIdle).toHaveBeenCalledOnce());
+
+      daemon.clearPendingDeliveries();
+      releaseIdleWait(true);
+      await (daemon as any).pasteLock;
+
+      expect(tmux.pasteBuffer).not.toHaveBeenCalled();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
   it("hands busy Codex input to its native queue with exactly one Enter when paste is visible", async () => {
     const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
       "codex",
@@ -731,4 +799,41 @@ describe("Daemon /steer delivery", () => {
     expect(formatted).toContain("(message_id: msg-9)");
     expect(formatted).toContain("Reply using the reply tool");
   });
+
+  it("btwMessage submits Claude's raw /btw command without a steering or user wrapper", async () => {
+    const { daemon } = makeSteerDaemon("claude-code", true);
+    const deliverMessage = vi.fn().mockResolvedValue(true);
+    (daemon as any).deliverMessage = deliverMessage;
+    (daemon as any).wake = vi.fn(async () => {});
+
+    (daemon as any).btwMessage("what changed?", {
+      chat_id: "chat-9", message_id: "msg-9", user: "han", user_id: "u1",
+      thread_id: "topic-9", adapter_id: "discord-main", source: "discord",
+    });
+    await (daemon as any).steerLock;
+
+    expect(deliverMessage).toHaveBeenCalledOnce();
+    expect(deliverMessage).toHaveBeenCalledWith(
+      "/btw what changed?",
+      { chatId: "topic-9", messageId: "msg-9" },
+      expect.objectContaining({ steer: true }),
+    );
+    const pasted = String(deliverMessage.mock.calls[0][0]);
+    expect(pasted).not.toContain("[STEERING");
+    expect(pasted).not.toContain("[user:");
+  });
+
+  it("submits /btw immediately to a busy Claude pane", async () => {
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "/btw side question");
+
+    const result = await (daemon as any).deliverMessage(
+      "/btw side question",
+      undefined,
+      { steer: true },
+    );
+
+    expect(result).toBe(true);
+    expect(control.waitUntilIdle).not.toHaveBeenCalled();
+    expect(tmux.pasteBuffer).toHaveBeenCalledWith("/btw side question");
+  }, 15_000);
 });

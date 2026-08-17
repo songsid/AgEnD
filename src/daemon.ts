@@ -854,6 +854,12 @@ export class Daemon extends EventEmitter {
    *  and ⏳/👀/✅ reactions live here). It does NOT cover the other writers that
    *  reach the pane — {@link paneWriteLock} does. */
   private pasteLock: Promise<void> = Promise.resolve();
+  /**
+   * Fleet cancellation epoch. Queue entries retain the epoch they arrived with;
+   * advancing it invalidates only work received before the cancel, never a new
+   * user message which arrives immediately afterwards.
+   */
+  private deliveryEpoch = 0;
   /** Mutual exclusion for *every* write into the pane, whichever subsystem it
    *  comes from. See PaneWriteLock for why interleaving is destructive. */
   private readonly paneWriteLock = new PaneWriteLock();
@@ -1087,32 +1093,28 @@ export class Daemon extends EventEmitter {
         // Fleet manager routed a message to us (topic mode)
         const meta = msg.meta as Record<string, string>;
         const targetSession = msg.targetSession as string | undefined;
+        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
         void this.wake().then(() => {
-          this.pushChannelMessage(msg.content as string, meta, targetSession);
+          this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
         }).catch(err => {
           this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
         });
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
-        if (this.tmux) {
-          const rawText = msg.content as string;
-          this.pasteLock = this.pasteLock.then(async () => {
-            await this.wake();
-            await this.deliverMessage(rawText);
-            this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
-          }).catch(err => {
-            this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
-          });
-        }
+        this.queueRawPaste(msg.content as string, this.captureDeliveryEpoch(msg.delivery_epoch));
       } else if (msg.type === "config_update") {
         this.applyConfigUpdate(msg.config);
       } else if (msg.type === "steer") {
         const meta = (msg.meta ?? {}) as Record<string, string>;
-        this.steerMessage(msg.content as string, meta);
+        this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+      } else if (msg.type === "btw") {
+        const meta = (msg.meta ?? {}) as Record<string, string>;
+        this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
-        void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta)).catch(err => {
+        const deliveryEpoch = this.captureDeliveryEpoch(msg.delivery_epoch);
+        void this.wake().then(() => this.pushChannelMessage(payload.message as string, meta, undefined, deliveryEpoch)).catch(err => {
           this.logger.error({ err: (err as Error).message }, "Wake failed for scheduled delivery");
         });
       } else if (msg.type === "query_instance_state") {
@@ -1993,6 +1995,47 @@ export class Daemon extends EventEmitter {
   async sendEscape(): Promise<void> {
     const cancelKey = this.backend?.getCancelKey() ?? "Escape";
     await this.tmux?.sendSpecialKey(cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c");
+  }
+
+  /**
+   * Drop every not-yet-started pane delivery which predates a user cancel.
+   * Promise chains cannot be removed, so entries become generation-checked
+   * no-ops. An entry already past its check is allowed to finish its current PTY
+   * transaction; the interrupt key still cancels the CLI generation.
+   */
+  clearPendingDeliveries(fleetEpoch?: number): void {
+    this.deliveryEpoch = fleetEpoch === undefined
+      ? this.deliveryEpoch + 1
+      : Math.max(this.deliveryEpoch, fleetEpoch);
+    this.logger.info({ deliveryEpoch: this.deliveryEpoch }, "Pending delivery queue cleared by user cancel");
+  }
+
+  private captureDeliveryEpoch(value: unknown): number {
+    const epoch = typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : this.deliveryEpoch;
+    if (epoch > this.deliveryEpoch) this.deliveryEpoch = epoch;
+    return epoch;
+  }
+
+  private isDeliveryEpochCurrent(epoch: number): boolean {
+    return epoch === this.deliveryEpoch;
+  }
+
+  private queueRawPaste(rawText: string, deliveryEpoch = this.deliveryEpoch): void {
+    if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    this.pasteLock = this.pasteLock.then(async () => {
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.logger.info("Pending raw delivery dropped by user cancel");
+        return;
+      }
+      await this.wake();
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      await this.deliverMessage(rawText, undefined, { deliveryEpoch });
+      this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
+    }).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+    });
   }
 
   /** Send the backend-specific graceful quit command/key sequence. */
@@ -2880,7 +2923,8 @@ export class Daemon extends EventEmitter {
    * The steered text goes through formatInboundMessage so the agent sees a
    * normal inbound message, with a steering notice prepended for context.
    */
-  steerMessage(content: string, meta: Record<string, string>): void {
+  steerMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
@@ -2894,8 +2938,10 @@ export class Daemon extends EventEmitter {
       : undefined;
 
     this.steerLock = this.steerLock.then(async () => {
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.wake();
-      if (await this.deliverMessage(formatted, status, { steer: true })) {
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
         this.markTurnStarted(meta, formatted);
       }
     }).catch(err => {
@@ -2904,11 +2950,50 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * Claude Code /btw: submit a native side-question command immediately while
+   * leaving the active turn untouched. It shares the /steer serialization and
+   * busy-pane delivery mechanics, but deliberately adds no AgEnD wrapper.
+   */
+  btwMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
+    this.pendingWork.recordInbound();
+    this.recordRecentUserMessage(content, meta);
+
+    const command = `/btw ${content}`;
+    const chatId = meta.chat_id;
+    const messageId = meta.message_id;
+    const status = (chatId && messageId)
+      ? { chatId: meta.thread_id || chatId, messageId }
+      : undefined;
+
+    this.steerLock = this.steerLock.then(async () => {
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      await this.wake();
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (await this.deliverMessage(command, status, { steer: true, deliveryEpoch })) {
+        this.markTurnStarted(meta, command);
+      }
+    }).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "btw delivery error");
+    });
+  }
+
+  /**
    * Push an inbound channel message to a specific MCP session.
    * If targetSession is provided, only send to the matching socket.
    * Otherwise send to the instance's own session (this.name).
    */
-  pushChannelMessage(content: string, meta: Record<string, string>, _targetSession?: string): void {
+  pushChannelMessage(
+    content: string,
+    meta: Record<string, string>,
+    _targetSession?: string,
+    deliveryEpoch = this.deliveryEpoch,
+  ): void {
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+      this.logger.info("Pending channel delivery dropped by user cancel");
+      return;
+    }
     if (!this.tmux) {
       this.logger.warn("Cannot push channel message: tmux not running");
       return;
@@ -2943,7 +3028,8 @@ export class Daemon extends EventEmitter {
       const rawText = content.slice(5);
       this.logger.info({ user }, "Raw paste from topic mode user");
       this.pasteLock = this.pasteLock.then(async () => {
-        if (await this.deliverMessage(rawText)) this.markTurnStarted(meta, rawText);
+        if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+        if (await this.deliverMessage(rawText, undefined, { deliveryEpoch })) this.markTurnStarted(meta, rawText);
       }).catch(err => {
         this.logger.warn({ err: (err as Error).message }, "pasteLock raw delivery error");
       });
@@ -2954,8 +3040,7 @@ export class Daemon extends EventEmitter {
 
     // Serialize deliveries: each message waits for the previous to complete,
     // and each waits for the CLI to be idle before pasting. Messages are never
-    // dropped for age — a long-busy CLI just queues them until it frees up
-    // (the user can press Cancel to interrupt and let the queue drain sooner).
+    // dropped for age — only an explicit user Cancel invalidates queued work.
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
     const wasQueued = this.pasteQueueDepth > 0;
@@ -2968,12 +3053,22 @@ export class Daemon extends EventEmitter {
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
+        if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          this.logger.info("Pending channel delivery dropped by user cancel");
+          return;
+        }
         if (this.config.pre_task_command) {
-          await this.deliverMessage(this.config.pre_task_command);
+          await this.deliverMessage(this.config.pre_task_command, undefined, { deliveryEpoch });
+          if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
         if (this.pendingInstructionsNotice) {
           this.pendingInstructionsNotice = false;
-          await this.deliverMessage(buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir));
+          await this.deliverMessage(
+            buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
+            undefined,
+            { deliveryEpoch },
+          );
+          if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
         const status = (chatId && messageId)
           ? { chatId: meta.thread_id || chatId, messageId }
@@ -2981,7 +3076,7 @@ export class Daemon extends EventEmitter {
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
-        if (await this.deliverMessage(formatted, status)) this.markTurnStarted(meta, formatted);
+        if (await this.deliverMessage(formatted, status, { deliveryEpoch })) this.markTurnStarted(meta, formatted);
       } finally {
         this.pasteQueueDepth--;
       }
@@ -3010,8 +3105,11 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(
     formatted: string,
     status?: { chatId: string; messageId: string },
-    opts?: { steer?: boolean },
+    opts?: { steer?: boolean; deliveryEpoch?: number },
   ): Promise<boolean> {
+    const cancelled = () => opts?.deliveryEpoch !== undefined
+      && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
+    if (cancelled()) return false;
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
     if (fenceCount % 2 !== 0) {
@@ -3021,6 +3119,7 @@ export class Daemon extends EventEmitter {
 
     // Before anything reads the window id: a spawn in progress is about to change it.
     await this.waitForSpawnToSettle();
+    if (cancelled()) return false;
 
     let windowId = this.getWindowId();
 
@@ -3045,6 +3144,7 @@ export class Daemon extends EventEmitter {
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
         const becameIdle = await this.controlClient.waitUntilIdle(windowId);
+        if (cancelled()) return false;
         if (!becameIdle) {
           // The pane never freed up. Report the failure instead of pasting into a
           // wedged CLI (where the text would sit unsubmitted and the next message
@@ -3060,8 +3160,10 @@ export class Daemon extends EventEmitter {
     // held under the pane lock — holding it across the idle wait (up to 30 min)
     // would starve the runtime-dialog dismisser, which is often the very thing
     // that would let the pane go idle again.
-    return this.paneWriteLock.run(() =>
-      this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status));
+    return this.paneWriteLock.run(async () => {
+      if (cancelled()) return false;
+      return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
+    });
   }
 
   /**

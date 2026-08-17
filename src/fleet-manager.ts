@@ -438,6 +438,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private warmCapEvicting = new Set<string>();
   /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
   private idleGatedDeliveryTails = new Map<string, Promise<void>>();
+  /**
+   * Per-instance cancellation epoch for deliveries which have not reached the
+   * daemon yet. A cancel advances the epoch; queued work captures the old value
+   * and becomes a no-op, while messages arriving after the click capture the new
+   * value and remain deliverable.
+   */
+  private deliveryEpochs = new Map<string, number>();
   /** Non-user work must observe a fresh idle snapshot after the latest delivery. */
   private lastDeliveryAt = new Map<string, number>();
   /** State-cache updates wake event-driven idle waiters without busy polling. */
@@ -1105,7 +1112,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  private waitForInstanceIdle(instanceName: string, timeoutMs: number, idleObservedAfter = 0): Promise<boolean> {
+  private waitForInstanceIdle(
+    instanceName: string,
+    timeoutMs: number,
+    idleObservedAfter = 0,
+    cancelled?: () => boolean,
+  ): Promise<boolean> {
     const isReady = (): boolean => {
       const snapshot = this.instanceStateCache.get(instanceName);
       return snapshot?.state === "idle"
@@ -1125,7 +1137,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (waiters?.size === 0) this.instanceIdleWaiters.delete(instanceName);
         resolve(idle);
       };
-      const check = () => { if (isReady()) finish(true); };
+      const check = () => {
+        if (cancelled?.()) finish(false);
+        else if (isReady()) finish(true);
+      };
       const query = () => {
         const ipc = this.instanceIpcClients.get(instanceName);
         if (ipc?.connected) {
@@ -1185,11 +1200,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     timeoutMs: number,
+    deliveryEpoch: number,
   ): Promise<void> {
+    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.lifecycle.wake(instanceName, 30_000);
+      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
       // Waking added one to the warm count — make room by evicting a different
       // LRU idle instance (never this one; it's about to work).
       this.enforceWarmCap(instanceName);
@@ -1197,11 +1215,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       idleObservedAfter = Math.max(idleObservedAfter, wakeStartedAt);
     }
 
-    const idle = await this.waitForInstanceIdle(instanceName, timeoutMs, idleObservedAfter);
+    const idle = await this.waitForInstanceIdle(
+      instanceName,
+      timeoutMs,
+      idleObservedAfter,
+      () => !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch),
+    );
+    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+      this.logger.info({ instanceName }, "Pending delivery dropped by user cancel");
+      return;
+    }
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
-    await this.sendWhenConnected(instanceName, payload);
+    await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
+    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     this.lastDeliveryAt.set(instanceName, Date.now());
   }
 
@@ -1221,7 +1249,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * instance, *including* when the socket happens to be up: otherwise a message
    * arriving after the reconnect could overtake one that has been waiting for it.
    */
-  private async sendWhenConnected(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+  private async sendWhenConnected(
+    instanceName: string,
+    payload: Record<string, unknown>,
+    deliveryEpoch = this.getDeliveryEpoch(instanceName),
+  ): Promise<void> {
+    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -1230,7 +1263,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const attempt = (queued ?? Promise.resolve())
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
-      .then(() => this.sendAfterIpcReturns(instanceName, payload));
+      .then(() => {
+        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+        return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch);
+      });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
     const tail = attempt.catch(() => {});
@@ -1247,10 +1283,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Poll for the instance's IPC to come back, then send. Throws if it does not. */
-  private async sendAfterIpcReturns(instanceName: string, payload: Record<string, unknown>): Promise<void> {
+  private async sendAfterIpcReturns(
+    instanceName: string,
+    payload: Record<string, unknown>,
+    deliveryEpoch = this.getDeliveryEpoch(instanceName),
+  ): Promise<void> {
     const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
     for (;;) {
+      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -1272,6 +1313,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
   ): Promise<void> {
+    const deliveryEpoch = this.getDeliveryEpoch(instanceName);
+    const deliveryPayload = { ...payload, delivery_epoch: deliveryEpoch };
     const meta = payload.meta && typeof payload.meta === "object"
       ? payload.meta as Record<string, unknown>
       : undefined;
@@ -1284,9 +1327,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
         await this.lifecycle.wake(instanceName, 30_000);
+        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      await this.sendWhenConnected(instanceName, payload);
+      await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch);
+      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
       this.lastDeliveryAt.set(instanceName, Date.now());
@@ -1296,8 +1341,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const previous = this.idleGatedDeliveryTails.get(instanceName) ?? Promise.resolve();
     const delivery = previous.catch(() => {}).then(() => this.deliverWithIdleGate(
       instanceName,
-      payload,
+      deliveryPayload,
       options.idleTimeoutMs ?? 60_000,
+      deliveryEpoch,
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
@@ -2614,6 +2660,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
         await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
       } else if (data.command === "clear") {
         await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
@@ -2720,6 +2776,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // message to react to, and an empty chat_id keeps updateLastChat from
         // rerouting the instance's replies to the slash context.
         const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
           chatId: "", messageId: "", username: data.username ?? "user",
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
@@ -2983,6 +3049,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // message to react to, and an empty chat_id keeps updateLastChat from
         // rerouting the instance's replies to the slash context.
         const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
           chatId: "", messageId: "", username: data.username ?? "user",
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
@@ -3565,6 +3641,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
+        // /btw — Claude Code's native side-thread command. Like /steer it is
+        // not admin-gated, but it remains a distinct raw CLI command so Claude
+        // does not fold the question into the active task.
+        if (text === "/btw" || text.startsWith("/btw ") || text.startsWith("/btw@")) {
+          const btwName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!btwName) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          const btwContent = text.replace(/^\/btw(@\S+)?/, "").trim();
+          if (!btwContent) {
+            await msgAdapter?.sendText(chatId, t("btw.usage"));
+            return;
+          }
+          const result = this.topicCommands.sendBtw(btwName, btwContent, msg);
+          await msgAdapter?.sendText(chatId, result);
+          return;
+        }
+
         // Handle /clear command (admin only) — unlike /compact this starts a
         // fresh conversation and intentionally discards the current history.
         if (text === "/clear" || text.startsWith("/clear@")) {
@@ -4025,7 +4120,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (silent) {
       const ipc = this.instanceIpcClients.get(target);
       if (ipc) {
-        ipc.send({ type: "raw_paste", content: message });
+        ipc.send({
+          type: "raw_paste",
+          content: message,
+          delivery_epoch: this.getDeliveryEpoch(target),
+        });
         this.scheduler!.recordRun(id, "delivered");
         this.logger.info({ target, scheduleId: id, label }, "Silent schedule injected via raw_paste");
       } else {
@@ -6148,10 +6247,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   cancelInstance(instanceName: string): boolean {
     const daemon = this.daemons.get(instanceName);
     if (!daemon) return false;
+    const deliveryEpoch = this.cancelPendingDeliveries(instanceName);
+    daemon.clearPendingDeliveries?.(deliveryEpoch);
     daemon.sendEscape().catch(e => this.logger.warn({ err: e, instanceName }, "sendEscape failed"));
     this.lastInboundMsg.delete(instanceName);
     this.clearCancelButton(instanceName);
     return true;
+  }
+
+  private getDeliveryEpoch(instanceName: string): number {
+    return this.deliveryEpochs.get(instanceName) ?? 0;
+  }
+
+  private isDeliveryEpochCurrent(instanceName: string, deliveryEpoch: number): boolean {
+    return deliveryEpoch === this.getDeliveryEpoch(instanceName);
+  }
+
+  /** Invalidate work queued before a user cancel and wake idle-gate waiters. */
+  private cancelPendingDeliveries(instanceName: string): number {
+    const next = this.getDeliveryEpoch(instanceName) + 1;
+    this.deliveryEpochs.set(instanceName, next);
+    for (const check of this.instanceIdleWaiters.get(instanceName) ?? []) check();
+    return next;
   }
 
   queueMirrorMessage(text: string): void {

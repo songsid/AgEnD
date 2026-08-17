@@ -563,6 +563,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
+          {
+            name: "btw", description: t("slash.btw"),
+            options: [{
+              name: "message", description: "Side question for Claude Code",
+              type: ApplicationCommandOptionType.String, required: true,
+            }],
+          },
           { name: "clear", description: "🔒 " + t("slash.clear") },
           {
             name: "model", description: "🔒 Switch model (admin only)",
