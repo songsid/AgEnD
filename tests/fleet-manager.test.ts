@@ -1211,6 +1211,42 @@ describe("FleetManager", () => {
     expect(send.mock.calls.filter(([msg]) => msg.type === "fleet_inbound")).toHaveLength(1);
   });
 
+  it("cancel drops idle-gated work but preserves user input arriving afterwards", async () => {
+    const fm = new FleetManager(tmpDir);
+    const send = vi.fn().mockReturnValue(true);
+    const clearPendingDeliveries = vi.fn();
+    const sendEscape = vi.fn().mockResolvedValue(undefined);
+    fm.instanceIpcClients.set("test", { connected: true, send } as any);
+    fm.lifecycle.daemons.set("test", { clearPendingDeliveries, sendEscape } as any);
+    (fm as any).cacheInstanceExecutionState("test", {
+      state: "working", observedAt: 1_000, stateChangedAt: 1_000,
+    });
+
+    const pending = fm.deliverToInstance("test", {
+      type: "fleet_inbound",
+      content: "queued cross-instance work",
+      meta: { from_instance: "sender" },
+    }, { idleTimeoutMs: 5_000 });
+    await Promise.resolve();
+
+    expect(fm.cancelInstance("test")).toBe(true);
+    await pending;
+    expect(clearPendingDeliveries).toHaveBeenCalledWith(1);
+    expect(sendEscape).toHaveBeenCalledOnce();
+    expect(send.mock.calls.some(([msg]) => msg.type === "fleet_inbound")).toBe(false);
+
+    await fm.deliverToInstance("test", {
+      type: "fleet_inbound",
+      content: "new user input",
+      meta: { user: "han" },
+    });
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      type: "fleet_inbound",
+      content: "new user input",
+      delivery_epoch: 1,
+    }));
+  });
+
   it("delivers user inbound immediately even while the instance is working", async () => {
     const fm = new FleetManager(tmpDir);
     const send = vi.fn().mockReturnValue(true);
