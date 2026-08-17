@@ -2660,6 +2660,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
         await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
       } else if (data.command === "clear") {
         await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
@@ -2766,6 +2776,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // message to react to, and an empty chat_id keeps updateLastChat from
         // rerouting the instance's replies to the slash context.
         const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
           chatId: "", messageId: "", username: data.username ?? "user",
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
@@ -3029,6 +3049,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // message to react to, and an empty chat_id keeps updateLastChat from
         // rerouting the instance's replies to the slash context.
         const result = this.topicCommands.sendSteer(name, steerText, {
+          chatId: "", messageId: "", username: data.username ?? "user",
+          userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
+        });
+        await data.respond(result);
+      } else if (data.command === "btw") {
+        const name = this.resolveSlashTarget(data.channelId, adapterId);
+        if (!name) { await data.respond(t("classic.no_agent")); return; }
+        const btwText = String(data.options?.message ?? "").trim();
+        if (!btwText) { await data.respond(t("btw.usage")); return; }
+        const result = this.topicCommands.sendBtw(name, btwText, {
           chatId: "", messageId: "", username: data.username ?? "user",
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
@@ -3607,6 +3637,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return;
           }
           const result = this.topicCommands.sendSteer(steerName, steerContent, msg);
+          await msgAdapter?.sendText(chatId, result);
+          return;
+        }
+
+        // /btw — Claude Code's native side-thread command. Like /steer it is
+        // not admin-gated, but it remains a distinct raw CLI command so Claude
+        // does not fold the question into the active task.
+        if (text === "/btw" || text.startsWith("/btw ") || text.startsWith("/btw@")) {
+          const btwName = this.classicChannels.getInstanceByChannel(chatId, msg.adapterId);
+          if (!btwName) {
+            await msgAdapter?.sendText(chatId, t("classic.no_agent_start"));
+            return;
+          }
+          const btwContent = text.replace(/^\/btw(@\S+)?/, "").trim();
+          if (!btwContent) {
+            await msgAdapter?.sendText(chatId, t("btw.usage"));
+            return;
+          }
+          const result = this.topicCommands.sendBtw(btwName, btwContent, msg);
           await msgAdapter?.sendText(chatId, result);
           return;
         }

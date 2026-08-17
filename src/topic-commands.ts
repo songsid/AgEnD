@@ -37,6 +37,9 @@ export function sanitizeInstanceName(name: string): string {
 /** Allowed filename for /save and /load (no path separators, no shell/inject chars). */
 export const SAVE_FILENAME_RE = /^[\w.-]+$/;
 
+/** Backends with a native side-question command that does not steer the active turn. */
+export const BTW_SUPPORTED_BACKENDS = new Set(["claude-code"]);
+
 /**
  * Build the backend-specific session-save command, or null if the backend has no
  * /save equivalent. kiro-cli → `/chat save <name>`; claude-code → `/export <name>.md`.
@@ -475,6 +478,22 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/btw" || text.startsWith("/btw ") || text.startsWith("/btw@")) {
+      const adapter = this.getReplyAdapter(msg);
+      if (!adapter) return false;
+      // Like /steer, /btw is not admin-gated: anyone who can send the agent a
+      // normal message may ask a side question. Claude owns the isolation from
+      // the active turn; AgEnD only submits its native command immediately.
+      const content = text.replace(/^\/btw(@\S+)?/, "").trim();
+      if (!content) {
+        await adapter.sendText(msg.chatId, t("btw.usage"), { threadId: msg.threadId });
+        return true;
+      }
+      const result = this.sendBtw(instanceName, content, msg);
+      await adapter.sendText(msg.chatId, result, { threadId: msg.threadId });
+      return true;
+    }
+
     if (text === "/clear" || text.startsWith("/clear@")) {
       const adapter = this.getReplyAdapter(msg);
       if (!adapter) return false;
@@ -639,6 +658,32 @@ export class TopicCommands {
       },
     });
     return t("steer.sent", instanceName);
+  }
+
+  /** Ask a Claude Code side question without folding it into the active turn. */
+  sendBtw(
+    instanceName: string,
+    content: string,
+    msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
+  ): string {
+    const backend = this.effectiveBackend(instanceName);
+    if (!BTW_SUPPORTED_BACKENDS.has(backend)) return t("btw.unsupported", backend);
+    const ipc = this.ctx.instanceIpcClients.get(instanceName);
+    if (!ipc?.connected) return t("btw.not_connected");
+    ipc.send({
+      type: "btw",
+      content,
+      meta: {
+        chat_id: msg.chatId,
+        message_id: msg.messageId ?? "",
+        user: msg.username,
+        user_id: msg.userId,
+        thread_id: msg.threadId ?? "",
+        adapter_id: msg.adapterId ?? "",
+        source: msg.source,
+      },
+    });
+    return t("btw.sent", instanceName);
   }
 
   /** Send the backend-appropriate full conversation reset through raw_paste. */
@@ -1059,6 +1104,7 @@ export class TopicCommands {
           { command: "ctx", description: "Show context usage" },
           { command: "compact", description: "Compact agent context" },
           { command: "steer", description: "Interject into the current task" },
+          { command: "btw", description: "Ask a side question without interrupting" },
           { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
@@ -1103,6 +1149,7 @@ export class TopicCommands {
           { command: "stop", description: "🔒 Stop the agent" },
           { command: "compact", description: "🔒 Compact agent context" },
           { command: "steer", description: "Interject into the current task" },
+          { command: "btw", description: "Ask a side question without interrupting" },
           { command: "clear", description: "🔒 Clear agent conversation context" },
           { command: "model", description: "🔒 Switch model (admin only)" },
           { command: "effort", description: "🔒 Set reasoning effort (admin only)" },

@@ -321,3 +321,33 @@ describe("/steer registration covers dispatch (#528 trap 5)", () => {
     expect(src.match(/command: "steer"/g)?.length ?? 0).toBe(2);
   });
 });
+
+describe("/btw registration covers every command surface", () => {
+  const read = (p: string) => readFileSync(new URL(`../src/${p}`, import.meta.url), "utf-8");
+
+  it("registers /btw with a required message option on Discord", () => {
+    const src = read("channel/adapters/discord.ts");
+    expect(src).toMatch(/name: "btw"/);
+    expect(src.slice(src.indexOf('name: "btw"'))).toMatch(/required: true/);
+  });
+
+  it("dispatches btw at every Discord slash site", () => {
+    const src = read("fleet-manager.ts");
+    const compactSites = src.match(/data\.command === "compact"/g)?.length ?? 0;
+    const btwSites = src.match(/data\.command === "btw"/g)?.length ?? 0;
+    expect(btwSites).toBe(compactSites);
+    expect(btwSites).toBeGreaterThanOrEqual(3);
+  });
+
+  it("has locale strings for every btw-facing message in both languages", () => {
+    const src = read("locale.ts");
+    for (const key of ['"slash.btw"', '"btw.usage"', '"btw.sent"', '"btw.not_connected"', '"btw.unsupported"']) {
+      expect(src.match(new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"))?.length ?? 0).toBe(2);
+    }
+  });
+
+  it("registers /btw in the Telegram fleet and Classic menus", () => {
+    const src = read("topic-commands.ts");
+    expect(src.match(/command: "btw"/g)?.length ?? 0).toBe(2);
+  });
+});

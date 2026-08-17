@@ -799,4 +799,41 @@ describe("Daemon /steer delivery", () => {
     expect(formatted).toContain("(message_id: msg-9)");
     expect(formatted).toContain("Reply using the reply tool");
   });
+
+  it("btwMessage submits Claude's raw /btw command without a steering or user wrapper", async () => {
+    const { daemon } = makeSteerDaemon("claude-code", true);
+    const deliverMessage = vi.fn().mockResolvedValue(true);
+    (daemon as any).deliverMessage = deliverMessage;
+    (daemon as any).wake = vi.fn(async () => {});
+
+    (daemon as any).btwMessage("what changed?", {
+      chat_id: "chat-9", message_id: "msg-9", user: "han", user_id: "u1",
+      thread_id: "topic-9", adapter_id: "discord-main", source: "discord",
+    });
+    await (daemon as any).steerLock;
+
+    expect(deliverMessage).toHaveBeenCalledOnce();
+    expect(deliverMessage).toHaveBeenCalledWith(
+      "/btw what changed?",
+      { chatId: "topic-9", messageId: "msg-9" },
+      expect.objectContaining({ steer: true }),
+    );
+    const pasted = String(deliverMessage.mock.calls[0][0]);
+    expect(pasted).not.toContain("[STEERING");
+    expect(pasted).not.toContain("[user:");
+  });
+
+  it("submits /btw immediately to a busy Claude pane", async () => {
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "/btw side question");
+
+    const result = await (daemon as any).deliverMessage(
+      "/btw side question",
+      undefined,
+      { steer: true },
+    );
+
+    expect(result).toBe(true);
+    expect(control.waitUntilIdle).not.toHaveBeenCalled();
+    expect(tmux.pasteBuffer).toHaveBeenCalledWith("/btw side question");
+  }, 15_000);
 });

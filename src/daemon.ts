@@ -1107,6 +1107,9 @@ export class Daemon extends EventEmitter {
       } else if (msg.type === "steer") {
         const meta = (msg.meta ?? {}) as Record<string, string>;
         this.steerMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
+      } else if (msg.type === "btw") {
+        const meta = (msg.meta ?? {}) as Record<string, string>;
+        this.btwMessage(msg.content as string, meta, this.captureDeliveryEpoch(msg.delivery_epoch));
       } else if (msg.type === "fleet_schedule_trigger") {
         const payload = msg.payload as Record<string, unknown>;
         const meta = msg.meta as Record<string, string>;
@@ -2943,6 +2946,36 @@ export class Daemon extends EventEmitter {
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "steer delivery error");
+    });
+  }
+
+  /**
+   * Claude Code /btw: submit a native side-question command immediately while
+   * leaving the active turn untouched. It shares the /steer serialization and
+   * busy-pane delivery mechanics, but deliberately adds no AgEnD wrapper.
+   */
+  btwMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
+    this.pendingWork.recordInbound();
+    this.recordRecentUserMessage(content, meta);
+
+    const command = `/btw ${content}`;
+    const chatId = meta.chat_id;
+    const messageId = meta.message_id;
+    const status = (chatId && messageId)
+      ? { chatId: meta.thread_id || chatId, messageId }
+      : undefined;
+
+    this.steerLock = this.steerLock.then(async () => {
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      await this.wake();
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (await this.deliverMessage(command, status, { steer: true, deliveryEpoch })) {
+        this.markTurnStarted(meta, command);
+      }
+    }).catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "btw delivery error");
     });
   }
 
