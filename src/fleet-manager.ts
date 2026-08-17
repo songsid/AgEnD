@@ -4042,10 +4042,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const deliver = async (): Promise<boolean> => {
       try {
+        // A schedule has no live inbound adapter context. Seed the daemon with
+        // the target instance's configured world so replies use its persona
+        // after a fresh start instead of falling back to channels[0].
+        const adapterId = this.getInstanceAdapterId(target);
         await this.deliverToInstance(target, {
           type: "fleet_schedule_trigger",
           payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
-          meta: { chat_id: reply_chat_id, thread_id: reply_thread_id, user: "scheduler" },
+          meta: {
+            chat_id: reply_chat_id,
+            thread_id: reply_thread_id,
+            user: "scheduler",
+            ...(adapterId ? { adapter_id: adapterId } : {}),
+          },
         }, { waitForIdle: true });
         // A scheduled trigger also puts the instance to work — show a cancel button.
         void this.sendCancelButton(target);

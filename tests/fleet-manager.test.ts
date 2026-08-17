@@ -283,6 +283,70 @@ describe("FleetManager", () => {
       expect(deliver.mock.calls[0][1].meta.adapter_id).toBe("discord-primary");
     });
 
+    it("seeds scheduled replies with the target instance's configured adapter", async () => {
+      const fm = new FleetManager(tmpDir);
+      const primary = {
+        id: "discord-primary",
+        type: "discord",
+        sendText: vi.fn().mockResolvedValue({ messageId: "wrong-reply", chatId: "shared-guild" }),
+      } as any;
+      const secondary = {
+        id: "discord-secondary",
+        type: "discord",
+        sendText: vi.fn().mockResolvedValue({ messageId: "reply-1", chatId: "shared-guild" }),
+      } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, secondaryConfig],
+        instances: {
+          scheduled: {
+            working_directory: tmpDir,
+            topic_id: "topic-2",
+            channel_id: "discord-secondary",
+          },
+        },
+      } as any;
+      fm.adapter = primary;
+      addWorld(fm, primaryConfig, primary);
+      addWorld(fm, secondaryConfig, secondary);
+      (fm as any).scheduler = { recordRun: vi.fn() };
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+
+      await (fm as any).handleScheduleTrigger({
+        id: "schedule-1",
+        cron: "0 * * * *",
+        at: null,
+        message: "scheduled work",
+        source: "scheduled",
+        target: "scheduled",
+        reply_chat_id: "shared-guild",
+        reply_thread_id: "topic-2",
+        label: "hourly",
+        enabled: true,
+        timezone: "Asia/Taipei",
+        silent: false,
+        created_at: "2026-08-17T00:00:00.000Z",
+        last_triggered_at: null,
+        last_status: null,
+      });
+
+      const trigger = deliver.mock.calls[0][1] as any;
+      expect(trigger.meta.adapter_id).toBe("discord-secondary");
+
+      // The daemon echoes this context adapter on fleet_outbound. Exercise the
+      // real outbound router to prove that the configured persona sends it.
+      await (fm as any).handleOutboundFromInstance("scheduled", {
+        type: "fleet_outbound",
+        tool: "reply",
+        args: { chat_id: "shared-guild", text: "scheduled reply" },
+        requestId: 1,
+        adapterId: trigger.meta.adapter_id,
+      });
+      expect(secondary.sendText).toHaveBeenCalledOnce();
+      expect(primary.sendText).not.toHaveBeenCalled();
+    });
+
     it("keeps the raw inbound adapter in Classic reply context", async () => {
       const fm = new FleetManager(tmpDir);
       fm.fleetConfig = {
