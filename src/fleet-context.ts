@@ -42,6 +42,8 @@ export interface FleetContext {
 
   getSysInfo(): SysInfo;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
+  /** Current cancellation epoch stamped onto direct daemon IPC deliveries. */
+  getDeliveryEpoch?(name: string): number;
   /** Subscription provider IDs used by running or paused fleet/Classic instances. */
   getActiveUsageProviderIds?(): ReadonlySet<string>;
   toggleFleetCollab(instanceName: string): boolean;

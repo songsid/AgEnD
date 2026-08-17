@@ -30,6 +30,7 @@ function setup() {
     instanceIpcClients: new Map([
       ["worker", { connected: true, send: ipcSend }],
     ]),
+    getDeliveryEpoch: () => 11,
     isFleetAdmin: (userId: string) => userId === "admin",
   } as any);
   return { commands, ipcSend, sendText };
@@ -44,6 +45,7 @@ describe("/steer topic command", () => {
     const payload = ipcSend.mock.calls[0][0];
     expect(payload.type).toBe("steer");
     expect(payload.content).toBe("focus on the tests first");
+    expect(payload.delivery_epoch).toBe(11);
     // The daemon formats a steer through the SAME inbound wrapper as a queued
     // message (#528 trap 6) — that only works if the meta actually arrives.
     expect(payload.meta).toMatchObject({

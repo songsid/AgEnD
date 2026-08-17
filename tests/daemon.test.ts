@@ -800,7 +800,7 @@ describe("Daemon /steer delivery", () => {
     expect(formatted).toContain("Reply using the reply tool");
   });
 
-  it("btwMessage submits Claude's raw /btw command without a steering or user wrapper", async () => {
+  it("btwMessage submits a reply-capable side-question wrapper instead of native /btw", async () => {
     const { daemon } = makeSteerDaemon("claude-code", true);
     const deliverMessage = vi.fn().mockResolvedValue(true);
     (daemon as any).deliverMessage = deliverMessage;
@@ -814,26 +814,30 @@ describe("Daemon /steer delivery", () => {
 
     expect(deliverMessage).toHaveBeenCalledOnce();
     expect(deliverMessage).toHaveBeenCalledWith(
-      "/btw what changed?",
+      expect.any(String),
       { chatId: "topic-9", messageId: "msg-9" },
       expect.objectContaining({ steer: true }),
     );
     const pasted = String(deliverMessage.mock.calls[0][0]);
+    expect(pasted).toContain("[BTW — side question from the user.");
+    expect(pasted).toContain("[user:han via discord, id:u1] what changed?");
+    expect(pasted).toContain("Reply using the reply tool");
+    expect(pasted).not.toContain("/btw what changed?");
     expect(pasted).not.toContain("[STEERING");
-    expect(pasted).not.toContain("[user:");
   });
 
-  it("submits /btw immediately to a busy Claude pane", async () => {
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, "/btw side question");
+  it("submits the BTW wrapper immediately to a busy Claude pane", async () => {
+    const formatted = "[BTW — side question from the user.]\n[user:han] side question";
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, formatted);
 
     const result = await (daemon as any).deliverMessage(
-      "/btw side question",
+      formatted,
       undefined,
       { steer: true },
     );
 
     expect(result).toBe(true);
     expect(control.waitUntilIdle).not.toHaveBeenCalled();
-    expect(tmux.pasteBuffer).toHaveBeenCalledWith("/btw side question");
+    expect(tmux.pasteBuffer).toHaveBeenCalledWith(formatted);
   }, 15_000);
 });
