@@ -15,6 +15,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/cancel` | Interrupt agent generation (handled, not in menu) | All |
 | `/save` | Save agent session (handled, not in menu) | All |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
+| `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
@@ -43,6 +44,7 @@ Registered via `setMyCommands` with `scope: default`.
 | 🔒 `/clear` | Full conversation reset (destructive, Confirm/Cancel required) | Admin |
 | `/ctx` | Show context usage | All |
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only) | All |
+| `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only) | All |
 
 ### Telegram ClassicBot — unregistered commands
 
@@ -69,6 +71,7 @@ Registered globally via `client.application.commands.set()`.
 | `/usage` | Show AI subscription usage | All |
 | `/cancel` | Interrupt agent generation | All |
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only, others reply "not supported") | All |
+| `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
@@ -110,25 +113,25 @@ Permission varies by platform/mode:
 
 No permission check:
 - `/sysinfo`, `/ctx`
-- `/steer` — deliberately not admin-gated on any platform/mode; steering only changes *when* a message a user could already send lands, so it carries no extra privilege
+- `/steer`, `/btw` — deliberately not admin-gated on any platform/mode; both only change *when* (and, for `/btw`, how a reply is framed) a message a user could already send lands, so neither carries extra privilege
 - TG @mention conversation
 - DC `/start`, `/stop`, `/chat`
 
-### /steer and /clear backend support
+### /steer, /btw, and /clear backend support
 
-Both commands route through a backend-name lookup rather than being universally available:
+All three commands route through a backend-name lookup rather than being universally available:
 
-| Backend | `/steer` (busy-pane interject) | `/clear` (full reset) |
-|---------|------|-------|
-| `claude-code` | ✅ | `/clear` |
-| `codex` | ✅ | `/clear` |
-| `grok` | ✅ | `/new` |
-| `kiro-cli` | ❌ "not supported" (legacy TUI swallows the paste) | `/clear` |
-| `opencode` | ❌ unverified | `/clear` |
-| `antigravity` | ❌ unverified | `/clear` |
-| `gemini-cli` (⚠️ deprecated) | ❌ | ❌ "not supported" |
+| Backend | `/steer` (busy-pane interject) | `/btw` (side question) | `/clear` (full reset) |
+|---------|------|------|-------|
+| `claude-code` | ✅ | ✅ | `/clear` |
+| `codex` | ✅ | ❌ "not supported" | `/clear` |
+| `grok` | ✅ | ❌ "not supported" | `/new` |
+| `kiro-cli` | ❌ "not supported" (legacy TUI swallows the paste) | ❌ "not supported" | `/clear` |
+| `opencode` | ❌ unverified | ❌ "not supported" | `/clear` |
+| `antigravity` | ❌ unverified | ❌ "not supported" | `/clear` |
+| `gemini-cli` (⚠️ deprecated) | ❌ | ❌ "not supported" | ❌ "not supported" |
 
-A `/steer` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently).
+A `/steer` or `/btw` on an unsupported backend gets an honest error instead of silently falling back to a normal queued message (which would look the same to the user but behave differently). `/btw` rides the same paste path as `/steer` but is Claude Code-only — it exists because Claude Code's *native* `/btw` opens a side-fork that never reaches the channel, so AgEnD substitutes a labelled inbound message instead.
 
 ---
 
