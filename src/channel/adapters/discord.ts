@@ -312,6 +312,32 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         filename: att.name ?? undefined,
       }));
 
+      // A Discord reply carries only the referenced message id on the new
+      // message. Fetch the original so image attachments are delivered with
+      // the reply rather than reducing the reference to text alone. Keep this
+      // limited to real attachments: ordinary URL auto-embeds must not become
+      // downloads (the same policy as the outer message above).
+      let replyToText: string | undefined;
+      if (msg.reference?.messageId) {
+        try {
+          const ref = await msg.fetchReference();
+          replyToText = ref.content || ref.embeds?.[0]?.description || undefined;
+          for (const att of ref.attachments?.values() ?? []) {
+            if (!att.contentType?.startsWith("image/")) continue;
+            if (!attachments.some(existing => existing.fileId === att.id)) {
+              attachments.push({
+                kind: "photo",
+                fileId: att.id,
+                mime: att.contentType,
+                size: att.size,
+                filename: att.name ?? undefined,
+              });
+            }
+            this.attachmentUrls.set(att.id, att.url);
+          }
+        } catch { /* deleted message or no permission */ }
+      }
+
       // Embed images become synthetic photo attachments so the normal download
       // path (attachment-handler → downloadAttachment → image_path) serves them
       // without knowing where the bytes came from. Their synthetic ids are
@@ -338,14 +364,6 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         const first = this.attachmentUrls.keys().next().value;
         if (first) this.attachmentUrls.delete(first);
         else break;
-      }
-
-      let replyToText: string | undefined;
-      if (msg.reference?.messageId) {
-        try {
-          const ref = await msg.fetchReference();
-          replyToText = ref.content || ref.embeds?.[0]?.description || undefined;
-        } catch { /* deleted message or no permission */ }
       }
 
       this.emit("message", {
