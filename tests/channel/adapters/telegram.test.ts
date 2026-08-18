@@ -180,6 +180,38 @@ describe("TelegramAdapter", () => {
     expect(adapter.type).toBe("telegram");
   });
 
+  it("turns a sticker into emoji text without creating a downloadable attachment", async () => {
+    const inbound = vi.fn();
+    adapter.on("message", inbound);
+    await fireEvent("message", {
+      message: makeTelegramMessage({
+        text: undefined,
+        sticker: { file_id: "sticker-file", emoji: "😂" },
+      }),
+    });
+
+    expect(inbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: "😂",
+      attachments: undefined,
+    }));
+  });
+
+  it("uses a neutral text marker when a sticker has no emoji", async () => {
+    const inbound = vi.fn();
+    adapter.on("message", inbound);
+    await fireEvent("message", {
+      message: makeTelegramMessage({
+        text: undefined,
+        sticker: { file_id: "sticker-file" },
+      }),
+    });
+
+    expect(inbound).toHaveBeenCalledWith(expect.objectContaining({
+      text: "[Sticker]",
+      attachments: undefined,
+    }));
+  });
+
   it("has the configured id", () => {
     expect(adapter.id).toBe("tg-1");
   });

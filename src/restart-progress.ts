@@ -14,6 +14,8 @@ export interface RestartProgressSummary {
   version: string;
   pausedNames: string[];
   failedNames?: string[];
+  /** Optional update-completion tip; ignored for ordinary restarts. */
+  tipText?: string;
 }
 
 type ProgressLogger = {
@@ -116,6 +118,9 @@ export class RestartProgress {
     }
     if (summary?.failedNames?.length) {
       lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
+    }
+    if (this.mode === "update" && summary?.tipText) {
+      lines.push("", summary.tipText);
     }
     this.enqueueEdit(lines.join("\n"));
     await this.editChain;

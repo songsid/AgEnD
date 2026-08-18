@@ -202,6 +202,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   cost_guard?: CostGuardConfig;
   hang_detector?: HangDetectorConfig;
   daily_summary?: DailySummaryConfig;
+  /** Daily General-topic tips and update-completion tip. Default: true. */
+  tips?: boolean;
   webhooks?: WebhookConfig[];
 }
 

@@ -120,6 +120,7 @@ describe("RestartProgress", () => {
       total: 3,
       version: "2.1.4-beta.2",
       pausedNames: ["sleeping"],
+      tipText: "💡 Tip: Try /status in General.",
     })).toBe(true);
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
@@ -127,6 +128,8 @@ describe("RestartProgress", () => {
       [
         "✅ Fleet restarted — v2.1.4-beta.2, 2/3 instances running (25s)",
         "⏸ Paused (1): sleeping",
+        "",
+        "💡 Tip: Try /status in General.",
       ].join("\n"),
       "general",
     );

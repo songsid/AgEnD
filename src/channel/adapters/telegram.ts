@@ -251,6 +251,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       if (!text && (msg as any).rich_message?.blocks) {
         text = extractRichText((msg as any).rich_message.blocks);
       }
+      // A Telegram sticker is conversational content, not a downloadable photo.
+      // Preserve its intended emoji (or a neutral marker) and keep it out of the
+      // attachment pipeline so it is neither downloaded nor auto-reacted to.
+      if (!text && msg.sticker) text = msg.sticker.emoji?.trim() || "[Sticker]";
       // Collect attachments
       const attachments = this._extractAttachments(msg);
 
@@ -347,7 +351,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private _extractAttachments(msg: NonNullable<Context["message"]>): Array<{
-    kind: "photo" | "document" | "audio" | "voice" | "video" | "sticker";
+    kind: "photo" | "document" | "audio" | "voice" | "video";
     fileId: string;
     mime?: string;
     size?: number;
@@ -392,10 +396,6 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         size: msg.video.file_size,
       });
     }
-    if (msg.sticker) {
-      result.push({ kind: "sticker" as const, fileId: msg.sticker.file_id });
-    }
-
     return result;
   }
 

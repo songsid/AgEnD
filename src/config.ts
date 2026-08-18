@@ -2,7 +2,7 @@ import { readFileSync, existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import yaml from "js-yaml";
 import { getAgendHome, getTmuxSessionName, ensureWorkspaceGit } from "./paths.js";
-import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
+import type { CostGuardConfig, HangDetectorConfig, DailySummaryConfig, FleetConfig, FleetDefaults, FleetTemplate, InstanceConfig, RawFleetConfig } from "./types.js";
 
 function deepMergeGeneric<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target } as Record<string, unknown>;
@@ -79,9 +79,13 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
 export function getEffectiveInstanceDefaults(
   fleetDefaults: Partial<InstanceConfig> = {},
 ): Partial<InstanceConfig> {
+  // Fleet-only controls live under defaults for YAML ergonomics but must not
+  // leak into every daemon's InstanceConfig (where an on/off toggle would look
+  // like an unknown cold field and restart the whole fleet).
+  const { tips: _tips, ...instanceDefaults } = fleetDefaults as FleetDefaults;
   return deepMergeGeneric(
     DEFAULT_INSTANCE_CONFIG as Partial<InstanceConfig>,
-    fleetDefaults,
+    instanceDefaults,
   );
 }
 
