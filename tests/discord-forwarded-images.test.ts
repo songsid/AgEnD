@@ -254,6 +254,64 @@ describe("Discord forwarded message images", () => {
     expect(got.text).not.toContain("[Forwarded]");
   });
 
+  it("delivers image attachments from the replied-to message", async () => {
+    const referencedAttachments = new FakeCollection<any>();
+    referencedAttachments.set("reply-photo", fakeAttachment(
+      "reply-photo",
+      "https://cdn.example/replied-photo.png",
+    ));
+    // The fix is intentionally image-only: replying to a document should not
+    // silently turn that historical file into a new download.
+    referencedAttachments.set("reply-document", fakeAttachment(
+      "reply-document",
+      "https://cdn.example/replied-notes.pdf",
+      "application/pdf",
+    ));
+    const msg = fakeMessage({
+      content: "<@self-bot> please inspect this image",
+      reference: { messageId: "original-message" },
+      fetchReference: async () => ({
+        content: "the original image",
+        embeds: [],
+        attachments: referencedAttachments,
+      }),
+    });
+
+    const got = await inbound(msg);
+
+    expect(got.replyTo).toBe("original-message");
+    expect(got.replyToText).toBe("the original image");
+    expect(got.attachments).toEqual([{
+      kind: "photo",
+      fileId: "reply-photo",
+      mime: "image/png",
+      size: 123,
+      filename: "replied-photo.png",
+    }]);
+    // Pin the real download lookup used downstream by both Classic and fleet
+    // topic attachment processing, not just the emitted metadata shape.
+    expect((adapter as any).attachmentUrls.get("reply-photo"))
+      .toBe("https://cdn.example/replied-photo.png");
+    expect((adapter as any).attachmentUrls.has("reply-document")).toBe(false);
+  });
+
+  it("keeps a text-only reply attachment-free", async () => {
+    const msg = fakeMessage({
+      content: "<@self-bot> follow up",
+      reference: { messageId: "text-message" },
+      fetchReference: async () => ({
+        content: "plain original text",
+        embeds: [],
+        attachments: new FakeCollection<any>(),
+      }),
+    });
+
+    const got = await inbound(msg);
+
+    expect(got.replyToText).toBe("plain original text");
+    expect(got.attachments).toBeUndefined();
+  });
+
   it("a bare forward still reads as the forwarded text itself (no label)", async () => {
     const snapshots = new FakeCollection<any>();
     snapshots.set("snap-1", {
