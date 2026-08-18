@@ -64,7 +64,7 @@ import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
-import { setLocale, detectLocale, t } from "./locale.js";
+import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { validateFleetConfig } from "./config-validator.js";
@@ -76,6 +76,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
+import { DailyTipScheduler, selectTip, type Tip } from "./tips.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -301,8 +302,9 @@ export interface ModelCatalog {
  * One pending nonce-armed button prompt (hang restart offer, interactive-prompt
  * assist, clean-exit restart offer, destructive clear confirmation). They share
  * the same lifecycle:
- * posted with a 128-bit nonce in the callback data, admin-gated and bound to
- * the exact message/world that created them, expired after
+ * posted with a 128-bit nonce in the callback data and bound to the exact
+ * message/world that created them. Destructive prompts are admin-gated; the
+ * informational Tip acknowledgement permits any identified click. All expire after
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
@@ -323,6 +325,10 @@ interface NonceButtonEntry {
   promptKind?: string;
   /** clear-confirm only: channel used to re-check fleet/Classic admin rights. */
   authChannelId?: string;
+  /** Tip prompts are shared, informational controls any authenticated click may consume. */
+  allowAnyUser?: boolean;
+  /** tip-dismiss only: stable catalog id written to scheduler.db. */
+  tipId?: string;
 }
 
 interface AdapterCallbackData {
@@ -374,9 +380,11 @@ const INTERACTIVE_ASSIST_CALLBACK_PREFIX = "interactive-assist:";
 const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
+const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
+const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
@@ -425,6 +433,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   costGuard: CostGuard | null = null;
   private statuslineWatcher: StatuslineWatcher;
   private dailySummary: DailySummary | null = null;
+  private dailyTipScheduler: DailyTipScheduler | null = null;
   private webhookEmitter: WebhookEmitter | null = null;
 
   // Topic icon + auto-archive state
@@ -508,6 +517,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateProgressTimer: ReturnType<typeof setInterval> | null = null;
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
+  private updateCompletionTipText: string | null = null;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
@@ -812,6 +822,37 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const child = spawn("sh", ["-c", `sleep 2 && ${command}`], { detached: true, stdio: "ignore" });
     child.once("error", err => this.failUpdateProgress(err.message));
     child.unref();
+  }
+
+  private async handleTipsSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.fleetConfig) return;
+    const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
+    if (mode === "on" || mode === "off") {
+      if (!this.isFleetAdmin(data.userId, adapterId)) {
+        await data.respond(t("permission.denied"));
+        return;
+      }
+      this.fleetConfig.defaults.tips = mode === "on";
+      this.saveFleetConfig();
+      await data.respond(t(mode === "on" ? "tips.enabled" : "tips.disabled"));
+      return;
+    }
+
+    const route = this.routing.resolve(data.channelId);
+    if (!route || route.kind !== "general") {
+      await data.respond(t("tips.general_only"));
+      return;
+    }
+    const adapter = this.adapters.get(adapterId) ?? this.adapter;
+    if (!adapter) {
+      await data.respond(t("tips.unavailable"));
+      return;
+    }
+    const chatId = this.getGroupIdForInstance(route.name) || data.channelId;
+    const result = await this.promptTip(route.name, adapter, chatId, data.channelId);
+    await data.respond(t(result === "posted"
+      ? "tips.posted"
+      : result === "empty" ? "tips.empty" : "tips.unavailable"));
   }
 
   /** Admin-only full conversation reset for fleet-topic and Classic instances. */
@@ -1748,6 +1789,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       messageId,
     });
     this.lastUpdateProgressText = null;
+    this.updateCompletionTipText = null;
     this.startUpdateProgressMonitor(adapter);
   }
 
@@ -1769,7 +1811,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const target = marker.progress.target;
       const adapter = this.adapters.get(target.adapterId) ?? (initialAdapter?.id === target.adapterId ? initialAdapter : undefined);
       if (!adapter) return;
-      const text = formatUpdateProgress(marker);
+      let text = formatUpdateProgress(marker);
+      // No-restart updates complete in the old fleet process, so they never
+      // reach RestartProgress.finish(). Append the same optional tip here.
+      if (marker.progress.stage === "complete" && this.tipsEnabled()) {
+        if (this.updateCompletionTipText === null) {
+          const tip = this.pickAvailableTip();
+          this.updateCompletionTipText = tip ? this.formatTip(tip) : "";
+        }
+        if (this.updateCompletionTipText) text += `\n\n${this.updateCompletionTipText}`;
+      }
       if (text === this.lastUpdateProgressText) return;
       this.updateProgressEditRunning = true;
       try {
@@ -2086,6 +2137,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.scheduler.init();
       this.logger.info("Scheduler initialized");
 
+      // Tips share the daily-report clock but remain an independent internal
+      // job: disabling daily_summary must not disable tips (and vice versa).
+      // The callback checks defaults.tips at fire time, so /tips on|off is hot.
+      this.dailyTipScheduler = new DailyTipScheduler(
+        summaryConfig,
+        costGuardConfig.timezone,
+        () => this.sendTipToGeneral().catch(err => {
+          this.logger.warn({ err }, "Failed to send daily tip");
+        }),
+      );
+      this.dailyTipScheduler.start();
+
       // Inject active decisions as env var for MCP instructions.
       // Snapshotted at startup — new decisions via post_decision are available
       // through list_decisions tool but not auto-injected until restart.
@@ -2286,6 +2349,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         version: agendVersion,
         pausedNames,
         failedNames,
+        tipText: pendingUpdateProgress && this.tipsEnabled()
+          ? (() => {
+              const tip = this.pickAvailableTip();
+              return tip ? this.formatTip(tip) : undefined;
+            })()
+          : undefined,
       });
       if (!progressCompleted && this.adapter && fleet.channel?.group_id) {
         let text: string;
@@ -2577,6 +2646,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
@@ -2736,6 +2806,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
+      } else if (data.command === "tips") {
+        await this.handleTipsSlash(data, adapterId);
       } else if (data.command === "status") {
         // Admin-gated (like the topic path): the merged table shows every
         // instance's cost and IPC health.
@@ -2882,6 +2954,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (await this.handleTipDismiss(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
@@ -3009,6 +3082,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } catch (err) {
           await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
         }
+      } else if (data.command === "tips") {
+        await this.handleTipsSlash(data, adapterId);
       } else if (data.command === "status") {
         // Admin-gated (like the topic path): the merged table shows every
         // instance's cost and IPC health.
@@ -5121,7 +5196,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   //
   // One shared lifecycle for every "notification with decision buttons":
   // post with a 128-bit nonce, arm a bounded expiry, bind the click to the
-  // exact adapter+chat+thread+message that created it, require fleet admin,
+  // exact adapter+chat+thread+message that created it, require fleet admin for
+  // actions that mutate runtime state (Tips are the harmless exception),
   // consume exactly once. The features differ only in what they post
   // and what a consumed click does.
 
@@ -5142,7 +5218,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     message: string;
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
-    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId">;
+    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId">;
     timeoutMs?: number;
   }): Promise<string | null> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
@@ -5233,9 +5309,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Bind the capability to the exact message/world that created it. Telegram
-    // keyboards are visible to everyone, so the click also requires fleet admin.
+    // keyboards are visible to everyone, so mutating actions require fleet admin;
+    // a Tip acknowledgement only records that the shared content was read.
     const isAuthorized = data.userId
-      ? pending.authChannelId
+      ? pending.allowAnyUser
+        ? true
+        : pending.authChannelId
         ? this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)
         : this.isFleetAdmin(data.userId, callbackAdapterId)
       : false;
@@ -5280,6 +5359,117 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // undo that or make the button actionable again.
       this.logger.warn({ err, instanceName: pending.instanceName }, "Failed to retire prompt buttons");
     }
+  }
+
+  private tipsEnabled(): boolean {
+    return this.fleetConfig?.defaults.tips !== false;
+  }
+
+  private pickAvailableTip(): Tip | null {
+    if (!this.scheduler) return null;
+    try {
+      return selectTip(this.scheduler.db.listDismissedTipIds());
+    } catch (err) {
+      // Tips are additive. A damaged/locked scheduler DB must never block fleet
+      // startup, update completion, or a General command.
+      this.logger.warn({ err }, "Failed to read dismissed tips");
+      return null;
+    }
+  }
+
+  private tipText(tip: Tip): string {
+    return getLocale() === "zh-TW" ? tip.text_zh : tip.text_en;
+  }
+
+  private formatTip(tip: Tip): string {
+    return `💡 ${t("tips.label")}: ${this.tipText(tip)}`;
+  }
+
+  /** Post one fresh nonce-armed tip in a known General channel. */
+  async promptTip(
+    generalName: string,
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<"posted" | "empty" | "unavailable"> {
+    const tip = this.pickAvailableTip();
+    if (!tip) return this.scheduler ? "empty" : "unavailable";
+    const nonce = await this.postNonceButtonPrompt({
+      prefix: TIP_DISMISS_CALLBACK_PREFIX,
+      alertType: "tip",
+      instanceName: generalName,
+      adapter,
+      adapterId: adapter.id,
+      chatId,
+      threadId,
+      message: this.formatTip(tip),
+      choices: [{ action: "dismiss", label: t("tips.dismiss") }],
+      // Expiry removes only the stale button; the useful tip remains readable.
+      expiredText: this.formatTip(tip),
+      extra: { allowAnyUser: true, tipId: tip.id },
+      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+    });
+    return nonce ? "posted" : "unavailable";
+  }
+
+  private async sendTipToGeneral(): Promise<void> {
+    if (!this.tipsEnabled()) return;
+    const generalName = this.findGeneralInstance();
+    if (!generalName) return;
+    const adapter = this.getAdapterForInstance(generalName);
+    const chatId = this.getGroupIdForInstance(generalName);
+    const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
+    if (!adapter || !chatId) return;
+    const result = await this.promptTip(
+      generalName,
+      adapter,
+      chatId,
+      topicId != null ? String(topicId) : undefined,
+    );
+    if (result === "unavailable") {
+      this.logger.warn({ generalName }, "Daily tip could not be posted");
+    }
+  }
+
+  private async handleTipDismiss(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      TIP_DISMISS_CALLBACK_PREFIX,
+      /^tip-dismiss:([0-9a-f]+):(dismiss)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending } = claimed;
+    if (!pending.tipId || !data.userId || !this.scheduler) {
+      this.logger.error({ tipId: pending.tipId, userId: data.userId },
+        "Tip dismissal has incomplete persistence context");
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("tips.unavailable"));
+      return true;
+    }
+    try {
+      this.scheduler.db.dismissTip(data.userId, pending.tipId);
+    } catch (err) {
+      this.logger.warn({ err, tipId: pending.tipId, userId: data.userId },
+        "Failed to persist tip dismissal");
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("tips.unavailable"));
+      return true;
+    }
+    this.eventLog?.insert(pending.instanceName, "tip_dismissed", {
+      tipId: pending.tipId,
+      userId: data.userId,
+    });
+    await this.retireNonceButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("tips.dismissed"),
+    );
+    return true;
   }
 
   /** Post the destructive `/clear` confirmation in the invoking channel. */
@@ -8079,6 +8269,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.clearStatuslineWatchers();
     this.costGuard?.stop();
     this.dailySummary?.stop();
+    this.dailyTipScheduler?.stop();
+    this.dailyTipScheduler = null;
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
@@ -8350,12 +8542,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     // Detect fleet-level changes which still need a restart. Hot defaults are
     // reconciled below and must not produce a misleading restart warning.
-    const oldDefaultCold = oldConfig?.defaults
+    const oldDefaultColdWithFleetFields = oldConfig?.defaults
       ? splitHotColdConfig(oldConfig.defaults as InstanceConfig).cold
       : {};
-    const newDefaultCold = this.fleetConfig?.defaults
+    const newDefaultColdWithFleetFields = this.fleetConfig?.defaults
       ? splitHotColdConfig(this.fleetConfig.defaults as InstanceConfig).cold
       : {};
+    // `tips` is a fleet-owned hot switch; it is read at post time and never
+    // belongs in a daemon config or a "restart required" warning.
+    const { tips: _oldTips, ...oldDefaultCold } = oldDefaultColdWithFleetFields as Record<string, unknown>;
+    const { tips: _newTips, ...newDefaultCold } = newDefaultColdWithFleetFields as Record<string, unknown>;
     const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldDefaultCold });
     const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: newDefaultCold });
     if (oldFleetLevel !== newFleetLevel) {

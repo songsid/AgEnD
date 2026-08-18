@@ -68,6 +68,13 @@ export interface FleetContext {
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;
+  /** Post one random, not-yet-dismissed tip with a dismiss button. */
+  promptTip?(
+    generalName: string,
+    adapter: import("./channel/types.js").ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<"posted" | "empty" | "unavailable">;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**

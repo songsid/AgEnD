@@ -200,6 +200,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }
     validateInstanceOptions(config.defaults, "defaults");
+    if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean") {
+      err("defaults.tips", "must be a boolean");
+    }
     if (config.defaults.startup !== undefined) {
       if (!isObj(config.defaults.startup)) err("defaults.startup", "must be a mapping");
       else {

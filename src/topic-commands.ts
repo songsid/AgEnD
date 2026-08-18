@@ -310,6 +310,11 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+      await this.handleTipsCommand(msg);
+      return true;
+    }
+
     if (text === "/update" || text.startsWith("/update@")) {
       await this.handleUpdateCommand(msg);
       return true;
@@ -762,6 +767,42 @@ export class TopicCommands {
     }
   }
 
+  private async handleTipsCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter || !this.ctx.fleetConfig) return;
+    const mode = msg.text.trim().replace(/^\/tips(?:@\S+)?/, "").trim().toLowerCase();
+    if (mode === "on" || mode === "off") {
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return;
+      }
+      this.ctx.fleetConfig.defaults.tips = mode === "on";
+      this.ctx.saveFleetConfig();
+      await adapter.sendText(msg.chatId, t(mode === "on" ? "tips.enabled" : "tips.disabled"), {
+        threadId: msg.threadId,
+      });
+      return;
+    }
+    if (mode) {
+      await adapter.sendText(msg.chatId, t("tips.usage"), { threadId: msg.threadId });
+      return;
+    }
+    const result = await this.ctx.promptTip?.(
+      // /tips is a General command, so the route target is the current General.
+      Object.entries(this.ctx.fleetConfig.instances)
+        .find(([, config]) => config.general_topic === true
+          && (!config.channel_id || config.channel_id === msg.adapterId))?.[0] ?? "general",
+      adapter,
+      msg.chatId,
+      msg.threadId,
+    ) ?? "unavailable";
+    if (result === "empty") {
+      await adapter.sendText(msg.chatId, t("tips.empty"), { threadId: msg.threadId });
+    } else if (result === "unavailable") {
+      await adapter.sendText(msg.chatId, t("tips.unavailable"), { threadId: msg.threadId });
+    }
+  }
+
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
@@ -1117,6 +1158,7 @@ export class TopicCommands {
           { command: "update", description: "🔒 Update AgEnD to latest" },
           { command: "doctor", description: "🔒 Run health diagnostics" },
           { command: "usage", description: "AI subscription usage" },
+          { command: "tips", description: "Show a useful AgEnD tip" },
         ];
 
         const setCommands = async (

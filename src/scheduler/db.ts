@@ -53,6 +53,13 @@ export class SchedulerDb {
       );
       CREATE INDEX IF NOT EXISTS idx_decisions_project ON decisions(project_root);
       CREATE INDEX IF NOT EXISTS idx_decisions_status ON decisions(status);
+      CREATE TABLE IF NOT EXISTS tips_dismissed (
+        user_id      TEXT NOT NULL,
+        tip_id       TEXT NOT NULL,
+        dismissed_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, tip_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tips_dismissed_tip_id ON tips_dismissed(tip_id);
     `);
 
     this.migrateScheduleTimingColumns();
@@ -252,6 +259,22 @@ export class SchedulerDb {
 
   pruneOldRuns(days = 30): void {
     this.db.prepare("DELETE FROM schedule_runs WHERE triggered_at < datetime('now', '-' || ? || ' days')").run(days);
+  }
+
+  // ── Tips ───────────────────────────────────────────────────
+
+  dismissTip(userId: string, tipId: string): void {
+    this.db.prepare(`
+      INSERT INTO tips_dismissed (user_id, tip_id, dismissed_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, tip_id) DO UPDATE SET dismissed_at = excluded.dismissed_at
+    `).run(userId, tipId, new Date().toISOString());
+  }
+
+  /** Tips are shared General-topic messages: one acknowledgement retires them fleet-wide. */
+  listDismissedTipIds(): Set<string> {
+    const rows = this.db.prepare("SELECT DISTINCT tip_id FROM tips_dismissed").all() as Array<{ tip_id: string }>;
+    return new Set(rows.map(row => row.tip_id));
   }
 
   // ── Decisions ───────────────────────────────────────────────

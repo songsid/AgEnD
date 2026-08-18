@@ -18,6 +18,14 @@ describe("loadFleetConfig", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  it("keeps fleet-only defaults.tips out of effective daemon config", () => {
+    const fleetPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(fleetPath, `defaults:\n  tips: false\ninstances:\n  worker:\n    working_directory: /tmp\n`);
+    const fleet = loadFleetConfig(fleetPath);
+    expect(fleet.defaults.tips).toBe(false);
+    expect((fleet.instances.worker as any).tips).toBeUndefined();
+  });
+
   it("loads fleet.yaml with defaults merged into instances", () => {
     const fleetPath = join(tmpDir, "fleet.yaml");
     writeFileSync(

@@ -1,3 +1,8 @@
+import { Cron } from "croner";
+import type { DailySummaryConfig } from "./types.js";
+
+export type TipLevel = "beginner" | "intermediate" | "advanced";
+
 /**
  * Usage tips surfaced to users, graded by experience level.
  *
@@ -13,7 +18,7 @@
  */
 export interface Tip {
   id: string;
-  level: "beginner" | "intermediate" | "advanced";
+  level: TipLevel;
   text_en: string;
   text_zh: string;
 }
@@ -325,3 +330,53 @@ export const TIPS: Tip[] = [
     text_en: "`mcp_auto_restart` (default true) restarts an instance whose MCP server died, waiting for an idle pane first and resuming the session rather than resetting it.",
     text_zh: "`mcp_auto_restart`（預設開啟）會在 MCP server 死掉時自動重啟該 instance —— 先等 pane 閒置，而且是續接 session 不是清掉重來。" },
 ];
+
+export function visibleTipLevels(dismissedIds: ReadonlySet<string>): ReadonlySet<TipLevel> {
+  const counts = { beginner: 0, intermediate: 0 };
+  const totals = { beginner: 0, intermediate: 0 };
+  for (const tip of TIPS) {
+    if (tip.level === "beginner" || tip.level === "intermediate") {
+      totals[tip.level]++;
+      if (dismissedIds.has(tip.id)) counts[tip.level]++;
+    }
+  }
+  const advancedUnlocked = counts.beginner > totals.beginner / 2
+    && counts.intermediate > totals.intermediate / 2;
+  return new Set<TipLevel>(advancedUnlocked
+    ? ["beginner", "intermediate", "advanced"]
+    : ["beginner", "intermediate"]);
+}
+
+export function selectTip(
+  dismissedIds: ReadonlySet<string>,
+  random: () => number = Math.random,
+): Tip | null {
+  const levels = visibleTipLevels(dismissedIds);
+  const candidates = TIPS.filter(tip => levels.has(tip.level) && !dismissedIds.has(tip.id));
+  if (candidates.length === 0) return null;
+  const index = Math.min(candidates.length - 1, Math.max(0, Math.floor(random() * candidates.length)));
+  return candidates[index];
+}
+
+/** Fleet-internal daily trigger. It is intentionally not persisted in fleet.yaml. */
+export class DailyTipScheduler {
+  private job: Cron | null = null;
+
+  constructor(
+    private readonly config: DailySummaryConfig,
+    private readonly timezone: string,
+    private readonly onTip: () => void | Promise<void>,
+  ) {}
+
+  start(): void {
+    const cron = `${this.config.minute} ${this.config.hour} * * *`;
+    this.job = new Cron(cron, { timezone: this.timezone }, () => {
+      Promise.resolve(this.onTip()).catch(() => { /* caller owns logging */ });
+    });
+  }
+
+  stop(): void {
+    this.job?.stop();
+    this.job = null;
+  }
+}
