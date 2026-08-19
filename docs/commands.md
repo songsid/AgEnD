@@ -16,6 +16,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/save` | Save agent session (handled, not in menu) | All |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
+| `/tips` | Draw a random usage tip (100 tips, progressive unlock by dismissal rate). General topic only — replies with "general only" elsewhere. | All |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
@@ -27,6 +28,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/model` | Change backend model (inline keyboard) | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
+| 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -72,6 +74,7 @@ Registered globally via `client.application.commands.set()`.
 | `/cancel` | Interrupt agent generation | All |
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only, others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
+| `/tips [mode]` | Draw a random usage tip; `mode: on\|off` toggles the daily auto-send (admin only, plain draw is General-topic only) | All / 🔒 for `on`\|`off` |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
@@ -108,6 +111,7 @@ Permission varies by platform/mode:
 - `/compact` — TG Classic: admin required. DC + TG Fleet: all users.
 - `/ctx` — all users (both platforms)
 - `/collab` — fleet topics: fleet admin. Classic: admin.
+- `/tips` — drawing a tip is all-users (General topic only, replies "general only" elsewhere); `/tips on` / `/tips off` requires fleet admin. Not registered on TG Classic at all.
 
 ### All Users
 
