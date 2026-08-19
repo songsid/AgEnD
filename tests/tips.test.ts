@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { SchedulerDb } from "../src/scheduler/db.js";
-import { TIPS, selectTip, visibleTipLevels } from "../src/tips.js";
+import { canUnlockAdvancedTips, TIPS, selectTip, visibleTipLevels } from "../src/tips.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -14,23 +14,24 @@ afterEach(() => {
 });
 
 describe("tips catalog and persistence", () => {
-  it("ships the complete 30/40/30 catalog and unlocks advanced only past both halves", () => {
+  it("ships a 100/100/100 catalog and requires an explicit advanced unlock", () => {
     const beginner = TIPS.filter(t => t.level === "beginner");
     const intermediate = TIPS.filter(t => t.level === "intermediate");
-    expect(beginner).toHaveLength(30);
-    expect(intermediate).toHaveLength(40);
-    expect(TIPS.filter(t => t.level === "advanced")).toHaveLength(30);
+    expect(beginner).toHaveLength(100);
+    expect(intermediate).toHaveLength(100);
+    expect(TIPS.filter(t => t.level === "advanced")).toHaveLength(100);
+    expect(new Set(TIPS.map(t => t.id)).size).toBe(300);
+    expect(TIPS.every(t => t.text_en.trim() && t.text_zh.trim())).toBe(true);
 
-    const below = new Set([
-      ...beginner.slice(0, 15).map(t => t.id),
-      ...intermediate.slice(0, 20).map(t => t.id),
-    ]);
-    expect(visibleTipLevels(below).has("advanced")).toBe(false);
-    below.add(beginner[15].id);
-    expect(visibleTipLevels(below).has("advanced")).toBe(false);
-    below.add(intermediate[20].id);
-    expect(visibleTipLevels(below).has("advanced")).toBe(true);
-    expect(selectTip(new Set(TIPS.map(t => t.id)))).toBeNull();
+    const dismissed = new Set(intermediate.slice(0, 29).map(t => t.id));
+    expect(canUnlockAdvancedTips(dismissed)).toBe(false);
+    dismissed.add(intermediate[29].id);
+    expect(canUnlockAdvancedTips(dismissed)).toBe(true);
+    expect(visibleTipLevels(false).has("advanced")).toBe(false);
+    expect(visibleTipLevels(true).has("advanced")).toBe(true);
+    const allBasic = new Set(TIPS.filter(t => t.level !== "advanced").map(t => t.id));
+    expect(selectTip(allBasic, () => 0, false)).toBeNull();
+    expect(selectTip(allBasic, () => 0, true)?.level).toBe("advanced");
   });
 
   it("persists idempotent per-user dismissals and exposes fleet-wide distinct ids", () => {
@@ -41,6 +42,10 @@ describe("tips catalog and persistence", () => {
     db.dismissTip("user-a", "tip-001");
     db.dismissTip("user-b", "tip-002");
     expect([...db.listDismissedTipIds()].sort()).toEqual(["tip-001", "tip-002"]);
+    expect(db.isAdvancedTipsUnlocked()).toBe(false);
+    db.unlockAdvancedTips("user-a");
+    db.unlockAdvancedTips("user-b");
+    expect(db.isAdvancedTipsUnlocked()).toBe(true);
     db.close();
   });
 });
@@ -54,7 +59,10 @@ describe("tip button flow", () => {
     });
     const adapter = { id: "tg-main", type: "telegram", notifyAlert } as any;
     const fm = new FleetManager(dir);
-    (fm as any).scheduler = { db: { listDismissedTipIds: vi.fn(() => new Set<string>()) } };
+    (fm as any).scheduler = { db: {
+      listDismissedTipIds: vi.fn(() => new Set<string>()),
+      isAdvancedTipsUnlocked: vi.fn(() => false),
+    } };
     fm.fleetConfig = {
       defaults: {},
       channels: [{ id: "tg-main", type: "telegram", mode: "topic", group_id: "fleet" }],
@@ -86,7 +94,11 @@ describe("tip button flow", () => {
     const dismissTip = vi.fn();
     const fm = new FleetManager(dir);
     (fm as any).scheduler = {
-      db: { listDismissedTipIds: vi.fn(() => new Set<string>()), dismissTip },
+      db: {
+        listDismissedTipIds: vi.fn(() => new Set<string>()),
+        isAdvancedTipsUnlocked: vi.fn(() => false),
+        dismissTip,
+      },
     };
     fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
 
@@ -109,6 +121,45 @@ describe("tip button flow", () => {
     expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
       "fleet", "tip-message", expect.stringContaining("will not be shown again"), "general-topic",
+    );
+  });
+
+  it("offers and persists the explicit advanced unlock after 30 intermediate dismissals", async () => {
+    const notifyAlert = vi.fn().mockResolvedValue({
+      messageId: "unlock-message", chatId: "fleet", threadId: "general-topic",
+    });
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons,
+    } as any;
+    const dismissed = new Set(
+      TIPS.filter(t => t.level === "intermediate").slice(0, 30).map(t => t.id),
+    );
+    const unlockAdvancedTips = vi.fn();
+    const fm = new FleetManager("/tmp/agend-tip-unlock-test");
+    (fm as any).scheduler = { db: {
+      listDismissedTipIds: vi.fn(() => dismissed),
+      isAdvancedTipsUnlocked: vi.fn(() => false),
+      unlockAdvancedTips,
+    } };
+    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
+
+    expect(await fm.promptTip("general", adapter, "fleet", "general-topic")).toBe("posted");
+    const alert = notifyAlert.mock.calls[0][1];
+    expect(alert.message).toContain("30");
+    expect(alert.choices[0].id).toMatch(/^tip-unlock:[0-9a-f]{32}:unlock$/);
+
+    await (fm as any).handleTipUnlock({
+      callbackData: alert.choices[0].id,
+      chatId: "fleet",
+      threadId: "general-topic",
+      messageId: "unlock-message",
+      userId: "reader",
+    }, "discord-main", adapter);
+
+    expect(unlockAdvancedTips).toHaveBeenCalledWith("reader");
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+      "fleet", "unlock-message", expect.stringContaining("unlocked"), "general-topic",
     );
   });
 
