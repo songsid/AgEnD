@@ -60,6 +60,11 @@ export class SchedulerDb {
         PRIMARY KEY (user_id, tip_id)
       );
       CREATE INDEX IF NOT EXISTS idx_tips_dismissed_tip_id ON tips_dismissed(tip_id);
+      CREATE TABLE IF NOT EXISTS tips_advanced_unlocked (
+        fleet_scope TEXT PRIMARY KEY,
+        unlocked_at TEXT NOT NULL,
+        unlocked_by TEXT NOT NULL
+      );
     `);
 
     this.migrateScheduleTimingColumns();
@@ -275,6 +280,20 @@ export class SchedulerDb {
   listDismissedTipIds(): Set<string> {
     const rows = this.db.prepare("SELECT DISTINCT tip_id FROM tips_dismissed").all() as Array<{ tip_id: string }>;
     return new Set(rows.map(row => row.tip_id));
+  }
+
+  isAdvancedTipsUnlocked(): boolean {
+    return this.db.prepare(
+      "SELECT 1 FROM tips_advanced_unlocked WHERE fleet_scope = 'fleet' LIMIT 1",
+    ).get() !== undefined;
+  }
+
+  unlockAdvancedTips(userId: string): void {
+    this.db.prepare(`
+      INSERT INTO tips_advanced_unlocked (fleet_scope, unlocked_at, unlocked_by)
+      VALUES ('fleet', ?, ?)
+      ON CONFLICT(fleet_scope) DO NOTHING
+    `).run(new Date().toISOString(), userId);
   }
 
   // ── Decisions ───────────────────────────────────────────────

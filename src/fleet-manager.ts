@@ -76,7 +76,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
-import { DailyTipScheduler, selectTip, type Tip } from "./tips.js";
+import { canUnlockAdvancedTips, DailyTipScheduler, selectTip, type Tip } from "./tips.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -381,6 +381,7 @@ const EXIT_RESTART_CALLBACK_PREFIX = "exit-restart:";
 const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
+const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -2647,6 +2648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
@@ -2955,6 +2957,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleTipDismiss(data, adapterId, adapter)) return;
+      if (await this.handleTipUnlock(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
@@ -5365,16 +5368,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.fleetConfig?.defaults.tips !== false;
   }
 
-  private pickAvailableTip(): Tip | null {
+  private readTipState(): { dismissed: Set<string>; advancedUnlocked: boolean } | null {
     if (!this.scheduler) return null;
     try {
-      return selectTip(this.scheduler.db.listDismissedTipIds());
+      return {
+        dismissed: this.scheduler.db.listDismissedTipIds(),
+        advancedUnlocked: this.scheduler.db.isAdvancedTipsUnlocked(),
+      };
     } catch (err) {
       // Tips are additive. A damaged/locked scheduler DB must never block fleet
       // startup, update completion, or a General command.
-      this.logger.warn({ err }, "Failed to read dismissed tips");
+      this.logger.warn({ err }, "Failed to read tip state");
       return null;
     }
+  }
+
+  private pickAvailableTip(): Tip | null {
+    const state = this.readTipState();
+    return state ? selectTip(state.dismissed, Math.random, state.advancedUnlocked) : null;
   }
 
   private tipText(tip: Tip): string {
@@ -5392,7 +5403,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string,
     threadId?: string,
   ): Promise<"posted" | "empty" | "unavailable"> {
-    const tip = this.pickAvailableTip();
+    const state = this.readTipState();
+    if (!state) return "unavailable";
+    if (!state.advancedUnlocked && canUnlockAdvancedTips(state.dismissed)) {
+      return await this.promptAdvancedTipUnlock(generalName, adapter, chatId, threadId)
+        ? "posted"
+        : "unavailable";
+    }
+    const tip = selectTip(state.dismissed, Math.random, state.advancedUnlocked);
     if (!tip) return this.scheduler ? "empty" : "unavailable";
     const nonce = await this.postNonceButtonPrompt({
       prefix: TIP_DISMISS_CALLBACK_PREFIX,
@@ -5410,6 +5428,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       timeoutMs: TIP_BUTTON_TIMEOUT_MS,
     });
     return nonce ? "posted" : "unavailable";
+  }
+
+  private async promptAdvancedTipUnlock(
+    generalName: string,
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId?: string,
+  ): Promise<boolean> {
+    const nonce = await this.postNonceButtonPrompt({
+      prefix: TIP_UNLOCK_CALLBACK_PREFIX,
+      alertType: "tip",
+      instanceName: generalName,
+      adapter,
+      adapterId: adapter.id,
+      chatId,
+      threadId,
+      message: t("tips.advanced.unlock_prompt"),
+      choices: [{ action: "unlock", label: t("tips.advanced.unlock") }],
+      expiredText: t("tips.advanced.expired"),
+      extra: { allowAnyUser: true },
+      timeoutMs: TIP_BUTTON_TIMEOUT_MS,
+    });
+    return nonce !== null;
   }
 
   private async sendTipToGeneral(): Promise<void> {
@@ -5468,6 +5509,50 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       pending,
       pending.messageId ?? data.messageId,
       t("tips.dismissed"),
+    );
+    const state = this.readTipState();
+    if (state && !state.advancedUnlocked && canUnlockAdvancedTips(state.dismissed)) {
+      await this.promptAdvancedTipUnlock(
+        pending.instanceName,
+        pending.adapter,
+        pending.chatId,
+        pending.threadId,
+      );
+    }
+    return true;
+  }
+
+  private async handleTipUnlock(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      TIP_UNLOCK_CALLBACK_PREFIX,
+      /^tip-unlock:([0-9a-f]+):(unlock)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry: pending } = claimed;
+    if (!data.userId || !this.scheduler) {
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("tips.unavailable"));
+      return true;
+    }
+    try {
+      this.scheduler.db.unlockAdvancedTips(data.userId);
+    } catch (err) {
+      this.logger.warn({ err, userId: data.userId }, "Failed to unlock advanced tips");
+      await this.retireNonceButtons(pending, pending.messageId ?? data.messageId, t("tips.unavailable"));
+      return true;
+    }
+    this.eventLog?.insert(pending.instanceName, "tips_advanced_unlocked", { userId: data.userId });
+    await this.retireNonceButtons(
+      pending,
+      pending.messageId ?? data.messageId,
+      t("tips.advanced.unlocked"),
     );
     return true;
   }
