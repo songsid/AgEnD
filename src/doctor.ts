@@ -8,6 +8,7 @@ import { hasPausedMarker } from "./pause-marker.js";
 import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
 import type { ServiceInfo } from "./service-installer.js";
+import { t } from "./locale.js";
 
 export type DoctorCheckStatus = "ok" | "warn" | "error";
 
@@ -105,7 +106,7 @@ export async function collectDoctorReport(
   try {
     raw = loadRawFleetConfig(configPath);
   } catch (err) {
-    add("Fleet", "error", "fleet.yaml", `invalid: ${(err as Error).message.split("\n")[0]}`);
+    add("Fleet", "error", "fleet.yaml", t("doctor.config_invalid", (err as Error).message.split("\n")[0]));
   }
 
   const defaultBackend = raw.defaults?.backend ?? "claude-code";
@@ -118,15 +119,15 @@ export async function collectDoctorReport(
     if (id === "mock") continue;
     const backend = BACKENDS.find(item => item.id === id);
     if (!backend) {
-      add("Prerequisites", "error", `backend ${id}`, "unknown backend");
+      add("Prerequisites", "error", t("doctor.backend_label", id), t("doctor.backend_unknown"));
       continue;
     }
     const result = deps.run(backend.binary, ["--version"]);
     const version = String(result.stdout ?? "").trim().split("\n")[0];
     if (!result.error && result.status === 0) {
-      add("Prerequisites", "ok", backend.label, version || `${backend.binary} available`);
+      add("Prerequisites", "ok", backend.label, version || t("doctor.binary_available", backend.binary));
     } else {
-      add("Prerequisites", "error", backend.label, `${backend.binary} not found`);
+      add("Prerequisites", "error", backend.label, t("doctor.binary_missing", backend.binary));
     }
   }
 
@@ -136,33 +137,33 @@ export async function collectDoctorReport(
     "Prerequisites",
     tmuxAvailable ? "ok" : "error",
     "tmux",
-    tmuxAvailable ? String(tmuxVersion.stdout ?? "").trim() : "not found",
+    tmuxAvailable ? String(tmuxVersion.stdout ?? "").trim() : t("doctor.not_found"),
   );
   add(
     "Prerequisites",
     deps.env.TERM ? "ok" : "warn",
     "TERM",
-    deps.env.TERM || "not set — TUI rendering may fail",
+    deps.env.TERM || t("doctor.term_unset"),
   );
 
   if (!service.installed) {
-    add("Service", "warn", "installed", "no AgEnD service found — run: agend install");
+    add("Service", "warn", t("doctor.service_installed"), t("doctor.service_none"));
   } else {
     const managerUnavailable = service.manager === "systemd --user"
-      ? "unknown — systemd --user unavailable (common over SSH without a user D-Bus session)"
-      : "unknown (service manager unavailable)";
-    add("Service", "ok", "installed", `${service.manager}: ${service.path}`);
+      ? t("doctor.manager_user_unavailable")
+      : t("doctor.manager_unavailable");
+    add("Service", "ok", t("doctor.service_installed"), `${service.manager}: ${service.path}`);
     add(
       "Service",
       service.enabled === true ? "ok" : "warn",
-      "enabled",
-      service.enabled == null ? managerUnavailable : service.enabled ? "yes" : "no — run: agend install",
+      t("doctor.service_enabled"),
+      service.enabled == null ? managerUnavailable : service.enabled ? t("doctor.yes") : t("doctor.no_install"),
     );
     add(
       "Service",
       service.active === true ? "ok" : "warn",
-      "active",
-      service.active == null ? managerUnavailable : service.active ? "running" : "inactive — run: agend start",
+      t("doctor.service_active"),
+      service.active == null ? managerUnavailable : service.active ? t("doctor.service_running") : t("doctor.inactive_start"),
     );
   }
 
@@ -172,8 +173,8 @@ export async function collectDoctorReport(
       deps.env.DBUS_SESSION_BUS_ADDRESS ? "ok" : "warn",
       "D-Bus",
       deps.env.DBUS_SESSION_BUS_ADDRESS
-        ? "DBUS_SESSION_BUS_ADDRESS is set"
-        : "DBUS_SESSION_BUS_ADDRESS is not set — systemd --user may not work",
+        ? t("doctor.dbus_set")
+        : t("doctor.dbus_unset"),
     );
   }
 
@@ -181,13 +182,13 @@ export async function collectDoctorReport(
   const fleetPid = readPid(fleetPidPath);
   const fleetAlive = fleetPid != null && deps.processAlive(fleetPid);
   if (!existsSync(fleetPidPath)) {
-    add("Fleet", "warn", "fleet process", "fleet.pid not found — fleet is not running");
+    add("Fleet", "warn", t("doctor.fleet_process"), t("doctor.pid_missing"));
   } else if (fleetPid == null) {
-    add("Fleet", "error", "fleet process", "fleet.pid is invalid");
+    add("Fleet", "error", t("doctor.fleet_process"), t("doctor.pid_invalid"));
   } else if (!fleetAlive) {
-    add("Fleet", "error", "fleet process", `PID ${fleetPid} is not alive (stale fleet.pid)`);
+    add("Fleet", "error", t("doctor.fleet_process"), t("doctor.pid_stale", fleetPid));
   } else {
-    add("Fleet", "ok", "fleet process", `PID ${fleetPid} is alive`);
+    add("Fleet", "ok", t("doctor.fleet_process"), t("doctor.pid_alive", fleetPid));
   }
 
   const sessionName = getTmuxSessionName();
@@ -198,12 +199,12 @@ export async function collectDoctorReport(
   add(
     "Fleet",
     sessionAlive ? "ok" : fleetAlive ? "error" : "warn",
-    "tmux session",
-    sessionAlive ? `${sessionName} exists` : `${sessionName} not found`,
+    t("doctor.tmux_session"),
+    sessionAlive ? t("doctor.session_exists", sessionName) : t("doctor.session_missing", sessionName),
   );
 
   if (!existsSync(configPath)) {
-    add("Fleet", "warn", "instances", `fleet.yaml not found at ${configPath}`);
+    add("Fleet", "warn", t("doctor.instances"), t("doctor.config_missing", configPath));
   }
   const names = Object.keys(raw.instances ?? {});
   const counts = { running: 0, paused: 0, stopped: 0, crashed: 0 };
@@ -229,8 +230,8 @@ export async function collectDoctorReport(
   add(
     "Fleet",
     "ok",
-    "instances",
-    `${counts.running} running, ${counts.paused} paused, ${counts.stopped} stopped, ${counts.crashed} crashed (${names.length} total)`,
+    t("doctor.instances"),
+    t("doctor.instance_counts", counts.running, counts.paused, counts.stopped, counts.crashed, names.length),
   );
 
   const ipcResults = await Promise.all(runningNames.map(async name => {
@@ -246,8 +247,8 @@ export async function collectDoctorReport(
     ipcProblems.length === 0 ? "ok" : "error",
     "channel.sock",
     ipcProblems.length === 0
-      ? `${connected}/${runningNames.length} running instance socket(s) reachable`
-      : `${connected}/${runningNames.length} reachable; failed: ${ipcProblems.join(", ")}`,
+      ? t("doctor.ipc_ok", connected, runningNames.length)
+      : t("doctor.ipc_failed", connected, runningNames.length, ipcProblems.join(", ")),
   );
 
   return {
@@ -258,12 +259,18 @@ export async function collectDoctorReport(
 }
 
 export function formatDoctorReport(report: DoctorReport): string {
-  const lines = ["", "  \x1b[1mAgEnD doctor\x1b[0m"];
+  const sectionLabels: Record<DoctorCheck["section"], string> = {
+    Prerequisites: t("doctor.section.prerequisites"),
+    Service: t("doctor.section.service"),
+    Fleet: t("doctor.section.fleet"),
+    "MCP IPC": t("doctor.section.ipc"),
+  };
+  const lines = ["", `  \x1b[1m${t("doctor.title")}\x1b[0m`];
   let section: DoctorCheck["section"] | undefined;
   for (const check of report.checks) {
     if (check.section !== section) {
       section = check.section;
-      lines.push("", `  \x1b[1m${section}\x1b[0m`);
+      lines.push("", `  \x1b[1m${sectionLabels[section]}\x1b[0m`);
     }
     const icon = check.status === "ok"
       ? "\x1b[32m✓\x1b[0m"
@@ -275,8 +282,8 @@ export function formatDoctorReport(report: DoctorReport): string {
   lines.push(
     "",
     report.errors === 0
-      ? `  \x1b[32m✓ Doctor complete\x1b[0m (${report.warnings} warning(s))`
-      : `  \x1b[31m✗ Doctor found ${report.errors} error(s)\x1b[0m (${report.warnings} warning(s))`,
+      ? `  \x1b[32m✓ ${t("doctor.complete", report.warnings)}\x1b[0m`
+      : `  \x1b[31m✗ ${t("doctor.errors", report.errors, report.warnings)}\x1b[0m`,
     "",
   );
   return lines.join("\n");

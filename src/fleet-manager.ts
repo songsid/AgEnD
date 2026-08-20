@@ -44,7 +44,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, SAVE_UNSUPPORTED_MSG, CLEAR_UNSUPPORTED_MSG, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -572,7 +572,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // fleet.yaml, sent SIGHUP, and got no reaction and no explanation.
         this.logger.error({ err }, "SIGHUP config reload failed");
         const message = err instanceof Error ? err.message : String(err);
-        this.notifyFleetError(`⚠️ fleet.yaml reload FAILED — ${message}\nThe previous configuration is still running.`);
+        this.notifyFleetError(t("fleet.reload_failed", message));
       })
       .finally(() => {
         this.reconcileInFlight = null;
@@ -1482,7 +1482,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // routing instructions are not injected, so it cannot act as a dispatcher.
       if (backend === "antigravity") {
         this.logger.warn({ name }, "antigravity backend does not support MCP instructions — general dispatcher will not work correctly");
-        this.notifyInstanceTopic(name, "⚠️ antigravity backend is not supported for General instances (no MCP instructions injection). Switch to claude-code or kiro-cli.");
+        this.notifyInstanceTopic(name, t("general.antigravity_unsupported"));
       }
       this.ensureGeneralInstructions(config.working_directory, backend, name);
     } else if (kind === "fleet-topic") {
@@ -2524,7 +2524,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private notifyAdapterFailure(adapterId: string, error: string): void {
     const generalId = this.findGeneralInstance();
     if (generalId) {
-      this.notifyInstanceTopic(generalId, `⚠️ Adapter "${adapterId}" failed to start: ${error}\nRetrying in background. Other adapters unaffected.`);
+      this.notifyInstanceTopic(generalId, t("adapter.start_failed", adapterId, error));
     }
   }
 
@@ -2532,7 +2532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private notifyAdapterRecovery(adapterId: string, attempts: number): void {
     const generalId = this.findGeneralInstance();
     if (generalId) {
-      this.notifyInstanceTopic(generalId, `✅ Adapter "${adapterId}" reconnected (after ${attempts} ${attempts === 1 ? "retry" : "retries"}).`);
+      this.notifyInstanceTopic(generalId, t("adapter.reconnected", adapterId, attempts));
     }
   }
 
@@ -2806,7 +2806,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // slash_command is Discord-only; editReply renders Markdown natively.
           await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
         } catch (err) {
-          await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
+          await data.respond(t("usage.failed", (err as Error).message));
         }
       } else if (data.command === "tips") {
         await this.handleTipsSlash(data, adapterId);
@@ -3083,7 +3083,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // slash_command is Discord-only; editReply renders Markdown natively.
           await data.respond(renderUsageMarkdown(await getUsageSnapshot(false, this.getActiveUsageProviderIds())));
         } catch (err) {
-          await data.respond(`⚠️ Usage fetch failed: ${(err as Error).message}`);
+          await data.respond(t("usage.failed", (err as Error).message));
         }
       } else if (data.command === "tips") {
         await this.handleTipsSlash(data, adapterId);
@@ -3769,7 +3769,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             return;
           }
           const ok = this.cancelInstance(cancelName);
-          await msgAdapter?.sendText(chatId, ok ? `🛑 已送出取消給 ${cancelName}。` : `❌ ${cancelName} 未在執行。`);
+          await msgAdapter?.sendText(chatId, ok ? t("cancel.sent", cancelName) : t("cancel.not_running", cancelName));
           return;
         }
 
@@ -3801,7 +3801,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!SAVE_FILENAME_RE.test(filename)) { await msgAdapter?.sendText(chatId, t("filename.invalid")); return; }
           const backend = this.classicChannels.getBackendByInstance(saveName, this.fleetConfig?.defaults?.backend);
           const cmd = saveCommandForBackend(backend, filename);
-          if (!cmd) { await msgAdapter?.sendText(chatId, SAVE_UNSUPPORTED_MSG); return; }
+          if (!cmd) { await msgAdapter?.sendText(chatId, t("save.unsupported")); return; }
           this.pasteRawToClassicInstance(saveName, cmd);
           await msgAdapter?.sendText(chatId, t("save.sent", cmd, saveName));
           return;
@@ -4026,9 +4026,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!rl) return;
     let warning = "";
     if (rl.five_hour_pct >= 95) {
-      warning = `⚠️ ${instanceName} at ${Math.round(rl.five_hour_pct)}% of 5h rate limit. Responses may be slower.`;
+      warning = t("rate_limit.five_hour", instanceName, Math.round(rl.five_hour_pct));
     } else if (rl.seven_day_pct >= 95) {
-      warning = `⚠️ ${instanceName} at ${Math.round(rl.seven_day_pct)}% weekly usage. Responses may be slower or fail.`;
+      warning = t("rate_limit.weekly", instanceName, Math.round(rl.seven_day_pct));
     }
     if (!warning) return;
     const lastWarn = this.rateLimitWarnedAt.get(instanceName) ?? 0;
@@ -4971,8 +4971,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         from: primaryModel, to: fallbackModel, five_hour_pct: fiveHourPct,
       });
       this.webhookEmitter?.emit("model_failover", name, { from: primaryModel, to: fallbackModel, five_hour_pct: fiveHourPct });
-      this.notifyInstanceTopic(name,
-        `⚡ Rate limit ${fiveHourPct}% — next rotation will use ${fallbackModel} (was ${primaryModel})`);
+      this.notifyInstanceTopic(name, t("failover.triggered", fiveHourPct, fallbackModel, primaryModel));
 
     } else if (fiveHourPct < FleetManager.FAILOVER_RECOVER_PCT && currentFailover) {
       // Recover: switch back to primary
@@ -4984,8 +4983,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         restored: primaryModel, five_hour_pct: fiveHourPct,
       });
       this.webhookEmitter?.emit("model_recovered", name, { restored: primaryModel, five_hour_pct: fiveHourPct });
-      this.notifyInstanceTopic(name,
-        `✅ Rate limit recovered (${fiveHourPct}%) — next rotation will use ${primaryModel}`);
+      this.notifyInstanceTopic(name, t("failover.recovered", fiveHourPct, primaryModel));
     }
   }
 
@@ -5039,9 +5037,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const output = stripAnsi(e.stdout ?? "").trim();
       if (output) return output;
       if (e.code === "ENOENT") {
-        return "Backend doctor unavailable — agend CLI not found in PATH";
+        return t("doctor.cli_missing");
       }
-      return stripAnsi(e.message ?? "").trim() || "Doctor failed";
+      return stripAnsi(e.message ?? "").trim() || t("doctor.failed");
     }
   }
 
@@ -5139,7 +5137,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const body = suppressed > 0
-      ? `${text}\n(plus ${suppressed} more in the last ${Math.round(FleetManager.FLEET_ERROR_THROTTLE_MS / 60_000)}m)`
+      ? `${text}\n${t("fleet.error_suppressed", suppressed, Math.round(FleetManager.FLEET_ERROR_THROTTLE_MS / 60_000))}`
       : text;
 
     // Resolved from config, NOT findGeneralInstance(): that requires a live daemon,
@@ -5565,7 +5563,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chatId: string,
     threadId?: string,
   ): Promise<string | null> {
-    if (!this.topicCommands.supportsClear(instanceName)) return CLEAR_UNSUPPORTED_MSG;
+    if (!this.topicCommands.supportsClear(instanceName)) return t("clear.unsupported");
 
     const adapterId = adapter.id;
     if (!adapterId) return t("clear.prompt_unavailable");
@@ -5945,7 +5943,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const force = target.kind === "classic" && !!data.options?.force;
     const cmd = saveCommandForBackend(backend, filename, force);
     if (!cmd) {
-      await data.respond(SAVE_UNSUPPORTED_MSG);
+      await data.respond(t("save.unsupported"));
       return;
     }
     if (target.kind === "classic") {
@@ -7594,10 +7592,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   private effortMenuHeader(instanceName: string): string {
     const { effort, source } = this.resolveInstanceEffort(instanceName);
-    if (!effort) return "Current effort: (CLI default)";
+    if (!effort) return t("effort.current_default");
     return source === "fleet-default"
-      ? `Current effort: ${effort} (fleet default)`
-      : `Current effort: ${effort}`;
+      ? t("effort.current_fleet", effort)
+      : t("effort.current", effort);
   }
 
   /** `/effort` — DC Select Menu, or apply directly when a level is given. */
@@ -7615,10 +7613,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const levels = this.effortLevelsFor(name);
     if (levels.length === 0) {
-      await data.respond(`❌ ${this.backendNameForInstance(name)} has no reasoning-effort setting.`);
+      await data.respond(t("effort.unsupported", this.backendNameForInstance(name)));
       return;
     }
-    if (!data.respondChoices) { await data.respond(`Usage: /effort <${levels.join("|")}>`); return; }
+    if (!data.respondChoices) { await data.respond(t("effort.usage", levels.join("|"))); return; }
 
     const current = this.resolveInstanceEffort(name).effort;
     const nonce = randomBytes(6).toString("hex");
@@ -7630,12 +7628,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     timer.unref?.();
     this.pendingEffortSelects.set(nonce, { instanceName: name, userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
     try {
-      await data.respondChoices(`${this.effortMenuHeader(name)}\nSelect a new effort level:`, choices);
+      await data.respondChoices(t("effort.menu", this.effortMenuHeader(name)), choices);
     } catch (err) {
       this.pendingEffortSelects.delete(nonce);
       clearTimeout(timer);
       this.logger.warn({ err, instanceName: name }, "effort menu failed");
-      await data.respond(`Usage: /effort <${levels.join("|")}>`);
+      await data.respond(t("effort.usage", levels.join("|")));
     }
   }
 
@@ -7650,7 +7648,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   ): Promise<string | null> {
     const levels = this.effortLevelsFor(instanceName);
     if (levels.length === 0) {
-      return `❌ ${this.backendNameForInstance(instanceName)} has no reasoning-effort setting.`;
+      return t("effort.unsupported", this.backendNameForInstance(instanceName));
     }
     const current = this.resolveInstanceEffort(instanceName).effort;
     const nonce = randomBytes(6).toString("hex");
@@ -7666,14 +7664,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const p = this.pendingEffortSelects.get(nonce);
       if (p) {
         this.pendingEffortSelects.delete(nonce);
-        p.respond("⏰ Effort selection expired.").catch(() => {});
+        p.respond(t("effort.selection_expired")).catch(() => {});
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
     this.pendingEffortSelects.set(nonce, { instanceName, userId, channelId, timer, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId });
     try {
       const menuMessageId = await adapter.promptUser(
-        chatId, `${this.effortMenuHeader(instanceName)}\nSelect a new effort level:`, choices, { threadId },
+        chatId, t("effort.menu", this.effortMenuHeader(instanceName)), choices, { threadId },
       );
       const pending = this.pendingEffortSelects.get(nonce);
       if (pending) pending.menuMessageId = menuMessageId;
@@ -7682,7 +7680,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.pendingEffortSelects.delete(nonce);
       clearTimeout(timer);
       this.logger.warn({ err, instanceName }, "TG effort menu failed");
-      return `Usage: /effort <${levels.join("|")}>`;
+      return t("effort.usage", levels.join("|"));
     }
   }
 
@@ -7700,7 +7698,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     clearTimeout(pending.timer);
 
     const level = match[2];
-    const progressText = `⏳ Setting ${pending.instanceName} effort to \`${level}\`…`;
+    const progressText = t("effort.setting", pending.instanceName, level);
     let progressMsgId: string | undefined;
     if (pending.adapter && pending.adapterChatId) {
       const menuMessageId = pending.menuMessageId ?? data.messageId;
@@ -7729,7 +7727,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         result = await this.applyEffort(pending.instanceName, level);
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, level }, "Effort switch failed");
-        result = `Effort switch to \`${level}\` failed: ${err instanceof Error ? err.message : String(err)}`;
+        result = t("effort.switch_failed", level, err instanceof Error ? err.message : String(err));
       }
       if (pending.adapter && pending.adapterChatId) {
         if (progressMsgId) {
@@ -7760,9 +7758,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (requested && !isRefresh) { await data.respond(await this.applyModel(name, requested)); return; }
 
     // No arg (or --refresh) → menu. Menu is DC-only this round (respondChoices); TG uses `/model <name>`.
-    if (!data.respondChoices) { await data.respond("Usage: /model <name> — e.g. /model sonnet"); return; }
+    if (!data.respondChoices) { await data.respond(t("model.usage")); return; }
     const options = await this.getModelOptions(name, isRefresh);
-    if (options.length === 0) { await data.respond(`No model list available for ${name}. Type \`/model <name>\` to set one directly.`); return; }
+    if (options.length === 0) { await data.respond(t("model.list_unavailable", name)); return; }
 
     // Raw id for ✓-matching options; display resolves an inherited CLI default.
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(name);
@@ -7775,12 +7773,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     timer.unref?.();
     this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
     try {
-      await data.respondChoices(`Current model: **${currentDisplay}**\nSelect a new model:`, choices);
+      await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
       this.pendingModelSelects.delete(nonce);
       clearTimeout(timer);
       this.logger.warn({ err, instanceName: name }, "model menu failed");
-      await data.respond("Usage: /model <name> — e.g. /model sonnet");
+      await data.respond(t("model.usage"));
     }
   }
 
@@ -7799,7 +7797,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   ): Promise<string | null> {
     const options = await this.getModelOptions(instanceName);
     if (options.length === 0) {
-      return `No model list available for ${instanceName}. Use \`/model <name>\` to set one directly.`;
+      return t("model.list_unavailable", instanceName);
     }
 
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(instanceName);
@@ -7818,7 +7816,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const p = this.pendingModelSelects.get(nonce);
       if (p) {
         this.pendingModelSelects.delete(nonce);
-        p.respond("⏰ Model selection expired.").catch(() => {});
+        p.respond(t("model.selection_expired")).catch(() => {});
       }
     }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
@@ -7828,7 +7826,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try {
       const menuMessageId = await adapter.promptUser(
         chatId,
-        `Current model: ${currentDisplay}\nSelect a new model:`,
+        t("model.menu", currentDisplay),
         choices,
         { threadId },
       );
@@ -7839,7 +7837,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.pendingModelSelects.delete(nonce);
       clearTimeout(timer);
       this.logger.warn({ err, instanceName }, "TG model menu failed");
-      return `Usage: /model <name> — e.g. /model sonnet`;
+      return t("model.usage");
     }
   }
 
@@ -7860,7 +7858,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const model = match[2];
 
     // Send immediate "⏳ Switching..." feedback, then apply in background.
-    const progressText = `⏳ Switching ${pending.instanceName} to \`${model}\`…`;
+    const progressText = t("model.switching", pending.instanceName, model);
     let progressMsgId: string | undefined;
     if (pending.adapter && pending.adapterChatId) {
       // TG path: turn the original menu into the progress message. This both
@@ -7899,7 +7897,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         result = await this.applyModel(pending.instanceName, model);
       } catch (err) {
         this.logger.error({ err, instance: pending.instanceName, model }, "Model switch failed");
-        result = `Model switch to \`${model}\` failed: ${err instanceof Error ? err.message : String(err)}`;
+        result = t("model.switch_failed", model, err instanceof Error ? err.message : String(err));
       }
       if (pending.adapter && pending.adapterChatId) {
         if (progressMsgId) {
@@ -7989,17 +7987,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } catch { /* treated as unsupported below */ }
 
     if (strategy === "unsupported" || supported.length === 0) {
-      return `❌ ${backendName} has no reasoning-effort setting.`;
+      return t("effort.unsupported", backendName);
     }
     if (!(FleetManager.EFFORT_LEVELS as readonly string[]).includes(level)) {
-      return `❌ Unknown effort level \`${level}\`. Use: ${FleetManager.EFFORT_LEVELS.join(", ")}.`;
+      return t("effort.unknown", level, FleetManager.EFFORT_LEVELS.join(", "));
     }
 
     const applied = FleetManager.clampEffort(level, supported);
-    if (!applied) return `❌ ${backendName} accepts none of the canonical effort levels.`;
+    if (!applied) return t("effort.no_canonical", backendName);
     const warn = applied === level
       ? ""
-      : `⚠️ Clamped to \`${applied}\` (\`${level}\` not supported by ${backendName}).\n`;
+      : t("effort.clamped", applied, level, backendName);
 
     // Persist either way: a runtime switch must survive the next respawn too,
     // or the instance silently reverts on restart.
@@ -8009,12 +8007,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
 
     if (strategy === "runtime") {
-      if (!this.instanceIpcClients.get(instanceName)) return `${warn}❌ ${instanceName} is not running.`;
+      if (!this.instanceIpcClients.get(instanceName)) return `${warn}${t("effort.not_running", instanceName)}`;
       this.pasteRawToClassicInstance(instanceName, `/effort ${applied}`);
-      return `${warn}✅ Set ${instanceName} effort to \`${applied}\` (runtime).`;
+      return `${warn}${t("effort.runtime_success", instanceName, applied)}`;
     }
     await this.restartSingleInstance(instanceName);
-    return `${warn}✅ Set ${instanceName} effort to \`${applied}\` and restarted.`;
+    return `${warn}${t("effort.restart_success", instanceName, applied)}`;
   }
 
   async applyModel(instanceName: string, model: string): Promise<string> {
@@ -8023,10 +8021,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     try {
       strategy = createBackend(backendName, this.getInstanceDir(instanceName)).getModelSwitchStrategy?.(model) ?? "restart";
     } catch { /* default restart */ }
-    const warn = isModelCompatible(backendName, model) ? "" : `⚠️ "${model}" doesn't match ${backendName}'s usual pattern — passing through anyway.\n`;
+    const warn = isModelCompatible(backendName, model) ? "" : t("model.pattern_warning", model, backendName);
 
     if (strategy === "runtime" && !this.instanceIpcClients.get(instanceName)) {
-      return `${warn}❌ ${instanceName} is not running.`;
+      return `${warn}${t("effort.not_running", instanceName)}`;
     }
 
     // Persist either way: a runtime switch must survive the next respawn too,
@@ -8039,15 +8037,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     } else if (this.classicChannels?.setModelByInstance(instanceName, model)) {
       persisted = true;
     }
-    if (!persisted) return `${warn}❌ Could not set model for ${instanceName}.`;
+    if (!persisted) return `${warn}${t("model.persist_failed", instanceName)}`;
 
     if (strategy === "runtime") {
       this.pasteRawToClassicInstance(instanceName, `/model ${model}`);
-      return `${warn}✅ Switched ${instanceName} to \`${model}\` (runtime).${this.effortSuffix(instanceName)}`;
+      return `${warn}${t("model.runtime_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
     }
 
     await this.restartSingleInstance(instanceName);
-    return `${warn}✅ Set ${instanceName} to \`${model}\` and restarted.${this.effortSuffix(instanceName)}`;
+    return `${warn}${t("model.restart_success", instanceName, model)}${this.effortSuffix(instanceName)}`;
   }
 
   /**
@@ -8060,10 +8058,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private effortSuffix(instanceName: string): string {
     if (this.effortLevelsFor(instanceName).length === 0) return "";
     const { effort, source } = this.resolveInstanceEffort(instanceName);
-    if (!effort) return "\nCurrent effort: (CLI default)";
+    if (!effort) return `\n${t("effort.current_default")}`;
     return source === "fleet-default"
-      ? `\nCurrent effort: ${effort} (fleet default)`
-      : `\nCurrent effort: ${effort}`;
+      ? `\n${t("effort.current_fleet", effort)}`
+      : `\n${t("effort.current", effort)}`;
   }
 
   /** Read recent chat log for agent context */
@@ -8094,7 +8092,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Return a user-facing blocker without mutating ClassicBot state. */
   private validateClassicStart(channelId: string, userId: string, guildId?: string, adapterId?: string): string | undefined {
-    if (!this.classicChannels) return "Classic channel manager not initialized.";
+    if (!this.classicChannels) return t("classic.manager_unavailable");
     if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
       const generalId = this.findGeneralInstance(adapterId);
       if (generalId) this.notifyInstanceTopic(generalId, t("alert.unauth_guild", guildId, userId));
@@ -8280,7 +8278,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const blocker = this.validateClassicStart(channelId, userId, guildId, adapterId);
     if (blocker) return blocker;
     const classicChannels = this.classicChannels;
-    if (!classicChannels) return "Classic channel manager not initialized.";
+    if (!classicChannels) return t("classic.manager_unavailable");
 
     const instanceName = classicChannels.deriveInstanceName(channelName || channelId, channelId, adapterId);
     clearPausedMarker(this.getInstanceDir(instanceName));
@@ -8309,7 +8307,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Handle /stop slash command — unregister classic channel */
   async handleClassicStop(channelId: string, adapterId?: string): Promise<string> {
-    if (!this.classicChannels) return "Classic channel manager not initialized.";
+    if (!this.classicChannels) return t("classic.manager_unavailable");
     const ch = this.classicChannels.unregister(channelId, adapterId);
     if (!ch) return t("classic.no_agent");
 
@@ -8610,11 +8608,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // possible outcome: they change fleet.yaml, send SIGHUP, and nothing happens
       // with no explanation anywhere they are looking.
       const why = !validation.valid
-        ? `validation failed:\n${validation.errors.map(e => `• ${e.path}: ${e.message}`).join("\n")}`
+        ? t("fleet.reload_validation", validation.errors.map(e => `• ${e.path}: ${e.message}`).join("\n"))
         : unsafeEmpty
-          ? `it removed every instance (${oldCount} → 0)`
-          : `it removed more than half the instances (${oldCount} → ${newCount})`;
-      this.notifyFleetError(`⚠️ fleet.yaml reload REJECTED — ${why}\nThe previous configuration is still running.`);
+          ? t("fleet.reload_removed_all", oldCount)
+          : t("fleet.reload_removed_half", oldCount, newCount);
+      this.notifyFleetError(t("fleet.reload_rejected", why));
       return;
     }
 
@@ -8955,7 +8953,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (generalId) {
           // No release URL — Discord's SuppressEmbeds proved unreliable and the
           // link preview looked bad. Version + /update instruction is enough.
-          this.notifyInstanceTopic(generalId, t("update.available", `v${target}`) + ` (current: v${currentVersion})`);
+          this.notifyInstanceTopic(generalId, t("update.available_current", `v${target}`, `v${currentVersion}`));
         }
       }
     } catch { /* silent — network issues */ }
@@ -9269,7 +9267,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (err.code === "EADDRINUSE") {
         if (this.healthPortRetried) {
           this.logger.error({ err, port }, "Health port still in use after takeover — dashboard disabled");
-          this.notifyFleetError(`⚠️ Dashboard unavailable — health port ${port} is already in use. Stop the conflicting process or configure a different health_port.`);
+          this.notifyFleetError(t("dashboard.port_in_use", port));
           return;
         }
         this.healthPortRetried = true;
@@ -9293,7 +9291,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         return;
       }
       this.logger.error({ err, port }, "Health server error");
-      this.notifyFleetError(`⚠️ Dashboard unavailable — health server failed: ${err.message}`);
+      this.notifyFleetError(t("dashboard.server_failed", err.message));
     });
 
     this.healthServer.listen(port, "127.0.0.1", () => markListening());

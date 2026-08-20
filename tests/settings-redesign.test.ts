@@ -34,4 +34,13 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain("Classic default backend");
     expect(html).toContain("/api/settings/classic/channels/");
   });
+
+  it("localizes settings validation, confirmation, and apply feedback", () => {
+    expect(html).toContain('noAgentMatch: "沒有符合「{0}」的 Agent。"');
+    expect(html).toContain('configLoadFailed: "載入設定失敗 — 請檢查網址中的 token。"');
+    expect(html).toContain('removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）"');
+    expect(html).toContain('setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? t("mustNonNegative") : "")');
+    expect(html).toContain('showBanner(t("changesApplied"))');
+    expect(html).toContain('confirm(tf("deleteAgent", name))');
+  });
 });

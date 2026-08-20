@@ -45,4 +45,13 @@ describe("View UI improvements", () => {
     expect(html).toContain("moveUsageProvider(button.dataset.provider");
     expect(html).not.toMatch(/moveUsageProvider[\s\S]{0,500}webToken/);
   });
+
+  it("localizes view controls and request failures", () => {
+    expect(html).toContain('data-i18n-title="usageButton"');
+    expect(html).toContain('rosterFailed: "載入 instance 清單失敗：{error}');
+    expect(html).toContain('paneFailed: "⚠ 無法載入 {name} 的 pane');
+    expect(html).toContain('tokenRequired: "需要 web.token"');
+    expect(html).toContain('document.querySelectorAll("[data-i18n-title]")');
+    expect(html).toContain('q("pre").textContent = TF("rosterFailed"');
+  });
 });
