@@ -16,7 +16,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/save` | Save agent session (handled, not in menu) | All |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
-| `/tips` | Draw a random usage tip (100 tips, progressive unlock by dismissal rate). General topic only — replies with "general only" elsewhere. | All |
+| `/tips` | Draw a random usage tip (300 tips: 100 beginner + 100 intermediate + 100 advanced). Advanced tips need an explicit unlock — after enough intermediate tips are dismissed, a "🔓 開始看進階" button appears. General topic only — replies with "general only" elsewhere. | All |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
