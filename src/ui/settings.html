@@ -127,15 +127,15 @@
 <body>
 <header>
   <h1 data-i18n="title">⚙️ AgEnD Settings</h1>
-  <span id="verBadge" title="What's New" style="font-size:12px;color:var(--muted);cursor:pointer;padding:2px 8px;border:1px solid var(--border);border-radius:12px">v…</span>
+  <span id="verBadge" data-i18n-title="whatsNew" title="What's New" style="font-size:12px;color:var(--muted);cursor:pointer;padding:2px 8px;border:1px solid var(--border);border-radius:12px">v…</span>
   <div class="grow"></div>
-  <button class="help-btn" id="langBtn" title="Language">🌐</button>
-  <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
-  <button id="advancedToggle" title="Show additional controls">Show advanced</button>
+  <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language">🌐</button>
+  <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
+  <button id="advancedToggle" data-i18n-title="showAdditional" title="Show additional controls">Show advanced</button>
 </header>
 <div class="help-backdrop" id="helpBackdrop"></div>
 <aside class="help-panel" id="helpPanel">
-  <button class="close" id="helpClose" title="Close">×</button>
+  <button class="close" id="helpClose" data-i18n-title="close" title="Close">×</button>
   <div id="helpContent"></div>
 </aside>
 <div class="banner" id="banner"></div>
@@ -202,7 +202,10 @@
       noAgents: "No agents yet — click + New.", noBots: "No bots configured.", online: "✅ Online",
       currentVersion: "Current version",
       helpTitle: "📖 Help", tipReload: "💡 Click [↻ Reload Fleet] after changes to apply them.",
-      wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →",
+      wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
+      saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
+      changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — check the token in the URL.",
+      mustNonNegative: "Must be 0 or greater", mustPositive: "Must be greater than 0", nonnegativeInteger: "Must be a non-negative integer", failoverEmpty: "Empty list disables failover", concurrencyRange: "Must be an integer from 1 to 20", concurrencyWarning: "May exceed CPU capacity on smaller hosts", staggerRange: "Must be between 0 and 30000", staggerWarning: "Very low values can cause startup spikes",
     },
     "zh-TW": {
       title: "⚙️ AgEnD 設定", reloadFleet: "↻ 重新載入", myAgents: "🤖 我的 Agent", bots: "🔌 機器人", classicChannels: "🎮 ClassicBot 頻道", noClassic: "沒有 ClassicBot 頻道 — 在聊天中用 /start 建立。",
@@ -220,7 +223,10 @@
       noAgents: "還沒有 agent — 點 + 新增。", noBots: "尚未設定機器人。", online: "✅ 上線",
       currentVersion: "目前版本",
       helpTitle: "📖 使用說明", tipReload: "💡 修改後點 [↻ 重新載入] 讓設定生效。",
-      wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →",
+      wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
+      saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
+      changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請檢查網址中的 token。",
+      mustNonNegative: "必須為 0 或更大的數值", mustPositive: "必須大於 0", nonnegativeInteger: "必須是非負整數", failoverEmpty: "空白清單會停用模型備援", concurrencyRange: "必須是 1 到 20 的整數", concurrencyWarning: "在較小的主機上可能超出 CPU 負荷", staggerRange: "必須介於 0 到 30000", staggerWarning: "數值太低可能造成啟動尖峰",
     },
   };
   const HELP = {
@@ -242,9 +248,11 @@
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
   const t = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+  const tf = (k, ...values) => values.reduce((text, value, index) => text.replaceAll(`{${index}}`, String(value)), t(k));
   function applyStaticI18n() {
     document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = t(e.getAttribute("data-i18n")); });
     document.querySelectorAll("[data-i18n-ph]").forEach(e => { e.setAttribute("placeholder", t(e.getAttribute("data-i18n-ph"))); });
+    document.querySelectorAll("[data-i18n-title]").forEach(e => { e.setAttribute("title", t(e.getAttribute("data-i18n-title"))); });
     // toggle labels that carry expand/collapse state
     for (const [id, body] of [["advToggle", "advBody"]]) {
       const b = $(body); if (b) $(id).textContent = b.classList.contains("open") ? t("collapse") : t("expand");
@@ -292,7 +300,7 @@
     const b = res.body || {}; let html = "";
     if (b.errors && b.errors.length) html += b.errors.map(e => `<span class="e">✗ ${esc(e.path ? e.path + ": " : "")}${esc(e.message)}</span>`).join(" ");
     if (b.warnings && b.warnings.length) html += " " + b.warnings.map(w => `<span class="w">⚠ ${esc(w.message)}</span>`).join(" ");
-    if (res.ok) html = `<span class="s">✓ Saved</span>` + (html ? " " + html : "");
+    if (res.ok) html = `<span class="s">✓ ${esc(t("saved"))}</span>` + (html ? " " + html : "");
     else if (!html) html = `<span class="e">✗ ${esc((b && b.error) || ("HTTP " + res.status))}</span>`;
     elm.innerHTML = html;
   }
@@ -322,18 +330,19 @@
     redraw(); return box;
   }
   function select(value, options) { const s = el("select"); for (const o of options) { const val = typeof o === "string" ? o : o.value; const label = typeof o === "string" ? o : o.label; const opt = el("option", {}, label); opt.value = val; if (val === value) opt.selected = true; s.append(opt); } return s; }
-  const impact = (kind) => el("span", { class: "impact" }, kind === "now" ? "⚡ Immediately" : kind === "fleet" ? "🔄🔄 Restart AgEnD" : "🔄 Restart this Agent");
+  const impactText = (kind) => t(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
+  const impact = (kind) => el("span", { class: "impact" }, impactText(kind));
   function updatePendingBar() {
     const n = state.pending.size;
     $("pendingBar").classList.toggle("open", n > 0);
-    $("pendingCount").textContent = `${n} change${n === 1 ? "" : "s"} not applied`;
+    $("pendingCount").textContent = tf("changesPending", n);
     const kinds = new Set([...state.pending.values()].map(change => change.impact));
-    $("pendingImpact").textContent = [...kinds].map(kind => kind === "now" ? "⚡ Immediately" : kind === "fleet" ? "🔄🔄 Restart AgEnD" : "🔄 Restart this Agent").join(" · ");
+    $("pendingImpact").textContent = [...kinds].map(impactText).join(" · ");
   }
   function stageChange(key, change) {
     state.pending.set(key, change);
     updatePendingBar();
-    showBanner(`Queued: ${change.label}`);
+    showBanner(tf("queued", change.label));
   }
   async function applyPendingChanges() {
     const button = $("applyChanges"); button.disabled = true;
@@ -342,14 +351,14 @@
       try { result = await change.apply(); }
       catch (error) { result = { ok: false, body: { error: error.message } }; }
       if (!result?.ok) {
-        showBanner(`${change.label}: ${result?.body?.error || "Apply failed"}`, true);
+        showBanner(`${change.label}: ${result?.body?.error || t("applyFailed")}`, true);
         button.disabled = false; return;
       }
       state.pending.delete(key); updatePendingBar();
     }
     await api("/api/settings/reload", { method: "POST" });
     await reload();
-    showBanner("✓ Changes applied. AgEnD is reconciling affected Agents.");
+    showBanner(t("changesApplied"));
     button.disabled = false;
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
@@ -424,7 +433,7 @@
     const filter = ($("agentSearch")?.value || "").trim().toLowerCase();
     let names = Object.keys(insts);
     if (filter) names = names.filter(n => n.toLowerCase().includes(filter) || shortName(n, insts[n]).toLowerCase().includes(filter));
-    if (!names.length) { host.className = "card empty"; host.textContent = "No agents match \"" + filter + "\"."; return; }
+    if (!names.length) { host.className = "card empty"; host.textContent = tf("noAgentMatch", filter); return; }
     host.className = "card";
     // Group by first tag; "Other" sorts last. Within a group: Running → Crashed
     // → Stopped, then name.
@@ -474,9 +483,9 @@
     const saveBtn = el("button", { class: "primary sm" }, t("save"));
     const validate = () => {
       const autoValue = Number(auto.input.value), hangValue = Number(hang.input.value);
-      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? "Must be 0 or greater" : "");
-      const validHang = setValidation(hang.input, hangFeedback, !hang.toggle.checked && (!Number.isFinite(hangValue) || hangValue <= 0) ? "Must be greater than 0" : "");
-      setValidation(failover.input, failoverFeedback, "", !failover.toggle.checked && !failover.input.value.trim() ? "Empty list disables failover" : "");
+      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? t("mustNonNegative") : "");
+      const validHang = setValidation(hang.input, hangFeedback, !hang.toggle.checked && (!Number.isFinite(hangValue) || hangValue <= 0) ? t("mustPositive") : "");
+      setValidation(failover.input, failoverFeedback, "", !failover.toggle.checked && !failover.input.value.trim() ? t("failoverEmpty") : "");
       saveBtn.disabled = !(validAuto && validHang);
       return !saveBtn.disabled;
     };
@@ -571,11 +580,11 @@
   }
   async function pauseWakeAgent(name, action) {
     const res = await api(`/api/settings/instances/${encodeURIComponent(name)}/${action}`, { method: "POST" });
-    if (!res.ok) alert(res.body?.error || `${action} failed`);
+    if (!res.ok) alert(res.body?.error || tf("actionFailed", action));
     await reloadLive();
   }
   async function delAgent(name) {
-    if (!confirm(`Delete agent "${name}"? This will be applied only after you confirm the pending changes.`)) return;
+    if (!confirm(tf("deleteAgent", name))) return;
     delete state.fleet.instances[name];
     stageChange(`agent:${name}`, {
       label: `Delete ${name}`, impact: "fleet",
@@ -596,7 +605,7 @@
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("nameField")), fName), el("div", {}, el("label", {}, t("backend")), fBackend)),
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("workingDir")), fWd), el("div", {}, el("label", {}, t("channelBinding")), fChan)),
       el("div", { class: "actions" }, el("button", { class: "primary sm", onclick: async () => {
-        const name = fName.value.trim(); if (!name) { msg.innerHTML = `<span class="e">✗ name required</span>`; return; }
+        const name = fName.value.trim(); if (!name) { msg.innerHTML = `<span class="e">✗ ${esc(t("nameRequired"))}</span>`; return; }
         const body = { working_directory: fWd.value, backend: fBackend.value, channel_id: fChan.value || undefined };
         const res = await api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "POST", body: JSON.stringify(body) });
         resultMsg(msg, res); if (res.ok) { state.newAgentOpen = false; $("newAgentBtn").textContent = t("new"); renderNewAgent(false); await reload(); }
@@ -682,8 +691,8 @@
     const validate = () => {
       const autoValue = Number(auto.input.value);
       const contextValue = Number(fContext.value);
-      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? "Must be 0 or greater" : "");
-      const validContext = setValidation(fContext, contextFeedback, !Number.isInteger(contextValue) || contextValue < 0 ? "Must be a non-negative integer" : "");
+      const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? t("mustNonNegative") : "");
+      const validContext = setValidation(fContext, contextFeedback, !Number.isInteger(contextValue) || contextValue < 0 ? t("nonnegativeInteger") : "");
       saveBtn.disabled = !(validAuto && validContext);
       return !saveBtn.disabled;
     };
@@ -771,10 +780,10 @@
   }
   async function delBot(i) {
     const chs = channels(); const ch = chs[i];
-    if (!confirm(`Remove bot "${ch.type} (${chLabel(i)})"? (the token in .env is left untouched)`)) return;
+    if (!confirm(tf("removeBot", `${ch.type} (${chLabel(i)})`))) return;
     chs.splice(i, 1);
     state.fleet.channels = chs; delete state.fleet.channel;
-    const res = await saveChannels(); if (res.ok) await reload(); else alert((res.body && res.body.error) || "Failed");
+    const res = await saveChannels(); if (res.ok) await reload(); else alert((res.body && res.body.error) || t("failed"));
   }
   function renderNewBot(open) {
     const host = $("newBot"); host.innerHTML = ""; if (!open) return;
@@ -789,7 +798,7 @@
       el("div", { class: "grid2" }, el("div", {}, el("label", {}, t("tokenEnv")), fEnv), el("div", {}, el("label", {}, t("groupId")), fGroup)),
       el("div", { class: "hint" }, t("envHint")),
       el("div", { class: "actions" }, el("button", { class: "primary sm", onclick: async () => {
-        if (!fEnv.value.trim()) { msg.innerHTML = `<span class="e">✗ token env required</span>`; return; }
+        if (!fEnv.value.trim()) { msg.innerHTML = `<span class="e">✗ ${esc(t("tokenEnvRequired"))}</span>`; return; }
         const chs = channels();
         chs.push({ id: fId.value.trim() || undefined, type: fType.value, bot_token_env: fEnv.value.trim(), group_id: fGroup.value.trim() || undefined, access: { mode: "locked", allowed_users: [] } });
         state.fleet.channels = chs; delete state.fleet.channel;
@@ -840,17 +849,17 @@
     const validate = () => {
       const auto = Number(fAutoPause.value), timeout = Number(fHangTimeout.value);
       const concurrency = Number(fConcurrency.value), stagger = Number(fStagger.value);
-      const validAuto = setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? "Must be 0 or greater" : "");
-      const validHang = setValidation(fHangTimeout, hangFeedback, !Number.isFinite(timeout) || timeout <= 0 ? "Must be greater than 0" : "");
-      const validConcurrency = setValidation(fConcurrency, concurrencyFeedback, !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 20 ? "Must be an integer from 1 to 20" : "", concurrency > 4 ? "May exceed CPU capacity on smaller hosts" : "");
-      const validStagger = setValidation(fStagger, staggerFeedback, !Number.isFinite(stagger) || stagger < 0 || stagger > 30000 ? "Must be between 0 and 30000" : "", stagger < 100 ? "Very low values can cause startup spikes" : "");
+      const validAuto = setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? t("mustNonNegative") : "");
+      const validHang = setValidation(fHangTimeout, hangFeedback, !Number.isFinite(timeout) || timeout <= 0 ? t("mustPositive") : "");
+      const validConcurrency = setValidation(fConcurrency, concurrencyFeedback, !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 20 ? t("concurrencyRange") : "", concurrency > 4 ? t("concurrencyWarning") : "");
+      const validStagger = setValidation(fStagger, staggerFeedback, !Number.isFinite(stagger) || stagger < 0 || stagger > 30000 ? t("staggerRange") : "", stagger < 100 ? t("staggerWarning") : "");
       saveBtn.disabled = !(validAuto && validHang && validConcurrency && validStagger);
       return !saveBtn.disabled;
     };
     for (const input of [fAutoPause, fHangTimeout, fConcurrency, fStagger]) {
       input.addEventListener("input", validate); input.addEventListener("change", validate);
     }
-    saveBtn.textContent = "Review changes";
+    saveBtn.textContent = t("reviewChanges");
     saveBtn.onclick = () => {
       if (!validate()) return;
       const nextDefaults = {
@@ -896,7 +905,7 @@
       if (Object.keys(classicPatch).length > 0) {
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
       }
-      msg.innerHTML = `<span class="s">Ready to apply</span>`;
+      msg.innerHTML = `<span class="s">${esc(t("readyApply"))}</span>`;
     };
 
     const section = (title, open, ...children) => {
@@ -966,7 +975,7 @@
         el("button", { class: "sm" + (fmt === "yaml" ? " on" : ""), onclick: () => { state.advFmt = "yaml"; renderAdvanced(); } }, "YAML"),
         el("button", { class: "sm" + (fmt === "json" ? " on" : ""), onclick: () => { state.advFmt = "json"; renderAdvanced(); } }, "JSON")),
       el("button", { class: "sm", onclick: () => { state.advEdit = !state.advEdit; renderAdvanced(); } }, state.advEdit ? "View" : "Edit"),
-      el("button", { class: "sm", onclick: () => navigator.clipboard.writeText(ser).then(() => { msg.innerHTML = `<span class="s">Copied</span>`; }) }, "Copy"),
+      el("button", { class: "sm", onclick: () => navigator.clipboard.writeText(ser).then(() => { msg.innerHTML = `<span class="s">${esc(t("copied"))}</span>`; }) }, "Copy"),
       el("button", { class: "sm", onclick: () => { const blob = new Blob([toYaml(fleetModel())], { type: "text/plain" }); const a = el("a", { href: URL.createObjectURL(blob), download: "fleet.yaml" }); a.click(); URL.revokeObjectURL(a.href); } }, "⬇ fleet.yaml"),
     );
     host.append(toolbar);
@@ -982,7 +991,7 @@
   }
   // Apply the edited full model: PUT defaults + channels, and diff instances.
   async function applyFullModel(m, msg) {
-    if (!m || typeof m !== "object") { msg.innerHTML = `<span class="e">✗ expected a mapping</span>`; return; }
+    if (!m || typeof m !== "object") { msg.innerHTML = `<span class="e">✗ ${esc(t("expectedMapping"))}</span>`; return; }
     const results = [];
     if (m.defaults) results.push(await api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(m.defaults) }));
     const chs = m.channels || (m.channel ? [m.channel] : null);
@@ -1020,7 +1029,7 @@
   async function reload() {
     // Forms edit the user-authored config, not defaults-expanded runtime values.
     const f = await api("/api/settings/fleet/raw");
-    if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = "Failed to load config — check the token in the URL."; return; }
+    if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = t("configLoadFailed"); return; }
     state.fleet = f.body || {};
     const c = await api("/api/settings/classic"); state.classic = c.body || {};
     await reloadLive();
@@ -1039,12 +1048,12 @@
   $("advToggle").onclick = () => { const b = $("advBody"); const open = !b.classList.contains("open"); b.classList.toggle("open", open); $("advToggle").textContent = open ? t("collapse") : t("expand"); };
   const advancedEnabled = localStorage.getItem("agend_settings_advanced") === "true";
   document.body.classList.toggle("show-advanced", advancedEnabled);
-  $("advancedToggle").textContent = advancedEnabled ? "Hide advanced" : "Show advanced";
+  $("advancedToggle").textContent = advancedEnabled ? t("hideAdvanced") : t("showAdvanced");
   $("advancedToggle").onclick = () => {
     const enabled = !document.body.classList.contains("show-advanced");
     document.body.classList.toggle("show-advanced", enabled);
     localStorage.setItem("agend_settings_advanced", String(enabled));
-    $("advancedToggle").textContent = enabled ? "Hide advanced" : "Show advanced";
+    $("advancedToggle").textContent = enabled ? t("hideAdvanced") : t("showAdvanced");
   };
   $("applyChanges").onclick = applyPendingChanges;
   $("discardChanges").onclick = async () => { state.pending.clear(); updatePendingBar(); await reload(); };

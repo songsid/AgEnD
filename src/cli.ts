@@ -34,6 +34,8 @@ import {
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
+import { loadRawFleetConfig } from "./config.js";
+import { setLocale, t } from "./locale.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -46,6 +48,13 @@ const __dirname = dirname(__filename);
 
 const DATA_DIR = getAgendHome();
 const FLEET_CONFIG_PATH = join(DATA_DIR, "fleet.yaml");
+
+// CLI commands run outside FleetManager. Honor an explicit fleet locale while
+// keeping the historical English CLI default when config is missing/unset.
+try {
+  const configuredLocale = loadRawFleetConfig(FLEET_CONFIG_PATH).defaults?.locale;
+  if (configuredLocale === "en" || configuredLocale === "zh-TW") setLocale(configuredLocale);
+} catch { /* malformed or missing config: keep the English CLI default */ }
 
 const program = new Command();
 
@@ -1353,7 +1362,7 @@ program
 // === Install/Uninstall ===
 program
   .command("install")
-  .description("Install as system service")
+  .description(t("install.description"))
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
@@ -1368,14 +1377,14 @@ program
       workingDirectory: DATA_DIR,
       logPath: join(DATA_DIR, "fleet.log"),
     });
-    console.log(`Service installed at: ${svcPath}`);
+    console.log(t("install.path", svcPath));
     if (opts.activate !== false) {
       const pidPath = join(DATA_DIR, "fleet.pid");
       try {
         activateService(svcPath, pidPath);
-        console.log("✅ Fleet service installed and running.");
+        console.log(t("install.running"));
       } catch (err) {
-        console.error(`❌ Fleet service was installed but could not be started: ${(err as Error).message}`);
+        console.error(t("install.start_failed", (err as Error).message));
         const plat = detectPlatform();
         if (plat === "macos") {
           console.error(`Run manually: launchctl load ${svcPath}`);
@@ -1385,31 +1394,31 @@ program
         process.exitCode = 1;
       }
     } else {
-      console.log("Service file updated (activation skipped).");
+      console.log(t("install.updated"));
     }
   });
 
 program
   .command("uninstall")
-  .description("Remove system service")
-  .option("-f, --force", "Skip confirmation (for CI/automation)")
+  .description(t("uninstall.description"))
+  .option("-f, --force", t("uninstall.force_help"))
   .action(async (opts: { force?: boolean }) => {
     const { inspectService, isServiceRemovalConfirmed, uninstallService } = await import("./service-installer.js");
     const service = inspectService("com.agend.fleet");
     if (!service.installed) {
-      console.log("No AgEnD service found");
+      console.log(t("uninstall.none"));
       return;
     }
 
-    const state = (value: boolean | null, yes: string, no: string) => value == null ? "unknown" : value ? yes : no;
-    console.log("AgEnD service found:");
-    console.log(`  Manager: ${service.manager}`);
-    console.log(`  Path: ${service.path}`);
-    console.log(`  Enabled: ${state(service.enabled, "yes", "no")}`);
-    console.log(`  Active: ${state(service.active, "running", "inactive")}`);
+    const state = (value: boolean | null, yes: string, no: string) => value == null ? t("uninstall.unknown") : value ? yes : no;
+    console.log(t("uninstall.found"));
+    console.log(`  ${t("uninstall.manager", service.manager ?? t("uninstall.unknown"))}`);
+    console.log(`  ${t("uninstall.path", service.path ?? t("uninstall.unknown"))}`);
+    console.log(`  ${t("uninstall.enabled", state(service.enabled, t("uninstall.yes"), t("uninstall.no")))}`);
+    console.log(`  ${t("uninstall.active", state(service.active, t("uninstall.running"), t("uninstall.inactive")))}`);
 
     if (!opts.force && !process.stdin.isTTY) {
-      console.log("Non-interactive session — re-run with --force");
+      console.log(t("uninstall.non_interactive"));
       process.exitCode = 1;
       return;
     }
@@ -1419,27 +1428,27 @@ program
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       let answer = "";
       try {
-        answer = await rl.question("Remove service? [Y/n] ");
+        answer = await rl.question(t("uninstall.confirm"));
       } catch {
-        console.log("Service removal cancelled. Re-run with --force for non-interactive use.");
+        console.log(t("uninstall.cancelled_force"));
         return;
       } finally {
         rl.close();
       }
       if (!isServiceRemovalConfirmed(answer)) {
-        console.log("Service removal cancelled.");
+        console.log(t("uninstall.cancelled"));
         return;
       }
     }
 
     try {
       if (uninstallService("com.agend.fleet")) {
-        console.log("Service disabled, stopped, and removed.");
+        console.log(t("uninstall.removed"));
       } else {
-        console.log("No AgEnD service found");
+        console.log(t("uninstall.none"));
       }
     } catch (err) {
-      console.error(`Failed to uninstall service: ${(err as Error).message}`);
+      console.error(t("uninstall.failed", (err as Error).message));
       process.exitCode = 1;
     }
   });

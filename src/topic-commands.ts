@@ -19,7 +19,7 @@ import {
   parseTokenContextRatio,
   type TokenContextRatio,
 } from "./context-percent.js";
-import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { isGeneralInstance } from "./general-instance.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -57,7 +57,8 @@ export function parseSaveFilename(text: string): string {
 }
 
 /** Shared message when a backend doesn't support /save. */
-export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this backend (only kiro-cli and claude-code)";
+/** @deprecated Prefer t("save.unsupported") at the user-facing call site. */
+export const SAVE_UNSUPPORTED_MSG = "⚠️ /save is not supported for this backend (only Kiro CLI and Claude Code).";
 
 export function parsePauseWakeCommand(text: string): { action: "pause" | "wake"; instance?: string } | null {
   const match = text.match(/^\/(pause|wake)(?:@\S+)?(?:\s+(\S+))?$/);
@@ -122,7 +123,8 @@ export function clearCommandForBackend(backend: string): string | null {
   }
 }
 
-export const CLEAR_UNSUPPORTED_MSG = "⚠️ Clear not supported for this backend";
+/** @deprecated Prefer t("clear.unsupported") at the user-facing call site. */
+export const CLEAR_UNSUPPORTED_MSG = "⚠️ Clear is not supported for this backend.";
 
 /**
  * Extract context-usage % from a captured CLI pane. Scans bottom-up so the
@@ -395,7 +397,7 @@ export class TopicCommands {
         return true;
       }
       if (pauseWake.action === "pause" && isGeneralInstance(this.ctx.fleetConfig, target)) {
-        await adapter.sendText(msg.chatId, GENERAL_PAUSE_ERROR, { threadId: msg.threadId });
+        await adapter.sendText(msg.chatId, t("general.pause_forbidden"), { threadId: msg.threadId });
         return true;
       }
       await adapter.sendText(msg.chatId, await this.runPauseWake(target, pauseWake.action), { threadId: msg.threadId });
@@ -423,7 +425,7 @@ export class TopicCommands {
       const level = text.replace(/^\/effort(@\S+)?/, "").trim();
       if (level) {
         const reply = await this.ctx.applyEffort?.(instanceName, level)
-          ?? "Effort switching is unavailable.";
+          ?? t("effort.unsupported", this.effectiveBackend(instanceName));
         await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
       } else if (this.ctx.promptEffortMenu) {
         // No arg → inline keyboard menu (TG), same shape as /model.
@@ -453,7 +455,7 @@ export class TopicCommands {
         );
         if (fallback) await adapter.sendText(msg.chatId, fallback, { threadId: msg.threadId });
       } else {
-        await adapter.sendText(msg.chatId, "Usage: /model <name> — e.g. /model sonnet", { threadId: msg.threadId });
+        await adapter.sendText(msg.chatId, t("model.usage"), { threadId: msg.threadId });
       }
       return true;
     }
@@ -558,7 +560,7 @@ export class TopicCommands {
 
   async runPauseWake(instanceName: string, action: "pause" | "wake"): Promise<string> {
     if (action === "pause" && isGeneralInstance(this.ctx.fleetConfig, instanceName)) {
-      return GENERAL_PAUSE_ERROR;
+      return t("general.pause_forbidden");
     }
     try {
       const result = await this.ctx.changeInstancePauseState(instanceName, action);
@@ -613,9 +615,9 @@ export class TopicCommands {
         ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
       const cmd = compactCommandForBackend(backend);
       ipc.send({ type: "raw_paste", content: cmd });
-      return `🗜️ Compact command sent (\`${cmd}\`).`;
+      return t("compact.sent", cmd);
     }
-    return "❌ Instance not connected (IPC unavailable)";
+    return t("compact.not_connected");
   }
 
   /** Whether the instance backend exposes a verified full-reset command. */
@@ -697,7 +699,7 @@ export class TopicCommands {
   async sendClear(instanceName: string): Promise<string> {
     const backend = this.effectiveBackend(instanceName);
     const cmd = clearCommandForBackend(backend);
-    if (!cmd) return CLEAR_UNSUPPORTED_MSG;
+    if (!cmd) return t("clear.unsupported");
 
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
@@ -716,13 +718,13 @@ export class TopicCommands {
       ?? classicBackend
       ?? this.ctx.fleetConfig?.defaults?.backend ?? "claude-code";
     const cmd = saveCommandForBackend(backend, filename);
-    if (!cmd) return SAVE_UNSUPPORTED_MSG;
+    if (!cmd) return t("save.unsupported");
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
       ipc.send({ type: "raw_paste", content: cmd });
-      return `💾 Save command sent (\`${cmd}\`).`;
+      return t("save.sent", cmd, instanceName);
     }
-    return "❌ Instance not connected (IPC unavailable)";
+    return t("save.not_connected");
   }
 
   private async handleRestartCommand(msg: InboundMessage): Promise<void> {
@@ -763,7 +765,7 @@ export class TopicCommands {
         await adapter.sendText(msg.chatId, renderUsageMarkdown(payload), { threadId: msg.threadId });
       }
     } catch (err) {
-      await adapter.sendText(msg.chatId, `⚠️ Usage fetch failed: ${(err as Error).message}`, { threadId: msg.threadId });
+      await adapter.sendText(msg.chatId, t("usage.failed", (err as Error).message), { threadId: msg.threadId });
     }
   }
 
@@ -828,7 +830,7 @@ export class TopicCommands {
 
   /** Get fleet status as markdown text (shared by TG + DC) */
   async getStatusText(): Promise<string> {
-    if (!this.ctx.fleetConfig) return "No fleet config loaded.";
+    if (!this.ctx.fleetConfig) return t("status.no_config");
 
     const rows: string[] = [];
     let pausedCount = 0;
@@ -866,10 +868,10 @@ export class TopicCommands {
       else if (status === "crashed") icon = "🔴";
       else icon = "⚪";
 
-      const stateLabel = executionState === "idle" ? "🟢 idle"
-        : executionState === "working" ? "🔵 working"
-          : executionState === "stuck" ? "🔴 stuck"
-            : executionState === "paused" ? "⏸ paused"
+      const stateLabel = executionState === "idle" ? `🟢 ${t("state.idle")}`
+        : executionState === "working" ? `🔵 ${t("state.working")}`
+          : executionState === "stuck" ? `🔴 ${t("state.stuck")}`
+            : executionState === "paused" ? `⏸ ${t("state.paused")}`
               : "—";
       const displayName = this.shortInstanceName(name);
       // IPC reachability moved here from /sysinfo: it is per-instance health, and
@@ -881,22 +883,22 @@ export class TopicCommands {
       rows.push(`| ${displayName} | ${backend} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${icon} | ${stateLabel} | ${ipc} |`);
     }
 
-    if (rows.length === 0) return "No instances configured.";
+    if (rows.length === 0) return t("status.no_instances");
 
     const lines = [
-      "## Fleet Status",
+      `## ${t("status.title")}`,
       "",
-      "| Instance | Backend | Ctx | Effort | Cost | Status | State | IPC |",
+      t("status.table_header"),
       "|----------|---------|-----|--------|------|--------|-------|-----|",
       ...rows,
       "",
-      `Paused instances: ${pausedCount}`,
+      t("status.paused_count", pausedCount),
     ];
 
     const limitCents = this.ctx.costGuard?.getLimitCents() ?? 0;
     const totalCents = this.ctx.costGuard?.getFleetTotalCents() ?? 0;
     if (limitCents > 0) {
-      lines.push("", `Fleet: ${formatCents(totalCents)} / ${formatCents(limitCents)} daily`);
+      lines.push("", t("status.daily_cost", formatCents(totalCents), formatCents(limitCents)));
     }
 
     // Adapter states (only show if any are not connected)
@@ -904,7 +906,7 @@ export class TopicCommands {
     if (adapterStates && adapterStates.size > 0) {
       const issues = [...adapterStates.entries()].filter(([, s]) => s.status !== "connected");
       if (issues.length > 0) {
-        lines.push("", "**Adapters:**");
+        lines.push("", `**${t("status.adapters")}**`);
         for (const [id, s] of adapterStates) {
           const icon = s.status === "connected" ? "✅" : s.status === "retrying" ? "🔄" : "❌";
           lines.push(`  ${icon} ${id}: ${s.status}${s.lastError ? ` (${s.lastError.slice(0, 60)})` : ""}`);
@@ -938,17 +940,17 @@ export class TopicCommands {
     const agendVersion = require("../package.json").version ?? "unknown";
 
     return [
-      "## System Info",
+      `## ${t("sysinfo.title")}`,
       "",
-      "| Metric | Value |",
+      `| ${t("sysinfo.metric")} | ${t("sysinfo.value")} |`,
       "|--------|-------|",
       `| AgEnD | v${agendVersion} |`,
       `| OS | ${process.platform} ${osRelease()} (${process.arch}) |`,
       `| Node | ${process.version} |`,
       `| tmux | ${tmuxVersion()} |`,
-      `| Uptime | ${upHours}h ${upMins}m |`,
-      `| Memory | ${info.memory_mb.rss} MB RSS |`,
-      `| Heap | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
+      `| ${t("sysinfo.uptime")} | ${upHours}h ${upMins}m |`,
+      `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
+      `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
     ].join("\n");
   }
 
@@ -1006,10 +1008,10 @@ export class TopicCommands {
         timeout: 30_000,
         encoding: "utf-8",
       });
-      output = stripAnsi(stdout) || "No output";
+      output = stripAnsi(stdout) || t("doctor.no_output");
     } catch (err) {
       const e = err as { stdout?: string; message?: string };
-      output = stripAnsi(e.stdout ?? e.message ?? "Doctor failed");
+      output = stripAnsi(e.stdout ?? e.message ?? t("doctor.failed"));
     }
     await adapter.sendText(chatId, output, { threadId });
   }
@@ -1020,7 +1022,7 @@ export class TopicCommands {
     if (!adapter) return;
     await adapter.sendText(
       msg.chatId,
-      "This topic is not bound to an instance. Ask the General assistant to create one with create_instance.",
+      t("topic.unbound"),
       { threadId: msg.threadId },
     );
   }
@@ -1141,24 +1143,24 @@ export class TopicCommands {
 
       try {
         const fleetCommands = [
-          { command: "status", description: "🔒 Fleet status, per-instance costs and health" },
-          { command: "sysinfo", description: "System diagnostics" },
-          { command: "dashboard", description: "🔒 Get dashboard URLs" },
-          { command: "ctx", description: "Show context usage" },
-          { command: "compact", description: "Compact agent context" },
-          { command: "steer", description: "Interject into the current task" },
-          { command: "btw", description: "Ask a side question without interrupting" },
-          { command: "clear", description: "🔒 Clear agent conversation context" },
-          { command: "model", description: "🔒 Switch model (admin only)" },
-          { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
-          { command: "pause", description: "🔒 Pause an idle instance" },
-          { command: "wake", description: "🔒 Wake a paused instance" },
-          { command: "restart", description: "🔒 Graceful restart all instances" },
-          { command: "collab", description: "🔒 Toggle bot/webhook mode" },
-          { command: "update", description: "🔒 Update AgEnD to latest" },
-          { command: "doctor", description: "🔒 Run health diagnostics" },
-          { command: "usage", description: "AI subscription usage" },
-          { command: "tips", description: "Show a useful AgEnD tip" },
+          { command: "status", description: "🔒 " + t("slash.status") },
+          { command: "sysinfo", description: t("slash.sysinfo") },
+          { command: "dashboard", description: "🔒 " + t("slash.dashboard") },
+          { command: "ctx", description: t("slash.ctx") },
+          { command: "compact", description: t("slash.compact") },
+          { command: "steer", description: t("slash.steer") },
+          { command: "btw", description: t("slash.btw") },
+          { command: "clear", description: "🔒 " + t("slash.clear") },
+          { command: "model", description: "🔒 " + t("slash.model") },
+          { command: "effort", description: "🔒 " + t("slash.effort") },
+          { command: "pause", description: "🔒 " + t("slash.pause") },
+          { command: "wake", description: "🔒 " + t("slash.wake") },
+          { command: "restart", description: "🔒 " + t("slash.restart") },
+          { command: "collab", description: "🔒 " + t("slash.collab") },
+          { command: "update", description: "🔒 " + t("slash.update") },
+          { command: "doctor", description: "🔒 " + t("slash.doctor") },
+          { command: "usage", description: t("slash.usage") },
+          { command: "tips", description: t("slash.tips") },
         ];
 
         const setCommands = async (
@@ -1189,17 +1191,17 @@ export class TopicCommands {
         };
 
         const classicCommands = [
-          { command: "start", description: "🔒 Start an agent in this chat" },
-          { command: "stop", description: "🔒 Stop the agent" },
-          { command: "compact", description: "🔒 Compact agent context" },
-          { command: "steer", description: "Interject into the current task" },
-          { command: "btw", description: "Ask a side question without interrupting" },
-          { command: "clear", description: "🔒 Clear agent conversation context" },
-          { command: "model", description: "🔒 Switch model (admin only)" },
-          { command: "effort", description: "🔒 Set reasoning effort (admin only)" },
-          { command: "pause", description: "🔒 Pause the agent" },
-          { command: "wake", description: "🔒 Wake the agent" },
-          { command: "ctx", description: "Show context usage" },
+          { command: "start", description: "🔒 " + t("slash.start") },
+          { command: "stop", description: "🔒 " + t("slash.stop") },
+          { command: "compact", description: "🔒 " + t("slash.compact") },
+          { command: "steer", description: t("slash.steer") },
+          { command: "btw", description: t("slash.btw") },
+          { command: "clear", description: "🔒 " + t("slash.clear") },
+          { command: "model", description: "🔒 " + t("slash.model") },
+          { command: "effort", description: "🔒 " + t("slash.effort") },
+          { command: "pause", description: "🔒 " + t("slash.pause") },
+          { command: "wake", description: "🔒 " + t("slash.wake") },
+          { command: "ctx", description: t("slash.ctx") },
         ];
 
         // A chat_administrators scope has higher precedence than the chat scope.

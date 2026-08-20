@@ -129,17 +129,17 @@
 </style>
 </head>
 <body>
-  <button class="help-btn" id="usageBtn" title="AI usage" style="right:140px; display:none">📊</button>
-  <button class="help-btn" id="densityBtn" title="Font density" style="right:98px">⤢</button>
-  <button class="help-btn" id="langBtn" title="Language" style="right:56px">🌐</button>
-  <button class="help-btn" id="helpBtn" title="Help">ℹ️</button>
+  <button class="help-btn" id="usageBtn" data-i18n-title="usageButton" title="AI usage" style="right:140px; display:none">📊</button>
+  <button class="help-btn" id="densityBtn" data-i18n-title="densityLabel" title="Font density" style="right:98px">⤢</button>
+  <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language" style="right:56px">🌐</button>
+  <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
   <div class="help-backdrop" id="helpBackdrop"></div>
   <aside class="help-panel" id="helpPanel">
-    <button class="close" id="helpClose" title="Close">×</button>
+    <button class="close" id="helpClose" data-i18n-title="close" title="Close">×</button>
     <div id="helpContent"></div>
   </aside>
   <aside class="help-panel" id="usagePanel">
-    <button class="close" id="usageClose" title="Close">×</button>
+    <button class="close" id="usageClose" data-i18n-title="close" title="Close">×</button>
     <div id="usageContent"></div>
   </aside>
   <div id="sidebar"><h1 data-i18n="viewTitle">AgEnD · View</h1><div id="list"></div></div>
@@ -152,7 +152,7 @@
         <div class="meta" id="meta"></div>
         <div class="desc" id="desc"></div>
       </div>
-      <button id="cardToggle" title="Expand profile" aria-expanded="false">▲</button>
+      <button id="cardToggle" data-i18n-title="expandProfile" title="Expand profile" aria-expanded="false">▲</button>
       <button id="editBtn" data-i18n="editProfile">✏️ Edit</button>
       <div id="edit">
         <input id="fDisplay" data-i18n-ph="displayName" placeholder="Display name">
@@ -193,7 +193,10 @@
       tooltipBackend: "Backend: {value}", tooltipStatus: "Status: {value}", tooltipContext: "Context: {value}",
       tooltipUnavailable: "Unavailable", statusRunning: "Running", statusPaused: "Paused",
       statusStopped: "Stopped", statusCrashed: "Crashed", statusUnknown: "Unknown",
-      usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data." },
+      usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data.",
+      usageButton: "AI usage", languageButton: "Language", helpButton: "Help", close: "Close", expandProfile: "Expand profile",
+      rosterFailed: "Failed to load roster: {error}\n(Is the fleet running?)", paneFailed: "⚠ Could not load pane for {name} (HTTP {status}).",
+      tokenRequired: "web.token required", avatarFailed: "Avatar upload failed: {error}", saved: "Saved", saveFailed: "Save failed: {error}" },
     "zh-TW": { viewTitle: "AgEnD · 檢視", editProfile: "✏️ 編輯", save: "儲存", cancel: "取消",
       displayName: "顯示名稱", role: "角色", description: "描述", tokenPh: "web.token（儲存時需要）",
       saveHint: "檢視為公開（唯讀）。儲存需要 web.token（~/.agend/web.token）。", helpTitle: "📖 使用說明",
@@ -208,14 +211,19 @@
       tooltipBackend: "後端：{value}", tooltipStatus: "狀態：{value}", tooltipContext: "上下文：{value}",
       tooltipUnavailable: "無資料", statusRunning: "運行中", statusPaused: "已暫停",
       statusStopped: "已停止", statusCrashed: "已崩潰", statusUnknown: "未知",
-      usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。" },
+      usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。",
+      usageButton: "AI 訂閱用量", languageButton: "語言", helpButton: "使用說明", close: "關閉", expandProfile: "展開個人資料",
+      rosterFailed: "載入 instance 清單失敗：{error}\n（Fleet 是否正在執行？）", paneFailed: "⚠ 無法載入 {name} 的 pane（HTTP {status}）。",
+      tokenRequired: "需要 web.token", avatarFailed: "上傳頭像失敗：{error}", saved: "已儲存", saveFailed: "儲存失敗：{error}" },
   };
   let lang = localStorage.getItem("agend_lang") || (navigator.language && navigator.language.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
   if (!I18N[lang]) lang = "en";
   const T = (k) => (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k;
+  const TF = (k, values = {}) => Object.entries(values).reduce((s, [name, value]) => s.replaceAll(`{${name}}`, String(value)), T(k));
   function applyI18n() {
     document.querySelectorAll("[data-i18n]").forEach(e => { e.textContent = T(e.getAttribute("data-i18n")); });
     document.querySelectorAll("[data-i18n-ph]").forEach(e => { e.setAttribute("placeholder", T(e.getAttribute("data-i18n-ph"))); });
+    document.querySelectorAll("[data-i18n-title]").forEach(e => { e.setAttribute("title", T(e.getAttribute("data-i18n-title"))); });
     const hc = q("helpContent");
     if (hc) { hc.innerHTML = ""; const h3 = document.createElement("h3"); h3.textContent = T("helpTitle"); hc.append(h3);
       const ul = document.createElement("ul"); for (const k of ["help1","help2","help3","help4","help5"]) { const li = document.createElement("li"); li.textContent = T(k); ul.append(li); } hc.append(ul); }
@@ -557,7 +565,7 @@
       if (!current && roster.length) current = roster[0].instance_name;
       computeOrder();
       renderList(); renderCard();
-    } catch (e) { q("pre").textContent = "Failed to load roster: " + e.message + "\n(Is the fleet running?)"; }
+    } catch (e) { q("pre").textContent = TF("rosterFailed", { error: e.message }); }
   }
 
   // ── Terminal ──────────────────────────────────────────
@@ -575,7 +583,7 @@
       if (!r.ok) {
         // Surface the failure instead of leaving the previous instance's output
         // on screen (which reads as "switching did nothing").
-        q("pre").textContent = `⚠ Could not load pane for ${target} (HTTP ${r.status}).`;
+        q("pre").textContent = TF("paneFailed", { name: target, status: r.status });
         return;
       }
       const text = await r.text();
@@ -714,7 +722,7 @@
     const it = roster.find(r => r.instance_name === current);
     if (!it) return;
     const wt = q("fToken").value.trim();
-    if (!wt) { q("msg").className = "err"; q("msg").textContent = "web.token required"; return; }
+    if (!wt) { q("msg").className = "err"; q("msg").textContent = T("tokenRequired"); return; }
     localStorage.setItem("agend_web_token", wt);
     const name = encodeURIComponent(current);
     try {
@@ -727,12 +735,12 @@
       const file = q("fAvatar").files[0];
       if (file) {
         const ar = await fetch(`/api/avatar/${name}`, { method: "POST", headers: { "Content-Type": file.type, "X-Agend-Token": wt }, body: file });
-        if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error("avatar: " + (e.error || ar.status)); }
+        if (!ar.ok) { const e = await ar.json().catch(() => ({})); throw new Error(TF("avatarFailed", { error: e.error || ar.status })); }
       }
-      q("msg").className = "ok"; q("msg").textContent = "Saved";
+      q("msg").className = "ok"; q("msg").textContent = T("saved");
       await loadRoster();
       setTimeout(exitEdit, 500);
-    } catch (e) { q("msg").className = "err"; q("msg").textContent = e.message; }
+    } catch (e) { q("msg").className = "err"; q("msg").textContent = e.message.startsWith(T("avatarFailed").split("{")[0]) ? e.message : TF("saveFailed", { error: e.message }); }
   }
 
   q("editBtn").onclick = enterEdit;

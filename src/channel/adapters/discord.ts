@@ -546,7 +546,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             name: "start", description: t("slash.start"),
             options: [{
               name: "backend",
-              description: "Backend to start",
+              description: t("slash.option.backend"),
               type: ApplicationCommandOptionType.String,
               required: true,
               choices: DISCORD_START_BACKEND_CHOICES,
@@ -554,16 +554,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           },
           { name: "stop", description: t("slash.stop") },
           {
-            name: "pause", description: "🔒 Pause an idle instance",
-            options: [{ name: "instance", description: "Instance name (required in General)", type: ApplicationCommandOptionType.String, required: false }],
+            name: "pause", description: "🔒 " + t("slash.pause"),
+            options: [{ name: "instance", description: t("slash.option.instance"), type: ApplicationCommandOptionType.String, required: false }],
           },
           {
-            name: "wake", description: "🔒 Wake a paused instance",
-            options: [{ name: "instance", description: "Instance name (required in General)", type: ApplicationCommandOptionType.String, required: false }],
+            name: "wake", description: "🔒 " + t("slash.wake"),
+            options: [{ name: "instance", description: t("slash.option.instance"), type: ApplicationCommandOptionType.String, required: false }],
           },
           {
             name: "chat", description: t("slash.chat"),
-            options: [{ name: "message", description: "Your message", type: 3, required: true }],
+            options: [{ name: "message", description: t("slash.option.message"), type: 3, required: true }],
           },
           { name: "status", description: "🔒 " + t("slash.status") },
           { name: "sysinfo", description: t("slash.sysinfo") },
@@ -576,7 +576,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           {
             name: "tips", description: t("slash.tips"),
             options: [{
-              name: "mode", description: "Optional daily-tip setting",
+              name: "mode", description: t("slash.option.tips_mode"),
               type: ApplicationCommandOptionType.String, required: false,
               choices: [{ name: "on", value: "on" }, { name: "off", value: "off" }],
             }],
@@ -585,25 +585,25 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           {
             name: "steer", description: t("slash.steer"),
             options: [{
-              name: "message", description: "What to tell the agent mid-task",
+              name: "message", description: t("slash.option.steer_message"),
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
           {
             name: "btw", description: t("slash.btw"),
             options: [{
-              name: "message", description: "Side question for Claude Code",
+              name: "message", description: t("slash.option.btw_message"),
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
           { name: "clear", description: "🔒 " + t("slash.clear") },
           {
-            name: "model", description: "🔒 Switch model (admin only)",
+            name: "model", description: "🔒 " + t("slash.model"),
           },
           {
             name: "effort", description: "🔒 " + t("slash.effort"),
             options: [{
-              name: "level", description: "low | medium | high | xhigh | max",
+              name: "level", description: t("slash.option.effort_level"),
               type: ApplicationCommandOptionType.String, required: false,
               choices: [
                 { name: "low", value: "low" }, { name: "medium", value: "medium" },
@@ -616,13 +616,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           {
             name: "save", description: "🔒 " + t("slash.save"),
             options: [
-              { name: "filename", description: "File name to save as", type: 3, required: true },
-              { name: "force", description: "Overwrite if file exists", type: 5, required: false },
+              { name: "filename", description: t("slash.option.save_filename"), type: 3, required: true },
+              { name: "force", description: t("slash.option.save_force"), type: 5, required: false },
             ],
           },
           {
             name: "load", description: "🔒 " + t("slash.load"),
-            options: [{ name: "filename", description: "File name to load", type: 3, required: true }],
+            options: [{ name: "filename", description: t("slash.option.load_filename"), type: 3, required: true }],
           },
           { name: "cancel", description: t("slash.cancel") },
         ]);

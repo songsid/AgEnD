@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import net from "node:net";
 import { collectDoctorReport, connectUnixSocket, formatDoctorReport } from "../src/doctor.js";
 import type { ServiceInfo } from "../src/service-installer.js";
+import { setLocale, t } from "../src/locale.js";
 
 const roots: string[] = [];
 
@@ -13,6 +14,7 @@ function commandResult(status: number, stdout = "", stderr = "") {
 }
 
 afterEach(() => {
+  setLocale("en");
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -165,5 +167,35 @@ instances:
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
+  });
+
+  it("renders the production doctor report and newly registered commands in zh-TW", async () => {
+    setLocale("zh-TW");
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-zh-tw-"));
+    roots.push(dataDir);
+    const report = await collectDoctorReport(dataDir, {
+      installed: false,
+      path: null,
+      manager: "systemd --user",
+      enabled: null,
+      active: null,
+    }, {
+      env: { TERM: "xterm" },
+      platform: "linux",
+      processAlive: () => false,
+      connectSocket: async () => false,
+      run: (file, args) => file === "tmux" && args[0] === "-V"
+        ? commandResult(0, "tmux 3.7\n")
+        : file === "claude"
+          ? commandResult(0, "claude 1\n")
+          : commandResult(1),
+    });
+
+    const formatted = formatDoctorReport(report);
+    expect(formatted).toContain("AgEnD 診斷");
+    expect(formatted).toContain("系統服務");
+    expect(formatted).toContain("找不到 AgEnD 系統服務");
+    expect(t("slash.effort")).toBe("設定推理強度（管理員）");
+    expect(t("uninstall.non_interactive")).toContain("--force");
   });
 });
