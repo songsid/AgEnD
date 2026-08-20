@@ -276,6 +276,29 @@
 
 <script>
 const T = new URLSearchParams(location.search).get("token") || "";
+const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
+const UI_TEXT = {
+  en: {
+    disconnected: "disconnected", selectTarget: "Select Fleet or an instance to begin", deleteConfirm: 'Type "delete {0}" to confirm:',
+    instanceDeleted: "Instance deleted", noMessages: "No messages yet", sendFirst: "Send a message to start the conversation",
+    loadFailed: "Failed to load", configLoadFailed: "Failed to load config", topicRequired: "Topic Name is required when Directory is empty",
+    titleRequired: "Title required", scheduleFieldsRequired: "Cron, message, and target required", teamFieldsRequired: "Name and at least one member required",
+    deleteSchedule: "Delete this schedule?", deleteTeam: 'Delete team "{0}"?', creating: "Creating...", create: "Create",
+    instanceCreated: "Instance created", taskCreated: "Task created", scheduleCreated: "Schedule created", scheduleDeleted: "Schedule deleted",
+    teamCreated: "Team created", teamDeleted: "Team deleted", configSaved: "Config saved", configRestart: " (restart Fleet to apply channel changes)",
+  },
+  "zh-TW": {
+    disconnected: "已斷線", selectTarget: "請選擇 Fleet 或 instance", deleteConfirm: '請輸入「delete {0}」以確認：',
+    instanceDeleted: "Instance 已刪除", noMessages: "尚無訊息", sendFirst: "傳送訊息以開始對話",
+    loadFailed: "載入失敗", configLoadFailed: "載入設定失敗", topicRequired: "Directory 留空時必須填寫 Topic Name",
+    titleRequired: "必須填寫標題", scheduleFieldsRequired: "必須填寫 Cron、訊息與目標 instance", teamFieldsRequired: "必須填寫名稱並選擇至少一名成員",
+    deleteSchedule: "確定刪除此排程嗎？", deleteTeam: '確定刪除 team「{0}」嗎？', creating: "建立中…", create: "建立",
+    instanceCreated: "Instance 已建立", taskCreated: "Task 已建立", scheduleCreated: "排程已建立", scheduleDeleted: "排程已刪除",
+    teamCreated: "Team 已建立", teamDeleted: "Team 已刪除", configSaved: "設定已儲存", configRestart: "（請重新啟動 Fleet 以套用頻道變更）",
+  },
+};
+const tr = key => UI_TEXT[UI_LANG]?.[key] || UI_TEXT.en[key] || key;
+const trf = (key, ...values) => values.reduce((text, value, index) => text.replaceAll(`{${index}}`, String(value)), tr(key));
 let cur = null, curTab = "chat", mode = "none", instances = [];
 // mode: "none" | "fleet" | "instance"
 const msgs = {};
@@ -307,7 +330,7 @@ sse.addEventListener("message", e => {
   if (msgs[m.instance].length > 500) msgs[m.instance].shift();
   if (m.instance === cur && curTab === "chat") renderMsgs();
 });
-sse.onerror = () => { document.getElementById("uptime").textContent = "disconnected"; };
+sse.onerror = () => { document.getElementById("uptime").textContent = tr("disconnected"); };
 
 function renderList() {
   document.getElementById("fleetEntry").className = `fleet-entry${mode==="fleet"?" active":""}`;
@@ -327,7 +350,7 @@ function renderMain() {
   const main = document.getElementById("mainArea");
   if (mode === "fleet") return renderFleetMain(main);
   if (mode === "instance" && cur) return renderInstanceMain(main);
-  main.innerHTML = '<div class="no-sel"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>Select Fleet or an instance to begin</span></div>';
+  main.innerHTML = `<div class="no-sel"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span>${tr("selectTarget")}</span></div>`;
 }
 
 function renderFleetMain(main) {
@@ -374,12 +397,12 @@ function renderActions(i) {
 async function doAction(a) {
   if (!cur) return;
   if (a === "delete") {
-    const c = prompt(`Type "delete ${cur}" to confirm:`);
+    const c = prompt(trf("deleteConfirm", cur));
     if (c !== `delete ${cur}`) return;
     const r = await api("POST", `/ui/instances/${encodeURIComponent(cur)}/delete`, { confirm: c });
     if (r.error) { toast(r.error, false); return; }
-    toast(`${cur} deleted`); cur = null;
-    document.getElementById("mainArea").innerHTML = '<div class="no-sel"><span>Instance deleted</span></div>';
+    toast(`${cur}: ${tr("instanceDeleted")}`); cur = null;
+    document.getElementById("mainArea").innerHTML = `<div class="no-sel"><span>${tr("instanceDeleted")}</span></div>`;
     return;
   }
   const ep = `/ui/${a}/${encodeURIComponent(cur)}`;
@@ -391,7 +414,7 @@ async function doAction(a) {
 function renderMsgs() {
   const el = document.getElementById("messages"); if (!el) return;
   const m = msgs[cur] || [];
-  if (!m.length) { el.innerHTML = '<div class="msg-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>No messages yet<br><span style="font-size:12px;color:var(--text-muted)">Send a message to start the conversation</span></div>'; return; }
+  if (!m.length) { el.innerHTML = `<div class="msg-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>${tr("noMessages")}<br><span style="font-size:12px;color:var(--text-muted)">${tr("sendFirst")}</span></div>`; return; }
   el.innerHTML = m.map(x => {
     const u = x.sender==="web-user"||(!x.sender.startsWith("agend")&&x.sender!==cur&&x.sender!=="general");
     const t = x.ts ? new Date(x.ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}) : "";
@@ -429,7 +452,7 @@ async function loadDetail() {
       h += `</div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">Failed to load</div>`; }
+  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
 }
 
 async function loadTasks() {
@@ -451,7 +474,7 @@ async function loadTasks() {
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">Failed to load</div>`; }
+  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
 }
 async function taskAct(id, action) {
   const r = await api("POST", `/ui/tasks/${id}`, { action });
@@ -490,8 +513,8 @@ async function showCreateInstance() {
   ov.querySelector("#ci-go").addEventListener("click", async () => {
     const dir = document.getElementById("ci-dir").value.trim();
     const topic = document.getElementById("ci-topic").value.trim();
-    if (!dir && !topic) { toast("Topic Name is required when Directory is empty", false); return; }
-    const btn = ov.querySelector("#ci-go"); btn.disabled = true; btn.textContent = "Creating...";
+    if (!dir && !topic) { toast(tr("topicRequired"), false); return; }
+    const btn = ov.querySelector("#ci-go"); btn.disabled = true; btn.textContent = tr("creating");
     const body = {};
     if (dir) body.directory = dir;
     const v = id => document.getElementById(id).value.trim();
@@ -503,8 +526,8 @@ async function showCreateInstance() {
     const tags = v("ci-tags"); if (tags) body.tags = tags.split(",").map(t => t.trim()).filter(Boolean);
     if (v("ci-prompt")) body.systemPrompt = v("ci-prompt");
     const r = await api("POST", "/ui/instances", body);
-    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = "Create"; }
-    else { toast("Instance created"); ov.remove(); }
+    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = tr("create"); }
+    else { toast(tr("instanceCreated")); ov.remove(); }
   });
 }
 
@@ -522,14 +545,14 @@ function showCreateTask() {
   ov.addEventListener("click", e => { if (e.target === ov) ov.remove(); });
   ov.querySelector("#ct-go").addEventListener("click", async () => {
     const title = document.getElementById("ct-title").value.trim();
-    if (!title) { toast("Title required", false); return; }
-    const btn = ov.querySelector("#ct-go"); btn.disabled = true; btn.textContent = "Creating...";
+    if (!title) { toast(tr("titleRequired"), false); return; }
+    const btn = ov.querySelector("#ct-go"); btn.disabled = true; btn.textContent = tr("creating");
     const body = { title, priority: document.getElementById("ct-pri").value };
     const desc = document.getElementById("ct-desc").value.trim(); if (desc) body.description = desc;
     const asgn = document.getElementById("ct-assign").value; if (asgn) body.assignee = asgn;
     const r = await api("POST", "/ui/tasks", body);
-    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = "Create"; }
-    else { toast("Task created"); ov.remove(); loadTasks(); }
+    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = tr("create"); }
+    else { toast(tr("taskCreated")); ov.remove(); loadTasks(); }
   });
 }
 
@@ -553,12 +576,12 @@ async function loadSchedules() {
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">Failed to load</div>`; }
+  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
 }
 async function delSchedule(id) {
-  if (!confirm("Delete this schedule?")) return;
+  if (!confirm(tr("deleteSchedule"))) return;
   const r = await api("DELETE", `/ui/schedules/${id}`);
-  if (r.error) toast(r.error, false); else { toast("Schedule deleted"); loadSchedules(); }
+  if (r.error) toast(r.error, false); else { toast(tr("scheduleDeleted")); loadSchedules(); }
 }
 function showCreateSchedule() {
   const ov = document.createElement("div"); ov.className = "form-overlay";
@@ -576,13 +599,13 @@ function showCreateSchedule() {
     const cron = document.getElementById("cs-cron").value.trim();
     const msg = document.getElementById("cs-msg").value.trim();
     const target = document.getElementById("cs-target").value;
-    if (!cron || !msg || !target) { toast("Cron, message, and target required", false); return; }
-    const btn = ov.querySelector("#cs-go"); btn.disabled = true; btn.textContent = "Creating...";
+    if (!cron || !msg || !target) { toast(tr("scheduleFieldsRequired"), false); return; }
+    const btn = ov.querySelector("#cs-go"); btn.disabled = true; btn.textContent = tr("creating");
     const body = { cron, message: msg, target, source: "web-user", reply_chat_id: "", reply_thread_id: "" };
     const label = document.getElementById("cs-label").value.trim(); if (label) body.label = label;
     const r = await api("POST", "/ui/schedules", body);
-    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = "Create"; }
-    else { toast("Schedule created"); ov.remove(); loadSchedules(); }
+    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = tr("create"); }
+    else { toast(tr("scheduleCreated")); ov.remove(); loadSchedules(); }
   });
 }
 
@@ -605,12 +628,12 @@ async function loadTeams() {
         </div></div>`;
     }
     el.innerHTML = h;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">Failed to load</div>`; }
+  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("loadFailed")}</div>`; }
 }
 async function delTeam(name) {
-  if (!confirm(`Delete team "${name}"?`)) return;
+  if (!confirm(trf("deleteTeam", name))) return;
   const r = await api("DELETE", `/ui/teams/${encodeURIComponent(name)}`);
-  if (r.error) toast(r.error, false); else { toast("Team deleted"); loadTeams(); }
+  if (r.error) toast(r.error, false); else { toast(tr("teamDeleted")); loadTeams(); }
 }
 function showCreateTeam() {
   const ov = document.createElement("div"); ov.className = "form-overlay";
@@ -626,13 +649,13 @@ function showCreateTeam() {
   ov.querySelector("#ct2-go").addEventListener("click", async () => {
     const name = document.getElementById("ct2-name").value.trim();
     const members = [...document.querySelectorAll("#ct2-members input:checked")].map(c => c.value);
-    if (!name || !members.length) { toast("Name and at least one member required", false); return; }
-    const btn = ov.querySelector("#ct2-go"); btn.disabled = true; btn.textContent = "Creating...";
+    if (!name || !members.length) { toast(tr("teamFieldsRequired"), false); return; }
+    const btn = ov.querySelector("#ct2-go"); btn.disabled = true; btn.textContent = tr("creating");
     const body = { name, members };
     const desc = document.getElementById("ct2-desc").value.trim(); if (desc) body.description = desc;
     const r = await api("POST", "/ui/teams", body);
-    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = "Create"; }
-    else { toast("Team created"); ov.remove(); loadTeams(); }
+    if (r.error) { toast(r.error, false); btn.disabled = false; btn.textContent = tr("create"); }
+    else { toast(tr("teamCreated")); ov.remove(); loadTeams(); }
   });
 }
 
@@ -701,7 +724,7 @@ async function loadConfig() {
         <button class="btn btn-accent" onclick="saveConfig()">Save Changes</button>
         <span style="font-size:11px;color:var(--text-muted)">Saving will reformat fleet.yaml (comments will be lost)</span>
       </div>`;
-  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">Failed to load config</div>`; }
+  } catch { el.innerHTML = `<div style="color:var(--error);padding:24px">${tr("configLoadFailed")}</div>`; }
 }
 function togglePw(id) { const el = document.getElementById(id); el.type = el.type === "password" ? "text" : "password"; }
 function addRoot() { const el = document.getElementById("cfg-roots"); el.insertAdjacentHTML("beforeend", `<div style="display:flex;gap:4px;margin-bottom:6px"><input class="cfg-root" value="" placeholder="/path/to/projects" style="flex:1"><button class="btn btn-ghost" style="padding:4px 8px" onclick="this.parentElement.remove()">&#10005;</button></div>`); }
@@ -713,7 +736,7 @@ async function saveConfig() {
   };
   const r = await api("POST", "/ui/config", body);
   if (r.error) toast(r.error, false);
-  else { toast("Config saved" + (r.needs_restart ? " (restart fleet to apply channel changes)" : "")); }
+  else { toast(tr("configSaved") + (r.needs_restart ? tr("configRestart") : "")); }
 }
 </script>
 </body>
