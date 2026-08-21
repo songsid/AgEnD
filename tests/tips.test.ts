@@ -203,13 +203,19 @@ describe("tip button flow", () => {
 
     expect(recordTipFeedback).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/), "confused");
     expect(dismissTip).not.toHaveBeenCalled();
-    expect(editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+      "fleet", "tip-message", alert.message, "general-topic",
+    );
     expect(sendText).toHaveBeenCalledWith(
       "fleet", "Feedback recorded. Thank you.", { threadId: "general-topic" },
     );
 
+    // Confusion records feedback without dismissing the Tip. A later draw gets
+    // a fresh one-shot prompt that can still be acknowledged normally.
+    expect(await fm.promptTip("general", adapter, "fleet", "general-topic")).toBe("posted");
+    const secondAlert = notifyAlert.mock.calls[1][1];
     await (fm as any).handleTipDismiss({
-      callbackData: alert.choices[0].id,
+      callbackData: secondAlert.choices[0].id,
       chatId: "fleet",
       threadId: "general-topic",
       messageId: "tip-message",
@@ -219,9 +225,41 @@ describe("tip button flow", () => {
     }, "discord-main", adapter);
 
     expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
-    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
-      "fleet", "tip-message", alert.message, "general-topic",
+    expect(editMessageRemoveButtons).toHaveBeenLastCalledWith(
+      "fleet", "tip-message", secondAlert.message, "general-topic",
     );
+  });
+
+  it("posts a Discord /tips request in the current non-General channel without an ephemeral corpse", async () => {
+    const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-tip-slash-")));
+    dirs.push(fm.dataDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: {
+        general: { general_topic: true, topic_id: "general-topic" },
+        worker: { topic_id: "worker-topic" },
+      },
+    } as any;
+    fm.routing.rebuild(fm.fleetConfig);
+    const adapter = { id: "discord-main", type: "discord" } as any;
+    fm.adapters.set(adapter.id, adapter);
+    const promptTip = vi.spyOn(fm, "promptTip").mockResolvedValue("posted");
+    const respond = vi.fn().mockResolvedValue("ephemeral");
+    const dismissResponse = vi.fn().mockResolvedValue(undefined);
+
+    await (fm as any).handleTipsSlash({
+      command: "tips",
+      channelId: "worker-topic",
+      channelName: "worker",
+      userId: "reader",
+      options: {},
+      respond,
+      dismissResponse,
+    }, adapter.id);
+
+    expect(promptTip).toHaveBeenCalledWith("worker", adapter, "worker-topic");
+    expect(dismissResponse).toHaveBeenCalledOnce();
+    expect(respond).not.toHaveBeenCalled();
   });
 
   it("persists the explicit advanced unlock when its retained prompt is confirmed", async () => {
@@ -305,5 +343,11 @@ describe("tip button flow", () => {
 
     await commands.handleGeneralCommand(message("/tips"));
     expect(promptTip).toHaveBeenCalledWith("general", ctx.adapter, "fleet", "general-topic");
+
+    await commands.handleInstanceCommand(
+      { ...message("/tips"), threadId: "worker-topic" },
+      "worker",
+    );
+    expect(promptTip).toHaveBeenLastCalledWith("general", ctx.adapter, "fleet", "worker-topic");
   });
 });

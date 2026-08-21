@@ -108,7 +108,7 @@ export const TIPS: Tip[] = [
   { id: "tip-066", level: "beginner", text_en: "A missing conversation-space percentage is not necessarily an error; some AI engines do not report one.", text_zh: "沒有對話空間百分比不一定代表錯誤；部分 AI 引擎不會提供此數值。" },
   { id: "tip-067", level: "beginner", text_en: "Use `/compact` when a long discussion needs to be shortened while retaining useful information where possible.", text_zh: "對話過長時，可用 `/compact` 嘗試縮短內容並保留有用資訊。" },
   { id: "tip-068", level: "beginner", text_en: "The effect of `/compact` varies by AI engine; some shorten the discussion while others may clear it.", text_zh: "`/compact` 的效果會依 AI 引擎而異；有些會縮短討論，有些則可能清除內容。" },
-  { id: "tip-069", level: "beginner", text_en: "A saved conversation is a copy kept for later reference; `/save <name>` works only where the selected AI engine supports it.", text_zh: "已儲存對話是留供日後查看的副本；只有所選 AI 引擎支援時，`/save <名稱>` 才能使用。", tags: ["claude-code", "kiro-cli"] },
+  { id: "tip-069", level: "beginner", text_en: "A saved conversation is a copy kept for later reference; `/save <name>` is available with Claude Code and Kiro.", text_zh: "已儲存對話是留供日後查看的副本；Claude Code 與 Kiro 可使用 `/save <名稱>`。", tags: ["claude-code", "kiro-cli"] },
   { id: "tip-070", level: "beginner", text_en: "If `/save` is unavailable, ask the assistant for a summary that can be copied into personal notes.", text_zh: "無法使用 `/save` 時，可請 AI 助手整理摘要，再複製到自己的筆記。", tags: ["codex", "grok", "antigravity", "opencode"] },
 
   { id: "tip-071", level: "beginner", text_en: "General is the coordinating assistant that can help choose another assistant for a request.", text_zh: "General 是負責協調的 AI 助手，可協助為需求選擇另一位助手。" },
