@@ -184,6 +184,7 @@ export class CodexBackend implements CliBackend {
     atomicWritePrivate(join(this.isolatedCodexHome, "config.toml"), content);
 
     this.enableContextStatusLine();
+    this.disableStartupUpdateCheck();
 
     // Write fleet instructions into AGENTS.md (additive via marker block)
     if (config.instructions) {
@@ -199,6 +200,38 @@ export class CodexBackend implements CliBackend {
         } catch { /* stat failed — skip size check */ }
       } catch { /* best effort */ }
     }
+  }
+
+  /**
+   * Stop Codex opening its "Update available!" picker when an instance starts.
+   *
+   * That dialog owns the input loop until someone answers it, so after a fleet
+   * restart every Codex instance sat waiting on a keypress nobody was going to
+   * send. AgEnD then reported it as a stuck pane, which is true but unhelpful.
+   *
+   * `check_for_update_on_startup = false` is Codex's own config key (verified in
+   * the binary), so this prevents the prompt rather than racing to dismiss it.
+   * There is no CLI flag for it — `codex update` is a subcommand, not a switch.
+   *
+   * Placement matters: this is a TOP-LEVEL key, so it has to go above the first
+   * `[section]` header or TOML would read it as belonging to that section. And a
+   * user who has deliberately set the key either way keeps their value — TOML
+   * rejects duplicate keys, so appending blindly would corrupt the file.
+   */
+  private disableStartupUpdateCheck(): void {
+    const configPath = join(this.isolatedCodexHome, "config.toml");
+    let content = "";
+    try { content = readFileSync(configPath, "utf-8"); } catch { return; }
+
+    // Their setting wins, whichever way it points.
+    if (/^\s*check_for_update_on_startup\s*=/m.test(content)) return;
+
+    const LINE = "check_for_update_on_startup = false\n";
+    const firstSection = content.search(/^\s*\[/m);
+    const updated = firstSection === -1
+      ? (content.length && !content.endsWith("\n") ? `${content}\n${LINE}` : `${content}${LINE}`)
+      : `${content.slice(0, firstSection)}${LINE}${content.slice(firstSection)}`;
+    try { atomicWritePrivate(configPath, updated); } catch { /* best effort */ }
   }
 
   /**
@@ -518,6 +551,18 @@ export class CodexBackend implements CliBackend {
         pattern: /Approaching rate limits[\s\S]*Switch to.*for lower credit/m,
         keys: ["Down", "Down", "Enter"],
         description: "Codex rate limit model switch dialog",
+      },
+      {
+        // The update picker, for an instance whose config predates
+        // disableStartupUpdateCheck() or whose user re-enabled the check.
+        // Escape is what Codex itself offers ("esc close") and is the only safe
+        // key here: Enter selects whatever row is highlighted and ctrl+u starts
+        // an upgrade — swapping the CLI binary under a running fleet is not a
+        // thing to do unattended. Matched on the release-notes URL together with
+        // the banner so an agent discussing a Codex release cannot trip it.
+        pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
+        keys: ["Escape"],
+        description: "Codex startup update-available picker",
       },
     ];
   }

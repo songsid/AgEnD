@@ -844,6 +844,20 @@ export class Daemon extends EventEmitter {
    * would silently no-op exactly when we most need to stop feeding the CLI.
    */
   private pausePending = false;
+  /**
+   * An auth failure was detected and nothing has resolved it yet.
+   *
+   * Separate from `pausePending` because it must outlive it: the deferred pause
+   * clears `pausePending` as soon as it fires, but if that pause is refused the
+   * instance is still auth-broken and must not resume raising alarms.
+   */
+  private authFailureUnresolved = false;
+  /**
+   * Let the next pause() proceed from a stuck pane. Set only for the auth-deferred
+   * pause — see the pausePending consumption site for why waiting for idle there
+   * is waiting forever.
+   */
+  private pauseAllowStuck = false;
   private pauseWakeState: "active" | "pausing" | "paused" | "waking" = "active";
   private pauseWakeTransition: Promise<void> | null = null;
   // Model failover: override model on next spawn when rate-limited
@@ -1893,6 +1907,7 @@ export class Daemon extends EventEmitter {
           // entry per pattern per recovery.
           if (seen > 0) this.lastErrorCount.set(Daemon.errorPatternKey(ep), seen);
         }
+        this.authFailureUnresolved = false;
         this.clearErrorRecoveryGate();
         this.logger.info({ downtime_s: downtime }, "PTY error recovered — agent is ready again");
         this.emit("pty_recovered", { name: this.name, downtime_s: downtime });
@@ -1955,6 +1970,10 @@ export class Daemon extends EventEmitter {
       this.lastErrorNotifiedAt.set(key, now);
       if (ep.action === "failover") this.lastFailoverAt = now;
       const message = this.resolveErrorMessage(pane, ep);
+      // Remember an auth failure for as long as it is unresolved. An auth-broken
+      // CLI cannot finish the turn it is holding, so every other detector in this
+      // scan would otherwise keep reporting the same dead instance forever.
+      if (ep.type === "auth_error") this.authFailureUnresolved = true;
       this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
       this.emit("pty_error", { name: this.name, ...ep, message });
 
@@ -2183,7 +2202,14 @@ export class Daemon extends EventEmitter {
       await this.pauseWakeTransition;
       if (this.getPauseWakeState() !== "active") return;
     }
-    if (this.instanceState !== "idle" || this.pasteQueueDepth > 0) {
+    // `pauseAllowStuck` is consumed here, not merely read: it authorises exactly
+    // one pause from a stuck pane (the auth-deferred one) and must never leak
+    // into an ordinary idle-timeout pause of a busy instance.
+    const allowStuck = this.pauseAllowStuck;
+    this.pauseAllowStuck = false;
+    const pausableState = this.instanceState === "idle"
+      || (allowStuck && this.instanceState === "stuck");
+    if (!pausableState || this.pasteQueueDepth > 0) {
       this.pauseRequested = false;
       return;
     }
@@ -2243,6 +2269,7 @@ export class Daemon extends EventEmitter {
     // An explicit wake (e.g. after the user re-logs in) cancels a deferred
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
+    this.authFailureUnresolved = false;
     if (this.pauseWakeState === "active") return;
     if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
     if (this.getPauseWakeState() === "active") return;
@@ -2335,8 +2362,13 @@ export class Daemon extends EventEmitter {
 
     if (snapshot.state !== "idle") this.pauseRequested = false;
     // A pause deferred by an auth failure: retry the moment the pane settles.
-    if (this.pausePending && snapshot.state === "idle" && this.pasteQueueDepth === 0) {
+    // "stuck" counts as settled here, and that is the whole point — an expired
+    // session cannot complete the turn it is holding, so the pane never returns
+    // to idle and waiting for idle meant waiting forever. The instance stayed
+    // live, kept its warm slot, and re-raised a hang alert on every scan.
+    if (this.pausePending && (snapshot.state === "idle" || snapshot.state === "stuck") && this.pasteQueueDepth === 0) {
       this.pausePending = false;
+      this.pauseAllowStuck = snapshot.state === "stuck";
       this.emit("auto_pause_requested", { name: this.name, idleSince: snapshot.stateChangedAt });
       return;
     }
@@ -2690,6 +2722,15 @@ export class Daemon extends EventEmitter {
     };
     if (!diagnostic.pendingWork) {
       this.logger.debug(diagnostic, "Suppressing stuck notification without pending work");
+      return;
+    }
+    // An auth-broken instance IS stuck, and stays stuck: it cannot finish the
+    // turn it is holding, so pendingWork never clears and this fired on every
+    // scan forever. The notification is also useless — it offers Restart/Wait
+    // and asks General for help, but only the user re-logging in fixes this, and
+    // they have already been told exactly that by the auth alert.
+    if (this.authFailureUnresolved) {
+      this.logger.debug(diagnostic, "Suppressing stuck notification — unresolved auth failure (re-login required)");
       return;
     }
     this.logger.warn(diagnostic, "Instance pane stuck with pending work");
