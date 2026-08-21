@@ -773,6 +773,20 @@ export class TopicCommands {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
     const mode = msg.text.trim().replace(/^\/tips(?:@\S+)?/, "").trim().toLowerCase();
+    if (mode === "advanced on") {
+      if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+        await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+        return;
+      }
+      await adapter.sendText(
+        msg.chatId,
+        this.ctx.unlockAdvancedTips?.(msg.userId)
+          ? t("tips.advanced.unlocked")
+          : t("tips.unavailable"),
+        { threadId: msg.threadId },
+      );
+      return;
+    }
     if (mode === "on" || mode === "off") {
       if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
         await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });

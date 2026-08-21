@@ -26,7 +26,7 @@ export interface Tip {
   text_zh: string;
 }
 
-export const ADVANCED_TIP_UNLOCK_THRESHOLD = 30;
+export const ADVANCED_TIP_UNLOCK_THRESHOLD = 60;
 
 export const TIPS: Tip[] = [
   // ── Beginner: mobile-first onboarding (100) ───────────────────────────
@@ -215,7 +215,7 @@ export const TIPS: Tip[] = [
   { id: "tip-172", level: "intermediate", text_en: "Replying to an earlier message gives the assistant quoted context. Supported Discord replies can also include images from the referenced message.", text_zh: "回覆較早的訊息時，助手會收到引用內容；支援的 Discord 回覆也能包含被引用訊息中的圖片。" },
   { id: "tip-173", level: "intermediate", text_en: "Attachments are copied to a local inbox before delivery. The assistant receives a local file path, so sensitive files should be shared only with an appropriate instance.", text_zh: "附件會先複製到本機收件區，再以本機路徑交給助手；敏感檔案只應傳給合適的 Instance。" },
   { id: "tip-174", level: "intermediate", text_en: "A permission prompt is a safety boundary from the AI engine. Read the requested file or command scope before approving it.", text_zh: "Permission prompt（AI 引擎要求授權的安全關卡）應先確認檔案或指令範圍，再決定是否核准。" },
-  { id: "tip-175", level: "intermediate", text_en: "After thirty intermediate tips are dismissed, AgEnD offers an Advanced Tips unlock button. Advanced tips remain hidden until that button is confirmed.", text_zh: "標記已讀 30 則中階提示後，AgEnD 會提供「開始看進階」按鈕；確認前，進階提示仍保持隱藏。" },
+  { id: "tip-175", level: "intermediate", text_en: "After sixty intermediate tips are dismissed, AgEnD offers an Advanced Tips unlock button. An administrator can also enable them with `/tips advanced on`.", text_zh: "標記已讀 60 則中階提示後，AgEnD 會提供「開始看進階」按鈕；管理員也可用 `/tips advanced on` 主動開啟。" },
   { id: "tip-176", level: "intermediate", text_en: "Claude Code supports subagents, which are focused helper AIs inside the same CLI. They can research or review while the main agent coordinates the result.", text_zh: "Claude Code 支援 Subagent（同一個 CLI 內負責特定工作的輔助 AI），可在主助手整合結果時進行研究或審查。" },
   { id: "tip-177", level: "intermediate", text_en: "Claude Code permission modes decide whether file and command actions are allowed, denied, or require approval. Choose a mode that matches the project's risk.", text_zh: "Claude Code 的 Permission mode（檔案與指令操作的授權方式）可設為允許、拒絕或要求核准，應依專案風險選擇。" },
   { id: "tip-178", level: "intermediate", text_en: "Claude Code can resume saved sessions, but continuity depends on the same project path and available session data.", text_zh: "Claude Code 可恢復已保存的 Session，但能否延續仍取決於相同的專案路徑與可用 Session 資料。" },

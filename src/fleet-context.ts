@@ -75,6 +75,8 @@ export interface FleetContext {
     chatId: string,
     threadId?: string,
   ): Promise<"posted" | "empty" | "unavailable">;
+  /** Persistently enable advanced tips without waiting for the dismissal threshold. */
+  unlockAdvancedTips?(userId: string): boolean;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**
