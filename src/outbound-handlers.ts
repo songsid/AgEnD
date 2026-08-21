@@ -741,7 +741,14 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
   const inst = ctx.fleetConfig?.instances[v.data.name];
-  if (!inst) { respond(null, `Instance '${v.data.name}' not found in fleet config`); return; }
+  if (!inst) {
+    const isClassic = (ctx.classicChannels?.getAll() ?? [])
+      .some(channel => channel.instanceName === v.data.name);
+    respond(null, isClassic
+      ? "This is a ClassicBot instance (managed in classicBot.yaml). Use set_display_name or set_description to configure it."
+      : `Instance '${v.data.name}' not found in fleet config`);
+    return;
+  }
   const patch = v.data.config;
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
   if (patch.model !== undefined) (inst as any).model = patch.model;
