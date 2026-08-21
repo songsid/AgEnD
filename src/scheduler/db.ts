@@ -65,6 +65,15 @@ export class SchedulerDb {
         unlocked_at TEXT NOT NULL,
         unlocked_by TEXT NOT NULL
       );
+      CREATE TABLE IF NOT EXISTS tips_feedback (
+        tip_id       TEXT NOT NULL,
+        user_id      TEXT NOT NULL,
+        feedback_type TEXT NOT NULL,
+        timestamp    TEXT NOT NULL,
+        PRIMARY KEY (tip_id, user_id, feedback_type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_tips_feedback_type_tip
+        ON tips_feedback(feedback_type, tip_id);
     `);
 
     this.migrateScheduleTimingColumns();
@@ -294,6 +303,33 @@ export class SchedulerDb {
       VALUES ('fleet', ?, ?)
       ON CONFLICT(fleet_scope) DO NOTHING
     `).run(new Date().toISOString(), userId);
+  }
+
+  recordTipFeedback(userId: string, tipId: string, feedbackType: "confused"): void {
+    this.db.prepare(`
+      INSERT INTO tips_feedback (tip_id, user_id, feedback_type, timestamp)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(tip_id, user_id, feedback_type)
+      DO UPDATE SET timestamp = excluded.timestamp
+    `).run(tipId, userId, feedbackType, new Date().toISOString());
+  }
+
+  listTipFeedback(): Array<{
+    tip_id: string;
+    user_id: string;
+    feedback_type: string;
+    timestamp: string;
+  }> {
+    return this.db.prepare(`
+      SELECT tip_id, user_id, feedback_type, timestamp
+      FROM tips_feedback
+      ORDER BY timestamp ASC
+    `).all() as Array<{
+      tip_id: string;
+      user_id: string;
+      feedback_type: string;
+      timestamp: string;
+    }>;
   }
 
   // ── Decisions ───────────────────────────────────────────────

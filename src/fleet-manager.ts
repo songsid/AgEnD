@@ -76,7 +76,13 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
-import { canUnlockAdvancedTips, DailyTipScheduler, selectTip, type Tip } from "./tips.js";
+import {
+  canUnlockAdvancedTips,
+  DailyTipScheduler,
+  selectTip,
+  visibleTipLevels,
+  type Tip,
+} from "./tips.js";
 
 import { getTmuxSession } from "./config.js";
 
@@ -1029,11 +1035,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   getActiveUsageProviderIds(): ReadonlySet<string> {
     const providers = new Set<string>();
+    for (const backend of this.getActiveBackendIds()) {
+      const provider = usageProviderIdForBackend(backend);
+      if (provider) providers.add(provider);
+    }
+    return providers;
+  }
+
+  /** Effective backends with a running or persisted-paused fleet/Classic instance. */
+  getActiveBackendIds(): ReadonlySet<string> {
+    const backends = new Set<string>();
     const add = (name: string, backend: string | undefined) => {
       const status = this.getInstanceStatus(name);
       if (status !== "running" && status !== "paused") return;
-      const provider = usageProviderIdForBackend(backend);
-      if (provider) providers.add(provider);
+      if (backend) backends.add(backend);
     };
 
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
@@ -1049,7 +1064,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ),
       );
     }
-    return providers;
+    return backends;
   }
 
   isClassicInstance(name: string): boolean {
@@ -5282,13 +5297,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * Claim a nonce-armed callback exactly once.
+   * Validate a nonce-armed callback and optionally claim it exactly once.
    *
    * Returns:
    *  - null       — the callback is not for this prefix; try the next handler
    *  - "consumed" — for this prefix but stale/denied/malformed; stop dispatch
-   *  - the entry+action — the click is authorized and now claimed (removed
-   *    from the map before any await, so double clicks cannot act twice)
+   *  - the entry+action — the click is authorized; consuming actions are
+   *    claimed before any await, while explicitly non-consuming actions keep
+   *    the prompt available for a later decision
    *
    * A stale click (expired nonce, or a pre-upgrade button whose payload no
    * longer parses) collapses the clicked message so the dead button stops
@@ -5300,6 +5316,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     data: AdapterCallbackData,
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
+    consume = true,
   ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
     if (!data.callbackData.startsWith(prefix)) return null;
     const match = data.callbackData.match(actionRe);
@@ -5340,10 +5357,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return "consumed";
     }
 
-    // Claim before any await: double clicks and duplicate callback delivery can
-    // never act twice.
-    this.pendingNonceButtons.delete(match[1]);
-    if (pending.timer) clearTimeout(pending.timer);
+    if (consume) {
+      // Claim before any await: double clicks and duplicate callback delivery
+      // can never act twice for state-changing actions.
+      this.pendingNonceButtons.delete(match[1]);
+      if (pending.timer) clearTimeout(pending.timer);
+    }
     return { entry: pending, action: match[2] };
   }
 
@@ -5393,7 +5412,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private pickAvailableTip(): Tip | null {
     const state = this.readTipState();
-    return state ? selectTip(state.dismissed, Math.random, state.advancedUnlocked) : null;
+    return state
+      ? selectTip(state.dismissed, Math.random, state.advancedUnlocked, this.getActiveBackendIds())
+      : null;
   }
 
   private tipText(tip: Tip): string {
@@ -5429,12 +5450,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<"posted" | "empty" | "unavailable"> {
     const state = this.readTipState();
     if (!state) return "unavailable";
-    if (!state.advancedUnlocked && canUnlockAdvancedTips(state.dismissed)) {
+    if (!state.advancedUnlocked
+      && visibleTipLevels(true).has("advanced")
+      && canUnlockAdvancedTips(state.dismissed)) {
       return await this.promptAdvancedTipUnlock(generalName, adapter, chatId, threadId)
         ? "posted"
         : "unavailable";
     }
-    const tip = selectTip(state.dismissed, Math.random, state.advancedUnlocked);
+    const tip = selectTip(
+      state.dismissed,
+      Math.random,
+      state.advancedUnlocked,
+      this.getActiveBackendIds(),
+    );
     if (!tip) return this.scheduler ? "empty" : "unavailable";
     const nonce = await this.postNonceButtonPrompt({
       prefix: TIP_DISMISS_CALLBACK_PREFIX,
@@ -5445,7 +5473,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId,
       threadId,
       message: this.formatTip(tip),
-      choices: [{ action: "dismiss", label: t("tips.dismiss") }],
+      choices: [
+        { action: "dismiss", label: t("tips.dismiss") },
+        { action: "confused", label: t("tips.confused") },
+      ],
       // Expiry removes only the stale button; the useful tip remains readable.
       expiredText: this.formatTip(tip),
       extra: { allowAnyUser: true, tipId: tip.id },
@@ -5501,16 +5532,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
   ): Promise<boolean> {
+    const isConfused = data.callbackData.endsWith(":confused");
     const claimed = this.consumeNonceCallback(
       TIP_DISMISS_CALLBACK_PREFIX,
-      /^tip-dismiss:([0-9a-f]+):(dismiss)$/,
+      /^tip-dismiss:([0-9a-f]+):(dismiss|confused)$/,
       data,
       callbackAdapterId,
       receivingAdapter,
+      !isConfused,
     );
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
     const { entry: pending } = claimed;
+    if (claimed.action === "confused") {
+      if (!pending.tipId || !data.userId || !this.scheduler) {
+        this.logger.error({ tipId: pending.tipId, userId: data.userId },
+          "Tip feedback has incomplete persistence context");
+        await pending.adapter.sendText(
+          pending.chatId,
+          t("tips.unavailable"),
+          { threadId: pending.threadId },
+        );
+        return true;
+      }
+      try {
+        this.scheduler.db.recordTipFeedback(data.userId, pending.tipId, "confused");
+      } catch (err) {
+        this.logger.warn({ err, tipId: pending.tipId, userId: data.userId },
+          "Failed to persist tip feedback");
+        await pending.adapter.sendText(
+          pending.chatId,
+          t("tips.unavailable"),
+          { threadId: pending.threadId },
+        ).catch(() => { /* feedback failure is non-fatal */ });
+        return true;
+      }
+      this.logger.info({
+        tipId: pending.tipId,
+        userId: data.userId,
+        feedbackType: "confused",
+      }, "Tip feedback recorded");
+      this.eventLog?.insert(pending.instanceName, "tip_feedback", {
+        tipId: pending.tipId,
+        userId: data.userId,
+        feedbackType: "confused",
+      });
+      await pending.adapter.sendText(
+        pending.chatId,
+        t("tips.feedback_recorded"),
+        { threadId: pending.threadId },
+      ).catch(err => this.logger.warn({ err, tipId: pending.tipId },
+        "Failed to acknowledge tip feedback"));
+      return true;
+    }
     if (!pending.tipId || !data.userId || !this.scheduler) {
       this.logger.error({ tipId: pending.tipId, userId: data.userId },
         "Tip dismissal has incomplete persistence context");

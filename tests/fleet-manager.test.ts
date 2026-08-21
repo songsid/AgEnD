@@ -57,12 +57,14 @@ describe("FleetManager", () => {
       instances: {
         "fleet-codex": { working_directory: tmpDir, backend: "codex" },
         "fleet-default": { working_directory: tmpDir },
+        "fleet-opencode": { working_directory: tmpDir, backend: "opencode" },
         "paused-claude": { working_directory: tmpDir, backend: "claude-code" },
         "stopped-agy": { working_directory: tmpDir, backend: "antigravity" },
       },
     } as any;
     fm.lifecycle.daemons.set("fleet-codex", { getProcessStatus: () => "running" } as any);
     fm.lifecycle.daemons.set("fleet-default", { getProcessStatus: () => "running" } as any);
+    fm.lifecycle.daemons.set("fleet-opencode", { getProcessStatus: () => "running" } as any);
     vi.spyOn(fm.lifecycle, "isPaused").mockImplementation(name => name === "paused-claude");
 
     const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
@@ -73,6 +75,10 @@ describe("FleetManager", () => {
 
     expect([...fm.getActiveUsageProviderIds()].sort()).toEqual(["claude", "codex", "grok", "kiro"]);
     expect(fm.getActiveUsageProviderIds().has("antigravity")).toBe(false);
+    expect([...fm.getActiveBackendIds()].sort()).toEqual([
+      "claude-code", "codex", "grok", "kiro-cli", "opencode",
+    ]);
+    expect(fm.getActiveBackendIds().has("antigravity")).toBe(false);
   });
 
   it("uses claude-code when neither the instance nor fleet defaults specify a backend", () => {
