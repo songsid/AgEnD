@@ -377,6 +377,14 @@ export class TopicCommands {
     const text = msg.text?.trim();
     if (!text) return false;
 
+    // Tips are informational and should appear where requested, including a
+    // worker topic. This also keeps Telegram text commands aligned with
+    // Discord's channel-local slash-command behavior.
+    if (text === "/tips" || text.startsWith("/tips ") || text.startsWith("/tips@")) {
+      await this.handleTipsCommand(msg);
+      return true;
+    }
+
     const pauseWake = parsePauseWakeCommand(text);
     if (pauseWake) {
       const adapter = this.getReplyAdapter(msg);
@@ -804,7 +812,8 @@ export class TopicCommands {
       return;
     }
     const result = await this.ctx.promptTip?.(
-      // /tips is a General command, so the route target is the current General.
+      // The instance name scopes prompt cleanup; the Tip is posted at the
+      // caller's current chat/thread below.
       Object.entries(this.ctx.fleetConfig.instances)
         .find(([, config]) => config.general_topic === true
           && (!config.channel_id || config.channel_id === msg.adapterId))?.[0] ?? "general",

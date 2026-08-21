@@ -480,6 +480,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               username,
               options,
               respond: async (reply: string) => { try { return await this._editReplyLong(interaction, reply); } catch { return undefined; } },
+              dismissResponse: async () => {
+                try { await interaction.deleteReply(); } catch { /* interaction may already be gone */ }
+              },
               respondChoices: async (text: string, choices: Choice[]) => {
                 const select = new StringSelectMenuBuilder()
                   .setCustomId(CLASSIC_START_BACKEND_SELECT_ID)

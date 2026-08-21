@@ -355,6 +355,8 @@ interface ClassicStartSlashData {
   text?: string;
   options?: Record<string, string | boolean>;
   respond: (text: string) => Promise<string | undefined>;
+  /** Remove Discord's deferred ephemeral acknowledgement after a command posts publicly. */
+  dismissResponse?: () => Promise<void>;
   respondChoices?: (text: string, choices: Choice[]) => Promise<string | undefined>;
 }
 
@@ -855,18 +857,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
-    const route = this.routing.resolve(data.channelId);
-    if (!route || route.kind !== "general") {
-      await data.respond(t("tips.general_only"));
-      return;
-    }
     const adapter = this.adapters.get(adapterId) ?? this.adapter;
     if (!adapter) {
       await data.respond(t("tips.unavailable"));
       return;
     }
-    const chatId = this.getGroupIdForInstance(route.name) || data.channelId;
-    const result = await this.promptTip(route.name, adapter, chatId, data.channelId);
+    const targetName = this.resolveSlashTarget(data.channelId, adapterId)
+      ?? this.findGeneralInstance(adapterId)
+      ?? "general";
+    // Discord slash interactions are deferred ephemerally, but the Tip itself
+    // belongs in the channel where /tips was invoked. Post there directly,
+    // then delete the empty acknowledgement instead of leaving a slash corpse.
+    const result = await this.promptTip(targetName, adapter, data.channelId);
+    if (result === "posted" && data.dismissResponse) {
+      await data.dismissResponse();
+      return;
+    }
     await data.respond(t(result === "posted"
       ? "tips.posted"
       : result === "empty" ? "tips.empty" : "tips.unavailable"));
@@ -5297,14 +5303,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * Validate a nonce-armed callback and optionally claim it exactly once.
+   * Validate a nonce-armed callback and claim it exactly once.
    *
    * Returns:
    *  - null       — the callback is not for this prefix; try the next handler
    *  - "consumed" — for this prefix but stale/denied/malformed; stop dispatch
-   *  - the entry+action — the click is authorized; consuming actions are
-   *    claimed before any await, while explicitly non-consuming actions keep
-   *    the prompt available for a later decision
+   *  - the entry+action — the click is authorized and claimed before any await
    *
    * A stale click (expired nonce, or a pre-upgrade button whose payload no
    * longer parses) collapses the clicked message so the dead button stops
@@ -5316,7 +5320,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     data: AdapterCallbackData,
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
-    consume = true,
   ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
     if (!data.callbackData.startsWith(prefix)) return null;
     const match = data.callbackData.match(actionRe);
@@ -5357,12 +5360,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return "consumed";
     }
 
-    if (consume) {
-      // Claim before any await: double clicks and duplicate callback delivery
-      // can never act twice for state-changing actions.
-      this.pendingNonceButtons.delete(match[1]);
-      if (pending.timer) clearTimeout(pending.timer);
-    }
+    // Claim before any await: double clicks and duplicate callback delivery
+    // can never act twice for state-changing actions.
+    this.pendingNonceButtons.delete(match[1]);
+    if (pending.timer) clearTimeout(pending.timer);
     return { entry: pending, action: match[2] };
   }
 
@@ -5532,14 +5533,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
   ): Promise<boolean> {
-    const isConfused = data.callbackData.endsWith(":confused");
     const claimed = this.consumeNonceCallback(
       TIP_DISMISS_CALLBACK_PREFIX,
       /^tip-dismiss:([0-9a-f]+):(dismiss|confused)$/,
       data,
       callbackAdapterId,
       receivingAdapter,
-      !isConfused,
     );
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
@@ -5548,6 +5547,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!pending.tipId || !data.userId || !this.scheduler) {
         this.logger.error({ tipId: pending.tipId, userId: data.userId },
           "Tip feedback has incomplete persistence context");
+        await this.retireNonceButtons(
+          pending,
+          pending.messageId ?? data.messageId,
+          pending.expiredText,
+        );
         await pending.adapter.sendText(
           pending.chatId,
           t("tips.unavailable"),
@@ -5560,6 +5564,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       } catch (err) {
         this.logger.warn({ err, tipId: pending.tipId, userId: data.userId },
           "Failed to persist tip feedback");
+        await this.retireNonceButtons(
+          pending,
+          pending.messageId ?? data.messageId,
+          pending.expiredText,
+        );
         await pending.adapter.sendText(
           pending.chatId,
           t("tips.unavailable"),
@@ -5577,6 +5586,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         userId: data.userId,
         feedbackType: "confused",
       });
+      await this.retireNonceButtons(
+        pending,
+        pending.messageId ?? data.messageId,
+        // Confusion is feedback, not a dismissal. Keep the Tip readable while
+        // retiring this one-shot prompt; it remains eligible for future draws.
+        pending.expiredText,
+      );
       await pending.adapter.sendText(
         pending.chatId,
         t("tips.feedback_recorded"),
