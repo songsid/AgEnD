@@ -70,9 +70,9 @@ describe("tips catalog and persistence", () => {
       expect(tip.text_zh).toMatch(/[（(].+[）)]/u);
     }
 
-    const dismissed = new Set(intermediate.slice(0, 29).map(t => t.id));
+    const dismissed = new Set(intermediate.slice(0, 59).map(t => t.id));
     expect(canUnlockAdvancedTips(dismissed)).toBe(false);
-    dismissed.add(intermediate[29].id);
+    dismissed.add(intermediate[59].id);
     expect(canUnlockAdvancedTips(dismissed)).toBe(true);
     expect(visibleTipLevels(false).has("advanced")).toBe(false);
     expect(visibleTipLevels(true).has("advanced")).toBe(true);
@@ -167,11 +167,11 @@ describe("tip button flow", () => {
 
     expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
-      "fleet", "tip-message", expect.stringContaining("will not be shown again"), "general-topic",
+      "fleet", "tip-message", alert.message, "general-topic",
     );
   });
 
-  it("offers and persists the explicit advanced unlock after 30 intermediate dismissals", async () => {
+  it("offers and persists the explicit advanced unlock after 60 intermediate dismissals", async () => {
     const notifyAlert = vi.fn().mockResolvedValue({
       messageId: "unlock-message", chatId: "fleet", threadId: "general-topic",
     });
@@ -180,7 +180,7 @@ describe("tip button flow", () => {
       id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons,
     } as any;
     const dismissed = new Set(
-      TIPS.filter(t => t.level === "intermediate").slice(0, 30).map(t => t.id),
+      TIPS.filter(t => t.level === "intermediate").slice(0, 60).map(t => t.id),
     );
     const unlockAdvancedTips = vi.fn();
     const fm = new FleetManager("/tmp/agend-tip-unlock-test");
@@ -193,7 +193,7 @@ describe("tip button flow", () => {
 
     expect(await fm.promptTip("general", adapter, "fleet", "general-topic")).toBe("posted");
     const alert = notifyAlert.mock.calls[0][1];
-    expect(alert.message).toContain("30");
+    expect(alert.message).toContain("60");
     expect(alert.message).toContain("fleet");
     expect(alert.choices[0].id).toMatch(/^tip-unlock:[0-9a-f]{32}:unlock$/);
 
@@ -211,16 +211,18 @@ describe("tip button flow", () => {
     );
   });
 
-  it("/tips off and on persist defaults while bare /tips requests a button", async () => {
+  it("/tips modes persist settings, allow an admin unlock, and bare /tips requests a button", async () => {
     const sendText = vi.fn().mockResolvedValue({ messageId: "reply", chatId: "fleet" });
     const promptTip = vi.fn().mockResolvedValue("posted");
     const saveFleetConfig = vi.fn();
+    const unlockAdvancedTips = vi.fn(() => true);
     const ctx = {
       adapter: { id: "tg", type: "telegram", sendText },
       fleetConfig: { defaults: {}, instances: { general: { general_topic: true } } },
       isFleetAdmin: vi.fn(() => true),
       saveFleetConfig,
       promptTip,
+      unlockAdvancedTips,
     } as any;
     const commands = new TopicCommands(ctx);
     const message = (text: string) => ({
@@ -235,6 +237,19 @@ describe("tip button flow", () => {
     await commands.handleGeneralCommand(message("/tips on"));
     expect(ctx.fleetConfig.defaults.tips).toBe(true);
     expect(saveFleetConfig).toHaveBeenCalledTimes(2);
+
+    await commands.handleGeneralCommand(message("/tips advanced on"));
+    expect(unlockAdvancedTips).toHaveBeenCalledWith("admin");
+    expect(sendText).toHaveBeenCalledWith(
+      "fleet", expect.stringContaining("Advanced tips unlocked"), { threadId: "general-topic" },
+    );
+
+    ctx.isFleetAdmin.mockReturnValue(false);
+    await commands.handleGeneralCommand({ ...message("/tips advanced on"), userId: "guest" });
+    expect(unlockAdvancedTips).toHaveBeenCalledTimes(1);
+    expect(sendText).toHaveBeenLastCalledWith(
+      "fleet", expect.stringMatching(/permission|authorized/i), { threadId: "general-topic" },
+    );
 
     await commands.handleGeneralCommand(message("/tips"));
     expect(promptTip).toHaveBeenCalledWith("general", ctx.adapter, "fleet", "general-topic");

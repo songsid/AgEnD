@@ -828,6 +828,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handleTipsSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     if (!this.fleetConfig) return;
     const mode = typeof data.options?.mode === "string" ? data.options.mode : "";
+    if (mode === "advanced on") {
+      if (!this.isFleetAdmin(data.userId, adapterId)) {
+        await data.respond(t("permission.denied"));
+        return;
+      }
+      await data.respond(this.unlockAdvancedTips(data.userId)
+        ? t("tips.advanced.unlocked")
+        : t("tips.unavailable"));
+      return;
+    }
     if (mode === "on" || mode === "off") {
       if (!this.isFleetAdmin(data.userId, adapterId)) {
         await data.respond(t("permission.denied"));
@@ -5394,6 +5404,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return `💡 ${t("tips.label")}: ${this.tipText(tip)}`;
   }
 
+  /** Persistently enable advanced tips through the admin-only slash command. */
+  unlockAdvancedTips(userId: string): boolean {
+    if (!this.scheduler) return false;
+    try {
+      this.scheduler.db.unlockAdvancedTips(userId);
+      this.eventLog?.insert(this.findGeneralInstance() ?? "general", "tips_advanced_unlocked", {
+        userId,
+        source: "command",
+      });
+      return true;
+    } catch (err) {
+      this.logger.warn({ err, userId }, "Failed to unlock advanced tips from command");
+      return false;
+    }
+  }
+
   /** Post one fresh nonce-armed tip in a known General channel. */
   async promptTip(
     generalName: string,
@@ -5506,7 +5532,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.retireNonceButtons(
       pending,
       pending.messageId ?? data.messageId,
-      t("tips.dismissed"),
+      // Dismissal changes future selection only. Keep the useful tip text in
+      // chat history and remove just the now-consumed button.
+      pending.expiredText,
     );
     const state = this.readTipState();
     if (state && !state.advancedUnlocked && canUnlockAdvancedTips(state.dismissed)) {
