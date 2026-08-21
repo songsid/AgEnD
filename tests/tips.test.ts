@@ -22,6 +22,10 @@ describe("tips catalog and persistence", () => {
     expect(TIPS.filter(t => t.level === "advanced")).toHaveLength(100);
     expect(new Set(TIPS.map(t => t.id)).size).toBe(300);
     expect(TIPS.every(t => t.text_en.trim() && t.text_zh.trim())).toBe(true);
+    expect(TIPS.map(t => t.id)).toEqual(
+      Array.from({ length: 300 }, (_, index) => `tip-${String(index + 1).padStart(3, "0")}`),
+    );
+    expect(TIPS.every(t => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(t.text_en + t.text_zh))).toBe(true);
 
     const dismissed = new Set(intermediate.slice(0, 29).map(t => t.id));
     expect(canUnlockAdvancedTips(dismissed)).toBe(false);
@@ -147,6 +151,7 @@ describe("tip button flow", () => {
     expect(await fm.promptTip("general", adapter, "fleet", "general-topic")).toBe("posted");
     const alert = notifyAlert.mock.calls[0][1];
     expect(alert.message).toContain("30");
+    expect(alert.message).toContain("fleet");
     expect(alert.choices[0].id).toMatch(/^tip-unlock:[0-9a-f]{32}:unlock$/);
 
     await (fm as any).handleTipUnlock({
