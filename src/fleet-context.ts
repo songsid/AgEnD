@@ -46,6 +46,8 @@ export interface FleetContext {
   getDeliveryEpoch?(name: string): number;
   /** Subscription provider IDs used by running or paused fleet/Classic instances. */
   getActiveUsageProviderIds?(): ReadonlySet<string>;
+  /** Effective backend IDs used by running or paused fleet/Classic instances. */
+  getActiveBackendIds?(): ReadonlySet<string>;
   toggleFleetCollab(instanceName: string): boolean;
   /** Apply a model to an instance (runtime paste or persist + restart). Returns a status string. */
   applyModel(instanceName: string, model: string): Promise<string>;

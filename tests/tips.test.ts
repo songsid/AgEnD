@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import { SchedulerDb } from "../src/scheduler/db.js";
-import { canUnlockAdvancedTips, TIPS, selectTip, visibleTipLevels } from "../src/tips.js";
+import {
+  canUnlockAdvancedTips,
+  TIPS,
+  TIPS_MAX_VISIBLE_LEVEL,
+  selectTip,
+  visibleTipLevels,
+} from "../src/tips.js";
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -22,6 +28,10 @@ describe("tips catalog and persistence", () => {
     expect(TIPS.filter(t => t.level === "advanced")).toHaveLength(100);
     expect(new Set(TIPS.map(t => t.id)).size).toBe(300);
     expect(TIPS.every(t => t.text_en.trim() && t.text_zh.trim())).toBe(true);
+    const backendTags = new Set([
+      "claude-code", "codex", "kiro-cli", "grok", "antigravity", "opencode",
+    ]);
+    expect(TIPS.flatMap(tip => tip.tags ?? []).every(tag => backendTags.has(tag))).toBe(true);
     expect(TIPS.map(t => t.id)).toEqual(
       Array.from({ length: 300 }, (_, index) => `tip-${String(index + 1).padStart(3, "0")}`),
     );
@@ -74,11 +84,25 @@ describe("tips catalog and persistence", () => {
     expect(canUnlockAdvancedTips(dismissed)).toBe(false);
     dismissed.add(intermediate[59].id);
     expect(canUnlockAdvancedTips(dismissed)).toBe(true);
-    expect(visibleTipLevels(false).has("advanced")).toBe(false);
-    expect(visibleTipLevels(true).has("advanced")).toBe(true);
-    const allBasic = new Set(TIPS.filter(t => t.level !== "advanced").map(t => t.id));
-    expect(selectTip(allBasic, () => 0, false)).toBeNull();
-    expect(selectTip(allBasic, () => 0, true)?.level).toBe("advanced");
+    expect(TIPS_MAX_VISIBLE_LEVEL).toBe("beginner");
+    expect([...visibleTipLevels(false)]).toEqual(["beginner"]);
+    expect([...visibleTipLevels(true)]).toEqual(["beginner"]);
+    const allBeginner = new Set(beginner.map(t => t.id));
+    expect(selectTip(allBeginner, () => 0, false, new Set(["claude-code"]))).toBeNull();
+    expect(selectTip(allBeginner, () => 0, true, new Set(["claude-code"]))).toBeNull();
+
+    expect(byId.get("tip-014")?.tags).toEqual(["claude-code", "codex", "grok"]);
+    expect(byId.get("tip-069")?.tags).toEqual(["claude-code", "kiro-cli"]);
+    expect(byId.get("tip-070")?.tags).toContain("opencode");
+
+    // Isolate one backend-scoped beginner tip: it is absent without a matching
+    // backend and selectable once that backend is active.
+    const allButOpenCodeFallback = new Set(beginner
+      .filter(tip => tip.id !== "tip-070")
+      .map(tip => tip.id));
+    expect(selectTip(allButOpenCodeFallback, () => 0, false, new Set(["claude-code"]))).toBeNull();
+    expect(selectTip(allButOpenCodeFallback, () => 0, false, new Set(["opencode"]))?.id)
+      .toBe("tip-070");
   });
 
   it("persists idempotent per-user dismissals and exposes fleet-wide distinct ids", () => {
@@ -88,11 +112,20 @@ describe("tips catalog and persistence", () => {
     db.dismissTip("user-a", "tip-001");
     db.dismissTip("user-a", "tip-001");
     db.dismissTip("user-b", "tip-002");
+    db.recordTipFeedback("user-a", "tip-003", "confused");
+    db.recordTipFeedback("user-a", "tip-003", "confused");
     expect([...db.listDismissedTipIds()].sort()).toEqual(["tip-001", "tip-002"]);
     expect(db.isAdvancedTipsUnlocked()).toBe(false);
     db.unlockAdvancedTips("user-a");
     db.unlockAdvancedTips("user-b");
     expect(db.isAdvancedTipsUnlocked()).toBe(true);
+    expect(db.listTipFeedback()).toEqual([
+      expect.objectContaining({
+        tip_id: "tip-003",
+        user_id: "user-a",
+        feedback_type: "confused",
+      }),
+    ]);
     db.close();
   });
 });
@@ -135,16 +168,19 @@ describe("tip button flow", () => {
       messageId: "tip-message", chatId: "fleet", threadId: "general-topic",
     });
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "feedback", chatId: "fleet" });
     const adapter = {
-      id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons,
+      id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons, sendText,
     } as any;
     const dismissTip = vi.fn();
+    const recordTipFeedback = vi.fn();
     const fm = new FleetManager(dir);
     (fm as any).scheduler = {
       db: {
         listDismissedTipIds: vi.fn(() => new Set<string>()),
         isAdvancedTipsUnlocked: vi.fn(() => false),
         dismissTip,
+        recordTipFeedback,
       },
     };
     fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
@@ -154,6 +190,23 @@ describe("tip button flow", () => {
     expect(alert.type).toBe("tip");
     expect(alert.message).toMatch(/^💡 Tip: /);
     expect(alert.choices[0].id).toMatch(/^tip-dismiss:[0-9a-f]{32}:dismiss$/);
+    expect(alert.choices[1]).toMatchObject({ label: "❓ I don't understand" });
+    expect(alert.choices[1].id).toMatch(/^tip-dismiss:[0-9a-f]{32}:confused$/);
+
+    await (fm as any).handleTipDismiss({
+      callbackData: alert.choices[1].id,
+      chatId: "fleet",
+      threadId: "general-topic",
+      messageId: "tip-message",
+      userId: "reader",
+    }, "discord-main", adapter);
+
+    expect(recordTipFeedback).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/), "confused");
+    expect(dismissTip).not.toHaveBeenCalled();
+    expect(editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith(
+      "fleet", "Feedback recorded. Thank you.", { threadId: "general-topic" },
+    );
 
     await (fm as any).handleTipDismiss({
       callbackData: alert.choices[0].id,
@@ -171,7 +224,7 @@ describe("tip button flow", () => {
     );
   });
 
-  it("offers and persists the explicit advanced unlock after 60 intermediate dismissals", async () => {
+  it("persists the explicit advanced unlock when its retained prompt is confirmed", async () => {
     const notifyAlert = vi.fn().mockResolvedValue({
       messageId: "unlock-message", chatId: "fleet", threadId: "general-topic",
     });
@@ -179,19 +232,18 @@ describe("tip button flow", () => {
     const adapter = {
       id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons,
     } as any;
-    const dismissed = new Set(
-      TIPS.filter(t => t.level === "intermediate").slice(0, 60).map(t => t.id),
-    );
     const unlockAdvancedTips = vi.fn();
     const fm = new FleetManager("/tmp/agend-tip-unlock-test");
     (fm as any).scheduler = { db: {
-      listDismissedTipIds: vi.fn(() => dismissed),
+      listDismissedTipIds: vi.fn(() => new Set<string>()),
       isAdvancedTipsUnlocked: vi.fn(() => false),
       unlockAdvancedTips,
     } };
     fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
 
-    expect(await fm.promptTip("general", adapter, "fleet", "general-topic")).toBe("posted");
+    expect(await (fm as any).promptAdvancedTipUnlock(
+      "general", adapter, "fleet", "general-topic",
+    )).toBe(true);
     const alert = notifyAlert.mock.calls[0][1];
     expect(alert.message).toContain("60");
     expect(alert.message).toContain("fleet");

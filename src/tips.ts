@@ -24,9 +24,13 @@ export interface Tip {
   level: TipLevel;
   text_en: string;
   text_zh: string;
+  /** Backend-specific tips are shown only when one of these backends is active. */
+  tags?: string[];
 }
 
 export const ADVANCED_TIP_UNLOCK_THRESHOLD = 60;
+/** Temporary rollout gate: keep authored higher tiers without selecting them yet. */
+export const TIPS_MAX_VISIBLE_LEVEL: TipLevel = "beginner";
 
 export const TIPS: Tip[] = [
   // ── Beginner: mobile-first onboarding (100) ───────────────────────────
@@ -44,8 +48,8 @@ export const TIPS: Tip[] = [
   { id: "tip-011", level: "beginner", text_en: "Cancel also discards older messages that are still waiting to be delivered to that assistant.", text_zh: "按下取消時，也會丟棄先前仍在等待送出的訊息。" },
   { id: "tip-012", level: "beginner", text_en: "A message sent after Cancel is treated as a new request and is not discarded with older waiting messages.", text_zh: "取消後才送出的訊息會視為新需求，不會和先前等待中的訊息一起被丟棄。" },
   { id: "tip-013", level: "beginner", text_en: "If an answer is going in the wrong direction, send a short correction instead of repeating the whole request.", text_zh: "發現回答方向偏離時，可直接補充簡短修正，不必重貼整份需求。" },
-  { id: "tip-014", level: "beginner", text_en: "Where available, `/steer <message>` adjusts work already in progress without starting the request over.", text_zh: "在可使用的聊天室中，`/steer <訊息>` 可調整正在進行的工作，不必從頭重來。" },
-  { id: "tip-015", level: "beginner", text_en: "Use a steering message for a change of direction, not for an unrelated new task.", text_zh: "調整方向的訊息適合修正目前工作，不適合加入無關的新任務。" },
+  { id: "tip-014", level: "beginner", text_en: "Where available, `/steer <message>` adjusts work already in progress without starting the request over.", text_zh: "在可使用的聊天室中，`/steer <訊息>` 可調整正在進行的工作，不必從頭重來。", tags: ["claude-code", "codex", "grok"] },
+  { id: "tip-015", level: "beginner", text_en: "Use a steering message for a change of direction, not for an unrelated new task.", text_zh: "調整方向的訊息適合修正目前工作，不適合加入無關的新任務。", tags: ["claude-code", "codex", "grok"] },
   { id: "tip-016", level: "beginner", text_en: "Reply to an earlier chat message when the assistant needs to know exactly which message you mean.", text_zh: "需要指出特定內容時，可直接回覆較早的聊天訊息，讓 AI 助手知道所指的是哪一則。" },
   { id: "tip-017", level: "beginner", text_en: "When you reply to a message, its quoted text is included with the new request.", text_zh: "回覆某則訊息時，被引用的文字會和新需求一起送出。" },
   { id: "tip-018", level: "beginner", text_en: "Add a short note explaining why the quoted message matters to the new request.", text_zh: "引用舊訊息時，可補一句說明它與新需求的關係。" },
@@ -104,8 +108,8 @@ export const TIPS: Tip[] = [
   { id: "tip-066", level: "beginner", text_en: "A missing conversation-space percentage is not necessarily an error; some AI engines do not report one.", text_zh: "沒有對話空間百分比不一定代表錯誤；部分 AI 引擎不會提供此數值。" },
   { id: "tip-067", level: "beginner", text_en: "Use `/compact` when a long discussion needs to be shortened while retaining useful information where possible.", text_zh: "對話過長時，可用 `/compact` 嘗試縮短內容並保留有用資訊。" },
   { id: "tip-068", level: "beginner", text_en: "The effect of `/compact` varies by AI engine; some shorten the discussion while others may clear it.", text_zh: "`/compact` 的效果會依 AI 引擎而異；有些會縮短討論，有些則可能清除內容。" },
-  { id: "tip-069", level: "beginner", text_en: "A saved conversation is a copy kept for later reference; `/save <name>` works only where the selected AI engine supports it.", text_zh: "已儲存對話是留供日後查看的副本；只有所選 AI 引擎支援時，`/save <名稱>` 才能使用。" },
-  { id: "tip-070", level: "beginner", text_en: "If `/save` is unavailable, ask the assistant for a summary that can be copied into personal notes.", text_zh: "無法使用 `/save` 時，可請 AI 助手整理摘要，再複製到自己的筆記。" },
+  { id: "tip-069", level: "beginner", text_en: "A saved conversation is a copy kept for later reference; `/save <name>` works only where the selected AI engine supports it.", text_zh: "已儲存對話是留供日後查看的副本；只有所選 AI 引擎支援時，`/save <名稱>` 才能使用。", tags: ["claude-code", "kiro-cli"] },
+  { id: "tip-070", level: "beginner", text_en: "If `/save` is unavailable, ask the assistant for a summary that can be copied into personal notes.", text_zh: "無法使用 `/save` 時，可請 AI 助手整理摘要，再複製到自己的筆記。", tags: ["codex", "grok", "antigravity", "opencode"] },
 
   { id: "tip-071", level: "beginner", text_en: "General is the coordinating assistant that can help choose another assistant for a request.", text_zh: "General 是負責協調的 AI 助手，可協助為需求選擇另一位助手。" },
   { id: "tip-072", level: "beginner", text_en: "Ask General to split independent parts of a large request among several assistants.", text_zh: "大型需求有互不相依的部分時，可請 General 分給多位 AI 助手處理。" },
@@ -354,18 +358,23 @@ export function canUnlockAdvancedTips(dismissedIds: ReadonlySet<string>): boolea
 }
 
 export function visibleTipLevels(advancedUnlocked = false): ReadonlySet<TipLevel> {
-  return new Set<TipLevel>(advancedUnlocked
-    ? ["beginner", "intermediate", "advanced"]
-    : ["beginner", "intermediate"]);
+  const ordered: TipLevel[] = ["beginner", "intermediate", "advanced"];
+  const maxIndex = ordered.indexOf(TIPS_MAX_VISIBLE_LEVEL);
+  return new Set<TipLevel>(ordered.filter((level, index) =>
+    index <= maxIndex && (level !== "advanced" || advancedUnlocked)));
 }
 
 export function selectTip(
   dismissedIds: ReadonlySet<string>,
   random: () => number = Math.random,
   advancedUnlocked = false,
+  activeBackends: ReadonlySet<string> = new Set<string>(),
 ): Tip | null {
   const levels = visibleTipLevels(advancedUnlocked);
-  const candidates = TIPS.filter(tip => levels.has(tip.level) && !dismissedIds.has(tip.id));
+  const candidates = TIPS.filter(tip =>
+    levels.has(tip.level)
+    && !dismissedIds.has(tip.id)
+    && (!tip.tags?.length || tip.tags.some(tag => activeBackends.has(tag))));
   if (candidates.length === 0) return null;
   const index = Math.min(candidates.length - 1, Math.max(0, Math.floor(random() * candidates.length)));
   return candidates[index];
