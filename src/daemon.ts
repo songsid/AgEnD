@@ -57,6 +57,8 @@ export function buildInstructionReloadNotice(binaryName: string, instanceName: s
 export const DEFAULT_STUCK_TIMEOUT_MS = 10 * 60_000;
 export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
+/** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
+export const PERIODIC_REDRAW_PROBE_MS = 25;
 /** A foreground server/port-forward should hand control back or be acknowledged. */
 export const DEFAULT_BLOCKING_PROCESS_GRACE_MS = 2 * 60_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
@@ -811,6 +813,7 @@ export class Daemon extends EventEmitter {
   /** Fallback safety sweep used only when no shared tmux control client exists. */
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private instanceStateIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private instanceStateOutputProbeTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
   private instanceStateOutputEventName: string | null = null;
@@ -2451,6 +2454,25 @@ export class Daemon extends EventEmitter {
     this.instanceStateIdleTimer = null;
   }
 
+  private clearInstanceStateOutputProbeTimer(): void {
+    if (this.instanceStateOutputProbeTimer) clearTimeout(this.instanceStateOutputProbeTimer);
+    this.instanceStateOutputProbeTimer = null;
+  }
+
+  /**
+   * Periodic status-line hooks can generate `%output` without changing a single
+   * visible cell. Probe the pane once per burst: a changed capture is real work;
+   * an identical ready capture remains idle and emits no state edge.
+   */
+  private scheduleInstanceStateOutputProbe(): void {
+    if (this.instanceStateOutputProbeTimer) return;
+    this.instanceStateOutputProbeTimer = setTimeout(() => {
+      this.instanceStateOutputProbeTimer = null;
+      void this.captureAndEvaluateInstanceState("output_probe", this.instanceStateLastOutputAt);
+    }, PERIODIC_REDRAW_PROBE_MS);
+    this.instanceStateOutputProbeTimer.unref?.();
+  }
+
   private clearInstanceStateStuckTimer(): void {
     if (this.instanceStateStuckTimer) clearTimeout(this.instanceStateStuckTimer);
     this.instanceStateStuckTimer = null;
@@ -2493,6 +2515,7 @@ export class Daemon extends EventEmitter {
     if (!this.instanceStateMonitorActive || this.runtimeMonitorsFrozen || !this.tmux || !this.instanceStateMachine || this.spawning) return;
     if (this.statePollInFlight) {
       if (reason === "idle_debounce") this.scheduleInstanceStateIdleCapture();
+      if (reason === "output_probe") this.scheduleInstanceStateOutputProbe();
       return;
     }
     this.statePollInFlight = true;
@@ -2501,8 +2524,22 @@ export class Daemon extends EventEmitter {
       const pane = await this.tmux.capturePane();
       // Output received while capture-pane was in flight makes this snapshot
       // stale. Its output handler has already armed a new debounce.
-      if ((expectedOutputAt > 0 && this.instanceStateLastOutputAt > expectedOutputAt)
-        || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt)) return;
+      const outputMovedDuringCapture =
+        (expectedOutputAt > 0 && this.instanceStateLastOutputAt > expectedOutputAt)
+        || (this.instanceStateLastOutputAt > 0 && this.instanceStateLastOutputAt >= captureStartedAt);
+      if (outputMovedDuringCapture) {
+        if (reason === "output_probe") {
+          // A second burst overtook the probe. Do not bless its stale capture as
+          // idle: continuous output is the safer working signal, while the next
+          // quiet probe/debounce can still prove that it was only repainting.
+          this.applyInstanceStateSnapshot(
+            this.instanceStateMachine.recordOutput(this.instanceStateLastOutputAt),
+          );
+          this.scheduleInstanceStateIdleCapture();
+          this.scheduleInstanceStateStuckDeadline(this.instanceStateLastOutputAt);
+        }
+        return;
+      }
 
       const observedChangeAt = expectedOutputAt || captureStartedAt;
       // One observation per capture. This used to call observe() twice with the
@@ -2552,6 +2589,14 @@ export class Daemon extends EventEmitter {
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
     this.instanceStateLastOutputAt = event.at;
+    if (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle") {
+      // Do not emit idle→working solely because agy repainted an identical
+      // footer. The short capture probe below still observes genuine pane
+      // changes promptly and moves the state to working.
+      this.scheduleInstanceStateOutputProbe();
+      this.scheduleInstanceStateIdleCapture();
+      return;
+    }
     const snapshot = this.instanceStateMachine.recordOutput(event.at);
     this.applyInstanceStateSnapshot(snapshot);
     this.scheduleInstanceStateIdleCapture();
@@ -2612,6 +2657,7 @@ export class Daemon extends EventEmitter {
   private stopInstanceStateMonitor(): void {
     this.instanceStateMonitorActive = false;
     this.clearInstanceStateIdleTimer();
+    this.clearInstanceStateOutputProbeTimer();
     this.clearInstanceStateStuckTimer();
     if (this.instanceStateMonitorTimer) clearInterval(this.instanceStateMonitorTimer);
     this.instanceStateMonitorTimer = null;
@@ -3131,7 +3177,7 @@ export class Daemon extends EventEmitter {
     // If the CLI is busy, either hand the complete submission to its native input
     // queue or wait for idle. Native queue support is an explicit backend capability:
     // normal Enter input has steering/interrupt semantics in several other CLIs.
-    if (windowId && this.controlClient && !this.controlClient.isIdle(windowId)) {
+    if (windowId && this.controlClient && !this.isPaneIdleForDelivery(windowId)) {
       if (status) this.emit("message_queued", status);
       if (supportsQueuedInput || opts?.steer) {
         // Native queue (codex), or an explicit /steer: hand the complete
@@ -3145,7 +3191,7 @@ export class Daemon extends EventEmitter {
         );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
-        const becameIdle = await this.controlClient.waitUntilIdle(windowId);
+        const becameIdle = await this.waitForPaneIdleForDelivery(windowId);
         if (cancelled()) return false;
         if (!becameIdle) {
           // The pane never freed up. Report the failure instead of pasting into a
@@ -3165,6 +3211,46 @@ export class Daemon extends EventEmitter {
     return this.paneWriteLock.run(async () => {
       if (cancelled()) return false;
       return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
+    });
+  }
+
+  /**
+   * A raw `%output` silence check is authoritative for ordinary TUIs. It is not
+   * for a backend such as agy whose status-line hook periodically redraws an
+   * identical screen. In that case trust an idle pane-state snapshot only when
+   * it was captured after both the latest output and the latest control-client
+   * observation reset.
+   */
+  private isPaneIdleForDelivery(windowId: string): boolean {
+    if (!this.controlClient) return true;
+    if (this.controlClient.isIdle(windowId)) return true;
+    if (this.backend?.hasPeriodicPaneRedraw?.() !== true || this.instanceState !== "idle") return false;
+
+    const lastOutputAt = this.controlClient.getLastOutputAt(windowId);
+    if (lastOutputAt === undefined || !this.instanceStateMachine) return false;
+    const observedAt = this.instanceStateMachine.snapshot().observedAt;
+    return observedAt >= lastOutputAt
+      && observedAt >= this.controlClient.getObservationResetAt();
+  }
+
+  private waitForPaneIdleForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+    if (!this.controlClient) return Promise.resolve(true);
+    if (this.backend?.hasPeriodicPaneRedraw?.() !== true) {
+      return this.controlClient.waitUntilIdle(windowId, timeoutMs);
+    }
+    if (this.isPaneIdleForDelivery(windowId)) return Promise.resolve(true);
+
+    return new Promise(resolve => {
+      const check = setInterval(() => {
+        if (!this.isPaneIdleForDelivery(windowId)) return;
+        clearInterval(check);
+        clearTimeout(timer);
+        resolve(true);
+      }, 50);
+      const timer = setTimeout(() => {
+        clearInterval(check);
+        resolve(false);
+      }, timeoutMs);
     });
   }
 

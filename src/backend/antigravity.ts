@@ -164,6 +164,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     return /^[ \t]*[·✢✶✻✽][ \t]+\p{L}[^\n]*(?:…|\.\.\.)[^\n]*(?:\b\d+(?:\.\d+)?s\b|\(esc to cancel\))/mu;
   }
 
+  // agy periodically reruns and repaints its statusLine hook even when the
+  // resulting footer is byte-for-byte identical on screen. A raw tmux %output
+  // event is therefore not sufficient evidence that the agent started work.
+  hasPeriodicPaneRedraw(): boolean { return true; }
+
   getContextUsage(): number | null {
     return null;
   }

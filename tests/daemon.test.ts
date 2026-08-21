@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Daemon } from "../src/daemon.js";
+import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
@@ -89,7 +89,7 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli", idle: boolean, pane = "") {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity", idle: boolean, pane = "") {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
@@ -300,6 +300,36 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(control.waitUntilIdle).toHaveBeenCalledOnce();
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
       expect(confirm).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not make Antigravity wait 30s for an unchanged periodic footer redraw", async () => {
+    const idlePane = "────────\n>\n────────\nContext 16% used";
+    const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon("antigravity", false, idlePane);
+    const machine = new PaneStateMachine(backend.getReadyPattern(), 600_000, 0, backend.getBusyPattern?.());
+    machine.observe(idlePane, 500);
+    (daemon as any).instanceStateMachine = machine;
+    (daemon as any).instanceState = "idle";
+    control.getLastOutputAt.mockReturnValue(1_000);
+    const confirm = vi.fn().mockResolvedValue(true);
+    (daemon as any).confirmBusyAfterEnter = confirm;
+
+    try {
+      expect(backend.hasPeriodicPaneRedraw?.()).toBe(true);
+      // A stale idle observation must not bypass either newer output or a
+      // control reconnect. Only a post-redraw capture makes the pane trusted.
+      expect((daemon as any).isPaneIdleForDelivery("@queued")).toBe(false);
+      machine.observe(idlePane, 2_000);
+      expect((daemon as any).isPaneIdleForDelivery("@queued")).toBe(true);
+      control.getObservationResetAt.mockReturnValue(2_500);
+      expect((daemon as any).isPaneIdleForDelivery("@queued")).toBe(false);
+      control.getObservationResetAt.mockReturnValue(0);
+
+      expect(await (daemon as any).deliverMessage("deliver despite cosmetic redraw")).toBe(true);
+      expect(control.waitUntilIdle).not.toHaveBeenCalled();
+      expect(tmux.pasteBuffer).toHaveBeenCalledOnce();
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }

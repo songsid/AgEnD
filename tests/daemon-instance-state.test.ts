@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail } from "../src/daemon.js";
 import { HangDetector } from "../src/hang-detector.js";
+import { AntigravityBackend } from "../src/backend/antigravity.js";
 
 describe("PaneStateMachine", () => {
   const timeoutMs = 10 * 60_000;
@@ -95,6 +96,54 @@ describe("PendingWorkTracker", () => {
 });
 
 describe("Daemon event-driven pane monitor", () => {
+  it("keeps an idle Antigravity pane idle across identical status-line redraws", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-agy-redraw-"));
+    writeFileSync(join(instanceDir, "window-id"), "@agy");
+    const control = new EventEmitter();
+    let pane = "────────\n>\n────────\nContext 16% used";
+    const tmux = { getWindowId: () => "@agy", capturePane: vi.fn(async () => pane) };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("agy-redraw", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: true, timeout_minutes: 10, idle_debounce_ms: 2_000 },
+      log_level: "silent",
+    } as any, instanceDir, false, new AntigravityBackend(instanceDir), control as any,
+      { child: () => logger } as any);
+    (daemon as any).tmux = tmux;
+
+    try {
+      (daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(daemon.getInstanceState()).toBe("idle");
+
+      // Ten status-line executions repaint the same visible cells. Before #600
+      // each raw %output forced working and the debounce capture forced idle:
+      // twenty false edges from an otherwise idle pane.
+      for (let i = 0; i < 10; i++) {
+        control.emit("output:@agy", { paneId: "%agy", windowId: "@agy", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(25);
+        expect(daemon.getInstanceState()).toBe("idle");
+        await vi.advanceTimersByTimeAsync(2_975);
+      }
+      expect(logger.info.mock.calls.filter(call => call[1] === "Instance execution state changed")).toHaveLength(0);
+
+      // A real screen change is still promoted to working by the short probe;
+      // cosmetic filtering must not create a false-idle delivery window.
+      pane = "✢ Thinking… 12s\n────────\n>\n────────\nContext 16% used";
+      control.emit("output:@agy", { paneId: "%agy", windowId: "@agy", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(25);
+      expect(daemon.getInstanceState()).toBe("working");
+    } finally {
+      (daemon as any).stopInstanceStateMonitor();
+      rmSync(instanceDir, { recursive: true, force: true });
+      vi.useRealTimers();
+    }
+  });
+
   it("uses output events for working, debounce capture for idle, and a stuck deadline", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

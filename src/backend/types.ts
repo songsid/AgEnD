@@ -134,6 +134,17 @@ export interface CliBackend {
    */
   requiresDeliveryEnterRetry?(): boolean;
 
+  /**
+   * Whether the TUI can emit terminal output while its visible pane is
+   * unchanged (for example, rerunning and repainting a status-line hook).
+   *
+   * The daemon normally treats every tmux control-mode output event as immediate
+   * evidence of work. Backends with periodic cosmetic redraws instead require a
+   * pane capture to confirm that visible content actually changed. Absent means
+   * false.
+   */
+  hasPeriodicPaneRedraw?(): boolean;
+
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
 
