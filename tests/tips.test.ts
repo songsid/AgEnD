@@ -27,6 +27,49 @@ describe("tips catalog and persistence", () => {
     );
     expect(TIPS.every(t => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(t.text_en + t.text_zh))).toBe(true);
 
+    // Beginner tips are mobile-chat onboarding copy. Architecture vocabulary is
+    // introduced (with definitions) in the intermediate tier, never leaked into
+    // the first hundred tips as unexplained implementation detail.
+    const beginnerTechnicalTerms = /\b(?:MCP|tmux|pane|daemon|stdio|epoch|IPC|CLI|instance|backend|fleet|context)\b|fleet\.yaml|config key/iu;
+    for (const tip of beginner) {
+      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(beginnerTechnicalTerms);
+      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(beginnerTechnicalTerms);
+    }
+
+    const firstFiftyNonChatTerms = /\b(?:General|model|quota|administrator|Settings|Claude Code|Codex|Kiro|Grok|Antigravity|OpenCode)\b|\/(?:pause|wake|restart|update|dashboard|status|clear|model|effort|raw|doctor|sysinfo)\b/iu;
+    for (const tip of beginner.slice(0, 50)) {
+      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(firstFiftyNonChatTerms);
+      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(firstFiftyNonChatTerms);
+    }
+
+    const beginnerAdminSurface = /\/(?:pause|wake|restart|update|dashboard|status|clear|model|effort|raw|doctor|sysinfo)\b|\/tips\s+(?:on|off)\b|\bSettings\b|管理員/u;
+    for (const tip of beginner) {
+      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(beginnerAdminSurface);
+      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(beginnerAdminSurface);
+    }
+    expect(beginner[20]).toMatchObject({ id: "tip-021" });
+    expect(beginner[20].text_en).toMatch(/AgEnD.+connects?.+chat.+AI assistant/i);
+    expect(beginner[20].text_zh).toMatch(/AgEnD.+聊天室.+AI 助手/u);
+
+    const byId = new Map(TIPS.map(tip => [tip.id, tip]));
+    for (const [id, concept] of [
+      ["tip-101", "Instance"],
+      ["tip-102", "Fleet"],
+      ["tip-103", "General"],
+      ["tip-104", "Backend"],
+      ["tip-105", "Context"],
+      ["tip-106", "MCP"],
+    ] as const) {
+      const tip = byId.get(id)!;
+      expect(tip.level).toBe("intermediate");
+      expect(tip.text_en).toContain(concept);
+      expect(tip.text_zh).toContain(concept);
+      // Each glossary entry explains the term in the same sentence instead of
+      // assuming that graduating beginner readers already know it.
+      expect(tip.text_en.split(/\s+/).length).toBeGreaterThan(8);
+      expect(tip.text_zh).toMatch(/[（(].+[）)]/u);
+    }
+
     const dismissed = new Set(intermediate.slice(0, 29).map(t => t.id));
     expect(canUnlockAdvancedTips(dismissed)).toBe(false);
     dismissed.add(intermediate[29].id);
