@@ -4,6 +4,9 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import pino from "pino";
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
+
+afterEach(() => setAuthCheckRunnerForTests(null));
 import { Daemon } from "../src/daemon.js";
 import { InstanceLifecycle, type LifecycleContext, type IncidentEventSource } from "../src/instance-lifecycle.js";
 import type { Logger } from "../src/logger.js";
@@ -68,7 +71,7 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
 
     daemon.checkMcpServerAlive();
 
-    expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: true });
+    expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: true, authSuspected: false });
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "already_idle" });
     expect(daemon.mcpRestartPending).toBe(false); // one death, one request
   });
@@ -117,7 +120,7 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     daemon.checkMcpServerAlive();
     daemon.applyInstanceStateSnapshot(idleSnapshot());
 
-    expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: false });
+    expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: false, authSuspected: false });
     expect(requested).not.toHaveBeenCalled();
   });
 
@@ -231,14 +234,17 @@ describe("lifecycle: mcp_restart_requested → restartSingleInstance, once per c
     expect(restartSingleInstance).toHaveBeenCalledTimes(2);
   });
 
-  it("mcp_died message announces the auto-restart when armed, manual steps when not", () => {
+  it("mcp_died message announces the auto-restart when armed, manual steps when not", async () => {
+    // The handler now double-checks auth before reporting; a passing probe
+    // keeps the original MCP message this test asserts on.
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{"loggedIn": true}' }));
     const { daemon, notifyInstanceTopic } = makeLifecycle();
 
     daemon.emit("mcp_died", { name: "worker", pid: 1, autoRestart: true });
-    expect(notifyInstanceTopic).toHaveBeenLastCalledWith("worker", expect.stringContaining("自動重啟"));
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenLastCalledWith("worker", expect.stringContaining("自動重啟")));
 
     daemon.emit("mcp_died", { name: "worker", pid: 2, autoRestart: false });
-    expect(notifyInstanceTopic).toHaveBeenLastCalledWith("worker", expect.stringContaining("restart_instance"));
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenLastCalledWith("worker", expect.stringContaining("restart_instance")));
   });
 
   it("retires the cancel button before restarting — a click on the leftover would target the new CLI", () => {

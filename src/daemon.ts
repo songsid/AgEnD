@@ -11,6 +11,7 @@ import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
+import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
@@ -852,6 +853,8 @@ export class Daemon extends EventEmitter {
    * instance is still auth-broken and must not resume raising alarms.
    */
   private authFailureUnresolved = false;
+  /** One login-screen auth report per spawn — the screen persists across polls. */
+  private loginScreenReported = false;
   /**
    * Let the next pause() proceed from a stuck pane. Set only for the auth-deferred
    * pause — see the pausePending consumption site for why waiting for idle there
@@ -1333,9 +1336,13 @@ export class Daemon extends EventEmitter {
     if (Date.now() - this.lastMcpDeathNotifiedAt < Daemon.MCP_DEATH_COOLDOWN_MS) return;
     this.mcpDeathNotifiedForPid = status.pid;
     this.lastMcpDeathNotifiedAt = Date.now();
-    const autoRestart = this.config.mcp_auto_restart !== false;
-    this.logger.error({ pid: status.pid, autoRestart }, "MCP server process is gone — instance has no agend tools");
-    this.emit("mcp_died", { name: this.name, pid: status.pid, autoRestart });
+    // An auth-broken CLI cannot keep an MCP server alive, and restarting it
+    // only loops back to the sign-in screen — hold the auto-restart until a
+    // re-login (which restarts the instance and replaces this daemon anyway).
+    const authSuspected = this.authFailureUnresolved;
+    const autoRestart = this.config.mcp_auto_restart !== false && !authSuspected;
+    this.logger.error({ pid: status.pid, autoRestart, authSuspected }, "MCP server process is gone — instance has no agend tools");
+    this.emit("mcp_died", { name: this.name, pid: status.pid, autoRestart, authSuspected });
     if (autoRestart) this.armMcpRestartWhenIdle();
   }
 
@@ -2270,6 +2277,7 @@ export class Daemon extends EventEmitter {
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
     this.authFailureUnresolved = false;
+    this.loginScreenReported = false;
     if (this.pauseWakeState === "active") return;
     if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
     if (this.getPauseWakeState() === "active") return;
@@ -4265,6 +4273,25 @@ export class Daemon extends EventEmitter {
 
         // CLI is ready (pattern defined by each backend)
         if (this.backend!.getReadyPattern().test(pane)) return true;
+
+        // A CLI parked at its own sign-in screen is an AUTH incident: no dialog
+        // key can dismiss it and no ready pattern will ever appear. Report it as
+        // an auth error (the lifecycle double-checks with the token-free probe)
+        // instead of letting it decay into crash/hang/MCP-died noise, and stop
+        // the retry loop — only re-login (see /login) ends this state.
+        const loginScreen = LOGIN_FLOWS[this.config.backend ?? "claude-code"]?.loginScreenPattern;
+        if (loginScreen?.test(pane) && !this.loginScreenReported) {
+          this.loginScreenReported = true;
+          this.authFailureUnresolved = true;
+          this.logger.warn({ backend: this.config.backend }, "CLI is waiting at its sign-in screen — reporting auth error");
+          this.emit("pty_error", {
+            name: this.name,
+            type: "auth_error",
+            action: "pause",
+            message: "CLI is waiting at its sign-in screen — credentials are missing or expired",
+          });
+          return true;
+        }
 
         // Fatal: command not found (must match full phrase to avoid false positives
         // like Kiro's "agent X not found, using default")

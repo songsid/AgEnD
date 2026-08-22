@@ -255,13 +255,34 @@ export class InstanceLifecycle {
    * CLI is not. Cached per backend so simultaneous alerts run one check.
    */
   private verifyAuthError(name: string): Promise<"valid" | "invalid" | "unknown"> {
-    const backend = this.backendOf(name);
+    return this.verifyBackendAuth(this.backendOf(name));
+  }
+
+  /** Same verification keyed by backend (used by startup pre-flight priming). */
+  verifyBackendAuth(backend: string): Promise<"valid" | "invalid" | "unknown"> {
     const cached = this.authVerifyCache.get(backend);
     if (cached && Date.now() - cached.at < AUTH_VERIFY_CACHE_MS) return cached.promise;
     const check = LOGIN_FLOWS[backend]?.authCheck;
     const promise = check ? checkAuthStatus(check) : Promise.resolve("unknown" as const);
     this.authVerifyCache.set(backend, { at: Date.now(), promise });
     return promise;
+  }
+
+  /**
+   * Startup pre-flight: warm the per-backend auth verification cache so the
+   * detectors that fire seconds later (login-screen scan, MCP-died gate) get an
+   * instant answer. Advisory only — a pre-flight result alone never pauses
+   * anything, because e.g. codex on a custom provider runs fine while
+   * `codex login status` reports logged out (live-verified on this fleet).
+   */
+  primeAuthVerification(backends: Iterable<string>): void {
+    for (const backend of new Set(backends)) {
+      void this.verifyBackendAuth(backend).then(result => {
+        if (result === "invalid") {
+          this.ctx.logger.warn({ backend }, "Pre-flight auth check failed — marking backend as auth-suspect");
+        }
+      }).catch(() => { /* verification is advisory */ });
+    }
   }
 
   /**
@@ -404,10 +425,22 @@ export class InstanceLifecycle {
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
-    daemon.on("mcp_died", safeHandler((data: { name: string; pid: number; autoRestart?: boolean }) => {
+    daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean }) => {
       this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
       this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
       this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
+      // Auth outranks MCP: when the CLI lost authentication, "MCP server died"
+      // is a symptom and the fix is /login, not a restart. The daemon flags a
+      // suspicion it already confirmed (login screen / 401 pattern); otherwise
+      // ask the cached token-free probe. Only a CONFIRMED invalid swaps the
+      // message — valid or uncertain keeps the accurate MCP report below.
+      const verdict = data.authSuspected ? "invalid" : await this.verifyAuthError(name);
+      if (verdict === "invalid") {
+        this.notifyAuthErrorOnce(name,
+          "Sign-in expired — the CLI cannot run its MCP server (agend tools are down) until it is re-authenticated.",
+          this.ptyErrorNotificationTarget(name) ?? name);
+        return;
+      }
       // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
       // restore its tools. With mcp_auto_restart (default) the daemon requests an
       // idle-gated restart itself — an immediate one would interrupt whatever the
