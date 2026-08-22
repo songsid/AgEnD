@@ -381,5 +381,18 @@ export class TmuxManager {
     return stdout;
   }
 
+  /**
+   * Capture with wrapped lines joined (`-J`): a long OAuth URL that wraps
+   * across physical rows comes back as one logical line. Used by login flows,
+   * where URL reassembly matters more than screen-faithful geometry.
+   */
+  async capturePaneJoined(lines: number = 50): Promise<string> {
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
+      "-p", "-J", "-S", `-${lines}`,
+    ]));
+    return stdout;
+  }
+
   getWindowId(): string { return this.windowId; }
 }
