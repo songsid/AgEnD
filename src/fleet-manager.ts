@@ -63,7 +63,7 @@ import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES } from "./login-flows.js";
+import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
@@ -394,6 +394,7 @@ const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 const LOGIN_CALLBACK_PREFIX = "login:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
+const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -2686,6 +2687,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
@@ -2997,6 +2999,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipUnlock(data, adapterId, adapter)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
+      if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
@@ -6713,15 +6716,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
-  /** Start a login session for one backend. Caller enforces admin. */
+  /**
+   * Start a login session for one backend. Caller enforces admin.
+   * Returns a status line to post, or null when a confirmation prompt was
+   * posted instead (auth still valid — see the pre-check below).
+   */
   async startLoginSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<string> {
+  }, opts: { skipAuthCheck?: boolean } = {}): Promise<string | null> {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
     if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
 
+    // Token-free pre-check (5s cap): re-login while auth still works is
+    // usually a mistake, so it needs a confirmed click. An invalid OR
+    // uncertain result (timeout, missing binary) proceeds straight to login —
+    // an unreliable probe must never block the re-login the admin asked for.
+    if (!opts.skipAuthCheck && flow.authCheck) {
+      const status = await checkAuthStatus(flow.authCheck);
+      if (status === "valid") {
+        await this.postNonceButtonPrompt({
+          prefix: LOGIN_CONFIRM_CALLBACK_PREFIX,
+          alertType: "login",
+          instanceName: backend,
+          adapter: chat.adapter,
+          adapterId: chat.adapterId,
+          chatId: chat.chatId,
+          threadId: chat.threadId,
+          message: t("login.still_valid", backend),
+          choices: [
+            { action: "go", label: t("login.relogin_go") },
+            { action: "cancel", label: t("login.relogin_cancel") },
+          ],
+          expiredText: t("buttons.stale"),
+        });
+        return null;
+      }
+    }
+    return this.launchLoginSession(flow, backend, chat);
+  }
+
+  /** Create the login window and session (pre-check already settled). */
+  private async launchLoginSession(flow: LoginFlow, backend: string, chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+  }): Promise<string> {
+    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
     const sessionName = getTmuxSession();
     await TmuxManager.ensureSession(sessionName);
     const tmux = new TmuxManager(sessionName, "");
@@ -6863,7 +6903,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId: entry.chatId,
       threadId: entry.threadId,
     });
-    await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    return true;
+  }
+
+  /** Re-login confirmation (auth pre-check said credentials still work). */
+  private async handleLoginConfirm(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      LOGIN_CONFIRM_CALLBACK_PREFIX,
+      /^login-confirm:([0-9a-f]+):(go|cancel)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const backend = entry.instanceName;
+    if (action === "cancel") {
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.cancelled", backend));
+      return true;
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.starting_backend", backend));
+    const text = await this.startLoginSession(backend, {
+      adapter: entry.adapter,
+      adapterId: entry.adapterId,
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+    }, { skipAuthCheck: true });
+    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
     return true;
   }
 

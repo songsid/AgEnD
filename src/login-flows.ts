@@ -20,11 +20,23 @@
  * untouched by design.
  */
 
+export interface AuthCheck {
+  /** argv of a cheap, LLM-token-free status probe (5s timeout). */
+  argv: string[];
+  /**
+   * Exit 0 alone is not proof for every CLI: `claude auth status` exits 0
+   * either way and reports {"loggedIn": true|false} — verified live.
+   */
+  validPattern?: RegExp;
+}
+
 export interface LoginFlow {
   /** AgEnD backend id this flow signs in. */
   backend: string;
   /** Shell command started inside the dedicated login window. */
   command: string;
+  /** Pre-check run before starting a session; valid auth asks for confirmation. */
+  authCheck?: AuthCheck;
   /** Arrow-key selector shown by the CLI (kiro). Option N = Down×N then Enter. */
   menu?: {
     promptPattern: RegExp;
@@ -61,6 +73,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
     backend: "codex",
     command: "codex login --device-auth",
+    authCheck: { argv: ["codex", "login", "status"] },
     codePattern: STANDALONE_DEVICE_CODE,
     successPattern: /Successfully logged in/,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -68,6 +81,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "grok": {
     backend: "grok",
     command: "grok login --device-auth",
+    authCheck: { argv: ["grok", "models"] },
     // Binary template is "enter code: $CODE"; the standalone form is a fallback.
     codePattern: /\bcode[:\s]+([A-Z0-9][A-Z0-9-]{3,})|^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/im,
     successPattern: /Login successful!/,
@@ -76,6 +90,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "kiro-cli": {
     backend: "kiro-cli",
     command: "kiro-cli login --use-device-flow",
+    authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
     menu: {
       promptPattern: /Select login method/,
       // Binary-verified on-screen order; "Your Organization" = Identity Center
@@ -90,6 +105,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "claude-code": {
     backend: "claude-code",
     command: "claude auth login",
+    authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
     inputPrompt: /Paste code here if prompted/,
     successPattern: /Login successful|Logged in as/,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -97,6 +113,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "antigravity": {
     backend: "antigravity",
     command: "agy",
+    authCheck: { argv: ["agy", "models"] },
     codePattern: STANDALONE_DEVICE_CODE,
     // agy has no terminal success line — reaching the normal TUI ready screen
     // (same markers as the backend's ready pattern) means auth completed.
@@ -132,4 +149,54 @@ export function extractLoginHint(
   // Alternation patterns carry several capture groups — take the one that hit.
   const code = codeMatch ? codeMatch.slice(1).find(group => group !== undefined) ?? null : null;
   return { url, code };
+}
+
+export type AuthCheckResult = "valid" | "invalid" | "unknown";
+
+export type AuthCheckRunner = (
+  argv: string[],
+  timeoutMs: number,
+) => Promise<{ code: number | null; output: string }>;
+
+const AUTH_CHECK_TIMEOUT_MS = 5_000;
+
+let authCheckRunnerOverride: AuthCheckRunner | null = null;
+/** Test seam — replaces the real process runner (pass null to restore). */
+export function setAuthCheckRunnerForTests(run: AuthCheckRunner | null): void {
+  authCheckRunnerOverride = run;
+}
+
+async function runAuthCheckProcess(argv: string[], timeoutMs: number): Promise<{ code: number | null; output: string }> {
+  const { execFile } = await import("node:child_process");
+  return new Promise(resolve => {
+    execFile(argv[0], argv.slice(1), { timeout: timeoutMs, encoding: "utf8" }, (err, stdout, stderr) => {
+      const anyErr = err as (Error & { code?: number | string; killed?: boolean }) | null;
+      // A timeout kill or a spawn failure (CLI missing) has no meaningful exit
+      // code — that is "unknown", not "logged out".
+      if (anyErr && (anyErr.killed || typeof anyErr.code !== "number")) {
+        resolve({ code: null, output: `${stdout ?? ""}${stderr ?? ""}` });
+        return;
+      }
+      resolve({ code: anyErr ? (anyErr.code as number) : 0, output: `${stdout ?? ""}${stderr ?? ""}` });
+    });
+  });
+}
+
+/**
+ * Probe whether a backend's credentials still work, without spending LLM
+ * tokens. "valid" gates the /login confirmation prompt; "invalid" and
+ * "unknown" (timeout, missing binary) both proceed straight to login — an
+ * uncertain check must never block a re-login the admin asked for.
+ */
+export async function checkAuthStatus(check: AuthCheck): Promise<AuthCheckResult> {
+  const run = authCheckRunnerOverride ?? runAuthCheckProcess;
+  try {
+    const { code, output } = await run(check.argv, AUTH_CHECK_TIMEOUT_MS);
+    if (code === null) return "unknown";
+    if (code !== 0) return "invalid";
+    if (check.validPattern && !check.validPattern.test(output)) return "invalid";
+    return "valid";
+  } catch {
+    return "unknown";
+  }
 }
