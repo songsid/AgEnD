@@ -16,7 +16,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | `/save` | Save agent session (handled, not in menu) | All |
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. Only `claude-code`, `codex`, and `grok` accept a busy-pane interjection; other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
-| `/tips` | Draw a random usage tip (300 tips: 100 beginner + 100 intermediate + 100 advanced). Advanced tips need an explicit unlock — after enough intermediate tips are dismissed, a "🔓 開始看進階" button appears. General topic only — replies with "general only" elsewhere. | All |
+| `/tips` | Draw a random usage tip, posted directly in the topic/channel where you ran it (no longer routed through General). 300 tips exist (100 beginner + 100 intermediate + 100 advanced), but only the **beginner** tier is currently drawn from — intermediate/advanced are staged but not yet enabled fleet-wide. | All |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
@@ -29,6 +29,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
+| 🔒 `/tips advanced on` | Fleet-wide manual unlock of the advanced tips tier (independent of the per-user dismiss-count unlock). Currently has no visible effect while the beginner-only rollout stage is active — see the `/tips` row above. | Admin |
 
 ## Telegram — ClassicBot (Private Chats + Groups)
 
@@ -74,7 +75,7 @@ Registered globally via `client.application.commands.set()`.
 | `/cancel` | Interrupt agent generation | All |
 | `/steer <message>` | Interject into the current turn (not admin-gated; `claude-code`/`codex`/`grok` only, others reply "not supported") | All |
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
-| `/tips [mode]` | Draw a random usage tip; `mode: on\|off` toggles the daily auto-send (admin only, plain draw is General-topic only) | All / 🔒 for `on`\|`off` |
+| `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs (ephemeral) | Admin |
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
@@ -111,7 +112,7 @@ Permission varies by platform/mode:
 - `/compact` — TG Classic: admin required. DC + TG Fleet: all users.
 - `/ctx` — all users (both platforms)
 - `/collab` — fleet topics: fleet admin. Classic: admin.
-- `/tips` — drawing a tip is all-users (General topic only, replies "general only" elsewhere); `/tips on` / `/tips off` requires fleet admin. Not registered on TG Classic at all.
+- `/tips` — drawing a tip is all-users, posted wherever it was invoked; `/tips on`/`off`/`advanced on` require fleet admin. Not registered on TG Classic at all.
 
 ### All Users
 
