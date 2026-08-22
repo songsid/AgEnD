@@ -132,20 +132,28 @@ export class ClaudeCodeBackend implements CliBackend {
 
   /**
    * The live spinner line, which is on screen only while generating. Captured from
-   * two running panes:
+   * running panes and their pipe-pane recordings:
    *
    *   working →  `✢ Accomplishing… (11m 26s · ↓ 38.0k tokens)`
    *   idle    →  `✻ Worked for 6m 49s`
    *
    * Both panes also showed `❯` and the `ok` statusline, which is why neither of
-   * those can carry the distinction. The discriminator is the ellipsis followed by
-   * a parenthesised live elapsed counter; the completed line is past tense with no
-   * `…` and no counter. The verb and the glyph both rotate, so neither is matched.
+   * those can carry the distinction. The discriminator is the rotating glyph plus
+   * Claude's one-word spinner label ending in an ellipsis. The completed line is
+   * past tense with no ellipsis. The verb and glyph both rotate, so neither
+   * specific value is matched.
    *
-   * The leading class is "any non-ASCII symbol, or an asterisk". It used to be
-   * `[^\x00-\x7F\p{L}\p{N}\s]` alone, requiring a non-ASCII glyph — but the
-   * animation cycles through six frames and one of them is a plain ASCII
-   * asterisk. Sampling a continuously working pane 50 times at 250ms:
+   * Claude Code 2.1.239 paints that line incrementally. For roughly the first
+   * three seconds — and briefly during later repaints — capture-pane can see only
+   * `* Nesting…` before `(3s · ↓ 9 tokens)` is appended. It also emits hyphenated
+   * labels such as `Razzle-dazzling…` and `Sock-hopping…`. Requiring the elapsed
+   * counter and a letters-only verb made both real shapes look idle. Since `❯`
+   * remains visible throughout generation, a settled capture in either shape
+   * retired Cancel and the progress bubble while the turn was still running.
+   *
+   * The animation cycles through six measured frames, including one plain ASCII
+   * asterisk. The older leading class required a non-ASCII glyph, so sampling a
+   * continuously working pane 50 times at 250ms produced:
    *
    *   ✻ 11/11   ✽ 10/10   ✢ 10/10   · 9/9   ✶ 4/4   * 0/6  ← U+002A never matched
    *
@@ -155,19 +163,13 @@ export class ClaudeCodeBackend implements CliBackend {
    * retired cancel buttons mid-turn. 12% of frames, so it hit some turns and not
    * others.
    *
-   * `*` is spelled out rather than opening the class to all ASCII punctuation:
-   * `> quoted… (2s)` in agent output would otherwise read as a spinner, and a
-   * false positive on a *stable* pane pins the instance in `working` forever.
-   * If a future release adds another ASCII frame this pattern misses it again —
-   * but a missed frame can no longer flip the state on its own, because the
-   * state machine only decides on patterns once output has settled.
-   *
-   * Deliberately narrow, because the cost is asymmetric. Missing the spinner just
-   * restores today's behaviour; matching prose that happens to sit on a *stable*
-   * pane would hold the instance in `working` forever — no auto-pause, no cancel
-   * button retirement, and eventually a bogus hang alert. So the line must start
-   * with a non-ASCII, non-letter glyph and carry a single word ending in `…`:
-   * `- Something… (5s)` and `I waited… (30s) for the build` are both rejected.
+   * Deliberately narrow, because the cost is asymmetric. Matching prose that
+   * happens to sit on a *stable* pane would hold the instance in `working`
+   * forever — no auto-pause, no cancel-button retirement, and eventually a bogus
+   * hang alert. Therefore this accepts only Claude's six measured spinner glyphs,
+   * exactly one word (optionally hyphenated), and the Unicode ellipsis. Markdown
+   * prose such as `* bullet point…`, `- Something…`, and a completed
+   * `✻ Worked for 6m 49s` remain rejected.
    *
    * Note when this actually decides anything: while the CLI really is generating,
    * the elapsed counter ticks, the pane changes, and motion already reports
@@ -175,7 +177,7 @@ export class ClaudeCodeBackend implements CliBackend {
    * an in-progress spinner — which is exactly the hang this is meant to surface.
    */
   getBusyPattern(): RegExp {
-    return /^[ \t]*(?:[^\x00-\x7F\p{L}\p{N}\s]|\*)\s+\p{L}+…\s*\(\d+[hms]\b/mu;
+    return /^[ \t]*[✻✽✢·✶*][ \t]+\p{L}+(?:-\p{L}+)*…(?:[ \t]+\([^\n]*)?[ \t]*$/mu;
   }
 
   getContextUsage(): number | null {

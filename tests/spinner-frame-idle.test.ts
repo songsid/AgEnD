@@ -33,6 +33,16 @@ const spinner = (glyph: string, secs = 46) =>
     "  ok",
   ].join("\n");
 
+const bareSpinner = (glyph: string, label = "Nesting") =>
+  [
+    `${glyph} ${label}…`,
+    "",
+    "────────────────────────────────────────────",
+    "❯ ",
+    "────────────────────────────────────────────",
+    "  ok",
+  ].join("\n");
+
 const FINISHED = [
   "✻ Worked for 6m 49s",
   "",
@@ -51,6 +61,23 @@ describe("busy pattern across the whole spinner animation", () => {
     }
   });
 
+  it("matches the incrementally-painted bare line seen before the timer appears", () => {
+    for (const glyph of FRAMES) {
+      expect(backend.getBusyPattern().test(bareSpinner(glyph)), `bare frame ${glyph}`).toBe(true);
+    }
+  });
+
+  it("matches Claude's hyphenated spinner labels", () => {
+    for (const label of ["Razzle-dazzling", "Sock-hopping", "Topsy-turvying", "Fiddle-faddling"]) {
+      expect(backend.getBusyPattern().test(bareSpinner("*", label)), label).toBe(true);
+      expect(backend.getBusyPattern().test(spinner("✢").replace("Befuddling", label)), label).toBe(true);
+    }
+  });
+
+  it("matches an elapsed suffix while Claude is still repainting it", () => {
+    expect(backend.getBusyPattern().test("* Nesting… (3s · ↓")).toBe(true);
+  });
+
   it("still rejects the finished line, which has no ellipsis and no counter", () => {
     expect(backend.getBusyPattern().test(FINISHED)).toBe(false);
   });
@@ -59,7 +86,8 @@ describe("busy pattern across the whole spinner animation", () => {
     // Widening the class must not make prose or prompts look like a spinner.
     for (const line of ["❯ ", "  ok", "> ask a question or describe a task ↵",
       "  ⏵⏵ bypass permissions on (shift+tab to cycle) · ← for agents",
-      "* bullet point… (3 items)", "- item… (see below)",
+      "* bullet point… (3 items)", "- item… (see below)", "* two words…",
+      "* Waiting...", "* Waiting… trailing prose",
       // Allowing the asterisk must not allow every ASCII symbol: quoted prose
       // shaped like a spinner would pin the instance in `working` forever.
       "> quoted… (2s)", "- Something happened… (5s ago)", "I waited… (30s) for the build"]) {
@@ -119,5 +147,14 @@ describe("PaneStateMachine: one observation per capture", () => {
       sm.observe(spinner(glyph, 50), 6_000, { settled: true });
       expect(sm.snapshot(6_000).state, `settled capture on frame ${glyph}`).toBe("working");
     }
+  });
+
+  it("keeps the timer-less initial frame working on a settled capture", () => {
+    // Claude 2.1.239 paints `* Nesting…` first and appends the timer later. A
+    // 2s idle-debounce capture can therefore legitimately see this exact pane.
+    const sm = machine();
+    sm.observe(FINISHED, 1_000);
+    sm.observe(bareSpinner("*"), 4_000, { settled: true });
+    expect(sm.snapshot(4_000).state).toBe("working");
   });
 });
