@@ -317,6 +317,11 @@ export class TopicCommands {
       return true;
     }
 
+    if (text === "/login" || text.startsWith("/login ") || text.startsWith("/login@")) {
+      await this.handleLoginCommand(msg);
+      return true;
+    }
+
     if (text === "/update" || text.startsWith("/update@")) {
       await this.handleUpdateCommand(msg);
       return true;
@@ -777,6 +782,51 @@ export class TopicCommands {
     }
   }
 
+  /**
+   * `/login [backend] | code <text> | cancel` — remote CLI re-login.
+   * Fleet-admin only: the flow emits live authorization URLs/codes, and anyone
+   * completing one binds their own account to this fleet's CLI.
+   */
+  private async handleLoginCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+      return;
+    }
+    if (!this.ctx.startLoginSession || !this.ctx.promptLoginBackends
+      || !this.ctx.loginSubmitInput || !this.ctx.cancelLoginSession) {
+      await adapter.sendText(msg.chatId, t("login.no_session"), { threadId: msg.threadId });
+      return;
+    }
+    const arg = msg.text.trim().replace(/^\/login(?:@\S+)?/, "").trim();
+    const chat = {
+      adapter,
+      adapterId: msg.adapterId ?? adapter.id,
+      chatId: msg.chatId,
+      threadId: msg.threadId,
+    };
+    if (!arg) {
+      await this.ctx.promptLoginBackends(chat);
+      return;
+    }
+    if (arg === "cancel") {
+      await adapter.sendText(msg.chatId, await this.ctx.cancelLoginSession(), { threadId: msg.threadId });
+      return;
+    }
+    if (arg.startsWith("code ")) {
+      const input = arg.slice(5).trim();
+      const reply = input ? await this.ctx.loginSubmitInput(input) : t("login.usage");
+      await adapter.sendText(msg.chatId, reply, { threadId: msg.threadId });
+      return;
+    }
+    if (/\s/.test(arg)) {
+      await adapter.sendText(msg.chatId, t("login.usage"), { threadId: msg.threadId });
+      return;
+    }
+    await adapter.sendText(msg.chatId, await this.ctx.startLoginSession(arg, chat), { threadId: msg.threadId });
+  }
+
   private async handleTipsCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
@@ -1182,6 +1232,7 @@ export class TopicCommands {
           { command: "collab", description: "🔒 " + t("slash.collab") },
           { command: "update", description: "🔒 " + t("slash.update") },
           { command: "doctor", description: "🔒 " + t("slash.doctor") },
+          { command: "login", description: "🔒 " + t("slash.login") },
           { command: "usage", description: t("slash.usage") },
           { command: "tips", description: t("slash.tips") },
         ];

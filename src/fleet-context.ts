@@ -79,6 +79,24 @@ export interface FleetContext {
   ): Promise<"posted" | "empty" | "unavailable">;
   /** Persistently enable advanced tips without waiting for the dismissal threshold. */
   unlockAdvancedTips?(userId: string): boolean;
+  /** `/login` backend chooser buttons. Caller enforces fleet-admin. */
+  promptLoginBackends?(chat: {
+    adapter: import("./channel/types.js").ChannelAdapter;
+    adapterId: string;
+    chatId: string;
+    threadId?: string;
+  }): Promise<void>;
+  /** Start a remote login session for one backend; returns a status line. */
+  startLoginSession?(backend: string, chat: {
+    adapter: import("./channel/types.js").ChannelAdapter;
+    adapterId: string;
+    chatId: string;
+    threadId?: string;
+  }): Promise<string>;
+  /** Paste admin-supplied text (auth code / start URL) into the login window. */
+  loginSubmitInput?(text: string): Promise<string>;
+  /** Abort the active login session. */
+  cancelLoginSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**

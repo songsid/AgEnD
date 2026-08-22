@@ -63,6 +63,8 @@ import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES } from "./login-flows.js";
+import { LoginSession } from "./login-manager.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -390,6 +392,8 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
+const LOGIN_CALLBACK_PREFIX = "login:";
+const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -2680,6 +2684,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
@@ -2989,6 +2995,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
       if (await this.handleTipDismiss(data, adapterId, adapter)) return;
       if (await this.handleTipUnlock(data, adapterId, adapter)) return;
+      if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
+      if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
@@ -6660,6 +6668,227 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deliveryEpochs.set(instanceName, next);
     for (const check of this.instanceIdleWaiters.get(instanceName) ?? []) check();
     return next;
+  }
+
+  // ── Remote CLI login (`/login`) ──────────────────────────────────────────
+  //
+  // One session at a time, in a dedicated tmux window — never an instance
+  // pane. Credentials are per-backend (codex homes symlink auth.json to the
+  // shared ~/.codex; the other CLIs use one real home), so a single sign-in
+  // repairs every instance of that backend, and instance delivery, pane-state
+  // detection, tool progress, and mcp_proxy_reply never observe login output.
+  private activeLogin: {
+    session: LoginSession;
+    backend: string;
+    chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
+  } | null = null;
+
+  /** Post the backend chooser for a bare `/login`. Caller enforces admin. */
+  async promptLoginBackends(chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+  }): Promise<void> {
+    const configured = new Set<string>();
+    for (const [, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      configured.add(config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+    }
+    const choices = Object.keys(LOGIN_FLOWS)
+      .filter(backend => configured.size === 0 || configured.has(backend))
+      .map(backend => ({ action: backend, label: backend }));
+    if (choices.length === 0) {
+      await chat.adapter.sendText(chat.chatId, t("login.unsupported", [...configured].join(", ")),
+        { threadId: chat.threadId });
+      return;
+    }
+    await this.postNonceButtonPrompt({
+      prefix: LOGIN_CALLBACK_PREFIX,
+      alertType: "login",
+      instanceName: "login",
+      adapter: chat.adapter,
+      adapterId: chat.adapterId,
+      chatId: chat.chatId,
+      threadId: chat.threadId,
+      message: t("login.choose_backend"),
+      choices,
+      expiredText: t("buttons.stale"),
+    });
+  }
+
+  /** Start a login session for one backend. Caller enforces admin. */
+  async startLoginSession(backendArg: string, chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+  }): Promise<string> {
+    const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    const flow = LOGIN_FLOWS[backend];
+    if (!flow) return t("login.unsupported", backendArg);
+    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+
+    const sessionName = getTmuxSession();
+    await TmuxManager.ensureSession(sessionName);
+    const tmux = new TmuxManager(sessionName, "");
+    const session = new LoginSession(flow, tmux, {
+      onMenu: async (options) => {
+        await this.postNonceButtonPrompt({
+          prefix: LOGIN_MENU_CALLBACK_PREFIX,
+          alertType: "login",
+          instanceName: backend,
+          adapter: chat.adapter,
+          adapterId: chat.adapterId,
+          chatId: chat.chatId,
+          threadId: chat.threadId,
+          message: t("login.choose_provider"),
+          choices: options.map((label, index) => ({ action: String(index), label })),
+          expiredText: t("buttons.stale"),
+        });
+      },
+      onAuthHint: async (url, code) => {
+        await this.sendLoginSecret(chat, backend, url, code);
+      },
+      onNeedInput: async (promptExcerpt) => {
+        await chat.adapter.sendText(chat.chatId, t("login.need_input", backend, promptExcerpt),
+          { threadId: chat.threadId }).catch(() => {});
+      },
+      onDone: async ({ ok, detail }) => {
+        this.activeLogin = null;
+        let text: string;
+        if (ok) {
+          const woken = await this.wakePausedBackendInstances(backend);
+          text = t("login.success", backend, String(woken));
+        } else if (detail === "cancelled") {
+          text = t("login.cancelled", backend);
+        } else {
+          text = t("login.failed", backend, detail);
+        }
+        await chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => {});
+      },
+    }, this.logger);
+
+    // Claim the slot before the first await so two admins racing /login cannot
+    // both create windows; release on startup failure.
+    this.activeLogin = { session, backend, chat };
+    try {
+      await session.start();
+    } catch (err) {
+      this.activeLogin = null;
+      return t("login.failed", backend, (err as Error).message);
+    }
+    return t("login.started", backend);
+  }
+
+  /** `/login code <text>` — paste admin-supplied text into the login window. */
+  async loginSubmitInput(text: string): Promise<string> {
+    if (!this.activeLogin) return t("login.no_session");
+    const ok = await this.activeLogin.session.submitInput(text);
+    return ok ? t("login.input_sent") : t("login.input_failed");
+  }
+
+  /** `/login cancel` — abort the active session and remove its window. */
+  async cancelLoginSession(): Promise<string> {
+    if (!this.activeLogin) return t("login.no_session");
+    const backend = this.activeLogin.backend;
+    await this.activeLogin.session.cancel();
+    return t("login.cancelled", backend);
+  }
+
+  /**
+   * The URL (+ code) is a live credential: whoever completes it binds THEIR
+   * account to this fleet's CLI. Telegram gets an HTML spoiler (same treatment
+   * as the dashboard token); other adapters get plain text with the warning.
+   */
+  private async sendLoginSecret(
+    chat: { adapter: ChannelAdapter; chatId: string; threadId?: string },
+    backend: string,
+    url: string,
+    code: string | null,
+  ): Promise<void> {
+    const codeLine = code ? `\n${t("login.auth_code", code)}` : "";
+    try {
+      if (chat.adapter.type === "telegram") {
+        const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        await chat.adapter.sendText(
+          chat.chatId,
+          `${esc(t("login.auth_hint", backend))}\n<tg-spoiler>${esc(url)}${esc(codeLine)}</tg-spoiler>`,
+          { threadId: chat.threadId, format: "html" },
+        );
+      } else {
+        await chat.adapter.sendText(
+          chat.chatId,
+          `${t("login.auth_hint", backend)}\n${url}${codeLine}`,
+          { threadId: chat.threadId },
+        );
+      }
+    } catch (err) {
+      this.logger.warn({ err: (err as Error).message, backend }, "Failed to deliver login URL");
+    }
+  }
+
+  /** Wake every paused instance of the freshly signed-in backend. */
+  private async wakePausedBackendInstances(backend: string): Promise<number> {
+    let woken = 0;
+    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
+      const effective = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      if (effective !== backend) continue;
+      if (this.getInstanceStatus(name) !== "paused") continue;
+      try {
+        if (this.daemons.has(name)) await this.lifecycle.wake(name, 30_000);
+        else await this.startPersistedPausedInstance(name);
+        woken++;
+      } catch (err) {
+        this.logger.warn({ err: (err as Error).message, name }, "Post-login wake failed");
+      }
+    }
+    return woken;
+  }
+
+  /** Backend chooser button → start that backend's login session. */
+  private async handleLoginBackendSelect(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      LOGIN_CALLBACK_PREFIX,
+      /^login:([0-9a-f]+):([a-z][a-z-]*)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action: backend } = claimed;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      t("login.starting_backend", backend));
+    const text = await this.startLoginSession(backend, {
+      adapter: entry.adapter,
+      adapterId: entry.adapterId,
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+    });
+    await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    return true;
+  }
+
+  /** Kiro provider button → drive the CLI's arrow-key selector. */
+  private async handleLoginMenuSelect(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      LOGIN_MENU_CALLBACK_PREFIX,
+      /^login-menu:([0-9a-f]+):(\d)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const index = Number(action);
+    const label = this.activeLogin?.session.flow.menu?.options[index] ?? action;
+    const ok = await this.activeLogin?.session.selectMenuOption(index) ?? false;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      ok ? t("login.provider_selected", label) : t("login.no_session"));
+    return true;
   }
 
   queueMirrorMessage(text: string): void {
