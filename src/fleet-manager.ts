@@ -6791,8 +6791,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.activeLogin = null;
         let text: string;
         if (ok) {
-          const woken = await this.wakePausedBackendInstances(backend);
-          text = t("login.success", backend, String(woken));
+          const { woken, restarted } = await this.recoverBackendInstances(backend);
+          const none = t("login.none");
+          text = t("login.success", backend,
+            woken.length ? woken.join(", ") : none,
+            restarted.length ? restarted.join(", ") : none);
         } else if (detail === "cancelled") {
           text = t("login.cancelled", backend);
         } else {
@@ -6861,22 +6864,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  /** Wake every paused instance of the freshly signed-in backend. */
-  private async wakePausedBackendInstances(backend: string): Promise<number> {
-    let woken = 0;
+  /**
+   * After a successful login: wake the paused instances of that backend AND
+   * restart the running ones — a live CLI holds the old token in memory and
+   * only re-reads credentials on process start (a paused instance's CLI is
+   * already dead, so waking it respawns with the new token for free).
+   */
+  private async recoverBackendInstances(backend: string): Promise<{ woken: string[]; restarted: string[] }> {
+    const woken: string[] = [];
+    const restarted: string[] = [];
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
       const effective = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
       if (effective !== backend) continue;
-      if (this.getInstanceStatus(name) !== "paused") continue;
+      const status = this.getInstanceStatus(name);
       try {
-        if (this.daemons.has(name)) await this.lifecycle.wake(name, 30_000);
-        else await this.startPersistedPausedInstance(name);
-        woken++;
+        if (status === "paused") {
+          if (this.daemons.has(name)) await this.lifecycle.wake(name, 30_000);
+          else await this.startPersistedPausedInstance(name);
+          woken.push(name);
+        } else if (status === "running") {
+          await this.restartSingleInstance(name);
+          restarted.push(name);
+        }
       } catch (err) {
-        this.logger.warn({ err: (err as Error).message, name }, "Post-login wake failed");
+        this.logger.warn({ err: (err as Error).message, name, status }, "Post-login recovery failed");
       }
     }
-    return woken;
+    return { woken, restarted };
   }
 
   /** Backend chooser button → start that backend's login session. */

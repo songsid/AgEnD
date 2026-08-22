@@ -78,6 +78,39 @@ describe("/login auth pre-check", () => {
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalled();
   });
 
+  it("post-login recovery wakes paused and restarts running instances of that backend", async () => {
+    const { fm } = setup();
+    fm.fleetConfig = {
+      defaults: { backend: "codex" },
+      instances: {
+        "codex-running": { working_directory: "/tmp/a" },
+        "codex-paused-live": { working_directory: "/tmp/b" },
+        "codex-paused-marker": { working_directory: "/tmp/c" },
+        "codex-stopped": { working_directory: "/tmp/d" },
+        "other-claude": { working_directory: "/tmp/e", backend: "claude-code" },
+      },
+    } as any;
+    const statuses: Record<string, string> = {
+      "codex-running": "running",
+      "codex-paused-live": "paused",
+      "codex-paused-marker": "paused",
+      "codex-stopped": "stopped",
+      "other-claude": "running",
+    };
+    vi.spyOn(fm, "getInstanceStatus").mockImplementation(name => statuses[name] as any);
+    fm.lifecycle.daemons.set("codex-paused-live", {} as any);
+    const wake = vi.spyOn(fm.lifecycle, "wake").mockResolvedValue(undefined as any);
+    const startPersisted = vi.spyOn(fm, "startPersistedPausedInstance").mockResolvedValue(undefined);
+    const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
+
+    const result = await (fm as any).recoverBackendInstances("codex");
+    expect(result).toEqual({ woken: ["codex-paused-live", "codex-paused-marker"], restarted: ["codex-running"] });
+    expect(wake).toHaveBeenCalledWith("codex-paused-live", 30_000);
+    expect(startPersisted).toHaveBeenCalledWith("codex-paused-marker");
+    expect(restart).toHaveBeenCalledTimes(1);
+    expect(restart).toHaveBeenCalledWith("codex-running");
+  });
+
   it("a backend without remote login still reports unsupported before any check", async () => {
     const { fm, launch, chat } = setup();
     const runner = vi.fn(async () => ({ code: 0, output: "ok" }));

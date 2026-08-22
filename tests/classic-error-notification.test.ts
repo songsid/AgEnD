@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
+
+afterEach(() => setAuthCheckRunnerForTests(null));
 import {
   InstanceLifecycle,
   type IncidentEventSource,
@@ -76,7 +79,10 @@ describe("PTY error notification targets", () => {
     );
   });
 
-  it("routes ClassicBot auth errors to General through the deduplicated path", () => {
+  it("routes ClassicBot auth errors to General through the deduplicated path", async () => {
+    // Auth errors now get a token-free second opinion before any alert; an
+    // invalid result proceeds to the notification this test asserts on.
+    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "Not logged in" }));
     const { attach, notifyInstanceTopic } = makeLifecycle(["classic-user-1234"]);
     const daemon = attach("classic-user-1234");
 
@@ -87,7 +93,7 @@ describe("PTY error notification targets", () => {
       message: "Login expired",
     });
 
-    expect(notifyInstanceTopic).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
     expect(notifyInstanceTopic).toHaveBeenCalledWith(
       "general",
       expect.stringMatching(/Login expired/s),
