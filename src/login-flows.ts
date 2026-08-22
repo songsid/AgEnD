@@ -37,6 +37,12 @@ export interface LoginFlow {
   command: string;
   /** Pre-check run before starting a session; valid auth asks for confirmation. */
   authCheck?: AuthCheck;
+  /**
+   * The CLI's own logged-out startup screen (binary-verified strings). Matched
+   * only during the spawn/startup dialog phase — a CLI sitting here is an auth
+   * incident, not a crash and not an MCP failure.
+   */
+  loginScreenPattern?: RegExp;
   /** Arrow-key selector shown by the CLI (kiro). Option N = Down×N then Enter. */
   menu?: {
     promptPattern: RegExp;
@@ -74,6 +80,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "codex",
     command: "codex login --device-auth",
     authCheck: { argv: ["codex", "login", "status"] },
+    loginScreenPattern: /Sign in with ChatGPT/,
     codePattern: STANDALONE_DEVICE_CODE,
     successPattern: /Successfully logged in/,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -82,6 +89,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "grok",
     command: "grok login --device-auth",
     authCheck: { argv: ["grok", "models"] },
+    loginScreenPattern: /Run `grok login`/,
     // Binary template is "enter code: $CODE"; the standalone form is a fallback.
     codePattern: /\bcode[:\s]+([A-Z0-9][A-Z0-9-]{3,})|^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/im,
     successPattern: /Login successful!/,
@@ -91,6 +99,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "kiro-cli",
     command: "kiro-cli login --use-device-flow",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
+    loginScreenPattern: /Select login method/,
     menu: {
       promptPattern: /Select login method/,
       // Binary-verified on-screen order; "Your Organization" = Identity Center
@@ -106,6 +115,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
+    loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account/,
     inputPrompt: /Paste code here if prompted/,
     successPattern: /Login successful|Logged in as/,
     timeoutMs: LOGIN_TIMEOUT_MS,
@@ -114,6 +124,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },
+    loginScreenPattern: /not logged into Antigravity|https:\/\/\S*google\.com\/device/i,
     codePattern: STANDALONE_DEVICE_CODE,
     // agy has no terminal success line — reaching the normal TUI ready screen
     // (same markers as the backend's ready pattern) means auth completed.

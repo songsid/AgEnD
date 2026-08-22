@@ -1917,6 +1917,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     await TmuxManager.ensureSession(getTmuxSession());
 
+    // Pre-flight (advisory, fire-and-forget): warm the per-backend auth cache
+    // before instances spawn, so a CLI that comes up on its sign-in screen gets
+    // an instant 🔑 verdict instead of decaying into crash/MCP-died noise.
+    this.lifecycle.primeAuthVerification(
+      Object.values(fleet.instances).map(config =>
+        config.backend ?? fleet.defaults?.backend ?? "claude-code"),
+    );
+
     // Start tmux control mode client for idle detection
     if (!this.controlClient) {
       this.controlClient = new TmuxControlClient(getTmuxSession(), 2000, this.logger);

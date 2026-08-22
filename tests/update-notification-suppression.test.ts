@@ -1,4 +1,10 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
+
+// Every mcp_died now consults the auth probe; stub it file-wide so no test
+// spawns a real CLI. Individual tests may override.
+beforeEach(() => setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{"loggedIn": true}' })));
+afterEach(() => setAuthCheckRunnerForTests(null));
 import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -145,12 +151,13 @@ describe("incident alerts during a planned restart", () => {
     expect(notified).toEqual([]);
   });
 
-  it("are still recorded — the record is not the noise", () => {
+  it("are still recorded — the record is not the noise", async () => {
     // daemon.log and the event log keep everything; only the chat message goes.
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{"loggedIn": true}' }));
     const { daemon, logged, eventLog } = makeLifecycle(true);
     daemon.emit("mcp_died", { name: "general", pid: 4242 });
     expect(eventLog.insert).toHaveBeenCalledWith("general", "mcp_died", { pid: 4242 });
-    expect(logged.some(m => m.includes("suppressed"))).toBe(true);
+    await vi.waitFor(() => expect(logged.some(m => m.includes("suppressed"))).toBe(true));
   });
 
   it("covers the whole incident family, not just the two that were reported", () => {
@@ -173,10 +180,12 @@ describe("a real crash", () => {
     expect(notified[0].text).toMatch(/崩潰|crashed/);
   });
 
-  it("still reports a dead MCP server with the recovery instruction", () => {
+  it("still reports a dead MCP server with the recovery instruction", async () => {
+    // A passing auth probe keeps the accurate MCP message this test asserts on.
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{"loggedIn": true}' }));
     const { daemon, notified } = makeLifecycle(false);
     daemon.emit("mcp_died", { name: "general", pid: 4242 });
-    expect(notified).toHaveLength(1);
+    await vi.waitFor(() => expect(notified).toHaveLength(1));
     expect(notified[0].text).toContain("MCP server");
     expect(notified[0].text).toContain("restart_instance");
   });
