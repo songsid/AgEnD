@@ -824,7 +824,9 @@ export class TopicCommands {
       await adapter.sendText(msg.chatId, t("login.usage"), { threadId: msg.threadId });
       return;
     }
-    await adapter.sendText(msg.chatId, await this.ctx.startLoginSession(arg, chat), { threadId: msg.threadId });
+    const started = await this.ctx.startLoginSession(arg, chat);
+    // null → the still-valid-auth confirmation prompt was posted instead.
+    if (started) await adapter.sendText(msg.chatId, started, { threadId: msg.threadId });
   }
 
   private async handleTipsCommand(msg: InboundMessage): Promise<void> {

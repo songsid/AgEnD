@@ -86,13 +86,16 @@ export interface FleetContext {
     chatId: string;
     threadId?: string;
   }): Promise<void>;
-  /** Start a remote login session for one backend; returns a status line. */
+  /**
+   * Start a remote login session for one backend; returns a status line, or
+   * null when a still-valid-auth confirmation prompt was posted instead.
+   */
   startLoginSession?(backend: string, chat: {
     adapter: import("./channel/types.js").ChannelAdapter;
     adapterId: string;
     chatId: string;
     threadId?: string;
-  }): Promise<string>;
+  }, opts?: { skipAuthCheck?: boolean }): Promise<string | null>;
   /** Paste admin-supplied text (auth code / start URL) into the login window. */
   loginSubmitInput?(text: string): Promise<string>;
   /** Abort the active login session. */

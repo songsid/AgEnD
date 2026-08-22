@@ -1,5 +1,13 @@
-import { describe, expect, it } from "vitest";
-import { extractLoginHint, LOGIN_BACKEND_ALIASES, LOGIN_FLOWS } from "../src/login-flows.js";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  checkAuthStatus,
+  extractLoginHint,
+  LOGIN_BACKEND_ALIASES,
+  LOGIN_FLOWS,
+  setAuthCheckRunnerForTests,
+} from "../src/login-flows.js";
+
+afterEach(() => setAuthCheckRunnerForTests(null));
 
 describe("LOGIN_FLOWS table", () => {
   it("covers every remotely loggable backend with a command and success pattern", () => {
@@ -74,5 +82,37 @@ describe("extractLoginHint", () => {
   it("captures grok's prefixed code form", () => {
     const hint = extractLoginHint("Visit https://accounts.x.ai/sign-in then enter code: QRST-1234", LOGIN_FLOWS["grok"]);
     expect(hint.code).toBe("QRST-1234");
+  });
+});
+
+describe("checkAuthStatus", () => {
+  it("every flow declares a token-free auth check", () => {
+    for (const flow of Object.values(LOGIN_FLOWS)) {
+      expect(flow.authCheck?.argv.length).toBeGreaterThan(0);
+    }
+    // claude exits 0 whether or not it is logged in (live-verified), so its
+    // check must also require the loggedIn marker in the output.
+    expect(LOGIN_FLOWS["claude-code"].authCheck?.validPattern).toBeDefined();
+  });
+
+  it("maps exit 0 to valid and non-zero to invalid", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "Logged in" }));
+    expect(await checkAuthStatus(LOGIN_FLOWS["codex"].authCheck!)).toBe("valid");
+    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "Not logged in" }));
+    expect(await checkAuthStatus(LOGIN_FLOWS["codex"].authCheck!)).toBe("invalid");
+  });
+
+  it("claude: exit 0 with loggedIn:false is invalid, loggedIn:true is valid", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{ "loggedIn": false }' }));
+    expect(await checkAuthStatus(LOGIN_FLOWS["claude-code"].authCheck!)).toBe("invalid");
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{ "loggedIn": true, "email": "x@y" }' }));
+    expect(await checkAuthStatus(LOGIN_FLOWS["claude-code"].authCheck!)).toBe("valid");
+  });
+
+  it("timeout kills and runner failures are unknown, not logged-out", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: null, output: "" }));
+    expect(await checkAuthStatus(LOGIN_FLOWS["grok"].authCheck!)).toBe("unknown");
+    setAuthCheckRunnerForTests(async () => { throw new Error("spawn boom"); });
+    expect(await checkAuthStatus(LOGIN_FLOWS["grok"].authCheck!)).toBe("unknown");
   });
 });
