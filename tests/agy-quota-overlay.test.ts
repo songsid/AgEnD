@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { EventEmitter } from "node:events";
 import {
   parseResetsIn,
@@ -128,6 +129,8 @@ describe("wiring: pty_error → alert → usage row", () => {
   });
 
   it("a non-quota agy error does not either", () => {
+    // Keep the auth-error second opinion from spawning a real CLI here.
+    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "" }));
     const daemon = lifecycleWithBackend("antigravity");
     daemon.emit("pty_error", { name: "agy1", type: "auth_error", action: "pause", message: "UNAUTHENTICATED" });
     expect(getProviderRateLimit("antigravity")).toBeNull();

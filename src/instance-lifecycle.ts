@@ -19,6 +19,7 @@ import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } f
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -186,11 +187,25 @@ export interface LifecycleReplaceArgs {
 /** Suppress duplicate auth alerts for the same backend within this window. */
 const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
 
+/**
+ * Reuse one auth verification per backend for this long. Shared credentials
+ * expiring makes EVERY instance of the backend emit auth_error at once — one
+ * token-free check answers for all of them.
+ */
+const AUTH_VERIFY_CACHE_MS = 60_000;
+
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
   /** backend → last auth-error alert time, so one expiry sends one alert. */
   private lastAuthAlertAt = new Map<string, number>();
+  /**
+   * backend → cached token-free auth verification (see AUTH_VERIFY_CACHE_MS).
+   * The PROMISE is cached, not the result: a shared credential expiring makes
+   * every instance of the backend fire in the same tick, and they must join
+   * one in-flight check instead of each spawning their own.
+   */
+  private authVerifyCache = new Map<string, { at: number; promise: Promise<"valid" | "invalid" | "unknown"> }>();
   /**
    * Minimum gap between MCP-revival auto-restarts of one instance. Kept here —
    * not in the daemon — because each restart replaces the daemon object, which
@@ -232,6 +247,24 @@ export class InstanceLifecycle {
   }
 
   /**
+   * Confirm a pane-detected auth error with the backend's token-free status
+   * probe before pausing anything: pattern matching over terminal text also
+   * fires on an agent DISCUSSING a 401. "valid" means false positive — ignore.
+   * "invalid" and "unknown" (timeout, missing binary) both pause: for a
+   * suspected expiry, pausing too much is recoverable, delivering into a dead
+   * CLI is not. Cached per backend so simultaneous alerts run one check.
+   */
+  private verifyAuthError(name: string): Promise<"valid" | "invalid" | "unknown"> {
+    const backend = this.backendOf(name);
+    const cached = this.authVerifyCache.get(backend);
+    if (cached && Date.now() - cached.at < AUTH_VERIFY_CACHE_MS) return cached.promise;
+    const check = LOGIN_FLOWS[backend]?.authCheck;
+    const promise = check ? checkAuthStatus(check) : Promise.resolve("unknown" as const);
+    this.authVerifyCache.set(backend, { at: Date.now(), promise });
+    return promise;
+  }
+
+  /**
    * One alert per backend per cooldown, naming every affected instance — a CLI's
    * credentials are shared, so N instances failing is ONE problem with ONE fix
    * (re-login once). The per-instance daemon cooldown can't dedupe across
@@ -253,7 +286,7 @@ export class InstanceLifecycle {
       ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
       : `\`${name}\` (${backend})`;
     this.notifyIncident(notificationTarget, "auth_error",
-      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then.`);
+      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then. Use \`/login ${backend}\` to re-login remotely.`);
   }
 
   /**
@@ -435,7 +468,7 @@ export class InstanceLifecycle {
       await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
 
-    daemon.on("pty_error", safeHandler((data: { name: string; type: string; action: string; message: string }) => {
+    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
@@ -445,6 +478,18 @@ export class InstanceLifecycle {
       // minute). Remember it so /usage can overlay the truth on that row.
       if (data.type === "quota" && this.backendOf(name) === "antigravity") {
         reportProviderRateLimit("antigravity", data.message);
+      }
+
+      // Pattern-matched auth errors get a second opinion from the real CLI
+      // before any pause/alert: an agent quoting "401 Unauthorized" in prose
+      // must not pause the fleet. A working credential ends the incident here.
+      if (data.type === "auth_error") {
+        const verdict = await this.verifyAuthError(name);
+        if (verdict === "valid") {
+          this.ctx.logger.info({ name, backend: this.backendOf(name) },
+            "auth-error pattern ignored — token-free auth check passed (likely conversation text)");
+          return;
+        }
       }
 
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
