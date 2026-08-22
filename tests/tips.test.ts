@@ -37,31 +37,20 @@ describe("tips catalog and persistence", () => {
     );
     expect(TIPS.every(t => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(t.text_en + t.text_zh))).toBe(true);
 
-    // Beginner tips are mobile-chat onboarding copy. Architecture vocabulary is
-    // introduced (with definitions) in the intermediate tier, never leaked into
-    // the first hundred tips as unexplained implementation detail.
-    const beginnerTechnicalTerms = /\b(?:MCP|tmux|pane|daemon|stdio|epoch|IPC|CLI|instance|backend|fleet|context)\b|fleet\.yaml|config key/iu;
-    for (const tip of beginner) {
-      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(beginnerTechnicalTerms);
-      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(beginnerTechnicalTerms);
-    }
-
-    const firstFiftyNonChatTerms = /\b(?:General|model|quota|administrator|Settings|Claude Code|Codex|Kiro|Grok|Antigravity|OpenCode)\b|\/(?:pause|wake|restart|update|dashboard|status|clear|model|effort|raw|doctor|sysinfo)\b/iu;
-    for (const tip of beginner.slice(0, 50)) {
-      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(firstFiftyNonChatTerms);
-      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(firstFiftyNonChatTerms);
-    }
-
-    const beginnerAdminSurface = /\/(?:pause|wake|restart|update|dashboard|status|clear|model|effort|raw|doctor|sysinfo)\b|\/tips\s+(?:on|off)\b|\bSettings\b|管理員/u;
-    for (const tip of beginner) {
-      expect(`${tip.id}: ${tip.text_en}`).not.toMatch(beginnerAdminSurface);
-      expect(`${tip.id}: ${tip.text_zh}`).not.toMatch(beginnerAdminSurface);
-    }
-    expect(beginner[20]).toMatchObject({ id: "tip-021" });
-    expect(beginner[20].text_en).toMatch(/AgEnD.+connects?.+chat.+AI assistant/i);
-    expect(beginner[20].text_zh).toMatch(/AgEnD.+聊天室.+AI 助手/u);
-
+    // Beginner copy intentionally uses the user's own concise vocabulary:
+    // define the term with "=" and immediately state its practical effect.
     const byId = new Map(TIPS.map(tip => [tip.id, tip]));
+    expect(byId.get("tip-001")?.text_en).toMatch(/Instance = Agent = one AI CLI/);
+    expect(byId.get("tip-001")?.text_zh).toMatch(/Instance = Agent =/u);
+    expect(byId.get("tip-020")?.text_en).toMatch(/already in conversation history/i);
+    expect(byId.get("tip-020")?.text_zh).toMatch(/已經進入前後文/u);
+    expect(byId.get("tip-021")?.text_en).toMatch(/AgEnD =.+Telegram.+Discord.+AI assistant/i);
+    expect(byId.get("tip-052")?.text_en).toMatch(/localhost.+only on the AgEnD machine/i);
+    expect(byId.get("tip-061")?.text_en).toMatch(/\/ctx.+context usage.+already used/i);
+    expect(byId.get("tip-073")?.text_en).toMatch(/\/update.+restart the fleet/i);
+    expect(byId.get("tip-074")?.text_en).toMatch(/whole Fleet, not only/i);
+    expect(byId.get("tip-083")?.text_en).toMatch(/latest five lines.+not the entire/i);
+
     for (const [id, concept] of [
       ["tip-101", "Instance"],
       ["tip-102", "Fleet"],
@@ -93,15 +82,16 @@ describe("tips catalog and persistence", () => {
 
     expect(byId.get("tip-014")?.tags).toEqual(["claude-code", "codex", "grok"]);
     expect(byId.get("tip-069")?.tags).toEqual(["claude-code", "kiro-cli"]);
-    expect(byId.get("tip-070")?.tags).toContain("opencode");
+    expect(byId.get("tip-016")?.tags).toEqual(["claude-code"]);
+    expect(byId.get("tip-070")?.tags).toEqual(["kiro-cli"]);
 
     // Isolate one backend-scoped beginner tip: it is absent without a matching
     // backend and selectable once that backend is active.
-    const allButOpenCodeFallback = new Set(beginner
+    const allButKiroLoad = new Set(beginner
       .filter(tip => tip.id !== "tip-070")
       .map(tip => tip.id));
-    expect(selectTip(allButOpenCodeFallback, () => 0, false, new Set(["claude-code"]))).toBeNull();
-    expect(selectTip(allButOpenCodeFallback, () => 0, false, new Set(["opencode"]))?.id)
+    expect(selectTip(allButKiroLoad, () => 0, false, new Set(["claude-code"]))).toBeNull();
+    expect(selectTip(allButKiroLoad, () => 0, false, new Set(["kiro-cli"]))?.id)
       .toBe("tip-070");
   });
 
