@@ -35,7 +35,7 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
   // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
   // the previous `brew install --cask` form only worked on macOS.
   "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash" },
-  codex: { binary: "codex", install: "npm i -g @openai/codex" },
+  codex: { binary: "codex", install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh" },
   opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
   antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   grok: { binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
