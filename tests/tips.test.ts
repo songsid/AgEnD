@@ -41,33 +41,37 @@ describe("tips catalog and persistence", () => {
     // define the term with "=" and immediately state its practical effect.
     const byId = new Map(TIPS.map(tip => [tip.id, tip]));
     expect(byId.get("tip-001")?.text_en).toMatch(/Instance = Agent = one AI CLI/);
-    expect(byId.get("tip-001")?.text_zh).toMatch(/Instance = Agent =/u);
+    expect(byId.get("tip-001")?.text_zh).toMatch(/instance = Agent =/u);
     expect(byId.get("tip-020")?.text_en).toMatch(/already in conversation history/i);
-    expect(byId.get("tip-020")?.text_zh).toMatch(/已經進入前後文/u);
-    expect(byId.get("tip-021")?.text_en).toMatch(/AgEnD =.+Telegram.+Discord.+AI assistant/i);
+    expect(byId.get("tip-020")?.text_zh).toMatch(/已經進入 Context/u);
+    expect(byId.get("tip-021")?.text_en).toMatch(/AgEnD =.+Telegram.+Discord.+Agents/i);
     expect(byId.get("tip-052")?.text_en).toMatch(/localhost.+only on the AgEnD machine/i);
-    expect(byId.get("tip-061")?.text_en).toMatch(/\/ctx.+context usage.+already used/i);
+    expect(byId.get("tip-061")?.text_en).toMatch(/Context =.+current conversation.+remember/i);
     expect(byId.get("tip-073")?.text_en).toMatch(/\/update.+restart the fleet/i);
     expect(byId.get("tip-074")?.text_en).toMatch(/whole Fleet, not only/i);
     expect(byId.get("tip-083")?.text_en).toMatch(/latest five lines.+not the entire/i);
 
-    for (const [id, concept] of [
-      ["tip-101", "Instance"],
-      ["tip-102", "Fleet"],
-      ["tip-103", "General"],
-      ["tip-104", "Backend"],
-      ["tip-105", "Context"],
-      ["tip-106", "MCP"],
+    for (const [id, englishConcept, zhConcept] of [
+      ["tip-101", "Instance", "instance"],
+      ["tip-102", "Fleet", "Fleet"],
+      ["tip-103", "General", "General"],
+      ["tip-104", "Backend", "Backend"],
+      ["tip-105", "Context", "Context"],
+      ["tip-106", "MCP", "MCP"],
     ] as const) {
       const tip = byId.get(id)!;
       expect(tip.level).toBe("intermediate");
-      expect(tip.text_en).toContain(concept);
-      expect(tip.text_zh).toContain(concept);
+      expect(tip.text_en).toContain(englishConcept);
+      expect(tip.text_zh).toContain(zhConcept);
       // Each glossary entry explains the term in the same sentence instead of
       // assuming that graduating beginner readers already know it.
       expect(tip.text_en.split(/\s+/).length).toBeGreaterThan(8);
       expect(tip.text_zh).toMatch(/[（(].+[）)]/u);
     }
+
+    expect(TIPS.map(tip => tip.text_zh).join("\n")).not.toMatch(
+      /AI 助手|助手|AI 引擎|引擎|後端|上下文|前後文|對話空間|工作資料夾|專案資料夾/u,
+    );
 
     const dismissed = new Set(intermediate.slice(0, 59).map(t => t.id));
     expect(canUnlockAdvancedTips(dismissed)).toBe(false);
