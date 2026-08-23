@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import Database from "better-sqlite3";
 import { CodexRolloutSource, KiroSessionSource, OpenCodeDbSource } from "../src/transcript-sources.js";
 
 const TEST_ROOT = "/tmp/ccd-test-transcript-sources";
@@ -83,6 +84,23 @@ describe("CodexRolloutSource", () => {
     expect(events.toolUses.map(u => (u.input as { command: string[] }).command[2])).toContain("fresh");
   });
 
+  it("follows a resumed rollout in an old date shard", async () => {
+    const oldDir = join(sessionsDir, "2026", "01", "01");
+    const recentDir = join(sessionsDir, "2026", "08", "23");
+    mkdirSync(oldDir, { recursive: true });
+    mkdirSync(recentDir, { recursive: true });
+    const meta = (cwd: string) => JSON.stringify({ type: "session_meta", payload: { cwd } });
+    const resumed = join(oldDir, "rollout-old-but-resumed.jsonl");
+    writeFileSync(resumed, meta(WORK_DIR) + "\n");
+    writeFileSync(join(recentDir, "rollout-recent-foreign.jsonl"), meta("/foreign") + "\n");
+
+    const source = new CodexRolloutSource(WORK_DIR, sessionsDir);
+    appendFileSync(resumed, functionCallLine("shell", { command: "resumed work" }) + "\n");
+
+    const events = await source.poll();
+    expect(events.toolUses).toEqual([{ name: "shell", input: { command: "resumed work" } }]);
+  });
+
   it("baselines a pre-existing rollout to EOF instead of replaying history", async () => {
     writeRollout("rollout-2026-08-08T07-hist.jsonl", WORK_DIR, [functionCallLine("shell", { command: ["bash", "-lc", "history"] })]);
     // Source created AFTER the rollout existed (mtime in the past relative to createdAt)
@@ -106,6 +124,7 @@ describe("CodexRolloutSource", () => {
 
 describe("KiroSessionSource", () => {
   const sessionsDir = join(TEST_ROOT, "kiro-sessions");
+  const missingDb = join(TEST_ROOT, "missing-kiro.sqlite3");
 
   function writeSession(id: string, cwd: string, opts: { updatedAt?: string; createdAt?: string; reason?: string; lines?: string[] } = {}): string {
     mkdirSync(sessionsDir, { recursive: true });
@@ -131,7 +150,7 @@ describe("KiroSessionSource", () => {
   }
 
   it("follows the newest session for this cwd and parses nested toolUse blocks", async () => {
-    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now() - 1000);
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now() - 1000, missingDb);
     writeSession("aaa", WORK_DIR, { lines: [assistantToolUse("shell", { command: "npm test" })] });
     writeSession("bbb", "/other/dir", { lines: [assistantToolUse("shell", { command: "foreign" })] });
 
@@ -142,7 +161,7 @@ describe("KiroSessionSource", () => {
   });
 
   it("skips subagent-created sessions", async () => {
-    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now() - 1000);
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now() - 1000, missingDb);
     writeSession("sub", WORK_DIR, { reason: "subagent", lines: [assistantToolUse("shell", { command: "sub work" })] });
     expect((await source.poll()).toolUses).toHaveLength(0);
   });
@@ -152,12 +171,42 @@ describe("KiroSessionSource", () => {
       createdAt: new Date(Date.now() - 60_000).toISOString(),
       lines: [assistantToolUse("shell", { command: "history" })],
     });
-    const source = new KiroSessionSource(WORK_DIR, sessionsDir);
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), missingDb);
     expect((await source.poll()).toolUses).toHaveLength(0);
 
     appendFileSync(jsonl, assistantToolUse("shell", { command: "live" }) + "\n");
     const events = await source.poll();
     expect(events.toolUses).toHaveLength(1);
+  });
+
+  it("tails primary Kiro 2.19 conversations from data.sqlite3", async () => {
+    const dbPath = join(TEST_ROOT, "kiro-data.sqlite3");
+    const db = new Database(dbPath);
+    db.exec(`CREATE TABLE conversations_v2 (
+      key TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      value TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (key, conversation_id)
+    )`);
+    const oldHistory = [{ user: { content: { Prompt: {} } }, assistant: { Response: { content: "history" } } }];
+    db.prepare("INSERT INTO conversations_v2 VALUES (?, ?, ?, ?, ?)")
+      .run(WORK_DIR, "conversation-live", JSON.stringify({ history: oldHistory }), Date.now() - 60_000, Date.now() - 10_000);
+
+    const source = new KiroSessionSource(WORK_DIR, sessionsDir, Date.now(), dbPath);
+    expect((await source.poll()).toolUses).toHaveLength(0);
+
+    const liveEntry = {
+      user: { content: { ToolUseResults: { tool_use_results: [] } } },
+      assistant: { ToolUse: { tool_uses: [{ id: "tool-1", name: "execute_bash", args: { command: "npm test" } }] } },
+    };
+    db.prepare("UPDATE conversations_v2 SET value = ?, updated_at = ? WHERE conversation_id = ?")
+      .run(JSON.stringify({ history: [...oldHistory, liveEntry] }), Date.now(), "conversation-live");
+
+    const events = await source.poll();
+    expect(events.toolUses).toEqual([{ name: "execute_bash", input: { command: "npm test" } }]);
+    db.close();
   });
 });
 

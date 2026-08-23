@@ -8,8 +8,9 @@
  *   codex     — rollout JSONL under <codex home>/sessions/YYYY/MM/DD/,
  *               matched to this instance by session_meta.cwd (sessions are a
  *               shared symlinked dir across instances, #507)
- *   kiro-cli  — ~/.kiro/sessions/cli/<uuid>.jsonl with a sibling <uuid>.json
- *               carrying { cwd, updated_at }
+ *   kiro-cli  — primary sessions in ~/.local/share/kiro-cli/data.sqlite3
+ *               (Kiro 2.19+), with ~/.kiro/sessions/cli JSONL fallback for
+ *               older releases
  *   opencode  — $XDG_DATA_HOME/opencode/opencode.db `part` table rows of
  *               data JSON { type: "tool", tool, state.input }, matched by the
  *               `session` table's directory column
@@ -25,10 +26,11 @@
  *     one found silently goes blind when the CLI starts a new session.
  */
 
-import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
 import { open, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import Database from "better-sqlite3";
 
 export interface ToolUseEvent { name: string; input: unknown }
 
@@ -76,44 +78,53 @@ async function readNewLines(path: string, fromOffset: number): Promise<{ lines: 
 export class CodexRolloutSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
-  private readonly createdAt: number;
+  /** EOF snapshots taken when the monitor attaches; existing history is skipped. */
+  private initialOffsets = new Map<string, number>();
   /** Files whose session_meta was read and did NOT match our cwd. */
   private rejected = new Set<string>();
 
   constructor(
     private workingDirectory: string,
     private sessionsDir = join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "sessions"),
-    now = Date.now(),
+    _now = Date.now(),
   ) {
-    this.createdAt = now;
+    this.snapshotExistingFiles();
   }
 
   reset(): void {
     this.currentFile = null;
     this.byteOffset = 0;
+    this.rejected.clear();
+    this.snapshotExistingFiles();
   }
 
-  /** Newest rollout files first, bounded to the last two date shards. */
-  private candidateFiles(): Array<{ path: string; mtimeMs: number }> {
-    const out: Array<{ path: string; mtimeMs: number }> = [];
+  private snapshotExistingFiles(): void {
+    this.initialOffsets = new Map(this.candidateFiles().map(file => [file.path, file.size]));
+  }
+
+  /**
+   * Newest rollout files first.
+   *
+   * A resumed Codex session keeps writing to the date shard where it was first
+   * created. Limiting discovery to today's/yesterday's directories therefore
+   * makes a long-lived instance silently disappear from tool progress. There
+   * are normally only tens of rollout files, and rejected cwd matches are
+   * cached, so walking all shards is both correct and cheap.
+   */
+  private candidateFiles(): Array<{ path: string; mtimeMs: number; size: number }> {
+    const out: Array<{ path: string; mtimeMs: number; size: number }> = [];
     const walk = (dir: string, depth: number): void => {
       let entries: string[];
       try { entries = readdirSync(dir); } catch { return; }
-      // Date-sharded YYYY/MM/DD tree: at each level only the two newest
-      // subdirs can contain today's/yesterday's rollouts.
-      const dirs: string[] = [];
       for (const e of entries) {
         const p = join(dir, e);
         try {
           const st = statSync(p);
-          if (st.isDirectory()) dirs.push(e);
-          else if (depth >= 3 && e.startsWith("rollout-") && e.endsWith(".jsonl")) {
-            out.push({ path: p, mtimeMs: st.mtimeMs });
+          if (st.isDirectory() && depth < 4) walk(p, depth + 1);
+          else if (e.startsWith("rollout-") && e.endsWith(".jsonl")) {
+            out.push({ path: p, mtimeMs: st.mtimeMs, size: st.size });
           }
         } catch { /* raced with deletion */ }
-      }
-      if (depth < 3) {
-        for (const d of dirs.sort().reverse().slice(0, 2)) walk(join(dir, d), depth + 1);
       }
     };
     walk(this.sessionsDir, 0);
@@ -155,14 +166,10 @@ export class CodexRolloutSource implements TranscriptSource {
 
     if (active.path !== this.currentFile) {
       this.currentFile = active.path;
-      // A rollout born after this source existed is our own fresh session —
-      // read it from the start. A pre-existing one is history — baseline EOF.
-      if (active.mtimeMs >= this.createdAt) {
-        this.byteOffset = 0;
-      } else {
-        try { this.byteOffset = (await stat(active.path)).size; } catch { this.byteOffset = 0; }
-        return EMPTY;
-      }
+      // Existing rollout: continue at the EOF captured when the source was
+      // created. New rollout: read from the start. Using current mtime here is
+      // wrong because appending to a resumed rollout makes an old file look new.
+      this.byteOffset = this.initialOffsets.get(active.path) ?? 0;
     }
 
     const { lines, newOffset } = await readNewLines(this.currentFile, this.byteOffset);
@@ -201,27 +208,126 @@ export class CodexRolloutSource implements TranscriptSource {
 /* -------------------------------------------------------------------- kiro */
 
 /**
- * Follows the newest kiro session whose metadata cwd matches this instance's
- * working directory. Session transcript is <uuid>.jsonl; ownership and
- * recency come from the sibling <uuid>.json ({ cwd, updated_at,
- * session_created_reason }).
+ * Follows the newest Kiro conversation whose cwd matches this instance.
+ * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
+ * legacy releases use <uuid>.jsonl plus sibling <uuid>.json metadata.
  */
 export class KiroSessionSource implements TranscriptSource {
   private currentFile: string | null = null;
   private byteOffset = 0;
   private readonly createdAt: number;
+  private dbConversationId: string | null = null;
+  private dbHistoryCursor = 0;
+  private dbSignature = "";
+  private dbToolNames = new Map<string, string>();
 
   constructor(
     private workingDirectory: string,
     private sessionsDir = join(homedir(), ".kiro", "sessions", "cli"),
     now = Date.now(),
+    private dbPath = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "kiro-cli", "data.sqlite3"),
   ) {
     this.createdAt = now;
+    this.snapshotDbBaseline();
   }
 
   reset(): void {
     this.currentFile = null;
     this.byteOffset = 0;
+    this.dbConversationId = null;
+    this.dbHistoryCursor = 0;
+    this.dbSignature = "";
+    this.dbToolNames.clear();
+    this.snapshotDbBaseline();
+  }
+
+  private workingDirectoryKeys(): string[] {
+    const keys = new Set([this.workingDirectory, resolve(this.workingDirectory)]);
+    try { keys.add(realpathSync(this.workingDirectory)); } catch { /* keep literal/absolute cwd */ }
+    return [...keys];
+  }
+
+  private newestDbRow(db: Database.Database): { conversation_id: string; created_at: number; updated_at: number; size: number; value?: string } | undefined {
+    const keys = this.workingDirectoryKeys();
+    const placeholders = keys.map(() => "?").join(", ");
+    return db.prepare(
+      `SELECT conversation_id, created_at, updated_at, length(value) AS size
+       FROM conversations_v2 WHERE key IN (${placeholders})
+       ORDER BY updated_at DESC LIMIT 1`,
+    ).get(...keys) as { conversation_id: string; created_at: number; updated_at: number; size: number } | undefined;
+  }
+
+  private readDbHistory(db: Database.Database, conversationId: string): unknown[] | null {
+    const row = db.prepare(
+      "SELECT value FROM conversations_v2 WHERE conversation_id = ? ORDER BY updated_at DESC LIMIT 1",
+    ).get(conversationId) as { value: string } | undefined;
+    if (!row) return null;
+    try {
+      const parsed = JSON.parse(row.value) as { history?: unknown };
+      return Array.isArray(parsed.history) ? parsed.history : [];
+    } catch { return null; }
+  }
+
+  /**
+   * Kiro 2.19 moved primary conversations into data.sqlite3. Snapshot the
+   * active row synchronously at monitor creation so its existing history is
+   * never replayed as live tool progress.
+   */
+  private snapshotDbBaseline(): void {
+    if (!existsSync(this.dbPath)) return;
+    let db: Database.Database | undefined;
+    try {
+      db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+      const row = this.newestDbRow(db);
+      if (!row) return;
+      const history = this.readDbHistory(db, row.conversation_id);
+      if (!history) return;
+      this.dbConversationId = row.conversation_id;
+      this.dbHistoryCursor = history.length;
+      this.dbSignature = `${row.updated_at}:${row.size}`;
+    } catch { /* old Kiro schema or busy DB — legacy JSONL remains available */ }
+    finally { try { db?.close(); } catch { /* already closed */ } }
+  }
+
+  private pollDb(): TranscriptEvents | null {
+    if (!existsSync(this.dbPath)) return null;
+    let db: Database.Database | undefined;
+    try {
+      db = new Database(this.dbPath, { readonly: true, fileMustExist: true });
+      const row = this.newestDbRow(db);
+      if (!row) return null;
+      const signature = `${row.updated_at}:${row.size}`;
+      if (row.conversation_id === this.dbConversationId && signature === this.dbSignature) return EMPTY;
+
+      const history = this.readDbHistory(db, row.conversation_id);
+      if (!history) return EMPTY;
+      if (row.conversation_id !== this.dbConversationId) {
+        this.dbConversationId = row.conversation_id;
+        this.dbToolNames.clear();
+        // A conversation created after this monitor belongs to this daemon;
+        // an older conversation selected by --resume is history to baseline.
+        this.dbHistoryCursor = row.created_at >= this.createdAt ? 0 : history.length;
+      }
+      if (history.length < this.dbHistoryCursor) {
+        // Compaction can replace history with a shorter summary. Treat the new
+        // compacted body as a baseline instead of waiting for it to grow past
+        // the old cursor (or replaying retained history).
+        this.dbHistoryCursor = history.length;
+        this.dbSignature = signature;
+        return EMPTY;
+      }
+      const events = emptyEvents();
+      for (const entry of history.slice(this.dbHistoryCursor)) {
+        collectKiroDbEvents(entry, events, this.dbToolNames);
+      }
+      this.dbHistoryCursor = history.length;
+      this.dbSignature = signature;
+      return events;
+    } catch {
+      return null;
+    } finally {
+      try { db?.close(); } catch { /* already closed */ }
+    }
   }
 
   private resolveActiveSession(): { jsonlPath: string; createdAtMs: number } | null {
@@ -250,6 +356,11 @@ export class KiroSessionSource implements TranscriptSource {
   }
 
   async poll(): Promise<TranscriptEvents> {
+    // Current Kiro stores the primary session in SQLite; JSONL is now mostly
+    // used for subagents. Keep the legacy path as a compatibility fallback.
+    const dbEvents = this.pollDb();
+    if (dbEvents !== null) return dbEvents;
+
     const active = this.resolveActiveSession();
     if (!active) return EMPTY;
 
@@ -273,6 +384,37 @@ export class KiroSessionSource implements TranscriptSource {
       collectKiroEvents(entry, events);
     }
     return events;
+  }
+}
+
+function collectKiroDbEvents(entry: unknown, out: TranscriptEvents, toolNames: Map<string, string>): void {
+  if (!entry || typeof entry !== "object") return;
+  const record = entry as Record<string, unknown>;
+  const assistant = record.assistant as Record<string, unknown> | undefined;
+  const toolUse = assistant?.ToolUse as Record<string, unknown> | undefined;
+  const uses = toolUse?.tool_uses;
+  if (Array.isArray(uses)) {
+    for (const raw of uses) {
+      if (!raw || typeof raw !== "object") continue;
+      const use = raw as Record<string, unknown>;
+      const name = String(use.name ?? use.orig_name ?? "unknown");
+      const id = typeof use.id === "string" ? use.id : undefined;
+      if (id) toolNames.set(id, name);
+      out.toolUses.push({ name, input: use.args ?? use.orig_args });
+    }
+  }
+
+  const user = record.user as Record<string, unknown> | undefined;
+  const content = user?.content as Record<string, unknown> | undefined;
+  const resultsContainer = content?.ToolUseResults as Record<string, unknown> | undefined;
+  const results = resultsContainer?.tool_use_results;
+  if (Array.isArray(results)) {
+    for (const raw of results) {
+      if (!raw || typeof raw !== "object") continue;
+      const result = raw as Record<string, unknown>;
+      const id = typeof result.tool_use_id === "string" ? result.tool_use_id : "";
+      out.toolResults.push({ name: toolNames.get(id) ?? "toolResult" });
+    }
   }
 }
 
