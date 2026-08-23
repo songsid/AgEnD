@@ -322,6 +322,13 @@ export class TopicCommands {
       return true;
     }
 
+    // Telegram command names cannot contain "-", so the menu registers
+    // /install_cli; accept both spellings as typed text.
+    if (/^\/install[-_]cli(?:@\S+)?(?:\s|$)/.test(text)) {
+      await this.handleInstallCliCommand(msg);
+      return true;
+    }
+
     if (text === "/update" || text.startsWith("/update@")) {
       await this.handleUpdateCommand(msg);
       return true;
@@ -829,6 +836,36 @@ export class TopicCommands {
     if (started) await adapter.sendText(msg.chatId, started, { threadId: msg.threadId });
   }
 
+  /** `/install-cli <backend> | cancel` — remote CLI install. Fleet-admin only. */
+  private async handleInstallCliCommand(msg: InboundMessage): Promise<void> {
+    const adapter = this.getReplyAdapter(msg);
+    if (!adapter) return;
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
+      await adapter.sendText(msg.chatId, t("permission.denied"), { threadId: msg.threadId });
+      return;
+    }
+    if (!this.ctx.startInstallSession || !this.ctx.cancelInstallSession) {
+      await adapter.sendText(msg.chatId, t("install.no_session"), { threadId: msg.threadId });
+      return;
+    }
+    const arg = msg.text.trim().replace(/^\/install[-_]cli(?:@\S+)?/, "").trim();
+    if (!arg || /\s/.test(arg)) {
+      await adapter.sendText(msg.chatId, t("install.usage"), { threadId: msg.threadId });
+      return;
+    }
+    if (arg === "cancel") {
+      await adapter.sendText(msg.chatId, await this.ctx.cancelInstallSession(), { threadId: msg.threadId });
+      return;
+    }
+    const chat = {
+      adapter,
+      adapterId: msg.adapterId ?? adapter.id,
+      chatId: msg.chatId,
+      threadId: msg.threadId,
+    };
+    await adapter.sendText(msg.chatId, await this.ctx.startInstallSession(arg, chat), { threadId: msg.threadId });
+  }
+
   private async handleTipsCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
@@ -1235,6 +1272,7 @@ export class TopicCommands {
           { command: "update", description: "🔒 " + t("slash.update") },
           { command: "doctor", description: "🔒 " + t("slash.doctor") },
           { command: "login", description: "🔒 " + t("slash.login") },
+          { command: "install_cli", description: "🔒 " + t("slash.install_cli") },
           { command: "usage", description: t("slash.usage") },
           { command: "tips", description: t("slash.tips") },
         ];
