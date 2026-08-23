@@ -100,6 +100,15 @@ export interface FleetContext {
   loginSubmitInput?(text: string): Promise<string>;
   /** Abort the active login session. */
   cancelLoginSession?(): Promise<string>;
+  /** `/install-cli <backend>` — install a CLI in a dedicated window; returns a status line. */
+  startInstallSession?(backend: string, chat: {
+    adapter: import("./channel/types.js").ChannelAdapter;
+    adapterId: string;
+    chatId: string;
+    threadId?: string;
+  }): Promise<string>;
+  /** Abort the active install session. */
+  cancelInstallSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
   /**

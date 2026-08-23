@@ -32,7 +32,9 @@ export interface BackendInstallationInfo {
 export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallationInfo>> = {
   "claude-code": { binary: "claude", install: "curl -fsSL https://claude.ai/install.sh | bash" },
   "gemini-cli": { binary: "gemini", install: "npm i -g @google/gemini-cli" },
-  "kiro-cli": { binary: "kiro-cli", install: "brew install --cask kiro-cli" },
+  // The curl installer serves Linux and macOS (verified: 200, text/x-shellscript);
+  // the previous `brew install --cask` form only worked on macOS.
+  "kiro-cli": { binary: "kiro-cli", install: "curl -fsSL https://cli.kiro.dev/install | bash" },
   codex: { binary: "codex", install: "npm i -g @openai/codex" },
   opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
   antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },

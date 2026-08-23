@@ -21,8 +21,9 @@ describe("LOGIN_FLOWS table", () => {
     }
   });
 
-  it("routes every alias to a defined flow", () => {
+  it("routes every alias to a defined flow (opencode is install-only)", () => {
     for (const target of Object.values(LOGIN_BACKEND_ALIASES)) {
+      if (target === "opencode") continue; // /install-cli only — no login flow
       expect(LOGIN_FLOWS[target]).toBeDefined();
     }
     expect(LOGIN_BACKEND_ALIASES["claude"]).toBe("claude-code");

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -395,6 +396,7 @@ const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 const LOGIN_CALLBACK_PREFIX = "login:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
+const INSTALL_LOGIN_CALLBACK_PREFIX = "install-login:";
 const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
@@ -2690,6 +2692,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleInstallLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, this.adapter ?? undefined)) return;
@@ -2783,6 +2786,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
         await data.respond(result);
+      } else if (data.command === "login") {
+        await this.handleLoginSlash(data, adapterId, this.adapter!);
+      } else if (data.command === "install-cli") {
+        await this.handleInstallCliSlash(data, adapterId, this.adapter!);
       } else if (data.command === "clear") {
         await this.handleClearSlash(data, adapterId);
       } else if (data.command === "model") {
@@ -2905,6 +2912,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
         await data.respond(result);
+      } else if (data.command === "login") {
+        await this.handleLoginSlash(data, adapterId, this.adapter!);
+      } else if (data.command === "install-cli") {
+        await this.handleInstallCliSlash(data, adapterId, this.adapter!);
       }
     }, this.logger, "adapter.slash_command"));
 
@@ -3002,6 +3013,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
+      if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
       if (await this.handleInteractivePromptAssist(data, adapterId, adapter)) return;
@@ -3185,6 +3197,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           userId: data.userId ?? "", threadId: undefined, adapterId, source: "discord",
         });
         await data.respond(result);
+      } else if (data.command === "login") {
+        await this.handleLoginSlash(data, adapterId, adapter);
+      } else if (data.command === "install-cli") {
+        await this.handleInstallCliSlash(data, adapterId, adapter);
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
@@ -6730,6 +6746,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
     if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+    // Install sessions share the window namespace — never run both at once.
+    if (this.activeInstall) return t("install.busy");
 
     // Token-free pre-check (5s cap): re-login while auth still works is
     // usually a mistake, so it needs a confirmed click. An invalid OR
@@ -6764,6 +6782,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
   }): Promise<string> {
     if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+    // Install sessions share the window namespace — never run both at once.
+    if (this.activeInstall) return t("install.busy");
     const sessionName = getTmuxSession();
     await TmuxManager.ensureSession(sessionName);
     const tmux = new TmuxManager(sessionName, "");
@@ -6799,7 +6819,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             woken.length ? woken.join(", ") : none,
             restarted.length ? restarted.join(", ") : none);
         } else if (detail === "cancelled") {
-          text = t("login.cancelled", backend);
+          // The cancel command's own reply already announced this — a second
+          // message here was a duplicate.
+          return;
         } else {
           text = t("login.failed", backend, detail);
         }
@@ -6977,6 +6999,187 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
       ok ? t("login.provider_selected", label) : t("login.no_session"));
     return true;
+  }
+
+  // ── Remote CLI install (`/install-cli`) ──────────────────────────────────
+  //
+  // Same dedicated-window model as /login (and the same LoginSession state
+  // machine — an install is a login flow with no auth hints): run the
+  // installer, judge by exit code, verify the binary on a fresh login shell,
+  // then offer to chain straight into /login.
+  private activeInstall: {
+    session: LoginSession;
+    backend: string;
+    chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
+  } | null = null;
+
+  /** Start a CLI install session. Caller enforces admin. */
+  async startInstallSession(backendArg: string, chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+  }): Promise<string> {
+    const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
+    const info = BACKEND_INSTALLATION_INFO[backend];
+    if (!info) return t("install.unsupported", backendArg);
+    if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
+    if (this.activeInstall) return t("install.busy");
+    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+
+    const sessionName = getTmuxSession();
+    await TmuxManager.ensureSession(sessionName);
+    const tmux = new TmuxManager(sessionName, "");
+    // A synthetic login flow: success is decided by the installer's exit code
+    // (LoginSession treats a clean exit as success), never by pane text — and
+    // installer output that happens to contain a URL must not be forwarded as
+    // an auth hint, hence the no-op events below.
+    const flow: LoginFlow = {
+      backend,
+      command: info.install,
+      successPattern: /$^/,
+      timeoutMs: 10 * 60 * 1000,
+    };
+    const session = new LoginSession(flow, tmux, {
+      onMenu: () => {},
+      onAuthHint: () => {},
+      onNeedInput: () => {},
+      onDone: async ({ ok, detail }) => {
+        this.activeInstall = null;
+        if (!ok) {
+          // A cancel is user-initiated — the cancel command's own reply already
+          // said so; a second message here would be a duplicate.
+          if (detail !== "cancelled") {
+            await chat.adapter.sendText(chat.chatId, t("install.failed", backend, detail),
+              { threadId: chat.threadId }).catch(() => {});
+          }
+          return;
+        }
+        // The installer may only have added the binary to a profile PATH; a
+        // fresh login shell sees that, the fleet process's PATH may not.
+        if (!this.verifyBinaryOnLoginShell(info.binary)) {
+          await chat.adapter.sendText(chat.chatId, t("install.verify_failed", backend, info.binary),
+            { threadId: chat.threadId }).catch(() => {});
+          return;
+        }
+        if (!LOGIN_FLOWS[backend]) {
+          await chat.adapter.sendText(chat.chatId, t("install.success_no_login", backend),
+            { threadId: chat.threadId }).catch(() => {});
+          return;
+        }
+        await this.postNonceButtonPrompt({
+          prefix: INSTALL_LOGIN_CALLBACK_PREFIX,
+          alertType: "login",
+          instanceName: backend,
+          adapter: chat.adapter,
+          adapterId: chat.adapterId,
+          chatId: chat.chatId,
+          threadId: chat.threadId,
+          message: t("install.login_prompt", backend),
+          choices: [
+            { action: "go", label: t("install.login_now") },
+            { action: "later", label: t("install.later") },
+          ],
+          expiredText: t("install.later_ack", backend),
+        });
+      },
+    }, this.logger);
+
+    this.activeInstall = { session, backend, chat };
+    try {
+      await session.start();
+    } catch (err) {
+      this.activeInstall = null;
+      return t("install.failed", backend, (err as Error).message);
+    }
+    return t("install.started", backend);
+  }
+
+  /** `/install-cli cancel` — abort the active install and remove its window. */
+  async cancelInstallSession(): Promise<string> {
+    if (!this.activeInstall) return t("install.no_session");
+    const backend = this.activeInstall.backend;
+    await this.activeInstall.session.cancel();
+    return t("install.cancelled", backend);
+  }
+
+  /** `command -v` on a login shell, so PATH additions from rc files count. */
+  private verifyBinaryOnLoginShell(binary: string): boolean {
+    try {
+      const result = spawnSync("bash", ["-lc", `command -v ${binary}`], { timeout: 10_000, stdio: "pipe" });
+      return result.status === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /** "Sign in now?" button after a successful install. */
+  private async handleInstallLoginConfirm(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      INSTALL_LOGIN_CALLBACK_PREFIX,
+      /^install-login:([0-9a-f]+):(go|later)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const backend = entry.instanceName;
+    if (action === "later") {
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("install.later_ack", backend));
+      return true;
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, t("login.starting_backend", backend));
+    const text = await this.startLoginSession(backend, {
+      adapter: entry.adapter,
+      adapterId: entry.adapterId,
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+    });
+    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    return true;
+  }
+
+  /** Discord native `/login` slash — shared by every adapter dispatch block. */
+  private async handleLoginSlash(
+    data: { userId?: string; channelId: string; options?: Record<string, unknown>; respond: (text: string) => Promise<unknown> },
+    adapterId: string,
+    adapter: ChannelAdapter,
+  ): Promise<void> {
+    if (!data.userId || !this.isFleetAdmin(data.userId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    const chat = { adapter, adapterId, chatId: data.channelId };
+    if (data.options?.cancel === true) { await data.respond(await this.cancelLoginSession()); return; }
+    const code = String(data.options?.code ?? "").trim();
+    if (code) { await data.respond(await this.loginSubmitInput(code)); return; }
+    const backend = String(data.options?.backend ?? "").trim();
+    if (backend) {
+      const text = await this.startLoginSession(backend, chat);
+      await data.respond(text ?? t("login.confirm_posted"));
+      return;
+    }
+    await this.promptLoginBackends(chat);
+    await data.respond(t("login.chooser_posted"));
+  }
+
+  /** Discord native `/install-cli` slash — shared by every dispatch block. */
+  private async handleInstallCliSlash(
+    data: { userId?: string; channelId: string; options?: Record<string, unknown>; respond: (text: string) => Promise<unknown> },
+    adapterId: string,
+    adapter: ChannelAdapter,
+  ): Promise<void> {
+    if (!data.userId || !this.isFleetAdmin(data.userId, adapterId)) {
+      await data.respond(t("permission.denied"));
+      return;
+    }
+    if (data.options?.cancel === true) { await data.respond(await this.cancelInstallSession()); return; }
+    const backend = String(data.options?.backend ?? "").trim();
+    if (!backend) { await data.respond(t("install.usage")); return; }
+    await data.respond(await this.startInstallSession(backend, { adapter, adapterId, chatId: data.channelId }));
   }
 
   queueMirrorMessage(text: string): void {

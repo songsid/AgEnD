@@ -603,6 +603,42 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
               type: ApplicationCommandOptionType.String, required: true,
             }],
           },
+          {
+            name: "login", description: "🔒 " + t("slash.login"),
+            options: [
+              {
+                name: "backend", description: t("slash.option.login_backend"),
+                type: ApplicationCommandOptionType.String, required: false,
+                choices: [
+                  { name: "claude-code", value: "claude-code" },
+                  { name: "codex", value: "codex" },
+                  { name: "kiro-cli", value: "kiro-cli" },
+                  { name: "grok", value: "grok" },
+                  { name: "antigravity", value: "antigravity" },
+                ],
+              },
+              { name: "code", description: t("slash.option.login_code"), type: ApplicationCommandOptionType.String, required: false },
+              { name: "cancel", description: t("slash.option.login_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
+            ],
+          },
+          {
+            name: "install-cli", description: "🔒 " + t("slash.install_cli"),
+            options: [
+              {
+                name: "backend", description: t("slash.option.install_backend"),
+                type: ApplicationCommandOptionType.String, required: false,
+                choices: [
+                  { name: "claude-code", value: "claude-code" },
+                  { name: "codex", value: "codex" },
+                  { name: "kiro-cli", value: "kiro-cli" },
+                  { name: "grok", value: "grok" },
+                  { name: "antigravity", value: "antigravity" },
+                  { name: "opencode", value: "opencode" },
+                ],
+              },
+              { name: "cancel", description: t("slash.option.install_cancel"), type: ApplicationCommandOptionType.Boolean, required: false },
+            ],
+          },
           { name: "clear", description: "🔒 " + t("slash.clear") },
           {
             name: "model", description: "🔒 " + t("slash.model"),
