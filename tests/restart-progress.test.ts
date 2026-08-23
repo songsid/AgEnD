@@ -154,7 +154,7 @@ describe("RestartProgress", () => {
     expect(editMessage).toHaveBeenLastCalledWith(
       "fleet",
       "update-zh",
-      "✅ Fleet 已重啟 — v2.1.4, 1/1 instances running (3s)",
+      "✅ Fleet 已重啟 — v2.1.4，1/1 個 Agent 運行中（3s）",
       undefined,
     );
   });
