@@ -61,7 +61,7 @@ describe("/install-cli", () => {
     const started = await fm.startInstallSession("codex", chat);
     expect(started).toContain("codex");
     expect(fakeSessions).toHaveLength(1);
-    expect(fakeSessions[0].flow.command).toBe("npm i -g @openai/codex");
+    expect(fakeSessions[0].flow.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | sh");
     expect(fakeSessions[0].started).toBe(true);
 
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });

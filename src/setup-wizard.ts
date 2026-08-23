@@ -244,7 +244,7 @@ export const BACKENDS: Array<{
     auth: "claude (OAuth) or set ANTHROPIC_API_KEY" },
   { id: "codex", binary: "codex", label: "OpenAI Codex",
     installUrl: "https://developers.openai.com/codex/quickstart",
-    install: "npm i -g @openai/codex",
+    install: "curl -fsSL https://chatgpt.com/codex/install.sh | sh",
     auth: "codex (ChatGPT login) or set OPENAI_API_KEY" },
   { id: "gemini-cli", binary: "gemini", label: "Gemini CLI", deprecated: true,
     installUrl: "https://github.com/google-gemini/gemini-cli",
