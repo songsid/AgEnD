@@ -86,6 +86,32 @@ describe("Daemon", () => {
     expect(backend.getQuitCommand()).toBeNull();
     expect(sendSpecialKey.mock.calls).toEqual([["C-c"], ["C-c"]]);
   });
+
+  it("enables MCP by default for Antigravity and preserves explicit CLI mode", () => {
+    const instanceDir = "/tmp/agy-mcp-default";
+    const backend = new AntigravityBackend(instanceDir);
+    const mcpDaemon = new Daemon(
+      "agy-mcp",
+      { ...makeConfig(), backend: "antigravity" },
+      instanceDir,
+      true,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    expect((mcpDaemon as any).buildBackendConfig().mcpServers.agend).toBeDefined();
+
+    const cliDaemon = new Daemon(
+      "agy-cli",
+      { ...makeConfig(), backend: "antigravity", agent_mode: "cli" },
+      instanceDir,
+      true,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    expect((cliDaemon as any).buildBackendConfig().mcpServers).toEqual({});
+  });
 });
 
 describe("Daemon backend-native input queue delivery", () => {

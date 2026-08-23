@@ -1,7 +1,19 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, shellQuote, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
@@ -27,13 +39,26 @@ export function parseAntigravityModelsOutput(output: string): import("./types.js
 export class AntigravityBackend implements CliBackend {
   readonly binaryName = "agy";
   private binaryPath: string;
+  private readonly mcpWrapperPath: string;
 
-  constructor(private instanceDir: string) {
+  constructor(
+    private instanceDir: string,
+    private userHome = homedir(),
+    private agendHome = getAgendHome(),
+  ) {
     this.binaryPath = resolveBinary("agy");
+    this.mcpWrapperPath = join(instanceDir, "agy-mcp-env.sh");
   }
 
   buildCommand(config: CliBackendConfig): string {
-    let cmd = `${this.binaryPath} --dangerously-skip-permissions`;
+    // agy 1.1.17+ has no per-workspace MCP config and no --mcp-config flag. Its
+    // global MCP child does inherit the CLI process environment, so MCP-mode
+    // instances launch through an owner-only wrapper written by writeConfig().
+    // The wrapper keeps socket paths and decisions out of the shared config.
+    const prefix = config.agentMode === "mcp" && existsSync(this.mcpWrapperPath)
+      ? `${shellQuote(this.mcpWrapperPath)} `
+      : "";
+    let cmd = `${prefix}${this.binaryPath} --dangerously-skip-permissions`;
     if (!config.skipResume) cmd += " --continue";
     if (config.model) {
       warnIfModelMismatch("antigravity", config.model);
@@ -43,25 +68,15 @@ export class AntigravityBackend implements CliBackend {
     return cmd;
   }
 
-  /**
-   * If workingDirectory is under a hidden path (e.g. ~/.agend/workspaces/),
-   * agy refuses to operate. Use a real non-hidden directory instead.
-   */
+  /** agy >= 1.1.0 accepts hidden working directories (upstream issue #20). */
   resolveWorkingDirectory(workingDirectory: string, instanceName?: string): string {
-    const home = homedir();
-    const rel = workingDirectory.startsWith(home) ? "~" + workingDirectory.slice(home.length) : workingDirectory;
-    const parts = rel.split("/");
-    const hasHidden = parts.some(p => p.startsWith(".") && p !== "~");
-    if (!hasHidden) return workingDirectory;
-
-    const name = instanceName || parts[parts.length - 1] || "workspace";
-    const resolvedDir = join(home, "agend-workspaces", name);
-    mkdirSync(resolvedDir, { recursive: true });
-    return resolvedDir;
+    void instanceName;
+    mkdirSync(workingDirectory, { recursive: true });
+    return workingDirectory;
   }
 
   writeConfig(config: CliBackendConfig): void {
-    // Write .agents/agents.md in the resolved CWD (which may differ from config.workingDirectory)
+    // Write .agents/agents.md in the persistent configured workspace.
     const cwd = this.resolveWorkingDirectory(config.workingDirectory, config.instanceName);
     const agentsDir = join(cwd, ".agents");
     mkdirSync(agentsDir, { recursive: true });
@@ -71,7 +86,117 @@ export class AntigravityBackend implements CliBackend {
       appendWithMarker(agentsPath, config.instanceName, config.instructions);
     }
 
+    if (config.agentMode === "mcp" && Object.keys(config.mcpServers).length > 0) {
+      this.writeMcpEnvWrapper(config);
+      this.ensureGlobalMcpLauncher(config);
+    } else {
+      // An instance explicitly switched to CLI mode must not retain secrets from
+      // an earlier MCP-mode launch.
+      try { unlinkSync(this.mcpWrapperPath); } catch { /* absent */ }
+    }
+
     this.enableStatusLine();
+  }
+
+  private writeMcpEnvWrapper(config: CliBackendConfig): void {
+    const entry = Object.values(config.mcpServers)[0];
+    if (!entry) return;
+    mkdirSync(this.instanceDir, { recursive: true });
+    const exports = Object.entries({ ...entry.env, AGEND_INSTANCE_NAME: config.instanceName })
+      .map(([key, value]) => `export ${key}=${shellQuote(String(value))}`)
+      .join("\n");
+    writeFileSync(
+      this.mcpWrapperPath,
+      `#!/bin/sh\n${exports}\nexec "$@"\n`,
+      { mode: 0o700 },
+    );
+    // mode only applies on create; also heal a wrapper from an older version.
+    chmodSync(this.mcpWrapperPath, 0o700);
+  }
+
+  private ensureGlobalMcpLauncher(config: CliBackendConfig): void {
+    const entry = Object.values(config.mcpServers)[0];
+    const serverPath = entry?.args?.[0];
+    if (!entry || typeof serverPath !== "string") return;
+
+    const configDir = join(this.userHome, ".gemini", "config");
+    const configPath = join(configDir, "mcp_config.json");
+    const lockPath = join(configDir, ".agend-mcp.lock");
+    mkdirSync(configDir, { recursive: true });
+
+    let lockFd: number | undefined;
+    try {
+      try {
+        lockFd = openSync(lockPath, "wx", 0o600);
+      } catch (err) {
+        // A crashed writer must not block every future agy launch forever.
+        try {
+          if (Date.now() - statSync(lockPath).mtimeMs > 30_000) unlinkSync(lockPath);
+          else return; // another fleet process is writing the identical entry
+          lockFd = openSync(lockPath, "wx", 0o600);
+        } catch {
+          return;
+        }
+      }
+      writeFileSync(lockFd, String(process.pid));
+
+      let root: Record<string, unknown> = {};
+      if (existsSync(configPath)) {
+        try {
+          root = JSON.parse(readFileSync(configPath, "utf-8"));
+        } catch {
+          throw new Error(`Refusing to overwrite invalid Antigravity MCP config: ${configPath}`);
+        }
+      }
+      if (!root || typeof root !== "object" || Array.isArray(root)) {
+        throw new Error(`Refusing to overwrite invalid Antigravity MCP config: ${configPath}`);
+      }
+
+      const existing = root.mcpServers;
+      const servers: Record<string, unknown> = existing && typeof existing === "object" && !Array.isArray(existing)
+        ? { ...(existing as Record<string, unknown>) }
+        : {};
+
+      // Remove only entries recognizable as older AgEnD-managed servers. Key
+      // names alone are not ownership evidence: a user may have their own
+      // server named "agend".
+      for (const [name, value] of Object.entries(servers)) {
+        if (name === "agend-fleet") continue;
+        if (this.isManagedAgendMcpEntry(value)) delete servers[name];
+      }
+
+      const current = servers["agend-fleet"];
+      if (current && !this.isManagedAgendMcpEntry(current)) {
+        throw new Error("Antigravity MCP server name 'agend-fleet' is already user-managed");
+      }
+      servers["agend-fleet"] = {
+        command: entry.command,
+        args: [join(dirname(serverPath), "agy-mcp-launcher.js")],
+      };
+      root.mcpServers = servers;
+
+      const tempPath = `${configPath}.${process.pid}.tmp`;
+      writeFileSync(tempPath, JSON.stringify(root, null, 2) + "\n", { mode: 0o600 });
+      chmodSync(tempPath, 0o600);
+      renameSync(tempPath, configPath);
+      chmodSync(configPath, 0o600);
+    } finally {
+      if (lockFd !== undefined) {
+        closeSync(lockFd);
+        try { unlinkSync(lockPath); } catch { /* stale cleanup */ }
+      }
+    }
+  }
+
+  private isManagedAgendMcpEntry(value: unknown): boolean {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const entry = value as Record<string, unknown>;
+    const env = entry.env;
+    if (env && typeof env === "object" && !Array.isArray(env)
+      && typeof (env as Record<string, unknown>).AGEND_SOCKET_PATH === "string") return true;
+    const command = typeof entry.command === "string" ? entry.command : "";
+    const args = Array.isArray(entry.args) ? entry.args.filter((arg): arg is string => typeof arg === "string") : [];
+    return [command, ...args].some(path => /(?:^|[/\\])(?:mcp-server|agy-mcp-launcher)\.js$/.test(path));
   }
 
   /**
@@ -89,18 +214,18 @@ export class AntigravityBackend implements CliBackend {
       // pipes JSON telemetry on stdin; we emit "Context N% used" (matches
       // parseContextPercent). Uses node (always present in an AgEnD env) rather
       // than jq (not guaranteed); a parse error prints nothing (empty footer).
-      const scriptPath = join(getAgendHome(), "agy-statusline.sh");
+      const scriptPath = join(this.agendHome, "agy-statusline.sh");
       const script = `#!/bin/bash
 # AgEnD-generated agy statusline — prints "Context N% used" for /ctx to scrape.
 node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);console.log('Context '+(Math.round(j.context_window?.used_percentage||0))+'% used')}catch{}})"
 `;
       try {
-        mkdirSync(getAgendHome(), { recursive: true });
+        mkdirSync(this.agendHome, { recursive: true });
         writeFileSync(scriptPath, script, { mode: 0o755 });
         chmodSync(scriptPath, 0o755);  // writeFileSync mode only applies on create
       } catch { /* best effort — a bad script write shouldn't block settings */ }
 
-      const agyDir = join(homedir(), ".gemini", "antigravity-cli");
+      const agyDir = join(this.userHome, ".gemini", "antigravity-cli");
       const settingsPath = join(agyDir, "settings.json");
       let settings: Record<string, unknown> = {};
       try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")) ?? {}; } catch { /* new/empty/corrupt → start fresh */ }
@@ -123,10 +248,11 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   }
 
   cleanup(config: CliBackendConfig): void {
-    const cwd = join(homedir(), "agend-workspaces", config.instanceName);
-    if (existsSync(cwd)) {
-      try { rmSync(cwd, { recursive: true }); } catch { /* ignore */ }
-    }
+    const agentsPath = join(config.workingDirectory, ".agents", "agents.md");
+    try {
+      if (removeMarker(agentsPath, config.instanceName)) rmSync(agentsPath, { force: true });
+    } catch { /* best effort */ }
+    try { unlinkSync(this.mcpWrapperPath); } catch { /* absent */ }
   }
 
   getReadyPattern(): RegExp {
@@ -223,7 +349,7 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     // statusline hook lives in), e.g. "model": "Gemini 3.5 Flash (Medium)".
     let currentModel: string | undefined;
     try {
-      const s = JSON.parse(readFileSync(join(homedir(), ".gemini", "antigravity-cli", "settings.json"), "utf-8"));
+      const s = JSON.parse(readFileSync(join(this.userHome, ".gemini", "antigravity-cli", "settings.json"), "utf-8"));
       if (typeof s?.model === "string" && s.model.trim()) currentModel = s.model.trim();
     } catch { /* no settings / unreadable */ }
     return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };

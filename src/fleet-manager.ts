@@ -1514,12 +1514,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
     if (config.general_topic) {
-      // antigravity (agy) does not read MCP instructions — fleet context and
-      // routing instructions are not injected, so it cannot act as a dispatcher.
-      if (backend === "antigravity") {
-        this.logger.warn({ name }, "antigravity backend does not support MCP instructions — general dispatcher will not work correctly");
-        this.notifyInstanceTopic(name, t("general.antigravity_unsupported"));
-      }
       this.ensureGeneralInstructions(config.working_directory, backend, name);
     } else if (kind === "fleet-topic") {
       // Workers get only role-eligible on-demand skills. Classic instances are
@@ -7193,9 +7187,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Resolve the workspace path a backend actually uses before publishing knowledge. */
   private resolveKnowledgeWorkDir(workDir: string, backend: string, instanceName?: string): string {
-    // Some backends relocate their real cwd (agy moves hidden paths to
-    // ~/agend-workspaces/<name>). Instructions and skills must land where the
-    // CLI actually runs, not where fleet.yaml points.
+    // Backend resolution may create/normalize the real cwd. Instructions and
+    // skills must land where the CLI actually runs, not an assumed path.
     try {
       const resolved = createBackend(backend, join(getAgendHome(), "cli-env"))
         .resolveWorkingDirectory?.(workDir, instanceName);

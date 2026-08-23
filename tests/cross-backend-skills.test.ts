@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
 import { buildMcpCoreInstructions } from "../src/instructions.js";
@@ -61,21 +61,14 @@ describe("cross-backend skill publishing", () => {
     expect(existsSync(join(workDir, ".gemini"))).toBe(false);
   });
 
-  it("antigravity publishes into the RESOLVED workspace when the fleet path is hidden", () => {
-    // agy relocates hidden cwds (any dot-component) to ~/agend-workspaces/<name>.
-    // Skills written to the raw fleet path would land where the CLI never looks.
+  it("antigravity publishes into the configured hidden workspace", () => {
+    // agy >= 1.1.0 accepts hidden paths, so relocating would split its durable
+    // session/workspace data away from the configured directory.
     const instanceName = `agend-skills-test-${process.pid}`;
     const hiddenDir = join(workDir, ".agend", "ws");
     mkdirSync(hiddenDir, { recursive: true });
-    const resolved = join(homedir(), "agend-workspaces", instanceName);
-    try {
-      (fm as any).ensureGeneralInstructions(hiddenDir, "antigravity", instanceName);
-      expect(existsSync(join(resolved, ".agents", "skills", "delegation-playbook", "SKILL.md"))).toBe(true);
-      // Nothing written where agy would never read it.
-      expect(existsSync(join(hiddenDir, ".agents", "skills"))).toBe(false);
-    } finally {
-      rmSync(resolved, { recursive: true, force: true });
-    }
+    (fm as any).ensureGeneralInstructions(hiddenDir, "antigravity", instanceName);
+    expect(existsSync(join(hiddenDir, ".agents", "skills", "delegation-playbook", "SKILL.md"))).toBe(true);
   });
 
   it("never touches a user-authored skill, even on a name collision", () => {

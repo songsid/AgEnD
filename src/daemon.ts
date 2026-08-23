@@ -3809,7 +3809,10 @@ export class Daemon extends EventEmitter {
 
   /** Build config object for the CLI backend */
   private buildBackendConfig(): CliBackendConfig {
-    const isCliMode = this.config.agent_mode === "cli" || (this.config.agent_mode == null && this.config.backend === "antigravity");
+    // Antigravity 1.1.17 has no per-workspace MCP config, but its global MCP
+    // children inherit the CLI process environment. The backend installs one
+    // environment-selecting launcher, so MCP is now the safe default here too.
+    const isCliMode = this.config.agent_mode === "cli";
     const sockPath = join(this.instanceDir, "channel.sock");
     let serverJs = join(__dirname, "channel", "mcp-server.js");
     if (!existsSync(serverJs)) {
