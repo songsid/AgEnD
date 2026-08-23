@@ -256,7 +256,7 @@ export const BACKENDS: Array<{
     auth: "opencode (configure provider)" },
   { id: "kiro-cli", binary: "kiro-cli", label: "Kiro CLI",
     installUrl: "https://kiro.dev/docs/cli/",
-    install: "brew install --cask kiro-cli",
+    install: "curl -fsSL https://cli.kiro.dev/install | bash",
     auth: "kiro-cli login (AWS Builder ID)" },
   { id: "antigravity", binary: "agy", label: "Antigravity CLI",
     installUrl: "https://antigravity.google/cli",
