@@ -43,6 +43,28 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("close with a short line like `.`");
   });
 
+  it("teaches how to call react and edit_message, not just that they exist", () => {
+    // #625: the Tool Usage line listed `react` by name but never said what it
+    // takes, so instances remembered the tool existed (permanent instructions)
+    // and forgot how to call it (conversation, lost to compaction). Both tools
+    // take a named `message_id`, so both are taught here — and the schemas are
+    // named-parameter objects (ReactArgs = { message_id, emoji }), never
+    // positional, so the wording must not read like `react(emoji, message_id)`.
+    const result = buildFleetInstructions(base);
+    expect(result).toContain("react: add an emoji reaction — needs `message_id` + `emoji`");
+    expect(result).toContain("edit_message: update a sent message — needs `message_id` + `text`");
+    expect(result).toContain("`message_id` comes from the inbound message header line `(message_id: ... | correlation_id: ...)`");
+    expect(result).not.toContain("react(emoji, message_id)");
+  });
+
+  it("does not repeat the reserved-emoji rule that lives in Context Protection", () => {
+    // The 👀 ⏳ ✅ ❌ carve-out belongs to the workflow template's Context
+    // Protection section; duplicating it next to `react` was explicitly
+    // rejected in #625.
+    const result = buildFleetInstructions({ ...base, workflow: false });
+    expect(result).not.toContain("👀");
+  });
+
   it("routes user replies and instance replies to different tools", () => {
     const result = buildFleetInstructions(base);
     expect(result).toContain("reply with the `reply` tool");
