@@ -23,7 +23,8 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
-| 🔒 `/login [backend\|cancel\|code <text>]` | Remote CLI re-authentication without SSH — `codex`, `grok`, `kiro`, `claude`, `antigravity` (not `opencode`, API-key only). No arg shows a backend picker; device-flow backends (codex/grok) post a URL+code, paste-back backends (claude/kiro) prompt for `/login code <pasted-code>`. Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. TG Fleet only — not registered on Discord slash commands or TG Classic. | Admin |
+| 🔒 `/login [backend\|cancel\|code <text>]` | Remote CLI re-authentication without SSH — `codex`, `grok`, `kiro`, `claude`, `antigravity` (not `opencode`, API-key only). No arg shows a backend picker; device-flow backends (codex/grok) post a URL+code, paste-back backends (claude/kiro) prompt for `/login code <pasted-code>`. Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… code:… cancel:…`); not on TG Classic. | Admin |
+| 🔒 `/install-cli <backend>\|cancel` | Remote CLI installation without SSH — runs the backend's official install script in a temporary tmux window, verifies the binary landed on PATH, then offers a `/login` button. All 6 backends including `opencode` (no auth needed to install it). 10-minute timeout, cancel anytime. TG spelling is `/install_cli` (no hyphens in Telegram commands). Also on Discord; not on TG Classic. | Admin |
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
 | 🔒 `/model` | Change backend model (inline keyboard) | Admin |
@@ -84,6 +85,8 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/restart` | Graceful restart all instances | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
+| 🔒 `/login [backend] [code] [cancel]` | Remote CLI re-authentication (`claude-code`/`codex`/`kiro-cli`/`grok`/`antigravity`) | Admin |
+| 🔒 `/install-cli [backend] [cancel]` | Remote CLI installation (all 6 backends, incl. `opencode`) | Admin |
 | 🔒 `/compact` | Compact agent context | Admin |
 | 🔒 `/collab` | Toggle collaboration mode | Admin |
 | 🔒 `/model` | Change backend model (select menu) | Admin |
@@ -99,7 +102,7 @@ Registered globally via `client.application.commands.set()`.
 ### Fleet Admin (`fleet.yaml` → `channel.access.allowed_users`)
 
 Fleet-level commands — requires fleet admin:
-- `/status`, `/restart`, `/update`, `/doctor`, `/collab`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`
+- `/status`, `/restart`, `/update`, `/doctor`, `/collab`, `/pause`, `/wake`, `/model`, `/effort`, `/clear`, `/login`, `/install-cli`
 
 ### ClassicBot Admin (`classicBot.yaml` → `defaults.admin_users`)
 
