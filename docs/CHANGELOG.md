@@ -4,6 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.4] - 2026-08-25
+
+### Added
+- **`/login` slash command** — re-authenticate a CLI backend from Telegram/Discord without SSH-ing to the host. Runs a pre-check first and asks for confirmation if the existing auth is still valid, so a working login is never thrown away by accident. After a successful login, instances that were running are restarted so they pick up the new credentials (#611, #613, #614, #617).
+- **`/install-cli` slash command** — install a CLI backend on the host remotely, and wired into quickstart. Install commands corrected to the vendors' current ones: kiro-cli via the `curl` installer (was Homebrew) and codex via the official standalone installer (was npm) (#619–#621, #624).
+- **`/clear` slash command** — wipe an instance's context. **Admin only, and it requires pressing a confirmation button first** — the destructive action never fires on the command alone (#529, #549).
+- **`/steer` slash command + tool progress display** — `/steer <message>` interjects into a turn already running, and the working bubble can list the tools as they run. **`tool_progress` defaults to `off` (opt-in)** so an upgrade does not start broadcasting tool activity into channels; set `standard` for semantic labels or `verbose` to add command previews, from fleet.yaml or the web Settings dropdown (#560, #563, #577, #616).
+- **`/btw` slash command** — ask a side question without interrupting the current task. **Claude Code only**; other backends decline explicitly instead of silently dropping the message (#584–#586).
+- **`/tips` daily tips** — a 300-tip library (100 beginner / 100 intermediate / 100 advanced) delivered as occasional in-chat cards with Got it / Confused buttons. **Only beginner tips are shown by default.** Advanced tips unlock after 60 tips are dismissed, or immediately when an admin runs `/tips advanced on` — they are never shown unasked. Tips can be filtered by the backends actually in use (#587, #588, #590–#594, #599, #603, #605–#609, #622).
+- **`list_models` MCP tool** — agents can enumerate the models a backend really offers instead of guessing. `scope` distinguishes an instance-accurate catalog from the account-wide one, which matters because an instance on a custom provider can offer a different set (#573).
+- **Codex custom providers** — `backend_options.codex.provider` points one instance at an alternative provider, available from `create_instance` and documented in a General skill (#545, #552, #553).
+- **Cross-backend skill publishing** — skills are published to all six backends in each one's native format, with role-based distribution (General / Worker / Classic) and an MCP payload kept under 2 KB (#554, #555, #557, #558).
+- **fleet.yaml auto-slim** — saving strips instance fields that merely repeat a fleet default, plus a one-time migration. **This is inheritance, not deletion**: a stripped field now follows `defaults`, so changing a default later also changes those instances. Identity and routing fields (`working_directory`, `topic_id`, `channel_id`, …) are always kept explicit (#569).
+- **Complete zh-TW interface** — 325 locale keys and a typed locale module; no user-facing string is hardcoded English any more (#595).
+- **`agend install` activates the service itself** — no manual `systemctl` step after installing. `agend uninstall` now asks for confirmation before removing anything, and `agend doctor` reports system diagnostics (#570, #580).
+- **`agend completion install`** — tab completion for bash and zsh (#537).
+- **Interactive prompt handling** — when a CLI stops on a sudo/confirmation prompt, AgEnD posts Confirm/Cancel buttons and can ask General to assist, with the buttons nonce-protected and admin-gated (#530, #535).
+- **CLI exit and update visibility** — a normally-exited CLI offers Restart/Ignore instead of going quiet, and `/update` shows live progress with elapsed time (#533, #534).
+- **OpenCode session resume** — sessions resume properly via CLI JSON discovery with an idle checkpoint, replacing the `--continue` path that hijacked the global session and lost MCP and instructions (#525, #526, #543, #544).
+- **Antigravity MCP wiring + persistent workspace** (#618).
+- **Usage panel trimmed to what you use** — `/usage` and the web view hide backends this fleet has no login for (#579).
+- **CI runs build and tests** — plus gitleaks scanning on push and an explicit permissions block (#524).
+
+### Fixed
+- **Expired logins reported honestly** — an expired session is detected as an auth problem instead of being misreported as a stopped MCP server, and no longer raises a "stuck instance" alert on every scan when only re-logging in can help. Codex's startup "Update available!" prompt is also prevented, so a fleet restart no longer leaves every Codex instance waiting on a keypress (#602, #614, #615).
+- **Codex SQLite sidecars** — WAL/SHM/journal files are no longer symlinked away from their database, which could split one SQLite database across two homes; legacy links are healed on start (#564).
+- **Pane state accuracy** — Kiro no longer reads a stale spinner in scrollback as "working"; Antigravity's cosmetic footer redraw no longer flapped instance state ~52k times a day; Claude Code's cancel button and bubble no longer vanish mid-turn on bare spinner frames; Codex's `›` idle prompt is recognised (#551, #572, #576, #601, #610).
+- **Cancel button** — retired correctly after the first message following a restart, and cancelling now clears the pending delivery queue instead of leaving queued work to arrive later (#575, #584).
+- **Tool progress history kept** — when a turn ends, the bubble keeps its tool list as a read-only record and only the button is removed; the retained message is labelled as history rather than still claiming to be in progress (#565, #566).
+- **ClassicBot fixes** — adapter migration detects the ID domain and self-repairs, `set_display_name`/`set_description` write to the right store, and `update_instance_config` points at the correct tool for Classic instances (#550, #568, #598).
+- **Media delivery** — images arrive from Discord reply references and forwarded messages, embed downloads no longer fire on plain URL auto-embeds, Telegram stickers are normalised, and a 📷 reaction is no longer injected as context (#532, #536, #588, #589).
+- **Claude Code session resume** — project paths containing dots or underscores encode correctly, and a runtime `/model` switch survives a restart (#538, #539).
+- **Schedules use the right persona** — a scheduled message posts as the correct Discord bot in a multi-bot setup (#582).
+- **Health check resumes after background-session recovery** (#541).
+- **Agent instruction fixes** — instructions now explain how to call `react` and `edit_message`, distinguish a CLI subagent from `create_instance`, and avoid AgEnD's delivery-status emoji. **Instruction changes take effect after a fleet restart**, not immediately (#559, #562, #626).
+- **Documentation** — Telegram and Discord bot setup guides (EN + zh-TW), command/config gaps from the 2026-08-13 audit, corrected tool_set counts, de-identified screenshots, and Gemini deprecation labels (#523, #546, #547, #571, #574).
+
 ## [2.1.3] - 2026-08-07
 
 ### Added

@@ -31,6 +31,43 @@
 - 平行 instance 停止（併發 5）。
 - 交錯重啟通知。
 
+## [2.1.4] - 2026-08-25
+
+### 新增 (Added)
+- **`/login` 指令** — 直接從 Telegram／Discord 重新登入 CLI 後端，不必再 SSH 進主機。執行前會先檢查現有登入，若仍有效會要求確認，避免誤把還能用的登入洗掉。登入成功後，原本在執行的 instance 會自動重啟以套用新憑證（#611、#613、#614、#617）。
+- **`/install-cli` 指令** — 遠端在主機上安裝 CLI 後端，並整合進 quickstart。安裝指令改為各家目前的官方做法：kiro-cli 改用 `curl` 安裝腳本（原為 Homebrew）、codex 改用官方 standalone 安裝程式（原為 npm）（#619–#621、#624）。
+- **`/clear` 指令** — 清空 instance 的 context。**限管理員，而且必須先按確認鈕**才會真的執行，單獨下指令不會觸發破壞性動作（#529、#549）。
+- **`/steer` 指令 + 工具進度顯示** — `/steer <訊息>` 可以插話進正在跑的那一輪；工作中的泡泡也能列出正在執行的工具。**`tool_progress` 預設為 `off`（需自行開啟）**，避免升級後突然開始把工具活動廣播到聊天室；可設 `standard`（語意標籤）或 `verbose`（加上指令預覽），從 fleet.yaml 或網頁 Settings 下拉選單設定（#560、#563、#577、#616）。
+- **`/btw` 指令** — 問一個插題但不打斷目前任務。**僅 Claude Code 支援**；其他後端會明確拒絕，而不是把訊息默默吞掉（#584–#586）。
+- **`/tips` 每日提示** — 300 則提示庫（入門／中階／進階各 100 則），以聊天卡片形式偶爾出現，附「知道了／看不懂」按鈕。**預設只顯示入門提示**；標記已讀 60 則後才解鎖進階，或由管理員執行 `/tips advanced on` 立即開啟 —— 不會在未經同意下推進階內容。提示也會依實際使用的後端過濾（#587、#588、#590–#594、#599、#603、#605–#609、#622）。
+- **`list_models` MCP 工具** — agent 可以直接查詢後端實際提供哪些模型，不必用猜的。回傳的 `scope` 會區分「該 instance 專屬」與「整個帳號」的清單 —— 這很重要，因為使用自訂 provider 的 instance 可用模型可能完全不同（#573）。
+- **Codex 自訂 provider** — `backend_options.codex.provider` 可讓單一 instance 指向替代 provider，`create_instance` 也支援，並附上 General 專用的設定指南（#545、#552、#553）。
+- **跨後端 skill 發布** — skill 會以各後端的原生格式發布到全部六個後端，支援依角色分發（General／Worker／Classic），MCP 載荷控制在 2 KB 以內（#554、#555、#557、#558）。
+- **fleet.yaml 自動精簡** — 存檔時會移除與 fleet 預設值相同的 instance 欄位，並附一次性遷移。**這是「繼承」而不是「刪除」**：被移除的欄位之後會跟著 `defaults` 走，所以日後改預設值也會一併改到這些 instance。身分與路由欄位（`working_directory`、`topic_id`、`channel_id` 等）一律保持明寫（#569）。
+- **完整繁體中文介面** — 325 個語系鍵與型別化的 locale 模組，使用者看得到的文字不再有寫死的英文（#595）。
+- **`agend install` 會自動啟用服務** — 安裝後不必再手動下 `systemctl`。`agend uninstall` 移除任何東西前會先要求確認，`agend doctor` 則新增系統診斷（#570、#580）。
+- **`agend completion install`** — bash 與 zsh 的 tab 補完（#537）。
+- **互動式提示處理** — CLI 停在 sudo／確認提示時，AgEnD 會貼出「確認／取消」按鈕，也可以請 General 協助；按鈕有 nonce 保護並限管理員（#530、#535）。
+- **CLI 結束與更新的可見度** — CLI 正常退出時會提供「重啟／忽略」而不是無聲消失；`/update` 則顯示即時進度與已耗時（#533、#534）。
+- **OpenCode session 續接** — 改用 CLI JSON 探索加上閒置檢查點，真正能續接；原本的 `--continue` 會劫持全域 session，導致 MCP 與 instructions 遺失（#525、#526、#543、#544）。
+- **Antigravity MCP 接線 + 常駐 workspace**（#618）。
+- **用量面板只顯示用得到的** — `/usage` 與網頁介面會隱藏這個 fleet 沒有登入的後端（#579）。
+- **CI 納入 build 與測試** — 另加 push 時的 gitleaks 掃描與明確的 permissions 區塊（#524）。
+
+### 修正 (Fixed)
+- **登入過期會被如實回報** — 過期的 session 會被判定為認證問題，不再誤報成「MCP 已停止」；也不會在只有重新登入才有用的情況下，每次掃描都跳一次「instance 卡住」通知。同時阻止 Codex 啟動時的「Update available!」提示，避免 fleet 重啟後每台 Codex 都停在那裡等按鍵（#602、#614、#615）。
+- **Codex SQLite 附屬檔** — WAL／SHM／journal 不再被單獨 symlink 到與資料庫不同的位置（那會把同一個 SQLite 資料庫拆散在兩個 home），啟動時也會自動修復舊的連結（#564）。
+- **Pane 狀態判讀準確度** — Kiro 不再把捲軸歷史裡的殘留 spinner 當成「工作中」；Antigravity 的頁尾重繪不再讓狀態一天翻動約 5.2 萬次；Claude Code 的取消鈕與泡泡不再在中途消失；Codex 的 `›` 閒置提示字元現在能被辨識（#551、#572、#576、#601、#610）。
+- **取消鈕** — 重啟後的第一則訊息能正確退場；取消時也會清掉待投遞佇列，不會讓已排隊的工作稍後才冒出來（#575、#584）。
+- **工具歷程會保留** — 一輪結束時，泡泡會保留工具清單成為唯讀紀錄，只移除按鈕；保留下來的訊息會標示為歷程，而不是繼續顯示「處理中」（#565、#566）。
+- **ClassicBot 修正** — adapter 遷移會偵測 ID 網域並自我修復；`set_display_name`／`set_description` 寫入正確的儲存位置；`update_instance_config` 會指向 Classic instance 該用的工具（#550、#568、#598）。
+- **媒體投遞** — Discord 回覆引用與轉發訊息中的圖片能正常送達；一般網址自動嵌入不再觸發下載；Telegram 貼圖會正規化；📷 表情不再被當成 context 注入（#532、#536、#588、#589）。
+- **Claude Code session 續接** — 含點號或底線的專案路徑能正確編碼；執行期用 `/model` 切換的模型在重啟後仍保留（#538、#539）。
+- **排程使用正確身分** — 多 bot 設定下，排程訊息會以正確的 Discord bot 身分發送（#582）。
+- **背景 session 恢復後健康檢查會繼續**（#541）。
+- **Agent instructions 修正** — 新增 `react` 與 `edit_message` 的呼叫方式說明、區分 CLI subagent 與 `create_instance`、避免使用 AgEnD 的投遞狀態表情。**instructions 類改動需要 fleet 重啟後才生效**，不會立即套用（#559、#562、#626）。
+- **文件** — Telegram 與 Discord bot 設定指南（中英文）、2026-08-13 稽核找到的指令／設定缺口、修正過時的 tool_set 數量、螢幕截圖去識別化、Gemini 停用標示（#523、#546、#547、#571、#574）。
+
 ## [1.24.0] - 2026-04-21
 
 ### 新增 (Added)
