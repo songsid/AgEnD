@@ -219,9 +219,14 @@ describe("tip button flow", () => {
     }, "discord-main", adapter);
 
     expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
+    // Bug 2 fix: dismissal now preserves the tip text AND adds confirmation
     expect(editMessageRemoveButtons).toHaveBeenLastCalledWith(
-      "fleet", "tip-message", secondAlert.message, "general-topic",
+      "fleet", "tip-message",
+      expect.stringContaining(secondAlert.message),  // Original tip preserved
+      "general-topic",
     );
+    const dismissEditText = editMessageRemoveButtons.mock.calls.at(-1)![2];
+    expect(dismissEditText).toContain("Tip dismissed");  // Confirmation added
   });
 
   it("posts a Discord /tips request in the current non-General channel without an ephemeral corpse", async () => {
@@ -229,6 +234,7 @@ describe("tip button flow", () => {
     dirs.push(fm.dataDir);
     fm.fleetConfig = {
       defaults: {},
+      channels: [{ id: "discord-main", type: "discord", mode: "topic", group_id: "guild-id" }],
       instances: {
         general: { general_topic: true, topic_id: "general-topic" },
         worker: { topic_id: "worker-topic" },
@@ -237,6 +243,7 @@ describe("tip button flow", () => {
     fm.routing.rebuild(fm.fleetConfig);
     const adapter = { id: "discord-main", type: "discord" } as any;
     fm.adapters.set(adapter.id, adapter);
+    fm.worlds.set("discord-main", { id: "discord-main", adapter, groupId: "guild-id" } as any);
     const promptTip = vi.spyOn(fm, "promptTip").mockResolvedValue("posted");
     const respond = vi.fn().mockResolvedValue("ephemeral");
     const dismissResponse = vi.fn().mockResolvedValue(undefined);
@@ -251,9 +258,85 @@ describe("tip button flow", () => {
       dismissResponse,
     }, adapter.id);
 
-    expect(promptTip).toHaveBeenCalledWith("worker", adapter, "worker-topic");
+    // The fix: chatId is the guild ID (what Discord callbacks emit), threadId
+    // is the channel where /tips was invoked (so the tip posts there).
+    expect(promptTip).toHaveBeenCalledWith("worker", adapter, "guild-id", "worker-topic");
     expect(dismissResponse).toHaveBeenCalledOnce();
     expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("Discord /tips callback binding matches the real callback shape (chatId=guildId, threadId=channelId)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-tip-slash-callback-"));
+    dirs.push(dir);
+    const notifyAlert = vi.fn().mockResolvedValue({
+      messageId: "tip-msg", chatId: "guild-id", threadId: "some-channel",
+    });
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      id: "discord-main", type: "discord", notifyAlert, editMessageRemoveButtons,
+    } as any;
+    const dismissTip = vi.fn();
+    const fm = new FleetManager(dir);
+    (fm as any).scheduler = {
+      db: {
+        listDismissedTipIds: vi.fn(() => new Set<string>()),
+        isAdvancedTipsUnlocked: vi.fn(() => false),
+        dismissTip,
+      },
+    };
+    fm.fleetConfig = {
+      defaults: {},
+      channels: [{ id: "discord-main", type: "discord", mode: "topic", group_id: "guild-id" }],
+      instances: {
+        general: { general_topic: true, topic_id: "general-topic" },
+        worker: { topic_id: "worker-topic" },
+      },
+    } as any;
+    fm.routing.rebuild(fm.fleetConfig);
+    fm.adapters.set(adapter.id, adapter);
+    fm.worlds.set("discord-main", { id: "discord-main", adapter, groupId: "guild-id" } as any);
+
+    // Simulate /tips in a non-General channel (the bug scenario)
+    const respond = vi.fn().mockResolvedValue("ephemeral");
+    const dismissResponse = vi.fn().mockResolvedValue(undefined);
+    await (fm as any).handleTipsSlash({
+      command: "tips",
+      channelId: "some-channel",  // Where the slash command was invoked
+      channelName: "worker",
+      userId: "reader",
+      options: {},
+      respond,
+      dismissResponse,
+    }, adapter.id);
+
+    expect(notifyAlert).toHaveBeenCalledWith(
+      "guild-id",  // chatId: the canonical group ID
+      expect.objectContaining({ type: "tip" }),
+      { threadId: "some-channel" },  // threadId: where the tip posts
+    );
+    const alert = notifyAlert.mock.calls[0][1];
+
+    // Simulate the Discord callback with the REAL shape Discord emits:
+    // chatId = guildId, threadId = channelId (where button was clicked)
+    await (fm as any).handleTipDismiss({
+      callbackData: alert.choices[0].id,  // dismiss action
+      chatId: "guild-id",       // Discord emits guildId here
+      threadId: "some-channel", // Discord emits interaction.channelId here
+      messageId: "tip-msg",
+      userId: "reader",
+    }, "discord-main", adapter);
+
+    // The callback should be CONSUMED and the tip dismissed (not rejected)
+    expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
+    expect(editMessageRemoveButtons).toHaveBeenCalledWith(
+      "guild-id", "tip-msg",
+      expect.stringContaining("Tip dismissed"),  // Bug 2 fix: confirmation visible
+      "some-channel",
+    );
+    // Also verify the edited message still contains the original tip text
+    const editedText = editMessageRemoveButtons.mock.calls[0][2];
+    expect(editedText).toContain("💡 Tip:");  // Original tip preserved
+    expect(editedText).toContain("Tip dismissed");  // Confirmation added
   });
 
   it("persists the explicit advanced unlock when its retained prompt is confirmed", async () => {

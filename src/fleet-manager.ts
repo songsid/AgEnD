@@ -875,7 +875,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Discord slash interactions are deferred ephemerally, but the Tip itself
     // belongs in the channel where /tips was invoked. Post there directly,
     // then delete the empty acknowledgement instead of leaving a slash corpse.
-    const result = await this.promptTip(targetName, adapter, data.channelId);
+    //
+    // The callback binding uses (chatId, threadId) that match what the adapter
+    // emits on callback_query. Discord emits (guildId, channelId); Telegram
+    // emits (supergroup chatId, topic threadId). For /tips invoked in an
+    // arbitrary channel, pass the canonical group id as chatId and the
+    // invocation channel as threadId, exactly as sendTipToGeneral() does.
+    const chatId = this.getGroupIdForInstance(targetName) || data.channelId;
+    const result = await this.promptTip(targetName, adapter, chatId, data.channelId);
     if (result === "posted" && data.dismissResponse) {
       await data.dismissResponse();
       return;
@@ -5378,14 +5385,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ? this.isModelAdmin(data.userId, pending.authChannelId, callbackAdapterId)
         : this.isFleetAdmin(data.userId, callbackAdapterId)
       : false;
-    if (pending.adapterId !== callbackAdapterId
-      || data.chatId !== pending.chatId
-      || (pending.threadId != null && data.threadId !== pending.threadId)
-      || (pending.messageId != null && data.messageId !== pending.messageId)
-      || !isAuthorized) {
+    const mismatchedFields: string[] = [];
+    if (pending.adapterId !== callbackAdapterId) mismatchedFields.push("adapterId");
+    if (data.chatId !== pending.chatId) mismatchedFields.push("chatId");
+    if (pending.threadId != null && data.threadId !== pending.threadId) mismatchedFields.push("threadId");
+    if (pending.messageId != null && data.messageId !== pending.messageId) mismatchedFields.push("messageId");
+    if (!isAuthorized) mismatchedFields.push("authorization");
+    if (mismatchedFields.length > 0) {
       // Deliberately does NOT consume the nonce: the real admin can still click.
-      this.logger.warn({ instanceName: pending.instanceName, prefix, userId: data.userId },
-        "Rejected unauthorized or mismatched button callback");
+      this.logger.warn({
+        instanceName: pending.instanceName,
+        prefix,
+        userId: data.userId,
+        mismatchedFields: mismatchedFields.join(","),
+      }, "Rejected unauthorized or mismatched button callback");
       return "consumed";
     }
 
@@ -5652,8 +5665,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       pending,
       pending.messageId ?? data.messageId,
       // Dismissal changes future selection only. Keep the useful tip text in
-      // chat history and remove just the now-consumed button.
-      pending.expiredText,
+      // chat history and remove just the now-consumed button. Append a short
+      // confirmation so the user sees feedback (unlike the pre-#605 version
+      // that replaced the entire message with just the confirmation line).
+      `${pending.expiredText}\n\n${t("tips.dismissed")}`,
     );
     const state = this.readTipState();
     if (state && !state.advancedUnlocked && canUnlockAdvancedTips(state.dismissed)) {
