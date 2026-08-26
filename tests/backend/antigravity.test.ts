@@ -107,6 +107,24 @@ describe("AntigravityBackend MCP and workspace isolation", () => {
     expect(readFileSync(path, "utf-8")).toBe("not json\n");
   });
 
+  it.each(["", "  \n\t", "{}"])(
+    "initializes a blank shared MCP config (%j)",
+    (content) => {
+      const configDir = join(home, ".gemini", "config");
+      mkdirSync(configDir, { recursive: true });
+      const path = join(configDir, "mcp_config.json");
+      writeFileSync(path, content);
+
+      backend.writeConfig(config());
+
+      const saved = JSON.parse(readFileSync(path, "utf-8"));
+      expect(saved.mcpServers["agend-fleet"]).toEqual({
+        command: "node",
+        args: ["/opt/agend/dist/channel/agy-mcp-launcher.js"],
+      });
+    },
+  );
+
   it("does not remove a fresh config lock owned by another writer", () => {
     const configDir = join(home, ".gemini", "config");
     mkdirSync(configDir, { recursive: true });
