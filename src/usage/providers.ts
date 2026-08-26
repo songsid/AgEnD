@@ -650,7 +650,7 @@ function codexPlan(planType: unknown): string | null {
   }
 }
 
-async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   const home = process.env.CODEX_HOME || join(homedir(), ".codex");
   let auth: { tokens?: { access_token?: string; account_id?: string } };
   try {
