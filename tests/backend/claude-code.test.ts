@@ -205,13 +205,15 @@ describe("ClaudeCodeBackend", () => {
       "Login expired",
       "Not logged in",
       "Please run /login to continue",
-    ])("notifies when Claude requires re-login: %s", (output) => {
+    ])("pauses when Claude requires re-login: %s", (output) => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const error = backend.getErrorPatterns().find(({ pattern }) => pattern.test(output));
 
+      // pause, not notify: an auth-expired CLI keeps accepting work it can
+      // never answer; /login's post-success restart lifts the pause.
       expect(error).toMatchObject({
         type: "auth_error",
-        action: "notify",
+        action: "pause",
         message: "Claude login expired — needs re-login (/login)",
       });
     });
