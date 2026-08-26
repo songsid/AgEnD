@@ -68,6 +68,7 @@ describe("kiro auth failure is not a rate limit (#440)", () => {
       "You are not logged in, please log in with",
       "ExpiredTokenException: The security token included in the request is expired",
       "no device registration found for token",
+      "Access denied: The bearer token included in the request is invalid.",
     ]) {
       expect(classify(line)).toMatchObject({ type: "auth_error", action: "pause" });
     }
