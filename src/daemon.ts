@@ -1123,7 +1123,11 @@ export class Daemon extends EventEmitter {
         });
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
-        this.queueRawPaste(msg.content as string, this.captureDeliveryEpoch(msg.delivery_epoch));
+        this.queueRawPaste(
+          msg.content as string,
+          this.captureDeliveryEpoch(msg.delivery_epoch),
+          msg.confirm_clear === true,
+        );
       } else if (msg.type === "config_update") {
         this.applyConfigUpdate(msg.config);
       } else if (msg.type === "steer") {
@@ -2088,7 +2092,11 @@ export class Daemon extends EventEmitter {
     return epoch === this.deliveryEpoch;
   }
 
-  private queueRawPaste(rawText: string, deliveryEpoch = this.deliveryEpoch): void {
+  private queueRawPaste(
+    rawText: string,
+    deliveryEpoch = this.deliveryEpoch,
+    confirmClear = false,
+  ): void {
     if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) return;
     this.pasteLock = this.pasteLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
@@ -2098,10 +2106,59 @@ export class Daemon extends EventEmitter {
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.deliverMessage(rawText, undefined, { deliveryEpoch });
+      if (confirmClear) await this.confirmBackendClearDialog();
       this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
     });
+  }
+
+  /**
+   * Confirm a backend's terminal-level /clear prompt after the channel-level
+   * admin confirmation has already succeeded. Poll instead of pasting `/clear\ny`
+   * as one buffer: Kiro versions that clear immediately interpret that queued
+   * `y` as a brand-new user message.
+   */
+  private async confirmBackendClearDialog(): Promise<void> {
+    const dialog = this.backend?.getClearConfirmationDialog?.();
+    if (!dialog || !this.tmux) return;
+
+    const matches = (pane: string): boolean => {
+      dialog.pattern.lastIndex = 0;
+      return dialog.pattern.test(pane);
+    };
+    const deadline = Date.now() + 3_000;
+    while (Date.now() <= deadline) {
+      const pane = await this.tmux.capturePane().catch(() => "");
+      if (matches(pane)) {
+        const sent = await this.paneWriteLock.run(async () => {
+          // Re-check under the write lock so a prompt that disappeared between
+          // capture and lock acquisition never receives a stray literal `y`.
+          const currentPane = await this.tmux!.capturePane().catch(() => "");
+          if (!matches(currentPane)) return false;
+          const specialKeys = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
+          for (const key of dialog.keys) {
+            const ok = specialKeys.has(key)
+              ? await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left")
+              : await this.tmux!.sendKeys(key);
+            if (!ok) return false;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          return true;
+        });
+        if (sent) {
+          this.logger.info({ dialog: dialog.description }, "Auto-confirmed backend clear dialog");
+        } else {
+          this.logger.warn({ dialog: dialog.description }, "Backend clear dialog disappeared or confirmation keys failed");
+        }
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    // Recent Kiro releases may clear immediately without a second prompt. That
+    // is a successful no-op here, not an error.
+    this.logger.debug({ dialog: dialog.description }, "Backend clear dialog did not appear");
   }
 
   /** Send the backend-specific graceful quit command/key sequence. */

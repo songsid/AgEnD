@@ -47,6 +47,45 @@ describe("Daemon", () => {
     expect(daemon).toBeDefined();
   });
 
+  it("auto-confirms Kiro's clear prompt only after an armed /clear delivery", async () => {
+    const backend = createBackend("kiro-cli", "/tmp/kiro-clear-confirm-test");
+    const daemon = new Daemon(
+      "kiro-clear-confirm",
+      makeConfig(),
+      "/tmp/kiro-clear-confirm-test",
+      false,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    const tmux = {
+      capturePane: vi.fn().mockResolvedValue(
+        "Are you sure? This will erase the conversation history and cannot be undone. [y/n]:",
+      ),
+      sendKeys: vi.fn().mockResolvedValue(true),
+      sendSpecialKey: vi.fn().mockResolvedValue(true),
+    };
+    (daemon as any).tmux = tmux;
+    vi.spyOn(daemon as any, "wake").mockResolvedValue(undefined);
+    const deliver = vi.spyOn(daemon as any, "deliverMessage").mockResolvedValue(true);
+
+    (daemon as any).queueRawPaste("/clear", 0, true);
+    await (daemon as any).pasteLock;
+
+    expect(deliver).toHaveBeenCalledWith("/clear", undefined, { deliveryEpoch: 0 });
+    expect(tmux.sendKeys).toHaveBeenCalledOnce();
+    expect(tmux.sendKeys).toHaveBeenCalledWith("y");
+    expect(tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
+
+    tmux.sendKeys.mockClear();
+    tmux.sendSpecialKey.mockClear();
+    (daemon as any).queueRawPaste("/clear", 0, false);
+    await (daemon as any).pasteLock;
+    expect(tmux.sendKeys).not.toHaveBeenCalled();
+    expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+  });
+
   it("injects the effective runtime identity into backend instructions", () => {
     const instanceDir = "/tmp/codex-runtime-identity";
     const backend = createBackend("codex", instanceDir);
