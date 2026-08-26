@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgEnD Tips</title>
+  <meta name="description" content="從第一次對話到 Fleet 維運的 AgEnD 實用提示。">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: dark; --bg:#0d1117; --surface:#161b22; --raised:#1c2129; --border:#30363d; --text:#f0f6fc; --secondary:#8b949e; --muted:#6e7681; --accent:#2aabee; --accent-dim:rgba(42,171,238,.1); }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,"Noto Sans TC",system-ui,sans-serif; line-height:1.65; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.22; background-image:radial-gradient(circle,var(--border) 1px,transparent 1px); background-size:24px 24px; mask-image:linear-gradient(to bottom,black,transparent 42rem); }
+    a { color:inherit; }
+    nav { position:sticky; top:0; z-index:10; height:64px; border-bottom:1px solid rgba(48,54,61,.7); background:rgba(13,17,23,.86); backdrop-filter:blur(14px); }
+    .nav-inner { max-width:1152px; height:100%; margin:auto; padding:0 24px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { color:var(--accent); font:700 18px/1 "JetBrains Mono",monospace; text-decoration:none; }
+    .nav-actions { display:flex; align-items:center; gap:12px; font-size:14px; color:var(--secondary); }
+    .nav-actions a { text-decoration:none; border:1px solid var(--border); border-radius:10px; padding:6px 11px; transition:.2s ease; }
+    .nav-actions a:hover { color:var(--text); border-color:var(--secondary); }
+    main { position:relative; max-width:1152px; margin:auto; padding:72px 24px 96px; }
+    .hero { max-width:780px; margin-bottom:64px; }
+    .hero .kicker,.eyebrow { color:var(--accent); font:600 12px/1.4 "JetBrains Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { margin:13px 0 16px; font-size:clamp(42px,7vw,72px); line-height:1.02; letter-spacing:-.045em; }
+    .hero p { color:var(--secondary); font-size:18px; margin:0; }
+    .jump-links { display:flex; flex-wrap:wrap; gap:10px; margin-top:28px; }
+    .jump-links a { text-decoration:none; color:var(--secondary); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:7px 13px; font-size:13px; }
+    .jump-links a:hover { color:var(--accent); border-color:var(--accent); }
+    .tips-section { margin-top:72px; }
+    .section-heading { display:flex; justify-content:space-between; align-items:end; gap:24px; padding-bottom:20px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+    .section-heading h2 { margin:5px 0 2px; font-size:30px; letter-spacing:-.025em; }
+    .section-heading p { margin:0; color:var(--secondary); }
+    .level-count { white-space:nowrap; color:var(--muted); font:500 13px/1.4 "JetBrains Mono",monospace; }
+    .tips-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .tip-card { position:relative; display:grid; grid-template-columns:64px 1fr; gap:14px; align-items:start; padding:18px; background:rgba(22,27,34,.94); border:1px solid var(--border); border-radius:14px; transition:transform .2s ease,border-color .2s ease; }
+    .tip-card:hover { transform:translateY(-2px); border-color:var(--accent); }
+    .tip-card:target { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+    .tip-id { padding-top:2px; color:var(--accent); font:600 11px/1.5 "JetBrains Mono",monospace; text-decoration:none; }
+    .tip-card p { margin:0; color:#d8dee4; font-size:14px; }
+    .tags { grid-column:2; display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+    .tag { color:var(--secondary); background:var(--raised); border:1px solid var(--border); border-radius:999px; padding:2px 8px; font:500 10px/1.5 "JetBrains Mono",monospace; }
+    footer { border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
+    .footer-inner { max-width:1152px; margin:auto; padding:30px 24px; display:flex; justify-content:space-between; gap:16px; }
+    @media (max-width:760px) { main { padding-top:48px; } .tips-grid { grid-template-columns:1fr; } .section-heading { align-items:start; flex-direction:column; gap:8px; } .tip-card { grid-template-columns:56px 1fr; } .footer-inner { flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <nav><div class="nav-inner"><a class="brand" href="./">AgEnD</a><div class="nav-actions"><a href="./">首頁</a><a href="./tips-en.html" hreflang="en">English</a></div></div></nav>
+  <main>
+    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>300 條實用提示，從日常操作一路整理到進階 Fleet 維運。</p><div class="jump-links"><a href="#beginner">入門</a><a href="#intermediate">中階</a><a href="#advanced">進階</a></div></header>
+    <section class="tips-section" id="beginner">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">beginner</span>
+          <h2>入門</h2>
+          <p>日常對話與核心概念</p>
+        </div>
+        <span class="level-count">100 條提示</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-001" data-tip-id="tip-001" data-level="beginner">
+            <a class="tip-id" href="#tip-001">tip-001</a>
+            <p>instance = Agent = 一個可以對話的 AI CLI，例如 Kiro CLI、Claude Code、Codex、Antigravity、Grok 或 OpenCode。</p>
+          </article>
+        <article class="tip-card" id="tip-002" data-tip-id="tip-002" data-level="beginner">
+            <a class="tip-id" href="#tip-002">tip-002</a>
+            <p>Backend = 背後驅動 Agent 的 AI 服務，例如 Claude Code、Codex、Kiro CLI。不同 Backend 有不同特性和模型。</p>
+          </article>
+        <article class="tip-card" id="tip-003" data-tip-id="tip-003" data-level="beginner">
+            <a class="tip-id" href="#tip-003">tip-003</a>
+            <p>一個 Agent = 一份獨立對話；其他 Agent 不會自動知道這裡談過什麼。</p>
+          </article>
+        <article class="tip-card" id="tip-004" data-tip-id="tip-004" data-level="beginner">
+            <a class="tip-id" href="#tip-004">tip-004</a>
+            <p>Fleet = 同一套 AgEnD 管理的全部 Agent；重啟 Fleet 會影響所有未暫停的 Agent，不只目前聊天室。</p>
+          </article>
+        <article class="tip-card" id="tip-005" data-tip-id="tip-005" data-level="beginner">
+            <a class="tip-id" href="#tip-005">tip-005</a>
+            <p>General = 協調工作的 Agent；需求跨專案時，可請它挑選 Agent、拆工作或彙整結果。</p>
+          </article>
+        <article class="tip-card" id="tip-006" data-tip-id="tip-006" data-level="beginner">
+            <a class="tip-id" href="#tip-006">tip-006</a>
+            <p>Topic、Thread 或 Channel = 綁定某個 Agent 的聊天室位置；在那裡發訊息就會交給該 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-007" data-tip-id="tip-007" data-level="beginner">
+            <a class="tip-id" href="#tip-007">tip-007</a>
+            <p>工作中 = Agent 正在處理工作；閒置 = 已準備接下一則訊息。</p>
+          </article>
+        <article class="tip-card" id="tip-008" data-tip-id="tip-008" data-level="beginner">
+            <a class="tip-id" href="#tip-008">tip-008</a>
+            <p>Paused = Agent 暫時休眠但保留已存 Session；再傳訊息通常會開始喚醒它。</p>
+          </article>
+        <article class="tip-card" id="tip-009" data-tip-id="tip-009" data-level="beginner">
+            <a class="tip-id" href="#tip-009">tip-009</a>
+            <p>Stopped = AI CLI 正常結束；Crashed = 非預期退出，或多次恢復仍沒有成功。</p>
+          </article>
+        <article class="tip-card" id="tip-010" data-tip-id="tip-010" data-level="beginner">
+            <a class="tip-id" href="#tip-010">tip-010</a>
+            <p>先講想要的結果，再補限制與輸出格式，Agent 會更快抓到重點。</p>
+          </article>
+        <article class="tip-card" id="tip-011" data-tip-id="tip-011" data-level="beginner">
+            <a class="tip-id" href="#tip-011">tip-011</a>
+            <p>好需求 = 目標 + 重要限制 + 完成條件；寫清楚可以少來回確認。</p>
+          </article>
+        <article class="tip-card" id="tip-012" data-tip-id="tip-012" data-level="beginner">
+            <a class="tip-id" href="#tip-012">tip-012</a>
+            <p>在意文風時，直接附一小段範例；範例通常比長篇解釋更快讓 Agent 抓到語氣。</p>
+          </article>
+        <article class="tip-card" id="tip-013" data-tip-id="tip-013" data-level="beginner">
+            <a class="tip-id" href="#tip-013">tip-013</a>
+            <p>要改先前指示時，直接說哪一條被取代；不說清楚，舊指示與新指示可能同時被保留。</p>
+          </article>
+        <article class="tip-card" id="tip-014" data-tip-id="tip-014" data-level="beginner">
+            <a class="tip-id" href="#tip-014">tip-014</a>
+            <p>`/steer &lt;訊息&gt;` = 改變正在執行中的方向；目前支援 Claude Code、Codex 與 Grok。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">codex</span><span class="tag">grok</span></div>
+          </article>
+        <article class="tip-card" id="tip-015" data-tip-id="tip-015" data-level="beginner">
+            <a class="tip-id" href="#tip-015">tip-015</a>
+            <p>`/steer` 適合修正目前任務，不適合塞入另一件工作；無關需求另外發一則會更清楚。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">codex</span><span class="tag">grok</span></div>
+          </article>
+        <article class="tip-card" id="tip-016" data-tip-id="tip-016" data-level="beginner">
+            <a class="tip-id" href="#tip-016">tip-016</a>
+            <p>`/btw &lt;問題&gt;` = 對 Claude Code 問題外話，不會取代正在做的主要任務。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-017" data-tip-id="tip-017" data-level="beginner">
+            <a class="tip-id" href="#tip-017">tip-017</a>
+            <p>`/btw` 和 `/steer` 不一樣：BTW 是題外問答，Steer 是改目前工作的方向。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-018" data-tip-id="tip-018" data-level="beginner">
+            <a class="tip-id" href="#tip-018">tip-018</a>
+            <p>Agent 忙碌時，新訊息可能先排隊；晚一點處理不代表訊息被蓋掉。</p>
+          </article>
+        <article class="tip-card" id="tip-019" data-tip-id="tip-019" data-level="beginner">
+            <a class="tip-id" href="#tip-019">tip-019</a>
+            <p>回覆較慢時先不要重送排隊中的需求；送兩次可能讓 Agent 真的做兩次。</p>
+          </article>
+        <article class="tip-card" id="tip-020" data-tip-id="tip-020" data-level="beginner">
+            <a class="tip-id" href="#tip-020">tip-020</a>
+            <p>取消按鈕或 `/cancel` = 中斷這次運行；訊息已經進入 Context，已執行多少取決於取消時機。</p>
+          </article>
+        <article class="tip-card" id="tip-021" data-tip-id="tip-021" data-level="beginner">
+            <a class="tip-id" href="#tip-021">tip-021</a>
+            <p>AgEnD = 把 Telegram 或 Discord 聊天室連到一個或多個 Agent 的系統。</p>
+          </article>
+        <article class="tip-card" id="tip-022" data-tip-id="tip-022" data-level="beginner">
+            <a class="tip-id" href="#tip-022">tip-022</a>
+            <p>Cancel 也會清掉該 Agent 尚未送入的舊訊息，因此排隊中的跨 Agent 或排程工作不會立刻接著啟動。</p>
+          </article>
+        <article class="tip-card" id="tip-023" data-tip-id="tip-023" data-level="beginner">
+            <a class="tip-id" href="#tip-023">tip-023</a>
+            <p>Cancel 之後才傳的新訊息 = 新工作，不會跟舊佇列一起被清掉。</p>
+          </article>
+        <article class="tip-card" id="tip-024" data-tip-id="tip-024" data-level="beginner">
+            <a class="tip-id" href="#tip-024">tip-024</a>
+            <p>⏳ = 排隊、👀 = 已送達、✅ = 回合已確認、❌ = 失敗；這些符號只表示投遞狀態，不代表回答品質。</p>
+          </article>
+        <article class="tip-card" id="tip-025" data-tip-id="tip-025" data-level="beginner">
+            <a class="tip-id" href="#tip-025">tip-025</a>
+            <p>投遞符號可能比 Agent 回覆更早出現；它是 AgEnD 的狀態，不是 Agent 寫的答案。</p>
+          </article>
+        <article class="tip-card" id="tip-026" data-tip-id="tip-026" data-level="beginner">
+            <a class="tip-id" href="#tip-026">tip-026</a>
+            <p>訊息停在 ⏳ 時先等一下再重送；它可能只是在等 Agent 準備好。</p>
+          </article>
+        <article class="tip-card" id="tip-027" data-tip-id="tip-027" data-level="beginner">
+            <a class="tip-id" href="#tip-027">tip-027</a>
+            <p>訊息顯示 ❌ 時先查 Agent 狀態；盲目重試可能把真正的啟動、登入或連線問題蓋掉。</p>
+          </article>
+        <article class="tip-card" id="tip-028" data-tip-id="tip-028" data-level="beginner">
+            <a class="tip-id" href="#tip-028">tip-028</a>
+            <p>需要 Agent 確認新需求指的是哪段文字、檔案或圖片時，直接回覆原訊息。</p>
+          </article>
+        <article class="tip-card" id="tip-029" data-tip-id="tip-029" data-level="beginner">
+            <a class="tip-id" href="#tip-029">tip-029</a>
+            <p>引用回覆會帶入原文字；再補一句要怎麼處理，Agent 比較不會猜錯。</p>
+          </article>
+        <article class="tip-card" id="tip-030" data-tip-id="tip-030" data-level="beginner">
+            <a class="tip-id" href="#tip-030">tip-030</a>
+            <p>彼此相關的需求整理成一則最清楚；無關需求分開傳，之後比較好追蹤。</p>
+          </article>
+        <article class="tip-card" id="tip-031" data-tip-id="tip-031" data-level="beginner">
+            <a class="tip-id" href="#tip-031">tip-031</a>
+            <p>長訊息先把主要需求放在前幾行；細節接著補，不要讓目標埋在最後。</p>
+          </article>
+        <article class="tip-card" id="tip-032" data-tip-id="tip-032" data-level="beginner">
+            <a class="tip-id" href="#tip-032">tip-032</a>
+            <p>長工作想確認進度時，直接問一則簡短進度，不必把整份需求重貼。</p>
+          </article>
+        <article class="tip-card" id="tip-033" data-tip-id="tip-033" data-level="beginner">
+            <a class="tip-id" href="#tip-033">tip-033</a>
+            <p>Agent 追問時先補缺少的資訊；同時插入新任務，兩件事都可能變得不清楚。</p>
+          </article>
+        <article class="tip-card" id="tip-034" data-tip-id="tip-034" data-level="beginner">
+            <a class="tip-id" href="#tip-034">tip-034</a>
+            <p>回答有誤時，直接引用要改的句子或數值；只說重做通常會多繞一圈。</p>
+          </article>
+        <article class="tip-card" id="tip-035" data-tip-id="tip-035" data-level="beginner">
+            <a class="tip-id" href="#tip-035">tip-035</a>
+            <p>長討論結束時，可請 Agent 整理決定事項 + 未完成項目；這份摘要也比較容易交給另一個 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-036" data-tip-id="tip-036" data-level="beginner">
+            <a class="tip-id" href="#tip-036">tip-036</a>
+            <p>檔案和說明放在同一則訊息，Agent 才會把它們當成同一個需求。</p>
+          </article>
+        <article class="tip-card" id="tip-037" data-tip-id="tip-037" data-level="beginner">
+            <a class="tip-id" href="#tip-037">tip-037</a>
+            <p>傳圖片時順便說要看什麼；只丟圖片會讓 Agent 猜問題。</p>
+          </article>
+        <article class="tip-card" id="tip-038" data-tip-id="tip-038" data-level="beginner">
+            <a class="tip-id" href="#tip-038">tip-038</a>
+            <p>傳文件時指出頁面、段落或問題；可以避免 Agent 先讀一堆無關內容。</p>
+          </article>
+        <article class="tip-card" id="tip-039" data-tip-id="tip-039" data-level="beginner">
+            <a class="tip-id" href="#tip-039">tip-039</a>
+            <p>一次附多個檔案 = 說明每個檔案的用途；只看檔名不一定分得出輸入、參考與預期結果。</p>
+          </article>
+        <article class="tip-card" id="tip-040" data-tip-id="tip-040" data-level="beginner">
+            <a class="tip-id" href="#tip-040">tip-040</a>
+            <p>Telegram 語音會以音訊送入；若有啟用語音轉文字，Agent 也會收到逐字稿。</p>
+          </article>
+        <article class="tip-card" id="tip-041" data-tip-id="tip-041" data-level="beginner">
+            <a class="tip-id" href="#tip-041">tip-041</a>
+            <p>語音裡的姓名、代碼與數字容易聽錯；需要精確時再打一遍文字。</p>
+          </article>
+        <article class="tip-card" id="tip-042" data-tip-id="tip-042" data-level="beginner">
+            <a class="tip-id" href="#tip-042">tip-042</a>
+            <p>Telegram 貼圖有對應表情時會變成該 emoji；沒有對應表情時會變成 `[Sticker]`。</p>
+          </article>
+        <article class="tip-card" id="tip-043" data-tip-id="tip-043" data-level="beginner">
+            <a class="tip-id" href="#tip-043">tip-043</a>
+            <p>貼圖片網址仍然只是連結；需要 Agent 看圖片內容時，請直接附上圖片檔。</p>
+          </article>
+        <article class="tip-card" id="tip-044" data-tip-id="tip-044" data-level="beginner">
+            <a class="tip-id" href="#tip-044">tip-044</a>
+            <p>在支援的 Discord 回覆中，回覆一則帶圖訊息時，被引用的圖片也會送給 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-045" data-tip-id="tip-045" data-level="beginner">
+            <a class="tip-id" href="#tip-045">tip-045</a>
+            <p>重要指示請用文字；只按 emoji 可能只會被記成回應，不會啟動工作。</p>
+          </article>
+        <article class="tip-card" id="tip-046" data-tip-id="tip-046" data-level="beginner">
+            <a class="tip-id" href="#tip-046">tip-046</a>
+            <p>同一聊天室有多個 bot 時，要標記指定的 bot；不然可能由錯的身份回覆，也可能沒人處理。</p>
+          </article>
+        <article class="tip-card" id="tip-047" data-tip-id="tip-047" data-level="beginner">
+            <a class="tip-id" href="#tip-047">tip-047</a>
+            <p>Tool progress = Agent 正在做什麼的簡短歷程；啟用後，完成時按鈕會消失，但歷程會保留。</p>
+          </article>
+        <article class="tip-card" id="tip-048" data-tip-id="tip-048" data-level="beginner">
+            <a class="tip-id" href="#tip-048">tip-048</a>
+            <p>詳細進度可能包含指令預覽；分享截圖前先檢查私密路徑或數值。</p>
+          </article>
+        <article class="tip-card" id="tip-049" data-tip-id="tip-049" data-level="beginner">
+            <a class="tip-id" href="#tip-049">tip-049</a>
+            <p>Interactive prompt = AI CLI 正在等密碼、權限、Y/N 或 Enter；AgEnD 會通知 General，不會自己猜答案。</p>
+          </article>
+        <article class="tip-card" id="tip-050" data-tip-id="tip-050" data-level="beginner">
+            <a class="tip-id" href="#tip-050">tip-050</a>
+            <p>AgEnD 不會自動輸入密碼；任何確認都先看清楚再允許。</p>
+          </article>
+        <article class="tip-card" id="tip-051" data-tip-id="tip-051" data-level="beginner">
+            <a class="tip-id" href="#tip-051">tip-051</a>
+            <p>`/dashboard` = View、Settings 與 Web UI 的網址；編輯網址帶有存取 token，所以這是管理員指令。</p>
+          </article>
+        <article class="tip-card" id="tip-052" data-tip-id="tip-052" data-level="beginner">
+            <a class="tip-id" href="#tip-052">tip-052</a>
+            <p>`http://localhost:19280/view` 的 View = 預設本機即時畫面；localhost 代表通常只能在安裝 AgEnD 的電腦開啟。</p>
+          </article>
+        <article class="tip-card" id="tip-053" data-tip-id="tip-053" data-level="beginner">
+            <a class="tip-id" href="#tip-053">tip-053</a>
+            <p>View 會顯示 Agent 狀態、可取得時的 Context 百分比與即時工作畫面；可用來確認工作是否真的有在跑。</p>
+          </article>
+        <article class="tip-card" id="tip-054" data-tip-id="tip-054" data-level="beginner">
+            <a class="tip-id" href="#tip-054">tip-054</a>
+            <p>View 的 AI Usage 面板 = 目前有 Agent 使用中的 Backend 訂閱量；沒在用的 Backend 會隱藏。</p>
+          </article>
+        <article class="tip-card" id="tip-055" data-tip-id="tip-055" data-level="beginner">
+            <a class="tip-id" href="#tip-055">tip-055</a>
+            <p>`/usage` = 不開 View，直接在聊天室查看可取得的 AI 訂閱用量。</p>
+          </article>
+        <article class="tip-card" id="tip-056" data-tip-id="tip-056" data-level="beginner">
+            <a class="tip-id" href="#tip-056">tip-056</a>
+            <p>`/usage` 顯示 no data 不一定是額度歸零；也可能是帳號未登入、token 正在更新，或服務沒有提供用量資料。</p>
+          </article>
+        <article class="tip-card" id="tip-057" data-tip-id="tip-057" data-level="beginner">
+            <a class="tip-id" href="#tip-057">tip-057</a>
+            <p>用量資料會短暫快取，避免頻繁查詢供應商；需要最新數字時，可按 View 裡的重新整理。</p>
+          </article>
+        <article class="tip-card" id="tip-058" data-tip-id="tip-058" data-level="beginner">
+            <a class="tip-id" href="#tip-058">tip-058</a>
+            <p>Quota = 帳號或訂閱包含的可用量；出現警告時，本次回答可能仍會完成，但後續工作可能被擋。</p>
+          </article>
+        <article class="tip-card" id="tip-059" data-tip-id="tip-059" data-level="beginner">
+            <a class="tip-id" href="#tip-059">tip-059</a>
+            <p>`/status` = Fleet 總覽，包含 Agent 狀態與重要健康資訊。</p>
+          </article>
+        <article class="tip-card" id="tip-060" data-tip-id="tip-060" data-level="beginner">
+            <a class="tip-id" href="#tip-060">tip-060</a>
+            <p>`/sysinfo` = AgEnD、作業系統、執行環境與程序資訊；回報環境問題時很有用。</p>
+          </article>
+        <article class="tip-card" id="tip-061" data-tip-id="tip-061" data-level="beginner">
+            <a class="tip-id" href="#tip-061">tip-061</a>
+            <p>Context = 這段對話目前能記住的內容量。滿了就需要壓縮（`/compact`）或重新開始（`/clear`）。</p>
+          </article>
+        <article class="tip-card" id="tip-062" data-tip-id="tip-062" data-level="beginner">
+            <a class="tip-id" href="#tip-062">tip-062</a>
+            <p>Context 接近滿 = 舊細節可能被壓縮或遺失；長工作快到上限前先請 Agent 寫交接摘要。</p>
+          </article>
+        <article class="tip-card" id="tip-063" data-tip-id="tip-063" data-level="beginner">
+            <a class="tip-id" href="#tip-063">tip-063</a>
+            <p>Claude Code 的長 Session 可用 `/ctx` 留意空間；接近上限前用 `/compact` 或寫交接摘要，可降低細節遺失。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-064" data-tip-id="tip-064" data-level="beginner">
+            <a class="tip-id" href="#tip-064">tip-064</a>
+            <p>Codex 通常會自行管理對話壓縮，但重要決定仍建議整理摘要，不要假設每個細節都會一直保留。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">codex</span></div>
+          </article>
+        <article class="tip-card" id="tip-065" data-tip-id="tip-065" data-level="beginner">
+            <a class="tip-id" href="#tip-065">tip-065</a>
+            <p>`/compact` = 在 Backend 支援時縮短目前 Context 並盡量保留重點；不同 Backend 的效果不完全相同。</p>
+          </article>
+        <article class="tip-card" id="tip-066" data-tip-id="tip-066" data-level="beginner">
+            <a class="tip-id" href="#tip-066">tip-066</a>
+            <p>`/model` = 顯示目前 Backend 探測到的可選模型；選擇後會切換該 Agent 的模型，並保存供重啟後使用。</p>
+          </article>
+        <article class="tip-card" id="tip-067" data-tip-id="tip-067" data-level="beginner">
+            <a class="tip-id" href="#tip-067">tip-067</a>
+            <p>模型清單會在 AgEnD 啟動時探測；新模型沒出現時可重啟 AgEnD，Discord 也可用 `/model refresh` 直接刷新。</p>
+          </article>
+        <article class="tip-card" id="tip-068" data-tip-id="tip-068" data-level="beginner">
+            <a class="tip-id" href="#tip-068">tip-068</a>
+            <p>`/effort` = 支援模型的思考強度；強度較高可能更適合難題，但通常也更花時間與額度。</p>
+          </article>
+        <article class="tip-card" id="tip-069" data-tip-id="tip-069" data-level="beginner">
+            <a class="tip-id" href="#tip-069">tip-069</a>
+            <p>`/save &lt;名稱&gt;` = 匯出目前對話供之後參考；AgEnD 目前支援 Kiro CLI 與 Claude Code。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-070" data-tip-id="tip-070" data-level="beginner">
+            <a class="tip-id" href="#tip-070">tip-070</a>
+            <p>Discord 的 Kiro ClassicBot 可用 `/load &lt;名稱&gt;` 載入先前由 Kiro 儲存的對話；這不是所有 Backend 都能用的通用還原指令。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-071" data-tip-id="tip-071" data-level="beginner">
+            <a class="tip-id" href="#tip-071">tip-071</a>
+            <p>Claude Code 的 `/save` 會匯出 Markdown 檔供參考；AgEnD 沒有對應的 `/load` 可把它還原成 Claude Session。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-072" data-tip-id="tip-072" data-level="beginner">
+            <a class="tip-id" href="#tip-072">tip-072</a>
+            <p>Kiro 的 `/save` 會轉成 `/chat save`；之後的 Discord `/load` 只適用 Kiro ClassicBot 流程。</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-073" data-tip-id="tip-073" data-level="beginner">
+            <a class="tip-id" href="#tip-073">tip-073</a>
+            <p>管理員使用 `/update` = 從目前的穩定版或 Beta 更新通道安裝最新 AgEnD，完成後重啟 Fleet。</p>
+          </article>
+        <article class="tip-card" id="tip-074" data-tip-id="tip-074" data-level="beginner">
+            <a class="tip-id" href="#tip-074">tip-074</a>
+            <p>管理員使用 `/restart` = 優雅重啟整個 Fleet，不是只重啟目前 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-075" data-tip-id="tip-075" data-level="beginner">
+            <a class="tip-id" href="#tip-075">tip-075</a>
+            <p>每次重啟都會喚醒所有未暫停的 Agent；啟動需要時間，後續恢復或摘要也可能多用 token，因此不要頻繁重啟 Fleet。</p>
+          </article>
+        <article class="tip-card" id="tip-076" data-tip-id="tip-076" data-level="beginner">
+            <a class="tip-id" href="#tip-076">tip-076</a>
+            <p>不需要立刻恢復的 Agent，可在 update 或 restart 前先 Pause；Fleet 啟動時會跳過已暫停的 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-077" data-tip-id="tip-077" data-level="beginner">
+            <a class="tip-id" href="#tip-077">tip-077</a>
+            <p>管理員使用 `/pause` = 讓 Agent 休眠；`/wake` = 再次啟動。General 本身不能被暫停。</p>
+          </article>
+        <article class="tip-card" id="tip-078" data-tip-id="tip-078" data-level="beginner">
+            <a class="tip-id" href="#tip-078">tip-078</a>
+            <p>Settings 可以設定自動暫停時間；`0` 代表停用，讓不用的 Agent 休眠可減少背景程序與重啟負擔。</p>
+          </article>
+        <article class="tip-card" id="tip-079" data-tip-id="tip-079" data-level="beginner">
+            <a class="tip-id" href="#tip-079">tip-079</a>
+            <p>修改自動暫停、進度詳細度、顯示名稱、描述、標籤或 Log Level 會即時生效，不會重啟 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-080" data-tip-id="tip-080" data-level="beginner">
+            <a class="tip-id" href="#tip-080">tip-080</a>
+            <p>在 Settings 修改 Backend、工作目錄或 Tool Set，以及在設定檔修改 Backend Options，都屬於冷設定，會重啟 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-081" data-tip-id="tip-081" data-level="beginner">
+            <a class="tip-id" href="#tip-081">tip-081</a>
+            <p>ClassicBot = 常駐在一般 Discord Server/Channel 或 Telegram Group 裡的 Agent，不是預先建立的 Fleet Topic。</p>
+          </article>
+        <article class="tip-card" id="tip-082" data-tip-id="tip-082" data-level="beginner">
+            <a class="tip-id" href="#tip-082">tip-082</a>
+            <p>ClassicBot 預設不會對每段聊天主動插話；可用 `/chat`，在 Telegram 群組或協作聊天室標記 bot 也會觸發。</p>
+          </article>
+        <article class="tip-card" id="tip-083" data-tip-id="tip-083" data-level="beginner">
+            <a class="tip-id" href="#tip-083">tip-083</a>
+            <p>ClassicBot 觸發時會附上近期聊天紀錄；預設是最近 5 行，不是整個頻道歷史。</p>
+          </article>
+        <article class="tip-card" id="tip-084" data-tip-id="tip-084" data-level="beginner">
+            <a class="tip-id" href="#tip-084">tip-084</a>
+            <p>要使用 ClassicBot，先把 bot 邀進 Discord Server 或 Telegram Group，再由管理員在目標聊天室執行 `/start`。</p>
+          </article>
+        <article class="tip-card" id="tip-085" data-tip-id="tip-085" data-level="beginner">
+            <a class="tip-id" href="#tip-085">tip-085</a>
+            <p>ClassicBot 的 `/start` 會用 ClassicBot 預設 Backend 建立或恢復該聊天室的 Agent；之後可到 Settings 修改 Backend。</p>
+          </article>
+        <article class="tip-card" id="tip-086" data-tip-id="tip-086" data-level="beginner">
+            <a class="tip-id" href="#tip-086">tip-086</a>
+            <p>ClassicBot 的 `/stop` 會移除該聊天室綁定；確定這個 Channel 不再需要 Agent 時才使用。</p>
+          </article>
+        <article class="tip-card" id="tip-087" data-tip-id="tip-087" data-level="beginner">
+            <a class="tip-id" href="#tip-087">tip-087</a>
+            <p>ClassicBot 聊天室與 Fleet Topic 的路由不同；指令要在目標 Agent 所屬的聊天室執行。</p>
+          </article>
+        <article class="tip-card" id="tip-088" data-tip-id="tip-088" data-level="beginner">
+            <a class="tip-id" href="#tip-088">tip-088</a>
+            <p>同一個協作聊天室有多個 bot = 標記正確 persona 或使用它的 slash command；每個 bot 可以各自擁有不同的 ClassicBot Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-089" data-tip-id="tip-089" data-level="beginner">
+            <a class="tip-id" href="#tip-089">tip-089</a>
+            <p>登入過期訊息 = 重新登入該 Backend；登入尚未修好前重送同一需求，通常只會再次失敗。</p>
+          </article>
+        <article class="tip-card" id="tip-090" data-tip-id="tip-090" data-level="beginner">
+            <a class="tip-id" href="#tip-090">tip-090</a>
+            <p>模型不支援訊息 = 目前 Backend 或帳號拒絕該模型；請改選清單中的模型，不要期待系統默默換回預設。</p>
+          </article>
+        <article class="tip-card" id="tip-091" data-tip-id="tip-091" data-level="beginner">
+            <a class="tip-id" href="#tip-091">tip-091</a>
+            <p>密碼或 Y/N 提示停住時會通知 General；AgEnD 不會自動代答。</p>
+          </article>
+        <article class="tip-card" id="tip-092" data-tip-id="tip-092" data-level="beginner">
+            <a class="tip-id" href="#tip-092">tip-092</a>
+            <p>回報問題時附上時間 + instance 名稱 + 傳了什麼 + 發生什麼；這四項最容易對上 Log。</p>
+          </article>
+        <article class="tip-card" id="tip-093" data-tip-id="tip-093" data-level="beginner">
+            <a class="tip-id" href="#tip-093">tip-093</a>
+            <p>View 頁面的截圖會顯示 Agent 即時畫面；分享前先檢查專案名稱、路徑或 Secret。</p>
+          </article>
+        <article class="tip-card" id="tip-094" data-tip-id="tip-094" data-level="beginner">
+            <a class="tip-id" href="#tip-094">tip-094</a>
+            <p>AI 回答可能出錯；指令、價格、權限與其他高影響資訊都要確認後再執行。</p>
+          </article>
+        <article class="tip-card" id="tip-095" data-tip-id="tip-095" data-level="beginner">
+            <a class="tip-id" href="#tip-095">tip-095</a>
+            <p>敏感工作 = 只提供本次需求必要的檔案與數值；聊天匯出與截圖可能比預期包含更多資訊。</p>
+          </article>
+        <article class="tip-card" id="tip-096" data-tip-id="tip-096" data-level="beginner">
+            <a class="tip-id" href="#tip-096">tip-096</a>
+            <p>`/tips` = 在目前聊天室再顯示一則可用 Tip；不一定要到 General 執行。</p>
+          </article>
+        <article class="tip-card" id="tip-097" data-tip-id="tip-097" data-level="beginner">
+            <a class="tip-id" href="#tip-097">tip-097</a>
+            <p>✅ 我知道了 = 保留 Tip 原文、收起按鈕，之後不再顯示同一則。</p>
+          </article>
+        <article class="tip-card" id="tip-098" data-tip-id="tip-098" data-level="beginner">
+            <a class="tip-id" href="#tip-098">tip-098</a>
+            <p>❓ 看不懂 = 保留 Tip 原文、記錄回饋，之後仍可能再次出現同一則。</p>
+          </article>
+        <article class="tip-card" id="tip-099" data-tip-id="tip-099" data-level="beginner">
+            <a class="tip-id" href="#tip-099">tip-099</a>
+            <p>`/clear` = 確認後清空目前 Context；這個動作不能復原，但專案檔案與 AgEnD 指示仍會保留。</p>
+          </article>
+        <article class="tip-card" id="tip-100" data-tip-id="tip-100" data-level="beginner">
+            <a class="tip-id" href="#tip-100">tip-100</a>
+            <p>有用的 Tip 應該直接說明對你有什麼影響；看不出實際後果時就按「看不懂」。</p>
+          </article>
+      </div>
+    </section>
+<section class="tips-section" id="intermediate">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">intermediate</span>
+          <h2>中階</h2>
+          <p>指令、Backend 與協作</p>
+        </div>
+        <span class="level-count">100 條提示</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-101" data-tip-id="tip-101" data-level="intermediate">
+            <a class="tip-id" href="#tip-101">tip-101</a>
+            <p>instance（單一且獨立的 Agent）各自保有自己的對話，也可以分別負責不同專案。</p>
+          </article>
+        <article class="tip-card" id="tip-102" data-tip-id="tip-102" data-level="intermediate">
+            <a class="tip-id" href="#tip-102">tip-102</a>
+            <p>Fleet（由 AgEnD 一起管理的一組 Agent）可統一執行管理操作；整體操作可能影響所有運行中的 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-103" data-tip-id="tip-103" data-level="intermediate">
+            <a class="tip-id" href="#tip-103">tip-103</a>
+            <p>General（協調工作的 Agent）可協助選擇合適的 Agent、拆分互不相依的任務，或管理整個 Fleet。</p>
+          </article>
+        <article class="tip-card" id="tip-104" data-tip-id="tip-104" data-level="intermediate">
+            <a class="tip-id" href="#tip-104">tip-104</a>
+            <p>Backend（決定 Agent 使用哪種 AI 服務）可以是 Claude Code、Codex、Kiro CLI、Grok、Antigravity 或 OpenCode。</p>
+          </article>
+        <article class="tip-card" id="tip-105" data-tip-id="tip-105" data-level="intermediate">
+            <a class="tip-id" href="#tip-105">tip-105</a>
+            <p>Context（目前對話可保留的資訊量）有容量限制，也不是永久的專案儲存空間。</p>
+          </article>
+        <article class="tip-card" id="tip-106" data-tip-id="tip-106" data-level="intermediate">
+            <a class="tip-id" href="#tip-106">tip-106</a>
+            <p>MCP（讓 AI 使用回覆、檔案與協作工具的通道）通常不需由使用者直接操作，只要說明預期結果即可。</p>
+          </article>
+        <article class="tip-card" id="tip-107" data-tip-id="tip-107" data-level="intermediate">
+            <a class="tip-id" href="#tip-107">tip-107</a>
+            <p>Model（Backend 內實際選用的 AI 模型）若未指定，通常會沿用 Fleet 或帳號的預設值。</p>
+          </article>
+        <article class="tip-card" id="tip-108" data-tip-id="tip-108" data-level="intermediate">
+            <a class="tip-id" href="#tip-108">tip-108</a>
+            <p>Session（Backend 保存的對話狀態）能否在重啟後延續，取決於該 Backend 的支援方式。</p>
+          </article>
+        <article class="tip-card" id="tip-109" data-tip-id="tip-109" data-level="intermediate">
+            <a class="tip-id" href="#tip-109">tip-109</a>
+            <p>工作目錄（Agent 讀取與修改專案時使用的目錄）可以共用，但多個 Agent 同時修改時可能產生衝突。</p>
+          </article>
+        <article class="tip-card" id="tip-110" data-tip-id="tip-110" data-level="intermediate">
+            <a class="tip-id" href="#tip-110">tip-110</a>
+            <p>ClassicBot（在一般 Telegram 或 Discord 對話中建立持續 Agent 的模式）不需要預先配置 Fleet 對話。</p>
+          </article>
+        <article class="tip-card" id="tip-111" data-tip-id="tip-111" data-level="intermediate">
+            <a class="tip-id" href="#tip-111">tip-111</a>
+            <p>Adapter（AgEnD 與某個訊息 Bot 帳號的連線）在多 Bot 環境中可讓 Agent 固定使用指定身分回覆。</p>
+          </article>
+        <article class="tip-card" id="tip-112" data-tip-id="tip-112" data-level="intermediate">
+            <a class="tip-id" href="#tip-112">tip-112</a>
+            <p>Telegram 以 Topic 分隔 Fleet 對話，Discord 則可能使用 Channel 或 Thread；這些空間在 AgEnD 中都用來把訊息送到正確的 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-113" data-tip-id="tip-113" data-level="intermediate">
+            <a class="tip-id" href="#tip-113">tip-113</a>
+            <p>Tool（AI 可呼叫的操作，例如讀取檔案或發送回覆）是否可用，取決於 Backend 與權限設定。</p>
+          </article>
+        <article class="tip-card" id="tip-114" data-tip-id="tip-114" data-level="intermediate">
+            <a class="tip-id" href="#tip-114">tip-114</a>
+            <p>Delivery queue（等待安全時機送入忙碌 Agent 的訊息佇列）代表訊息延後處理，不一定是遺失。</p>
+          </article>
+        <article class="tip-card" id="tip-115" data-tip-id="tip-115" data-level="intermediate">
+            <a class="tip-id" href="#tip-115">tip-115</a>
+            <p>閒置（看起來可接收輸入）與工作中（偵測到正在處理工作）是 AgEnD 觀察到的狀態，不代表回答品質。</p>
+          </article>
+        <article class="tip-card" id="tip-116" data-tip-id="tip-116" data-level="intermediate">
+            <a class="tip-id" href="#tip-116">tip-116</a>
+            <p>Paused（暫停）表示 AgEnD 刻意停止 Agent 的 CLI 程序，但保留設定，之後仍可喚醒。</p>
+          </article>
+        <article class="tip-card" id="tip-117" data-tip-id="tip-117" data-level="intermediate">
+            <a class="tip-id" href="#tip-117">tip-117</a>
+            <p>Stopped（正常停止）與 Crashed（非預期退出或多次恢復失敗）原因不同，可請 General 協助檢查。</p>
+          </article>
+        <article class="tip-card" id="tip-118" data-tip-id="tip-118" data-level="intermediate">
+            <a class="tip-id" href="#tip-118">tip-118</a>
+            <p>Settings（常用設定的網頁編輯器）會即時套用 Hot 設定；Cold 設定會改變啟動方式，因此會重啟受影響的 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-119" data-tip-id="tip-119" data-level="intermediate">
+            <a class="tip-id" href="#tip-119">tip-119</a>
+            <p>View（在瀏覽器顯示 Agent 即時終端畫面的頁面）適合查看互動提示或工作進度。</p>
+          </article>
+        <article class="tip-card" id="tip-120" data-tip-id="tip-120" data-level="intermediate">
+            <a class="tip-id" href="#tip-120">tip-120</a>
+            <p>CLI（在電腦終端中運行的 AI 程式）會顯示 TUI（以文字構成的操作畫面）；AgEnD 會把訊息送進該畫面，使用者可透過 View 或電腦終端查看。</p>
+          </article>
+        <article class="tip-card" id="tip-121" data-tip-id="tip-121" data-level="intermediate">
+            <a class="tip-id" href="#tip-121">tip-121</a>
+            <p>使用 `/ctx` 可查看目前的 instance、Backend、Model 與可取得的 Context 估計值；部分 Backend 無法提供百分比。</p>
+          </article>
+        <article class="tip-card" id="tip-122" data-tip-id="tip-122" data-level="intermediate">
+            <a class="tip-id" href="#tip-122">tip-122</a>
+            <p>不帶參數的 `/model` 會開啟模型選單；管理員可用 `/model &lt;名稱&gt;` 指定模型。</p>
+          </article>
+        <article class="tip-card" id="tip-123" data-tip-id="tip-123" data-level="intermediate">
+            <a class="tip-id" href="#tip-123">tip-123</a>
+            <p>即使 AgEnD 的本機規則不認得某個格式安全的模型名稱，仍會交給 Backend 判斷；Backend 可能接受，也可能回報不可用。</p>
+          </article>
+        <article class="tip-card" id="tip-124" data-tip-id="tip-124" data-level="intermediate">
+            <a class="tip-id" href="#tip-124">tip-124</a>
+            <p>不帶參數的 `/effort` 可查看推理強度選項；管理員可在 Backend 與 Model 支援時使用 `/effort &lt;等級&gt;`。</p>
+          </article>
+        <article class="tip-card" id="tip-125" data-tip-id="tip-125" data-level="intermediate">
+            <a class="tip-id" href="#tip-125">tip-125</a>
+            <p>Reasoning effort（推理強度）會調整支援模型投入思考的程度，不會切換 Backend，也不保證答案一定更好。</p>
+          </article>
+        <article class="tip-card" id="tip-126" data-tip-id="tip-126" data-level="intermediate">
+            <a class="tip-id" href="#tip-126">tip-126</a>
+            <p>Context 擁擠但仍要延續對話時可用 `/compact`；各 Backend 行為不同，Antigravity 會改為完整清除。</p>
+          </article>
+        <article class="tip-card" id="tip-127" data-tip-id="tip-127" data-level="intermediate">
+            <a class="tip-id" href="#tip-127">tip-127</a>
+            <p>支援的 Backend 可用 `/clear` 重設對話；此指令限管理員使用，且因先前 Context 會被移除而需要再次確認。</p>
+          </article>
+        <article class="tip-card" id="tip-128" data-tip-id="tip-128" data-level="intermediate">
+            <a class="tip-id" href="#tip-128">tip-128</a>
+            <p>使用 `/cancel` 或取消按鈕可中斷目前回合；按下前排隊的訊息會被丟棄，之後到達的新訊息則會保留。</p>
+          </article>
+        <article class="tip-card" id="tip-129" data-tip-id="tip-129" data-level="intermediate">
+            <a class="tip-id" href="#tip-129">tip-129</a>
+            <p>可對閒置且非 General 的 Agent 使用 `/pause` 以節省資源；General 必須維持協調能力，因此不能暫停。</p>
+          </article>
+        <article class="tip-card" id="tip-130" data-tip-id="tip-130" data-level="intermediate">
+            <a class="tip-id" href="#tip-130">tip-130</a>
+            <p>使用 `/wake` 可立即啟動 Paused Agent；傳送一般訊息也能觸發喚醒流程。</p>
+          </article>
+        <article class="tip-card" id="tip-131" data-tip-id="tip-131" data-level="intermediate">
+            <a class="tip-id" href="#tip-131">tip-131</a>
+            <p>只有整個 Fleet 都需要重啟時才使用 `/restart`；若只有一個 Agent 異常，應請 General 單獨重啟該 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-132" data-tip-id="tip-132" data-level="intermediate">
+            <a class="tip-id" href="#tip-132">tip-132</a>
+            <p>應等進行中的工作到達安全點後再用 `/update`；更新會安裝選定的 AgEnD 版本，接著重啟整個 Fleet。</p>
+          </article>
+        <article class="tip-card" id="tip-133" data-tip-id="tip-133" data-level="intermediate">
+            <a class="tip-id" href="#tip-133">tip-133</a>
+            <p>使用 `/usage` 可查看 Running 或 Paused Agent 所用 Backend 的訂閱資料；無資料可能代表無法取得統計，不等於用量為零。</p>
+          </article>
+        <article class="tip-card" id="tip-134" data-tip-id="tip-134" data-level="intermediate">
+            <a class="tip-id" href="#tip-134">tip-134</a>
+            <p>使用 `/dashboard` 可取得目前的 View 與 Settings 連結；含存取 Token 的連結應視同密碼，不要公開分享。</p>
+          </article>
+        <article class="tip-card" id="tip-135" data-tip-id="tip-135" data-level="intermediate">
+            <a class="tip-id" href="#tip-135">tip-135</a>
+            <p>管理員可用 `/status` 查看 Fleet 摘要，包括 Running、Paused、Stopped 與 Crashed Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-136" data-tip-id="tip-136" data-level="intermediate">
+            <a class="tip-id" href="#tip-136">tip-136</a>
+            <p>問題可能與執行環境有關時，可用 `/sysinfo` 收集主機與版本資訊。</p>
+          </article>
+        <article class="tip-card" id="tip-137" data-tip-id="tip-137" data-level="intermediate">
+            <a class="tip-id" href="#tip-137">tip-137</a>
+            <p>在 General 使用 `/doctor` 可檢查已設定的 Backend；更完整的服務與連線檢查需從可信任的電腦終端執行 `agend doctor`。</p>
+          </article>
+        <article class="tip-card" id="tip-138" data-tip-id="tip-138" data-level="intermediate">
+            <a class="tip-id" href="#tip-138">tip-138</a>
+            <p>使用 `/tips` 可立即查看另一則提示；`/tips off` 可停止每日投遞，`/tips on` 可重新開啟。</p>
+          </article>
+        <article class="tip-card" id="tip-139" data-tip-id="tip-139" data-level="intermediate">
+            <a class="tip-id" href="#tip-139">tip-139</a>
+            <p>使用 `/steer &lt;訊息&gt;` 可在 Claude Code、Codex 或 Grok 工作途中調整方向；不支援的 Backend 會明確回報。</p>
+          </article>
+        <article class="tip-card" id="tip-140" data-tip-id="tip-140" data-level="intermediate">
+            <a class="tip-id" href="#tip-140">tip-140</a>
+            <p>使用 `/btw &lt;訊息&gt;` 可向 Claude Code 提出附帶問題，而不要求放棄目前任務；其他 Backend 會回報不支援。</p>
+          </article>
+        <article class="tip-card" id="tip-141" data-tip-id="tip-141" data-level="intermediate">
+            <a class="tip-id" href="#tip-141">tip-141</a>
+            <p>管理員可在 General 使用 `/pause &lt;instance 名稱&gt;` 或 `/wake &lt;instance 名稱&gt;`，不必先進入該 Agent 的對話。</p>
+          </article>
+        <article class="tip-card" id="tip-142" data-tip-id="tip-142" data-level="intermediate">
+            <a class="tip-id" href="#tip-142">tip-142</a>
+            <p>`/save &lt;名稱&gt;` 僅支援 Kiro CLI 與 Claude Code；Kiro 會保存 Chat，Claude Code 會匯出 Markdown，其他 Backend 會回報不支援。</p>
+          </article>
+        <article class="tip-card" id="tip-143" data-tip-id="tip-143" data-level="intermediate">
+            <a class="tip-id" href="#tip-143">tip-143</a>
+            <p>在 ClassicBot 對話中，管理員可用 `/start` 建立或恢復 Agent，並用 `/stop` 移除該頻道的綁定。</p>
+          </article>
+        <article class="tip-card" id="tip-144" data-tip-id="tip-144" data-level="intermediate">
+            <a class="tip-id" href="#tip-144">tip-144</a>
+            <p>管理員可用 `/collab` 切換 Bot 訊息是否能參與已設定的 Fleet 對話；既有存取規則仍會套用。</p>
+          </article>
+        <article class="tip-card" id="tip-145" data-tip-id="tip-145" data-level="intermediate">
+            <a class="tip-id" href="#tip-145">tip-145</a>
+            <p>Settings 會先暫存修改，按下 Apply 才套用；若 Cold 欄位會重啟 Agent，送出前應先檢查變更內容。</p>
+          </article>
+        <article class="tip-card" id="tip-146" data-tip-id="tip-146" data-level="intermediate">
+            <a class="tip-id" href="#tip-146">tip-146</a>
+            <p>Backend 屬於 Cold 設定；在 Settings 切換 Backend 後，受影響的 Agent 會重啟。</p>
+          </article>
+        <article class="tip-card" id="tip-147" data-tip-id="tip-147" data-level="intermediate">
+            <a class="tip-id" href="#tip-147">tip-147</a>
+            <p>工作目錄屬於 Cold 設定；在 Settings 套用前，應確認目標工作目錄存在且包含預期專案。</p>
+          </article>
+        <article class="tip-card" id="tip-148" data-tip-id="tip-148" data-level="intermediate">
+            <a class="tip-id" href="#tip-148">tip-148</a>
+            <p>Model Override 可透過 `/model` 或 Settings 調整；不需指定時可留空，讓既有預設值生效。</p>
+          </article>
+        <article class="tip-card" id="tip-149" data-tip-id="tip-149" data-level="intermediate">
+            <a class="tip-id" href="#tip-149">tip-149</a>
+            <p>Tool progress（工作訊息下顯示多少工具歷程）可在 Settings 選擇 off、standard 或 verbose，且不需重啟即可生效。</p>
+          </article>
+        <article class="tip-card" id="tip-150" data-tip-id="tip-150" data-level="intermediate">
+            <a class="tip-id" href="#tip-150">tip-150</a>
+            <p>Display name（對外顯示名稱）不會改變 instance 的內部名稱，可在 Settings 即時調整。</p>
+          </article>
+        <article class="tip-card" id="tip-151" data-tip-id="tip-151" data-level="intermediate">
+            <a class="tip-id" href="#tip-151">tip-151</a>
+            <p>Description 與 Tags 可說明 Agent 的責任並協助 General 選擇，兩者都能在 Settings 即時修改。</p>
+          </article>
+        <article class="tip-card" id="tip-152" data-tip-id="tip-152" data-level="intermediate">
+            <a class="tip-id" href="#tip-152">tip-152</a>
+            <p>Auto-pause（閒置後自動暫停的計時）設為 0 時停用，可在 Settings 啟用或調整，且不需重啟 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-153" data-tip-id="tip-153" data-level="intermediate">
+            <a class="tip-id" href="#tip-153">tip-153</a>
+            <p>Warm cap（最多保留多少個非 General Agent 運行）可請 General 協助調整，或在進階設定中修改 fleet.yaml 的 `defaults.warm_cap` 後重新載入；既有 Agent 不需重啟。</p>
+          </article>
+        <article class="tip-card" id="tip-154" data-tip-id="tip-154" data-level="intermediate">
+            <a class="tip-id" href="#tip-154">tip-154</a>
+            <p>Log level（診斷紀錄的詳細程度）屬於 Hot 設定；較詳細的 Log 也可能包含專案或路由資訊。</p>
+          </article>
+        <article class="tip-card" id="tip-155" data-tip-id="tip-155" data-level="intermediate">
+            <a class="tip-id" href="#tip-155">tip-155</a>
+            <p>Channel binding（Fleet instance 固定使用的 bot 身分）可在 Settings 設定，適合多個 bot 帳號共用同一伺服器或群組的情況。</p>
+          </article>
+        <article class="tip-card" id="tip-156" data-tip-id="tip-156" data-level="intermediate">
+            <a class="tip-id" href="#tip-156">tip-156</a>
+            <p>Kiro UI（Kiro 是否使用互動畫面）只適用 Kiro；變更後會重啟該 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-157" data-tip-id="tip-157" data-level="intermediate">
+            <a class="tip-id" href="#tip-157">tip-157</a>
+            <p>Terminal columns 與 rows（Backend 看到的邏輯畫面尺寸）應謹慎調整；過窄的畫面可能讓權限提示換行或漏判。</p>
+          </article>
+        <article class="tip-card" id="tip-158" data-tip-id="tip-158" data-level="intermediate">
+            <a class="tip-id" href="#tip-158">tip-158</a>
+            <p>Settings 會顯示套用 Defaults 後的有效值；保存時可省略與 Defaults 重複的 instance 欄位，因此缺少重複欄位不一定代表設定遺失。</p>
+          </article>
+        <article class="tip-card" id="tip-159" data-tip-id="tip-159" data-level="intermediate">
+            <a class="tip-id" href="#tip-159">tip-159</a>
+            <p>Schedule（稍後或週期性投遞的訊息）可請 General 建立，並指定由負責該工作的 Agent 處理。</p>
+          </article>
+        <article class="tip-card" id="tip-160" data-tip-id="tip-160" data-level="intermediate">
+            <a class="tip-id" href="#tip-160">tip-160</a>
+            <p>週期排程使用 Cron Expression（描述重複時間的格式），例如每天 09:00；單次排程使用 ISO 日期時間，例如 `2026-08-25T09:00:00+08:00`，每個排程只應選一種。</p>
+          </article>
+        <article class="tip-card" id="tip-161" data-tip-id="tip-161" data-level="intermediate">
+            <a class="tip-id" href="#tip-161">tip-161</a>
+            <p>Timezone（週期排程依循的當地時鐘）可避免時間誤解；例如 `Asia/Taipei` 會讓「每天 09:00」代表台灣時間 09:00，而不是伺服器所在地時間。</p>
+          </article>
+        <article class="tip-card" id="tip-162" data-tip-id="tip-162" data-level="intermediate">
+            <a class="tip-id" href="#tip-162">tip-162</a>
+            <p>Silent Schedule（不在聊天室顯示觸發文字的排程）仍可能在任務需要時由指定 Agent 回傳結果。</p>
+          </article>
+        <article class="tip-card" id="tip-163" data-tip-id="tip-163" data-level="intermediate">
+            <a class="tip-id" href="#tip-163">tip-163</a>
+            <p>Team（可重複使用的 Agent 協作群組）適合固定的實作與審查搭配；成員可請 General 管理。</p>
+          </article>
+        <article class="tip-card" id="tip-164" data-tip-id="tip-164" data-level="intermediate">
+            <a class="tip-id" href="#tip-164">tip-164</a>
+            <p>Shared Decision（讓各 Agent 在重啟後仍可沿用的共同決定）適合記錄長期有效的架構選擇，可請 General 保存。</p>
+          </article>
+        <article class="tip-card" id="tip-165" data-tip-id="tip-165" data-level="intermediate">
+            <a class="tip-id" href="#tip-165">tip-165</a>
+            <p>Agent 之間可以交換特定問題與結果，但完整對話歷程與工作目錄不會自動共用。</p>
+          </article>
+        <article class="tip-card" id="tip-166" data-tip-id="tip-166" data-level="intermediate">
+            <a class="tip-id" href="#tip-166">tip-166</a>
+            <p>只應請 General 平行處理互不相依的工作；若兩個 Agent 會修改相同檔案，應先協調責任或使用不同副本。</p>
+          </article>
+        <article class="tip-card" id="tip-167" data-tip-id="tip-167" data-level="intermediate">
+            <a class="tip-id" href="#tip-167">tip-167</a>
+            <p>發送端 Timeout（等待回覆逾時的提示）不代表跨 Agent 訊息一定失敗；不應只因等待逾時就重複發送。</p>
+          </article>
+        <article class="tip-card" id="tip-168" data-tip-id="tip-168" data-level="intermediate">
+            <a class="tip-id" href="#tip-168">tip-168</a>
+            <p>Agent 等待密碼或確認時，AgEnD 可通知 General；進行任何人工輸入前，都應先檢查畫面上的實際提示。</p>
+          </article>
+        <article class="tip-card" id="tip-169" data-tip-id="tip-169" data-level="intermediate">
+            <a class="tip-id" href="#tip-169">tip-169</a>
+            <p>不要透過聊天室傳送密碼、存取 Token 或私鑰；只有獲准的提示需要時，才在可信任的終端直接輸入。</p>
+          </article>
+        <article class="tip-card" id="tip-170" data-tip-id="tip-170" data-level="intermediate">
+            <a class="tip-id" href="#tip-170">tip-170</a>
+            <p>投遞狀態 Reaction 中，⏳ 代表排隊、👀 代表已送達、✅ 代表回合已確認、❌ 代表失敗；它們不評價答案是否正確。</p>
+          </article>
+        <article class="tip-card" id="tip-171" data-tip-id="tip-171" data-level="intermediate">
+            <a class="tip-id" href="#tip-171">tip-171</a>
+            <p>一般 Reaction 應避免使用 👀、⏳、✅、❌，因為 AgEnD 會將它們保留給投遞狀態。</p>
+          </article>
+        <article class="tip-card" id="tip-172" data-tip-id="tip-172" data-level="intermediate">
+            <a class="tip-id" href="#tip-172">tip-172</a>
+            <p>回覆較早的訊息時，Agent 會收到引用內容；支援的 Discord 回覆也能包含被引用訊息中的圖片。</p>
+          </article>
+        <article class="tip-card" id="tip-173" data-tip-id="tip-173" data-level="intermediate">
+            <a class="tip-id" href="#tip-173">tip-173</a>
+            <p>附件會先複製到本機收件區，再以本機路徑交給 Agent；敏感檔案只應傳給合適的 Agent。</p>
+          </article>
+        <article class="tip-card" id="tip-174" data-tip-id="tip-174" data-level="intermediate">
+            <a class="tip-id" href="#tip-174">tip-174</a>
+            <p>Permission prompt（Backend 要求授權的安全關卡）應先確認檔案或指令範圍，再決定是否核准。</p>
+          </article>
+        <article class="tip-card" id="tip-175" data-tip-id="tip-175" data-level="intermediate">
+            <a class="tip-id" href="#tip-175">tip-175</a>
+            <p>標記已讀 60 則中階提示後，AgEnD 會提供「開始看進階」按鈕；管理員也可用 `/tips advanced on` 主動開啟。</p>
+          </article>
+        <article class="tip-card" id="tip-176" data-tip-id="tip-176" data-level="intermediate">
+            <a class="tip-id" href="#tip-176">tip-176</a>
+            <p>Claude Code 支援 subagent（同一個 CLI 內負責特定工作的輔助 AI），可在主 agent 整合結果時進行研究或審查。</p>
+          </article>
+        <article class="tip-card" id="tip-177" data-tip-id="tip-177" data-level="intermediate">
+            <a class="tip-id" href="#tip-177">tip-177</a>
+            <p>Claude Code 的 Permission mode（檔案與指令操作的授權方式）可設為允許、拒絕或要求核准，應依專案風險選擇。</p>
+          </article>
+        <article class="tip-card" id="tip-178" data-tip-id="tip-178" data-level="intermediate">
+            <a class="tip-id" href="#tip-178">tip-178</a>
+            <p>Claude Code 可恢復已保存的 Session，但能否延續仍取決於相同的專案路徑與可用 Session 資料。</p>
+          </article>
+        <article class="tip-card" id="tip-179" data-tip-id="tip-179" data-level="intermediate">
+            <a class="tip-id" href="#tip-179">tip-179</a>
+            <p>Claude 各模型系列通常在能力、速度與成本間有不同取捨；實際可用項目應以目前帳號的選單為準。</p>
+          </article>
+        <article class="tip-card" id="tip-180" data-tip-id="tip-180" data-level="intermediate">
+            <a class="tip-id" href="#tip-180">tip-180</a>
+            <p>Opus 通常偏向高難度工作、Sonnet 偏向平衡、Haiku 偏向快速輕量；仍應以供應商最新文件為準。</p>
+          </article>
+        <article class="tip-card" id="tip-181" data-tip-id="tip-181" data-level="intermediate">
+            <a class="tip-id" href="#tip-181">tip-181</a>
+            <p>Codex 使用 Sandbox（限制模型所產生指令作用範圍的邊界）；Sandbox 範圍與核准政策是兩項不同控制。</p>
+          </article>
+        <article class="tip-card" id="tip-182" data-tip-id="tip-182" data-level="intermediate">
+            <a class="tip-id" href="#tip-182">tip-182</a>
+            <p>Codex 工作時可接受 Queued input（由 CLI 自己排隊的後續訊息），因此不必等待閒置間隔才送入。</p>
+          </article>
+        <article class="tip-card" id="tip-183" data-tip-id="tip-183" data-level="intermediate">
+            <a class="tip-id" href="#tip-183">tip-183</a>
+            <p>Codex Skills（按任務需要載入的可重用指引）可把詳細流程放在平時不必完整載入的位置。</p>
+          </article>
+        <article class="tip-card" id="tip-184" data-tip-id="tip-184" data-level="intermediate">
+            <a class="tip-id" href="#tip-184">tip-184</a>
+            <p>Custom provider（Codex 中另行設定的模型服務）可由 AgEnD 選用；服務網址與憑證環境變數仍由 Codex 設定管理。</p>
+          </article>
+        <article class="tip-card" id="tip-185" data-tip-id="tip-185" data-level="intermediate">
+            <a class="tip-id" href="#tip-185">tip-185</a>
+            <p>自訂 Codex Model 可能因缺少內建資料而出現 Metadata Warning；是否可用仍以 Provider 實際回應為準。</p>
+          </article>
+        <article class="tip-card" id="tip-186" data-tip-id="tip-186" data-level="intermediate">
+            <a class="tip-id" href="#tip-186">tip-186</a>
+            <p>Kiro Specs（整理需求、設計、任務與執行的專案文件）適合需要明確規劃的功能工作。</p>
+          </article>
+        <article class="tip-card" id="tip-187" data-tip-id="tip-187" data-level="intermediate">
+            <a class="tip-id" href="#tip-187">tip-187</a>
+            <p>Kiro Steering files（持續套用的專案指引）可保存慣例，不必在每次對話重複說明。</p>
+          </article>
+        <article class="tip-card" id="tip-188" data-tip-id="tip-188" data-level="intermediate">
+            <a class="tip-id" href="#tip-188">tip-188</a>
+            <p>Kiro Skills 採漸進式載入：CLI 先看到簡短說明，只有任務相關時才讀取詳細指引。</p>
+          </article>
+        <article class="tip-card" id="tip-189" data-tip-id="tip-189" data-level="intermediate">
+            <a class="tip-id" href="#tip-189">tip-189</a>
+            <p>Kiro 的 `auto` 模型模式會讓 CLI 動態選擇；只有要覆寫 Fleet 層級的模型預設時，才需要明確設定 `model: auto`。</p>
+          </article>
+        <article class="tip-card" id="tip-190" data-tip-id="tip-190" data-level="intermediate">
+            <a class="tip-id" href="#tip-190">tip-190</a>
+            <p>Grok 可在已安裝 CLI、帳號與政策允許時提供網頁搜尋與內容擷取；實際可用性應在目前環境確認。</p>
+          </article>
+        <article class="tip-card" id="tip-191" data-tip-id="tip-191" data-level="intermediate">
+            <a class="tip-id" href="#tip-191">tip-191</a>
+            <p>Grok 支援透過 `/steer` 調整工作方向，但模型與工具可能因帳號而異，應以 CLI 當下顯示的清單為準。</p>
+          </article>
+        <article class="tip-card" id="tip-192" data-tip-id="tip-192" data-level="intermediate">
+            <a class="tip-id" href="#tip-192">tip-192</a>
+            <p>OpenCode 區分處理主要工作的 primary agent 與專注任務的 subagent；專案設定可能改變可用 agent 與權限。</p>
+          </article>
+        <article class="tip-card" id="tip-193" data-tip-id="tip-193" data-level="intermediate">
+            <a class="tip-id" href="#tip-193">tip-193</a>
+            <p>OpenCode 模型名稱通常採 `provider/model` 格式；應查看目前模型清單，不要假設只填模型名稱就一定可用。</p>
+          </article>
+        <article class="tip-card" id="tip-194" data-tip-id="tip-194" data-level="intermediate">
+            <a class="tip-id" href="#tip-194">tip-194</a>
+            <p>OpenCode Provider 定義應放在 OpenCode 自己的設定中；AgEnD 只選擇其提供的模型，不保存 Provider 憑證。</p>
+          </article>
+        <article class="tip-card" id="tip-195" data-tip-id="tip-195" data-level="intermediate">
+            <a class="tip-id" href="#tip-195">tip-195</a>
+            <p>OpenCode 目前沒有對應 AgEnD `/effort` 的功能；需要調整時，應使用 OpenCode 支援的模型或 agent 設定。</p>
+          </article>
+        <article class="tip-card" id="tip-196" data-tip-id="tip-196" data-level="intermediate">
+            <a class="tip-id" href="#tip-196">tip-196</a>
+            <p>Antigravity 可透過終端介面執行多步驟工作與工具操作；可用模型與整合項目取決於帳號及已安裝版本。</p>
+          </article>
+        <article class="tip-card" id="tip-197" data-tip-id="tip-197" data-level="intermediate">
+            <a class="tip-id" href="#tip-197">tip-197</a>
+            <p>Antigravity 在 AgEnD 中沒有獨立的摘要式 Compact 指令；`/compact` 與 `/clear` 都會使用完整清除對話的操作。</p>
+          </article>
+        <article class="tip-card" id="tip-198" data-tip-id="tip-198" data-level="intermediate">
+            <a class="tip-id" href="#tip-198">tip-198</a>
+            <p>不同 GPT 變體可能著重能力、延遲或成本；目前 CLI 帳號實際顯示的名稱才是判斷依據。</p>
+          </article>
+        <article class="tip-card" id="tip-199" data-tip-id="tip-199" data-level="intermediate">
+            <a class="tip-id" href="#tip-199">tip-199</a>
+            <p>自動模型選擇可能在不同回合使用不同模型；只有可重現性比彈性更重要時，才需要固定 Model。</p>
+          </article>
+        <article class="tip-card" id="tip-200" data-tip-id="tip-200" data-level="intermediate">
+            <a class="tip-id" href="#tip-200">tip-200</a>
+            <p>某個帳號可用的模型在另一個帳號可能不可用；一次調整多個 Agent 前，應先用目標 Backend 確認存取權。</p>
+          </article>
+      </div>
+    </section>
+<section class="tips-section" id="advanced">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">advanced</span>
+          <h2>進階</h2>
+          <p>設定、可靠性與疑難排解</p>
+        </div>
+        <span class="level-count">100 條提示</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-201" data-tip-id="tip-201" data-level="advanced">
+            <a class="tip-id" href="#tip-201">tip-201</a>
+            <p>進行 migration 或大量修改前，應把 fleet.yaml 與 classicBot.yaml 備份到工作路徑之外；直到代表性 instance 完成重啟與訊息往返測試後再移除備份。</p>
+          </article>
+        <article class="tip-card" id="tip-202" data-tip-id="tip-202" data-level="advanced">
+            <a class="tip-id" href="#tip-202">tip-202</a>
+            <p>instance entry 可以省略從 defaults 繼承的值；診斷 daemon 實際收到的設定時，應比對 effective configuration，而不只查看原始 YAML。</p>
+          </article>
+        <article class="tip-card" id="tip-203" data-tip-id="tip-203" data-level="advanced">
+            <a class="tip-id" href="#tip-203">tip-203</a>
+            <p>AgEnD 儲存 fleet.yaml 時會移除與 defaults 重複的 leaf values，但會保留 backend、model、working_directory、topic_id 與 backend_options 等識別欄位。</p>
+          </article>
+        <article class="tip-card" id="tip-204" data-tip-id="tip-204" data-level="advanced">
+            <a class="tip-id" href="#tip-204">tip-204</a>
+            <p>Lossless YAML 編輯會盡量保留無關結構與註解；若註解只附著在被移除的節點上，該註解可能無法保留。</p>
+          </article>
+        <article class="tip-card" id="tip-205" data-tip-id="tip-205" data-level="advanced">
+            <a class="tip-id" href="#tip-205">tip-205</a>
+            <p>手動修改 YAML 後、reload 前應先執行 `agend validate`；它可在不重啟 Fleet 的情況下找出 schema 錯誤。</p>
+          </article>
+        <article class="tip-card" id="tip-206" data-tip-id="tip-206" data-level="advanced">
+            <a class="tip-id" href="#tip-206">tip-206</a>
+            <p>Hot fields 會原地 reconcile，cold fields 則會重啟受影響的 instance；套用混合變更前，應先查看 Settings 的變更摘要。</p>
+          </article>
+        <article class="tip-card" id="tip-207" data-tip-id="tip-207" data-level="advanced">
+            <a class="tip-id" href="#tip-207">tip-207</a>
+            <p>SIGHUP reload 會以通過驗證的設定更新執行中 Fleet，並不等同於重啟所有 CLI process。</p>
+          </article>
+        <article class="tip-card" id="tip-208" data-tip-id="tip-208" data-level="advanced">
+            <a class="tip-id" href="#tip-208">tip-208</a>
+            <p>Backend、working_directory、tool_set、lightweight 與 backend_options 屬於 cold instance fields；變更後可能重建受影響的 CLI process。</p>
+          </article>
+        <article class="tip-card" id="tip-209" data-tip-id="tip-209" data-level="advanced">
+            <a class="tip-id" href="#tip-209">tip-209</a>
+            <p>Tool progress、display name、description、tags、log level 與 auto-pause 設定可 hot reconcile；若行為未更新，應確認 daemon 是否已接收變更。</p>
+          </article>
+        <article class="tip-card" id="tip-210" data-tip-id="tip-210" data-level="advanced">
+            <a class="tip-id" href="#tip-210">tip-210</a>
+            <p>只有在 instance 行為確實需要不同於 defaults 時才設定 override；減少重複值可讓後續 default 變更與 review 更容易判讀。</p>
+          </article>
+        <article class="tip-card" id="tip-211" data-tip-id="tip-211" data-level="advanced">
+            <a class="tip-id" href="#tip-211">tip-211</a>
+            <p>Backend option 只由對應 Backend 解讀；例如 `backend_options.codex.provider` 只負責選擇 provider，不會定義 endpoint 或 credentials。</p>
+          </article>
+        <article class="tip-card" id="tip-212" data-tip-id="tip-212" data-level="advanced">
+            <a class="tip-id" href="#tip-212">tip-212</a>
+            <p>Codex custom provider 應在 Codex config 中定義；密鑰宜透過 Fleet service 啟動前已存在的環境變數提供。</p>
+          </article>
+        <article class="tip-card" id="tip-213" data-tip-id="tip-213" data-level="advanced">
+            <a class="tip-id" href="#tip-213">tip-213</a>
+            <p>OpenCode provider 應在 opencode.json 中定義；AgEnD 的 model 欄位應使用 OpenCode 提供的識別字，通常是 `provider/model`。</p>
+          </article>
+        <article class="tip-card" id="tip-214" data-tip-id="tip-214" data-level="advanced">
+            <a class="tip-id" href="#tip-214">tip-214</a>
+            <p>Model name compatibility check 只應視為提示；CLI 才是最終依據，因此 AgEnD 會傳遞已設定的 model name，而不會靜默退回預設值。</p>
+          </article>
+        <article class="tip-card" id="tip-215" data-tip-id="tip-215" data-level="advanced">
+            <a class="tip-id" href="#tip-215">tip-215</a>
+            <p>instance 未設定 model 時會先繼承 defaults.model；若 Fleet 已有 model default，而某 instance 要使用 Backend 自己的預設，應在支援時明確設定該 Backend 的預設值。</p>
+          </article>
+        <article class="tip-card" id="tip-216" data-tip-id="tip-216" data-level="advanced">
+            <a class="tip-id" href="#tip-216">tip-216</a>
+            <p>Kiro 的 `auto` 是明確的 model 選擇；若要覆寫非 auto 的 defaults.model，應在該 instance 設定 `model: auto`。</p>
+          </article>
+        <article class="tip-card" id="tip-217" data-tip-id="tip-217" data-level="advanced">
+            <a class="tip-id" href="#tip-217">tip-217</a>
+            <p>Model failover 依賴支援的 usage telemetry，並在後續 rotation 套用；它不會在進行中的回合中途安全替換 model。</p>
+          </article>
+        <article class="tip-card" id="tip-218" data-tip-id="tip-218" data-level="advanced">
+            <a class="tip-id" href="#tip-218">tip-218</a>
+            <p>Cost guard 受 provider telemetry 限制；usage data 缺失、快取或延遲時，執行精度會下降，營運預期應納入這項限制。</p>
+          </article>
+        <article class="tip-card" id="tip-219" data-tip-id="tip-219" data-level="advanced">
+            <a class="tip-id" href="#tip-219">tip-219</a>
+            <p>Usage 結果會快取以減少 provider calls；登入或更新 token 後需要立即重取時，可使用 View 面板的 Refresh。</p>
+          </article>
+        <article class="tip-card" id="tip-220" data-tip-id="tip-220" data-level="advanced">
+            <a class="tip-id" href="#tip-220">tip-220</a>
+            <p>Provider 未出現在 `/usage` 時，可能只是目前沒有 running 或 paused instance 使用它；用量顯示依 effective Backend，而不是所有已安裝 CLI。</p>
+          </article>
+        <article class="tip-card" id="tip-221" data-tip-id="tip-221" data-level="advanced">
+            <a class="tip-id" href="#tip-221">tip-221</a>
+            <p>Bot token、dashboard token、provider key 與匯出的 session 都不應放入 repository 或共用 workspace，且各自需要不同的 rotation 程序。</p>
+          </article>
+        <article class="tip-card" id="tip-222" data-tip-id="tip-222" data-level="advanced">
+            <a class="tip-id" href="#tip-222">tip-222</a>
+            <p>CLI 支援 environment-key reference 時，應把 secret 放在 service environment，而不是 fleet.yaml 或會提交到版控的 provider config。</p>
+          </article>
+        <article class="tip-card" id="tip-223" data-tip-id="tip-223" data-level="advanced">
+            <a class="tip-id" href="#tip-223">tip-223</a>
+            <p>web.token 與 per-instance state 等檔案應只允許 owner 讀取；複製到 project 後，可能經由備份、diff 或 agent 暴露。</p>
+          </article>
+        <article class="tip-card" id="tip-224" data-tip-id="tip-224" data-level="advanced">
+            <a class="tip-id" href="#tip-224">tip-224</a>
+            <p>Persistent web token 會讓 dashboard URL 在重啟後仍有效；若要使既有連結失效，應移除 token file、重啟 Fleet，再取得新的 dashboard URL。</p>
+          </article>
+        <article class="tip-card" id="tip-225" data-tip-id="tip-225" data-level="advanced">
+            <a class="tip-id" href="#tip-225">tip-225</a>
+            <p>Dashboard URL 只有在 health server 開始 listening 後才可使用；遇到 port conflict 時應 fail closed，避免發布指向錯誤 process 的 URL。</p>
+          </article>
+        <article class="tip-card" id="tip-226" data-tip-id="tip-226" data-level="advanced">
+            <a class="tip-id" href="#tip-226">tip-226</a>
+            <p>Channel allowlist 是 authorization boundary，不是顯示篩選器；變更 access rules 後，應同時測試允許與拒絕的 identity。</p>
+          </article>
+        <article class="tip-card" id="tip-227" data-tip-id="tip-227" data-level="advanced">
+            <a class="tip-id" href="#tip-227">tip-227</a>
+            <p>修改 locked channel 的 allowed_users 前，應確認至少保留一位管理員；空的 locked allowlist 可能移除所有管理操作路徑。</p>
+          </article>
+        <article class="tip-card" id="tip-228" data-tip-id="tip-228" data-level="advanced">
+            <a class="tip-id" href="#tip-228">tip-228</a>
+            <p>使用 nonce 的確認按鈕會綁定 adapter、chat、thread、message 與管理員 identity；複製 callback 不應能授權另一個情境。</p>
+          </article>
+        <article class="tip-card" id="tip-229" data-tip-id="tip-229" data-level="advanced">
+            <a class="tip-id" href="#tip-229">tip-229</a>
+            <p>Multi-world Fleet 中，若第一個 adapter 不是預期 persona，應為 General 與 fleet-topic instance 明確設定 channel_id。</p>
+          </article>
+        <article class="tip-card" id="tip-230" data-tip-id="tip-230" data-level="advanced">
+            <a class="tip-id" href="#tip-230">tip-230</a>
+            <p>ClassicBot routing 依自身 channel records 決定；在多 bot 協作頻道中，不應把 fleet-topic 的 adapter canonicalization 套用到 ClassicBot reply。</p>
+          </article>
+        <article class="tip-card" id="tip-231" data-tip-id="tip-231" data-level="advanced">
+            <a class="tip-id" href="#tip-231">tip-231</a>
+            <p>Terminal columns 與 rows 同時影響 TUI layout 和 capture wrapping；修改 geometry 後，應用真實 pane sample 驗證 ready、permission 與 error detection。</p>
+          </article>
+        <article class="tip-card" id="tip-232" data-tip-id="tip-232" data-level="advanced">
+            <a class="tip-id" href="#tip-232">tip-232</a>
+            <p>Terminal validator 會限制保守的 geometry 範圍，因為過窄 pane 可能使 permission prompt 換行到無法辨識。</p>
+          </article>
+        <article class="tip-card" id="tip-233" data-tip-id="tip-233" data-level="advanced">
+            <a class="tip-id" href="#tip-233">tip-233</a>
+            <p>AgEnD 會固定 tmux window size，並讓 control client 忽略尺寸；兩層保護都需要，才能讓 logical geometry 在 reconnect 後保持穩定。</p>
+          </article>
+        <article class="tip-card" id="tip-234" data-tip-id="tip-234" data-level="advanced">
+            <a class="tip-id" href="#tip-234">tip-234</a>
+            <p>Mouse mode 只在 AgEnD 的 tmux session 啟用；attach 後可捲動 scrollback，且不影響使用者其他 session。</p>
+          </article>
+        <article class="tip-card" id="tip-235" data-tip-id="tip-235" data-level="advanced">
+            <a class="tip-id" href="#tip-235">tip-235</a>
+            <p>`capture-pane` 未合併 wrapping 時會讀取畫面實際行；因此即使邏輯文字相同，width 變更仍可能改變 parser input。</p>
+          </article>
+        <article class="tip-card" id="tip-236" data-tip-id="tip-236" data-level="advanced">
+            <a class="tip-id" href="#tip-236">tip-236</a>
+            <p>Ready、busy 與 error pattern 都是針對 terminal text 的 heuristic；修改前應保留去識別化的真實 sample，並加入 production-path test。</p>
+          </article>
+        <article class="tip-card" id="tip-237" data-tip-id="tip-237" data-level="advanced">
+            <a class="tip-id" href="#tip-237">tip-237</a>
+            <p>閒置誤判可能提早收回控制項或過早投遞 input；工作中誤判則可能延遲訊息並觸發 hang notification。</p>
+          </article>
+        <article class="tip-card" id="tip-238" data-tip-id="tip-238" data-level="advanced">
+            <a class="tip-id" href="#tip-238">tip-238</a>
+            <p>週期性 statusline redraw 不一定代表工作；各 Backend 的 pane handling 應區分純顯示重繪與任務內容變化。</p>
+          </article>
+        <article class="tip-card" id="tip-239" data-tip-id="tip-239" data-level="advanced">
+            <a class="tip-id" href="#tip-239">tip-239</a>
+            <p>hang_detector 應依實際 silent-work interval 調整，而不是任意設定很短的 timeout；重啟前先檢查 pane 與 process evidence。</p>
+          </article>
+        <article class="tip-card" id="tip-240" data-tip-id="tip-240" data-level="advanced">
+            <a class="tip-id" href="#tip-240">tip-240</a>
+            <p>Interactive-prompt alert 會同時要求 prompt-like pattern 與穩定 output 時間，以降低 agent 只是討論密碼或確認操作時的誤報。</p>
+          </article>
+        <article class="tip-card" id="tip-241" data-tip-id="tip-241" data-level="advanced">
+            <a class="tip-id" href="#tip-241">tip-241</a>
+            <p>限管理員使用的 `/raw &lt;文字&gt;` 會略過 AgEnD 的一般訊息包裝，直接送給 Backend；只有包裝會改變刻意輸入的 CLI 指令時才應使用。</p>
+          </article>
+        <article class="tip-card" id="tip-242" data-tip-id="tip-242" data-level="advanced">
+            <a class="tip-id" href="#tip-242">tip-242</a>
+            <p>Special-key delivery 需要可寫入的 tmux control client；Enter 或 interrupt command 失敗時，應直接視為 command failure，而不是等後續 timeout。</p>
+          </article>
+        <article class="tip-card" id="tip-243" data-tip-id="tip-243" data-level="advanced">
+            <a class="tip-id" href="#tip-243">tip-243</a>
+            <p>即使 Backend 有 native input queue，pasteLock 仍需序列化 terminal writes；native queue 不代表重疊 PTY paste 是安全的。</p>
+          </article>
+        <article class="tip-card" id="tip-244" data-tip-id="tip-244" data-level="advanced">
+            <a class="tip-id" href="#tip-244">tip-244</a>
+            <p>Codex 可把 busy-time input 放入自身 queue，因此 AgEnD 對 Codex 略過閒置門檻，但仍保留首次投遞的 startup settle。</p>
+          </article>
+        <article class="tip-card" id="tip-245" data-tip-id="tip-245" data-level="advanced">
+            <a class="tip-id" href="#tip-245">tip-245</a>
+            <p>Cancel 會透過 delivery epoch 使取消前已排隊的訊息失效；取消後抵達的新訊息使用新的 epoch，仍可正常投遞。</p>
+          </article>
+        <article class="tip-card" id="tip-246" data-tip-id="tip-246" data-level="advanced">
+            <a class="tip-id" href="#tip-246">tip-246</a>
+            <p>Message transport timeout 不代表一定未投遞；重試外部或 cross-instance send 前，應先檢查 delivery log 或 idempotency evidence。</p>
+          </article>
+        <article class="tip-card" id="tip-247" data-tip-id="tip-247" data-level="advanced">
+            <a class="tip-id" href="#tip-247">tip-247</a>
+            <p>被替換的 IPC client 必須移除 listeners 並 destroy socket；只刪除 map entry 可能留下仍在處理 outbound message 的 orphan。</p>
+          </article>
+        <article class="tip-card" id="tip-248" data-tip-id="tip-248" data-level="advanced">
+            <a class="tip-id" href="#tip-248">tip-248</a>
+            <p>Disconnect、overflow 與 close event 應在每個 client lifecycle 收斂成一次 disconnect，且 reconnect 應依 instance 序列化。</p>
+          </article>
+        <article class="tip-card" id="tip-249" data-tip-id="tip-249" data-level="advanced">
+            <a class="tip-id" href="#tip-249">tip-249</a>
+            <p>若簡單訊息也持續出現重複回覆，應先檢查 client 與 socket 數量，再判斷是否與 rich-message rendering 或 model 有關。</p>
+          </article>
+        <article class="tip-card" id="tip-250" data-tip-id="tip-250" data-level="advanced">
+            <a class="tip-id" href="#tip-250">tip-250</a>
+            <p>Schedule trigger metadata 必須包含 instance 設定的 adapter identity；否則重啟後的 reply 可能 fallback 到錯誤的 bot persona。</p>
+          </article>
+        <article class="tip-card" id="tip-251" data-tip-id="tip-251" data-level="advanced">
+            <a class="tip-id" href="#tip-251">tip-251</a>
+            <p>Fleet singleton lock 保護的是 manager startup，不是單一 instance restart；per-instance restart serialization 仍是另一項必要保護。</p>
+          </article>
+        <article class="tip-card" id="tip-252" data-tip-id="tip-252" data-level="advanced">
+            <a class="tip-id" href="#tip-252">tip-252</a>
+            <p>出現兩個 Fleet process 時，終止前應先收集 PID、parent PID、command line、lock owner、service state 與 listening ports。</p>
+          </article>
+        <article class="tip-card" id="tip-253" data-tip-id="tip-253" data-level="advanced">
+            <a class="tip-id" href="#tip-253">tip-253</a>
+            <p>Service-managed Fleet 在 user service manager 無法連線時應 fail closed，而不是啟動未追蹤的 detached duplicate。</p>
+          </article>
+        <article class="tip-card" id="tip-254" data-tip-id="tip-254" data-level="advanced">
+            <a class="tip-id" href="#tip-254">tip-254</a>
+            <p>透過 SSH 使用 Linux 時，缺少 D-Bus session 可能使 `systemctl --user` 無法使用，即使 unit file 已存在。</p>
+          </article>
+        <article class="tip-card" id="tip-255" data-tip-id="tip-255" data-level="advanced">
+            <a class="tip-id" href="#tip-255">tip-255</a>
+            <p>`active` 與 `activating` 都應視為 service 已被占用；service query 結果不確定時，不應允許第二次 startup。</p>
+          </article>
+        <article class="tip-card" id="tip-256" data-tip-id="tip-256" data-level="advanced">
+            <a class="tip-id" href="#tip-256">tip-256</a>
+            <p>Health-port conflict 可能代表 stale manager 或其他 service；更換 port 或停止 process 前，應先識別 listener。</p>
+          </article>
+        <article class="tip-card" id="tip-257" data-tip-id="tip-257" data-level="advanced">
+            <a class="tip-id" href="#tip-257">tip-257</a>
+            <p>Recovery path 應依 instance 序列化，避免 health check、MCP recovery、manual restart 與 config reconcile 建立互相競爭的 replacement。</p>
+          </article>
+        <article class="tip-card" id="tip-258" data-tip-id="tip-258" data-level="advanced">
+            <a class="tip-id" href="#tip-258">tip-258</a>
+            <p>Crash-loop protection 會在有限次重複失敗後停止自動恢復，並顯示 crashed 而非閒置；成功恢復後則必須清除 stale crash marker。</p>
+          </article>
+        <article class="tip-card" id="tip-259" data-tip-id="tip-259" data-level="advanced">
+            <a class="tip-id" href="#tip-259">tip-259</a>
+            <p>Restart backoff 可限制 CLI 反覆 startup failure 時的資源消耗；診斷確定性的設定錯誤時，暫時停用 retries 可能較合適。</p>
+          </article>
+        <article class="tip-card" id="tip-260" data-tip-id="tip-260" data-level="advanced">
+            <a class="tip-id" href="#tip-260">tip-260</a>
+            <p>MCP auto-restart 會等待符合條件的閒置狀態，並去除重複 restart request；由於 MCP child connection 由 CLI 掌握，因此需要重啟 instance。</p>
+          </article>
+        <article class="tip-card" id="tip-261" data-tip-id="tip-261" data-level="advanced">
+            <a class="tip-id" href="#tip-261">tip-261</a>
+            <p>只有在 pane 可見文字適合轉送時才啟用 mcp_proxy_reply；regex redaction 無法保證移除所有專案特有 secret。</p>
+          </article>
+        <article class="tip-card" id="tip-262" data-tip-id="tip-262" data-level="advanced">
+            <a class="tip-id" href="#tip-262">tip-262</a>
+            <p>Proxy reply 是 MCP 中斷後的最後備援 channel path，不是 source-of-truth transcript；應留意 terminal chrome 或不完整輸出。</p>
+          </article>
+        <article class="tip-card" id="tip-263" data-tip-id="tip-263" data-level="advanced">
+            <a class="tip-id" href="#tip-263">tip-263</a>
+            <p>Session resume 由 Backend 掌控；AgEnD 可保留 identifier、workspace path 與 marker，但無法保證 CLI 升級後仍維持語意 continuity。</p>
+          </article>
+        <article class="tip-card" id="tip-264" data-tip-id="tip-264" data-level="advanced">
+            <a class="tip-id" href="#tip-264">tip-264</a>
+            <p>OpenCode resume 應使用已記錄的 session identifier；global `--continue` 可能選到其他 directory 的最新 session。</p>
+          </article>
+        <article class="tip-card" id="tip-265" data-tip-id="tip-265" data-level="advanced">
+            <a class="tip-id" href="#tip-265">tip-265</a>
+            <p>Claude Code project-session lookup 依賴編碼後的 workspace path；重新命名或移動 workspace 可能使既有 session 看起來不存在。</p>
+          </article>
+        <article class="tip-card" id="tip-266" data-tip-id="tip-266" data-level="advanced">
+            <a class="tip-id" href="#tip-266">tip-266</a>
+            <p>Per-instance Codex home 會隔離 MCP configuration 與 instance decisions；把這些項目寫入共用 Codex config 會造成 cross-instance authorization risk。</p>
+          </article>
+        <article class="tip-card" id="tip-267" data-tip-id="tip-267" data-level="advanced">
+            <a class="tip-id" href="#tip-267">tip-267</a>
+            <p>SQLite database file 不應與 active WAL、SHM 或 rollback-journal sidecar 分離；從其他 home 連入 sidecar 可能使 private database 無法使用。</p>
+          </article>
+        <article class="tip-card" id="tip-268" data-tip-id="tip-268" data-level="advanced">
+            <a class="tip-id" href="#tip-268">tip-268</a>
+            <p>Database base file 有意使用 symlink 時，應以 production 使用的 library version 驗證 SQLite 建立 sidecar 的位置，不宜只憑路徑假設。</p>
+          </article>
+        <article class="tip-card" id="tip-269" data-tip-id="tip-269" data-level="advanced">
+            <a class="tip-id" href="#tip-269">tip-269</a>
+            <p>scheduler.db 包含 schedules、decisions、task state 與 tip state；直接維護前應做一致性備份，並避免在 Fleet 執行中寫入。</p>
+          </article>
+        <article class="tip-card" id="tip-270" data-tip-id="tip-270" data-level="advanced">
+            <a class="tip-id" href="#tip-270">tip-270</a>
+            <p>Runtime schema audit 應同時比對 CREATE statements、query 引用的每個欄位，以及部署中 SQLite file 的實際 schema。</p>
+          </article>
+        <article class="tip-card" id="tip-271" data-tip-id="tip-271" data-level="advanced">
+            <a class="tip-id" href="#tip-271">tip-271</a>
+            <p>Startup concurrency 應依可用 memory 與實測 CLI startup cost 調整；提高 concurrency 可能增加競爭，反而延長總啟動時間。</p>
+          </article>
+        <article class="tip-card" id="tip-272" data-tip-id="tip-272" data-level="advanced">
+            <a class="tip-id" href="#tip-272">tip-272</a>
+            <p>Startup stagger delay 可分散 process creation 與 authentication load；persisted paused instance 會在分配 stagger slot 前排除。</p>
+          </article>
+        <article class="tip-card" id="tip-273" data-tip-id="tip-273" data-level="advanced">
+            <a class="tip-id" href="#tip-273">tip-273</a>
+            <p>warm_cap 是 Fleet-wide capacity limit，auto_pause_after 則是 per-instance 閒置時間 policy；搭配使用前應先觀察 workload pattern。</p>
+          </article>
+        <article class="tip-card" id="tip-274" data-tip-id="tip-274" data-level="advanced">
+            <a class="tip-id" href="#tip-274">tip-274</a>
+            <p>warm_cap 為 0 表示不設上限，auto_pause_after 為 0 則停用依時間暫停；General 不會被 auto-pause 或 warm-cap eviction。</p>
+          </article>
+        <article class="tip-card" id="tip-275" data-tip-id="tip-275" data-level="advanced">
+            <a class="tip-id" href="#tip-275">tip-275</a>
+            <p>許多常駐 CLI 即使閒置仍會占用可觀 memory，但閒置本身不會消耗 model token；設定 warm cap 前可先量測 RSS。</p>
+          </article>
+        <article class="tip-card" id="tip-276" data-tip-id="tip-276" data-level="advanced">
+            <a class="tip-id" href="#tip-276">tip-276</a>
+            <p>Lightweight mode 會省略依賴 Backend 的 transcript、Context Guardian 與 error monitors 以降低 overhead；只有在可接受缺少這些觀測能力時才應啟用。</p>
+          </article>
+        <article class="tip-card" id="tip-277" data-tip-id="tip-277" data-level="advanced">
+            <a class="tip-id" href="#tip-277">tip-277</a>
+            <p>每個 exposed MCP tool schema 都會占用 Model Context；範圍明確的 worker 宜使用 minimal 或 standard，只有確實需要時才使用較廣 profile。</p>
+          </article>
+        <article class="tip-card" id="tip-278" data-tip-id="tip-278" data-level="advanced">
+            <a class="tip-id" href="#tip-278">tip-278</a>
+            <p>General 在 tool_set 繼承時會取得 coordinator tool profile；明確設定 standard 或 minimal 可能移除協調所需工具。</p>
+          </article>
+        <article class="tip-card" id="tip-279" data-tip-id="tip-279" data-level="advanced">
+            <a class="tip-id" href="#tip-279">tip-279</a>
+            <p>Verbose tool progress 可能在 channel history 保留 command preview；若營運細節不應讓頻道讀者看到，宜使用 standard 或 off。</p>
+          </article>
+        <article class="tip-card" id="tip-280" data-tip-id="tip-280" data-level="advanced">
+            <a class="tip-id" href="#tip-280">tip-280</a>
+            <p>只有在有界的診斷期間才提高 log verbosity；完成後應恢復正常 level，且對外分享前先檢查 log 內容。</p>
+          </article>
+        <article class="tip-card" id="tip-281" data-tip-id="tip-281" data-level="advanced">
+            <a class="tip-id" href="#tip-281">tip-281</a>
+            <p>Bundled skills 會在 CLI startup 前依 role 篩選：General 取得所有 eligible skills，worker 取得 shared 或 worker skills，ClassicBot 則跳過。</p>
+          </article>
+        <article class="tip-card" id="tip-282" data-tip-id="tip-282" data-level="advanced">
+            <a class="tip-id" href="#tip-282">tip-282</a>
+            <p>Managed-skill manifest 用來區分 AgEnD-owned copy 與 user content；舊版 manifest 缺失時，需要保守的 adoption 流程，避免 managed skill 永久停在舊內容。</p>
+          </article>
+        <article class="tip-card" id="tip-283" data-tip-id="tip-283" data-level="advanced">
+            <a class="tip-id" href="#tip-283">tip-283</a>
+            <p>共用同一 workspace 的 instance 也會共用 Backend-native skill directory；混合 role 或 Backend family 可能競爭 managed files，因此分開 workspace 較安全。</p>
+          </article>
+        <article class="tip-card" id="tip-284" data-tip-id="tip-284" data-level="advanced">
+            <a class="tip-id" href="#tip-284">tip-284</a>
+            <p>平行 write task 應使用不同 git worktree；用於檢查的 detached checkout 應保持 read-only。</p>
+          </article>
+        <article class="tip-card" id="tip-285" data-tip-id="tip-285" data-level="advanced">
+            <a class="tip-id" href="#tip-285">tip-285</a>
+            <p>Template 可定義可重複建立的 instance group，但部署前仍需明確約定 branch、workspace、ownership 與 teardown。</p>
+          </article>
+        <article class="tip-card" id="tip-286" data-tip-id="tip-286" data-level="advanced">
+            <a class="tip-id" href="#tip-286">tip-286</a>
+            <p>Team 是 routing group，不是 shared memory；每個 member 仍保有自己的 Context、session 與 workspace boundary。</p>
+          </article>
+        <article class="tip-card" id="tip-287" data-tip-id="tip-287" data-level="advanced">
+            <a class="tip-id" href="#tip-287">tip-287</a>
+            <p>Silent schedule 會注入工作但不要求 channel reply；只有在刻意不需要 user-visible output 時才應使用。</p>
+          </article>
+        <article class="tip-card" id="tip-288" data-tip-id="tip-288" data-level="advanced">
+            <a class="tip-id" href="#tip-288">tip-288</a>
+            <p>Schedule timezone 是 execution semantics 的一部分；所選 IANA zone 有 daylight-saving transition 時，應驗證執行時間。</p>
+          </article>
+        <article class="tip-card" id="tip-289" data-tip-id="tip-289" data-level="advanced">
+            <a class="tip-id" href="#tip-289">tip-289</a>
+            <p>Restart 後觸發的 schedule 仍需帶入 target instance 的 effective adapter 與 delivery epoch，才能維持 routing 與 cancellation 正確。</p>
+          </article>
+        <article class="tip-card" id="tip-290" data-tip-id="tip-290" data-level="advanced">
+            <a class="tip-id" href="#tip-290">tip-290</a>
+            <p>Fleet decision 可保存持久的架構脈絡；過時 decision 應 supersede 或 retire，避免後續 agent 收到衝突指示。</p>
+          </article>
+        <article class="tip-card" id="tip-291" data-tip-id="tip-291" data-level="advanced">
+            <a class="tip-id" href="#tip-291">tip-291</a>
+            <p>Event log 可支援診斷，但不能取代 source configuration、provider audit record 或原始 process evidence。</p>
+          </article>
+        <article class="tip-card" id="tip-292" data-tip-id="tip-292" data-level="advanced">
+            <a class="tip-id" href="#tip-292">tip-292</a>
+            <p>Chat export 可能包含姓名、專案細節、tool summary 與引用訊息；對外分享前應先 review 並 redact。</p>
+          </article>
+        <article class="tip-card" id="tip-293" data-tip-id="tip-293" data-level="advanced">
+            <a class="tip-id" href="#tip-293">tip-293</a>
+            <p>安裝時的 sudo password 或 confirmation prompt 需要人工判斷；non-interactive automation 應明確失敗，而不是猜測答案。</p>
+          </article>
+        <article class="tip-card" id="tip-294" data-tip-id="tip-294" data-level="advanced">
+            <a class="tip-id" href="#tip-294">tip-294</a>
+            <p>`agend doctor` 會分別檢查 Backend availability、service、D-Bus、Fleet、tmux 與 IPC health；不應以單一綠色項目代表整體健康。</p>
+          </article>
+        <article class="tip-card" id="tip-295" data-tip-id="tip-295" data-level="advanced">
+            <a class="tip-id" href="#tip-295">tip-295</a>
+            <p>Update 後應先為每個 Backend canary 一個代表性 instance，再恢復完整 workload；檢查項目應包含 ready、permission、error、reply 與 Context。</p>
+          </article>
+        <article class="tip-card" id="tip-296" data-tip-id="tip-296" data-level="advanced">
+            <a class="tip-id" href="#tip-296">tip-296</a>
+            <p>Update health check 與代表性 canary 通過前，應保留前一個 package version 與相容的 configuration backup。</p>
+          </article>
+        <article class="tip-card" id="tip-297" data-tip-id="tip-297" data-level="advanced">
+            <a class="tip-id" href="#tip-297">tip-297</a>
+            <p>為移除 secret 而改寫 Git history 時，應保留 mirror backup、驗證所有 refs 與 tags；即使 blob 已移除，也仍需 rotation 已暴露的 credential。</p>
+          </article>
+        <article class="tip-card" id="tip-298" data-tip-id="tip-298" data-level="advanced">
+            <a class="tip-id" href="#tip-298">tip-298</a>
+            <p>安全 rollback 應同時恢復相容的 code 與 configuration；只 revert 一側可能留下 schema 或 behavior mismatch。</p>
+          </article>
+        <article class="tip-card" id="tip-299" data-tip-id="tip-299" data-level="advanced">
+            <a class="tip-id" href="#tip-299">tip-299</a>
+            <p>進行 destructive cleanup 前，應先用 read-only check 確認精確 path 與 owner；可行時優先採用可復原的移動或備份。</p>
+          </article>
+        <article class="tip-card" id="tip-300" data-tip-id="tip-300" data-level="advanced">
+            <a class="tip-id" href="#tip-300">tip-300</a>
+            <p>處理困難 incident 時，應在 restart 清除證據前保留同步 timestamps、Fleet logs、process trees、socket counts、service state 與 pane captures。</p>
+          </article>
+      </div>
+    </section>
+  </main>
+  <footer><div class="footer-inner"><span><strong>AgEnD</strong> · Multi-Agent, One Conversation</span><span>Generated from <code>src/tips.ts</code></span></div></footer>
+</body>
+</html>

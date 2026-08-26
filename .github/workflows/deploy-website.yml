@@ -3,7 +3,12 @@ name: Deploy Website
 on:
   push:
     branches: [main]
-    paths: ['website/**']
+    paths:
+      - 'website/**'
+      - 'src/tips.ts'
+      - 'scripts/generate-tips-html.mjs'
+      - 'package.json'
+      - 'package-lock.json'
   workflow_dispatch:
 
 permissions:
@@ -23,6 +28,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Generate tips pages
+        run: |
+          npm ci
+          npm run build
       - name: Install and build
         working-directory: website
         run: |

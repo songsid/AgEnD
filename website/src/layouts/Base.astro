@@ -50,6 +50,7 @@ const base = import.meta.env.BASE_URL;
           <a href="#features" class="hover:text-text-primary transition-colors">{t(locale, 'nav.features')}</a>
           <a href="#quickstart" class="hover:text-text-primary transition-colors">{t(locale, 'nav.quickstart')}</a>
           <a href="#howitworks" class="hover:text-text-primary transition-colors">{t(locale, 'nav.workflow')}</a>
+          <a href={`${base}tips-${locale === 'en' ? 'en' : 'zh'}.html`} class="hover:text-text-primary transition-colors">{t(locale, 'nav.tips')}</a>
           <a href="#faq" class="hover:text-text-primary transition-colors">{t(locale, 'nav.faq')}</a>
         </div>
         <div class="flex items-center gap-4">
