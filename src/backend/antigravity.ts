@@ -143,7 +143,8 @@ export class AntigravityBackend implements CliBackend {
       let root: Record<string, unknown> = {};
       if (existsSync(configPath)) {
         try {
-          root = JSON.parse(readFileSync(configPath, "utf-8"));
+          const content = readFileSync(configPath, "utf-8").trim();
+          root = content ? JSON.parse(content) : {};
         } catch {
           throw new Error(`Refusing to overwrite invalid Antigravity MCP config: ${configPath}`);
         }
