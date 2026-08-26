@@ -55,7 +55,7 @@ describe("CodexBackend", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "o3" }));
       expect(cmd).toContain("resume --last");
-      expect(cmd).toContain('-c model="o3"');
+      expect(cmd).toContain(`-c 'model="o3"'`);
     });
 
     it("uses --full-auto when skipPermissions is false", () => {
@@ -89,7 +89,7 @@ describe("CodexBackend", () => {
     it("includes both model and model_provider when both are set", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "o3", backendOptions: { provider: "glm" } }));
-      expect(cmd).toContain('-c model="o3"');
+      expect(cmd).toContain(`-c 'model="o3"'`);
       expect(cmd).toContain(`-c 'model_provider="glm"'`);
     });
   });

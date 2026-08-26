@@ -1,7 +1,7 @@
 import { join, dirname } from "node:path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 export class GeminiCliBackend implements CliBackend {
@@ -21,7 +21,7 @@ export class GeminiCliBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("gemini-cli", model);
-      cmd += ` --model ${model}`;
+      cmd += ` --model ${shellQuote(model)}`;
     }
 
     return cmd;

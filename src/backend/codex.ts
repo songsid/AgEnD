@@ -154,7 +154,7 @@ export class CodexBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("codex", model);
-      cmd += ` -c model="${model}"`;
+      cmd += ` -c ${shellQuote(`model="${model}"`)}`;
     }
     if (config.backendOptions?.provider) {
       const provider = validateProvider(String(config.backendOptions.provider));

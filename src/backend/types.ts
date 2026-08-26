@@ -360,7 +360,11 @@ export function resolveBinary(name: string, fallbackDirs?: readonly string[]): s
  * Throws if `model` contains anything else, since `buildCommand` returns a
  * shell string consumed by tmux and we cannot rely on argv-style quoting.
  */
-const SAFE_MODEL_RE = /^[A-Za-z0-9._:/-]+$/;
+// Brackets admit Claude Code's 1M-context suffix (opus[1m] — binary-verified
+// "append [1m] to the model name for 1M"). They are shell GLOB characters,
+// so every command-line embed of a model MUST go through shellQuote(): an
+// unquoted opus[1m] can pathname-expand in bash and aborts zsh outright.
+const SAFE_MODEL_RE = /^[A-Za-z0-9._:/[\]-]+$/;
 /**
  * Guard an effort level before it reaches a shell command line. Same reasoning
  * as validateModel: the value originates from a chat message, and the launch

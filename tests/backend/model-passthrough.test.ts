@@ -33,31 +33,31 @@ const cases: Array<{
   {
     name: "kiro-cli",
     backend: () => new KiroBackend(INSTANCE_DIR),
-    expected: `--model ${UNKNOWN_MODEL}`,
+    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },
   {
     name: "claude-code",
     backend: () => new ClaudeCodeBackend(INSTANCE_DIR),
-    expected: `--model ${UNKNOWN_MODEL}`,
+    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },
   {
     name: "codex",
     backend: () => new CodexBackend(INSTANCE_DIR),
-    expected: `-c model="${UNKNOWN_MODEL}"`,
+    expected: `-c 'model="${UNKNOWN_MODEL}"'`,
     warns: true,
   },
   {
     name: "gemini-cli",
     backend: () => new GeminiCliBackend(INSTANCE_DIR),
-    expected: `--model ${UNKNOWN_MODEL}`,
+    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },
   {
     name: "opencode",
     backend: () => new OpenCodeBackend(INSTANCE_DIR),
-    expected: `--model ${UNKNOWN_MODEL}`,
+    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: false, // provider-dependent: its advisory pattern accepts any model
   },
   {
@@ -69,7 +69,7 @@ const cases: Array<{
   {
     name: "grok",
     backend: () => new GrokBackend(INSTANCE_DIR),
-    expected: `--model ${UNKNOWN_MODEL}`,
+    expected: `--model '${UNKNOWN_MODEL}'`,
     warns: true,
   },
 ];
@@ -92,4 +92,25 @@ describe("backend model pass-through", () => {
       warn.mockRestore();
     },
   );
+});
+
+describe("bracketed 1M-context models (claude opus[1m])", () => {
+  it("validateModel accepts the [1m] suffix and still rejects shell metacharacters", async () => {
+    const { validateModel } = await import("../../src/backend/types.js");
+    expect(validateModel("opus[1m]")).toBe("opus[1m]");
+    expect(validateModel("claude-opus-4-6[1m]")).toBe("claude-opus-4-6[1m]");
+    for (const evil of ["a;b", "a$(x)", "a`x`", "a|b", "a&&b", "a b", "a'b", 'a"b', "a\\b", "a>b", "a*b", "a?b", "a${x}"]) {
+      expect(() => validateModel(evil), evil).toThrow(/Invalid model name/);
+    }
+  });
+
+  it("the claude launch command carries the bracketed model shell-quoted (glob-inert)", async () => {
+    const { ClaudeCodeBackend } = await import("../../src/backend/claude-code.js");
+    const backend = new ClaudeCodeBackend(INSTANCE_DIR);
+    const cmd = backend.buildCommand(config("claude-opus-4-6[1m]"));
+    expect(cmd).toContain("--model 'claude-opus-4-6[1m]'");
+    // Never unquoted: bash pathname-expands an unquoted [..] against the CWD
+    // and zsh aborts on a non-matching glob — the CLI would not even start.
+    expect(cmd).not.toMatch(/--model claude-opus-4-6\[1m\]/);
+  });
 });

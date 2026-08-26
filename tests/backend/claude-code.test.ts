@@ -128,7 +128,7 @@ describe("ClaudeCodeBackend", () => {
     it("includes --model when model is set", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "opus" }));
-      expect(cmd).toContain("--model opus");
+      expect(cmd).toContain("--model 'opus'");
     });
   });
 
