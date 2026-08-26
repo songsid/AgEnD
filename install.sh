@@ -198,9 +198,10 @@ step 4 "Installing AgEnD"
 # Ensure build tools are available (needed for native modules like better-sqlite3)
 if ! command_exists g++; then
   echo "  Installing build tools (needed for native modules)..."
+  echo "  First-time setup can take several minutes. Package-manager progress will be shown below; please wait."
   case "$PKG_MGR" in
     brew)   ;; # macOS Xcode CLT usually provides this
-    apt)    $SUDO apt-get update -qq && $SUDO apt-get install -y -qq build-essential python3 ;;
+    apt)    $SUDO apt-get update && $SUDO apt-get install -y build-essential python3 ;;
     dnf)    $SUDO dnf groupinstall -y "Development Tools" ;;
     pacman) $SUDO pacman -S --noconfirm base-devel ;;
   esac
