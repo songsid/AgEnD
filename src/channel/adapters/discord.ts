@@ -779,6 +779,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   /** Edit text and clear components (Discord keeps components on a plain edit,
    * so we must pass an empty array to drop the Cancel button). */
+  /** Keyboard-only removal — Discord keeps the original content untouched. */
+  async removeMessageButtons(chatId: string, messageId: string, threadId?: string): Promise<void> {
+    const channel = await this._fetchTextChannel(threadId ?? chatId);
+    const msg = await channel.messages.fetch(messageId);
+    await msg.edit({ components: [] });
+  }
+
   async editMessageRemoveButtons(chatId: string, messageId: string, text: string, threadId?: string): Promise<void> {
     // Prefer the exact channel (handles forum-topic threads, which a GuildText
     // scan misses); fall back to scanning top-level text channels.

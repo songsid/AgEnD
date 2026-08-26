@@ -633,6 +633,17 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     });
   }
 
+  /**
+   * Keyboard-only removal — the message text stays as posted. Note Telegram
+   * refuses ANY edit on messages older than 48 hours; callers needing a
+   * guaranteed user-visible outcome must also send a fresh message.
+   */
+  async removeMessageButtons(chatId: string, messageId: string): Promise<void> {
+    await this.bot.api.editMessageReplyMarkup(Number(chatId), Number(messageId), {
+      reply_markup: { inline_keyboard: [] },
+    });
+  }
+
   async deleteMessage(chatId: string, messageId: string): Promise<void> {
     await this.bot.api.deleteMessage(Number(chatId), Number(messageId));
   }

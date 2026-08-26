@@ -36,6 +36,8 @@ export interface ChannelAdapter extends EventEmitter {
    * threadId locates the message when it lives in a topic/thread (Discord
    * forum topics are their own channel and won't be found by a guild scan). */
   editMessageRemoveButtons?(chatId: string, messageId: string, text: string, threadId?: string): Promise<void>;
+  /** Remove a message's buttons while keeping its text untouched. */
+  removeMessageButtons?(chatId: string, messageId: string, threadId?: string): Promise<void>;
   /** Delete a message (e.g. retire the Cancel button message when done).
    * threadId locates the message when it lives in a topic/thread. */
   deleteMessage?(chatId: string, messageId: string, threadId?: string): Promise<void>;
