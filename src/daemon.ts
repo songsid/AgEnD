@@ -855,6 +855,8 @@ export class Daemon extends EventEmitter {
   private authFailureUnresolved = false;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
+  /** model_error seen mid-turn: notify only if it survives to the idle screen. */
+  private pendingModelErrorKey: string | null = null;
   /**
    * Let the next pause() proceed from a stuck pane. Set only for the auth-deferred
    * pause — see the pausePending consumption site for why waiting for idle there
@@ -1935,6 +1937,20 @@ export class Daemon extends EventEmitter {
       this.clearErrorRecoveryGate();
     }
 
+    // A model_error deferred mid-turn: the turn is over (or the pane left
+    // "working"), so decide now — still on screen means the CLI gave up and
+    // the user must act; gone means a retry got past it and nobody needs to know.
+    if (this.pendingModelErrorKey && this.instanceState !== "working") {
+      const key = this.pendingModelErrorKey;
+      this.pendingModelErrorKey = null;
+      const ep = patterns.find(candidate => Daemon.errorPatternKey(candidate) === key);
+      if (ep && ep.pattern.test(pane)) {
+        this.emitErrorPattern(ep, key, pane, now);
+        return;
+      }
+      this.logger.debug({ errorKey: key }, "Deferred model_error cleared before idle — dropped");
+    }
+
     // State: monitoring — count-based new-error detection over the full pane.
     for (const ep of patterns) {
       const key = Daemon.errorPatternKey(ep);
@@ -1964,28 +1980,49 @@ export class Daemon extends EventEmitter {
       }
 
       this.lastErrorCount.set(key, count);
-      // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
-      // back at its prompt immediately). Keep monitoring so the next occurrence
-      // can fire without waiting for a possibly startup-only ready pattern.
-      if (!ep.skipRecoveryWait) {
-        this.errorWaitingForRecovery = true;
-        this.errorDetectedAt = now;
-        this.errorRecoveryDeadlineAt = now + Daemon.ERROR_RECOVERY_TIMEOUT_MS;
-        this.activeErrorPatternKey = key;
-        this.lastDetectedErrorType = ep.type;
-      }
-      this.lastErrorNotifiedAt.set(key, now);
-      if (ep.action === "failover") this.lastFailoverAt = now;
-      const message = this.resolveErrorMessage(pane, ep);
-      // Remember an auth failure for as long as it is unresolved. An auth-broken
-      // CLI cannot finish the turn it is holding, so every other detector in this
-      // scan would otherwise keep reporting the same dead instance forever.
-      if (ep.type === "auth_error") this.authFailureUnresolved = true;
-      this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
-      this.emit("pty_error", { name: this.name, ...ep, message });
 
+      // Kiro's `auto` model picks a concrete model per turn and reroutes around
+      // a temporarily unavailable one on its own — telling the user to run
+      // /model would ask them to fix something the CLI is already handling.
+      if (ep.type === "model_error" && ep.action === "notify" && this.config.model === "auto") {
+        this.logger.debug({ errorType: ep.type }, "model_error suppressed — model 'auto' reroutes on its own");
+        continue;
+      }
+      // A mid-turn model error is often a transient the CLI retries past. Hold
+      // the notification until the turn ends and notify only if the error is
+      // still on the idle screen (see the deferred check above).
+      if (ep.type === "model_error" && ep.action === "notify" && this.instanceState === "working") {
+        this.pendingModelErrorKey = key;
+        this.logger.debug({ errorType: ep.type }, "model_error deferred — instance is mid-turn, re-checking at idle");
+        continue;
+      }
+
+      this.emitErrorPattern(ep, key, pane, now);
       break; // Only handle first unsuppressed new error per scan
     }
+  }
+
+  /** Arm the recovery gates and emit one detected error pattern. */
+  private emitErrorPattern(ep: ErrorPattern, key: string, pane: string, now: number): void {
+    // skipRecoveryWait: this error self-recovers (e.g. a timeout — Kiro is
+    // back at its prompt immediately). Keep monitoring so the next occurrence
+    // can fire without waiting for a possibly startup-only ready pattern.
+    if (!ep.skipRecoveryWait) {
+      this.errorWaitingForRecovery = true;
+      this.errorDetectedAt = now;
+      this.errorRecoveryDeadlineAt = now + Daemon.ERROR_RECOVERY_TIMEOUT_MS;
+      this.activeErrorPatternKey = key;
+      this.lastDetectedErrorType = ep.type;
+    }
+    this.lastErrorNotifiedAt.set(key, now);
+    if (ep.action === "failover") this.lastFailoverAt = now;
+    const message = this.resolveErrorMessage(pane, ep);
+    // Remember an auth failure for as long as it is unresolved. An auth-broken
+    // CLI cannot finish the turn it is holding, so every other detector in this
+    // scan would otherwise keep reporting the same dead instance forever.
+    if (ep.type === "auth_error") this.authFailureUnresolved = true;
+    this.logger.warn({ errorType: ep.type, action: ep.action }, `PTY error detected: ${message}`);
+    this.emit("pty_error", { name: this.name, ...ep, message });
   }
 
   /**
