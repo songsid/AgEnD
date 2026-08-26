@@ -87,6 +87,12 @@ export interface CliEnv {
   authenticated?: boolean;
   currentModel?: string;
   models: ModelOption[];
+  /**
+   * Extended account catalog behind the "/model → more models" tier (claude:
+   * live `GET /v1/models` plus [1m] variants). Kept separate from `models` so
+   * the quick-pick tier stays short.
+   */
+  apiModels?: ModelOption[];
   /** Epoch ms the probe ran (drives the cache TTL). */
   probedAt: number;
 }

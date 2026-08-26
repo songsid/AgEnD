@@ -142,13 +142,13 @@ describe("120-column wrap-sensitive backend coverage", () => {
   });
 
   it.each([
-    ["claude-code", "Login expired", "auth_error"],
-    ["kiro-cli", "The selected model is not available. Please use '/model'.", "model_error"],
-  ])("uses the real %s error pattern for %s", (backendName, pane, type) => {
+    ["claude-code", "Login expired", "auth_error", "pause"],
+    ["kiro-cli", "The selected model is not available. Please use '/model'.", "model_error", "notify"],
+  ])("uses the real %s error pattern for %s", (backendName, pane, type, action) => {
     const backend = createBackend(backendName, "/tmp/test");
     const match = backend.getErrorPatterns?.().find(error => error.pattern.test(pane));
     expect(match?.type).toBe(type);
-    expect(match?.action).toBe("notify");
+    expect(match?.action).toBe(action);
   });
 });
 

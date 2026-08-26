@@ -235,6 +235,23 @@ export function statuslineUsage(
   };
 }
 
+/**
+ * Best-effort OAuth access token for direct Anthropic API calls (the /model
+ * catalog probe). Same resolution order as the usage panel: credentials file →
+ * CLAUDE_CODE_OAUTH_TOKEN → shell rc. Null when nothing usable exists.
+ */
+export async function getClaudeOAuthToken(): Promise<string | null> {
+  const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");
+  let file: { accessToken?: string; expiresAt?: number } | null;
+  try {
+    file = JSON.parse(await readFile(join(home, ".credentials.json"), "utf8")).claudeAiOauth ?? null;
+  } catch {
+    file = null;
+  }
+  const auth = resolveClaudeAuth(file);
+  return auth && "token" in auth ? auth.token : null;
+}
+
 /** Exported for tests — the statusline/API preference order is the subject. */
 export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   const home = process.env.CLAUDE_HOME || join(homedir(), ".claude");

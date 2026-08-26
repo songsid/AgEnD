@@ -204,8 +204,15 @@ export class ClaudeCodeBackend implements CliBackend {
   getErrorPatterns(): ErrorPattern[] {
     return [
       { pattern: /API Error: Rate limit/i, type: "rate_limit", action: "failover", message: "API rate limit reached" },
-      { pattern: /Login expired|Not logged in|Please run \/login/i, type: "auth_error", action: "notify", message: "Claude login expired — needs re-login (/login)" },
+      // pause (not just notify): an auth-expired CLI keeps accepting queued work
+      // it can never answer. The pause is lifted by /login's post-success
+      // restart, and the lifecycle double-checks with the token-free probe first.
+      { pattern: /Login expired|Not logged in|Please run \/login/i, type: "auth_error", action: "pause", message: "Claude login expired — needs re-login (/login)" },
       { pattern: /API Error: Authentication/i, type: "auth_error", action: "pause", message: "Authentication error" },
+      // A bad /model choice previously failed silently (live-reported): the CLI
+      // prints these and idles without answering. notify (not restart): the
+      // session is healthy, only the model selection needs changing.
+      { pattern: /\[claude-code:unrecognized_model\]|There's an issue with the selected model/i, type: "model_error", action: "notify", message: "Model unavailable or unrecognized — use /model to pick another" },
       { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
       { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },
     ];
@@ -262,9 +269,52 @@ export class ClaudeCodeBackend implements CliBackend {
     ];
   }
 
+  /**
+   * Full account catalog from `GET /v1/models` using the same OAuth token the
+   * usage panel resolves. Each model also gets an `<id>[1m]` 1M-context
+   * variant: the API cannot say which plans may use it, so the variants are
+   * offered and a wrong pick surfaces through the model_error pattern above.
+   * Any failure (no token, network, non-200) degrades to [] — the static
+   * aliases from listModels() always remain available.
+   */
+  async listApiModels(): Promise<import("./types.js").ModelOption[]> {
+    try {
+      const { getClaudeOAuthToken } = await import("../usage/providers.js");
+      const token = await getClaudeOAuthToken();
+      if (!token) return [];
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8_000);
+      timer.unref?.();
+      const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "oauth-2025-04-20",
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      if (!res.ok) return [];
+      const body = await res.json() as { data?: Array<{ id?: string; display_name?: string }> };
+      const options: import("./types.js").ModelOption[] = [];
+      for (const model of body.data ?? []) {
+        if (!model.id) continue;
+        options.push({ id: model.id, label: model.id, ...(model.display_name ? { description: model.display_name } : {}) });
+        options.push({ id: `${model.id}[1m]`, label: `${model.id}[1m]`, description: "1M context — plan-dependent" });
+      }
+      return options;
+    } catch {
+      return [];
+    }
+  }
+
   async probeCLIEnv() {
     const { probeCliVersion } = await import("./types.js");
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels() };
+    return {
+      version: probeCliVersion(this.binaryPath),
+      models: await this.listModels(),
+      apiModels: await this.listApiModels(),
+    };
   }
 
   cleanup(_config: CliBackendConfig): void {

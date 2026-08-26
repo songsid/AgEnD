@@ -502,7 +502,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** In-flight /model selections, keyed by nonce (see handleModelSelection). */
   /** In-flight /effort selections, same coordinator shape as pendingModelSelects. */
   private pendingEffortSelects = new Map<string, { instanceName: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
-  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; }>();
+  private pendingModelSelects = new Map<string, { instanceName: string; model: string; userId: string; channelId: string; timer: ReturnType<typeof setTimeout>; respond: (t: string) => Promise<string | undefined>; adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string; respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>; }>();
   /** nonce → pending button prompt (hang restart, interactive assist, clean-exit restart). */
   private pendingNonceButtons = new Map<string, NonceButtonEntry>();
 
@@ -8099,6 +8099,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const previous = this.readCliEnv(backend);
         if (previous?.models?.length) env.models = previous.models;
       }
+      // Same protection for the extended catalog: one offline moment must not
+      // blank a good account list for the whole cache TTL.
+      if (!env.apiModels?.length) {
+        const previous = this.readCliEnv(backend);
+        if (previous?.apiModels?.length) env.apiModels = previous.apiModels;
+      }
       const path = this.cliEnvPath(backend);
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, JSON.stringify(env, null, 2));
@@ -8417,13 +8423,17 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Raw id for ✓-matching options; display resolves an inherited CLI default.
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(name);
     const nonce = randomBytes(6).toString("hex");
-    const choices = options.slice(0, 25).map(o => ({
+    const isClaude = this.backendNameForInstance(name) === "claude-code";
+    const choices = options.slice(0, isClaude ? 24 : 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
       label: this.modelChoiceLabel(o, currentModel),
     }));
+    if (isClaude) {
+      choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__more__`, label: t("model.more") });
+    }
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
-    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond });
+    this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond, respondChoices: data.respondChoices });
     try {
       await data.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
     } catch (err) {
@@ -8454,10 +8464,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(instanceName);
     const nonce = randomBytes(6).toString("hex");
-    const choices = options.slice(0, 25).map(o => ({
+    const isClaude = this.backendNameForInstance(instanceName) === "claude-code";
+    // Keep the more-models entry inside Discord's 25-option select cap.
+    const choices = options.slice(0, isClaude ? 24 : 25).map(o => ({
       id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
       label: this.modelChoiceLabel(o, currentModel),
     }));
+    if (isClaude) {
+      choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__more__`, label: t("model.more") });
+    }
 
     const respond = async (text: string): Promise<string | undefined> => {
       await adapter.sendText(chatId, text, { threadId });
@@ -8493,6 +8508,72 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
   }
 
+  /** Cached-or-live account catalog behind "/model → more models" (claude). */
+  private async claudeApiModelOptions(): Promise<import("./backend/types.js").ModelOption[]> {
+    const cached = this.readCliEnv("claude-code");
+    if (cached?.apiModels?.length) return cached.apiModels;
+    const env = await this.probeBackend("claude-code");
+    return env?.apiModels ?? [];
+  }
+
+  /** Replace a consumed "/model" menu with the full account catalog tier. */
+  private async expandClaudeModelMenu(pending: {
+    instanceName: string; userId: string; channelId: string;
+    respond: (t: string) => Promise<string | undefined>;
+    adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
+    respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
+  }): Promise<void> {
+    const expanded = await this.claudeApiModelOptions();
+    if (!expanded.length) {
+      await pending.respond(t("model.more_unavailable")).catch(() => {});
+      return;
+    }
+    const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(pending.instanceName);
+    const nonce = randomBytes(6).toString("hex");
+    const choices = expanded.slice(0, 25).map(o => ({
+      id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
+      label: this.modelChoiceLabel(o, currentModel),
+    }));
+    const timer = setTimeout(() => {
+      const p = this.pendingModelSelects.get(nonce);
+      if (p) {
+        this.pendingModelSelects.delete(nonce);
+        p.respond(t("model.selection_expired")).catch(() => {});
+      }
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    this.pendingModelSelects.set(nonce, { ...pending, model: "", timer });
+
+    try {
+      if (pending.respondChoices) {
+        // Discord select menu: edit the same interaction reply in place.
+        await pending.respondChoices(t("model.menu", `**${currentDisplay}**`), choices);
+        return;
+      }
+      if (pending.adapter && pending.adapterChatId) {
+        // Telegram: retire the tier-1 keyboard, then post the expanded menu.
+        if (pending.menuMessageId && pending.adapter.editMessageRemoveButtons) {
+          await pending.adapter.editMessageRemoveButtons(
+            pending.adapterChatId, pending.menuMessageId, t("model.more"), pending.adapterThreadId,
+          ).catch(() => {});
+        }
+        const menuMessageId = await pending.adapter.promptUser(
+          pending.adapterChatId, t("model.menu", currentDisplay), choices,
+          { threadId: pending.adapterThreadId },
+        );
+        const fresh = this.pendingModelSelects.get(nonce);
+        if (fresh) fresh.menuMessageId = menuMessageId;
+        return;
+      }
+      await pending.respond(t("model.more_unavailable")).catch(() => {});
+    } catch (err) {
+      this.pendingModelSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName: pending.instanceName }, "Expanded model menu failed");
+      await pending.respond(t("model.more_unavailable")).catch(() => {});
+    }
+  }
+
   /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */
   private async handleModelSelection(data: AdapterCallbackData): Promise<boolean> {
     if (!data.callbackData.startsWith(MODEL_SELECT_CALLBACK_PREFIX)) return false;
@@ -8508,6 +8589,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     clearTimeout(pending.timer);
 
     const model = match[2];
+    // "More models…" is a navigation choice, not a model: swap the menu for the
+    // full account catalog (live /v1/models with [1m] variants).
+    if (model === "__more__") {
+      await this.expandClaudeModelMenu(pending);
+      return true;
+    }
 
     // Send immediate "⏳ Switching..." feedback, then apply in background.
     const progressText = t("model.switching", pending.instanceName, model);
