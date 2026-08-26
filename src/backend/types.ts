@@ -254,6 +254,15 @@ export interface CliBackend {
   getClearCommand(): string | null;
 
   /**
+   * Optional confirmation shown after getClearCommand() is submitted. AgEnD
+   * already obtains an admin confirmation in the channel, so a backend that
+   * adds its own terminal prompt can be answered automatically. The daemon
+   * only consults this for /clear deliveries; ordinary runtime dialogs and
+   * manually typed commands are not affected.
+   */
+  getClearConfirmationDialog?(): RuntimeDialog | null;
+
+  /**
    * The tmux key that interrupts the CLI's current generation WITHOUT quitting —
    * "Escape" for most, "C-c" (Ctrl+C) for kiro-cli. Used by the cancel button and
    * /cancel. Values are tmux send-keys names.

@@ -285,6 +285,13 @@ export class KiroBackend implements CliBackend {
 
   getCompactCommand(): string { return "/compact"; }
   getClearCommand(): string { return "/clear"; }
+  getClearConfirmationDialog(): RuntimeDialog {
+    return {
+      pattern: /Are you sure\?[\s\S]{0,240}?This will erase the conversation history[\s\S]{0,240}?\[y\/n\]:/i,
+      keys: ["y", "Enter"],
+      description: "Kiro conversation clear confirmation — auto-confirm",
+    };
+  }
 
   // kiro's in-session `/model` opens an interactive picker (not a one-shot
   // command), so a runtime paste can't select a specific model — use restart.

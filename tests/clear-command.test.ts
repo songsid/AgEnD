@@ -41,6 +41,15 @@ describe("backend clear commands", () => {
     expect(createBackend("gemini-cli", "/tmp/agend-clear-test").getClearCommand()).toBeNull();
     warn.mockRestore();
   });
+
+  it("describes Kiro's destructive clear confirmation precisely", () => {
+    const dialog = createBackend("kiro-cli", "/tmp/agend-clear-test").getClearConfirmationDialog?.();
+    expect(dialog?.pattern.test(
+      "Are you sure?\nThis will erase the conversation history and cannot be undone.\n[y/n]:",
+    )).toBe(true);
+    expect(dialog?.pattern.test("Install package? [y/n]:")).toBe(false);
+    expect(dialog?.keys).toEqual(["y", "Enter"]);
+  });
 });
 
 describe("/clear topic command", () => {
@@ -91,6 +100,17 @@ describe("/clear topic command", () => {
 
     expect(await commands.sendClear("worker")).toBe(CLEAR_UNSUPPORTED_MSG);
     expect(ipcSend).not.toHaveBeenCalled();
+  });
+
+  it("arms terminal confirmation only for Kiro", async () => {
+    const { commands, ipcSend } = setup("kiro-cli");
+
+    expect(await commands.sendClear("worker")).toContain("/clear");
+    expect(ipcSend).toHaveBeenCalledWith({
+      type: "raw_paste",
+      content: "/clear",
+      confirm_clear: true,
+    });
   });
 });
 

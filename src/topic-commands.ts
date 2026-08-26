@@ -723,7 +723,11 @@ export class TopicCommands {
 
     const ipc = this.ctx.instanceIpcClients.get(instanceName);
     if (ipc?.connected) {
-      ipc.send({ type: "raw_paste", content: cmd });
+      ipc.send({
+        type: "raw_paste",
+        content: cmd,
+        ...(backend === "kiro-cli" ? { confirm_clear: true } : {}),
+      });
       return t("clear.sent", cmd);
     }
     return t("clear.not_connected");
