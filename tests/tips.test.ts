@@ -428,3 +428,69 @@ describe("tip button flow", () => {
     expect(promptTip).toHaveBeenLastCalledWith("general", ctx.adapter, "fleet", "worker-topic");
   });
 });
+
+describe("stale tip buttons (restart-orphaned)", () => {
+  function makeFm() {
+    const dir = mkdtempSync(join(tmpdir(), "agend-tip-stale-"));
+    dirs.push(dir);
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const removeMessageButtons = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "hint" });
+    const adapter = { id: "tg-main", type: "telegram", editMessageRemoveButtons, removeMessageButtons, sendText } as any;
+    const fm = new FleetManager(dir);
+    fm.fleetConfig = { defaults: {}, instances: {} } as any;
+    return { fm, adapter, editMessageRemoveButtons, removeMessageButtons, sendText };
+  }
+
+  const staleClick = {
+    callbackData: "tip-dismiss:00000000000000000000000000000000:dismiss",
+    chatId: "fleet", threadId: "general-topic", messageId: "old-tip", userId: "reader",
+  };
+
+  it("keeps the tip text (keyboard-only removal) and always posts the /tips hint", async () => {
+    const { fm, adapter, editMessageRemoveButtons, removeMessageButtons, sendText } = makeFm();
+    const consumed = await (fm as any).handleTipDismiss(staleClick, "tg-main", adapter);
+    expect(consumed).toBe(true);
+    expect(removeMessageButtons).toHaveBeenCalledWith("fleet", "old-tip", "general-topic");
+    // The tip content must NOT be replaced by a generic stale line.
+    expect(editMessageRemoveButtons).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith("fleet", expect.stringContaining("/tips"), { threadId: "general-topic" });
+  });
+
+  it("still posts the hint when the keyboard edit is refused (Telegram >48h)", async () => {
+    const { fm, adapter, removeMessageButtons, sendText } = makeFm();
+    removeMessageButtons.mockRejectedValue(new Error("message can't be edited"));
+    expect(await (fm as any).handleTipDismiss(staleClick, "tg-main", adapter)).toBe(true);
+    await vi.waitFor(() => expect(sendText).toHaveBeenCalledTimes(1));
+  });
+
+  it("falls back to the legacy collapse when the adapter lacks keyboard-only removal", async () => {
+    const { fm, adapter, editMessageRemoveButtons } = makeFm();
+    delete (adapter as any).removeMessageButtons;
+    await (fm as any).handleTipDismiss(staleClick, "tg-main", adapter);
+    expect(editMessageRemoveButtons).toHaveBeenCalled();
+  });
+
+  it("stale unlock buttons behave the same", async () => {
+    const { fm, adapter, removeMessageButtons, sendText } = makeFm();
+    const consumed = await (fm as any).handleTipUnlock({
+      ...staleClick, callbackData: "tip-unlock:00000000000000000000000000000000:unlock",
+    }, "tg-main", adapter);
+    expect(consumed).toBe(true);
+    expect(removeMessageButtons).toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledWith("fleet", expect.stringContaining("/tips"), { threadId: "general-topic" });
+  });
+
+  it("non-tip stale prompts keep the original collapse semantics (no hint spam)", async () => {
+    const { fm, adapter, editMessageRemoveButtons, removeMessageButtons, sendText } = makeFm();
+    const consumed = (fm as any).consumeNonceCallback(
+      "hang:", /^hang:([0-9a-f]+):(restart|wait)$/,
+      { ...staleClick, callbackData: "hang:00000000000000000000000000000000:restart" },
+      "tg-main", adapter,
+    );
+    expect(consumed).toBe("consumed");
+    expect(editMessageRemoveButtons).toHaveBeenCalled();
+    expect(removeMessageButtons).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
+  });
+});

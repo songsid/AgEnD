@@ -5356,6 +5356,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     data: AdapterCallbackData,
     callbackAdapterId: string,
     receivingAdapter?: ChannelAdapter,
+    staleHandling?: {
+      /** Strip only the keyboard, preserving the message text (tips stay readable). */
+      keepText?: boolean;
+      /** Always-delivered follow-up. Edits can fail silently — Telegram refuses
+       * ANY edit on messages older than 48h, exactly the age of a restart-orphaned
+       * button — so a fresh message is the only guaranteed feedback. */
+      notice?: string;
+    },
   ): { entry: NonceButtonEntry; action: string } | "consumed" | null {
     if (!data.callbackData.startsWith(prefix)) return null;
     const match = data.callbackData.match(actionRe);
@@ -5366,12 +5374,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (pending && pending.prefix !== prefix) pending = undefined;
     if (!match || !pending) {
       const adapter = receivingAdapter ?? this.adapter;
-      adapter?.editMessageRemoveButtons?.(
-        data.chatId,
-        data.messageId,
-        t("buttons.stale"),
-        data.threadId,
-      ).catch(() => { /* message may be gone — nothing to collapse */ });
+      if (staleHandling?.keepText && adapter?.removeMessageButtons) {
+        adapter.removeMessageButtons(data.chatId, data.messageId, data.threadId)
+          .catch(() => { /* >48h on Telegram, or message gone — notice below still lands */ });
+      } else {
+        adapter?.editMessageRemoveButtons?.(
+          data.chatId,
+          data.messageId,
+          t("buttons.stale"),
+          data.threadId,
+        ).catch(() => { /* message may be gone — nothing to collapse */ });
+      }
+      if (staleHandling?.notice) {
+        adapter?.sendText(data.chatId, staleHandling.notice, { threadId: data.threadId })
+          .catch(() => { /* channel gone — nothing else to do */ });
+      }
       return "consumed";
     }
 
@@ -5581,6 +5598,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       data,
       callbackAdapterId,
       receivingAdapter,
+      // A restart orphans the expiry timer, so tip buttons can outlive their
+      // nonce by days. Keep the tip text readable and always tell the clicker
+      // what to do next (the keyboard edit itself can be refused: Telegram
+      // rejects edits on messages older than 48h).
+      { keepText: true, notice: t("tips.expired_use_tips") },
     );
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
@@ -5693,6 +5715,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       data,
       callbackAdapterId,
       receivingAdapter,
+      { keepText: true, notice: t("tips.expired_use_tips") },
     );
     if (claimed === null) return false;
     if (claimed === "consumed") return true;
