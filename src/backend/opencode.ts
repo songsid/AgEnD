@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 export class OpenCodeBackend implements CliBackend {
   readonly binaryName = "opencode";
@@ -40,7 +40,7 @@ export class OpenCodeBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("opencode", model);
-      cmd += ` --model ${model}`;
+      cmd += ` --model ${shellQuote(model)}`;
     }
 
     return cmd;

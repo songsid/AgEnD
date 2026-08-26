@@ -67,7 +67,7 @@ describe("KiroBackend", () => {
     it("includes --model when model is set", () => {
       const backend = new KiroBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "claude-sonnet-4.5" }));
-      expect(cmd).toContain("--model claude-sonnet-4.5");
+      expect(cmd).toContain("--model 'claude-sonnet-4.5'");
     });
 
     it("omits --trust-all-tools when skipPermissions is false", () => {

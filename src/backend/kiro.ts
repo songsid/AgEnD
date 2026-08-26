@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
 export class KiroBackend implements CliBackend {
@@ -33,7 +33,7 @@ export class KiroBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("kiro-cli", model);
-      cmd += ` --model ${model}`;
+      cmd += ` --model ${shellQuote(model)}`;
     }
     if (config.effort) cmd += ` --effort ${validateEffort(config.effort)}`;
     cmd += " --require-mcp-startup";

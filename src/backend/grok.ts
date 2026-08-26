@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash } from "node:crypto";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
 /** Session ids are UUIDs (e.g. "019f82d4-…"); guard before shell interpolation. */
@@ -83,7 +83,7 @@ export class GrokBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("grok", model);
-      cmd += ` --model ${model}`;
+      cmd += ` --model ${shellQuote(model)}`;
     }
     return cmd;
   }

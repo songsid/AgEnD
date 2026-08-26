@@ -59,7 +59,7 @@ export class ClaudeCodeBackend implements CliBackend {
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("claude-code", model);
-      cmd += ` --model ${model}`;
+      cmd += ` --model ${shellQuote(model)}`;
     }
 
     // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt
