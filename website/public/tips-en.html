@@ -1,0 +1,1304 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgEnD Tips</title>
+  <meta name="description" content="Practical AgEnD guidance, from first chat to fleet operations.">
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { color-scheme: dark; --bg:#0d1117; --surface:#161b22; --raised:#1c2129; --border:#30363d; --text:#f0f6fc; --secondary:#8b949e; --muted:#6e7681; --accent:#2aabee; --accent-dim:rgba(42,171,238,.1); }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:Inter,"Noto Sans TC",system-ui,sans-serif; line-height:1.65; }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.22; background-image:radial-gradient(circle,var(--border) 1px,transparent 1px); background-size:24px 24px; mask-image:linear-gradient(to bottom,black,transparent 42rem); }
+    a { color:inherit; }
+    nav { position:sticky; top:0; z-index:10; height:64px; border-bottom:1px solid rgba(48,54,61,.7); background:rgba(13,17,23,.86); backdrop-filter:blur(14px); }
+    .nav-inner { max-width:1152px; height:100%; margin:auto; padding:0 24px; display:flex; align-items:center; justify-content:space-between; gap:20px; }
+    .brand { color:var(--accent); font:700 18px/1 "JetBrains Mono",monospace; text-decoration:none; }
+    .nav-actions { display:flex; align-items:center; gap:12px; font-size:14px; color:var(--secondary); }
+    .nav-actions a { text-decoration:none; border:1px solid var(--border); border-radius:10px; padding:6px 11px; transition:.2s ease; }
+    .nav-actions a:hover { color:var(--text); border-color:var(--secondary); }
+    main { position:relative; max-width:1152px; margin:auto; padding:72px 24px 96px; }
+    .hero { max-width:780px; margin-bottom:64px; }
+    .hero .kicker,.eyebrow { color:var(--accent); font:600 12px/1.4 "JetBrains Mono",monospace; letter-spacing:.12em; text-transform:uppercase; }
+    h1 { margin:13px 0 16px; font-size:clamp(42px,7vw,72px); line-height:1.02; letter-spacing:-.045em; }
+    .hero p { color:var(--secondary); font-size:18px; margin:0; }
+    .jump-links { display:flex; flex-wrap:wrap; gap:10px; margin-top:28px; }
+    .jump-links a { text-decoration:none; color:var(--secondary); background:var(--surface); border:1px solid var(--border); border-radius:999px; padding:7px 13px; font-size:13px; }
+    .jump-links a:hover { color:var(--accent); border-color:var(--accent); }
+    .tips-section { margin-top:72px; }
+    .section-heading { display:flex; justify-content:space-between; align-items:end; gap:24px; padding-bottom:20px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+    .section-heading h2 { margin:5px 0 2px; font-size:30px; letter-spacing:-.025em; }
+    .section-heading p { margin:0; color:var(--secondary); }
+    .level-count { white-space:nowrap; color:var(--muted); font:500 13px/1.4 "JetBrains Mono",monospace; }
+    .tips-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .tip-card { position:relative; display:grid; grid-template-columns:64px 1fr; gap:14px; align-items:start; padding:18px; background:rgba(22,27,34,.94); border:1px solid var(--border); border-radius:14px; transition:transform .2s ease,border-color .2s ease; }
+    .tip-card:hover { transform:translateY(-2px); border-color:var(--accent); }
+    .tip-card:target { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+    .tip-id { padding-top:2px; color:var(--accent); font:600 11px/1.5 "JetBrains Mono",monospace; text-decoration:none; }
+    .tip-card p { margin:0; color:#d8dee4; font-size:14px; }
+    .tags { grid-column:2; display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+    .tag { color:var(--secondary); background:var(--raised); border:1px solid var(--border); border-radius:999px; padding:2px 8px; font:500 10px/1.5 "JetBrains Mono",monospace; }
+    footer { border-top:1px solid var(--border); color:var(--muted); font-size:13px; }
+    .footer-inner { max-width:1152px; margin:auto; padding:30px 24px; display:flex; justify-content:space-between; gap:16px; }
+    @media (max-width:760px) { main { padding-top:48px; } .tips-grid { grid-template-columns:1fr; } .section-heading { align-items:start; flex-direction:column; gap:8px; } .tip-card { grid-template-columns:56px 1fr; } .footer-inner { flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <nav><div class="nav-inner"><a class="brand" href="./">AgEnD</a><div class="nav-actions"><a href="./">Home</a><a href="./tips-zh.html" hreflang="zh-TW">繁體中文</a></div></div></nav>
+  <main>
+    <header class="hero"><span class="kicker">Knowledge library</span><h1>AgEnD Tips</h1><p>300 practical notes, grouped from everyday use to advanced fleet operations.</p><div class="jump-links"><a href="#beginner">Beginner</a><a href="#intermediate">Intermediate</a><a href="#advanced">Advanced</a></div></header>
+    <section class="tips-section" id="beginner">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">beginner</span>
+          <h2>Beginner</h2>
+          <p>Everyday chat and core concepts</p>
+        </div>
+        <span class="level-count">100 tips</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-001" data-tip-id="tip-001" data-level="beginner">
+            <a class="tip-id" href="#tip-001">tip-001</a>
+            <p>Instance = Agent = one AI CLI you can talk to, such as Kiro CLI, Claude Code, Codex, Antigravity, Grok, or OpenCode.</p>
+          </article>
+        <article class="tip-card" id="tip-002" data-tip-id="tip-002" data-level="beginner">
+            <a class="tip-id" href="#tip-002">tip-002</a>
+            <p>Backend = the AI service that powers an Agent, such as Claude Code, Codex, or Kiro CLI. Different Backends provide different features and models.</p>
+          </article>
+        <article class="tip-card" id="tip-003" data-tip-id="tip-003" data-level="beginner">
+            <a class="tip-id" href="#tip-003">tip-003</a>
+            <p>One Instance = one separate Agent conversation; another Instance does not automatically know what was discussed here.</p>
+          </article>
+        <article class="tip-card" id="tip-004" data-tip-id="tip-004" data-level="beginner">
+            <a class="tip-id" href="#tip-004">tip-004</a>
+            <p>Fleet = all Instances managed by the same AgEnD; a fleet-wide restart affects every unpaused Instance, not just the current chat.</p>
+          </article>
+        <article class="tip-card" id="tip-005" data-tip-id="tip-005" data-level="beginner">
+            <a class="tip-id" href="#tip-005">tip-005</a>
+            <p>General = the coordinator Agent; ask it to choose an Instance, split work, or collect results when a task crosses projects.</p>
+          </article>
+        <article class="tip-card" id="tip-006" data-tip-id="tip-006" data-level="beginner">
+            <a class="tip-id" href="#tip-006">tip-006</a>
+            <p>A topic, thread, or channel = the chat location bound to an Instance; send the request there to reach that Agent.</p>
+          </article>
+        <article class="tip-card" id="tip-007" data-tip-id="tip-007" data-level="beginner">
+            <a class="tip-id" href="#tip-007">tip-007</a>
+            <p>Working = the Agent is handling something; Idle = it is ready for the next message.</p>
+          </article>
+        <article class="tip-card" id="tip-008" data-tip-id="tip-008" data-level="beginner">
+            <a class="tip-id" href="#tip-008">tip-008</a>
+            <p>Paused = the Instance is asleep but keeps its saved session; sending it a new message normally starts waking it.</p>
+          </article>
+        <article class="tip-card" id="tip-009" data-tip-id="tip-009" data-level="beginner">
+            <a class="tip-id" href="#tip-009">tip-009</a>
+            <p>Stopped = the AI CLI exited normally; Crashed = it exited unexpectedly or repeated recovery did not succeed.</p>
+          </article>
+        <article class="tip-card" id="tip-010" data-tip-id="tip-010" data-level="beginner">
+            <a class="tip-id" href="#tip-010">tip-010</a>
+            <p>Start a request with the result you want; add limits and output format after that so the Agent sees the main point first.</p>
+          </article>
+        <article class="tip-card" id="tip-011" data-tip-id="tip-011" data-level="beginner">
+            <a class="tip-id" href="#tip-011">tip-011</a>
+            <p>A good request = goal + important constraints + what counts as done; this reduces extra clarification rounds.</p>
+          </article>
+        <article class="tip-card" id="tip-012" data-tip-id="tip-012" data-level="beginner">
+            <a class="tip-id" href="#tip-012">tip-012</a>
+            <p>If wording matters, include one short example; an example usually communicates tone faster than a long explanation.</p>
+          </article>
+        <article class="tip-card" id="tip-013" data-tip-id="tip-013" data-level="beginner">
+            <a class="tip-id" href="#tip-013">tip-013</a>
+            <p>When changing an earlier instruction, name exactly what is replaced; otherwise both old and new instructions may stay in play.</p>
+          </article>
+        <article class="tip-card" id="tip-014" data-tip-id="tip-014" data-level="beginner">
+            <a class="tip-id" href="#tip-014">tip-014</a>
+            <p>`/steer &lt;message&gt;` = change the direction of work already running; it is supported by Claude Code, Codex, and Grok.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">codex</span><span class="tag">grok</span></div>
+          </article>
+        <article class="tip-card" id="tip-015" data-tip-id="tip-015" data-level="beginner">
+            <a class="tip-id" href="#tip-015">tip-015</a>
+            <p>Use `/steer` for a correction to the current task, not for a separate job; unrelated work is clearer as a new message.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">codex</span><span class="tag">grok</span></div>
+          </article>
+        <article class="tip-card" id="tip-016" data-tip-id="tip-016" data-level="beginner">
+            <a class="tip-id" href="#tip-016">tip-016</a>
+            <p>`/btw &lt;question&gt;` = ask Claude Code a side question without replacing the main task.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-017" data-tip-id="tip-017" data-level="beginner">
+            <a class="tip-id" href="#tip-017">tip-017</a>
+            <p>`/btw` and `/steer` are different: BTW opens a side question, while Steer changes the current work direction.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-018" data-tip-id="tip-018" data-level="beginner">
+            <a class="tip-id" href="#tip-018">tip-018</a>
+            <p>A busy Agent may queue a new message for later; delayed handling does not by itself mean the message was overwritten.</p>
+          </article>
+        <article class="tip-card" id="tip-019" data-tip-id="tip-019" data-level="beginner">
+            <a class="tip-id" href="#tip-019">tip-019</a>
+            <p>Do not resend a queued request just because the reply is slow; two copies can make the Agent do the same work twice.</p>
+          </article>
+        <article class="tip-card" id="tip-020" data-tip-id="tip-020" data-level="beginner">
+            <a class="tip-id" href="#tip-020">tip-020</a>
+            <p>Cancel button or `/cancel` = interrupt this run; the user message is already in conversation history, and how much work already happened depends on when cancellation occurred.</p>
+          </article>
+        <article class="tip-card" id="tip-021" data-tip-id="tip-021" data-level="beginner">
+            <a class="tip-id" href="#tip-021">tip-021</a>
+            <p>AgEnD = the system that connects a Telegram or Discord chat to one or more Agents.</p>
+          </article>
+        <article class="tip-card" id="tip-022" data-tip-id="tip-022" data-level="beginner">
+            <a class="tip-id" href="#tip-022">tip-022</a>
+            <p>Cancel also clears older deliveries still waiting for that Instance, so queued cross-Instance or scheduled work will not start immediately afterward.</p>
+          </article>
+        <article class="tip-card" id="tip-023" data-tip-id="tip-023" data-level="beginner">
+            <a class="tip-id" href="#tip-023">tip-023</a>
+            <p>A message sent after Cancel is new work and will not be removed with the older queue.</p>
+          </article>
+        <article class="tip-card" id="tip-024" data-tip-id="tip-024" data-level="beginner">
+            <a class="tip-id" href="#tip-024">tip-024</a>
+            <p>⏳ = queued, 👀 = delivered, ✅ = turn confirmed, ❌ = failed; these marks describe delivery, not answer quality.</p>
+          </article>
+        <article class="tip-card" id="tip-025" data-tip-id="tip-025" data-level="beginner">
+            <a class="tip-id" href="#tip-025">tip-025</a>
+            <p>A delivery mark can appear before the Agent replies; it comes from AgEnD, not from the Agent&#39;s written answer.</p>
+          </article>
+        <article class="tip-card" id="tip-026" data-tip-id="tip-026" data-level="beginner">
+            <a class="tip-id" href="#tip-026">tip-026</a>
+            <p>If a message stays on ⏳, wait before resending; it may be waiting for the Agent to become ready.</p>
+          </article>
+        <article class="tip-card" id="tip-027" data-tip-id="tip-027" data-level="beginner">
+            <a class="tip-id" href="#tip-027">tip-027</a>
+            <p>If a message shows ❌, check the Instance status first; blind retries can hide the real startup, login, or connection problem.</p>
+          </article>
+        <article class="tip-card" id="tip-028" data-tip-id="tip-028" data-level="beginner">
+            <a class="tip-id" href="#tip-028">tip-028</a>
+            <p>Reply to an earlier message when the Agent must know exactly which text, file, or image the new request refers to.</p>
+          </article>
+        <article class="tip-card" id="tip-029" data-tip-id="tip-029" data-level="beginner">
+            <a class="tip-id" href="#tip-029">tip-029</a>
+            <p>A quoted reply includes the referenced text; add one sentence explaining what should be done with it.</p>
+          </article>
+        <article class="tip-card" id="tip-030" data-tip-id="tip-030" data-level="beginner">
+            <a class="tip-id" href="#tip-030">tip-030</a>
+            <p>Related requests work best in one clear message; unrelated requests are easier to track as separate messages.</p>
+          </article>
+        <article class="tip-card" id="tip-031" data-tip-id="tip-031" data-level="beginner">
+            <a class="tip-id" href="#tip-031">tip-031</a>
+            <p>Put the main request in the first few lines of a long message; details can follow without hiding the goal.</p>
+          </article>
+        <article class="tip-card" id="tip-032" data-tip-id="tip-032" data-level="beginner">
+            <a class="tip-id" href="#tip-032">tip-032</a>
+            <p>For long work, ask for a short progress update instead of sending the whole request again.</p>
+          </article>
+        <article class="tip-card" id="tip-033" data-tip-id="tip-033" data-level="beginner">
+            <a class="tip-id" href="#tip-033">tip-033</a>
+            <p>If the Agent asks a question, answer the missing point first; mixing in a new task can leave both requests unclear.</p>
+          </article>
+        <article class="tip-card" id="tip-034" data-tip-id="tip-034" data-level="beginner">
+            <a class="tip-id" href="#tip-034">tip-034</a>
+            <p>If an answer is wrong, quote the exact sentence or value to change; a precise correction is faster than saying only redo it.</p>
+          </article>
+        <article class="tip-card" id="tip-035" data-tip-id="tip-035" data-level="beginner">
+            <a class="tip-id" href="#tip-035">tip-035</a>
+            <p>At the end of a long discussion, ask for decisions + unfinished items; that summary is easier to hand to another Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-036" data-tip-id="tip-036" data-level="beginner">
+            <a class="tip-id" href="#tip-036">tip-036</a>
+            <p>Attach the file and instructions in the same message so the Agent receives them as one request.</p>
+          </article>
+        <article class="tip-card" id="tip-037" data-tip-id="tip-037" data-level="beginner">
+            <a class="tip-id" href="#tip-037">tip-037</a>
+            <p>For an image, say what to inspect; sending only a picture forces the Agent to guess the question.</p>
+          </article>
+        <article class="tip-card" id="tip-038" data-tip-id="tip-038" data-level="beginner">
+            <a class="tip-id" href="#tip-038">tip-038</a>
+            <p>For a document, name the page, section, or question that matters; this avoids reading unrelated parts first.</p>
+          </article>
+        <article class="tip-card" id="tip-039" data-tip-id="tip-039" data-level="beginner">
+            <a class="tip-id" href="#tip-039">tip-039</a>
+            <p>Several attachments = explain each file&#39;s role; filenames alone may not reveal which one is input, reference, or expected result.</p>
+          </article>
+        <article class="tip-card" id="tip-040" data-tip-id="tip-040" data-level="beginner">
+            <a class="tip-id" href="#tip-040">tip-040</a>
+            <p>A Telegram voice message is delivered as audio; if speech-to-text is enabled, the Agent also receives a transcript.</p>
+          </article>
+        <article class="tip-card" id="tip-041" data-tip-id="tip-041" data-level="beginner">
+            <a class="tip-id" href="#tip-041">tip-041</a>
+            <p>Names, codes, and numbers in voice messages are easy to mishear; type the exact value once when accuracy matters.</p>
+          </article>
+        <article class="tip-card" id="tip-042" data-tip-id="tip-042" data-level="beginner">
+            <a class="tip-id" href="#tip-042">tip-042</a>
+            <p>A Telegram sticker becomes its emoji when one exists; a sticker without an emoji becomes `[Sticker]`.</p>
+          </article>
+        <article class="tip-card" id="tip-043" data-tip-id="tip-043" data-level="beginner">
+            <a class="tip-id" href="#tip-043">tip-043</a>
+            <p>A pasted image URL is still only a link; attach the actual image when the Agent must inspect the pixels.</p>
+          </article>
+        <article class="tip-card" id="tip-044" data-tip-id="tip-044" data-level="beginner">
+            <a class="tip-id" href="#tip-044">tip-044</a>
+            <p>On supported Discord replies, replying to a message with an image also sends that quoted image to the Agent.</p>
+          </article>
+        <article class="tip-card" id="tip-045" data-tip-id="tip-045" data-level="beginner">
+            <a class="tip-id" href="#tip-045">tip-045</a>
+            <p>Use text for important instructions; an emoji reaction alone may be recorded as feedback without starting work.</p>
+          </article>
+        <article class="tip-card" id="tip-046" data-tip-id="tip-046" data-level="beginner">
+            <a class="tip-id" href="#tip-046">tip-046</a>
+            <p>In a chat with several bots, mention the intended bot; otherwise the wrong persona may answer or nobody may act.</p>
+          </article>
+        <article class="tip-card" id="tip-047" data-tip-id="tip-047" data-level="beginner">
+            <a class="tip-id" href="#tip-047">tip-047</a>
+            <p>Tool progress = a short history of what the Agent is doing; when enabled, the button disappears after completion but the history remains.</p>
+          </article>
+        <article class="tip-card" id="tip-048" data-tip-id="tip-048" data-level="beginner">
+            <a class="tip-id" href="#tip-048">tip-048</a>
+            <p>Verbose progress can include command previews; check screenshots for private paths or values before sharing them.</p>
+          </article>
+        <article class="tip-card" id="tip-049" data-tip-id="tip-049" data-level="beginner">
+            <a class="tip-id" href="#tip-049">tip-049</a>
+            <p>An interactive prompt = the AI CLI is waiting for a password, permission, Y/N, or Enter; AgEnD will notify General instead of guessing.</p>
+          </article>
+        <article class="tip-card" id="tip-050" data-tip-id="tip-050" data-level="beginner">
+            <a class="tip-id" href="#tip-050">tip-050</a>
+            <p>AgEnD never types a password automatically; review the prompt before approving anything.</p>
+          </article>
+        <article class="tip-card" id="tip-051" data-tip-id="tip-051" data-level="beginner">
+            <a class="tip-id" href="#tip-051">tip-051</a>
+            <p>`/dashboard` = links to View, Settings, and Web UI; it is an admin command because the edit links contain an access token.</p>
+          </article>
+        <article class="tip-card" id="tip-052" data-tip-id="tip-052" data-level="beginner">
+            <a class="tip-id" href="#tip-052">tip-052</a>
+            <p>View at `http://localhost:19280/view` = the live local dashboard by default; localhost means it normally opens only on the AgEnD machine.</p>
+          </article>
+        <article class="tip-card" id="tip-053" data-tip-id="tip-053" data-level="beginner">
+            <a class="tip-id" href="#tip-053">tip-053</a>
+            <p>View shows Instance state, Context percentage when available, and live terminal output; use it to check whether work is actually moving.</p>
+          </article>
+        <article class="tip-card" id="tip-054" data-tip-id="tip-054" data-level="beginner">
+            <a class="tip-id" href="#tip-054">tip-054</a>
+            <p>View&#39;s AI Usage panel = subscription usage for Backends that currently have an Instance; unused Backends stay hidden.</p>
+          </article>
+        <article class="tip-card" id="tip-055" data-tip-id="tip-055" data-level="beginner">
+            <a class="tip-id" href="#tip-055">tip-055</a>
+            <p>`/usage` = show available AI subscription usage in the chat without opening View.</p>
+          </article>
+        <article class="tip-card" id="tip-056" data-tip-id="tip-056" data-level="beginner">
+            <a class="tip-id" href="#tip-056">tip-056</a>
+            <p>No data in `/usage` does not always mean zero quota; the account may be signed out, refreshing a token, or not exposing usage data.</p>
+          </article>
+        <article class="tip-card" id="tip-057" data-tip-id="tip-057" data-level="beginner">
+            <a class="tip-id" href="#tip-057">tip-057</a>
+            <p>Usage data is cached briefly to avoid provider limits; use Refresh in View when the latest number matters.</p>
+          </article>
+        <article class="tip-card" id="tip-058" data-tip-id="tip-058" data-level="beginner">
+            <a class="tip-id" href="#tip-058">tip-058</a>
+            <p>Quota = the amount included with an account or subscription; a warning may allow the current answer but block later work.</p>
+          </article>
+        <article class="tip-card" id="tip-059" data-tip-id="tip-059" data-level="beginner">
+            <a class="tip-id" href="#tip-059">tip-059</a>
+            <p>`/status` = the fleet overview, including Instance state and key health information.</p>
+          </article>
+        <article class="tip-card" id="tip-060" data-tip-id="tip-060" data-level="beginner">
+            <a class="tip-id" href="#tip-060">tip-060</a>
+            <p>`/sysinfo` = AgEnD, operating-system, runtime, and process details; use it when reporting an environment problem.</p>
+          </article>
+        <article class="tip-card" id="tip-061" data-tip-id="tip-061" data-level="beginner">
+            <a class="tip-id" href="#tip-061">tip-061</a>
+            <p>Context = how much of the current conversation the Agent can remember. When it fills up, use `/compact` to compress it or `/clear` to start over.</p>
+          </article>
+        <article class="tip-card" id="tip-062" data-tip-id="tip-062" data-level="beginner">
+            <a class="tip-id" href="#tip-062">tip-062</a>
+            <p>Context near full = older details may be compacted or lost; ask for a handover summary before a long task reaches the limit.</p>
+          </article>
+        <article class="tip-card" id="tip-063" data-tip-id="tip-063" data-level="beginner">
+            <a class="tip-id" href="#tip-063">tip-063</a>
+            <p>For a long Claude Code session, check `/ctx`; use `/compact` or write a handover summary before the limit to reduce lost details.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-064" data-tip-id="tip-064" data-level="beginner">
+            <a class="tip-id" href="#tip-064">tip-064</a>
+            <p>Codex normally manages conversation compaction itself, but important decisions should still be summarized instead of assuming every detail will survive.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">codex</span></div>
+          </article>
+        <article class="tip-card" id="tip-065" data-tip-id="tip-065" data-level="beginner">
+            <a class="tip-id" href="#tip-065">tip-065</a>
+            <p>`/compact` = shorten the current conversation while keeping useful Context where the Backend supports it; behavior differs by Backend.</p>
+          </article>
+        <article class="tip-card" id="tip-066" data-tip-id="tip-066" data-level="beginner">
+            <a class="tip-id" href="#tip-066">tip-066</a>
+            <p>`/model` = show models discovered for the current Backend; choosing one changes that Instance&#39;s model and saves the choice for restart.</p>
+          </article>
+        <article class="tip-card" id="tip-067" data-tip-id="tip-067" data-level="beginner">
+            <a class="tip-id" href="#tip-067">tip-067</a>
+            <p>The model list is probed when AgEnD starts; if a new model is missing, restart AgEnD, or use Discord&#39;s `/model refresh` to refresh it directly.</p>
+          </article>
+        <article class="tip-card" id="tip-068" data-tip-id="tip-068" data-level="beginner">
+            <a class="tip-id" href="#tip-068">tip-068</a>
+            <p>`/effort` = reasoning strength for supported models; higher effort may improve hard work but usually takes more time and quota.</p>
+          </article>
+        <article class="tip-card" id="tip-069" data-tip-id="tip-069" data-level="beginner">
+            <a class="tip-id" href="#tip-069">tip-069</a>
+            <p>`/save &lt;name&gt;` = export the current conversation for later reference; AgEnD supports it with Kiro CLI and Claude Code.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-070" data-tip-id="tip-070" data-level="beginner">
+            <a class="tip-id" href="#tip-070">tip-070</a>
+            <p>Discord Kiro ClassicBot `/load &lt;name&gt;` = load a conversation previously saved by Kiro; it is not a general restore command for every Backend.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-071" data-tip-id="tip-071" data-level="beginner">
+            <a class="tip-id" href="#tip-071">tip-071</a>
+            <p>Claude Code `/save` exports a Markdown file for reference; there is no matching AgEnD `/load` that restores it as a Claude session.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">claude-code</span></div>
+          </article>
+        <article class="tip-card" id="tip-072" data-tip-id="tip-072" data-level="beginner">
+            <a class="tip-id" href="#tip-072">tip-072</a>
+            <p>Kiro `/save` maps to `/chat save`; Discord `/load` works later only in the Kiro ClassicBot workflow.</p>
+            <div class="tags" aria-label="Backend tags"><span class="tag">kiro-cli</span></div>
+          </article>
+        <article class="tip-card" id="tip-073" data-tip-id="tip-073" data-level="beginner">
+            <a class="tip-id" href="#tip-073">tip-073</a>
+            <p>Admin `/update` = install the latest AgEnD release from the current stable or beta channel, then restart the fleet.</p>
+          </article>
+        <article class="tip-card" id="tip-074" data-tip-id="tip-074" data-level="beginner">
+            <a class="tip-id" href="#tip-074">tip-074</a>
+            <p>Admin `/restart` = gracefully restart the whole Fleet, not only the current Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-075" data-tip-id="tip-075" data-level="beginner">
+            <a class="tip-id" href="#tip-075">tip-075</a>
+            <p>Restarting wakes every unpaused Instance; startup takes time, and later recovery or summary work may use extra tokens, so avoid repeated fleet restarts.</p>
+          </article>
+        <article class="tip-card" id="tip-076" data-tip-id="tip-076" data-level="beginner">
+            <a class="tip-id" href="#tip-076">tip-076</a>
+            <p>Pause unused Instances before an update or restart if they do not need to come back immediately; paused Instances are skipped during fleet startup.</p>
+          </article>
+        <article class="tip-card" id="tip-077" data-tip-id="tip-077" data-level="beginner">
+            <a class="tip-id" href="#tip-077">tip-077</a>
+            <p>Admin `/pause` = put an Instance to sleep; `/wake` = start it again. General itself cannot be paused.</p>
+          </article>
+        <article class="tip-card" id="tip-078" data-tip-id="tip-078" data-level="beginner">
+            <a class="tip-id" href="#tip-078">tip-078</a>
+            <p>Settings can set automatic pause time; `0` means disabled, and sleeping unused Instances reduces background processes and restart load.</p>
+          </article>
+        <article class="tip-card" id="tip-079" data-tip-id="tip-079" data-level="beginner">
+            <a class="tip-id" href="#tip-079">tip-079</a>
+            <p>Changing auto-pause, progress detail, display name, description, tags, or log level is hot-reloaded and does not restart the Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-080" data-tip-id="tip-080" data-level="beginner">
+            <a class="tip-id" href="#tip-080">tip-080</a>
+            <p>Backend, working-directory, or tool-set changes in Settings—and Backend options changed in config—are cold changes that restart the Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-081" data-tip-id="tip-081" data-level="beginner">
+            <a class="tip-id" href="#tip-081">tip-081</a>
+            <p>ClassicBot = an Agent living in an ordinary Discord server/channel or Telegram group, rather than a pre-created Fleet topic.</p>
+          </article>
+        <article class="tip-card" id="tip-082" data-tip-id="tip-082" data-level="beginner">
+            <a class="tip-id" href="#tip-082">tip-082</a>
+            <p>ClassicBot does not interrupt every conversation by default; use `/chat`, while a bot mention also triggers it in Telegram groups or collaboration chats.</p>
+          </article>
+        <article class="tip-card" id="tip-083" data-tip-id="tip-083" data-level="beginner">
+            <a class="tip-id" href="#tip-083">tip-083</a>
+            <p>ClassicBot includes recent chat-log context before the triggered message; the default is the latest five lines, not the entire channel history.</p>
+          </article>
+        <article class="tip-card" id="tip-084" data-tip-id="tip-084" data-level="beginner">
+            <a class="tip-id" href="#tip-084">tip-084</a>
+            <p>To use ClassicBot, invite the bot to the Discord server or Telegram group, then an administrator runs `/start` in the target chat.</p>
+          </article>
+        <article class="tip-card" id="tip-085" data-tip-id="tip-085" data-level="beginner">
+            <a class="tip-id" href="#tip-085">tip-085</a>
+            <p>ClassicBot `/start` creates or resumes the chat&#39;s Instance with the ClassicBot default Backend; Settings can change the Backend afterward.</p>
+          </article>
+        <article class="tip-card" id="tip-086" data-tip-id="tip-086" data-level="beginner">
+            <a class="tip-id" href="#tip-086">tip-086</a>
+            <p>ClassicBot `/stop` removes that chat binding; use it only when the channel should no longer have its Agent.</p>
+          </article>
+        <article class="tip-card" id="tip-087" data-tip-id="tip-087" data-level="beginner">
+            <a class="tip-id" href="#tip-087">tip-087</a>
+            <p>A ClassicBot chat and a Fleet topic are routed differently; always run commands in the chat that owns the intended Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-088" data-tip-id="tip-088" data-level="beginner">
+            <a class="tip-id" href="#tip-088">tip-088</a>
+            <p>Several bots in one collaboration chat = mention the right persona or use its slash command; each bot can own a different ClassicBot Instance.</p>
+          </article>
+        <article class="tip-card" id="tip-089" data-tip-id="tip-089" data-level="beginner">
+            <a class="tip-id" href="#tip-089">tip-089</a>
+            <p>A login-expired message = sign in to that Backend again; retrying the same request before login is fixed usually repeats the failure.</p>
+          </article>
+        <article class="tip-card" id="tip-090" data-tip-id="tip-090" data-level="beginner">
+            <a class="tip-id" href="#tip-090">tip-090</a>
+            <p>A model-not-supported message = the selected Backend or account rejected that model; choose another listed model instead of expecting a silent fallback.</p>
+          </article>
+        <article class="tip-card" id="tip-091" data-tip-id="tip-091" data-level="beginner">
+            <a class="tip-id" href="#tip-091">tip-091</a>
+            <p>A password or Y/N prompt that sits still will trigger a General notification; AgEnD will not answer it automatically.</p>
+          </article>
+        <article class="tip-card" id="tip-092" data-tip-id="tip-092" data-level="beginner">
+            <a class="tip-id" href="#tip-092">tip-092</a>
+            <p>For a bug report, include time + Instance name + what you sent + what happened; those four facts make logs much easier to match.</p>
+          </article>
+        <article class="tip-card" id="tip-093" data-tip-id="tip-093" data-level="beginner">
+            <a class="tip-id" href="#tip-093">tip-093</a>
+            <p>A screenshot from the View page shows the live Agent screen; check it for project names, paths, or secrets before sharing.</p>
+          </article>
+        <article class="tip-card" id="tip-094" data-tip-id="tip-094" data-level="beginner">
+            <a class="tip-id" href="#tip-094">tip-094</a>
+            <p>AI answers can be wrong; verify commands, prices, permissions, and other high-impact facts before acting.</p>
+          </article>
+        <article class="tip-card" id="tip-095" data-tip-id="tip-095" data-level="beginner">
+            <a class="tip-id" href="#tip-095">tip-095</a>
+            <p>Sensitive work = share only the files and values needed for this request; chat exports and screenshots may contain more than expected.</p>
+          </article>
+        <article class="tip-card" id="tip-096" data-tip-id="tip-096" data-level="beginner">
+            <a class="tip-id" href="#tip-096">tip-096</a>
+            <p>`/tips` = show another available Tip in the current chat; it does not have to be run in General.</p>
+          </article>
+        <article class="tip-card" id="tip-097" data-tip-id="tip-097" data-level="beginner">
+            <a class="tip-id" href="#tip-097">tip-097</a>
+            <p>✅ I know this = keep the Tip text but remove its buttons and stop showing that Tip again.</p>
+          </article>
+        <article class="tip-card" id="tip-098" data-tip-id="tip-098" data-level="beginner">
+            <a class="tip-id" href="#tip-098">tip-098</a>
+            <p>❓ I don&#39;t understand = keep the Tip text, record feedback, and allow that Tip to appear again later.</p>
+          </article>
+        <article class="tip-card" id="tip-099" data-tip-id="tip-099" data-level="beginner">
+            <a class="tip-id" href="#tip-099">tip-099</a>
+            <p>`/clear` = erase the current Context after confirmation; it cannot be undone, but project files and AgEnD instructions remain.</p>
+          </article>
+        <article class="tip-card" id="tip-100" data-tip-id="tip-100" data-level="beginner">
+            <a class="tip-id" href="#tip-100">tip-100</a>
+            <p>A useful Tip should tell you what changes for you; press I don&#39;t understand when the wording does not make the consequence clear.</p>
+          </article>
+      </div>
+    </section>
+<section class="tips-section" id="intermediate">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">intermediate</span>
+          <h2>Intermediate</h2>
+          <p>Commands, Backends, and coordination</p>
+        </div>
+        <span class="level-count">100 tips</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-101" data-tip-id="tip-101" data-level="intermediate">
+            <a class="tip-id" href="#tip-101">tip-101</a>
+            <p>An Instance is one independent Agent. Each instance keeps its own conversation and can be assigned a different project.</p>
+          </article>
+        <article class="tip-card" id="tip-102" data-tip-id="tip-102" data-level="intermediate">
+            <a class="tip-id" href="#tip-102">tip-102</a>
+            <p>A Fleet is the group of instances managed together by AgEnD. Fleet-wide actions can affect every running Agent.</p>
+          </article>
+        <article class="tip-card" id="tip-103" data-tip-id="tip-103" data-level="intermediate">
+            <a class="tip-id" href="#tip-103">tip-103</a>
+            <p>General is the coordinator Agent that manages work. Ask General to choose a suitable instance, divide independent tasks, or manage the Fleet.</p>
+          </article>
+        <article class="tip-card" id="tip-104" data-tip-id="tip-104" data-level="intermediate">
+            <a class="tip-id" href="#tip-104">tip-104</a>
+            <p>A Backend determines which AI service an instance uses, such as Claude Code, Codex, Kiro CLI, Grok, Antigravity, or OpenCode.</p>
+          </article>
+        <article class="tip-card" id="tip-105" data-tip-id="tip-105" data-level="intermediate">
+            <a class="tip-id" href="#tip-105">tip-105</a>
+            <p>Context is the amount of information the AI can keep from the current conversation. It is limited and is not permanent project storage.</p>
+          </article>
+        <article class="tip-card" id="tip-106" data-tip-id="tip-106" data-level="intermediate">
+            <a class="tip-id" href="#tip-106">tip-106</a>
+            <p>MCP is the channel that lets an AI use reply, file, and collaboration tools. Users normally ask for an outcome rather than operate MCP directly.</p>
+          </article>
+        <article class="tip-card" id="tip-107" data-tip-id="tip-107" data-level="intermediate">
+            <a class="tip-id" href="#tip-107">tip-107</a>
+            <p>A Model is the particular AI selected inside a backend. Leaving it unset normally uses the fleet or account default.</p>
+          </article>
+        <article class="tip-card" id="tip-108" data-tip-id="tip-108" data-level="intermediate">
+            <a class="tip-id" href="#tip-108">tip-108</a>
+            <p>A Session is a backend&#39;s saved conversation state. Whether it resumes after a restart depends on that backend&#39;s session support.</p>
+          </article>
+        <article class="tip-card" id="tip-109" data-tip-id="tip-109" data-level="intermediate">
+            <a class="tip-id" href="#tip-109">tip-109</a>
+            <p>A working directory is the project folder an instance reads and edits. Separate instances may share one, but simultaneous edits can conflict.</p>
+          </article>
+        <article class="tip-card" id="tip-110" data-tip-id="tip-110" data-level="intermediate">
+            <a class="tip-id" href="#tip-110">tip-110</a>
+            <p>ClassicBot is the mode that creates an ongoing Agent in an ordinary Telegram or Discord conversation, rather than a preconfigured Fleet conversation.</p>
+          </article>
+        <article class="tip-card" id="tip-111" data-tip-id="tip-111" data-level="intermediate">
+            <a class="tip-id" href="#tip-111">tip-111</a>
+            <p>An Adapter is AgEnD&#39;s connection to one messaging bot account. In a multi-bot setup, an instance can be bound to a specific bot identity.</p>
+          </article>
+        <article class="tip-card" id="tip-112" data-tip-id="tip-112" data-level="intermediate">
+            <a class="tip-id" href="#tip-112">tip-112</a>
+            <p>Telegram separates fleet conversations with topics; Discord may use channels or threads. These spaces serve the same routing purpose in AgEnD.</p>
+          </article>
+        <article class="tip-card" id="tip-113" data-tip-id="tip-113" data-level="intermediate">
+            <a class="tip-id" href="#tip-113">tip-113</a>
+            <p>A Tool is an action an AI can call, such as reading a file or sending a reply. Tool availability depends on the backend and permissions.</p>
+          </article>
+        <article class="tip-card" id="tip-114" data-tip-id="tip-114" data-level="intermediate">
+            <a class="tip-id" href="#tip-114">tip-114</a>
+            <p>A delivery queue holds messages until they can safely enter a busy Agent. A queued message is delayed, not necessarily lost.</p>
+          </article>
+        <article class="tip-card" id="tip-115" data-tip-id="tip-115" data-level="intermediate">
+            <a class="tip-id" href="#tip-115">tip-115</a>
+            <p>Idle means an instance appears ready for input; Working means AgEnD sees it processing a turn. These states are observations, not guarantees about answer quality.</p>
+          </article>
+        <article class="tip-card" id="tip-116" data-tip-id="tip-116" data-level="intermediate">
+            <a class="tip-id" href="#tip-116">tip-116</a>
+            <p>Paused means AgEnD intentionally stopped the Agent&#39;s CLI process while preserving its configuration for a later wake.</p>
+          </article>
+        <article class="tip-card" id="tip-117" data-tip-id="tip-117" data-level="intermediate">
+            <a class="tip-id" href="#tip-117">tip-117</a>
+            <p>Stopped is an orderly exit; Crashed indicates an unexpected exit or repeated recovery failure. General can help inspect either state.</p>
+          </article>
+        <article class="tip-card" id="tip-118" data-tip-id="tip-118" data-level="intermediate">
+            <a class="tip-id" href="#tip-118">tip-118</a>
+            <p>Settings is the browser editor for common AgEnD options. Hot settings apply immediately; cold settings change startup behavior and restart the affected instance.</p>
+          </article>
+        <article class="tip-card" id="tip-119" data-tip-id="tip-119" data-level="intermediate">
+            <a class="tip-id" href="#tip-119">tip-119</a>
+            <p>View is the browser page that mirrors an instance&#39;s live terminal screen. It is useful when a prompt or progress display needs visual inspection.</p>
+          </article>
+        <article class="tip-card" id="tip-120" data-tip-id="tip-120" data-level="intermediate">
+            <a class="tip-id" href="#tip-120">tip-120</a>
+            <p>A CLI is an AI program that runs from a computer terminal, and a TUI is the text-based screen it displays there. AgEnD sends messages into that screen, which users can inspect through View or from a computer terminal.</p>
+          </article>
+        <article class="tip-card" id="tip-121" data-tip-id="tip-121" data-level="intermediate">
+            <a class="tip-id" href="#tip-121">tip-121</a>
+            <p>Use `/ctx` to check the current instance, backend, model, and available context estimate. Some backends cannot report a percentage.</p>
+          </article>
+        <article class="tip-card" id="tip-122" data-tip-id="tip-122" data-level="intermediate">
+            <a class="tip-id" href="#tip-122">tip-122</a>
+            <p>Use `/model` without an argument to open the model selector. Administrators can use `/model &lt;name&gt;` to request a specific model.</p>
+          </article>
+        <article class="tip-card" id="tip-123" data-tip-id="tip-123" data-level="intermediate">
+            <a class="tip-id" href="#tip-123">tip-123</a>
+            <p>AgEnD passes a safely formed model name to the backend even when its local pattern does not recognize it. The backend remains the authority and may reject it.</p>
+          </article>
+        <article class="tip-card" id="tip-124" data-tip-id="tip-124" data-level="intermediate">
+            <a class="tip-id" href="#tip-124">tip-124</a>
+            <p>Use `/effort` without an argument to inspect available reasoning levels. Administrators can use `/effort &lt;level&gt;` when the backend and model support that level.</p>
+          </article>
+        <article class="tip-card" id="tip-125" data-tip-id="tip-125" data-level="intermediate">
+            <a class="tip-id" href="#tip-125">tip-125</a>
+            <p>Reasoning effort changes how much work a supported model spends thinking; it does not change the backend or guarantee a better answer.</p>
+          </article>
+        <article class="tip-card" id="tip-126" data-tip-id="tip-126" data-level="intermediate">
+            <a class="tip-id" href="#tip-126">tip-126</a>
+            <p>Use `/compact` when the context is crowded but the conversation should continue. Backend behavior differs; Antigravity maps this action to a full clear.</p>
+          </article>
+        <article class="tip-card" id="tip-127" data-tip-id="tip-127" data-level="intermediate">
+            <a class="tip-id" href="#tip-127">tip-127</a>
+            <p>Use `/clear` to reset the conversation on a supported backend. It is administrator-only and asks for confirmation because prior context is removed.</p>
+          </article>
+        <article class="tip-card" id="tip-128" data-tip-id="tip-128" data-level="intermediate">
+            <a class="tip-id" href="#tip-128">tip-128</a>
+            <p>Use `/cancel` or the Cancel button to interrupt the current turn. It also discards messages queued before the cancellation, but keeps messages arriving afterward.</p>
+          </article>
+        <article class="tip-card" id="tip-129" data-tip-id="tip-129" data-level="intermediate">
+            <a class="tip-id" href="#tip-129">tip-129</a>
+            <p>Use `/pause` on an idle non-General instance to save resources. General cannot be paused because Fleet coordination must remain available.</p>
+          </article>
+        <article class="tip-card" id="tip-130" data-tip-id="tip-130" data-level="intermediate">
+            <a class="tip-id" href="#tip-130">tip-130</a>
+            <p>Use `/wake` to start a paused instance immediately. Sending a normal message to a paused instance can also begin its wake process.</p>
+          </article>
+        <article class="tip-card" id="tip-131" data-tip-id="tip-131" data-level="intermediate">
+            <a class="tip-id" href="#tip-131">tip-131</a>
+            <p>Use `/restart` only when the entire Fleet should restart. Ask General for an instance-specific restart when one Agent is unhealthy.</p>
+          </article>
+        <article class="tip-card" id="tip-132" data-tip-id="tip-132" data-level="intermediate">
+            <a class="tip-id" href="#tip-132">tip-132</a>
+            <p>Use `/update` after active work reaches a safe point. Updating installs the selected AgEnD release and then restarts the fleet.</p>
+          </article>
+        <article class="tip-card" id="tip-133" data-tip-id="tip-133" data-level="intermediate">
+            <a class="tip-id" href="#tip-133">tip-133</a>
+            <p>Use `/usage` to view available subscription metrics for backends used by running or paused instances. No data can mean unavailable telemetry, not zero usage.</p>
+          </article>
+        <article class="tip-card" id="tip-134" data-tip-id="tip-134" data-level="intermediate">
+            <a class="tip-id" href="#tip-134">tip-134</a>
+            <p>Use `/dashboard` to obtain current View and Settings links. Links containing an access token should be treated like a password and not shared publicly.</p>
+          </article>
+        <article class="tip-card" id="tip-135" data-tip-id="tip-135" data-level="intermediate">
+            <a class="tip-id" href="#tip-135">tip-135</a>
+            <p>Use `/status` for an administrator-only fleet summary, including running, paused, stopped, and crashed instances.</p>
+          </article>
+        <article class="tip-card" id="tip-136" data-tip-id="tip-136" data-level="intermediate">
+            <a class="tip-id" href="#tip-136">tip-136</a>
+            <p>Use `/sysinfo` to collect host and version details for an environment-specific problem report.</p>
+          </article>
+        <article class="tip-card" id="tip-137" data-tip-id="tip-137" data-level="intermediate">
+            <a class="tip-id" href="#tip-137">tip-137</a>
+            <p>Use `/doctor` in General to check configured Backends. Run `agend doctor` from a trusted computer terminal for broader service and connection checks.</p>
+          </article>
+        <article class="tip-card" id="tip-138" data-tip-id="tip-138" data-level="intermediate">
+            <a class="tip-id" href="#tip-138">tip-138</a>
+            <p>Use `/tips` to request another tip, `/tips off` to stop daily delivery, and `/tips on` to enable it again.</p>
+          </article>
+        <article class="tip-card" id="tip-139" data-tip-id="tip-139" data-level="intermediate">
+            <a class="tip-id" href="#tip-139">tip-139</a>
+            <p>Use `/steer &lt;message&gt;` to redirect an active turn on Claude Code, Codex, or Grok. Unsupported backends return an explicit message.</p>
+          </article>
+        <article class="tip-card" id="tip-140" data-tip-id="tip-140" data-level="intermediate">
+            <a class="tip-id" href="#tip-140">tip-140</a>
+            <p>Use `/btw &lt;message&gt;` for a side question on Claude Code without asking it to abandon the current task. Other backends report it as unsupported.</p>
+          </article>
+        <article class="tip-card" id="tip-141" data-tip-id="tip-141" data-level="intermediate">
+            <a class="tip-id" href="#tip-141">tip-141</a>
+            <p>From General, administrators can use `/pause &lt;instance&gt;` or `/wake &lt;instance&gt;` to target a named Agent instead of opening its conversation first.</p>
+          </article>
+        <article class="tip-card" id="tip-142" data-tip-id="tip-142" data-level="intermediate">
+            <a class="tip-id" href="#tip-142">tip-142</a>
+            <p>Use `/save &lt;name&gt;` only with Kiro CLI or Claude Code. Kiro saves a chat and Claude Code exports a Markdown file; other backends report unsupported.</p>
+          </article>
+        <article class="tip-card" id="tip-143" data-tip-id="tip-143" data-level="intermediate">
+            <a class="tip-id" href="#tip-143">tip-143</a>
+            <p>In a ClassicBot conversation, `/start` creates or resumes its Agent and `/stop` removes that channel binding. Both are administrator actions.</p>
+          </article>
+        <article class="tip-card" id="tip-144" data-tip-id="tip-144" data-level="intermediate">
+            <a class="tip-id" href="#tip-144">tip-144</a>
+            <p>Use `/collab` as an administrator to toggle whether bot messages may participate in a configured fleet conversation. Access rules still apply.</p>
+          </article>
+        <article class="tip-card" id="tip-145" data-tip-id="tip-145" data-level="intermediate">
+            <a class="tip-id" href="#tip-145">tip-145</a>
+            <p>Settings stages edits until Apply is pressed. Review the pending changes before applying them, especially when a cold field will restart an instance.</p>
+          </article>
+        <article class="tip-card" id="tip-146" data-tip-id="tip-146" data-level="intermediate">
+            <a class="tip-id" href="#tip-146">tip-146</a>
+            <p>Backend is a cold setting. Changing it in Settings selects a different Backend and restarts the affected instance.</p>
+          </article>
+        <article class="tip-card" id="tip-147" data-tip-id="tip-147" data-level="intermediate">
+            <a class="tip-id" href="#tip-147">tip-147</a>
+            <p>Working directory is a cold setting. Confirm the destination exists and contains the intended project before applying it in Settings.</p>
+          </article>
+        <article class="tip-card" id="tip-148" data-tip-id="tip-148" data-level="intermediate">
+            <a class="tip-id" href="#tip-148">tip-148</a>
+            <p>Model overrides can be changed with `/model` or Settings. If no override is needed, leave the field unset so normal defaults apply.</p>
+          </article>
+        <article class="tip-card" id="tip-149" data-tip-id="tip-149" data-level="intermediate">
+            <a class="tip-id" href="#tip-149">tip-149</a>
+            <p>Tool progress controls how much live tool history appears under the working message. Choose off, standard, or verbose in Settings; it applies without restarting.</p>
+          </article>
+        <article class="tip-card" id="tip-150" data-tip-id="tip-150" data-level="intermediate">
+            <a class="tip-id" href="#tip-150">tip-150</a>
+            <p>Display name changes how an instance is presented without changing its internal name. It is a hot setting in Settings.</p>
+          </article>
+        <article class="tip-card" id="tip-151" data-tip-id="tip-151" data-level="intermediate">
+            <a class="tip-id" href="#tip-151">tip-151</a>
+            <p>Description and tags document an instance&#39;s responsibility and help General choose it. Both can be edited in Settings without a restart.</p>
+          </article>
+        <article class="tip-card" id="tip-152" data-tip-id="tip-152" data-level="intermediate">
+            <a class="tip-id" href="#tip-152">tip-152</a>
+            <p>Auto-pause is an optional idle timer. It is disabled when set to zero and can be enabled or adjusted in Settings without restarting the instance.</p>
+          </article>
+        <article class="tip-card" id="tip-153" data-tip-id="tip-153" data-level="intermediate">
+            <a class="tip-id" href="#tip-153">tip-153</a>
+            <p>Warm cap limits how many non-General instances remain active. Ask General to adjust it, or change `defaults.warm_cap` in fleet.yaml under advanced configuration and reload; existing instances do not need to restart.</p>
+          </article>
+        <article class="tip-card" id="tip-154" data-tip-id="tip-154" data-level="intermediate">
+            <a class="tip-id" href="#tip-154">tip-154</a>
+            <p>Log level controls diagnostic detail. It is a hot setting, but more detailed logs may contain project or routing information.</p>
+          </article>
+        <article class="tip-card" id="tip-155" data-tip-id="tip-155" data-level="intermediate">
+            <a class="tip-id" href="#tip-155">tip-155</a>
+            <p>Channel binding selects which configured bot identity a fleet instance uses. Set it in Settings when several bot accounts share a server or group.</p>
+          </article>
+        <article class="tip-card" id="tip-156" data-tip-id="tip-156" data-level="intermediate">
+            <a class="tip-id" href="#tip-156">tip-156</a>
+            <p>Kiro UI controls whether Kiro starts with its interactive interface. It is backend-specific and changing it restarts the instance.</p>
+          </article>
+        <article class="tip-card" id="tip-157" data-tip-id="tip-157" data-level="intermediate">
+            <a class="tip-id" href="#tip-157">tip-157</a>
+            <p>Terminal columns and rows define the logical screen size seen by the Backend. Change them cautiously because narrow layouts can hide or wrap permission prompts.</p>
+          </article>
+        <article class="tip-card" id="tip-158" data-tip-id="tip-158" data-level="intermediate">
+            <a class="tip-id" href="#tip-158">tip-158</a>
+            <p>Settings reads effective values after defaults are applied, while saved instance entries can omit repeated defaults. Missing repeated fields are not necessarily lost settings.</p>
+          </article>
+        <article class="tip-card" id="tip-159" data-tip-id="tip-159" data-level="intermediate">
+            <a class="tip-id" href="#tip-159">tip-159</a>
+            <p>A Schedule is a message delivered later or repeatedly. Ask General to create it for the instance responsible for the work.</p>
+          </article>
+        <article class="tip-card" id="tip-160" data-tip-id="tip-160" data-level="intermediate">
+            <a class="tip-id" href="#tip-160">tip-160</a>
+            <p>A recurring schedule uses a cron expression, which describes a pattern such as every day at 09:00. A one-time schedule uses an ISO date and time, such as `2026-08-25T09:00:00+08:00`; use only one form per schedule.</p>
+          </article>
+        <article class="tip-card" id="tip-161" data-tip-id="tip-161" data-level="intermediate">
+            <a class="tip-id" href="#tip-161">tip-161</a>
+            <p>A timezone tells a recurring schedule which local clock to follow. For example, `Asia/Taipei` makes “every day at 09:00” mean 09:00 in Taiwan rather than the server&#39;s local time.</p>
+          </article>
+        <article class="tip-card" id="tip-162" data-tip-id="tip-162" data-level="intermediate">
+            <a class="tip-id" href="#tip-162">tip-162</a>
+            <p>A silent schedule hides the trigger message from the conversation, but the assigned Agent may still post a result when the task requires one.</p>
+          </article>
+        <article class="tip-card" id="tip-163" data-tip-id="tip-163" data-level="intermediate">
+            <a class="tip-id" href="#tip-163">tip-163</a>
+            <p>A Team is a reusable group of instances for recurring collaboration, such as implementation plus review. Ask General to manage team membership.</p>
+          </article>
+        <article class="tip-card" id="tip-164" data-tip-id="tip-164" data-level="intermediate">
+            <a class="tip-id" href="#tip-164">tip-164</a>
+            <p>A shared Decision records an agreed Fleet-wide choice so Agents can reuse it after restarts. Ask General to record durable architectural decisions.</p>
+          </article>
+        <article class="tip-card" id="tip-165" data-tip-id="tip-165" data-level="intermediate">
+            <a class="tip-id" href="#tip-165">tip-165</a>
+            <p>Instances can exchange selected questions and results, but their full conversation histories and working directories are not automatically shared.</p>
+          </article>
+        <article class="tip-card" id="tip-166" data-tip-id="tip-166" data-level="intermediate">
+            <a class="tip-id" href="#tip-166">tip-166</a>
+            <p>Ask General to parallelize only independent work. Two Agents editing the same files should coordinate ownership or work in separate copies.</p>
+          </article>
+        <article class="tip-card" id="tip-167" data-tip-id="tip-167" data-level="intermediate">
+            <a class="tip-id" href="#tip-167">tip-167</a>
+            <p>A sender-side timeout—a notice that waiting for a reply took too long—does not prove a cross-instance message failed. Avoid resending solely because the sender stopped waiting.</p>
+          </article>
+        <article class="tip-card" id="tip-168" data-tip-id="tip-168" data-level="intermediate">
+            <a class="tip-id" href="#tip-168">tip-168</a>
+            <p>When an Agent waits for a password or confirmation, AgEnD can notify General. Review the visible prompt before authorizing any manual input.</p>
+          </article>
+        <article class="tip-card" id="tip-169" data-tip-id="tip-169" data-level="intermediate">
+            <a class="tip-id" href="#tip-169">tip-169</a>
+            <p>Do not send passwords, access tokens, or private keys through chat. Enter secrets only in a trusted terminal when an authorized prompt requires them.</p>
+          </article>
+        <article class="tip-card" id="tip-170" data-tip-id="tip-170" data-level="intermediate">
+            <a class="tip-id" href="#tip-170">tip-170</a>
+            <p>Delivery-status reactions mean ⏳ queued, 👀 delivered, ✅ turn confirmed, and ❌ failed. They describe transport, not whether the answer is correct.</p>
+          </article>
+        <article class="tip-card" id="tip-171" data-tip-id="tip-171" data-level="intermediate">
+            <a class="tip-id" href="#tip-171">tip-171</a>
+            <p>Avoid using 👀, ⏳, ✅, or ❌ as ordinary reactions because AgEnD reserves them for delivery status.</p>
+          </article>
+        <article class="tip-card" id="tip-172" data-tip-id="tip-172" data-level="intermediate">
+            <a class="tip-id" href="#tip-172">tip-172</a>
+            <p>Replying to an earlier message gives the Agent quoted Context. Supported Discord replies can also include images from the referenced message.</p>
+          </article>
+        <article class="tip-card" id="tip-173" data-tip-id="tip-173" data-level="intermediate">
+            <a class="tip-id" href="#tip-173">tip-173</a>
+            <p>Attachments are copied to a local inbox before delivery. The Agent receives a local file path, so sensitive files should be shared only with an appropriate instance.</p>
+          </article>
+        <article class="tip-card" id="tip-174" data-tip-id="tip-174" data-level="intermediate">
+            <a class="tip-id" href="#tip-174">tip-174</a>
+            <p>A permission prompt is a safety boundary from the Backend. Read the requested file or command scope before approving it.</p>
+          </article>
+        <article class="tip-card" id="tip-175" data-tip-id="tip-175" data-level="intermediate">
+            <a class="tip-id" href="#tip-175">tip-175</a>
+            <p>After sixty intermediate tips are dismissed, AgEnD offers an Advanced Tips unlock button. An administrator can also enable them with `/tips advanced on`.</p>
+          </article>
+        <article class="tip-card" id="tip-176" data-tip-id="tip-176" data-level="intermediate">
+            <a class="tip-id" href="#tip-176">tip-176</a>
+            <p>Claude Code supports subagents, which are focused helper AIs inside the same CLI. They can research or review while the main agent coordinates the result.</p>
+          </article>
+        <article class="tip-card" id="tip-177" data-tip-id="tip-177" data-level="intermediate">
+            <a class="tip-id" href="#tip-177">tip-177</a>
+            <p>Claude Code permission modes decide whether file and command actions are allowed, denied, or require approval. Choose a mode that matches the project&#39;s risk.</p>
+          </article>
+        <article class="tip-card" id="tip-178" data-tip-id="tip-178" data-level="intermediate">
+            <a class="tip-id" href="#tip-178">tip-178</a>
+            <p>Claude Code can resume saved sessions, but continuity depends on the same project path and available session data.</p>
+          </article>
+        <article class="tip-card" id="tip-179" data-tip-id="tip-179" data-level="intermediate">
+            <a class="tip-id" href="#tip-179">tip-179</a>
+            <p>Claude model families usually trade capability, speed, and cost differently. Use the current account selector for exact availability rather than relying on a static list.</p>
+          </article>
+        <article class="tip-card" id="tip-180" data-tip-id="tip-180" data-level="intermediate">
+            <a class="tip-id" href="#tip-180">tip-180</a>
+            <p>Opus is generally aimed at demanding work, Sonnet at balanced work, and Haiku at lighter faster work. Current provider documentation remains authoritative.</p>
+          </article>
+        <article class="tip-card" id="tip-181" data-tip-id="tip-181" data-level="intermediate">
+            <a class="tip-id" href="#tip-181">tip-181</a>
+            <p>Codex uses a sandbox, which is a boundary around model-generated commands. Sandbox scope and approval policy are separate controls.</p>
+          </article>
+        <article class="tip-card" id="tip-182" data-tip-id="tip-182" data-level="intermediate">
+            <a class="tip-id" href="#tip-182">tip-182</a>
+            <p>Codex accepts queued input while it is working. Follow-up messages can enter its native queue instead of waiting for an idle gap.</p>
+          </article>
+        <article class="tip-card" id="tip-183" data-tip-id="tip-183" data-level="intermediate">
+            <a class="tip-id" href="#tip-183">tip-183</a>
+            <p>Codex Skills are reusable instruction packages discovered when relevant. They keep detailed workflows outside the always-loaded conversation.</p>
+          </article>
+        <article class="tip-card" id="tip-184" data-tip-id="tip-184" data-level="intermediate">
+            <a class="tip-id" href="#tip-184">tip-184</a>
+            <p>A custom provider is an alternate model service configured in Codex. AgEnD can select it, while its URL and credential environment variable remain in Codex configuration.</p>
+          </article>
+        <article class="tip-card" id="tip-185" data-tip-id="tip-185" data-level="intermediate">
+            <a class="tip-id" href="#tip-185">tip-185</a>
+            <p>Custom Codex models may show a metadata warning because built-in model details are absent. The provider&#39;s actual response determines whether the model works.</p>
+          </article>
+        <article class="tip-card" id="tip-186" data-tip-id="tip-186" data-level="intermediate">
+            <a class="tip-id" href="#tip-186">tip-186</a>
+            <p>Kiro Specs are project documents that organize requirements, design, tasks, and execution. They are useful when a feature benefits from an explicit plan.</p>
+          </article>
+        <article class="tip-card" id="tip-187" data-tip-id="tip-187" data-level="intermediate">
+            <a class="tip-id" href="#tip-187">tip-187</a>
+            <p>Kiro Steering files are persistent project guidance. They can keep conventions available without repeating them in every conversation.</p>
+          </article>
+        <article class="tip-card" id="tip-188" data-tip-id="tip-188" data-level="intermediate">
+            <a class="tip-id" href="#tip-188">tip-188</a>
+            <p>Kiro Skills use progressive disclosure: the CLI first sees a short description and loads detailed instructions only when relevant.</p>
+          </article>
+        <article class="tip-card" id="tip-189" data-tip-id="tip-189" data-level="intermediate">
+            <a class="tip-id" href="#tip-189">tip-189</a>
+            <p>Kiro&#39;s `auto` model mode lets the CLI choose dynamically. Set `model: auto` explicitly only when it should override a fleet-level model default.</p>
+          </article>
+        <article class="tip-card" id="tip-190" data-tip-id="tip-190" data-level="intermediate">
+            <a class="tip-id" href="#tip-190">tip-190</a>
+            <p>Grok can provide web search and page retrieval when enabled by the installed CLI, account, and policy. Availability should be checked in the current environment.</p>
+          </article>
+        <article class="tip-card" id="tip-191" data-tip-id="tip-191" data-level="intermediate">
+            <a class="tip-id" href="#tip-191">tip-191</a>
+            <p>Grok supports steering through `/steer`, but its available models and tools can vary by account. Treat the CLI&#39;s current list as authoritative.</p>
+          </article>
+        <article class="tip-card" id="tip-192" data-tip-id="tip-192" data-level="intermediate">
+            <a class="tip-id" href="#tip-192">tip-192</a>
+            <p>OpenCode distinguishes primary agents for main work from subagents for focused tasks. Project configuration can change which agents and permissions are available.</p>
+          </article>
+        <article class="tip-card" id="tip-193" data-tip-id="tip-193" data-level="intermediate">
+            <a class="tip-id" href="#tip-193">tip-193</a>
+            <p>OpenCode model names commonly use a provider/model form. Check OpenCode&#39;s current model list instead of assuming that a bare model name is accepted.</p>
+          </article>
+        <article class="tip-card" id="tip-194" data-tip-id="tip-194" data-level="intermediate">
+            <a class="tip-id" href="#tip-194">tip-194</a>
+            <p>OpenCode provider definitions belong in its own configuration. AgEnD selects a model from what OpenCode exposes rather than storing provider credentials.</p>
+          </article>
+        <article class="tip-card" id="tip-195" data-tip-id="tip-195" data-level="intermediate">
+            <a class="tip-id" href="#tip-195">tip-195</a>
+            <p>OpenCode does not currently expose an AgEnD `/effort` mapping. Use model or agent settings supported by OpenCode instead.</p>
+          </article>
+        <article class="tip-card" id="tip-196" data-tip-id="tip-196" data-level="intermediate">
+            <a class="tip-id" href="#tip-196">tip-196</a>
+            <p>Antigravity supports multi-step work and tool calls through its terminal interface. Its account and installed version determine available models and integrations.</p>
+          </article>
+        <article class="tip-card" id="tip-197" data-tip-id="tip-197" data-level="intermediate">
+            <a class="tip-id" href="#tip-197">tip-197</a>
+            <p>Antigravity has no separate summarizing compact command in AgEnD. Both `/compact` and `/clear` use its full conversation-clear action.</p>
+          </article>
+        <article class="tip-card" id="tip-198" data-tip-id="tip-198" data-level="intermediate">
+            <a class="tip-id" href="#tip-198">tip-198</a>
+            <p>Different GPT variants can target different capability, latency, and cost points. The names visible to the current CLI account are the source of truth.</p>
+          </article>
+        <article class="tip-card" id="tip-199" data-tip-id="tip-199" data-level="intermediate">
+            <a class="tip-id" href="#tip-199">tip-199</a>
+            <p>Automatic model selection may choose differently between turns. Pin a model only when repeatability matters more than flexibility.</p>
+          </article>
+        <article class="tip-card" id="tip-200" data-tip-id="tip-200" data-level="intermediate">
+            <a class="tip-id" href="#tip-200">tip-200</a>
+            <p>A model available to one account may be unavailable to another. Verify access with the target backend before changing several instances at once.</p>
+          </article>
+      </div>
+    </section>
+<section class="tips-section" id="advanced">
+      <div class="section-heading">
+        <div>
+          <span class="eyebrow">advanced</span>
+          <h2>Advanced</h2>
+          <p>Configuration, reliability, and troubleshooting</p>
+        </div>
+        <span class="level-count">100 tips</span>
+      </div>
+      <div class="tips-grid">
+        <article class="tip-card" id="tip-201" data-tip-id="tip-201" data-level="advanced">
+            <a class="tip-id" href="#tip-201">tip-201</a>
+            <p>Before a migration or bulk edit, copy fleet.yaml and classicBot.yaml outside the working path. Keep the backup until a representative restart and message round trip succeed.</p>
+          </article>
+        <article class="tip-card" id="tip-202" data-tip-id="tip-202" data-level="advanced">
+            <a class="tip-id" href="#tip-202">tip-202</a>
+            <p>Instance entries may omit values inherited from defaults. Compare effective configuration, not only raw YAML, when diagnosing what a daemon received.</p>
+          </article>
+        <article class="tip-card" id="tip-203" data-tip-id="tip-203" data-level="advanced">
+            <a class="tip-id" href="#tip-203">tip-203</a>
+            <p>AgEnD removes redundant default-valued leaves when saving fleet.yaml, while retaining identity fields such as backend, model, working_directory, topic_id, and backend_options.</p>
+          </article>
+        <article class="tip-card" id="tip-204" data-tip-id="tip-204" data-level="advanced">
+            <a class="tip-id" href="#tip-204">tip-204</a>
+            <p>Lossless YAML editing preserves unrelated structure and comments where possible, but a comment attached only to a removed node may have no node to remain on.</p>
+          </article>
+        <article class="tip-card" id="tip-205" data-tip-id="tip-205" data-level="advanced">
+            <a class="tip-id" href="#tip-205">tip-205</a>
+            <p>Run `agend validate` after manual YAML edits and before reload. Validation catches schema errors without requiring a fleet restart.</p>
+          </article>
+        <article class="tip-card" id="tip-206" data-tip-id="tip-206" data-level="advanced">
+            <a class="tip-id" href="#tip-206">tip-206</a>
+            <p>Hot fields are reconciled in place, while cold fields restart affected instances. Check the Settings change summary before applying a mixed patch.</p>
+          </article>
+        <article class="tip-card" id="tip-207" data-tip-id="tip-207" data-level="advanced">
+            <a class="tip-id" href="#tip-207">tip-207</a>
+            <p>A SIGHUP reload updates the running fleet from validated configuration; it is not equivalent to restarting every CLI process.</p>
+          </article>
+        <article class="tip-card" id="tip-208" data-tip-id="tip-208" data-level="advanced">
+            <a class="tip-id" href="#tip-208">tip-208</a>
+            <p>Backend, working_directory, tool_set, lightweight, and backend_options are cold instance fields. Changing them can recreate the affected CLI process.</p>
+          </article>
+        <article class="tip-card" id="tip-209" data-tip-id="tip-209" data-level="advanced">
+            <a class="tip-id" href="#tip-209">tip-209</a>
+            <p>Tool progress, display name, description, tags, log level, and auto-pause settings are designed for hot reconciliation. Verify the daemon acknowledged the update when diagnosing stale behavior.</p>
+          </article>
+        <article class="tip-card" id="tip-210" data-tip-id="tip-210" data-level="advanced">
+            <a class="tip-id" href="#tip-210">tip-210</a>
+            <p>Use per-instance overrides only when behavior must differ from defaults. Fewer duplicated values make later default changes and reviews easier to reason about.</p>
+          </article>
+        <article class="tip-card" id="tip-211" data-tip-id="tip-211" data-level="advanced">
+            <a class="tip-id" href="#tip-211">tip-211</a>
+            <p>A backend option is interpreted only by its matching backend. For example, `backend_options.codex.provider` selects a provider but does not define that provider&#39;s endpoint or credentials.</p>
+          </article>
+        <article class="tip-card" id="tip-212" data-tip-id="tip-212" data-level="advanced">
+            <a class="tip-id" href="#tip-212">tip-212</a>
+            <p>Codex custom-provider definitions belong in Codex config, and secrets should be referenced through environment variables available before the fleet service starts.</p>
+          </article>
+        <article class="tip-card" id="tip-213" data-tip-id="tip-213" data-level="advanced">
+            <a class="tip-id" href="#tip-213">tip-213</a>
+            <p>OpenCode provider definitions belong in opencode.json, while AgEnD&#39;s model field should use the identifier exposed by OpenCode, commonly `provider/model`.</p>
+          </article>
+        <article class="tip-card" id="tip-214" data-tip-id="tip-214" data-level="advanced">
+            <a class="tip-id" href="#tip-214">tip-214</a>
+            <p>Treat model-name compatibility checks as hints. The CLI remains the source of truth, so AgEnD passes configured model names through instead of silently falling back.</p>
+          </article>
+        <article class="tip-card" id="tip-215" data-tip-id="tip-215" data-level="advanced">
+            <a class="tip-id" href="#tip-215">tip-215</a>
+            <p>An unset instance model first inherits defaults.model. To request a backend&#39;s own default while a fleet model default exists, configure the backend-specific default explicitly where supported.</p>
+          </article>
+        <article class="tip-card" id="tip-216" data-tip-id="tip-216" data-level="advanced">
+            <a class="tip-id" href="#tip-216">tip-216</a>
+            <p>Kiro&#39;s `auto` is an explicit model choice. Set it on the instance when it must override a non-auto defaults.model value.</p>
+          </article>
+        <article class="tip-card" id="tip-217" data-tip-id="tip-217" data-level="advanced">
+            <a class="tip-id" href="#tip-217">tip-217</a>
+            <p>Model failover reacts to supported usage telemetry and applies on a later rotation. It cannot replace a model safely in the middle of an active turn.</p>
+          </article>
+        <article class="tip-card" id="tip-218" data-tip-id="tip-218" data-level="advanced">
+            <a class="tip-id" href="#tip-218">tip-218</a>
+            <p>Cost guards are limited by provider telemetry. Missing, cached, or delayed usage data reduces enforcement precision and should be visible in operational expectations.</p>
+          </article>
+        <article class="tip-card" id="tip-219" data-tip-id="tip-219" data-level="advanced">
+            <a class="tip-id" href="#tip-219">tip-219</a>
+            <p>Usage results are cached to reduce provider calls. Use the View panel&#39;s Refresh control when an immediate post-login or post-renewal fetch is required.</p>
+          </article>
+        <article class="tip-card" id="tip-220" data-tip-id="tip-220" data-level="advanced">
+            <a class="tip-id" href="#tip-220">tip-220</a>
+            <p>A provider absent from `/usage` may simply have no running or paused instance. Usage visibility follows effective backends, not every installed CLI.</p>
+          </article>
+        <article class="tip-card" id="tip-221" data-tip-id="tip-221" data-level="advanced">
+            <a class="tip-id" href="#tip-221">tip-221</a>
+            <p>Keep bot tokens, dashboard tokens, provider keys, and exported sessions out of repositories and shared workspaces; each requires its own rotation procedure.</p>
+          </article>
+        <article class="tip-card" id="tip-222" data-tip-id="tip-222" data-level="advanced">
+            <a class="tip-id" href="#tip-222">tip-222</a>
+            <p>When a CLI supports an environment-key reference, store the secret in the service environment rather than fleet.yaml or a provider config committed to source control.</p>
+          </article>
+        <article class="tip-card" id="tip-223" data-tip-id="tip-223" data-level="advanced">
+            <a class="tip-id" href="#tip-223">tip-223</a>
+            <p>Files such as web.token and per-instance state should remain readable only by their owner. Copying them into a project can expose them through backups, diffs, or agents.</p>
+          </article>
+        <article class="tip-card" id="tip-224" data-tip-id="tip-224" data-level="advanced">
+            <a class="tip-id" href="#tip-224">tip-224</a>
+            <p>The persistent web token keeps dashboard URLs valid across restarts. To invalidate existing links, remove the token file, restart the fleet, and request a new dashboard URL.</p>
+          </article>
+        <article class="tip-card" id="tip-225" data-tip-id="tip-225" data-level="advanced">
+            <a class="tip-id" href="#tip-225">tip-225</a>
+            <p>A dashboard URL is usable only after the health server is listening. A port conflict should fail closed instead of publishing a URL backed by the wrong process.</p>
+          </article>
+        <article class="tip-card" id="tip-226" data-tip-id="tip-226" data-level="advanced">
+            <a class="tip-id" href="#tip-226">tip-226</a>
+            <p>Channel allowlists are authorization boundaries, not display filters. After changing access rules, test both an allowed identity and a rejected identity.</p>
+          </article>
+        <article class="tip-card" id="tip-227" data-tip-id="tip-227" data-level="advanced">
+            <a class="tip-id" href="#tip-227">tip-227</a>
+            <p>Before changing a locked channel&#39;s allowed_users, ensure at least one administrator remains. An empty locked allowlist can remove every administrative path.</p>
+          </article>
+        <article class="tip-card" id="tip-228" data-tip-id="tip-228" data-level="advanced">
+            <a class="tip-id" href="#tip-228">tip-228</a>
+            <p>Nonce-bound confirmation buttons are tied to their adapter, chat, thread, message, and administrator identity. A copied callback should not authorize another context.</p>
+          </article>
+        <article class="tip-card" id="tip-229" data-tip-id="tip-229" data-level="advanced">
+            <a class="tip-id" href="#tip-229">tip-229</a>
+            <p>In a multi-world fleet, assign channel_id explicitly to General and fleet-topic instances when the first configured adapter is not the intended persona.</p>
+          </article>
+        <article class="tip-card" id="tip-230" data-tip-id="tip-230" data-level="advanced">
+            <a class="tip-id" href="#tip-230">tip-230</a>
+            <p>ClassicBot routing is keyed by its own channel records. Do not apply fleet-topic adapter canonicalization to ClassicBot replies in multi-bot collaboration channels.</p>
+          </article>
+        <article class="tip-card" id="tip-231" data-tip-id="tip-231" data-level="advanced">
+            <a class="tip-id" href="#tip-231">tip-231</a>
+            <p>Terminal columns and rows affect both TUI layout and captured wrapping. After changing geometry, verify ready, permission, and error detection against real pane samples.</p>
+          </article>
+        <article class="tip-card" id="tip-232" data-tip-id="tip-232" data-level="advanced">
+            <a class="tip-id" href="#tip-232">tip-232</a>
+            <p>The terminal validator enforces conservative geometry bounds because very narrow panes can wrap permission prompts beyond recognition.</p>
+          </article>
+        <article class="tip-card" id="tip-233" data-tip-id="tip-233" data-level="advanced">
+            <a class="tip-id" href="#tip-233">tip-233</a>
+            <p>AgEnD pins tmux window size and attaches control clients with size ignored; both protections are needed to keep logical geometry stable across reconnects.</p>
+          </article>
+        <article class="tip-card" id="tip-234" data-tip-id="tip-234" data-level="advanced">
+            <a class="tip-id" href="#tip-234">tip-234</a>
+            <p>Mouse mode is enabled only in AgEnD&#39;s tmux session. It allows scrollback after attach without changing unrelated user sessions.</p>
+          </article>
+        <article class="tip-card" id="tip-235" data-tip-id="tip-235" data-level="advanced">
+            <a class="tip-id" href="#tip-235">tip-235</a>
+            <p>`capture-pane` observes physical screen lines unless wrapping is joined. Width changes can therefore change parser input even when the logical text is identical.</p>
+          </article>
+        <article class="tip-card" id="tip-236" data-tip-id="tip-236" data-level="advanced">
+            <a class="tip-id" href="#tip-236">tip-236</a>
+            <p>Ready, busy, and error patterns are heuristics over terminal text. Preserve anonymized real samples and add production-path tests before changing a pattern.</p>
+          </article>
+        <article class="tip-card" id="tip-237" data-tip-id="tip-237" data-level="advanced">
+            <a class="tip-id" href="#tip-237">tip-237</a>
+            <p>A false idle can retire controls or deliver input too early. A false working can delay messages and trigger hang notifications.</p>
+          </article>
+        <article class="tip-card" id="tip-238" data-tip-id="tip-238" data-level="advanced">
+            <a class="tip-id" href="#tip-238">tip-238</a>
+            <p>Periodic statusline redraws are not necessarily work. Backend-specific pane handling should distinguish cosmetic redraws from changed task content.</p>
+          </article>
+        <article class="tip-card" id="tip-239" data-tip-id="tip-239" data-level="advanced">
+            <a class="tip-id" href="#tip-239">tip-239</a>
+            <p>Tune hang_detector from observed silent-work intervals, not from an arbitrary short timeout. Inspect pane and process evidence before restarting.</p>
+          </article>
+        <article class="tip-card" id="tip-240" data-tip-id="tip-240" data-level="advanced">
+            <a class="tip-id" href="#tip-240">tip-240</a>
+            <p>Interactive-prompt alerts require both a prompt-like pattern and stable output time, reducing false alerts when an agent merely discusses passwords or confirmations.</p>
+          </article>
+        <article class="tip-card" id="tip-241" data-tip-id="tip-241" data-level="advanced">
+            <a class="tip-id" href="#tip-241">tip-241</a>
+            <p>Administrator-only `/raw &lt;text&gt;` sends text directly to the backend without AgEnD&#39;s normal inbound wrapper. Use it only when that wrapper would change an intentional CLI command.</p>
+          </article>
+        <article class="tip-card" id="tip-242" data-tip-id="tip-242" data-level="advanced">
+            <a class="tip-id" href="#tip-242">tip-242</a>
+            <p>A writable tmux control client is required for special-key delivery. Treat a failed Enter or interrupt command as a command failure rather than waiting for a later timeout.</p>
+          </article>
+        <article class="tip-card" id="tip-243" data-tip-id="tip-243" data-level="advanced">
+            <a class="tip-id" href="#tip-243">tip-243</a>
+            <p>pasteLock serializes terminal writes even for backends with native input queues; native queuing does not make overlapping PTY pastes safe.</p>
+          </article>
+        <article class="tip-card" id="tip-244" data-tip-id="tip-244" data-level="advanced">
+            <a class="tip-id" href="#tip-244">tip-244</a>
+            <p>Codex accepts busy-time input into its own queue, so AgEnD bypasses the idle gate for Codex while retaining first-delivery startup settling.</p>
+          </article>
+        <article class="tip-card" id="tip-245" data-tip-id="tip-245" data-level="advanced">
+            <a class="tip-id" href="#tip-245">tip-245</a>
+            <p>Cancel uses a delivery epoch to invalidate messages already queued before the cancellation. Messages arriving afterward carry the new epoch and remain deliverable.</p>
+          </article>
+        <article class="tip-card" id="tip-246" data-tip-id="tip-246" data-level="advanced">
+            <a class="tip-id" href="#tip-246">tip-246</a>
+            <p>A message transport timeout does not prove non-delivery. Check delivery logs or idempotency evidence before retrying an external or cross-instance send.</p>
+          </article>
+        <article class="tip-card" id="tip-247" data-tip-id="tip-247" data-level="advanced">
+            <a class="tip-id" href="#tip-247">tip-247</a>
+            <p>A replaced IPC client must lose listeners and have its socket destroyed. Removing only the map entry can leave an orphan processing outbound messages.</p>
+          </article>
+        <article class="tip-card" id="tip-248" data-tip-id="tip-248" data-level="advanced">
+            <a class="tip-id" href="#tip-248">tip-248</a>
+            <p>Disconnect, overflow, and close events should converge to one disconnect per client lifecycle, with reconnect serialized per instance.</p>
+          </article>
+        <article class="tip-card" id="tip-249" data-tip-id="tip-249" data-level="advanced">
+            <a class="tip-id" href="#tip-249">tip-249</a>
+            <p>If duplicate replies persist across simple messages, inspect client and socket counts before blaming rich-message rendering or the model.</p>
+          </article>
+        <article class="tip-card" id="tip-250" data-tip-id="tip-250" data-level="advanced">
+            <a class="tip-id" href="#tip-250">tip-250</a>
+            <p>Schedule-trigger metadata must include the instance&#39;s configured adapter identity; otherwise a reply after restart can fall back to the wrong bot persona.</p>
+          </article>
+        <article class="tip-card" id="tip-251" data-tip-id="tip-251" data-level="advanced">
+            <a class="tip-id" href="#tip-251">tip-251</a>
+            <p>The fleet singleton lock protects manager startup, not individual instance restarts. Per-instance restart serialization remains a separate requirement.</p>
+          </article>
+        <article class="tip-card" id="tip-252" data-tip-id="tip-252" data-level="advanced">
+            <a class="tip-id" href="#tip-252">tip-252</a>
+            <p>When two fleet processes appear, collect PID, parent PID, command line, lock owner, service state, and listening ports before terminating either process.</p>
+          </article>
+        <article class="tip-card" id="tip-253" data-tip-id="tip-253" data-level="advanced">
+            <a class="tip-id" href="#tip-253">tip-253</a>
+            <p>A service-managed fleet should fail closed when the user service manager is unreachable, rather than starting an untracked detached duplicate.</p>
+          </article>
+        <article class="tip-card" id="tip-254" data-tip-id="tip-254" data-level="advanced">
+            <a class="tip-id" href="#tip-254">tip-254</a>
+            <p>On Linux over SSH, a missing D-Bus session can make `systemctl --user` unavailable even when the unit file exists.</p>
+          </article>
+        <article class="tip-card" id="tip-255" data-tip-id="tip-255" data-level="advanced">
+            <a class="tip-id" href="#tip-255">tip-255</a>
+            <p>Treat `active` and `activating` as occupied service states. An uncertain service query should not authorize a second startup.</p>
+          </article>
+        <article class="tip-card" id="tip-256" data-tip-id="tip-256" data-level="advanced">
+            <a class="tip-id" href="#tip-256">tip-256</a>
+            <p>A health-port conflict may indicate a stale manager or another service. Identify the listener before changing the port or stopping a process.</p>
+          </article>
+        <article class="tip-card" id="tip-257" data-tip-id="tip-257" data-level="advanced">
+            <a class="tip-id" href="#tip-257">tip-257</a>
+            <p>Recovery paths should serialize per instance so health checks, MCP recovery, manual restart, and config reconciliation cannot create competing replacements.</p>
+          </article>
+        <article class="tip-card" id="tip-258" data-tip-id="tip-258" data-level="advanced">
+            <a class="tip-id" href="#tip-258">tip-258</a>
+            <p>Crash-loop protection stops automatic recovery after bounded repeated failures and reports crashed rather than idle; successful recovery must clear stale crash markers.</p>
+          </article>
+        <article class="tip-card" id="tip-259" data-tip-id="tip-259" data-level="advanced">
+            <a class="tip-id" href="#tip-259">tip-259</a>
+            <p>Restart backoff limits resource use when a CLI repeatedly fails during startup. Disabling retries can be appropriate while diagnosing a deterministic configuration error.</p>
+          </article>
+        <article class="tip-card" id="tip-260" data-tip-id="tip-260" data-level="advanced">
+            <a class="tip-id" href="#tip-260">tip-260</a>
+            <p>MCP auto-restart waits for an eligible idle state and deduplicates restart requests. It restarts the instance because the CLI owns the MCP child connection.</p>
+          </article>
+        <article class="tip-card" id="tip-261" data-tip-id="tip-261" data-level="advanced">
+            <a class="tip-id" href="#tip-261">tip-261</a>
+            <p>Configure mcp_proxy_reply only for panes whose visible text is safe to relay. Regex redaction cannot guarantee removal of every project-specific secret.</p>
+          </article>
+        <article class="tip-card" id="tip-262" data-tip-id="tip-262" data-level="advanced">
+            <a class="tip-id" href="#tip-262">tip-262</a>
+            <p>Proxy replies are a last-resort channel path after MCP loss, not a source-of-truth transcript. Inspect them for terminal chrome or incomplete output.</p>
+          </article>
+        <article class="tip-card" id="tip-263" data-tip-id="tip-263" data-level="advanced">
+            <a class="tip-id" href="#tip-263">tip-263</a>
+            <p>Session resume is backend-owned. AgEnD can preserve identifiers, workspace paths, and markers, but it cannot guarantee semantic continuity after a CLI upgrade.</p>
+          </article>
+        <article class="tip-card" id="tip-264" data-tip-id="tip-264" data-level="advanced">
+            <a class="tip-id" href="#tip-264">tip-264</a>
+            <p>OpenCode resume should use a recorded session identifier. Global `--continue` can select the latest session from an unrelated directory.</p>
+          </article>
+        <article class="tip-card" id="tip-265" data-tip-id="tip-265" data-level="advanced">
+            <a class="tip-id" href="#tip-265">tip-265</a>
+            <p>Claude Code project-session lookup depends on encoded workspace paths. Renaming or moving a workspace can make an existing session appear absent.</p>
+          </article>
+        <article class="tip-card" id="tip-266" data-tip-id="tip-266" data-level="advanced">
+            <a class="tip-id" href="#tip-266">tip-266</a>
+            <p>Per-instance Codex homes isolate MCP configuration and instance decisions. Writing those entries to a shared Codex config creates a cross-instance authorization risk.</p>
+          </article>
+        <article class="tip-card" id="tip-267" data-tip-id="tip-267" data-level="advanced">
+            <a class="tip-id" href="#tip-267">tip-267</a>
+            <p>SQLite database files must not be separated from active WAL, SHM, or rollback-journal sidecars. A sidecar linked from another home can make the private database unusable.</p>
+          </article>
+        <article class="tip-card" id="tip-268" data-tip-id="tip-268" data-level="advanced">
+            <a class="tip-id" href="#tip-268">tip-268</a>
+            <p>When a database base file is intentionally symlinked, verify where SQLite creates sidecars with the library version in production rather than assuming path behavior.</p>
+          </article>
+        <article class="tip-card" id="tip-269" data-tip-id="tip-269" data-level="advanced">
+            <a class="tip-id" href="#tip-269">tip-269</a>
+            <p>scheduler.db contains schedules, decisions, task state, and tip state. Take a consistent backup before direct maintenance and avoid writes while the fleet is active.</p>
+          </article>
+        <article class="tip-card" id="tip-270" data-tip-id="tip-270" data-level="advanced">
+            <a class="tip-id" href="#tip-270">tip-270</a>
+            <p>A runtime schema audit should compare CREATE statements, every referenced column in queries, and the actual schema from the deployed SQLite files.</p>
+          </article>
+        <article class="tip-card" id="tip-271" data-tip-id="tip-271" data-level="advanced">
+            <a class="tip-id" href="#tip-271">tip-271</a>
+            <p>Adjust startup concurrency according to available memory and measured CLI startup cost. Raising concurrency can increase contention and make total startup slower.</p>
+          </article>
+        <article class="tip-card" id="tip-272" data-tip-id="tip-272" data-level="advanced">
+            <a class="tip-id" href="#tip-272">tip-272</a>
+            <p>Use startup stagger delay to spread process creation and authentication load. Persisted paused instances are excluded before stagger slots are assigned.</p>
+          </article>
+        <article class="tip-card" id="tip-273" data-tip-id="tip-273" data-level="advanced">
+            <a class="tip-id" href="#tip-273">tip-273</a>
+            <p>warm_cap is a fleet-wide capacity limit, while auto_pause_after is a per-instance idle-time policy. Observe workload patterns before combining them.</p>
+          </article>
+        <article class="tip-card" id="tip-274" data-tip-id="tip-274" data-level="advanced">
+            <a class="tip-id" href="#tip-274">tip-274</a>
+            <p>A zero warm_cap means unlimited, and a zero auto_pause_after disables time-based pausing. General is excluded from automatic pause and warm-cap eviction.</p>
+          </article>
+        <article class="tip-card" id="tip-275" data-tip-id="tip-275" data-level="advanced">
+            <a class="tip-id" href="#tip-275">tip-275</a>
+            <p>Many resident CLIs consume substantial memory while idle, although idle state alone does not spend model tokens. Measure RSS before setting a warm cap.</p>
+          </article>
+        <article class="tip-card" id="tip-276" data-tip-id="tip-276" data-level="advanced">
+            <a class="tip-id" href="#tip-276">tip-276</a>
+            <p>Lightweight mode omits backend-dependent transcript, context-guardian, and error monitors to reduce overhead. Enable it only when those missing observations are acceptable.</p>
+          </article>
+        <article class="tip-card" id="tip-277" data-tip-id="tip-277" data-level="advanced">
+            <a class="tip-id" href="#tip-277">tip-277</a>
+            <p>Every exposed MCP tool schema consumes model context. Use minimal or standard tool sets for narrowly scoped workers and broader profiles only when required.</p>
+          </article>
+        <article class="tip-card" id="tip-278" data-tip-id="tip-278" data-level="advanced">
+            <a class="tip-id" href="#tip-278">tip-278</a>
+            <p>General receives the coordinator tool profile when tool_set is inherited. Explicitly setting standard or minimal can remove tools required for coordination.</p>
+          </article>
+        <article class="tip-card" id="tip-279" data-tip-id="tip-279" data-level="advanced">
+            <a class="tip-id" href="#tip-279">tip-279</a>
+            <p>Verbose tool progress may retain command previews in channel history. Use standard or off when operational details should not be exposed to channel readers.</p>
+          </article>
+        <article class="tip-card" id="tip-280" data-tip-id="tip-280" data-level="advanced">
+            <a class="tip-id" href="#tip-280">tip-280</a>
+            <p>Raise log verbosity only for a bounded diagnostic window. Restore the normal level afterward and review logs before external sharing.</p>
+          </article>
+        <article class="tip-card" id="tip-281" data-tip-id="tip-281" data-level="advanced">
+            <a class="tip-id" href="#tip-281">tip-281</a>
+            <p>Bundled skills are role-filtered before CLI startup: General receives all eligible skills, workers receive shared or worker skills, and ClassicBot is skipped.</p>
+          </article>
+        <article class="tip-card" id="tip-282" data-tip-id="tip-282" data-level="advanced">
+            <a class="tip-id" href="#tip-282">tip-282</a>
+            <p>The managed-skill manifest distinguishes AgEnD-owned copies from user content. A missing legacy manifest requires conservative adoption to avoid freezing old managed skills.</p>
+          </article>
+        <article class="tip-card" id="tip-283" data-tip-id="tip-283" data-level="advanced">
+            <a class="tip-id" href="#tip-283">tip-283</a>
+            <p>Instances sharing one workspace also share backend-native skill directories. Mixed roles or backend families can contend over managed files, so separate workspaces are safer.</p>
+          </article>
+        <article class="tip-card" id="tip-284" data-tip-id="tip-284" data-level="advanced">
+            <a class="tip-id" href="#tip-284">tip-284</a>
+            <p>Use separate git worktrees for parallel write tasks. A detached checkout used for inspection should remain read-only.</p>
+          </article>
+        <article class="tip-card" id="tip-285" data-tip-id="tip-285" data-level="advanced">
+            <a class="tip-id" href="#tip-285">tip-285</a>
+            <p>Templates define repeatable groups of instances, but deployment still needs explicit branch, workspace, ownership, and teardown expectations.</p>
+          </article>
+        <article class="tip-card" id="tip-286" data-tip-id="tip-286" data-level="advanced">
+            <a class="tip-id" href="#tip-286">tip-286</a>
+            <p>Teams are routing groups, not shared memory. Each member retains its own context, session, and workspace boundary.</p>
+          </article>
+        <article class="tip-card" id="tip-287" data-tip-id="tip-287" data-level="advanced">
+            <a class="tip-id" href="#tip-287">tip-287</a>
+            <p>A silent schedule injects work without requiring a channel reply. Use it only when the absence of user-visible output is intentional.</p>
+          </article>
+        <article class="tip-card" id="tip-288" data-tip-id="tip-288" data-level="advanced">
+            <a class="tip-id" href="#tip-288">tip-288</a>
+            <p>Schedule timezone is part of execution semantics. Verify daylight-saving transitions when the selected IANA zone observes them.</p>
+          </article>
+        <article class="tip-card" id="tip-289" data-tip-id="tip-289" data-level="advanced">
+            <a class="tip-id" href="#tip-289">tip-289</a>
+            <p>Schedules that trigger after a restart still need the target instance&#39;s effective adapter and delivery epoch so routing and cancellation remain correct.</p>
+          </article>
+        <article class="tip-card" id="tip-290" data-tip-id="tip-290" data-level="advanced">
+            <a class="tip-id" href="#tip-290">tip-290</a>
+            <p>Fleet decisions preserve durable architectural context. Supersede or retire stale decisions so later agents do not receive conflicting instructions.</p>
+          </article>
+        <article class="tip-card" id="tip-291" data-tip-id="tip-291" data-level="advanced">
+            <a class="tip-id" href="#tip-291">tip-291</a>
+            <p>Event logs support diagnosis but are not substitutes for source configuration, provider audit records, or raw process evidence.</p>
+          </article>
+        <article class="tip-card" id="tip-292" data-tip-id="tip-292" data-level="advanced">
+            <a class="tip-id" href="#tip-292">tip-292</a>
+            <p>Chat exports can include names, project details, tool summaries, and quoted messages. Review and redact them before external sharing.</p>
+          </article>
+        <article class="tip-card" id="tip-293" data-tip-id="tip-293" data-level="advanced">
+            <a class="tip-id" href="#tip-293">tip-293</a>
+            <p>Installation prompts for sudo passwords or confirmations require human review. Non-interactive automation should fail clearly rather than guessing an answer.</p>
+          </article>
+        <article class="tip-card" id="tip-294" data-tip-id="tip-294" data-level="advanced">
+            <a class="tip-id" href="#tip-294">tip-294</a>
+            <p>`agend doctor` distinguishes backend availability from service, D-Bus, fleet, tmux, and IPC health; read each section rather than treating one green check as fleet health.</p>
+          </article>
+        <article class="tip-card" id="tip-295" data-tip-id="tip-295" data-level="advanced">
+            <a class="tip-id" href="#tip-295">tip-295</a>
+            <p>After an update, canary one representative instance per backend before resuming the full workload. Include ready, permission, error, reply, and context checks.</p>
+          </article>
+        <article class="tip-card" id="tip-296" data-tip-id="tip-296" data-level="advanced">
+            <a class="tip-id" href="#tip-296">tip-296</a>
+            <p>Keep the previous package version and compatible configuration backup until update health checks and representative canaries pass.</p>
+          </article>
+        <article class="tip-card" id="tip-297" data-tip-id="tip-297" data-level="advanced">
+            <a class="tip-id" href="#tip-297">tip-297</a>
+            <p>When rewriting Git history to remove secrets, preserve a mirror backup, verify all refs and tags, and rotate exposed credentials even after blobs are removed.</p>
+          </article>
+        <article class="tip-card" id="tip-298" data-tip-id="tip-298" data-level="advanced">
+            <a class="tip-id" href="#tip-298">tip-298</a>
+            <p>A safe rollback restores compatible code and configuration together. Reverting only one side can leave a schema or behavior mismatch.</p>
+          </article>
+        <article class="tip-card" id="tip-299" data-tip-id="tip-299" data-level="advanced">
+            <a class="tip-id" href="#tip-299">tip-299</a>
+            <p>Before destructive cleanup, resolve exact paths and owners with read-only checks. Prefer recoverable moves or backups when practical.</p>
+          </article>
+        <article class="tip-card" id="tip-300" data-tip-id="tip-300" data-level="advanced">
+            <a class="tip-id" href="#tip-300">tip-300</a>
+            <p>For difficult incidents, preserve synchronized timestamps, fleet logs, process trees, socket counts, service state, and pane captures before restarting away the evidence.</p>
+          </article>
+      </div>
+    </section>
+  </main>
+  <footer><div class="footer-inner"><span><strong>AgEnD</strong> · Multi-Agent, One Conversation</span><span>Generated from <code>src/tips.ts</code></span></div></footer>
+</body>
+</html>
