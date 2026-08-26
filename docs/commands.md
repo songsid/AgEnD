@@ -27,7 +27,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/install-cli <backend>\|cancel` | Remote CLI installation without SSH — runs the backend's official install script in a temporary tmux window, verifies the binary landed on PATH, then offers a `/login` button. All 6 backends including `opencode` (no auth needed to install it). 10-minute timeout, cancel anytime. TG spelling is `/install_cli` (no hyphens in Telegram commands). Also on Discord; not on TG Classic. | Admin |
 | 🔒 `/collab` | Toggle bot/webhook message reception | Admin |
 | 🔒 `/dashboard` | Show View/Settings/WebUI URLs | Admin |
-| 🔒 `/model` | Change backend model (inline keyboard) | Admin |
+| 🔒 `/model` | Change backend model (inline keyboard). On `claude-code`, a two-tier menu: 6 quick-select aliases, plus a "📋 更多模型…" (more models) button that fetches the live model catalog from the API (24h cache, falls back to the alias list on failure). | Admin |
 | 🔒 `/effort` | Adjust AI reasoning effort (low/medium/high/xhigh/max) | Admin |
 | 🔒 `/clear` | Full conversation reset (destructive) — asks for Confirm/Cancel before running. Sends each backend's own reset command (`/clear` for most, `/new` for grok); unsupported on `gemini-cli`. | Admin |
 | 🔒 `/tips on\|off` | Toggle the daily auto-sent tip to the General topic | Admin |
