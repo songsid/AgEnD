@@ -2168,18 +2168,18 @@ export class Daemon extends EventEmitter {
     const quitCmd = this.backend.getQuitCommand();
     const quitKey = this.backend.getQuitKey?.();
     if (quitCmd) {
-      await this.tmux.sendKeys(quitCmd);
+      if (!await this.tmux.sendKeys(quitCmd)) return false;
       // Delay before Enter to prevent tmux server races when instances stop in
       // parallel (same pattern as pasteText).
       await new Promise(r => setTimeout(r, 150));
-      await this.tmux.sendSpecialKey("Enter");
-      return true;
+      return this.tmux.sendSpecialKey("Enter");
     }
     if (!quitKey) return false;
 
     const presses = Math.max(1, Math.floor(this.backend.getQuitKeyPresses?.() ?? 1));
     for (let i = 0; i < presses; i++) {
-      await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q");
+      const sent = await this.tmux.sendSpecialKey(quitKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q");
+      if (!sent) return false;
       if (i + 1 < presses) await new Promise(r => setTimeout(r, 250));
     }
     return true;
@@ -2210,7 +2210,23 @@ export class Daemon extends EventEmitter {
           if (!status || !status.alive) { killed = true; break; }
         }
       }
-      if (!killed) this.logger.warn("CLI did not exit gracefully within 3s, force killing window");
+      if (!killed) {
+        this.logger.warn(
+          { quitSent },
+          "CLI did not exit gracefully within 3s — falling back to SIGTERM",
+        );
+        await this.killProcessTree("SIGTERM");
+        for (let i = 0; i < 5; i++) {
+          await new Promise(r => setTimeout(r, 200));
+          const status = await this.tmux.getPaneStatus();
+          if (!status || !status.alive) { killed = true; break; }
+        }
+      }
+      if (!killed) {
+        this.logger.warn("CLI process tree survived SIGTERM — falling back to SIGKILL");
+        await this.killProcessTree("SIGKILL");
+        await new Promise(r => setTimeout(r, 200));
+      }
       // Always kill window — remain-on-exit keeps dead panes around after CLI exits
       const stoppedWindowId = this.tmux.getWindowId();
       await this.tmux.killWindow();

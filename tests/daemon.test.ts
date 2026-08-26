@@ -120,10 +120,83 @@ describe("Daemon", () => {
       sendSpecialKey,
     };
 
-    await (daemon as any).sendQuitSequence();
+    await expect((daemon as any).sendQuitSequence()).resolves.toBe(true);
 
     expect(backend.getQuitCommand()).toBeNull();
     expect(sendSpecialKey.mock.calls).toEqual([["C-c"], ["C-c"]]);
+  });
+
+  it("stops agy gracefully with Ctrl+C twice before touching its process tree", async () => {
+    const instanceDir = join(tmpdir(), `agy-graceful-stop-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    const backend = new AntigravityBackend(instanceDir);
+    const daemon = new Daemon(
+      "agy-graceful-stop",
+      { ...makeConfig(), working_directory: instanceDir },
+      instanceDir,
+      false,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    const sendSpecialKey = vi.fn().mockResolvedValue(true);
+    const tmux = {
+      sendKeys: vi.fn().mockResolvedValue(true),
+      sendSpecialKey,
+      getPaneStatus: vi.fn().mockResolvedValue({ alive: false, exitCode: 0 }),
+      getWindowId: vi.fn(() => "@agy"),
+      killWindow: vi.fn().mockResolvedValue(undefined),
+    };
+    (daemon as any).tmux = tmux;
+    const killProcessTree = vi.spyOn(daemon as any, "killProcessTree").mockResolvedValue(undefined);
+
+    try {
+      await daemon.stop();
+
+      expect(sendSpecialKey.mock.calls).toEqual([["C-c"], ["C-c"]]);
+      expect(tmux.getPaneStatus).toHaveBeenCalledOnce();
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(tmux.killWindow).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("falls back from an unresponsive graceful quit to SIGTERM then SIGKILL", async () => {
+    vi.useFakeTimers();
+    const instanceDir = join(tmpdir(), `agy-stop-fallback-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    const backend = new AntigravityBackend(instanceDir);
+    const daemon = new Daemon(
+      "agy-stop-fallback",
+      { ...makeConfig(), working_directory: instanceDir },
+      instanceDir,
+      false,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    const tmux = {
+      sendKeys: vi.fn().mockResolvedValue(true),
+      sendSpecialKey: vi.fn().mockResolvedValue(true),
+      getPaneStatus: vi.fn().mockResolvedValue({ alive: true }),
+      getWindowId: vi.fn(() => "@agy"),
+      killWindow: vi.fn().mockResolvedValue(undefined),
+    };
+    (daemon as any).tmux = tmux;
+    const killProcessTree = vi.spyOn(daemon as any, "killProcessTree").mockResolvedValue(undefined);
+
+    try {
+      const stopping = daemon.stop();
+      await vi.runAllTimersAsync();
+      await stopping;
+
+      expect(killProcessTree.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+      expect(tmux.killWindow).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
   });
 
   it("enables MCP by default for Antigravity and preserves explicit CLI mode", () => {
