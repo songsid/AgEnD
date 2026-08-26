@@ -20,6 +20,7 @@ import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
+import { fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -134,6 +135,8 @@ export interface LifecycleContext {
   checkModelFailover(name: string, fiveHourPct: number): void;
   /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
   clearCancelButton(name: string): void;
+  /** Test/integration seam for the non-LLM Codex quota second opinion. */
+  verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
   startStatuslineWatcher(name: string): void;
   stopStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
@@ -196,6 +199,50 @@ const AUTH_ALERT_COOLDOWN_MS = 5 * 60_000;
  */
 const AUTH_VERIFY_CACHE_MS = 60_000;
 
+const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
+export type CodexQuotaVerdict = "available" | "exhausted" | "unknown";
+type CodexUsageResult = Omit<ProviderUsage, "id" | "name">;
+
+/**
+ * Convert the live Codex usage row into a conservative quota verdict. A
+ * successful response with at least one window below 100% proves that stale
+ * terminal text is no longer current only when no other window is exhausted.
+ * Missing credentials, API errors, and metric-less responses prove nothing.
+ */
+export function codexQuotaVerdictFromUsage(usage: CodexUsageResult): CodexQuotaVerdict {
+  if (usage.status !== "ok") return "unknown";
+  const windows = usage.metrics.filter(metric =>
+    metric.type === "percent"
+    && typeof metric.used === "number"
+    && Number.isFinite(metric.used)
+    && metric.windowMs != null,
+  );
+  if (windows.length === 0) return "unknown";
+  return windows.some(metric => (metric.used ?? 0) >= 100) ? "exhausted" : "available";
+}
+
+/** Run only the Codex usage provider, bounded independently of its network timeout. */
+export async function verifyCodexQuotaStatus(
+  fetchUsage: () => Promise<CodexUsageResult> = fetchCodexUsage,
+  timeoutMs = CODEX_QUOTA_VERIFY_TIMEOUT_MS,
+): Promise<CodexQuotaVerdict> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const usage = await Promise.race([
+      fetchUsage(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Codex quota verification timed out")), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    return codexQuotaVerdictFromUsage(usage);
+  } catch {
+    return "unknown";
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
@@ -208,6 +255,8 @@ export class InstanceLifecycle {
    * one in-flight check instead of each spawning their own.
    */
   private authVerifyCache = new Map<string, { at: number; promise: Promise<"valid" | "invalid" | "unknown"> }>();
+  /** Same-tick Codex quota alerts join one live usage probe. */
+  private codexQuotaVerifyInFlight: Promise<CodexQuotaVerdict> | null = null;
   /**
    * Minimum gap between MCP-revival auto-restarts of one instance. Kept here —
    * not in the daemon — because each restart replaces the daemon object, which
@@ -258,6 +307,17 @@ export class InstanceLifecycle {
    */
   private verifyAuthError(name: string): Promise<"valid" | "invalid" | "unknown"> {
     return this.verifyBackendAuth(this.backendOf(name));
+  }
+
+  private verifyCodexQuota(): Promise<CodexQuotaVerdict> {
+    if (this.codexQuotaVerifyInFlight) return this.codexQuotaVerifyInFlight;
+    const verify = this.ctx.verifyCodexQuota ?? (() => verifyCodexQuotaStatus());
+    const promise = verify().catch(() => "unknown" as const);
+    this.codexQuotaVerifyInFlight = promise;
+    void promise.finally(() => {
+      if (this.codexQuotaVerifyInFlight === promise) this.codexQuotaVerifyInFlight = null;
+    });
+    return promise;
   }
 
   /** Same verification keyed by backend (used by startup pre-flight priming). */
@@ -513,6 +573,26 @@ export class InstanceLifecycle {
       // minute). Remember it so /usage can overlay the truth on that row.
       if (data.type === "quota" && this.backendOf(name) === "antigravity") {
         reportProviderRateLimit("antigravity", data.message);
+      }
+
+      // Codex keeps old errors in pane scrollback. After a restart, the new
+      // daemon has no occurrence baseline and can mistake yesterday's
+      // `You've hit your usage limit` for a current failure, pause, wake, then
+      // repeat forever. A live, non-LLM usage query distinguishes an
+      // available account from that stale text before any notification/pause.
+      // Only pause-class quota errors need this gate; low-quota notifications
+      // remain immediate. Unknown (timeout/auth/API failure) stays fail-closed.
+      if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "codex") {
+        const verdict = await this.verifyCodexQuota();
+        if (verdict === "available") {
+          this.ctx.logger.debug({ name, backend: "codex" },
+            "quota pattern ignored — live usage has capacity (stale pane history)");
+          return;
+        }
+        if (verdict === "unknown") {
+          this.ctx.logger.warn({ name, backend: "codex" },
+            "Codex quota verification failed or timed out — pausing conservatively");
+        }
       }
 
       // Pattern-matched auth errors get a second opinion from the real CLI
