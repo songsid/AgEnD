@@ -192,7 +192,7 @@ export class KiroBackend implements CliBackend {
         // list (`   2: dispatch failure (other): No token`) rather than matched as
         // a bare keyword, because this fleet maintains AgEnD and an agent quoting
         // this very error must not pause itself.
-        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token|^\s*\d+:\s*(?:dispatch failure[^\n]*?)?No token\s*$/im,
+        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token|Access denied:.*bearer token.*invalid|^\s*\d+:\s*(?:dispatch failure[^\n]*?)?No token\s*$/im,
         type: "auth_error",
         action: "pause",
         message: "Kiro login is missing or expired — run `kiro-cli login` to restore all kiro instances",
