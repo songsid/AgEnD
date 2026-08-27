@@ -176,6 +176,10 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (isObj(ch.access) && ch.access.mode !== undefined && !["open", "locked", "pairing"].includes(String(ch.access.mode))) {
       err(`${at}.access.mode`, "must be open, locked, or pairing");
     }
+    if (isObj(ch.access) && ch.access.mode === "locked"
+      && (ch.access.allowed_users === undefined || (Array.isArray(ch.access.allowed_users) && ch.access.allowed_users.length === 0))) {
+      warn(`${at}.access.allowed_users`, "locked access has no allowed users — add an administrator to avoid lockout");
+    }
   });
 
   // ── Web UI ────────────────────────────────────────────────

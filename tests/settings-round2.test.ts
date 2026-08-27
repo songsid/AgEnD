@@ -11,7 +11,7 @@ function request(
   path: string,
   ctx: SettingsApiContext,
   method = "POST",
-  body?: Record<string, unknown>,
+  body?: unknown,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const req = new EventEmitter() as EventEmitter & { method: string; destroy(): void };
@@ -51,6 +51,52 @@ function context(dataDir = "/tmp") {
 }
 
 describe("Settings manual lifecycle API", () => {
+  it("persists fleet-level channel access mode and allowed users", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      id: "discord-primary",
+      type: "discord",
+      bot_token_env: "DISCORD_TOKEN",
+      access: { mode: "locked", allowed_users: ["admin"] },
+    }];
+
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      id: "discord-primary",
+      type: "discord",
+      bot_token_env: "DISCORD_TOKEN",
+      access: { mode: "open", allowed_users: ["admin", "operator"] },
+    }]);
+
+    expect(response.status).toBe(200);
+    expect(ctx.fleetConfig!.channels?.[0].access).toEqual({
+      mode: "open",
+      allowed_users: ["admin", "operator"],
+    });
+    expect(response.body.warnings).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "channels[0].access.allowed_users" }),
+    ]));
+    expect(ctx.saveFleetConfig).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an invalid fleet-level channel access mode", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      type: "discord",
+      bot_token_env: "DISCORD_TOKEN",
+      access: { mode: "locked", allowed_users: ["admin"] },
+    }];
+
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      type: "discord",
+      bot_token_env: "DISCORD_TOKEN",
+      access: { mode: "public", allowed_users: ["admin"] },
+    }]);
+
+    expect(response.status).toBe(400);
+    expect(ctx.fleetConfig!.channels?.[0].access?.mode).toBe("locked");
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
   it("pauses a configured instance", async () => {
     const { ctx, pause } = context();
     const response = await request("/api/settings/instances/worker/pause", ctx);
