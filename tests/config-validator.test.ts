@@ -73,6 +73,17 @@ describe("validateFleetConfig Settings Round 2 fields", () => {
     });
     expect(result.errors.some(e => e.path === "channels[0].access.mode")).toBe(true);
   });
+
+  it("warns when locked channel access has no administrators", () => {
+    const result = validateFleetConfig({
+      ...base,
+      channels: [{ type: "discord", bot_token_env: "TOKEN", access: { mode: "locked", allowed_users: [] } }],
+    });
+    expect(result.warnings).toContainEqual({
+      path: "channels[0].access.allowed_users",
+      message: "locked access has no allowed users — add an administrator to avoid lockout",
+    });
+  });
 });
 
 describe("validateFleetConfig kiro_ui", () => {

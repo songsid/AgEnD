@@ -109,4 +109,67 @@ describe("persistent dashboard token", () => {
     await close(server);
     (fm as any).healthServer = null;
   });
+
+  it("exposes effective model and effort summaries for fleet and ClassicBot settings", async () => {
+    const fm = new FleetManager(tempDir());
+    const fleetName = "worker-t1503382262756937728";
+    const classicName = "classic-room-1234";
+    (fm as any).fleetConfig = {
+      defaults: { backend: "codex", model: "gpt-default", effort: "high" },
+      instances: { [fleetName]: {} },
+    };
+    (fm as any).classicChannels = {
+      getAll: () => [{
+        instanceName: classicName,
+        name: "Room",
+        channelId: "1234",
+        adapterId: "discord",
+      }],
+      getChannelIdByInstance: (name: string) => name === classicName ? "1234" : undefined,
+      getBackendByInstance: (name: string) => name === classicName ? "opencode" : "codex",
+    };
+    (fm as any).getSysInfo = () => ({
+      instances: [{ name: fleetName, status: "running", state: "idle", ipc: true }],
+    });
+    vi.spyOn(fm, "resolveInstanceModel").mockImplementation((name: string) => name === classicName
+      ? { model: "provider/model", display: "provider/model", source: "classic" }
+      : { model: "gpt-default", display: "gpt-default", source: "fleet-default" });
+    vi.spyOn(fm, "effortStrategyFor").mockImplementation((name: string) => name === classicName ? "unsupported" : "restart");
+    vi.spyOn(fm, "resolveInstanceEffort").mockImplementation((name: string) => name === classicName
+      ? { effort: null, source: "unset" }
+      : { effort: "high", source: "fleet-default" });
+
+    (fm as any).initializeWebAuthTokens();
+    (fm as any).startHealthServer(0);
+    await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
+    const server = (fm as any).healthServer as Server;
+    const address = server.address();
+    expect(address && typeof address !== "string").toBe(true);
+    const response = await fetch(`http://127.0.0.1:${(address as { port: number }).port}/api/fleet`, {
+      headers: { "x-agend-token": fm.getDashboardAccess().token! },
+    });
+    const body = await response.json() as { instances: Array<Record<string, unknown>> };
+
+    expect(response.status).toBe(200);
+    expect(body.instances).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: fleetName,
+        backend: "codex",
+        model: "gpt-default",
+        model_display: "gpt-default",
+        effort: "high",
+        effort_supported: true,
+      }),
+      expect.objectContaining({
+        name: classicName,
+        backend: "opencode",
+        model: "provider/model",
+        effort: null,
+        effort_supported: false,
+      }),
+    ]));
+
+    await close(server);
+    (fm as any).healthServer = null;
+  });
 });

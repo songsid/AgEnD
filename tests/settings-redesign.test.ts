@@ -35,6 +35,25 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain("/api/settings/classic/channels/");
   });
 
+  it("stages primary access mode and allowed users with lockout confirmations", () => {
+    expect(html).toContain('const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"])');
+    expect(html).toContain('mode: stagedAccessMode, allowed_users: stagedAllowedUsers');
+    expect(html).toContain('confirmAccessChange(originalPrimaryAccess, stagedAccessMode, stagedAllowedUsers)');
+    expect(html).toContain('if (change.confirm && !change.confirm())');
+    expect(html).toContain('confirmOpenAccess: "Open access allows anyone in this channel to operate the bot. Continue?"');
+    expect(html).toContain('accessLockedEmpty: "Locked mode has no allowed users; add at least one administrator to avoid lockout."');
+  });
+
+  it("shows shortened names plus effective model and effort for fleet and ClassicBot agents", () => {
+    expect(html).toContain('name.replace(/-t\\d+$/, "")');
+    expect(html).toContain('const summary = effectiveSummary(name, inst)');
+    expect(html).toContain('const summary = effectiveSummary(c.instanceName, c, true)');
+    expect(html).toContain('summary.model');
+    expect(html).toContain('`effort: ${summary.effort}`');
+    expect(html).toContain('model_display: i.model_display');
+    expect(html).toContain('effort_supported: i.effort_supported');
+  });
+
   it("localizes settings validation, confirmation, and apply feedback", () => {
     expect(html).toContain('noAgentMatch: "沒有符合「{0}」的 Agent。"');
     expect(html).toContain('configLoadFailed: "載入設定失敗 — 請檢查網址中的 token。"');

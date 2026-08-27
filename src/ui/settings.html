@@ -205,6 +205,7 @@
       wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
       changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — check the token in the URL.",
+      confirmOpenAccess: "Open access allows anyone in this channel to operate the bot. Continue?", confirmLockedEmpty: "Locked access has no allowed users. This may leave nobody able to administer the bot. Continue?", accessLockedEmpty: "Locked mode has no allowed users; add at least one administrator to avoid lockout.", accessChangeCancelled: "Access mode change cancelled",
       mustNonNegative: "Must be 0 or greater", mustPositive: "Must be greater than 0", nonnegativeInteger: "Must be a non-negative integer", failoverEmpty: "Empty list disables failover", concurrencyRange: "Must be an integer from 1 to 20", concurrencyWarning: "May exceed CPU capacity on smaller hosts", staggerRange: "Must be between 0 and 30000", staggerWarning: "Very low values can cause startup spikes",
     },
     "zh-TW": {
@@ -226,6 +227,7 @@
       wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
       changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請檢查網址中的 token。",
+      confirmOpenAccess: "Open 模式會允許此頻道中的所有人操作 bot，確定要繼續嗎？", confirmLockedEmpty: "Locked 模式目前沒有允許的使用者，可能導致沒有人能管理 bot，確定要繼續嗎？", accessLockedEmpty: "Locked 模式沒有允許的使用者；建議至少加入一位管理員，避免無法操作。", accessChangeCancelled: "已取消 Access Mode 變更",
       mustNonNegative: "必須為 0 或更大的數值", mustPositive: "必須大於 0", nonnegativeInteger: "必須是非負整數", failoverEmpty: "空白清單會停用模型備援", concurrencyRange: "必須是 1 到 20 的整數", concurrencyWarning: "在較小的主機上可能超出 CPU 負荷", staggerRange: "必須介於 0 到 30000", staggerWarning: "數值太低可能造成啟動尖峰",
     },
   };
@@ -346,6 +348,15 @@
   }
   async function applyPendingChanges() {
     const button = $("applyChanges"); button.disabled = true;
+    // Complete every safety confirmation before the first write. Otherwise a
+    // cancelled access-mode change could leave earlier staged settings applied
+    // and later ones pending (a surprising partial apply).
+    for (const change of state.pending.values()) {
+      if (change.confirm && !change.confirm()) {
+        showBanner(change.cancelMessage || t("accessChangeCancelled"), true);
+        button.disabled = false; return;
+      }
+    }
     for (const [key, change] of [...state.pending]) {
       let result;
       try { result = await change.apply(); }
@@ -384,6 +395,15 @@
     feedback.textContent = error ? `✗ ${error}` : warning ? `⚠ ${warning}` : "";
     return !error;
   }
+  function confirmAccessChange(previousAccess, nextMode, nextUsers) {
+    const previousMode = previousAccess?.mode || "locked";
+    const previousUsers = previousAccess?.allowed_users || [];
+    if (previousMode !== "open" && nextMode === "open" && !confirm(t("confirmOpenAccess"))) return false;
+    const newlyEmptyLocked = nextMode === "locked" && nextUsers.length === 0
+      && (previousMode !== "locked" || previousUsers.length > 0);
+    if (newlyEmptyLocked && !confirm(t("confirmLockedEmpty"))) return false;
+    return true;
+  }
 
   // ── My Agents ──
   let editing = null;
@@ -399,12 +419,23 @@
   const STATUS_TEXT = { running: "🟢 Running", paused: "⏸ Paused", crashed: "🔴 Crashed", stopped: "⚪ Stopped" };
   const EXECUTION_TEXT = { idle: "🟢 Idle", working: "🔵 Working", stuck: "🔴 Stuck", paused: "⏸ Paused", crashed: "🔴 Crashed", stopped: "⚪ Stopped", running: "🟢 Running" };
   const STATUS_ORDER = { running: 0, paused: 1, crashed: 2, stopped: 3 };
+  const EFFORT_BACKENDS = new Set(["claude-code", "codex", "kiro-cli", "grok", "antigravity"]);
   const groupOf = (inst) => (inst.tags && inst.tags[0]) || "Other";
+  function effectiveSummary(name, config, classic = false) {
+    const live = state.live[name] || {};
+    const defaults = classic ? (state.classic?.defaults || {}) : (state.fleet?.defaults || {});
+    const backend = live.backend || config.backend || defaults.backend || state.fleet?.defaults?.backend || "claude-code";
+    const model = live.model_display || config.model || defaults.model || state.fleet?.defaults?.model || "default";
+    const effortSupported = live.effort_supported ?? EFFORT_BACKENDS.has(backend);
+    const effort = effortSupported ? (live.effort || config.effort || state.fleet?.defaults?.effort || "auto") : "—";
+    return { backend, model, effort };
+  }
   function compactRow(name, inst) {
     const st = state.live[name]?.status || "stopped";
     const running = st === "running";
     const paused = st === "paused";
     const short = shortName(name, inst);
+    const summary = effectiveSummary(name, inst);
     const chTag = agentChannelLabel(inst);
     const item = el("div", { class: "item" });
     // Single fixed-height line: dot + short name + backend + channel tag + actions.
@@ -412,7 +443,8 @@
     item.append(el("div", { class: "item-row" },
       el("span", { class: "dot " + st, title: STATUS_TEXT[st] || st }),
       el("span", { class: "name", title: name }, short),
-      el("span", { class: "sub", style: "margin:0" }, inst.backend || state.fleet.defaults?.backend || "claude-code"),
+      el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+      el("span", { class: "tag" }, `effort: ${summary.effort}`),
       chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
       el("span", { class: "spacer" }),
       el("button", { class: "sm ghost", onclick: () => { editing = editing === name ? null : name; renderAgents(); } }, editing === name ? t("close") : t("edit")),
@@ -640,16 +672,21 @@
   function botEditForm(ch, i) {
     ch.access = ch.access || { mode: "locked", allowed_users: [] };
     ch.access.allowed_users = ch.access.allowed_users || [];
+    const previousAccess = structuredClone(ch.access);
     const box = el("div", { class: "edit" });
     const fMode = select(ch.access.mode || "locked", ["open", "locked", "pairing"]);
     const users = [...ch.access.allowed_users];
     const msg = el("span", { class: "msg" });
+    const accessFeedback = el("div", { class: "feedback" });
+    const validateAccess = () => setValidation(fMode, accessFeedback, "", fMode.value === "locked" && users.length === 0 ? t("accessLockedEmpty") : "");
+    fMode.addEventListener("change", validateAccess);
     box.append(
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, t("accessMode"), impact("fleet")), fMode),
-        el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(users, null, "user id"))),
+        el("div", {}, el("label", {}, t("accessMode"), impact("fleet")), fMode, accessFeedback),
+        el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(users, validateAccess, "user id"))),
       el("div", { class: "actions" },
         el("button", { class: "primary sm", onclick: async () => {
+          if (!confirmAccessChange(previousAccess, fMode.value, users)) return;
           const chs = channels();
           chs[i] = { ...chs[i], access: { ...chs[i].access, mode: fMode.value, allowed_users: users } };
           const res = await saveChannels(msg);
@@ -661,6 +698,7 @@
         } }, t("save")),
         el("button", { class: "sm ghost", onclick: () => { editingBot = null; renderBots(); } }, t("cancel")), msg),
     );
+    validateAccess();
     return box;
   }
 
@@ -755,11 +793,14 @@
       const runtime = classicRuntime(c.instanceName);
       const st = runtime.status;
       const adapter = c.adapterId || "discord";
+      const summary = effectiveSummary(c.instanceName, c, true);
+      const displayName = shortName(c.name || c.instanceName || "?", { display_name: c.display_name });
       const item = el("div", { class: "item" });
       item.append(el("div", { class: "item-row" },
         el("span", { class: "dot " + runtime.execution, title: EXECUTION_TEXT[runtime.execution] || runtime.execution }),
-        el("span", { class: "name", title: c.instanceName || "" }, c.name || c.instanceName || "?"),
-        el("span", { class: "sub", style: "margin:0" }, c.backend || state.classic?.defaults?.backend || state.fleet?.defaults?.backend || "claude-code"),
+        el("span", { class: "name", title: c.instanceName || "" }, displayName),
+        el("span", { class: "sub", style: "margin:0", title: summary.backend }, summary.model),
+        el("span", { class: "tag" }, `effort: ${summary.effort}`),
         el("span", { class: "tag" + (adapter !== "discord" ? " persona" : "") }, adapter),
         c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
         el("span", { class: "spacer" }),
@@ -822,8 +863,8 @@
     const hang = d.hang_detector || {};
     const startup = d.startup || {};
     const primary = channels()[0];
-    if (primary) primary.access = primary.access || { mode: "locked", allowed_users: [] };
-    const allowedUsers = primary ? (primary.access.allowed_users = primary.access.allowed_users || []) : [];
+    const originalPrimaryAccess = structuredClone(primary?.access || { mode: "locked", allowed_users: [] });
+    const allowedUsers = [...(originalPrimaryAccess.allowed_users || [])];
     c.admin_users = c.admin_users || []; c.allowed_guilds = c.allowed_guilds || [];
 
     const fBackend = select(d.backend || "claude-code", BACKENDS);
@@ -832,6 +873,7 @@
     const fAgentMode = select(d.agent_mode || "mcp", ["mcp", "cli"]);
     const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
     const fToolProgress = select(d.tool_progress || "off", ["off", "standard", "verbose"]);
+    const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"]);
     const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
     const fLocale = el("select");
     const fAutoPause = el("input", { type: "number", min: "0", step: "1", value: d.auto_pause_after ?? 0, placeholder: "0 = disabled" });
@@ -845,6 +887,7 @@
     const hangFeedback = el("div", { class: "feedback" });
     const concurrencyFeedback = el("div", { class: "feedback" });
     const staggerFeedback = el("div", { class: "feedback" });
+    const accessFeedback = el("div", { class: "feedback" });
     const saveBtn = el("button", { class: "primary" }, t("save"));
     const validate = () => {
       const auto = Number(fAutoPause.value), timeout = Number(fHangTimeout.value);
@@ -853,12 +896,14 @@
       const validHang = setValidation(fHangTimeout, hangFeedback, !Number.isFinite(timeout) || timeout <= 0 ? t("mustPositive") : "");
       const validConcurrency = setValidation(fConcurrency, concurrencyFeedback, !Number.isInteger(concurrency) || concurrency < 1 || concurrency > 20 ? t("concurrencyRange") : "", concurrency > 4 ? t("concurrencyWarning") : "");
       const validStagger = setValidation(fStagger, staggerFeedback, !Number.isFinite(stagger) || stagger < 0 || stagger > 30000 ? t("staggerRange") : "", stagger < 100 ? t("staggerWarning") : "");
+      if (primary) setValidation(fAccessMode, accessFeedback, "", fAccessMode.value === "locked" && allowedUsers.length === 0 ? t("accessLockedEmpty") : "");
       saveBtn.disabled = !(validAuto && validHang && validConcurrency && validStagger);
       return !saveBtn.disabled;
     };
     for (const input of [fAutoPause, fHangTimeout, fConcurrency, fStagger]) {
       input.addEventListener("input", validate); input.addEventListener("change", validate);
     }
+    fAccessMode.addEventListener("change", validate);
     saveBtn.textContent = t("reviewChanges");
     saveBtn.onclick = () => {
       if (!validate()) return;
@@ -899,8 +944,22 @@
       if (Object.keys(defaultsPatch).length > 0) {
         stageChange("defaults:fleet", { label: "Update Agent defaults", impact: Object.keys(defaultsPatch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance", apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
       }
-      if (primary && !sameValue(channels(), originalChannels)) {
-        stageChange("connections:primary", { label: "Update primary connection access", impact: "fleet", apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(channels()) }) });
+      if (primary) {
+        const stagedAccessMode = fAccessMode.value;
+        const stagedAllowedUsers = [...allowedUsers];
+        const nextChannels = structuredClone(originalChannels);
+        nextChannels[0] = { ...nextChannels[0], access: { ...nextChannels[0].access, mode: stagedAccessMode, allowed_users: stagedAllowedUsers } };
+        if (!sameValue(nextChannels, originalChannels)) {
+          stageChange("connections:primary", {
+            label: "Update primary connection access",
+            impact: "fleet",
+            // Confirm the immutable staged snapshot, not live form controls
+            // that the user may edit again before pressing global Apply.
+            confirm: () => confirmAccessChange(originalPrimaryAccess, stagedAccessMode, stagedAllowedUsers),
+            cancelMessage: t("accessChangeCancelled"),
+            apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(nextChannels) }),
+          });
+        }
       }
       if (Object.keys(classicPatch).length > 0) {
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
@@ -943,7 +1002,11 @@
           el("div", { class: "field" }, el("label", {}, t("concurrency"), impact("fleet")), fConcurrency, concurrencyFeedback),
           el("div", { class: "field" }, el("label", {}, `${t("staggerDelay")} (ms)`, impact("fleet")), fStagger, staggerFeedback))),
       section("Advanced & Access", false,
-        el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(allowedUsers, null, "user id")))),
+        primary
+          ? el("div", { class: "grid2" },
+              el("div", { class: "field" }, el("label", {}, t("accessMode"), impact("fleet")), fAccessMode, accessFeedback),
+              el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(allowedUsers, validate, "user id")))
+          : el("div", { class: "field hint" }, t("noBots")))),
       el("div", { class: "field" }, el("div", { class: "actions" }, saveBtn, msg)),
     );
     validate();
@@ -1016,7 +1079,15 @@
     state.fleetUp = f.ok;
     state.live = {}; state.classicLive = {};
     if (f.ok && f.body?.instances) for (const i of f.body.instances) {
-      state.live[i.name] = { status: i.status, state: i.state };
+      state.live[i.name] = {
+        status: i.status,
+        state: i.state,
+        backend: i.backend,
+        model: i.model,
+        model_display: i.model_display,
+        effort: i.effort,
+        effort_supported: i.effort_supported,
+      };
       if (i.classic) state.classicLive[i.name] = { status: i.status, state: i.state };
     }
     // /api/fleet carries live tri-state for Classic instances. Profiles remain

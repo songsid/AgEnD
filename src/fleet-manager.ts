@@ -9885,9 +9885,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           const lastActivity = inst.classic
             ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
             : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
-          const backend = inst.classic
-            ? this.classicChannels?.getBackendByInstance(inst.name, this.fleetConfig?.defaults.backend) ?? "claude-code"
-            : config?.backend ?? "claude-code";
+          const backend = this.backendNameForInstance(inst.name);
+          const resolvedModel = this.resolveInstanceModel(inst.name);
+          const effortStrategy = this.effortStrategyFor(inst.name);
+          const resolvedEffort = this.resolveInstanceEffort(inst.name);
           // Find claimed tasks for this instance
           let currentTask: string | null = null;
           try {
@@ -9900,6 +9901,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             ...inst,
             description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
             backend,
+            // Settings renders these runtime-effective values rather than the
+            // sparse user-authored YAML. `auto` means the supported CLI is
+            // using its own effort default; null is reserved for unsupported.
+            model: resolvedModel.model,
+            model_display: resolvedModel.display,
+            model_source: resolvedModel.source,
+            effort: effortStrategy === "unsupported" ? null : (resolvedEffort.effort ?? "auto"),
+            effort_supported: effortStrategy !== "unsupported",
             tool_set: config?.tool_set ?? "full",
             general_topic: config?.general_topic ?? false,
             // User activity is persisted by the daemon, so both the board and
