@@ -150,14 +150,31 @@ export class IpcServer extends EventEmitter {
     const data = encode(msg);
     for (const client of this.clients) {
       if (!client.destroyed) {
-        client.write(data);
+        try {
+          // A false return means Node accepted the write but applied
+          // backpressure; it is not a delivery failure. The socket owns the
+          // queued bytes and will emit error/close if they cannot be flushed.
+          client.write(data);
+        } catch (err) {
+          this.logger?.warn({ err }, "IPC broadcast write failed, removing client");
+          client.destroy();
+          this.clients.delete(client);
+        }
       }
     }
   }
 
-  send(socket: Socket, msg: unknown): void {
-    if (!socket.destroyed) {
+  /** Queue a response on one exact client socket. False means no bytes were accepted. */
+  send(socket: Socket, msg: unknown): boolean {
+    if (socket.destroyed) return false;
+    try {
       socket.write(encode(msg));
+      return true;
+    } catch (err) {
+      this.logger?.warn({ err }, "IPC response write failed, removing client");
+      socket.destroy();
+      this.clients.delete(socket);
+      return false;
     }
   }
 
@@ -262,8 +279,16 @@ export class IpcClient extends EventEmitter {
    */
   send(msg: unknown): boolean {
     if (!this.socket || this.socket.destroyed) return false;
-    this.socket.write(encode(msg));
-    return true;
+    const socket = this.socket;
+    try {
+      // socket.write(false) is backpressure, not rejection: Node has queued
+      // the bytes. A synchronous throw is the only immediate write failure.
+      socket.write(encode(msg));
+      return true;
+    } catch (err) {
+      this.handleDisconnect(err instanceof Error ? err : new Error(String(err)), socket);
+      return false;
+    }
   }
 
   async close(): Promise<void> {

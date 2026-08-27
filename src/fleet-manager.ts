@@ -4109,7 +4109,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Handle outbound tool calls from a daemon instance */
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
-    if (this.worlds.size === 0) return;
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
@@ -4120,12 +4119,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const respond = (result: unknown, error?: string) => {
       const ipc = this.instanceIpcClients.get(instanceName);
+      let sent = false;
       if (fleetRequestId) {
-        ipc?.send({ type: "fleet_outbound_response", fleetRequestId, result, error });
+        sent = ipc?.send({ type: "fleet_outbound_response", fleetRequestId, result, error }) ?? false;
       } else {
-        ipc?.send({ type: "fleet_outbound_response", requestId, result, error });
+        sent = ipc?.send({ type: "fleet_outbound_response", requestId, result, error }) ?? false;
+      }
+      if (!sent) {
+        this.logger.warn(
+          { instanceName, tool, requestId, fleetRequestId, error },
+          "Fleet outbound result could not be returned — instance IPC is disconnected",
+        );
       }
     };
+
+    if (this.worlds.size === 0) {
+      respond(null, "Channel adapters are not ready — retry shortly");
+      return;
+    }
 
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
     // fall back to general topic if sender is unknown, or IPC owner if no sender.
@@ -4175,17 +4186,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         Array.isArray(args.files) ? args.files as string[] : [],
       );
       if (ticket.duplicate) {
-        this.logger.info({ instanceName }, "Duplicate reply suppressed — replaying the original send's outcome");
+        this.logger.info({ instanceName }, "Concurrent duplicate reply joined — awaiting the original send's outcome");
         ticket.subscribe(respond);
         return;
       }
       const original = respond;
       const respondAndRecord = (result: unknown, error?: string) => {
         ticket.complete(result, error);
+        // Return the platform outcome first. Bookkeeping below must never turn
+        // a confirmed Discord/Telegram POST into a tool error if a secondary
+        // log/button side effect happens to throw.
         original(result, error);
+        // The adapter resolves only after the platform POST returns. Keep
+        // outward-facing logs/cancel state on the same confirmation boundary:
+        // a routed-but-failed reply is not a delivered reply.
+        if (!error && result != null) {
+          try {
+            this.afterReplyRouted(instanceName, args, senderSessionName);
+          } catch (err) {
+            this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
+          }
+        }
       };
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord)) {
-        this.afterReplyRouted(instanceName, args, senderSessionName);
         return;
       }
       // routeToolCall knows "reply"; not handling it means the world changed.

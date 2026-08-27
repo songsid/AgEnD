@@ -715,18 +715,19 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const chunks = splitText(text, chunkLimit);
     if (chunks.length === 0) throw new Error("Empty text");
 
-    // disablePreview → suppress the link embed(s) for this message.
-    const first = await channel.send(opts?.disablePreview
-      ? { content: chunks[0], flags: MessageFlags.SuppressEmbeds }
-      : chunks[0]);
-
-    // Enqueue remaining chunks
-    for (let i = 1; i < chunks.length; i++) {
-      this.queue.enqueue(chatId, opts?.threadId, { type: "content", text: chunks[i] });
+    // Await every platform POST before reporting success. Previously only the
+    // first chunk was awaited and later chunks were fire-and-forget queue items,
+    // so the reply tool could return success for a silently truncated message.
+    let first: Awaited<ReturnType<typeof channel.send>> | undefined;
+    for (const chunk of chunks) {
+      const sent = await channel.send(opts?.disablePreview
+        ? { content: chunk, flags: MessageFlags.SuppressEmbeds }
+        : chunk);
+      first ??= sent;
     }
 
     return {
-      messageId: first.id,
+      messageId: first!.id,
       chatId,
       threadId: opts?.threadId,
     };

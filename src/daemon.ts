@@ -767,6 +767,13 @@ export class Daemon extends EventEmitter {
   private guardian: ContextGuardian | null = null;
   private adapter: ChannelAdapter | null = null;
   private pendingIpcRequests = new Map<string, (msg: Record<string, unknown>) => void>();
+  /**
+   * Daemon-global request sequence. MCP request ids are only process-local:
+   * Claude can have more than one MCP child connected to the same daemon and
+   * each starts at 1, so using requestId alone lets one caller steal another's
+   * response.
+   */
+  private fleetRequestSeq = 0;
   // Track chatId/threadId from inbound messages for automatic outbound routing
   private lastChatId: string | undefined;
   private lastThreadId: string | undefined;
@@ -3723,7 +3730,10 @@ export class Daemon extends EventEmitter {
       if (!error && result != null && TURN_REPLY_TOOLS.has(tool)) {
         this.turnOutboundDelivered = true;
       }
-      this.ipcServer?.send(socket, { requestId, result, error });
+      const sent = this.ipcServer?.send(socket, { requestId, result, error }) ?? false;
+      if (!sent) {
+        this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
+      }
     };
 
     // Repo checkout — handled locally in daemon (no fleet-manager)
@@ -3738,13 +3748,7 @@ export class Daemon extends EventEmitter {
 
     if (tool === "set_display_name" || tool === "set_description") {
       const type = tool === "set_display_name" ? "fleet_set_display_name" : "fleet_set_description";
-      const fleetReqId = `${tool === "set_display_name" ? "dn" : "desc"}_${requestId}`;
-      this.ipcServer?.broadcast({
-        type,
-        payload: args,
-        meta: { instance_name: this.name },
-        fleetRequestId: fleetReqId,
-      });
+      const fleetReqId = `${tool === "set_display_name" ? "dn" : "desc"}_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
         respond(null, `${tool} timed out`);
@@ -3753,17 +3757,17 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
-      return;
-    }
-
-    if (tool === TASK_TOOL) {
-      const fleetReqId = `task_${requestId}`;
       this.ipcServer?.broadcast({
-        type: "fleet_task",
+        type,
         payload: args,
         meta: { instance_name: this.name },
         fleetRequestId: fleetReqId,
       });
+      return;
+    }
+
+    if (tool === TASK_TOOL) {
+      const fleetReqId = `task_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
         respond(null, `Task operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
@@ -3771,6 +3775,12 @@ export class Daemon extends EventEmitter {
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
+      });
+      this.ipcServer?.broadcast({
+        type: "fleet_task",
+        payload: args,
+        meta: { instance_name: this.name },
+        fleetRequestId: fleetReqId,
       });
       return;
     }
@@ -3781,13 +3791,7 @@ export class Daemon extends EventEmitter {
         list_decisions: "fleet_decision_list",
         update_decision: "fleet_decision_update",
       };
-      const fleetReqId = `dec_${requestId}`;
-      this.ipcServer?.broadcast({
-        type: typeMap[tool],
-        payload: args,
-        meta: { instance_name: this.name, working_directory: this.config.working_directory },
-        fleetRequestId: fleetReqId,
-      });
+      const fleetReqId = `dec_${++this.fleetRequestSeq}_${requestId}`;
       const timeout = setTimeout(() => {
         this.pendingIpcRequests.delete(fleetReqId);
         respond(null, `Decision operation timed out after ${daemonBudgetMs(tool) / 1000}s`);
@@ -3795,6 +3799,12 @@ export class Daemon extends EventEmitter {
       this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
+      });
+      this.ipcServer?.broadcast({
+        type: typeMap[tool],
+        payload: args,
+        meta: { instance_name: this.name, working_directory: this.config.working_directory },
+        fleetRequestId: fleetReqId,
       });
       return;
     }
@@ -3809,13 +3819,7 @@ export class Daemon extends EventEmitter {
 
       // Use fleetRequestId (not requestId) to avoid MCP server resolving the
       // pending tool call prematurely when it receives the broadcast.
-      const fleetReqId = `sched_${requestId}`;
-      this.ipcServer?.broadcast({
-        type: typeMap[tool],
-        payload: args,
-        meta: { chat_id: this.lastChatId, thread_id: this.lastThreadId, instance_name: this.name },
-        fleetRequestId: fleetReqId,
-      });
+      const fleetReqId = `sched_${++this.fleetRequestSeq}_${requestId}`;
 
       // Wait for fleet_schedule_response via pending request map
       const timeout = setTimeout(() => {
@@ -3826,6 +3830,12 @@ export class Daemon extends EventEmitter {
         clearTimeout(timeout);
         respond(respMsg.result, respMsg.error as string | undefined);
       });
+      this.ipcServer?.broadcast({
+        type: typeMap[tool],
+        payload: args,
+        meta: { chat_id: this.lastChatId, thread_id: this.lastThreadId, instance_name: this.name },
+        fleetRequestId: fleetReqId,
+      });
       return;
     }
 
@@ -3834,15 +3844,8 @@ export class Daemon extends EventEmitter {
       if (this.topicMode && this.ipcServer) {
         // Use fleetRequestId (not requestId) to avoid MCP server resolving the
         // pending tool call prematurely when it receives the broadcast.
-        const fleetReqId = `xmsg_${requestId}`;
+        const fleetReqId = `xmsg_${++this.fleetRequestSeq}_${requestId}`;
         const senderSessionName = this.socketSessionNames.get(socket);
-        this.ipcServer.broadcast({
-          type: "fleet_outbound",
-          tool,
-          args,
-          fleetRequestId: fleetReqId,
-          senderSessionName,
-        });
         // Shared table, so delete_instance and the deployment tools get the same
         // budget here as the MCP client expects (the ad-hoc list omitted them).
         const crossTimeoutMs = daemonBudgetMs(tool);
@@ -3853,6 +3856,13 @@ export class Daemon extends EventEmitter {
         this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
           clearTimeout(timeout);
           respond(respMsg.result, respMsg.error as string | undefined);
+        });
+        this.ipcServer.broadcast({
+          type: "fleet_outbound",
+          tool,
+          args,
+          fleetRequestId: fleetReqId,
+          senderSessionName,
         });
       } else {
         respond(null, "Cross-instance messaging requires topic mode");
@@ -3887,8 +3897,24 @@ export class Daemon extends EventEmitter {
       // The fleet manager's IPC client receives this and routes to shared adapter.
       // Use fleetRequestId (not requestId) to avoid other MCP sessions on this daemon
       // from prematurely resolving their pending requests when they receive the broadcast.
-      const fleetReqId = `tool_${requestId}`;
+      // requestId is local to one MCP server process. Claude may keep multiple
+      // MCP children attached (main session, resumed session, subagent); those
+      // processes all emit requestId=1,2,... and previously overwrote this
+      // shared pending map. The wrong caller could then receive another POST's
+      // success + messageId while its own reply had never been confirmed.
+      const fleetReqId = `tool_${++this.fleetRequestSeq}_${requestId}`;
       const outboundKey = fleetReqId;
+      const timeout = setTimeout(() => {
+        this.pendingIpcRequests.delete(outboundKey);
+        respond(null, `Fleet outbound timed out after ${daemonBudgetMs(tool) / 1000}s`);
+      }, daemonBudgetMs(tool));
+      this.pendingIpcRequests.set(outboundKey, (respMsg) => {
+        clearTimeout(timeout);
+        respond(respMsg.result, respMsg.error as string | undefined);
+      });
+      // Register the waiter before broadcasting. A fast/mock adapter can settle
+      // immediately; broadcasting first left a response-before-registration
+      // window that degraded into a timeout despite a completed POST.
       this.ipcServer?.broadcast({
         type: "fleet_outbound",
         tool,
@@ -3898,14 +3924,6 @@ export class Daemon extends EventEmitter {
         // instance binding is only a fallback: persisted/runtime context can be
         // from a secondary world, and message ids are not portable across bots.
         adapterId: this.lastAdapterId,
-      });
-      const timeout = setTimeout(() => {
-        this.pendingIpcRequests.delete(outboundKey);
-        respond(null, `Fleet outbound timed out after ${daemonBudgetMs(tool) / 1000}s`);
-      }, daemonBudgetMs(tool));
-      this.pendingIpcRequests.set(outboundKey, (respMsg) => {
-        clearTimeout(timeout);
-        respond(respMsg.result, respMsg.error as string | undefined);
       });
       return;
     }

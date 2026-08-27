@@ -172,7 +172,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
 
     // Agent's reply goes out through handleToolCall and the fleet responds OK.
     daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 7 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_7")!({ result: { messageId: "m1" } });
+    daemon.pendingIpcRequests.get("tool_1_7")!({ result: { messageId: "m1" } });
 
     daemon.instanceState = "working";
     daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
@@ -186,7 +186,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
 
     daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 8 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_8")!({ result: null, error: "adapter send failed" });
+    daemon.pendingIpcRequests.get("tool_1_8")!({ result: null, error: "adapter send failed" });
 
     daemon.instanceState = "working";
     daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
@@ -304,7 +304,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     // Turn 1: agent replied.
     daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
     daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 9 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_9")!({ result: { messageId: "m1" } });
+    daemon.pendingIpcRequests.get("tool_1_9")!({ result: { messageId: "m1" } });
     daemon.instanceState = "working";
     daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
