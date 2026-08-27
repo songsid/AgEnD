@@ -46,10 +46,24 @@ describe("IPC Bridge", () => {
 
     client = new IpcClient(sockPath);
     await client.connect();
-    client.send({ type: "tool_call", tool: "reply" });
+    expect(client.send({ type: "tool_call", tool: "reply" })).toBe(true);
     await new Promise(r => setTimeout(r, 100));
     expect(received).toHaveLength(1);
     expect((received[0] as any).type).toBe("tool_call");
+  });
+
+  it("reports a closed client write instead of silently accepting it", async () => {
+    tmpDir = join(tmpdir(), `ccd-ipc-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    const sockPath = join(tmpDir, "test.sock");
+
+    server = new IpcServer(sockPath);
+    await server.listen();
+    client = new IpcClient(sockPath);
+    await client.connect();
+    await client.close();
+
+    expect(client.send({ type: "tool_call", tool: "reply" })).toBe(false);
   });
 
   it("cleans up stale socket on start", async () => {

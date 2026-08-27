@@ -177,11 +177,17 @@ function ipcRequest(
     pendingRequests.set(requestId, { resolve, reject, timer });
 
     try {
-      ipc.send({ type: "tool_call", tool, args, requestId });
+      if (!ipc.send({ type: "tool_call", tool, args, requestId })) {
+        throw new Error("IPC socket closed before the tool call was written");
+      }
     } catch (err) {
       pendingRequests.delete(requestId);
       clearTimeout(timer);
       ipcConnected = false;
+      const failedClient = ipc;
+      ipc = null;
+      void failedClient.close();
+      scheduleReconnect();
       reject(new Error(`IPC send failed: ${err}`));
     }
   });
@@ -249,8 +255,11 @@ mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
 
   try {
     const result = await ipcRequest(req.params.name, args);
+    if (result === undefined) {
+      throw new Error(`Daemon returned no result for ${req.params.name}`);
+    }
     const text =
-      typeof result === "string" ? result : JSON.stringify(result ?? "ok");
+      typeof result === "string" ? result : JSON.stringify(result);
     return { content: [{ type: "text", text }] };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

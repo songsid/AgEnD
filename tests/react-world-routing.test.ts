@@ -41,12 +41,12 @@ describe("MCP react world routing", () => {
           chat_id: "secondary-guild",
           thread_id: "secondary-channel",
         },
-        fleetRequestId: "tool_41",
+        fleetRequestId: "tool_1_41",
         adapterId: "discord-secondary",
       });
 
       // Complete the synthetic request so its production timeout is cleared.
-      const complete = (daemon as any).pendingIpcRequests.get("tool_41");
+      const complete = (daemon as any).pendingIpcRequests.get("tool_1_41");
       complete({ result: "ok" });
       expect(send).toHaveBeenCalledWith({}, {
         requestId: 41,

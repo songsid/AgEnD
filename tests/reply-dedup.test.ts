@@ -11,20 +11,16 @@ import { SLOW_TOOLS, daemonBudgetMs, SLOW_IPC_BUDGET_MS, mcpTimeoutMs } from "..
  */
 
 describe("ReplyDeduper", () => {
-  it("passes a fresh reply through and replays its result to a later duplicate", () => {
+  it("passes identical text through again after the first platform send settles", () => {
     const d = new ReplyDeduper();
     const first = d.begin("alpha", "done!");
     expect(first.duplicate).toBe(false);
     if (first.duplicate) throw new Error("unreachable");
     first.complete({ messageId: "m1" });
 
-    const retry = d.begin("alpha", "done!");
-    expect(retry.duplicate).toBe(true);
-    if (!retry.duplicate) throw new Error("unreachable");
-    const seen = vi.fn();
-    retry.subscribe(seen);
-    // The retry reports success without a second send.
-    expect(seen).toHaveBeenCalledWith({ messageId: "m1" });
+    // This can be a legitimate second "done!". Replaying m1 here would claim
+    // success without a second platform POST.
+    expect(d.begin("alpha", "done!").duplicate).toBe(false);
   });
 
   it("attaches an in-flight duplicate to the original send's outcome", () => {
@@ -63,48 +59,45 @@ describe("ReplyDeduper", () => {
     expect(d.begin("beta", "done!").duplicate).toBe(false);      // other instance
     expect(d.begin("alpha", "done!!").duplicate).toBe(false);    // other text
     expect(d.begin("alpha", "done!", ["/tmp/a.png"]).duplicate).toBe(false); // files differ
-    expect(d.begin("alpha", "done!").duplicate).toBe(true);      // exact repeat
+    expect(d.begin("alpha", "done!").duplicate).toBe(false);     // completed exact repeat
   });
 
-  it("expires completed entries after the window; identical text later is a new reply", () => {
-    let clock = 1_000_000;
-    const d = new ReplyDeduper(60_000, () => clock);
-    const first = d.begin("alpha", "ok");
-    if (first.duplicate) throw new Error("unreachable");
-    first.complete("sent");
+  it("releases duplicate waiters and the key when an in-flight send never settles", () => {
+    vi.useFakeTimers();
+    try {
+      const d = new ReplyDeduper(1_000);
+      const first = d.begin("alpha", "ok");
+      if (first.duplicate) throw new Error("unreachable");
+      const retry = d.begin("alpha", "ok");
+      if (!retry.duplicate) throw new Error("unreachable");
+      const seen = vi.fn();
+      retry.subscribe(seen);
 
-    clock += 59_000;
-    expect(d.begin("alpha", "ok").duplicate).toBe(true);
-
-    clock += 62_000;
-    // An agent legitimately saying "ok" twice a few minutes apart must not be
-    // suppressed — the window is sized for retry storms, not conversations.
-    expect(d.begin("alpha", "ok").duplicate).toBe(false);
+      vi.advanceTimersByTime(1_001);
+      expect(seen).toHaveBeenCalledWith(null, expect.stringContaining("did not settle"));
+      expect(d.begin("alpha", "ok").duplicate).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("never age-prunes an in-flight entry, however long the send takes", () => {
-    let clock = 1_000_000;
-    const d = new ReplyDeduper(60_000, () => clock);
-    const first = d.begin("alpha", "ok");
-    if (first.duplicate) throw new Error("unreachable");
-
-    clock += 10 * 60_000; // a very long rate-limit stall
-    const retry = d.begin("alpha", "ok");
-    expect(retry.duplicate).toBe(true); // still the one real send
-  });
-
-  it("ignores a double complete()", () => {
+  it("ignores a late double complete without deleting a newer in-flight send", () => {
     const d = new ReplyDeduper();
     const first = d.begin("alpha", "ok");
     if (first.duplicate) throw new Error("unreachable");
     first.complete("sent");
+
+    const second = d.begin("alpha", "ok");
+    if (second.duplicate) throw new Error("unreachable");
     expect(() => first.complete("sent-again")).not.toThrow();
 
     const retry = d.begin("alpha", "ok");
     if (!retry.duplicate) throw new Error("unreachable");
     const seen = vi.fn();
     retry.subscribe(seen);
-    expect(seen).toHaveBeenCalledWith("sent");
+    expect(seen).not.toHaveBeenCalled();
+    second.complete("second-send");
+    expect(seen).toHaveBeenCalledWith("second-send", undefined);
   });
 });
 

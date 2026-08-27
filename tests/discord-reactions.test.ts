@@ -50,6 +50,46 @@ describe("Discord outbound reactions", () => {
   });
 });
 
+describe("Discord outbound text confirmation", () => {
+  it("awaits every chunk before returning the first real Discord message id", async () => {
+    let resolveSecond!: (value: { id: string }) => void;
+    const send = vi.fn()
+      .mockResolvedValueOnce({ id: "discord-first" })
+      .mockImplementationOnce(() => new Promise(resolve => { resolveSecond = resolve; }));
+    const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;
+    Object.assign(adapter as any, {
+      _fetchTextChannel: vi.fn().mockResolvedValue({ send }),
+    });
+
+    const pending = adapter.sendText("channel", "abcdefgh", { chunkLimit: 4 });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    let settled = false;
+    void pending.then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    resolveSecond({ id: "discord-second" });
+    await expect(pending).resolves.toEqual({
+      messageId: "discord-first",
+      chatId: "channel",
+      threadId: undefined,
+    });
+  });
+
+  it("rejects the whole reply when a later chunk POST fails", async () => {
+    const send = vi.fn()
+      .mockResolvedValueOnce({ id: "discord-first" })
+      .mockRejectedValueOnce(new Error("second chunk rejected"));
+    const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;
+    Object.assign(adapter as any, {
+      _fetchTextChannel: vi.fn().mockResolvedValue({ send }),
+    });
+
+    await expect(adapter.sendText("channel", "abcdefgh", { chunkLimit: 4 }))
+      .rejects.toThrow("second chunk rejected");
+  });
+});
+
 describe("Discord inbound reaction listener", () => {
   it("registers add/remove and emits a sibling bot reaction", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-discord-reaction-"));
