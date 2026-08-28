@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  BACKEND_AUTH_CHECKS,
   checkAuthStatus,
   extractLoginHint,
   LOGIN_BACKEND_ALIASES,
@@ -108,6 +109,15 @@ describe("checkAuthStatus", () => {
     expect(await checkAuthStatus(LOGIN_FLOWS["claude-code"].authCheck!)).toBe("invalid");
     setAuthCheckRunnerForTests(async () => ({ code: 0, output: '{ "loggedIn": true, "email": "x@y" }' }));
     expect(await checkAuthStatus(LOGIN_FLOWS["claude-code"].authCheck!)).toBe("valid");
+  });
+
+  it("opencode: auth list requires at least one configured credential", async () => {
+    const check = BACKEND_AUTH_CHECKS.opencode;
+    expect(check.argv).toEqual(["opencode", "auth", "list"]);
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "└  0 credentials" }));
+    expect(await checkAuthStatus(check)).toBe("invalid");
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "└  1 credential" }));
+    expect(await checkAuthStatus(check)).toBe("valid");
   });
 
   it("timeout kills and runner failures are unknown, not logged-out", async () => {

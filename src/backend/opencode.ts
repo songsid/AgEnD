@@ -95,8 +95,21 @@ export class OpenCodeBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      { pattern: /rate.?limit|too many requests|429/i, type: "rate_limit", action: "failover", message: "Rate limit reached" },
-      { pattern: /auth.*error|unauthorized|401/i, type: "auth_error", action: "pause", message: "Authentication error" },
+      {
+        // Pane scrollback also contains the user's prose. Require OpenCode's
+        // decorated error-line prefix and token boundaries so IDs such as
+        // 14290/4012 cannot trigger recovery actions.
+        pattern: /^\s*(?:■|⚠️?|Error:)\s*[^\n]*\b(?:rate[ _-]?limit(?:ed|ing)?|too many requests|429)\b/im,
+        type: "rate_limit",
+        action: "failover",
+        message: "Rate limit reached",
+      },
+      {
+        pattern: /^\s*(?:■|⚠️?|Error:)\s*[^\n]*\b(?:auth(?:entication)?[ _-]?(?:error|failed|failure)|unauthorized|401)\b/im,
+        type: "auth_error",
+        action: "pause",
+        message: "Authentication error",
+      },
     ];
   }
 

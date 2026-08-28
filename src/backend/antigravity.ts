@@ -374,7 +374,7 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
         skipRecoveryWait: true,
       },
       { pattern: /RESOURCE_EXHAUSTED|quota/i, type: "quota", action: "notify", message: "Quota exhausted" },
-      { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "notify", message: "Antigravity authentication error — needs re-login" },
+      { pattern: /error.*authentication|UNAUTHENTICATED/i, type: "auth_error", action: "pause", message: "Antigravity authentication error — needs re-login" },
       // Model generation change pins the resumed session to a dead model placeholder
       // (e.g. MODEL_PLACEHOLDER_M264) → every message returns "unknown model key".
       // The CLI stays up, so this never self-recovers — force a fresh restart

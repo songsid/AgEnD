@@ -19,8 +19,8 @@ import { clearPausedMarker, hasPausedMarker, readPausedAt, writePausedMarker } f
 import { reportProviderRateLimit } from "./usage/provider-alerts.js";
 import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
-import { checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
-import { fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
+import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
+import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -137,6 +137,8 @@ export interface LifecycleContext {
   clearCancelButton(name: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
   verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
+  /** Test/integration seam for the non-LLM Claude quota second opinion. */
+  verifyClaudeQuota?(): Promise<ClaudeQuotaVerdict>;
   startStatuslineWatcher(name: string): void;
   stopStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void;
@@ -202,6 +204,9 @@ const AUTH_VERIFY_CACHE_MS = 60_000;
 const CODEX_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
 export type CodexQuotaVerdict = "available" | "exhausted" | "unknown";
 type CodexUsageResult = Omit<ProviderUsage, "id" | "name">;
+const CLAUDE_QUOTA_VERIFY_TIMEOUT_MS = 5_000;
+export type ClaudeQuotaVerdict = "available" | "exhausted" | "unknown";
+type ClaudeUsageResult = Omit<ProviderUsage, "id" | "name">;
 
 /**
  * Convert the live Codex usage row into a conservative quota verdict. A
@@ -243,6 +248,51 @@ export async function verifyCodexQuotaStatus(
   }
 }
 
+/**
+ * Convert a LIVE Claude usage API row into a conservative verdict. The
+ * provider can degrade to statusline data when the network/API is unavailable;
+ * that fallback is intentionally unknown because stale local limits cannot
+ * disprove a current API credit-balance error.
+ */
+export function claudeQuotaVerdictFromUsage(usage: ClaudeUsageResult): ClaudeQuotaVerdict {
+  if (usage.status !== "ok" || /statusline/i.test(usage.hint ?? "")) return "unknown";
+  const bounded = usage.metrics.filter(metric => {
+    if (typeof metric.used !== "number" || !Number.isFinite(metric.used)) return false;
+    if (metric.type === "percent") return true;
+    return metric.type === "dollars"
+      && typeof metric.limit === "number"
+      && Number.isFinite(metric.limit)
+      && metric.limit > 0;
+  });
+  if (bounded.length === 0) return "unknown";
+  const exhausted = bounded.some(metric => metric.type === "percent"
+    ? (metric.used ?? 0) >= 100
+    : (metric.used ?? 0) >= (metric.limit ?? Number.POSITIVE_INFINITY));
+  return exhausted ? "exhausted" : "available";
+}
+
+/** Run only the Claude usage provider, bounded independently of its network timeout. */
+export async function verifyClaudeQuotaStatus(
+  fetchUsage: () => Promise<ClaudeUsageResult> = fetchClaudeUsage,
+  timeoutMs = CLAUDE_QUOTA_VERIFY_TIMEOUT_MS,
+): Promise<ClaudeQuotaVerdict> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const usage = await Promise.race([
+      fetchUsage(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Claude quota verification timed out")), timeoutMs);
+        timer.unref?.();
+      }),
+    ]);
+    return claudeQuotaVerdictFromUsage(usage);
+  } catch {
+    return "unknown";
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
@@ -257,6 +307,8 @@ export class InstanceLifecycle {
   private authVerifyCache = new Map<string, { at: number; promise: Promise<"valid" | "invalid" | "unknown"> }>();
   /** Same-tick Codex quota alerts join one live usage probe. */
   private codexQuotaVerifyInFlight: Promise<CodexQuotaVerdict> | null = null;
+  /** Same-tick Claude quota alerts join one live usage probe. */
+  private claudeQuotaVerifyInFlight: Promise<ClaudeQuotaVerdict> | null = null;
   /**
    * Minimum gap between MCP-revival auto-restarts of one instance. Kept here —
    * not in the daemon — because each restart replaces the daemon object, which
@@ -320,11 +372,22 @@ export class InstanceLifecycle {
     return promise;
   }
 
+  private verifyClaudeQuota(): Promise<ClaudeQuotaVerdict> {
+    if (this.claudeQuotaVerifyInFlight) return this.claudeQuotaVerifyInFlight;
+    const verify = this.ctx.verifyClaudeQuota ?? (() => verifyClaudeQuotaStatus());
+    const promise = verify().catch(() => "unknown" as const);
+    this.claudeQuotaVerifyInFlight = promise;
+    void promise.finally(() => {
+      if (this.claudeQuotaVerifyInFlight === promise) this.claudeQuotaVerifyInFlight = null;
+    });
+    return promise;
+  }
+
   /** Same verification keyed by backend (used by startup pre-flight priming). */
   verifyBackendAuth(backend: string): Promise<"valid" | "invalid" | "unknown"> {
     const cached = this.authVerifyCache.get(backend);
     if (cached && Date.now() - cached.at < AUTH_VERIFY_CACHE_MS) return cached.promise;
-    const check = LOGIN_FLOWS[backend]?.authCheck;
+    const check = LOGIN_FLOWS[backend]?.authCheck ?? BACKEND_AUTH_CHECKS[backend];
     const promise = check ? checkAuthStatus(check) : Promise.resolve("unknown" as const);
     this.authVerifyCache.set(backend, { at: Date.now(), promise });
     return promise;
@@ -368,8 +431,11 @@ export class InstanceLifecycle {
     const scope = others.length
       ? `${affected.length} instances on \`${backend}\`: ${affected.join(", ")}`
       : `\`${name}\` (${backend})`;
+    const remedy = backend === "opencode"
+      ? "Run `opencode auth login` in a terminal, then wake the affected instance(s)."
+      : `Use \`/login ${backend}\` to re-login remotely.`;
     this.notifyIncident(notificationTarget, "auth_error",
-      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then. Use \`/login ${backend}\` to re-login remotely.`);
+      `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then. ${remedy}`);
   }
 
   /**
@@ -604,6 +670,22 @@ export class InstanceLifecycle {
         if (verdict === "unknown") {
           this.ctx.logger.warn({ name, backend: "codex" },
             "Codex quota verification failed or timed out — pausing conservatively");
+        }
+      }
+
+      // Claude's credit-balance message also remains in pane scrollback. Only
+      // a fresh usage API row can prove it stale; provider fallback to a local
+      // statusline, timeout, or missing credentials remains fail-closed.
+      if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "claude-code") {
+        const verdict = await this.verifyClaudeQuota();
+        if (verdict === "available") {
+          this.ctx.logger.debug({ name, backend: "claude-code" },
+            "quota pattern ignored — live usage has capacity (stale pane history)");
+          return;
+        }
+        if (verdict === "unknown") {
+          this.ctx.logger.warn({ name, backend: "claude-code" },
+            "Claude quota verification failed, degraded, or timed out — pausing conservatively");
         }
       }
 
