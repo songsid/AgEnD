@@ -612,6 +612,76 @@ export function extractProxyReplyText(pane: string, opts: {
   return text.length > maxChars ? text.slice(text.length - maxChars) : text;
 }
 
+export interface MalformedClaudeToolCallDetection {
+  /** Stable, non-secret fingerprint used to suppress a stale pane fragment. */
+  signature: string;
+  /** Sanitized reply argument, or null when only a dangling closing tag survived. */
+  text: string | null;
+}
+
+/**
+ * Find the narrow Claude XML failure signature reported in #648.
+ *
+ * This intentionally runs only at the daemon's busy→idle edge (the caller
+ * enforces that) and only scans output after the current inbound marker. A
+ * partial tool call while Claude is still streaming is therefore never acted
+ * on. The extracted argument goes through the same credential redaction as the
+ * dead-MCP pane proxy before it can leave the host.
+ */
+export function detectMalformedClaudeToolCall(pane: string, opts: {
+  inboundMarker?: string;
+  maxLines?: number;
+  maxChars?: number;
+} = {}): MalformedClaudeToolCallDetection | null {
+  let clean = pane
+    .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  const marker = opts.inboundMarker?.trim();
+  if (marker) {
+    const markerAt = clean.lastIndexOf(marker);
+    if (markerAt >= 0) clean = clean.slice(markerAt + marker.length);
+  }
+  const lines = clean.split(/\r?\n/).slice(-(opts.maxLines ?? 120));
+  const tail = lines.join("\n");
+  const closingTags = [...tail.matchAll(/<\/(?:parameter|invoke|function_calls)>/gi)];
+  if (closingTags.length === 0) return null;
+
+  const parameterOpen = /<parameter\b[^>]*\bname\s*=\s*["']text["'][^>]*>/gi;
+  const parameterOpens = [...tail.matchAll(parameterOpen)];
+  const open = parameterOpens.at(-1);
+  if (!open || open.index === undefined) {
+    // Base stale suppression on the XML artifact itself, not unrelated pane
+    // redraws appended after it. The occurrence counts still distinguish a
+    // genuinely new identical malformed call while both remain visible.
+    const signature = createHash("sha256")
+      .update(`0:${closingTags.length}:${closingTags.map(tag => tag[0].toLowerCase()).join(":")}`)
+      .digest("hex");
+    return { signature, text: null };
+  }
+
+  const contentAt = open.index + open[0].length;
+  const closeAt = tail.slice(contentAt).search(/<\/parameter>/i);
+  if (closeAt < 0) {
+    const signature = createHash("sha256")
+      .update(`${parameterOpens.length}:${closingTags.length}:${open[0]}`)
+      .digest("hex");
+    return { signature, text: null };
+  }
+  const fragment = tail.slice(contentAt, contentAt + closeAt);
+  // Fingerprint only the malformed XML artifact; never put its contents in logs.
+  const signature = createHash("sha256")
+    .update(`${parameterOpens.length}:${closingTags.length}:${open[0]}${fragment}</parameter>`)
+    .digest("hex");
+  let text = sanitizePaneTail(fragment, opts.maxLines ?? 120)
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (text.replace(/[^\p{L}\p{N}]/gu, "").length < 2) return { signature, text: null };
+  const maxChars = opts.maxChars ?? 12_000;
+  if (text.length > maxChars) text = text.slice(0, maxChars);
+  return { signature, text };
+}
+
 export type InteractivePromptKind = "sudo_password" | "password" | "confirmation" | "press_enter";
 
 export interface InteractivePromptDetection {
@@ -840,8 +910,12 @@ export class Daemon extends EventEmitter {
   // between, the agent's answer exists only on screen — the daemon relays it.
   private turnHadInbound = false;
   private turnOutboundDelivered = false;
+  /** Successful `reply` specifically; cross-instance tools do not satisfy #648. */
+  private turnReplyDelivered = false;
   private turnCorrelationId: string | undefined;
   private turnInboundMarker: string | undefined;
+  /** Prevent a visible stale XML fragment from being recovered on later turns. */
+  private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
@@ -2523,6 +2597,7 @@ export class Daemon extends EventEmitter {
     if (meta.from_instance || !meta.chat_id) return;
     this.turnHadInbound = true;
     this.turnOutboundDelivered = false;
+    this.turnReplyDelivered = false;
     this.turnCorrelationId = meta.correlation_id || undefined;
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
@@ -2539,18 +2614,49 @@ export class Daemon extends EventEmitter {
   private maybeProxyReplyOnTurnEnd(pane?: string): void {
     const hadInbound = this.turnHadInbound;
     const delivered = this.turnOutboundDelivered;
+    const replyDelivered = this.turnReplyDelivered;
     const correlationId = this.turnCorrelationId;
     const inboundMarker = this.turnInboundMarker;
     this.turnHadInbound = false;
     this.turnOutboundDelivered = false;
+    this.turnReplyDelivered = false;
     this.turnCorrelationId = undefined;
     this.turnInboundMarker = undefined;
-    if (!hadInbound || delivered || this.isPaused) return;
+    if (!hadInbound || this.isPaused) return;
+
+    // Claude sometimes prints a broken XML tool call as plain text and returns
+    // idle without ever invoking `reply`. This is independent of MCP liveness:
+    // the model malformed the call before the server could receive it.
+    if (!replyDelivered && this.isClaudeCodeBackend() && pane) {
+      const malformed = detectMalformedClaudeToolCall(pane, { inboundMarker });
+      if (malformed) {
+        const stale = malformed.signature === this.lastMalformedToolCallSignature;
+        this.lastMalformedToolCallSignature = malformed.signature;
+        if (!stale) {
+          const recovered = malformed.text != null;
+          this.logger.warn({ correlationId, recovered },
+            recovered
+              ? "Malformed Claude tool call detected — attempting to recover reply text"
+              : "Malformed Claude tool call detected — reply text could not be extracted");
+          this.emit("malformed_tool_call", { name: this.name, correlationId, recovered });
+          if (malformed.text) this.sendRecoveredMalformedReply(malformed.text, correlationId);
+        }
+        // Never let the broader dead-MCP fallback relay the XML/chrome too.
+        return;
+      }
+    }
+    if (delivered) return;
     // Opt-in: raw pane text can carry secrets past the regex redaction.
     if (this.config.mcp_proxy_reply !== true) return;
     // "dead" only: unknown means not started or exited cleanly — never proxy on it.
     if (mcpServerState(this.instanceDir).state !== "dead") return;
     void this.sendProxyReply(pane, inboundMarker, correlationId);
+  }
+
+  private isClaudeCodeBackend(): boolean {
+    return this.runtimeIdentity?.backend === "claude-code"
+      || this.config.backend === "claude-code"
+      || this.backend?.binaryName === "claude";
   }
 
   /** Relay the pane's final text to the channel, marked as a daemon proxy reply. */
@@ -2567,43 +2673,62 @@ export class Daemon extends EventEmitter {
       }
       let body = `⚠️ [MCP unavailable — proxy reply]\n\n${text}`;
       if (correlationId) body += `\n\n(correlation_id: ${correlationId})`;
-      const args: Record<string, unknown> = { text: body };
-      // Same context-bound routing as the reply tool in handleToolCall.
-      if (this.lastChatId) {
-        args.chat_id = this.lastChatId;
-        if (this.lastThreadId) args.thread_id = this.lastThreadId;
-      }
       this.logger.warn({ correlationId }, "MCP server dead and the turn sent no reply — relaying the pane text as a proxy reply");
       this.emit("mcp_proxy_reply", { name: this.name, correlationId });
-      const adapters = this.messageBus.getAllAdapters();
-      if (adapters.length > 0) {
-        routeToolCall(adapters[0], "reply", args, this.lastThreadId, (_result, error) => {
-          if (error) this.logger.error({ error }, "Dead-MCP proxy reply failed");
-        });
-        return;
-      }
-      if (!this.ipcServer) return;
-      const fleetReqId = `proxyreply_${++this.proxyReplySeq}`;
-      this.ipcServer.broadcast({
-        type: "fleet_outbound",
-        tool: "reply",
-        args,
-        fleetRequestId: fleetReqId,
-        adapterId: this.lastAdapterId,
-      });
-      const timeout = setTimeout(() => {
-        this.pendingIpcRequests.delete(fleetReqId);
-        this.logger.error("Dead-MCP proxy reply timed out waiting for the fleet manager");
-      }, daemonBudgetMs("reply"));
-      timeout.unref?.();
-      this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
-        clearTimeout(timeout);
-        if (respMsg.error) this.logger.error({ error: respMsg.error }, "Dead-MCP proxy reply failed");
-        else this.logger.info("Dead-MCP proxy reply delivered");
-      });
+      this.deliverDaemonReply(body, "proxyreply", "Dead-MCP proxy reply");
     } catch (err) {
       this.logger.error({ err: (err as Error).message }, "Dead-MCP proxy reply attempt failed");
     }
+  }
+
+  /** Send a narrowly extracted #648 reply; operator notification is a separate event. */
+  private sendRecoveredMalformedReply(text: string, correlationId: string | undefined): void {
+    try {
+      this.deliverDaemonReply(text, "malformedreply", "Malformed tool-call recovery");
+    } catch (err) {
+      this.logger.error({ err: (err as Error).message, correlationId }, "Malformed tool-call recovery attempt failed");
+    }
+  }
+
+  /** Context-bound reply path shared by dead-MCP and malformed-call recovery. */
+  private deliverDaemonReply(body: string, requestPrefix: string, logLabel: string): void {
+    const args: Record<string, unknown> = { text: body };
+    if (this.lastChatId) {
+      args.chat_id = this.lastChatId;
+      if (this.lastThreadId) args.thread_id = this.lastThreadId;
+    }
+    const adapters = this.messageBus.getAllAdapters();
+    if (adapters.length > 0) {
+      routeToolCall(adapters[0], "reply", args, this.lastThreadId, (_result, error) => {
+        if (error) this.logger.error({ error }, `${logLabel} failed`);
+        else this.logger.info(`${logLabel} delivered`);
+      });
+      return;
+    }
+    if (!this.ipcServer) {
+      this.logger.error(`${logLabel} failed — no adapter or fleet IPC route`);
+      return;
+    }
+    const fleetReqId = `${requestPrefix}_${++this.proxyReplySeq}`;
+    const timeout = setTimeout(() => {
+      this.pendingIpcRequests.delete(fleetReqId);
+      this.logger.error(`${logLabel} timed out waiting for the fleet manager`);
+    }, daemonBudgetMs("reply"));
+    timeout.unref?.();
+    // Register before broadcast: an in-process/fast adapter can answer in the
+    // same tick, and a waiter installed afterwards would miss that response.
+    this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+      clearTimeout(timeout);
+      if (respMsg.error) this.logger.error({ error: respMsg.error }, `${logLabel} failed`);
+      else this.logger.info(`${logLabel} delivered`);
+    });
+    this.ipcServer.broadcast({
+      type: "fleet_outbound",
+      tool: "reply",
+      args,
+      fleetRequestId: fleetReqId,
+      adapterId: this.lastAdapterId,
+    });
   }
 
   private clearInstanceStateIdleTimer(): void {
@@ -3729,6 +3854,7 @@ export class Daemon extends EventEmitter {
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_REPLY_TOOLS.has(tool)) {
         this.turnOutboundDelivered = true;
+        if (tool === "reply") this.turnReplyDelivered = true;
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error }) ?? false;
       if (!sent) {

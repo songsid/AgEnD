@@ -522,6 +522,18 @@ export class InstanceLifecycle {
         "MCP dead at turn end with no reply — daemon relayed the pane text to the channel");
     }, this.ctx.logger, `daemon.mcp_proxy_reply[${name}]`));
 
+    daemon.on("malformed_tool_call", safeHandler((data: { name: string; correlationId?: string; recovered: boolean }) => {
+      this.ctx.eventLog?.insert(name, "malformed_tool_call", {
+        correlationId: data.correlationId,
+        recovered: data.recovered,
+      });
+      const notificationTarget = this.ptyErrorNotificationTarget(name);
+      if (notificationTarget) {
+        this.notifyIncident(notificationTarget, "malformed_tool_call",
+          t(data.recovered ? "inst.malformed_tool_call_recovered" : "inst.malformed_tool_call_unrecoverable", name));
+      }
+    }, this.ctx.logger, `daemon.malformed_tool_call[${name}]`));
+
     daemon.on("mcp_restart_requested", safeHandler((data: { name: string; trigger: string }) => {
       // The daemon object dies with the restart it asks for, so the loop guard
       // lives here: if the previous auto-restart was under the cooldown, the new
