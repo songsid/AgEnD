@@ -76,6 +76,58 @@ describe("fatal startup dialogs", () => {
     }
   });
 
+  it("blocks delivery while parked on the fatal modal — paste is never called", async () => {
+    const { daemon, instanceDir } = makeDaemon();
+    try {
+      const sendSpecialKey = vi.fn();
+      const sendKeys = vi.fn();
+      const pasteMultiline = vi.fn();
+      (daemon as any).tmux = {
+        capturePane: async () => CORRUPT_CONFIG_MODAL,
+        isWindowAlive: async () => true,
+        sendSpecialKey,
+        sendKeys,
+        pasteMultiline,
+      };
+      const failed: any[] = [];
+      daemon.on("message_failed", e => failed.push(e));
+      daemon.on("pty_error", () => { /* swallow — pause handler lives in the lifecycle, not here */ });
+
+      // The startup scan parks on the fatal modal…
+      await (daemon as any).dismissDialogsUntilReady(2);
+
+      // …and a queued delivery racing the (async, not-yet-applied) pause must
+      // be refused before any pane write, with ❌ so the sender knows.
+      const status = { chatId: "chat-1", messageId: "msg-1" };
+      const delivered = await (daemon as any).deliverMessage("hello agent", status, {});
+      expect(delivered).toBe(false);
+      expect(failed).toEqual([status]);
+      expect(sendSpecialKey).not.toHaveBeenCalled();
+      expect(sendKeys).not.toHaveBeenCalled();
+      expect(pasteMultiline).not.toHaveBeenCalled();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("clears the delivery block once a scan reaches a real ready prompt", async () => {
+    const { daemon, instanceDir } = makeDaemon();
+    try {
+      let pane = CORRUPT_CONFIG_MODAL;
+      (daemon as any).tmux = { capturePane: async () => pane, isWindowAlive: async () => true };
+      daemon.on("pty_error", () => { /* swallow */ });
+      await (daemon as any).dismissDialogsUntilReady(2);
+      expect((daemon as any).fatalStartupBlocked).toBe(true);
+
+      // User fixed claude.json; the respawned CLI reaches its prompt.
+      pane = "claude ready\n❯ Try a prompt";
+      expect(await (daemon as any).dismissDialogsUntilReady(2)).toBe(true);
+      expect((daemon as any).fatalStartupBlocked).toBe(false);
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
   it("a normal ready pane emits nothing", async () => {
     const { daemon, instanceDir } = makeDaemon();
     try {
