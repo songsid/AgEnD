@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -38,56 +38,39 @@ function sleepSync(ms: number): void {
  * can be attributed. Returns the token to release with, or null when the lock
  * could not be acquired within the retry budget.
  *
- * Reclaim rule: only a lock whose recorded owner PID is dead is reclaimed — an
- * mtime cutoff alone would reap the lock of a live holder stalled past the
- * cutoff by suspend or IO. A lock whose content can't be read yet (holder
- * crashed inside writeFileSync's sub-ms create-then-write window) falls back
- * to a deliberately generous 60s mtime cutoff. The reclaim itself is a rename
- * to a unique name, so of several waiters that judged the same holder dead
- * exactly one wins; content is re-checked after the rename in case the lock
- * was already reclaimed and re-acquired by a live process in between, and a
- * wrongly taken live lock is restored with link() (which, unlike rename,
- * refuses to replace an existing newer lock).
+ * A held lock is NEVER auto-reclaimed. Reclaiming under concurrency cannot be
+ * made atomic with the primitives available (rename/link both leave a window
+ * where a reclaimed-and-reacquired live lock gets stolen), and every claude.json
+ * update is best-effort with a fallback — a skipped trust write is picked up by
+ * the startup-dialog dismisser. A lock left by a crashed holder therefore means
+ * skipped updates until it is removed manually (delete the .agend.lock file);
+ * the crash window is one writeFileSync inside a ~1ms critical section. When
+ * the recorded owner PID is verifiably dead we skip immediately instead of
+ * burning the whole retry budget waiting for a release that can never come.
  */
-export function acquireClaudeJsonLock(lockPath: string, maxAttempts = 120): string | null {
+export function acquireClaudeJsonLock(lockPath: string, maxAttempts = 40): string | null {
   const token = `${process.pid}.${Math.random().toString(16).slice(2)}`;
   const payload = JSON.stringify({ pid: process.pid, token });
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       writeFileSync(lockPath, payload, { flag: "wx", mode: 0o600 });
       return token;
-    } catch { /* already held — fall through to the liveness check */ }
+    } catch { /* already held — fall through to the holder check */ }
 
-    let holderRaw: string;
-    try { holderRaw = readFileSync(lockPath, "utf-8"); } catch { continue; /* lock vanished — retry the create now */ }
-
-    let ownerDead = false;
     let ownerPid: number | null = null;
-    try { ownerPid = Number((JSON.parse(holderRaw) as { pid?: unknown }).pid) || null; } catch { /* content not written yet */ }
+    try {
+      ownerPid = Number((JSON.parse(readFileSync(lockPath, "utf-8")) as { pid?: unknown }).pid) || null;
+    } catch { continue; /* vanished (retry the create now) or content not written yet (retry) */ }
     if (ownerPid !== null) {
-      try { process.kill(ownerPid, 0); } catch (err) {
-        // ESRCH = no such process. EPERM means alive under another user.
-        ownerDead = (err as NodeJS.ErrnoException).code === "ESRCH";
+      try {
+        process.kill(ownerPid, 0);
+      } catch (err) {
+        // ESRCH = the holder is dead and will never release — give up now.
+        // EPERM means alive under another user: keep waiting like any holder.
+        if ((err as NodeJS.ErrnoException).code === "ESRCH") return null;
       }
-    } else {
-      try { ownerDead = Date.now() - statSync(lockPath).mtimeMs > 60_000; } catch { continue; }
     }
-
-    if (!ownerDead) { sleepSync(25); continue; }
-
-    const stealPath = `${lockPath}.stale.${process.pid}.${Math.random().toString(16).slice(2)}`;
-    try { renameSync(lockPath, stealPath); } catch { continue; /* another waiter won the steal */ }
-    let stolenRaw: string | null = null;
-    try { stolenRaw = readFileSync(stealPath, "utf-8"); } catch { /* treat as not ours to judge */ }
-    if (stolenRaw !== holderRaw) {
-      // Between our read and the rename the dead lock was reclaimed and a live
-      // process locked afresh — we took a live holder's lock. Put it back;
-      // link() fails with EEXIST rather than clobbering if an even newer lock
-      // appeared meanwhile (that residual triple-race can at worst cost one
-      // holder its exclusion, degrading to a lost update — never corruption).
-      try { linkSync(stealPath, lockPath); } catch { /* newer lock exists — leave it */ }
-    }
-    try { unlinkSync(stealPath); } catch { /* best effort */ }
+    sleepSync(25);
   }
   return null;
 }

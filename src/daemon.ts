@@ -938,6 +938,15 @@ export class Daemon extends EventEmitter {
   private loginScreenReported = false;
   /** A fatal startup screen (see StartupDialog.fatal) was already reported this run. */
   private fatalStartupReported = false;
+  /**
+   * The CLI is parked on a fatal startup screen and every pane write must be
+   * refused. This is deliberately separate from the pause that the reported
+   * pty_error triggers: the pause is applied by an async handler, and a queued
+   * delivery would race it into the modal (where paste+Enter can confirm
+   * "Exit and fix manually"). Set synchronously at dialog-match time; cleared
+   * when a startup scan reaches a real ready prompt, or on wake().
+   */
+  private fatalStartupBlocked = false;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
   /**
@@ -2472,6 +2481,7 @@ export class Daemon extends EventEmitter {
     this.authFailureUnresolved = false;
     this.loginScreenReported = false;
     this.fatalStartupReported = false;
+    this.fatalStartupBlocked = false;
     if (this.pauseWakeState === "active") return;
     if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
     if (this.getPauseWakeState() === "active") return;
@@ -3462,6 +3472,7 @@ export class Daemon extends EventEmitter {
     // Before anything reads the window id: a spawn in progress is about to change it.
     await this.waitForSpawnToSettle();
     if (cancelled()) return false;
+    if (this.refuseFatalStartupDelivery(status)) return false;
 
     let windowId = this.getWindowId();
 
@@ -3504,8 +3515,26 @@ export class Daemon extends EventEmitter {
     // that would let the pane go idle again.
     return this.paneWriteLock.run(async () => {
       if (cancelled()) return false;
+      // Re-checked here because the flag can be set during the waits above
+      // (a spawn's dialog scan runs concurrently with a queued delivery).
+      if (this.refuseFatalStartupDelivery(status)) return false;
       return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
     });
+  }
+
+  /**
+   * While the CLI is parked on a fatal startup screen (see fatalStartupBlocked),
+   * no pane write may happen: paste+Enter into the corrupt-config modal would
+   * confirm "Exit and fix manually" and exit the CLI. The message is failed (❌)
+   * rather than held — the accompanying config_error notification tells the user
+   * what to fix, and holding would only build a queue that floods the pane the
+   * moment the flag clears.
+   */
+  private refuseFatalStartupDelivery(status?: { chatId: string; messageId: string }): boolean {
+    if (!this.fatalStartupBlocked) return false;
+    this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
+    if (status) this.emit("message_failed", status); // ❌
+    return true;
   }
 
   /**
@@ -4478,7 +4507,10 @@ export class Daemon extends EventEmitter {
     // but a startup crash would already be caught by waitForOutput/waitForIdle above.
     if (!await this.tmux!.isWindowAlive()) return false;
     const ready = await this.dismissDialogsUntilReady(3);
-    if (ready) this.firstDeliveryDelay.recordReady();
+    // A fatal startup screen returns true (the spawn is over — respawning
+    // would only re-show the same screen) but is NOT ready-for-delivery:
+    // fatalStartupBlocked gates every pane write in deliverMessage.
+    if (ready && !this.fatalStartupBlocked) this.firstDeliveryDelay.recordReady();
     return ready;
   }
 
@@ -4512,6 +4544,10 @@ export class Daemon extends EventEmitter {
             // stop the retry loop — like the sign-in screen case below, only a
             // human fixing the config ends this state.
             if (dialog.fatal) {
+              // Block deliveries BEFORE the emit: the pty_error pause handler
+              // is async, and a queued message would otherwise win the race
+              // and be pasted into the modal.
+              this.fatalStartupBlocked = true;
               if (!this.fatalStartupReported) {
                 this.fatalStartupReported = true;
                 this.logger.warn({ description: dialog.description }, "Fatal startup screen detected — reporting instead of dismissing");
@@ -4548,7 +4584,13 @@ export class Daemon extends EventEmitter {
         if (matched) continue;
 
         // CLI is ready (pattern defined by each backend)
-        if (this.backend!.getReadyPattern().test(pane)) return true;
+        if (this.backend!.getReadyPattern().test(pane)) {
+          // A real ready prompt (with no fatal dialog on screen — those are
+          // matched above, before this check) means the fatal screen is gone,
+          // e.g. the user fixed the config and the instance respawned.
+          this.fatalStartupBlocked = false;
+          return true;
+        }
 
         // A CLI parked at its own sign-in screen is an AUTH incident: no dialog
         // key can dismiss it and no ready pattern will ever appear. Report it as

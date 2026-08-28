@@ -279,14 +279,20 @@ describe("ClaudeCodeBackend", () => {
       expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
     });
 
-    it("reclaims a stale lock whose owner PID is dead", () => {
+    it("never reclaims a stale lock — skips the write and gives up fast on a dead owner", () => {
       const deadPid = spawnSync("true").pid;
       expect(deadPid).toBeGreaterThan(0);
       writeFileSync(lockPath(), JSON.stringify({ pid: deadPid, token: "stale" }));
+      const started = Date.now();
+      // A huge budget must not matter: a dead owner is detected on the first
+      // check and the acquire returns immediately instead of spinning it down.
+      expect(acquireClaudeJsonLock(lockPath(), 100_000)).toBeNull();
+      expect(Date.now() - started).toBeLessThan(1_000);
       new ClaudeCodeBackend(TEST_DIR).preTrust(WORK_DIR);
-      const cfg = JSON.parse(readFileSync(claudeJson(), "utf-8"));
-      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
-      expect(existsSync(lockPath())).toBe(false);
+      // The write was skipped (startup dialog dismisser is the fallback), the
+      // stale lock left for manual removal, the config untouched.
+      expect(existsSync(claudeJson())).toBe(false);
+      expect(readFileSync(lockPath(), "utf-8")).toContain("stale");
     });
 
     it("does not reclaim a live holder's lock", () => {
