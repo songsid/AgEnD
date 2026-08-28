@@ -212,7 +212,16 @@ export class ClaudeCodeBackend implements CliBackend {
       // A bad /model choice previously failed silently (live-reported): the CLI
       // prints these and idles without answering. notify (not restart): the
       // session is healthy, only the model selection needs changing.
-      { pattern: /\[claude-code:unrecognized_model\]|There's an issue with the selected model/i, type: "model_error", action: "notify", message: "Model unavailable or unrecognized — use /model to pick another" },
+      {
+        // Claude 2.1.250 emits `unrecognized_model` for an unknown ID and
+        // `model_access` / the plan sentence when the ID exists but the
+        // account is not entitled to it. Keep the prose alternatives narrow:
+        // the error monitor also sees normal conversation in pane scrollback.
+        pattern: /\[claude-code:(?:unrecognized_model|model_access)\]|There's an issue with the selected model|\bis not available on your [^\n]{0,80},\s*or ask your admin to enable this model/i,
+        type: "model_error",
+        action: "notify",
+        message: "Selected Claude model unavailable — Claude Code may be using a fallback; use /model to choose another",
+      },
       { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
       { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },
     ];

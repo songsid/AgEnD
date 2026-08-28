@@ -6,7 +6,9 @@ import {
   parseContextPercent,
   parseTokenContextRatio,
   readStatuslineContextPct,
+  readStatuslineModel,
   resolveInstanceContext,
+  TopicCommands,
 } from "../src/topic-commands.js";
 
 describe("context parsers for kiro / grok / codex", () => {
@@ -59,6 +61,42 @@ describe("resolveInstanceContext", () => {
     expect(readStatuslineContextPct(dataDir, inst)).toBeCloseTo(41.2);
     const { context } = resolveInstanceContext(dataDir, inst, "claude-code", { bypassCache: true });
     expect(context).toBeCloseTo(41.2);
+  });
+
+  it("reads Claude's actually active model from statusline.json", () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "model-resolve-"));
+    const inst = "claude-bot";
+    mkdirSync(join(dataDir, "instances", inst), { recursive: true });
+    writeFileSync(
+      join(dataDir, "instances", inst, "statusline.json"),
+      JSON.stringify({ model: { id: "claude-sonnet-5", display_name: "Sonnet 5" } }),
+    );
+    expect(readStatuslineModel(dataDir, inst)).toBe("Sonnet 5 (claude-sonnet-5)");
+  });
+
+  it("/ctx prefers Claude's live model over the configured rejected model", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "ctx-live-model-"));
+    const inst = "claude-bot";
+    mkdirSync(join(dataDir, "instances", inst), { recursive: true });
+    writeFileSync(
+      join(dataDir, "instances", inst, "statusline.json"),
+      JSON.stringify({
+        context_window: { used_percentage: 12 },
+        model: { id: "claude-sonnet-5", display_name: "Sonnet 5" },
+      }),
+    );
+    const commands = new TopicCommands({
+      dataDir,
+      fleetConfig: {
+        defaults: {},
+        instances: { [inst]: { backend: "claude-code", model: "claude-opus-4-6[1m]" } },
+      },
+      modelDisplayForInstance: () => "claude-opus-4-6[1m]",
+    } as any);
+
+    const text = await commands.getCtxText(inst);
+    expect(text).toContain("Sonnet 5 (claude-sonnet-5)");
+    expect(text).not.toContain("claude-opus-4-6[1m]");
   });
 
   it("clamps a trusted statusline reading to the user-visible range", () => {

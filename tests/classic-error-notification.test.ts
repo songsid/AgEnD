@@ -1,4 +1,7 @@
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
@@ -11,6 +14,7 @@ import {
 
 function makeLifecycle(classicNames: string[]) {
   const notifyInstanceTopic = vi.fn();
+  const dataDir = mkdtempSync(join(tmpdir(), "agend-incident-"));
   const ctx = {
     fleetConfig: {
       defaults: { backend: "kiro-cli" },
@@ -20,6 +24,7 @@ function makeLifecycle(classicNames: string[]) {
       },
     },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    dataDir,
     eventLog: { insert: vi.fn() },
     isPlannedRestart: () => false,
     isClassicInstance: (name: string) => classicNames.includes(name),
@@ -38,7 +43,7 @@ function makeLifecycle(classicNames: string[]) {
     lifecycle.attachIncidentHandlers(name, daemon);
     return daemon;
   };
-  return { attach, notifyInstanceTopic };
+  return { attach, notifyInstanceTopic, ctx, dataDir };
 }
 
 describe("PTY error notification targets", () => {
@@ -76,6 +81,29 @@ describe("PTY error notification targets", () => {
     expect(notifyInstanceTopic).toHaveBeenCalledWith(
       "worker",
       expect.stringMatching(/worker.*Model unavailable/s),
+    );
+  });
+
+  it("reports Claude's live fallback model when a configured model is unavailable", () => {
+    const { attach, notifyInstanceTopic, ctx, dataDir } = makeLifecycle([]);
+    (ctx as any).fleetConfig.instances.worker.backend = "claude-code";
+    const instanceDir = join(dataDir, "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "statusline.json"), JSON.stringify({
+      model: { id: "claude-sonnet-5", display_name: "Sonnet 5" },
+    }));
+    const daemon = attach("worker");
+
+    daemon.emit("pty_error", {
+      name: "worker",
+      type: "model_error",
+      action: "notify",
+      message: "Selected Claude model unavailable",
+    });
+
+    expect(notifyInstanceTopic).toHaveBeenCalledWith(
+      "worker",
+      expect.stringMatching(/currently using Sonnet 5 \(claude-sonnet-5\).*\/model/s),
     );
   });
 

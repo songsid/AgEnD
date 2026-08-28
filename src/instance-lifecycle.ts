@@ -5,7 +5,7 @@ import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
 import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
-import { sanitizeInstanceName } from "./topic-commands.js";
+import { readStatuslineModel, sanitizeInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
@@ -620,6 +620,14 @@ export class InstanceLifecycle {
       }
 
       const emoji = data.type === "rate_limit" || data.type === "timeout" ? "⏳" : data.type === "auth_error" ? "🔑" : "⚠️";
+      const incidentMessage = data.type === "model_error" && this.backendOf(name) === "claude-code"
+        ? (() => {
+          const liveModel = readStatuslineModel(this.ctx.dataDir, name);
+          return liveModel
+            ? t("inst.claude_model_fallback", liveModel)
+            : t("inst.claude_model_unavailable");
+        })()
+        : data.message;
       const notificationTarget = this.ptyErrorNotificationTarget(name);
       // Auth failures are a property of the BACKEND's shared credentials, not of
       // one instance: every instance on that CLI fails at once, and one re-login
@@ -628,7 +636,7 @@ export class InstanceLifecycle {
       if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
       } else if (notificationTarget) {
-        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, data.message, data.action));
+        this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
 

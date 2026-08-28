@@ -29,8 +29,11 @@ describe("claude error patterns", () => {
     const modelError = patterns.find(ep => ep.type === "model_error")!;
     expect(modelError.action).toBe("notify");
     expect(modelError.pattern.test("API Error: 404 [claude-code:unrecognized_model] not found")).toBe(true);
+    expect(modelError.pattern.test("API Error: 403 [claude-code:model_access] forbidden")).toBe(true);
     expect(modelError.pattern.test("There's an issue with the selected model.")).toBe(true);
+    expect(modelError.pattern.test("Claude Opus is not available on your plan, or ask your admin to enable this model.")).toBe(true);
     expect(modelError.pattern.test("normal conversation about models")).toBe(false);
+    expect(modelError.pattern.test("model access can vary by account")).toBe(false);
   });
 
   it("auth expiry pauses instead of merely notifying", () => {
