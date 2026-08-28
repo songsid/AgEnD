@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, realpathSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, realpathSync, statSync, chmodSync } from "node:fs";
 import { join } from "node:path";
-import { ClaudeCodeBackend } from "../../src/backend/claude-code.js";
+import { spawnSync } from "node:child_process";
+import { ClaudeCodeBackend, acquireClaudeJsonLock, releaseClaudeJsonLock } from "../../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
 import { isModelCompatible, validateModel } from "../../src/backend/types.js";
 
@@ -249,6 +250,101 @@ describe("ClaudeCodeBackend", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       backend.preTrust(WORK_DIR);
       expect(existsSync(`${claudeJson()}.agend.lock`)).toBe(false);
+    });
+  });
+
+  describe("claude.json permissions and locking", () => {
+    const claudeJson = () => join(CLAUDE_DIR, ".claude.json");
+    const lockPath = () => `${claudeJson()}.agend.lock`;
+
+    it("creates claude.json with mode 0600", () => {
+      new ClaudeCodeBackend(TEST_DIR).preTrust(WORK_DIR);
+      expect(statSync(claudeJson()).mode & 0o777).toBe(0o600);
+    });
+
+    it("restores mode 0600 when mutating a group-readable claude.json", () => {
+      writeFileSync(claudeJson(), JSON.stringify({ projects: {} }));
+      chmodSync(claudeJson(), 0o644);
+      new ClaudeCodeBackend(TEST_DIR).preTrust(WORK_DIR);
+      expect(statSync(claudeJson()).mode & 0o777).toBe(0o600);
+      const cfg = JSON.parse(readFileSync(claudeJson(), "utf-8"));
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+    });
+
+    it("creates a missing config parent directory instead of degrading to an unlocked write", () => {
+      const nested = join(CLAUDE_DIR, "nested", "deeper");
+      process.env.CLAUDE_CONFIG_DIR = nested;
+      new ClaudeCodeBackend(TEST_DIR).preTrust(WORK_DIR);
+      const cfg = JSON.parse(readFileSync(join(nested, ".claude.json"), "utf-8"));
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+    });
+
+    it("reclaims a stale lock whose owner PID is dead", () => {
+      const deadPid = spawnSync("true").pid;
+      expect(deadPid).toBeGreaterThan(0);
+      writeFileSync(lockPath(), JSON.stringify({ pid: deadPid, token: "stale" }));
+      new ClaudeCodeBackend(TEST_DIR).preTrust(WORK_DIR);
+      const cfg = JSON.parse(readFileSync(claudeJson(), "utf-8"));
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+      expect(existsSync(lockPath())).toBe(false);
+    });
+
+    it("does not reclaim a live holder's lock", () => {
+      writeFileSync(lockPath(), JSON.stringify({ pid: process.pid, token: "held-by-live-process" }));
+      expect(acquireClaudeJsonLock(lockPath(), 3)).toBeNull();
+      expect(readFileSync(lockPath(), "utf-8")).toContain("held-by-live-process");
+    });
+
+    it("acquires with a 0600 lock and releases only with the right token", () => {
+      const token = acquireClaudeJsonLock(lockPath(), 3);
+      expect(token).toBeTruthy();
+      expect(statSync(lockPath()).mode & 0o777).toBe(0o600);
+      releaseClaudeJsonLock(lockPath(), "wrong-token");
+      expect(existsSync(lockPath())).toBe(true);
+      releaseClaudeJsonLock(lockPath(), token!);
+      expect(existsSync(lockPath())).toBe(false);
+    });
+  });
+
+  describe("getStartupDialogs", () => {
+    // Both screens captured live from Claude Code 2.1.250 in tmux.
+    const CORRUPT_MODAL = [
+      "  Configuration error",
+      "  The configuration file at /tmp/some/dir/.claude.json contains invalid JSON.",
+      "  JSON Parse error: Expected '}'",
+      "  Choose an option:",
+      "  ❯ 1. Exit and fix manually",
+      "    2. Reset with default configuration",
+      "  Enter to confirm · Esc to cancel",
+    ].join("\n");
+    const TRUST_DIALOG = [
+      " Accessing workspace:",
+      " /tmp/some/dir/work",
+      " Quick safety check: Is this a project you created or one you trust?",
+      " Claude Code'll be able to read, edit, and execute files here.",
+      " Security guide",
+      " ❯ No, exit",
+      "   Yes, I trust this folder",
+      " Enter to confirm · Esc to cancel",
+    ].join("\n");
+
+    const firstMatch = (pane: string) =>
+      new ClaudeCodeBackend(TEST_DIR).getStartupDialogs().find(d => d.pattern.test(pane));
+
+    it("matches the corrupt-config modal as a fatal config_error before any dismiss pattern", () => {
+      const dialog = firstMatch(CORRUPT_MODAL);
+      expect(dialog?.fatal).toEqual(expect.objectContaining({ type: "config_error", action: "pause" }));
+      expect(dialog?.keys).toEqual([]);
+    });
+
+    it("the corrupt-config modal would satisfy the ready pattern — why it must be fatal", () => {
+      expect(new ClaudeCodeBackend(TEST_DIR).getReadyPattern().test(CORRUPT_MODAL)).toBe(true);
+    });
+
+    it("navigates the trust dialog to 'Yes' instead of Enter-confirming the selected 'No, exit'", () => {
+      const dialog = firstMatch(TRUST_DIALOG);
+      expect(dialog?.keys).toEqual(["Down", "Enter"]);
+      expect(dialog?.description).toContain("trust");
     });
   });
 

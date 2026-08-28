@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -34,31 +34,93 @@ function sleepSync(ms: number): void {
 }
 
 /**
- * Read-modify-write claude.json under a best-effort lock file, so concurrent
- * instance spawns don't drop each other's updates, then replace it via atomic
- * rename so a reader never sees a torn file. `mutate` returns false to skip
- * the write. An existing-but-unparseable file is left untouched — never
- * clobber the user's whole config over a parse error; the startup-dialog
- * auto-dismiss in getStartupDialogs() remains the fallback in that case.
+ * Take `lockPath` via exclusive create, recording {pid, token} so a stale lock
+ * can be attributed. Returns the token to release with, or null when the lock
+ * could not be acquired within the retry budget.
+ *
+ * Reclaim rule: only a lock whose recorded owner PID is dead is reclaimed — an
+ * mtime cutoff alone would reap the lock of a live holder stalled past the
+ * cutoff by suspend or IO. A lock whose content can't be read yet (holder
+ * crashed inside writeFileSync's sub-ms create-then-write window) falls back
+ * to a deliberately generous 60s mtime cutoff. The reclaim itself is a rename
+ * to a unique name, so of several waiters that judged the same holder dead
+ * exactly one wins; content is re-checked after the rename in case the lock
+ * was already reclaimed and re-acquired by a live process in between, and a
+ * wrongly taken live lock is restored with link() (which, unlike rename,
+ * refuses to replace an existing newer lock).
+ */
+export function acquireClaudeJsonLock(lockPath: string, maxAttempts = 120): string | null {
+  const token = `${process.pid}.${Math.random().toString(16).slice(2)}`;
+  const payload = JSON.stringify({ pid: process.pid, token });
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      writeFileSync(lockPath, payload, { flag: "wx", mode: 0o600 });
+      return token;
+    } catch { /* already held — fall through to the liveness check */ }
+
+    let holderRaw: string;
+    try { holderRaw = readFileSync(lockPath, "utf-8"); } catch { continue; /* lock vanished — retry the create now */ }
+
+    let ownerDead = false;
+    let ownerPid: number | null = null;
+    try { ownerPid = Number((JSON.parse(holderRaw) as { pid?: unknown }).pid) || null; } catch { /* content not written yet */ }
+    if (ownerPid !== null) {
+      try { process.kill(ownerPid, 0); } catch (err) {
+        // ESRCH = no such process. EPERM means alive under another user.
+        ownerDead = (err as NodeJS.ErrnoException).code === "ESRCH";
+      }
+    } else {
+      try { ownerDead = Date.now() - statSync(lockPath).mtimeMs > 60_000; } catch { continue; }
+    }
+
+    if (!ownerDead) { sleepSync(25); continue; }
+
+    const stealPath = `${lockPath}.stale.${process.pid}.${Math.random().toString(16).slice(2)}`;
+    try { renameSync(lockPath, stealPath); } catch { continue; /* another waiter won the steal */ }
+    let stolenRaw: string | null = null;
+    try { stolenRaw = readFileSync(stealPath, "utf-8"); } catch { /* treat as not ours to judge */ }
+    if (stolenRaw !== holderRaw) {
+      // Between our read and the rename the dead lock was reclaimed and a live
+      // process locked afresh — we took a live holder's lock. Put it back;
+      // link() fails with EEXIST rather than clobbering if an even newer lock
+      // appeared meanwhile (that residual triple-race can at worst cost one
+      // holder its exclusion, degrading to a lost update — never corruption).
+      try { linkSync(stealPath, lockPath); } catch { /* newer lock exists — leave it */ }
+    }
+    try { unlinkSync(stealPath); } catch { /* best effort */ }
+  }
+  return null;
+}
+
+/** Release a lock taken by acquireClaudeJsonLock, only if we still own it. */
+export function releaseClaudeJsonLock(lockPath: string, token: string): void {
+  try {
+    const holder = JSON.parse(readFileSync(lockPath, "utf-8")) as { token?: unknown };
+    if (holder.token === token) unlinkSync(lockPath);
+  } catch { /* already gone or replaced — nothing of ours to release */ }
+}
+
+/**
+ * Read-modify-write claude.json under a lock file, so concurrent instance
+ * spawns don't drop each other's updates, then replace it via atomic rename so
+ * a reader never sees a torn file. The file and its lock are created 0600 —
+ * claude.json holds OAuth account data, and the rename would otherwise replace
+ * the CLI's own 0600 file with the temp file's default 0644/umask mode.
+ * `mutate` returns false to skip the write. If the lock cannot be acquired the
+ * update is SKIPPED, never performed unlocked (last-write-wins against a
+ * concurrent holder could drop that holder's entry); an existing-but-
+ * unparseable file is likewise left untouched — never clobber the user's whole
+ * config over a parse error. Both give up to the getStartupDialogs() fallback.
  */
 function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): void {
   const path = claudeJsonPath();
+  // The parent must exist before both the lock create and the rename — on a
+  // fresh machine (no ~/.claude.json yet) an ENOENT here previously made every
+  // lock attempt fail, silently degrading to unlocked last-write-wins.
+  mkdirSync(dirname(path), { recursive: true });
   const lockPath = `${path}.agend.lock`;
-  let locked = false;
-  for (let i = 0; i < 40 && !locked; i++) {
-    try {
-      closeSync(openSync(lockPath, "wx"));
-      locked = true;
-    } catch {
-      try {
-        // A holder that died leaves the lock behind; 2s is far beyond one update.
-        if (Date.now() - statSync(lockPath).mtimeMs > 2000) { unlinkSync(lockPath); continue; }
-      } catch { continue; /* lock vanished between open and stat — retry now */ }
-      sleepSync(25);
-    }
-  }
-  // Proceed even without the lock: the atomic rename keeps the file intact,
-  // and the worst case is a lost update, which the dialog fallback covers.
+  const token = acquireClaudeJsonLock(lockPath);
+  if (token === null) return;
   try {
     let cfg: Record<string, unknown> = {};
     let raw: string | null = null;
@@ -71,16 +133,16 @@ function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): vo
       } catch { return; }
     }
     if (!mutate(cfg)) return;
-    mkdirSync(dirname(path), { recursive: true });
     const tempPath = join(dirname(path), `.claude.json.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`);
     try {
-      writeFileSync(tempPath, JSON.stringify(cfg, null, 2), { flag: "wx" });
+      writeFileSync(tempPath, JSON.stringify(cfg, null, 2), { flag: "wx", mode: 0o600 });
+      chmodSync(tempPath, 0o600); // mode above is masked by umask; make 0600 unconditional
       renameSync(tempPath, path);
     } finally {
       try { unlinkSync(tempPath); } catch { /* already renamed */ }
     }
   } finally {
-    if (locked) { try { unlinkSync(lockPath); } catch { /* best effort */ } }
+    releaseClaudeJsonLock(lockPath, token);
   }
 }
 
@@ -290,10 +352,31 @@ export class ClaudeCodeBackend implements CliBackend {
 
   getStartupDialogs(): StartupDialog[] {
     return [
+      // A corrupt claude.json shows a modal whose only options are "1. Exit and
+      // fix manually" / "2. Reset with default configuration" (captured live on
+      // 2.1.250). Neither is dismissable in a useful direction: Enter exits
+      // (crash loop), reset wipes the user's config. The modal's ❯ selector
+      // would satisfy the ready pattern, so without this entry the instance
+      // reports ready and queued messages get typed into the modal. Must stay
+      // FIRST so no dismiss pattern grabs the pane before it.
+      {
+        pattern: /Configuration error[\s\S]{0,800}?contains invalid JSON/,
+        keys: [],
+        description: "Claude corrupt-config modal — not dismissable, reporting config_error",
+        fatal: { type: "config_error", action: "pause", message: "claude.json is corrupt — Claude Code cannot start. Fix or remove the file (Claude backs the corrupt copy up under <config>/backups/), then wake the instance." },
+      },
       // Session resume prompt must be checked BEFORE ready pattern, because ❯ in
       // "❯ 1. Resume from summary" would falsely match the ready pattern /❯/.
       { pattern: /Resume from summary \(recommended\)/, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'" },
       { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Claude 'No, exit' confirmation — navigate to Yes" },
+      // The 2.1.250 workspace-trust dialog has no numbered options — the cursor
+      // sits on "❯ No, exit" above "Yes, I trust this folder" (captured live).
+      // It must be matched BEFORE the generic /I trust/ Enter fallback below:
+      // that pattern also matches this screen's "Yes, I trust this folder" text,
+      // and a bare Enter there confirms "No, exit" — the dialog fallback itself
+      // used to exit the CLI. preTrust() normally prevents the dialog entirely;
+      // this is the recovery path when the config write was skipped.
+      { pattern: /[❯›]\s*No, exit/m, keys: ["Down", "Enter"], description: "Claude workspace trust dialog — navigate to 'Yes, I trust this folder'" },
       { pattern: /I accept|I trust/i, keys: ["Enter"], description: "Claude 'Yes, I accept' trust dialog" },
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Claude resume session picker — start fresh" },
     ];

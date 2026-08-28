@@ -50,7 +50,7 @@ export interface CliBackendConfig {
 export type ErrorActionType = "notify" | "failover" | "restart" | "pause";
 
 /** Categorizes detected errors for logging and response. */
-export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error";
+export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error";
 
 export interface ErrorPattern {
   pattern: RegExp;
@@ -115,8 +115,18 @@ export interface RuntimeDialog {
   description: string;
 }
 
-/** A dialog that may appear during CLI startup (trust prompts, session pickers, etc.). */
-export type StartupDialog = RuntimeDialog;
+/**
+ * A dialog that may appear during CLI startup (trust prompts, session pickers, etc.).
+ * With `fatal` set, the screen cannot be dismissed by keypresses (e.g. a corrupt
+ * claude.json modal whose only choices are "exit" and "reset config"): the daemon
+ * reports the error instead of sending keys — `keys` is ignored and should be [].
+ * This must be detected as a dialog, not left to the ready check: such modals
+ * often contain the `❯` selector that ready patterns match, so they would
+ * otherwise pass as ready and queued messages would be typed into the modal.
+ */
+export type StartupDialog = RuntimeDialog & {
+  fatal?: { type: ErrorType; action: ErrorActionType; message: string };
+};
 
 export interface CliBackend {
   /** The CLI binary name (e.g. "claude", "gemini", "codex") */

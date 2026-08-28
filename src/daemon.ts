@@ -936,6 +936,8 @@ export class Daemon extends EventEmitter {
   private authFailureUnresolved = false;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
+  /** A fatal startup screen (see StartupDialog.fatal) was already reported this run. */
+  private fatalStartupReported = false;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
   /**
@@ -2469,6 +2471,7 @@ export class Daemon extends EventEmitter {
     this.pausePending = false;
     this.authFailureUnresolved = false;
     this.loginScreenReported = false;
+    this.fatalStartupReported = false;
     if (this.pauseWakeState === "active") return;
     if (this.pauseWakeState === "pausing") await this.pauseWakeTransition;
     if (this.getPauseWakeState() === "active") return;
@@ -4500,6 +4503,22 @@ export class Daemon extends EventEmitter {
         let matched = false;
         for (const dialog of startupDialogs) {
           if (dialog.pattern.test(pane)) {
+            // A fatal startup screen cannot be dismissed by keypresses (e.g. a
+            // corrupt claude.json modal offering only "exit" / "reset config").
+            // It must be caught HERE and not fall through to the ready check:
+            // the modal contains the `❯` selector the ready pattern matches, so
+            // it would otherwise pass as ready and queued messages would be
+            // typed into the modal. Report the error (pause stops delivery) and
+            // stop the retry loop — like the sign-in screen case below, only a
+            // human fixing the config ends this state.
+            if (dialog.fatal) {
+              if (!this.fatalStartupReported) {
+                this.fatalStartupReported = true;
+                this.logger.warn({ description: dialog.description }, "Fatal startup screen detected — reporting instead of dismissing");
+                this.emit("pty_error", { name: this.name, ...dialog.fatal });
+              }
+              return true;
+            }
             this.logger.debug(`Dismissing startup dialog: ${dialog.description}`);
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
