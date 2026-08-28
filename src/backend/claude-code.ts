@@ -1,5 +1,5 @@
-import { join, resolve } from "node:path";
-import { existsSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -21,6 +21,67 @@ function claudeProjectKey(cwd: string): string {
     hash = ((hash << 5) - hash + canonical.charCodeAt(i)) | 0;
   }
   return `${sanitized.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
+
+/** Claude Code's top-level config file, honoring CLAUDE_CONFIG_DIR. */
+function claudeJsonPath(): string {
+  const configDir = process.env.CLAUDE_CONFIG_DIR?.trim();
+  return configDir ? join(configDir, ".claude.json") : join(homedir(), ".claude.json");
+}
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Read-modify-write claude.json under a best-effort lock file, so concurrent
+ * instance spawns don't drop each other's updates, then replace it via atomic
+ * rename so a reader never sees a torn file. `mutate` returns false to skip
+ * the write. An existing-but-unparseable file is left untouched — never
+ * clobber the user's whole config over a parse error; the startup-dialog
+ * auto-dismiss in getStartupDialogs() remains the fallback in that case.
+ */
+function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): void {
+  const path = claudeJsonPath();
+  const lockPath = `${path}.agend.lock`;
+  let locked = false;
+  for (let i = 0; i < 40 && !locked; i++) {
+    try {
+      closeSync(openSync(lockPath, "wx"));
+      locked = true;
+    } catch {
+      try {
+        // A holder that died leaves the lock behind; 2s is far beyond one update.
+        if (Date.now() - statSync(lockPath).mtimeMs > 2000) { unlinkSync(lockPath); continue; }
+      } catch { continue; /* lock vanished between open and stat — retry now */ }
+      sleepSync(25);
+    }
+  }
+  // Proceed even without the lock: the atomic rename keeps the file intact,
+  // and the worst case is a lost update, which the dialog fallback covers.
+  try {
+    let cfg: Record<string, unknown> = {};
+    let raw: string | null = null;
+    try { raw = readFileSync(path, "utf-8"); } catch { /* missing file — create a minimal one */ }
+    if (raw !== null) {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+        cfg = parsed as Record<string, unknown>;
+      } catch { return; }
+    }
+    if (!mutate(cfg)) return;
+    mkdirSync(dirname(path), { recursive: true });
+    const tempPath = join(dirname(path), `.claude.json.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`);
+    try {
+      writeFileSync(tempPath, JSON.stringify(cfg, null, 2), { flag: "wx" });
+      renameSync(tempPath, path);
+    } finally {
+      try { unlinkSync(tempPath); } catch { /* already renamed */ }
+    }
+  } finally {
+    if (locked) { try { unlinkSync(lockPath); } catch { /* best effort */ } }
+  }
 }
 
 
@@ -330,34 +391,72 @@ export class ClaudeCodeBackend implements CliBackend {
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
   }
 
-  /** Pre-approve ANTHROPIC_API_KEY in ~/.claude.json to skip the interactive prompt */
+  /**
+   * Pre-accept Claude Code's workspace trust dialog for this working directory.
+   * The interactive TUI blocks a fresh workspace on "Do you trust the files in
+   * this folder?" and nothing in tmux answers it, so the process exits and the
+   * instance crash-loops. No CLI flag skips it interactively (verified on
+   * 2.1.250 — only -p / non-TTY stdout bypass the dialog); the recognised
+   * signal is projects[<cwd>].hasTrustDialogAccepted in claude.json.
+   */
+  preTrust(workingDirectory: string): void {
+    const cwd = workingDirectory?.trim();
+    if (!cwd) return;
+    const literal = resolve(cwd);
+    let canonical = literal;
+    try { canonical = realpathSync(literal); } catch { /* not created yet — trust the literal path */ }
+    // Trust both spellings when they differ: Claude keys projects by the cwd's
+    // realpath but falls back to the unresolved absolute path (see
+    // claudeProjectKey above), and which one the TUI sees depends on how tmux
+    // entered the directory.
+    const paths = canonical === literal ? [canonical] : [canonical, literal];
+    try {
+      updateClaudeJson(cfg => {
+        let projects = cfg.projects as Record<string, unknown> | undefined;
+        if (!projects || typeof projects !== "object" || Array.isArray(projects)) {
+          projects = {};
+          cfg.projects = projects;
+        }
+        let changed = false;
+        for (const p of paths) {
+          const existing = projects[p];
+          const entry = existing && typeof existing === "object" && !Array.isArray(existing)
+            ? existing as Record<string, unknown>
+            : {};
+          if (entry.hasTrustDialogAccepted === true) continue;
+          entry.hasTrustDialogAccepted = true;
+          projects[p] = entry;
+          changed = true;
+        }
+        return changed;
+      });
+    } catch { /* best effort — startup dialog auto-dismiss remains the fallback */ }
+  }
+
+  /** Pre-approve ANTHROPIC_API_KEY in claude.json to skip the interactive prompt */
   private preApproveApiKey(_config: CliBackendConfig): void {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) return;
 
     const fingerprint = apiKey.length > 20 ? apiKey.slice(-20) : apiKey;
-    const claudeJsonPath = join(homedir(), ".claude.json");
-
-    let claudeCfg: Record<string, unknown> = {};
     try {
-      claudeCfg = JSON.parse(readFileSync(claudeJsonPath, "utf-8"));
-    } catch { /* new file or parse error */ }
-
-    const existing = claudeCfg.customApiKeyResponses as { approved?: string[]; rejected?: string[] } | undefined;
-    const approved = existing?.approved ?? [];
-    if (!approved.includes(fingerprint)) {
-      claudeCfg.customApiKeyResponses = {
-        approved: [...approved, fingerprint],
-        rejected: existing?.rejected ?? [],
-      };
-      writeFileSync(claudeJsonPath, JSON.stringify(claudeCfg, null, 2));
-    }
+      updateClaudeJson(cfg => {
+        const existing = cfg.customApiKeyResponses as { approved?: string[]; rejected?: string[] } | undefined;
+        const approved = existing?.approved ?? [];
+        if (approved.includes(fingerprint)) return false;
+        cfg.customApiKeyResponses = {
+          approved: [...approved, fingerprint],
+          rejected: existing?.rejected ?? [],
+        };
+        return true;
+      });
+    } catch { /* best effort — the startup prompt remains the fallback */ }
   }
 
-  /** Check if user has an active OAuth session in ~/.claude.json */
+  /** Check if user has an active OAuth session in claude.json */
   private hasOAuthSession(): boolean {
     try {
-      const cfg = JSON.parse(readFileSync(join(homedir(), ".claude.json"), "utf-8"));
+      const cfg = JSON.parse(readFileSync(claudeJsonPath(), "utf-8"));
       return !!cfg.oauthAccount?.accountUuid;
     } catch {
       return false;

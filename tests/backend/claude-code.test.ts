@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { ClaudeCodeBackend } from "../../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
@@ -172,6 +172,83 @@ describe("ClaudeCodeBackend", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       backend.writeConfig(makeConfig());
       expect(existsSync(join(TEST_DIR, "fleet-instructions.md"))).toBe(false);
+    });
+  });
+
+  describe("preTrust", () => {
+    const claudeJson = () => join(CLAUDE_DIR, ".claude.json");
+    const readClaudeJson = () => JSON.parse(readFileSync(claudeJson(), "utf-8"));
+
+    it("creates a minimal claude.json trusting the workspace when the file is missing", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      const cfg = readClaudeJson();
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+    });
+
+    it("preserves other projects and top-level settings", () => {
+      writeFileSync(claudeJson(), JSON.stringify({
+        hasCompletedOnboarding: true,
+        projects: {
+          "/home/user/other": { hasTrustDialogAccepted: true, allowedTools: ["Bash"] },
+          "/home/user/declined": { hasTrustDialogAccepted: false },
+        },
+      }));
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      const cfg = readClaudeJson();
+      expect(cfg.hasCompletedOnboarding).toBe(true);
+      expect(cfg.projects["/home/user/other"]).toEqual({ hasTrustDialogAccepted: true, allowedTools: ["Bash"] });
+      expect(cfg.projects["/home/user/declined"].hasTrustDialogAccepted).toBe(false);
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+    });
+
+    it("keeps the workspace's existing project entry fields", () => {
+      writeFileSync(claudeJson(), JSON.stringify({
+        projects: { [WORK_DIR]: { hasTrustDialogAccepted: false, mcpServers: { x: {} } } },
+      }));
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      const cfg = readClaudeJson();
+      expect(cfg.projects[WORK_DIR].hasTrustDialogAccepted).toBe(true);
+      expect(cfg.projects[WORK_DIR].mcpServers).toEqual({ x: {} });
+    });
+
+    it("is idempotent — an already-trusted workspace is not rewritten", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      const before = readFileSync(claudeJson(), "utf-8");
+      writeFileSync(`${claudeJson()}.marker`, "");
+      backend.preTrust(WORK_DIR);
+      expect(readFileSync(claudeJson(), "utf-8")).toBe(before);
+    });
+
+    it("leaves an unparseable claude.json untouched instead of clobbering it", () => {
+      writeFileSync(claudeJson(), "{ not json");
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      expect(readFileSync(claudeJson(), "utf-8")).toBe("{ not json");
+    });
+
+    it("trusts both the realpath and the literal path for a symlinked workspace", () => {
+      const linkPath = "/tmp/ccd-test-workdir-link";
+      rmSync(linkPath, { force: true });
+      symlinkSync(WORK_DIR, linkPath);
+      try {
+        const backend = new ClaudeCodeBackend(TEST_DIR);
+        backend.preTrust(linkPath);
+        const cfg = readClaudeJson();
+        expect(cfg.projects[realpathSync(WORK_DIR)].hasTrustDialogAccepted).toBe(true);
+        expect(cfg.projects[linkPath].hasTrustDialogAccepted).toBe(true);
+      } finally {
+        rmSync(linkPath, { force: true });
+      }
+    });
+
+    it("does not leave a lock file behind", () => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      backend.preTrust(WORK_DIR);
+      expect(existsSync(`${claudeJson()}.agend.lock`)).toBe(false);
     });
   });
 
