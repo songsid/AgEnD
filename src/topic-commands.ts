@@ -159,6 +159,27 @@ export function readStatuslineContextPct(dataDir: string, instanceName: string):
   }
 }
 
+/**
+ * Claude Code's statusline payload reports the model that actually served the
+ * current session. This can differ from fleet.yaml after the CLI rejects a
+ * plan-gated model and keeps using its previous/default model.
+ */
+export function readStatuslineModel(dataDir: string, instanceName: string): string | null {
+  try {
+    const statusFile = join(dataDir, "instances", instanceName, "statusline.json");
+    if (!existsSync(statusFile)) return null;
+    const data = JSON.parse(readFileSync(statusFile, "utf-8"));
+    const id = typeof data.model?.id === "string" ? data.model.id.trim() : "";
+    const displayName = typeof data.model?.display_name === "string"
+      ? data.model.display_name.trim()
+      : "";
+    if (displayName && id && displayName !== id) return `${displayName} (${id})`;
+    return id || displayName || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Live-pane scrape used by /ctx, /status Ctx, and /view sidebar. */
 export function scrapePaneContext(
   instanceName: string,
@@ -616,7 +637,10 @@ export class TopicCommands {
     const contextLine = context == null ? null : formatContextUsageLine(context, tokenRatio);
     // Effective model (resolves per-instance → fleet default → classic channel →
     // the CLI's own default) via the shared resolver, so /ctx and /model agree.
-    const modelDisplay = this.ctx.modelDisplayForInstance?.(instanceName);
+    const modelDisplay = backend === "claude-code"
+      ? readStatuslineModel(this.ctx.dataDir, instanceName)
+        ?? this.ctx.modelDisplayForInstance?.(instanceName)
+      : this.ctx.modelDisplayForInstance?.(instanceName);
     const modelLine = modelDisplay ? `\n${t("ctx.model", modelDisplay)}` : "";
     return context != null
       ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}\n${t("ctx.instance", instanceName)}`
