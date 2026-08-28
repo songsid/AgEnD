@@ -64,6 +64,31 @@ describe("auth-error second opinion", () => {
     await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalled());
   });
 
+  it("uses OpenCode's standalone auth-list check before pausing", async () => {
+    const runner = vi.fn(async () => ({ code: 0, output: "└  1 credentials" }));
+    setAuthCheckRunnerForTests(runner);
+    const { daemons, notifyInstanceTopic } = lifecycle("opencode");
+    daemons[0].emit("pty_error", authError("worker"));
+
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledWith(
+      ["opencode", "auth", "list"],
+      expect.any(Number),
+    ));
+    await new Promise(r => setTimeout(r, 20));
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();
+    expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
+  });
+
+  it("pauses OpenCode with a usable terminal-login hint when no credential is configured", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "└  0 credentials" }));
+    const { daemons, notifyInstanceTopic } = lifecycle("opencode");
+    daemons[0].emit("pty_error", authError("worker"));
+
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+    expect(String(notifyInstanceTopic.mock.calls[0][1])).toContain("opencode auth login");
+    await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1));
+  });
+
   it("simultaneous same-tick alerts from one backend's instances join a single in-flight check", async () => {
     const runner = vi.fn(async () => ({ code: 0, output: "Logged in" }));
     setAuthCheckRunnerForTests(runner);

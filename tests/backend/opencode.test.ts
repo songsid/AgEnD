@@ -86,6 +86,31 @@ describe("OpenCodeBackend", () => {
     });
   });
 
+  describe("getErrorPatterns", () => {
+    const patterns = new OpenCodeBackend(TEST_DIR).getErrorPatterns();
+    const match = (pane: string) => patterns.find(pattern => pattern.pattern.test(pane));
+
+    it.each([
+      ["■ 429 Too Many Requests", "rate_limit", "failover"],
+      ["⚠ rate limit exceeded", "rate_limit", "failover"],
+      ["Error: provider returned too many requests", "rate_limit", "failover"],
+      ["■ {\"status\":401,\"error\":\"Unauthorized\"}", "auth_error", "pause"],
+      ["Error: authentication failed", "auth_error", "pause"],
+    ])("matches a decorated OpenCode error: %s", (pane, type, action) => {
+      expect(match(pane)).toMatchObject({ type, action });
+    });
+
+    it.each([
+      "the report mentions 429 requests in prose",
+      "author error in chapter 401",
+      "Error: job 14290 failed",
+      "⚠ request id 4012 was retried",
+      "normal unauthorized access discussion",
+    ])("does not act on prose or embedded status digits: %s", pane => {
+      expect(match(pane)).toBeUndefined();
+    });
+  });
+
   describe("getSessionId", () => {
     // Discovery reads `opencode session list --format json` — the official
     // CLI output — via the listSessions() seam, which these tests stub with

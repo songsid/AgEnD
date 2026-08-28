@@ -69,7 +69,7 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("Thinking...")).toBe(false);
   });
 
-  it("Antigravity notifies instead of restarting on authentication errors", async () => {
+  it("Antigravity pauses instead of continuing to queue work on authentication errors", async () => {
     const { AntigravityBackend } = await import("../src/backend/antigravity.js");
     const backend = new AntigravityBackend("/tmp/test");
     const error = backend.getErrorPatterns().find(({ pattern }) =>
@@ -77,7 +77,7 @@ describe("Backend ready patterns", () => {
 
     expect(error).toMatchObject({
       type: "auth_error",
-      action: "notify",
+      action: "pause",
       message: "Antigravity authentication error — needs re-login",
     });
   });

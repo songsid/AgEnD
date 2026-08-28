@@ -64,6 +64,18 @@ export interface LoginFlow {
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Cheap auth probes for backends that do not have an AgEnD-managed /login
+ * flow. OpenCode exits 0 even with zero credentials, so its output marker is
+ * required in addition to the exit status (live-verified with OpenCode 1.18.20).
+ */
+export const BACKEND_AUTH_CHECKS: Readonly<Record<string, AuthCheck>> = {
+  opencode: {
+    argv: ["opencode", "auth", "list"],
+    validPattern: /(?:^|\D)[1-9]\d*\s+credentials?\b/i,
+  },
+};
+
+/**
  * Generic https matcher. Login panes are captured with wrapped lines joined
  * (`capture-pane -J`), so a long OAuth URL arrives as one logical line.
  */
