@@ -13,14 +13,20 @@ import { MessageQueue } from "../message-queue.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const TELEGRAM_NETWORK_RETRY_MS = 250;
+const TELEGRAM_LONG_POLL_TIMEOUT_SECONDS = 20;
+const HTTP_AGENT_RESET_COOLDOWN_MS = 30_000;
 const DEFINITELY_PRE_DELIVERY_CODES = new Set([
   "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
 ]);
 
 function isConnectTimeout(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
-  const meta = err as { code?: unknown; syscall?: unknown };
-  return meta.code === "ETIMEDOUT" && meta.syscall === "connect";
+  const meta = err as { code?: unknown; syscall?: unknown; message?: unknown };
+  if (meta.code !== "ETIMEDOUT") return false;
+  // node-fetch v2 copies errno/code but drops syscall from its FetchError.
+  // Its message preserves the original `reason: connect ETIMEDOUT ...` text.
+  return meta.syscall === "connect"
+    || (typeof meta.message === "string" && /reason:\s*connect ETIMEDOUT\b/i.test(meta.message));
 }
 
 /**
@@ -216,6 +222,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private httpAgent = new HttpAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
   private httpsAgent = new HttpsAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
   private httpAgentGeneration = 0;
+  private lastHttpAgentResetAt = Number.NEGATIVE_INFINITY;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: TelegramAdapterOptions) {
@@ -299,8 +306,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       } catch (err) {
         if (!(err instanceof HttpError)) throw err;
         const firstDetail = telegramNetworkErrorDetails(err, this.botToken);
-        this.resetHttpAgent(requestGeneration);
-        console.warn(`[telegram] ${method} transport failed; HTTP pool reset: ${firstDetail}`);
+        const reset = this.resetHttpAgent(requestGeneration);
+        console.warn(
+          `[telegram] ${method} transport failed; HTTP pool ${reset ? "reset" : "reset suppressed by cooldown"}: ${firstDetail}`,
+        );
 
         if (isDefinitelyPreDeliveryNetworkError(err) && !signal?.aborted) {
           await new Promise(resolve => setTimeout(resolve, TELEGRAM_NETWORK_RETRY_MS));
@@ -332,11 +341,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     });
   }
 
-  private resetHttpAgent(expectedGeneration: number): void {
+  private resetHttpAgent(expectedGeneration: number): boolean {
     // Several requests can fail on the same poisoned pool at once. Only the
     // first rotates it; late errors from that generation must not destroy the
     // fresh pool that other requests are already using.
-    if (expectedGeneration !== this.httpAgentGeneration) return;
+    if (expectedGeneration !== this.httpAgentGeneration) return false;
+    const now = Date.now();
+    if (now - this.lastHttpAgentResetAt < HTTP_AGENT_RESET_COOLDOWN_MS) return false;
+    this.lastHttpAgentResetAt = now;
     this.httpAgentGeneration++;
     if (this.apiRoot.startsWith("http:")) {
       const old = this.httpAgent;
@@ -347,6 +359,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       this.httpsAgent = new HttpsAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
       old.destroy();
     }
+    return true;
   }
 
   private _registerHandlers(): void {
@@ -622,6 +635,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         for (let attempt = 1; attempt <= MAX_409_RETRIES; attempt++) {
           try {
             await this.bot.start({
+              // Keep the server-side long poll comfortably below both 30s
+              // client deadlines. Equal 30s deadlines race the normal empty
+              // getUpdates response and would churn the HTTP pool while idle.
+              timeout: TELEGRAM_LONG_POLL_TIMEOUT_SECONDS,
               drop_pending_updates: attempt === 1 && reconnects === 0,
               // Telegram's DEFAULT allowed_updates excludes message_reaction, so
               // reactions cannot arrive unless the set is listed explicitly. Passing

@@ -111,6 +111,48 @@ describe("Telegram stale HTTP socket recovery", () => {
     (adapter as any).httpsAgent.destroy();
   });
 
+  it("recognizes node-fetch's connect timeout message when syscall was dropped", async () => {
+    const adapter = makeAdapter();
+    const transformer = adapter.getBot().api.config.installedTransformers()[0] as any;
+    const inner = Object.assign(
+      new Error(`request to https://api.telegram.org/bot${TOKEN}/sendMessage failed, reason: connect ETIMEDOUT 149.154.167.220:443`),
+      { code: "ETIMEDOUT", errno: "ETIMEDOUT", type: "system" },
+    );
+    const prev = vi.fn()
+      .mockRejectedValueOnce(new HttpError("Network request for 'sendMessage' failed!", inner))
+      .mockResolvedValueOnce({ ok: true, result: { message_id: 11 } });
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(transformer(prev, "sendMessage", { chat_id: 1, text: "hello" }))
+      .resolves.toEqual({ ok: true, result: { message_id: 11 } });
+    expect(prev).toHaveBeenCalledTimes(2);
+    (adapter as any).httpAgent.destroy();
+    (adapter as any).httpsAgent.destroy();
+  });
+
+  it("debounces repeated pool rotation during a Telegram outage", async () => {
+    const adapter = makeAdapter();
+    const transformer = adapter.getBot().api.config.installedTransformers()[0] as any;
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(transformer(
+      vi.fn().mockRejectedValue(fetchError("ECONNRESET")),
+      "sendMessage",
+      { chat_id: 1, text: "first" },
+    )).rejects.toThrow();
+    const firstReplacement = (adapter as any).httpsAgent;
+
+    await expect(transformer(
+      vi.fn().mockRejectedValue(fetchError("ECONNRESET")),
+      "sendMessage",
+      { chat_id: 1, text: "second" },
+    )).rejects.toThrow();
+
+    expect((adapter as any).httpsAgent).toBe(firstReplacement);
+    (adapter as any).httpAgent.destroy();
+    (adapter as any).httpsAgent.destroy();
+  });
+
   it("omits Telegram's sentinel General topic id from sendMessage", async () => {
     const adapter = makeAdapter();
     const send = vi.spyOn(adapter.getBot().api, "sendMessage")
