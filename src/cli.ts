@@ -1,13 +1,9 @@
 #!/usr/bin/env node
-// Force IPv4 for all DNS lookups (fixes IPv6 timeout issues in corporate/WSL environments)
-import dns from "node:dns";
-import net from "node:net";
-dns.setDefaultResultOrder("ipv4first");
-// Node 20+ Happy Eyeballs races IPv6/IPv4 on a 250ms timer. WSL2 commonly has
-// no usable IPv6 route; under fleet event-loop load that race can surface as an
-// empty AggregateError even while curl over IPv4 works. The fleet is explicitly
-// IPv4-first already, so disable the racing connector as well.
-net.setDefaultAutoSelectFamily(false);
+import { applyNetworkReliabilityDefaults } from "./network-family.js";
+
+// Preserve Node's dual-stack Happy Eyeballs behavior, but avoid its 250ms
+// premature-connect failure on WSL/VPN/high-load hosts (#658).
+applyNetworkReliabilityDefaults();
 
 import { Command } from "commander";
 import { join, dirname } from "node:path";
