@@ -6,6 +6,10 @@ const WORKER_BETWEEN_MS = 50;
 const MAX_BACKOFF_MS = 30_000;
 const FLOOD_CONTROL_THRESHOLD_MS = 10_000;
 const INITIAL_BACKOFF_MS = 1_000;
+const MAX_CONNECT_RETRIES = 2;
+const DEFINITELY_PRE_DELIVERY_CODES = new Set([
+  "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
+]);
 
 interface QueueSender {
   send(chatId: string, threadId: string | undefined, text: string): Promise<{ messageId: string }>;
@@ -24,6 +28,49 @@ interface PerQueueState {
   backoffMs: number;
   backoffUntil: number;
   running: boolean;
+  connectRetries: number;
+}
+
+function nestedError(err: unknown): unknown {
+  if (err instanceof Error && "cause" in err && err.cause != null) return nestedError(err.cause);
+  return err;
+}
+
+function isDefinitelyPreDeliveryError(err: unknown): boolean {
+  if (err instanceof Error && "deliveryPhase" in err && (err as Error & { deliveryPhase?: unknown }).deliveryPhase === "connect") {
+    return true;
+  }
+  const inner = nestedError(err);
+  if (inner instanceof AggregateError) return true;
+  if (!inner || typeof inner !== "object") return false;
+  const meta = inner as { code?: unknown; syscall?: unknown };
+  const code = typeof meta.code === "string" ? meta.code : "";
+  return DEFINITELY_PRE_DELIVERY_CODES.has(code)
+    || (code === "ETIMEDOUT" && meta.syscall === "connect");
+}
+
+function errorDiagnostics(err: unknown): Record<string, unknown> {
+  const inner = nestedError(err);
+  if (!(inner instanceof Error)) return { error: String(inner) };
+  if (inner instanceof AggregateError) {
+    return {
+      error: "AggregateError",
+      causes: inner.errors.map((cause: unknown) => {
+        if (!(cause instanceof Error)) return String(cause);
+        const code = "code" in cause ? String((cause as Error & { code?: unknown }).code ?? "") : "";
+        return `${code ? `${code}: ` : ""}${cause.message}`.replace(/\/bot[^/\s]+(?=\/)/gi, "/bot[REDACTED]");
+      }),
+    };
+  }
+  const meta = inner as Error & { code?: unknown; errno?: unknown; syscall?: unknown; type?: unknown; deliveryPhase?: unknown };
+  return {
+    error: inner.message.replace(/\/bot[^/\s]+(?=\/)/gi, "/bot[REDACTED]"),
+    ...(meta.code != null ? { code: meta.code } : {}),
+    ...(meta.errno != null ? { errno: meta.errno } : {}),
+    ...(meta.syscall != null ? { syscall: meta.syscall } : {}),
+    ...(meta.type != null ? { type: meta.type } : {}),
+    ...(meta.deliveryPhase != null ? { deliveryPhase: meta.deliveryPhase } : {}),
+  };
 }
 
 function isDefinite429Rejection(err: unknown): boolean {
@@ -98,6 +145,7 @@ export class MessageQueue {
         backoffMs: INITIAL_BACKOFF_MS,
         backoffUntil: 0,
         running: false,
+        connectRetries: 0,
       };
       this.queues.set(key, state);
     }
@@ -178,6 +226,7 @@ export class MessageQueue {
         // Reset backoff on success
         state.backoffMs = INITIAL_BACKOFF_MS;
         state.backoffUntil = 0;
+        state.connectRetries = 0;
         await this.sleep(WORKER_BETWEEN_MS);
       } catch (err) {
         const deliveryErr = err instanceof QueueDeliveryError ? err : null;
@@ -189,15 +238,28 @@ export class MessageQueue {
           // Exponential backoff, cap at MAX_BACKOFF_MS
           state.backoffUntil = Date.now() + state.backoffMs;
           state.backoffMs = Math.min(state.backoffMs * 2, MAX_BACKOFF_MS);
+        } else if (isDefinitelyPreDeliveryError(cause) && state.connectRetries < MAX_CONNECT_RETRIES) {
+          // No connection was established, so replaying the unsent remainder
+          // cannot duplicate a Telegram message. Bound retries so a DNS outage
+          // cannot pin a queue forever.
+          state.items.unshift(...(deliveryErr?.retryItems ?? pendingItems));
+          state.connectRetries++;
+          state.backoffUntil = Date.now() + state.backoffMs;
+          state.backoffMs = Math.min(state.backoffMs * 2, MAX_BACKOFF_MS);
+          this.warn(
+            { ...errorDiagnostics(cause), chatId: state.key.chatId, attempt: state.connectRetries },
+            "MessageQueue connect-stage delivery failed — retrying with backoff",
+          );
         } else {
           // A timeout/network error may have happened after the remote API
           // accepted the message. Drop rather than risk a duplicate.
           this.warn(
-            { err: cause, chatId: state.key.chatId },
+            { ...errorDiagnostics(cause), chatId: state.key.chatId },
             "Message dropped because delivery outcome is unknown or error is non-retryable",
           );
           state.backoffMs = INITIAL_BACKOFF_MS;
           state.backoffUntil = 0;
+          state.connectRetries = 0;
           await this.sleep(WORKER_BETWEEN_MS);
         }
       }

@@ -1,8 +1,10 @@
 import { EventEmitter } from "node:events";
 import { randomBytes } from "node:crypto";
+import { Agent as HttpAgent } from "node:http";
+import { Agent as HttpsAgent } from "node:https";
 import { createReadStream, mkdirSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join, extname, basename } from "node:path";
-import { Bot, GrammyError, InputFile } from "grammy";
+import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
 import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData } from "../types.js";
@@ -10,6 +12,16 @@ import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
+const TELEGRAM_NETWORK_RETRY_MS = 250;
+const DEFINITELY_PRE_DELIVERY_CODES = new Set([
+  "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
+]);
+
+function isConnectTimeout(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const meta = err as { code?: unknown; syscall?: unknown };
+  return meta.code === "ETIMEDOUT" && meta.syscall === "connect";
+}
 
 /**
  * Update types this adapter subscribes to.
@@ -33,6 +45,68 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/** Remove Bot API credentials from nested node-fetch errors before logging. */
+export function redactTelegramSecrets(value: string, botToken = ""): string {
+  let redacted = value.replace(/\/bot[^/\s]+(?=\/)/gi, "/bot[REDACTED]");
+  if (botToken) redacted = redacted.split(botToken).join("[REDACTED]");
+  return redacted;
+}
+
+function underlyingTelegramNetworkError(err: unknown): unknown {
+  const direct = err instanceof HttpError ? err.error : err;
+  if (direct instanceof Error && "cause" in direct && direct.cause != null) return direct.cause;
+  return direct;
+}
+
+/** GrammY intentionally hides the token-bearing URL, but also hides errno. */
+export function telegramNetworkErrorDetails(err: unknown, botToken = ""): string {
+  const inner = underlyingTelegramNetworkError(err);
+  if (!(inner instanceof Error)) return redactTelegramSecrets(String(inner), botToken);
+  if (inner instanceof AggregateError) {
+    const causes = inner.errors.map((cause: unknown) => {
+      if (!(cause instanceof Error)) return String(cause);
+      const meta = cause as Error & { code?: unknown; errno?: unknown; syscall?: unknown };
+      return [meta.code, meta.errno, meta.syscall, cause.message]
+        .filter(value => value != null && value !== "")
+        .map(String)
+        .join("; ");
+    }).filter(Boolean);
+    return redactTelegramSecrets(
+      causes.length > 0 ? causes.join(" | ") : (err instanceof Error ? err.message : "AggregateError"),
+      botToken,
+    );
+  }
+  const meta = inner as Error & { code?: unknown; errno?: unknown; syscall?: unknown; type?: unknown };
+  const fields = [meta.code, meta.errno, meta.syscall, meta.type]
+    .filter(value => value != null && value !== "")
+    .map(String);
+  const message = redactTelegramSecrets(
+    inner.message || (err instanceof Error ? err.message : String(err)),
+    botToken,
+  );
+  return [...new Set([...fields, message].filter(Boolean))].join("; ") || "unknown network error";
+}
+
+function isDefinitelyPreDeliveryNetworkError(err: unknown): boolean {
+  const inner = underlyingTelegramNetworkError(err) as { code?: unknown; syscall?: unknown } | null;
+  if (inner instanceof AggregateError) return true;
+  return (typeof inner?.code === "string" && DEFINITELY_PRE_DELIVERY_CODES.has(inner.code))
+    || isConnectTimeout(inner);
+}
+
+class TelegramTransportError extends Error {
+  readonly deliveryPhase: "connect" | "unknown";
+  readonly code?: string;
+
+  constructor(message: string, phase: "connect" | "unknown", source: unknown) {
+    super(message);
+    this.name = "TelegramTransportError";
+    this.deliveryPhase = phase;
+    const inner = underlyingTelegramNetworkError(source) as { code?: unknown } | null;
+    if (typeof inner?.code === "string") this.code = inner.code;
+  }
+}
+
 /**
  * A Telegram API 400/404 is an explicit server-side rejection, so the request
  * was not delivered and a compatibility fallback is safe. Network errors,
@@ -47,9 +121,14 @@ function isDefiniteTelegramRejection(err: unknown): boolean {
 /** Convert a threadId string to a Telegram message_thread_id number.
  * Returns undefined for null/undefined or for the General topic (id=1),
  * which must not receive message_thread_id in Telegram API calls. */
-function toThreadId(threadId: string | null | undefined): number | undefined {
+export function toThreadId(threadId: string | null | undefined): number | undefined {
   if (threadId == null || threadId === "1") return undefined;
   return Number(threadId);
+}
+
+function threadOptions(threadId: string | null | undefined): { message_thread_id?: number } {
+  const id = toThreadId(threadId);
+  return id === undefined ? {} : { message_thread_id: id };
 }
 
 /** Extract plain text from Rich Message blocks (Bot API 10.1) */
@@ -133,11 +212,16 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private inboxDir: string;
   private apiRoot: string;
   private queue: MessageQueue;
+  private readonly botToken: string;
+  private httpAgent = new HttpAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
+  private httpsAgent = new HttpsAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
+  private httpAgentGeneration = 0;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(opts: TelegramAdapterOptions) {
     super();
     this.id = opts.id;
+    this.botToken = opts.botToken;
     this.accessManager = opts.accessManager;
     this.inboxDir = opts.inboxDir;
     if (opts.apiRoot) validateTelegramApiRoot(opts.apiRoot);
@@ -145,13 +229,26 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
     mkdirSync(this.inboxDir, { recursive: true });
 
-    this.bot = new Bot(opts.botToken, opts.apiRoot ? { client: { apiRoot: opts.apiRoot } } : undefined);
+    this.bot = new Bot(opts.botToken, {
+      client: {
+        ...(opts.apiRoot ? { apiRoot: opts.apiRoot } : {}),
+        // grammY otherwise shares one module-global keep-alive agent across all
+        // Telegram adapters. Use a replaceable per-adapter pool so one poisoned
+        // socket/persona cannot stay broken until the whole fleet restarts.
+        baseFetchConfig: {
+          agent: ((url: URL) => url.protocol === "http:" ? this.httpAgent : this.httpsAgent) as never,
+          timeout: 30_000,
+        },
+        timeoutSeconds: 30,
+      },
+    });
+    this.installNetworkRecovery();
 
     // Build MessageQueue backed by this bot
     this.queue = new MessageQueue({
       send: async (chatId, threadId, text) => {
         const msg = await this.bot.api.sendMessage(Number(chatId), text, {
-          message_thread_id: toThreadId(threadId),
+          ...threadOptions(threadId),
         });
         return { messageId: String(msg.message_id) };
       },
@@ -165,14 +262,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           const msg = await this.bot.api.sendPhoto(
             Number(chatId),
             new InputFile(createReadStream(filePath), filename),
-            { message_thread_id: toThreadId(threadId) },
+            threadOptions(threadId),
           );
           return { messageId: String(msg.message_id) };
         } else {
           const msg = await this.bot.api.sendDocument(
             Number(chatId),
             new InputFile(createReadStream(filePath), filename),
-            { message_thread_id: toThreadId(threadId) },
+            threadOptions(threadId),
           );
           return { messageId: String(msg.message_id) };
         }
@@ -180,6 +277,76 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     });
 
     this._registerHandlers();
+  }
+
+  /**
+   * Rotate grammY/node-fetch's keep-alive pool after a transport failure.
+   *
+   * A sendMessage failure has an unknown delivery outcome, so retrying every
+   * ECONNRESET would create duplicate user messages. Retry exactly once only
+   * for failures that occurred before a connection could be established; all
+   * other failures reset the pool so the next call uses fresh sockets and are
+   * returned with their real errno for an informed retry decision.
+   */
+  private installNetworkRecovery(): void {
+    // A few adapter unit tests replace grammY with a minimal API mock that has
+    // no transformer configuration surface. Real grammY clients always do.
+    if (!this.bot.api.config?.use) return;
+    this.bot.api.config.use(async (prev, method, payload, signal) => {
+      const requestGeneration = this.httpAgentGeneration;
+      try {
+        return await prev(method, payload, signal);
+      } catch (err) {
+        if (!(err instanceof HttpError)) throw err;
+        const firstDetail = telegramNetworkErrorDetails(err, this.botToken);
+        this.resetHttpAgent(requestGeneration);
+        console.warn(`[telegram] ${method} transport failed; HTTP pool reset: ${firstDetail}`);
+
+        if (isDefinitelyPreDeliveryNetworkError(err) && !signal?.aborted) {
+          await new Promise(resolve => setTimeout(resolve, TELEGRAM_NETWORK_RETRY_MS));
+          const retryGeneration = this.httpAgentGeneration;
+          try {
+            return await prev(method, payload, signal);
+          } catch (retryErr) {
+            if (retryErr instanceof HttpError) {
+              const retryDetail = telegramNetworkErrorDetails(retryErr, this.botToken);
+              this.resetHttpAgent(retryGeneration);
+              throw new TelegramTransportError(
+                `Telegram ${method} transport retry failed: ${retryDetail}`,
+                isDefinitelyPreDeliveryNetworkError(retryErr) ? "connect" : "unknown",
+                retryErr,
+              );
+            }
+            throw retryErr;
+          }
+        }
+        const retryGuidance = /^(?:sendMessage|sendPhoto|sendDocument|sendVideo|sendAudio|sendMediaGroup)$/.test(method)
+          ? " Delivery outcome is unknown; check the channel before retrying."
+          : "";
+        throw new TelegramTransportError(
+          `Telegram ${method} transport failed after HTTP pool reset: ${firstDetail}.${retryGuidance}`,
+          "unknown",
+          err,
+        );
+      }
+    });
+  }
+
+  private resetHttpAgent(expectedGeneration: number): void {
+    // Several requests can fail on the same poisoned pool at once. Only the
+    // first rotates it; late errors from that generation must not destroy the
+    // fresh pool that other requests are already using.
+    if (expectedGeneration !== this.httpAgentGeneration) return;
+    this.httpAgentGeneration++;
+    if (this.apiRoot.startsWith("http:")) {
+      const old = this.httpAgent;
+      this.httpAgent = new HttpAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
+      old.destroy();
+    } else {
+      const old = this.httpsAgent;
+      this.httpsAgent = new HttpsAgent({ keepAlive: true, maxFreeSockets: 4, timeout: 30_000 });
+      old.destroy();
+    }
   }
 
   private _registerHandlers(): void {
@@ -440,7 +607,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // Grammy's default error handler calls bot.stop() on any throw — override
     // to keep polling alive on handler errors
     this.bot.catch((err) => {
-      this.emit("handler_error", err.error);
+      const message = redactTelegramSecrets(errorMessage(err.error), this.botToken);
+      this.emit("handler_error", new Error(message));
     });
 
     // 409 Conflict = another getUpdates consumer is active (official plugin zombie,
@@ -502,6 +670,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
     this.queue.stop();
     await this.bot.stop();
+    this.httpAgent.destroy();
+    this.httpsAgent.destroy();
   }
 
   /** Delete inbox files older than 1 hour */
@@ -536,7 +706,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
           const result = await sendRichMessage.call((this.bot.api as any).raw, {
             chat_id: Number(chatId),
             rich_message: { markdown: text },
-            ...(toThreadId(opts?.threadId) ? { message_thread_id: toThreadId(opts?.threadId) } : {}),
+            ...threadOptions(opts?.threadId),
           });
           return { messageId: String(result.message_id), chatId, threadId: opts?.threadId };
         } catch (err) {
@@ -577,7 +747,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const parseMode = opts?.format === "html" ? "HTML" as const : undefined;
       this.bot.api
         .sendMessage(Number(chatId), chunks[0], {
-          message_thread_id: toThreadId(threadId),
+          ...threadOptions(threadId),
           parse_mode: parseMode,
           ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
         })
@@ -607,14 +777,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       const msg = await this.bot.api.sendPhoto(
         Number(chatId),
         new InputFile(createReadStream(filePath), filename),
-        { message_thread_id: toThreadId(threadId) },
+        threadOptions(threadId),
       );
       messageId = String(msg.message_id);
     } else {
       const msg = await this.bot.api.sendDocument(
         Number(chatId),
         new InputFile(createReadStream(filePath), filename),
-        { message_thread_id: toThreadId(threadId) },
+        threadOptions(threadId),
       );
       messageId = String(msg.message_id);
     }
@@ -752,7 +922,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         let sent;
         try {
           sent = await this.bot.api.sendMessage(Number(chatId), text, {
-            message_thread_id: Number(threadId),
+            ...threadOptions(threadId),
             reply_markup: keyboard,
             parse_mode: "Markdown",
           });
@@ -767,7 +937,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
             `[telegram] approval Markdown send was rejected before delivery; retrying without parse mode: ${errorMessage(err)}`,
           );
           sent = await this.bot.api.sendMessage(Number(chatId), text, {
-            message_thread_id: Number(threadId),
+            ...threadOptions(threadId),
             reply_markup: keyboard,
           });
         }
@@ -845,7 +1015,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     }
     const threadId = opts?.threadId;
     const msg = await this.bot.api.sendMessage(Number(chatId), text, {
-      message_thread_id: toThreadId(threadId),
+      ...threadOptions(threadId),
       reply_markup: keyboard,
     });
     return String(msg.message_id);
@@ -859,7 +1029,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         keyboard.text(choice.label, choice.id);
       }
       const msg = await this.bot.api.sendMessage(Number(chatId), alert.message, {
-        message_thread_id: toThreadId(threadId),
+        ...threadOptions(threadId),
         reply_markup: keyboard,
       });
       return { messageId: String(msg.message_id), chatId, threadId };
@@ -891,6 +1061,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
+    // Telegram's General topic is the forum root, not a deletable topic.
+    if (String(topicId) === "1") return;
     const chatId = this.getChatId();
     if (!chatId) return;
     await this.bot.api.raw.deleteForumTopic({ chat_id: Number(chatId), message_thread_id: Number(topicId) });
@@ -899,6 +1071,9 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   async topicExists(topicId: number): Promise<boolean> {
     const chatId = this.getChatId();
     if (!chatId) return false;
+    // AgEnD uses id=1 as the General-topic sentinel. Telegram rejects an
+    // explicit message_thread_id=1, but the group root exists when the chat does.
+    if (topicId === 1) return true;
     try {
       const msg = await this.bot.api.sendMessage(Number(chatId), "\u200B", {
         message_thread_id: topicId,

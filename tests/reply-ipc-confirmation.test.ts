@@ -187,6 +187,42 @@ describe("reply IPC confirmation", () => {
     }
   });
 
+  it("keeps a confirmed reply successful when the follow-up cancel bubble fails", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-reply-cancel-fail-"));
+    const fm = new FleetManager(dir);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "telegram-real-id", chatId: "telegram-chat" });
+    const notifyAlert = vi.fn().mockRejectedValue(new Error("cancel bubble network failure"));
+    const adapter = { id: "telegram", type: "telegram", sendText, notifyAlert } as any;
+    const ipcSend = vi.fn(() => true);
+    fm.adapter = adapter;
+    fm.worlds.set("telegram", { adapter, groupId: "telegram-chat" } as any);
+    fm.instanceIpcClients.set("classic-reply", { send: ipcSend } as any);
+    fm.classicChannels = {
+      getChannelIdByInstance: vi.fn(() => "telegram-chat"),
+      getAdapterIdByInstance: vi.fn(() => "telegram"),
+    } as any;
+    vi.spyOn(fm as any, "getInstanceIdle").mockReturnValue(false);
+
+    try {
+      await (fm as any).handleOutboundFromInstance("classic-reply", {
+        type: "fleet_outbound",
+        tool: "reply",
+        args: { text: "reply is already delivered" },
+        fleetRequestId: "tool_cancel_1",
+      });
+
+      await vi.waitFor(() => expect(ipcSend).toHaveBeenCalledWith({
+        type: "fleet_outbound_response",
+        fleetRequestId: "tool_cancel_1",
+        result: { messageId: "telegram-real-id", chatId: "telegram-chat" },
+        error: undefined,
+      }));
+      await vi.waitFor(() => expect(notifyAlert).toHaveBeenCalledOnce());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("returns an immediate error when channel adapters are not ready", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-reply-no-world-"));
     const fm = new FleetManager(dir);
