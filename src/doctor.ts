@@ -9,6 +9,11 @@ import { getTmuxSessionName, getTmuxSocketName } from "./paths.js";
 import { BACKENDS } from "./setup-wizard.js";
 import type { ServiceInfo } from "./service-installer.js";
 import { t } from "./locale.js";
+import {
+  AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS,
+  getNetworkFamilyState,
+  type NetworkFamilyState,
+} from "./network-family.js";
 
 export type DoctorCheckStatus = "ok" | "warn" | "error";
 
@@ -31,6 +36,7 @@ interface DoctorDeps {
   run: (file: string, args: string[]) => SpawnSyncReturns<string>;
   processAlive: (pid: number) => boolean;
   connectSocket: (path: string) => Promise<boolean>;
+  networkFamily: () => NetworkFamilyState;
 }
 
 const defaultDeps: DoctorDeps = {
@@ -46,6 +52,7 @@ const defaultDeps: DoctorDeps = {
     }
   },
   connectSocket: connectUnixSocket,
+  networkFamily: getNetworkFamilyState,
 };
 
 function tmuxArgs(args: string[]): string[] {
@@ -144,6 +151,20 @@ export async function collectDoctorReport(
     deps.env.TERM ? "ok" : "warn",
     "TERM",
     deps.env.TERM || t("doctor.term_unset"),
+  );
+
+  const networkFamily = deps.networkFamily();
+  const networkFamilyNeedsAttention = networkFamily.autoSelectFamily
+    && networkFamily.attemptTimeoutMs < AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS;
+  add(
+    "Prerequisites",
+    networkFamilyNeedsAttention ? "warn" : "ok",
+    t("doctor.network_family"),
+    networkFamily.autoSelectFamily
+      ? networkFamilyNeedsAttention
+        ? t("doctor.network_family_short", networkFamily.attemptTimeoutMs, AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS)
+        : t("doctor.network_family_auto", networkFamily.attemptTimeoutMs)
+      : t("doctor.network_family_disabled", networkFamily.attemptTimeoutMs),
   );
 
   if (!service.installed) {

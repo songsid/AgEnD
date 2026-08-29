@@ -47,6 +47,7 @@ instances:
     const report = await collectDoctorReport(dataDir, service, {
       env: { TERM: "xterm-256color", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1/bus" },
       platform: "linux",
+      networkFamily: () => ({ autoSelectFamily: true, attemptTimeoutMs: 2_500 }),
       processAlive: pid => pid === 4242,
       connectSocket: async path => path.endsWith("/live/channel.sock"),
       run: (file, args) => {
@@ -61,6 +62,7 @@ instances:
     expect(report.checks).toEqual(expect.arrayContaining([
       expect.objectContaining({ section: "Service", label: "enabled", status: "ok" }),
       expect.objectContaining({ section: "Service", label: "D-Bus", status: "ok" }),
+      expect.objectContaining({ section: "Prerequisites", label: "network family", status: "ok", detail: expect.stringContaining("2500 ms") }),
       expect.objectContaining({ section: "Fleet", label: "fleet process", detail: "PID 4242 is alive" }),
       expect.objectContaining({ section: "Fleet", label: "instances", detail: "1 running, 1 paused, 1 stopped, 0 crashed (3 total)" }),
       expect.objectContaining({ section: "MCP IPC", label: "channel.sock", detail: "1/1 running instance socket(s) reachable" }),
@@ -68,6 +70,36 @@ instances:
     const formatted = formatDoctorReport(report);
     expect(formatted).toContain("AgEnD doctor");
     expect(formatted).toContain("MCP IPC");
+  });
+
+  it("warns when Happy Eyeballs uses a premature connection-attempt timeout", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "agend-doctor-network-"));
+    roots.push(dataDir);
+    const report = await collectDoctorReport(dataDir, {
+      installed: false,
+      path: null,
+      manager: "systemd --user",
+      enabled: null,
+      active: null,
+    }, {
+      env: { TERM: "xterm" },
+      platform: "linux",
+      networkFamily: () => ({ autoSelectFamily: true, attemptTimeoutMs: 250 }),
+      processAlive: () => false,
+      connectSocket: async () => false,
+      run: (file, args) => file === "tmux" && args[0] === "-V"
+        ? commandResult(0, "tmux 3.7\n")
+        : file === "claude"
+          ? commandResult(0, "claude 1\n")
+          : commandResult(1),
+    });
+
+    expect(report.checks).toContainEqual(expect.objectContaining({
+      section: "Prerequisites",
+      label: "network family",
+      status: "warn",
+      detail: expect.stringContaining("recommended 2500 ms"),
+    }));
   });
 
   it("warns when the service is inactive and the Linux session bus is missing", async () => {
