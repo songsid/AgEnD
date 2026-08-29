@@ -35,4 +35,19 @@ describe("network family reliability defaults", () => {
       attemptTimeoutMs: 2_500,
     });
   });
+
+  it("does not shorten a longer connection-attempt timeout override", () => {
+    let attemptTimeout = 5_000;
+    const api = {
+      getDefaultAutoSelectFamily: vi.fn(() => true),
+      getDefaultAutoSelectFamilyAttemptTimeout: vi.fn(() => attemptTimeout),
+      setDefaultAutoSelectFamilyAttemptTimeout: vi.fn((value: number) => { attemptTimeout = value; }),
+    };
+
+    expect(applyNetworkReliabilityDefaults(api)).toEqual({
+      autoSelectFamily: true,
+      attemptTimeoutMs: 5_000,
+    });
+    expect(api.setDefaultAutoSelectFamilyAttemptTimeout).toHaveBeenCalledWith(5_000);
+  });
 });

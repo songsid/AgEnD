@@ -28,6 +28,9 @@ export function getNetworkFamilyState(api: NetworkFamilyApi = net): NetworkFamil
 export function applyNetworkReliabilityDefaults(api: NetworkFamilyApi = net): NetworkFamilyState {
   // Deliberately do not call setDefaultAutoSelectFamily(): honor Node's native
   // Happy Eyeballs default and any explicit NODE_OPTIONS override.
-  api.setDefaultAutoSelectFamilyAttemptTimeout(AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS);
+  api.setDefaultAutoSelectFamilyAttemptTimeout(Math.max(
+    api.getDefaultAutoSelectFamilyAttemptTimeout(),
+    AGEND_NETWORK_FAMILY_ATTEMPT_TIMEOUT_MS,
+  ));
   return getNetworkFamilyState(api);
 }
