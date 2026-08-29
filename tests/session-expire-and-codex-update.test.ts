@@ -182,12 +182,12 @@ describe("codex startup update check", () => {
     expect(keyLine(out)).toBeLessThan(firstSection(out));
   });
 
-  it("keeps a user's own setting instead of duplicating the key", () => {
-    // TOML rejects duplicate keys, so appending blindly would corrupt the file —
-    // and overriding a deliberate choice would be wrong anyway.
+  it("overrides an inherited true without duplicating the key", () => {
+    // An AgEnD-owned isolated home is unattended. Preserving a global `true`
+    // makes the update picker block startup, while appending would corrupt TOML.
     const out = writeAndRead(`check_for_update_on_startup = true\n[tui]\nx = 1\n`);
     expect(out.match(/check_for_update_on_startup/g)).toHaveLength(1);
-    expect(out).toMatch(/check_for_update_on_startup\s*=\s*true/);
+    expect(out).toMatch(/check_for_update_on_startup\s*=\s*false/);
   });
 
   it("works from an empty global config", () => {
@@ -205,6 +205,7 @@ describe("codex update picker is dismissed if it appears anyway", () => {
   ].join("\n");
 
   const dialogs = () => new CodexBackend("/tmp/x").getRuntimeDialogs();
+  const startupDialogs = () => new CodexBackend("/tmp/x").getStartupDialogs();
 
   it("matches the real picker and answers with Escape", () => {
     const d = dialogs().find(d => d.pattern.test(PICKER));
@@ -212,6 +213,11 @@ describe("codex update picker is dismissed if it appears anyway", () => {
     // Enter would select the highlighted row and ctrl+u would swap the binary
     // under a running fleet; Escape is what Codex itself documents as "close".
     expect(d!.keys).toEqual(["Escape"]);
+  });
+
+  it("also catches the picker before startup can misclassify it as ready", () => {
+    const d = startupDialogs().find(d => d.pattern.test(PICKER));
+    expect(d?.keys).toEqual(["Escape"]);
   });
 
   it("does not fire on prose about a Codex release", () => {

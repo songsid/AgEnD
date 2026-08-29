@@ -49,6 +49,7 @@ describe("CodexBackend", () => {
       expect(cmd).toContain(`CODEX_HOME='${join(TEST_DIR, "codex-home")}'`);
       expect(cmd).toContain("resume --last");
       expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
+      expect(cmd).toContain("-c check_for_update_on_startup=false");
     });
 
     it("includes model config", () => {

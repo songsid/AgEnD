@@ -160,6 +160,10 @@ export class CodexBackend implements CliBackend {
       const provider = validateProvider(String(config.backendOptions.provider));
       cmd += ` -c ${shellQuote(`model_provider="${provider}"`)}`;
     }
+    // AgEnD instances are unattended processes: an interactive self-update
+    // picker blocks delivery and must never be enabled by a copied global or
+    // managed config layer. Keep this last so the CLI override is authoritative.
+    cmd += " -c check_for_update_on_startup=false";
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore
     // still load every globally registered AgEnD MCP server.
@@ -215,16 +219,22 @@ export class CodexBackend implements CliBackend {
    *
    * Placement matters: this is a TOP-LEVEL key, so it has to go above the first
    * `[section]` header or TOML would read it as belonging to that section. And a
-   * user who has deliberately set the key either way keeps their value — TOML
-   * rejects duplicate keys, so appending blindly would corrupt the file.
+   * AgEnD's isolated home is unattended, so an inherited `true` is replaced
+   * rather than preserved. TOML rejects duplicate keys, so replace in place.
    */
   private disableStartupUpdateCheck(): void {
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { return; }
 
-    // Their setting wins, whichever way it points.
-    if (/^\s*check_for_update_on_startup\s*=/m.test(content)) return;
+    const existing = /^\s*check_for_update_on_startup\s*=\s*(?:true|false)\s*(?:#.*)?$/m;
+    if (existing.test(content)) {
+      const updated = content.replace(existing, "check_for_update_on_startup = false");
+      if (updated !== content) {
+        try { atomicWritePrivate(configPath, updated); } catch { /* best effort */ }
+      }
+      return;
+    }
 
     const LINE = "check_for_update_on_startup = false\n";
     const firstSection = content.search(/^\s*\[/m);
@@ -540,7 +550,19 @@ export class CodexBackend implements CliBackend {
     return [
       { pattern: /Do you trust the files in this folder/i, keys: ["Enter"], description: "Codex trust dialog" },
       { pattern: /Yes, continue/i, keys: ["Enter"], description: "Codex 'Yes, continue' confirmation" },
+      this.updatePickerDialog(),
     ];
+  }
+
+  private updatePickerDialog(): RuntimeDialog {
+    return {
+      // Defense in depth for config written by older AgEnD versions or a Codex
+      // regression. Match the release URL as well as the banner so ordinary
+      // agent prose cannot trigger a keypress.
+      pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
+      keys: ["Escape"],
+      description: "Codex startup update-available picker",
+    };
   }
 
   getRuntimeDialogs(): RuntimeDialog[] {
@@ -552,18 +574,7 @@ export class CodexBackend implements CliBackend {
         keys: ["Down", "Down", "Enter"],
         description: "Codex rate limit model switch dialog",
       },
-      {
-        // The update picker, for an instance whose config predates
-        // disableStartupUpdateCheck() or whose user re-enabled the check.
-        // Escape is what Codex itself offers ("esc close") and is the only safe
-        // key here: Enter selects whatever row is highlighted and ctrl+u starts
-        // an upgrade — swapping the CLI binary under a running fleet is not a
-        // thing to do unattended. Matched on the release-notes URL together with
-        // the banner so an agent discussing a Codex release cannot trip it.
-        pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
-        keys: ["Escape"],
-        description: "Codex startup update-available picker",
-      },
+      this.updatePickerDialog(),
     ];
   }
 
