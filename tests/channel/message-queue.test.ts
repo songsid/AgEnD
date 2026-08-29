@@ -152,6 +152,59 @@ describe("MessageQueue", () => {
     expect(warn).toHaveBeenCalled();
   });
 
+  it("retries a connect-stage failure with bounded backoff", async () => {
+    let calls = 0;
+    const sendFn = vi.fn(async () => {
+      calls++;
+      if (calls === 1) {
+        const err = new Error("Telegram connect failed") as Error & { code?: string };
+        err.code = "ENETUNREACH";
+        throw err;
+      }
+      return { messageId: "delivered" };
+    });
+    const warn = vi.fn();
+    const queue = new MessageQueue(
+      { send: sendFn, edit: vi.fn(), sendFile: vi.fn(async () => ({ messageId: "2" })) },
+      { warn },
+    );
+
+    queue.enqueue("c1", undefined, { type: "content", text: "safe to retry" });
+    queue.start();
+    await new Promise(r => setTimeout(r, 1_500));
+    queue.stop();
+
+    expect(sendFn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "ENETUNREACH", attempt: 1 }),
+      expect.stringContaining("connect-stage"),
+    );
+  });
+
+  it("does not retry a response-stage socket reset with unknown delivery outcome", async () => {
+    const sendFn = vi.fn(async () => {
+      const err = new Error("socket reset after write") as Error & { code?: string };
+      err.code = "ECONNRESET";
+      throw err;
+    });
+    const warn = vi.fn();
+    const queue = new MessageQueue(
+      { send: sendFn, edit: vi.fn(), sendFile: vi.fn(async () => ({ messageId: "2" })) },
+      { warn },
+    );
+
+    queue.enqueue("c1", undefined, { type: "content", text: "do not duplicate" });
+    queue.start();
+    await new Promise(r => setTimeout(r, 300));
+    queue.stop();
+
+    expect(sendFn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: "ECONNRESET" }),
+      expect.stringContaining("outcome is unknown"),
+    );
+  });
+
   it("retries only the unsent tail of a partially delivered content batch", async () => {
     const first = "a".repeat(4096);
     const second = "b";

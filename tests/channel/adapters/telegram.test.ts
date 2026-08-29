@@ -223,6 +223,15 @@ describe("TelegramAdapter", () => {
     await expect(adapter.start()).resolves.toBeUndefined();
   });
 
+  it("keeps the long poll timeout below the Telegram HTTP client deadline", async () => {
+    const bot = (adapter as unknown as { bot: { start: ReturnType<typeof vi.fn> } }).bot;
+    const start = vi.spyOn(bot, "start");
+
+    await adapter.start();
+
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ timeout: 20 }));
+  });
+
   it("stop() stops the queue and bot", async () => {
     await adapter.start();
     await expect(adapter.stop()).resolves.toBeUndefined();
