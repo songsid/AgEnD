@@ -573,7 +573,7 @@ function generateMermaid(rows: import("./event-log.js").ActivityRow[]): string {
 
 fleet
   .command("cleanup")
-  .description("Remove orphaned instance directories not in fleet.yaml")
+  .description("Remove orphaned instance directories and stale instance files")
   .option("--dry-run", "List orphans without deleting")
   .action(async (opts: { dryRun?: boolean }) => {
     const { FleetManager } = await import("./fleet-manager.js");
@@ -820,8 +820,8 @@ backend
 // ── doctor mcp ──
 program
   .command("doctor")
-  .description("Run fleet health diagnostics")
-  .argument("[check]", "Specific check to run (mcp)")
+  .description("Diagnose backends, tmux, service, D-Bus, fleet, IPC, and network; use `mcp` for a deep MCP check")
+  .argument("[check]", "Optional deep check: mcp (omit for the full fleet diagnostic)")
   .action(async (check?: string) => {
     if (check === "mcp") {
       await doctorMcp();
@@ -968,8 +968,8 @@ async function doctorMcp(): Promise<void> {
 
 backend
   .command("trust")
-  .description("Pre-trust working directories for a backend (prevents trust dialogs)")
-  .argument("<backend>", "Backend (gemini-cli)")
+  .description("Pre-trust Gemini CLI working directories (prevents trust dialogs)")
+  .argument("<backend>", "Backend (gemini-cli only)")
   .argument("[directories...]", "Directories to trust (defaults to all fleet instance dirs)")
   .action(async (backendName: string, directories: string[]) => {
     if (backendName !== "gemini-cli") {
@@ -1172,7 +1172,7 @@ access
 // === Update + Reload ===
 program
   .command("update")
-  .description("Update AgEnD to latest version and restart service")
+  .description("Update AgEnD to the selected release and restart the fleet service")
   .option("--version <ver>", "Specific version to install")
   .option("--beta", "Install beta version")
   .option("--force", "Force reinstall and restart even when already up to date")
@@ -1344,7 +1344,7 @@ program
 
 program
   .command("reload")
-  .description("Hot-reload fleet config (re-read fleet.yaml, start new instances)")
+  .description("Hot-reload fleet.yaml and reconcile instance configuration")
   .action(async () => {
     const pidPath = join(DATA_DIR, "fleet.pid");
     if (!existsSync(pidPath)) {
@@ -1364,7 +1364,7 @@ program
 // === Install/Uninstall ===
 program
   .command("install")
-  .description(t("install.description"))
+  .description("Install the AgEnD system service and start it by default")
   .option("--activate", "Deprecated; service activation is now the default")
   .option("--no-activate", "Write the service file without activating it")
   .action(async (opts: { activate?: boolean }) => {
@@ -1402,8 +1402,8 @@ program
 
 program
   .command("uninstall")
-  .description(t("uninstall.description"))
-  .option("-f, --force", t("uninstall.force_help"))
+  .description("Remove the AgEnD system service")
+  .option("-f, --force", "Skip confirmation (for CI/automation)")
   .action(async (opts: { force?: boolean }) => {
     const { inspectService, isServiceRemovalConfirmed, uninstallService } = await import("./service-installer.js");
     const service = inspectService("com.agend.fleet");
@@ -1457,7 +1457,7 @@ program
 
 program
   .command("stop")
-  .description("Stop the AgEnD service")
+  .description("Stop the AgEnD service or detached fleet")
   .action(async () => {
     const { getServicePath, stopService } = await import("./service-installer.js");
     if (!getServicePath()) {
@@ -1487,7 +1487,7 @@ program
 
 program
   .command("start")
-  .description("Start the AgEnD service (must be installed first)")
+  .description("Start the AgEnD service, or start a detached fleet if no service is installed")
   .action(async () => {
     const { getServicePath, getSystemServicePath, startService, startSystemService } = await import("./service-installer.js");
     const userServicePath = getServicePath();
@@ -1611,7 +1611,7 @@ program
 
 program
   .command("quickstart")
-  .description("Quick 3-step setup: detect backend, create bot, connect group")
+  .description("Guided setup for a Backend, chat channel, projects, and fleet service")
   .action(async () => {
     const { runQuickstart } = await import("./quickstart.js");
     await runQuickstart();
@@ -1865,7 +1865,7 @@ schedule
 
 schedule
   .command("trigger")
-  .description("Manually trigger a schedule")
+  .description("Show how to manually trigger a schedule")
   .argument("<id>", "Schedule ID")
   .action((id) => {
     console.log("Manual trigger requires fleet manager running. Use the Telegram interface instead.");
