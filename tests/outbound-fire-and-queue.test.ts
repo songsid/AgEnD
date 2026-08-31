@@ -103,6 +103,20 @@ describe("cross-instance tools are fire-and-queue", () => {
     expect(ctx.deliverToInstance).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized broadcast envelope before dispatching any target", async () => {
+    const ctx = makeContext({ deliver: neverSettles(), connected: ["a", "b"] });
+    ctx.fleetConfig.instances = { sender: {}, a: {}, b: {} };
+    ctx.fleetConfig.defaults.max_cross_instance_message_bytes = 20_000;
+    const { result, error } = await callTool("broadcast", ctx, {
+      targets: ["a", "b"],
+      message: "small",
+      task_summary: "x".repeat(16_000),
+    });
+    expect(result).toBeNull();
+    expect(error).toContain("assembled handoff too long");
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+
   it("send_to_instance responds immediately when the target is busy", async () => {
     const ctx = makeContext({ deliver: neverSettles() });
     const started = Date.now();

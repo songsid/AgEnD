@@ -1,4 +1,4 @@
-/** Physical guard below tmux's historically observed ~16,344-byte argv ceiling. */
+/** Product guard that reserves room for routing metadata and protects recipient context. */
 export const MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES = 16_000;
 
 /** Render metadata carried in a cross-instance handoff. */

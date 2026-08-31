@@ -939,6 +939,26 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
+  const makeBroadcastMeta = (correlationId: string, messageId = `bcast-${Date.now()}`): Record<string, string> => {
+    const ipcMeta: Record<string, string> = {
+      chat_id: "", message_id: messageId, user: `instance:${senderLabel}`,
+      user_id: `instance:${senderLabel}`, ts: new Date().toISOString(), thread_id: "",
+      from_instance: senderLabel, correlation_id: correlationId,
+    };
+    if (request_kind) ipcMeta.request_kind = request_kind;
+    if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
+    if (task_summary) ipcMeta.task_summary = task_summary;
+    if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
+    return ipcMeta;
+  };
+  // Validate once before dispatching any target. The placeholders are the
+  // longest values generated below, so every real per-target envelope fits if
+  // this one does. Keeping this outside the loop prevents partial broadcasts.
+  if (rejectOversizedCrossInstanceEnvelope(
+    message,
+    makeBroadcastMeta("bcast-9999999999999-zzzzzz", "bcast-9999999999999"),
+    respond,
+  )) return;
 
   // Resolve target list: team, explicit targets, tag filter, or all running
   let targetNames: string[];
@@ -969,16 +989,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) { failed.push(targetName); continue; }
 
     const correlationId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const ipcMeta: Record<string, string> = {
-      chat_id: "", message_id: `bcast-${Date.now()}`, user: `instance:${senderLabel}`,
-      user_id: `instance:${senderLabel}`, ts: new Date().toISOString(), thread_id: "",
-      from_instance: senderLabel, correlation_id: correlationId,
-    };
-    if (request_kind) ipcMeta.request_kind = request_kind;
-    if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
-    if (task_summary) ipcMeta.task_summary = task_summary;
-    if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
-    if (rejectOversizedCrossInstanceEnvelope(message, ipcMeta, respond)) return;
+    const ipcMeta = makeBroadcastMeta(correlationId);
 
     // Same at-least-once treatment as send_to_instance: retry, then surface a
     // final failure on both topics instead of dying in a warn-level log line.
