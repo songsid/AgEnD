@@ -278,7 +278,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
-  it("the proxy reply goes out BEFORE the #485 revival restart request tears the pane down", () => {
+  it("the proxy reply goes out BEFORE the #485 revival restart request tears the pane down", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
@@ -290,10 +290,16 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
 
     daemon.instanceState = "working";
     daemon.checkMcpServerAlive(); // arms the idle-gated revival restart (#485)
+    vi.useFakeTimers();
     daemon.markTurnStarted({ chat_id: "chat-1", correlation_id: "cid-9" }, INBOUND);
     daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    // The revival request now waits out a bounded replacement grace (#663),
+    // which only widens the gap this test guards — the proxy reply must still
+    // be out before the restart tears the pane down.
+    await vi.advanceTimersByTimeAsync(2_500);
 
     expect(order).toEqual(["proxy", "restart"]);
+    vi.useRealTimers();
   });
 
   it("a new inbound starts a clean slate — the previous turn's reply does not mute the next turn's proxy", () => {

@@ -88,6 +88,9 @@ describe("MCP-died auth gate", () => {
       (daemon as any).authFailureUnresolved = true;
       const events: any[] = [];
       daemon.on("mcp_died", e => events.push(e));
+      // Codex holds the FIRST dead sighting back one tick in case the CLI is
+      // merely swapping its MCP child (#663); the second tick confirms a loss.
+      (daemon as any).checkMcpServerAlive();
       (daemon as any).checkMcpServerAlive();
       expect(events).toHaveLength(1);
       expect(events[0]).toMatchObject({ autoRestart: false, authSuspected: true });
@@ -97,7 +100,7 @@ describe("MCP-died auth gate", () => {
     }
   });
 
-  it("keeps the normal auto-restart when auth is fine", () => {
+  it("keeps the normal auto-restart when auth is fine", async () => {
     const { daemon } = makeDaemon("codex");
     const instanceDir = deadMcpDir();
     (daemon as any).instanceDir = instanceDir;
@@ -106,10 +109,15 @@ describe("MCP-died auth gate", () => {
       const restartRequests: any[] = [];
       daemon.on("mcp_died", e => events.push(e));
       daemon.on("mcp_restart_requested", e => restartRequests.push(e));
+      vi.useFakeTimers();
       (daemon as any).checkMcpServerAlive();
+      (daemon as any).checkMcpServerAlive(); // see the #663 deferral above
       expect(events[0]).toMatchObject({ autoRestart: true, authSuspected: false });
-      // The test daemon idles, so the armed revival fires immediately.
+      // The test daemon idles, so the armed revival fires — after the bounded
+      // replacement grace at the chokepoint (#663).
+      await vi.advanceTimersByTimeAsync(2_500);
       expect(restartRequests).toHaveLength(1);
+      vi.useRealTimers();
     } finally {
       (daemon as any).clearMcpRestartRequest();
       rmSync(instanceDir, { recursive: true, force: true });

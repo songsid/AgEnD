@@ -51,6 +51,13 @@ function idleSnapshot(state = "idle") {
   return { state, unchangedForMs: 0, observedAt: now, stateChangedAt: now } as any;
 }
 
+/**
+ * NOTE (#663): the revival request is now emitted after a bounded grace at
+ * `fireMcpRestartRequest`, which re-reads MCP liveness first. These tests mock
+ * liveness as permanently dead, so every trigger below still fires — just 2s
+ * later. The grace exists because a CLI that respawns its own MCP child (Codex
+ * <0.146 on any auth/config change) would otherwise be restarted while healthy.
+ */
 describe("daemon: MCP death arms an idle-gated restart request", () => {
   let dir: string;
   afterEach(() => {
@@ -60,7 +67,7 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("fires immediately when the pane is already idle — a parked collab instance never gets an idle edge", () => {
+  it("fires when the pane is already idle — a parked collab instance never gets an idle edge", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
     daemon.instanceState = "idle";
@@ -69,14 +76,16 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
+    vi.useFakeTimers();
     daemon.checkMcpServerAlive();
-
     expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: true, authSuspected: false });
+    await vi.advanceTimersByTimeAsync(2_500); // bounded replacement grace (#663)
+
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "already_idle" });
     expect(daemon.mcpRestartPending).toBe(false); // one death, one request
   });
 
-  it("defers while the pane is busy, then fires on the idle edge instead of interrupting the turn", () => {
+  it("defers while the pane is busy, then fires on the idle edge instead of interrupting the turn", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
     daemon.instanceState = "working";
@@ -87,11 +96,13 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     daemon.checkMcpServerAlive();
     expect(requested).not.toHaveBeenCalled();
 
+    vi.useFakeTimers();
     daemon.applyInstanceStateSnapshot(idleSnapshot());
+    await vi.advanceTimersByTimeAsync(2_500);
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "idle_edge" });
   });
 
-  it("waits for the paste queue too — a queued inbound is about to make the pane busy again", () => {
+  it("waits for the paste queue too — a queued inbound is about to make the pane busy again", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
     daemon.instanceState = "idle";
@@ -103,8 +114,10 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     daemon.checkMcpServerAlive();
     expect(requested).not.toHaveBeenCalled();
 
+    vi.useFakeTimers();
     daemon.pasteQueueDepth = 0;
     daemon.applyInstanceStateSnapshot(idleSnapshot());
+    await vi.advanceTimersByTimeAsync(2_500);
     expect(requested).toHaveBeenCalledOnce();
   });
 
@@ -143,7 +156,7 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     expect(requested).not.toHaveBeenCalled();
   });
 
-  it("force-fires after 30 minutes when the instance never idles — mute work is stranded work", () => {
+  it("force-fires after 30 minutes when the instance never idles — mute work is stranded work", async () => {
     vi.useFakeTimers();
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
@@ -153,9 +166,11 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
     daemon.checkMcpServerAlive();
-    vi.advanceTimersByTime(30 * 60_000 - 1);
+    await vi.advanceTimersByTimeAsync(30 * 60_000 - 1);
     expect(requested).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
+    // The stale timer reaches the same chokepoint, so it also serves the
+    // bounded replacement grace before committing (#663).
+    await vi.advanceTimersByTimeAsync(1 + 2_500);
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "stale_timeout" });
   });
 

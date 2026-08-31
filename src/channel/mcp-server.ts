@@ -131,7 +131,10 @@ async function connectIpc(): Promise<void> {
     const sessionName = process.env.AGEND_INSTANCE_NAME
       ?? process.env.AGEND_SESSION_NAME
       ?? `external-${basename(process.cwd())}-${process.pid}`;
-    client.send({ type: "mcp_ready", sessionName });
+    // pid lets the daemon distinguish a replacement server from the one it just
+    // saw die. Safe to trust on arrival: the pid file is written before
+    // connectIpc() runs, so a re-read at this point already sees this process.
+    client.send({ type: "mcp_ready", sessionName, pid: process.pid });
     process.stderr.write("agend: connected to daemon IPC\n");
   } catch (err) {
     process.stderr.write(`agend: failed to connect to daemon IPC: ${err}\n`);
@@ -294,12 +297,17 @@ async function main(): Promise<void> {
     process.stderr.write("agend: MCP transport closed — exiting\n");
     process.exit(0);
   };
+  // The exit itself must stay: stdio EOF is irreversible, so treating it as
+  // recoverable would leave an orphan behind on a real parent death. Only the
+  // wording changes — a CLI that closes the child's pipe while staying alive
+  // (Codex <0.146 during an MCP reset) made the old message assert something
+  // false, and that claim is what sent the #663 investigation the wrong way.
   process.stdin.on("end", () => {
-    process.stderr.write("agend: stdin EOF (parent exited) — exiting\n");
+    process.stderr.write("agend: stdin EOF — parent exited or closed the pipe; exiting\n");
     process.exit(0);
   });
   process.stdin.on("close", () => {
-    process.stderr.write("agend: stdin closed (parent exited) — exiting\n");
+    process.stderr.write("agend: stdin closed — parent exited or closed the pipe; exiting\n");
     process.exit(0);
   });
   process.stdin.on("error", () => {
