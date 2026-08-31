@@ -1014,6 +1014,16 @@ export class Daemon extends EventEmitter {
    */
   private static readonly MCP_RESTART_MAX_WAIT_MS = 30 * 60_000;
   /**
+   * How long the revival restart waits, at the point of firing, for a
+   * CLI-respawned MCP server to announce itself.
+   *
+   * Codex <0.146 tears down and recreates ALL MCP connections on an auth/config
+   * change — healthy ones included — so the daemon sees the old pid die while
+   * the CLI is fine and a replacement is seconds away. Module load measured
+   * ~0.36s, so 2s is roughly 5x headroom without making a genuine loss wait.
+   */
+  private static readonly MCP_REPLACEMENT_GRACE_MS = 2_000;
+  /**
    * Sticky "restart to revive the MCP server as soon as the pane idles" — same
    * shape as pausePending, because the death is usually detected mid-turn when
    * an immediate restart would destroy in-flight work. Cleared when the server
@@ -1021,6 +1031,16 @@ export class Daemon extends EventEmitter {
    */
   private mcpRestartPending = false;
   private mcpRestartStaleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** In-flight replacement grace; also the guard against three triggers stacking. */
+  private mcpRestartGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * A dead-MCP sighting held back once, pending a possible replacement.
+   *
+   * Deliberately NOT the same field as `mcpDeathNotifiedForPid`: deferring must
+   * not consume the once-per-pid budget, or a suspicion that turns out to be a
+   * real loss could never be reported at all.
+   */
+  private mcpDeathDeferredForPid: number | null = null;
   /** Prevent in-flight monitor callbacks from re-arming after a pause. */
   private runtimeMonitorsFrozen = false;
   private errorWaitingForRecovery = false; // true = error detected, waiting for ready pattern
@@ -1176,20 +1196,7 @@ export class Daemon extends EventEmitter {
         // MCP server forwarding a Claude tool call (reply, react, edit, download)
         this.handleToolCall(msg, socket);
       } else if (msg.type === "mcp_ready") {
-        const sessionName = msg.sessionName as string | undefined;
-        if (sessionName) {
-          this.socketSessionNames.set(socket, sessionName);
-          socket.on("close", () => {
-            this.socketSessionNames.delete(socket);
-            // Notify fleet manager so it can clean up sessionRegistry
-            if (sessionName !== this.name) {
-              this.ipcServer?.broadcast({ type: "session_disconnected", sessionName });
-            }
-          });
-        }
-        this.logger.debug({ sessionName }, "MCP channel server connected and ready");
-        // Notify FleetManager's IPC client that MCP is ready
-        this.ipcServer?.broadcast({ type: "mcp_ready", sessionName });
+        this.handleMcpReady(msg, socket);
       } else if (msg.type === "query_sessions") {
         // Fleet manager asks for all registered session names (catches sessions
         // that sent mcp_ready before fleet manager connected).
@@ -1420,28 +1427,96 @@ export class Daemon extends EventEmitter {
    * process would have no client reading it. Only the CLI can restore its own
    * tools — hence notify, and let the operator decide about restarting.
    */
-  private checkMcpServerAlive(): void {
+/**
+   * An MCP server has connected and announced itself.
+   *
+   * Beyond the existing session bookkeeping this is the earliest evidence that
+   * tools are back — roughly 30s ahead of the next health tick, which is
+   * exactly the window #663's false restarts fired in.
+   */
+  private handleMcpReady(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
+    const sessionName = msg.sessionName as string | undefined;
+    if (sessionName) {
+      this.socketSessionNames.set(socket, sessionName);
+      socket.on("close", () => {
+        this.socketSessionNames.delete(socket);
+        // Notify fleet manager so it can clean up sessionRegistry
+        if (sessionName !== this.name) {
+          this.ipcServer?.broadcast({ type: "session_disconnected", sessionName });
+        }
+      });
+    }
+    this.logger.debug({ sessionName, pid: msg.pid }, "MCP channel server connected and ready");
+
+    // Gated on ownership: this ipcServer also accepts EXTERNAL sessions (a
+    // `claude` run in another directory registers as `external-<cwd>-<pid>`).
+    // Without the gate an unrelated session could stand down a restart armed
+    // for THIS instance's genuinely dead server. The liveness re-read below is
+    // a second guard, but ownership is the one that is semantically right.
+    if (sessionName === this.name && this.mcpRestartPending) {
+      const live = mcpServerState(this.instanceDir);
+      if (live.state === "alive") {
+        this.logger.info({ pid: live.pid }, "MCP server replaced — standing down the pending revival restart");
+        this.mcpDeathNotifiedForPid = null;
+        this.mcpDeathDeferredForPid = null;
+        this.clearMcpRestartRequest();
+      }
+    }
+    this.ipcServer?.broadcast({ type: "mcp_ready", sessionName });
+  }
+
+    private checkMcpServerAlive(): void {
     if (this.isPaused) return;
     const status = mcpServerState(this.instanceDir);
     if (status.state === "unknown") return;
     if (status.state === "alive") {
       this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
+      this.mcpDeathDeferredForPid = null;
       this.clearMcpRestartRequest(); // tools are back — stand down a pending auto-restart
       return;
     }
     // Dead: report once per pid, and at most once per cooldown window.
     if (this.mcpDeathNotifiedForPid === status.pid) return;
-    if (Date.now() - this.lastMcpDeathNotifiedAt < Daemon.MCP_DEATH_COOLDOWN_MS) return;
-    this.mcpDeathNotifiedForPid = status.pid;
-    this.lastMcpDeathNotifiedAt = Date.now();
     // An auth-broken CLI cannot keep an MCP server alive, and restarting it
     // only loops back to the sign-in screen — hold the auto-restart until a
     // re-login (which restarts the instance and replaces this daemon anyway).
     const authSuspected = this.authFailureUnresolved;
     const autoRestart = this.config.mcp_auto_restart !== false && !authSuspected;
+
+    // Codex <0.146 kills and recreates its MCP connections wholesale, so the
+    // FIRST sighting of a dead pid under a live Codex is more likely a swap
+    // than a loss. Hold the alarm for one tick — only the alarm: the restart is
+    // still armed, and the chokepoint's re-read cancels it if the replacement
+    // arrives. Not generalised to other backends, where a dead MCP under a live
+    // CLI is a genuine incident that silence would mask.
+    //
+    // Crucially this does NOT touch mcpDeathNotifiedForPid or the cooldown
+    // clock: if the suspicion is wrong the incident must still be reportable.
+    if (this.suspectsTransientMcpReplacement() && this.mcpDeathDeferredForPid !== status.pid) {
+      this.mcpDeathDeferredForPid = status.pid;
+      this.logger.warn({ pid: status.pid },
+        "MCP server pid is gone under a live Codex — holding the alarm one tick for a possible replacement");
+      if (autoRestart) this.armMcpRestartWhenIdle();
+      return;
+    }
+
+    if (Date.now() - this.lastMcpDeathNotifiedAt < Daemon.MCP_DEATH_COOLDOWN_MS) return;
+    this.mcpDeathNotifiedForPid = status.pid;
+    this.mcpDeathDeferredForPid = null;
+    this.lastMcpDeathNotifiedAt = Date.now();
     this.logger.error({ pid: status.pid, autoRestart, authSuspected }, "MCP server process is gone — instance has no agend tools");
     this.emit("mcp_died", { name: this.name, pid: status.pid, autoRestart, authSuspected });
     if (autoRestart) this.armMcpRestartWhenIdle();
+  }
+
+  /**
+   * Whether a dead MCP pid on this backend is more likely a CLI-driven
+   * replacement than a real loss. Codex only, and deliberately narrow: it is
+   * the backend whose released fix (0.146) confirms it tore down healthy MCP
+   * connections alongside the one it meant to restart.
+   */
+  private suspectsTransientMcpReplacement(): boolean {
+    return (this.config.backend ?? this.backend?.binaryName) === "codex";
   }
 
   /**
@@ -1465,21 +1540,86 @@ export class Daemon extends EventEmitter {
     }
   }
 
+  /**
+   * Single chokepoint for all three revival triggers (already_idle, idle_edge,
+   * stale_timeout) — and therefore the one place worth re-checking reality.
+   *
+   * The pending flag is armed by a health tick that saw the OLD pid die, and
+   * was previously fired without ever looking again. When a CLI legitimately
+   * respawns its own MCP child, the replacement is already serving by the time
+   * the turn ends — but the idle edge fires inside the ~30s before the next
+   * health tick can stand the request down, restarting a healthy instance. One
+   * external user was restarted 18 times in two days this way (#663).
+   *
+   * Re-reading here is safe for every backend: worst case it clears a pending
+   * restart that should not have existed.
+   */
   private fireMcpRestartRequest(trigger: "already_idle" | "idle_edge" | "stale_timeout"): void {
-    // A recovery is already reshaping the CLI: crash-loop handling
-    // (healthCheckPaused), a respawn in flight (spawning), or a pause
-    // (isPaused / frozen monitors). Each of those paths ends in a fresh CLI —
-    // and with it a fresh MCP server — or in supervision ending, where a
-    // restart on top would fight the recovery. Either way the revival restart
-    // is moot: cancel it rather than defer it.
-    if (this.healthCheckPaused || this.spawning || this.isPaused || this.runtimeMonitorsFrozen) {
-      this.logger.warn({ trigger }, "MCP revival restart cancelled — instance is already pausing/spawning/recovering");
+    if (this.mcpRestartCancelledByRecovery(trigger)) return;
+
+    // Authoritative re-read — the CLI may have replaced the server since the
+    // health tick that armed this.
+    if (mcpServerState(this.instanceDir).state === "alive") {
+      this.logger.info({ trigger }, "MCP revival restart stood down — a live MCP server is already serving");
       this.clearMcpRestartRequest();
       return;
     }
+
+    // Not back yet: give a CLI-driven replacement a bounded moment rather than
+    // restarting the instance out from under it. One timer covers all three
+    // triggers; a second trigger during the wait is a no-op.
+    if (this.mcpRestartGraceTimer) return;
+    this.mcpRestartGraceTimer = setTimeout(() => {
+      this.mcpRestartGraceTimer = null;
+      if (!this.mcpRestartPending || this.runtimeMonitorsFrozen) return;
+      if (this.mcpRestartCancelledByRecovery(trigger)) return;
+      if (mcpServerState(this.instanceDir).state === "alive") {
+        this.logger.info({ trigger }, "MCP revival restart stood down — replacement came up during the grace window");
+        this.clearMcpRestartRequest();
+        return;
+      }
+      // The suspicion was wrong: a real loss. Report it BEFORE asking for the
+      // restart — instance-lifecycle's suppression path documents that it
+      // assumes the mcp_died notification has already gone out, and this daemon
+      // does not survive the restart to send it afterwards.
+      this.reportDeferredMcpDeath();
+      this.clearMcpRestartRequest();
+      this.logger.warn({ trigger }, "Requesting instance restart to revive its MCP server");
+      this.emit("mcp_restart_requested", { name: this.name, trigger });
+    }, Daemon.MCP_REPLACEMENT_GRACE_MS);
+    this.mcpRestartGraceTimer.unref?.();
+  }
+
+  /**
+   * A recovery is already reshaping the CLI: crash-loop handling
+   * (healthCheckPaused), a respawn in flight (spawning), or a pause
+   * (isPaused / frozen monitors). Each ends in a fresh CLI — and with it a
+   * fresh MCP server — or in supervision ending, where a restart on top would
+   * fight the recovery. Either way the revival restart is moot.
+   */
+  private mcpRestartCancelledByRecovery(trigger: string): boolean {
+    if (!(this.healthCheckPaused || this.spawning || this.isPaused || this.runtimeMonitorsFrozen)) return false;
+    this.logger.warn({ trigger }, "MCP revival restart cancelled — instance is already pausing/spawning/recovering");
     this.clearMcpRestartRequest();
-    this.logger.warn({ trigger }, "Requesting instance restart to revive its MCP server");
-    this.emit("mcp_restart_requested", { name: this.name, trigger });
+    return true;
+  }
+
+  /**
+   * Emit a dead-MCP report that was held back as a suspected replacement, once
+   * it is clear no replacement is coming. Consumes the once-per-pid budget
+   * here — deferring was to avoid spending it on a false alarm, not to drop
+   * the incident.
+   */
+  private reportDeferredMcpDeath(): void {
+    const pid = this.mcpDeathDeferredForPid;
+    if (pid == null || this.mcpDeathNotifiedForPid === pid) return;
+    const authSuspected = this.authFailureUnresolved;
+    const autoRestart = this.config.mcp_auto_restart !== false && !authSuspected;
+    this.mcpDeathNotifiedForPid = pid;
+    this.lastMcpDeathNotifiedAt = Date.now();
+    this.logger.error({ pid, autoRestart, authSuspected },
+      "MCP server process is gone — no replacement arrived, instance has no agend tools");
+    this.emit("mcp_died", { name: this.name, pid, autoRestart, authSuspected });
   }
 
   private clearMcpRestartRequest(): void {
@@ -1487,6 +1627,10 @@ export class Daemon extends EventEmitter {
     if (this.mcpRestartStaleTimer) {
       clearTimeout(this.mcpRestartStaleTimer);
       this.mcpRestartStaleTimer = null;
+    }
+    if (this.mcpRestartGraceTimer) {
+      clearTimeout(this.mcpRestartGraceTimer);
+      this.mcpRestartGraceTimer = null;
     }
   }
 
