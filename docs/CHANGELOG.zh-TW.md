@@ -6,30 +6,7 @@
 
 ## [未發佈] (Unreleased)
 
-### 新增 (Added)
-- **Antigravity CLI 後端** — 完整支援 Google `agy` CLI。預設使用 CLI 模式（無 MCP）。非隱藏路徑 workspace `~/agend-workspaces/`，instructions 寫入 `.agents/agents.md`，trust 提示自動 dismiss。
-- **IPC + adapter 自動重連** — IPC 斷線後指數退避重試，之後每 60 秒無限重試。Adapter 致命錯誤（Telegram polling 初始化、Discord gateway）同策略自動重啟。死亡 tmux pane 自動 respawn。
-- **Beta 更新頻道** — `agend update --beta` 從 `@beta` npm dist-tag 安裝。CI 偵測 tag 含 `-beta` 時以 `--tag beta` 發布。
-- **PSS 記憶體報告** — `agend ls` 使用 PSS 取代 RSS，避免共用頁面重複計算。
-- **平行 instance 停止** — 併發數 5 加速關閉，systemd timeout 相應延長。
-- **可配置 context_lines** — classicBot.yaml 個別 channel 聊天記錄注入深度，設 0 停用。
-- **classicBot.yaml model 支援** — 個別 channel 模型覆蓋。
-- **Access mode "open"** — 允許所有使用者，無需白名單。
-- **Fleet 記憶體總計** — `agend ls` footer 顯示 instance 數量與總記憶體。
-- **`agend update` 指令** — 完整生命週期：sudo/nvm 偵測、npm install、service 重啟、健康檢查。
-- **GitHub Actions CI/CD** — ci、publish、gitleaks workflows。
-- **Workspace git init** — 自動建立的 workspace 執行 `git init`，確保 CLI backend 正確辨識 project root。
-- **`/agent` endpoint auth bypass** — POST /agent 使用 instance-level token，跳過 web UI token 驗證。
-
-### 修復 (Fixed)
-- 安裝腳本：自動偵測 sudo、nvm-aware PATH、native modules 用 build-essential、/usr/local/bin symlink 僅 root 執行。
-- Discord：sticker 不再當作 photo attachment；collab 模式 chat log 包含附件檔名。
-- Daemon：統一 log rotation；移除過時的 context rotation 參考。
-- Update：重啟前先終止舊 fleet process；systemctl restart 前執行 daemon-reload。
-
-### 效能 (Performance)
-- 平行 instance 停止（併發 5）。
-- 交錯重啟通知。
+_目前沒有未發佈的變更。_
 
 ## [2.1.4] - 2026-08-25
 
@@ -67,6 +44,367 @@
 - **背景 session 恢復後健康檢查會繼續**（#541）。
 - **Agent instructions 修正** — 新增 `react` 與 `edit_message` 的呼叫方式說明、區分 CLI subagent 與 `create_instance`、避免使用 AgEnD 的投遞狀態表情。**instructions 類改動需要 fleet 重啟後才生效**，不會立即套用（#559、#562、#626）。
 - **文件** — Telegram 與 Discord bot 設定指南（中英文）、2026-08-13 稽核找到的指令／設定缺口、修正過時的 tool_set 數量、螢幕截圖去識別化、Gemini 停用標示（#523、#546、#547、#571、#574）。
+
+## [2.1.3] - 2026-08-07
+
+### 新增 (Added)
+- **tmux 3.7b 相容性** — 移除 control client 的 `-r`（唯讀）flag，與 tmux 3.7 新的唯讀強制機制衝突。新增自適應的貼上延遲以因應時序差異（#519、#521）。
+- **View UI 大改版** — 每個 instance 顯示 CLI backend 圖示；instance 工具提示支援 i18n；`/usage` 重排為 Claude→Codex→Grok→Kiro→Antigravity（#511–513、#514）。
+- **MCP dead proxy reply** — MCP server 無法連線時，daemon 可以把 agent pane 輸出作為回應轉發。**僅 opt-in**（`mcp_proxy_reply: true`），預設 `false`，因為原始 pane 輸出可能含有機密。跨 instance 的 inbound 不會觸發此機制（#515–516）。
+- **tmux 滑鼠捲動** — `agend attach` 啟用 mouse mode，往上捲可瀏覽歷史（#508）。
+- **Discord 轉發圖片** — 轉發訊息與嵌入中的圖片現在能正常遞送。修正 `discord.js` messageSnapshots API（無 `.message` wrapper）（#505、#518）。
+
+### 修正 (Fixed)
+- **Kiro Enter 重試** — 防禦性 Enter 現在每次遞送都會重送，而非只在第一次（#504）。
+- **claude-code classic 崩潰** — 修正 tmux window name 與既有 window 衝突時的崩潰（#503）。
+- **Codex session symlink** — 遷移舊 session 路徑；CLI 與 daemon 共用的 symlink 現在放在同一處（#507）。
+- **ctx% > 100%** — parser 現在讀取真實 title bar 而非比對聊天內容（#509）。
+- **Bot @mention 保留** — `@BotName` 保持為 `@BotName (you)` 顯示在 context 中（#510）。
+- **TG 指令選單** — 修正指令註冊（#517）。
+
+## [2.1.2] - 2026-08-06
+
+### 新增 (Added)
+- **`/usage` 指令** — 直接從聊天室查看 AI 訂閱用量。以各平台原生的豐富格式（進度條）顯示 Claude、Codex、Kiro、Antigravity 與 Grok 配額。權限與 `/ctx` 相同（不限管理員）。
+- **`get_usage` MCP 工具** — agent 可查詢自己的訂閱用量。CLI 模式下也可用 `agend-agent usage`。
+- **`/view` 的 AI 用量面板** — 📊 按鈕顯示所有已設定 backend 的用量面板。以 `web.usage_panel: false` 停用。
+- **`/effort` 指令** — 執行期調整 AI 推理 effort（low/medium/high/xhigh/max）。TG 用行內鍵盤、DC 用下拉選單。限管理員。六種 backend 全部支援。Codex effort 等級因模型而異。
+- **`get_effort` MCP 工具** — 查詢目前 effort 與策略。`/status` 顯示 effort 欄位。
+- **Reactions 作為 context** — DC/TG reactions 存入資料庫，下一輪 context 會包含，不會轉發成訊息。雙向（使用者→agent、bot→使用者）。~~`defaults.reactions_enabled` 控制此功能。~~ **[勘誤 2026-08-13]** 此開關從未實作——`reactions_enabled` 在原始碼中零參照；此功能無條件啟用。將原始敘述視為文件錯誤，而非已移除功能。
+- **即時進度行** — agent 工作時，遞送狀態訊息顯示正在執行的工具名稱與已耗時間。可設定：`defaults.progress_min_elapsed`（秒，預設 30）。直接從 pane 讀取 Kiro 的 running tool。
+- **Tab 補全** — `agend attach <tab>` 補全 instance 名稱（bash 與 zsh）。
+- **Fleet 記憶體報告** — `agend ls` footer 顯示 fleet 總記憶體。
+- **MCP 閒置時自動重啟** — MCP server 死掉時，AgEnD 等 instance 閒置後自動重啟（crash-loop guard + restart mutex）。
+- **Singleton fleet 啟動** — `fleet.lock` 防止重複的 fleet 進程啟動。
+- **Fleet event loop 不阻塞** — 子進程（sdNotify 等）不再阻塞主 event loop。Watchdog ping 改為非同步。
+- **General 中的重啟進度** — fleet 啟動的即時進度：版本、instance 數量、暫停清單。
+- **啟動時跳過暫停佇列** — 暫停的 instance 不進入啟動佇列（大型 fleet 快約 50 秒）。
+- **互動式提示偵測** — 偵測卡住的 sudo/Y-N 提示並通知 General。
+
+### 修正 (Fixed)
+- **至少一次訊息遞送** — 跨 instance 與排程訊息最多重試 3 次；最終失敗會讓 agent 看到。
+- **取消鈕生命週期** — 4 道安全網（daemon 死亡、重啟、silent reporter、24 小時上限）。修正：spinner、double-observe、post-before-delete 順序、restart mutex、grace retirement。
+- **Reply 去重** — 60 秒窗口防止因 rate-limit timeout 造成的重複回覆。
+- **General coordinators 永遠保持 warm** — General 與多頻道 generals 不能被 auto-pause。
+- **遞送路由** — reply 使用已設定的 adapter；classic instance 經由其綁定的 adapter 路由。
+- **pane 寫入序列化** — 所有對 tmux pane 的寫入都序列化，防止交錯。
+- **SQLite 強化** — busy timeout、corrupt-tolerant event log、bounded query history。
+- **Fleet health 誠實** — `/health` 在任何 instance 降級時回傳 503。`READY=1` 只在所有 general 都 up 後才送出。
+- **錯誤隔離** — 單一 instance 崩潰不再拖垮整個 fleet 進程。ClassicBot 錯誤路由到 General。
+- **Kiro 登入失敗** — 不再誤報為 rate limit。
+- **Dashboard token 持久化** — `/dashboard` URL 在 fleet 重啟後仍然有效。
+- **agy busy pattern** — Antigravity 現在有真正的 busy pattern，而非永遠為 true。
+- **Grok/Claude/Codex pattern 修正** — 邊界情況的閒置偵測、模型錯誤偵測、年度金鑰讀取。
+- **Dead window 清理** — 過時的 tmux window 註冊會自動退場。
+- **啟動對話守衛** — 使用者訊息不會被貼進啟動對話。
+- **Secret 檔案權限警告** — 憑證檔案無法設為 owner-only 時會警告。
+
+### 變更 (Changed)
+- **跨 instance 遞送** — 改為 fire-and-queue（非阻塞），降低呼叫方等待時間。
+- **`defaults.effort`** — 新的預設 effort 等級設定欄位。
+- **`defaults.progress_min_elapsed`** — 即時進度出現前的秒數（預設 30）。
+- **`web.usage_panel`** — 在 `/view` 顯示/隱藏用量面板（預設 `true`）。
+
+## [2.1.1] - 2026-07-29
+
+### 新增 (Added)
+- **`/view` 的 AI 用量面板** — 📊 按鈕開啟面板，顯示此機器上已登入 CLI backend 的即時訂閱用量（Claude session/weekly %、Codex windows/credits、Grok weekly pool、Kiro monthly + bonus/gift credits 與 Amazon Q subscription）。新 `GET /api/ai-usage` 端點（5 分鐘快取）；以 `web.usage_panel: false` 停用。Claude/Codex/Grok provider 邏輯取自 ai-usage-board/OpenUsage（MIT，見 `src/usage/LICENSE.md`）；Kiro provider 為原創研究。
+- **Kiro TUI effort skill** — TUI 模式下 effort 選擇器的 General-knowledge skill。
+
+### 修正 (Fixed)
+- **SIGHUP 啟動窗口** — SIGHUP reload 期間的啟動請求受到保護。
+- **Reload reconcile 安全閘** — 偵測到 N→0、空設定或 >50% instance 減少時中止 reconcile。
+- **Root 使用者 Codex PATH** — root 執行時 Codex 的 PATH fallback。
+
+## [2.1.0] - 2026-07-27
+
+### 新增 (Added)
+- **`/model` 指令** — 從聊天室更換 backend 模型。限管理員。TG 用行內鍵盤選單、DC 用下拉選單。顯示目前模型，即時回饋。
+- **啟動時 CLI-env 探測** — 啟動時自動探索可用模型並按 backend 快取。
+- **Auto-Pause/Wake** — 閒置 instance 在 `auto_pause_after` 分鐘後暫停（opt-in，預設停用）。收到訊息自動喚醒暫停的 instance。`general` instance 永不暫停。
+- **三態執行狀態** — `agend ls`、MCP `list_instances`、`/api/fleet` 顯示 Idle/Working/Stuck。
+- **Adapter 啟動隔離** — adapter 平行啟動，獨立重試；單一 adapter 失敗不再阻擋其他。
+- **事件驅動 pane 監控** — 使用 tmux control mode `%output` 事件取代 5 秒輪詢；閒置時 CPU 近乎零。
+- **自適應啟動併發** — 啟動時讀取 `os.freemem()` 以在低 RAM 機器上限制平行 instance 數量。
+- **Warm cap（LRU 驅逐）** — `warm_cap` 設定限制常駐（warm）instance 數量；超出的閒置 instance 自動暫停。
+- **Grok Build backend** — 完整支援 Google Grok CLI：crash recovery、context %、quit 鍵（Ctrl+Q）、Web UI、MCP（ASCII-sanitized key）。
+- **`/model` MCP 工具** — `update_instance_config`、`update_fleet_defaults` 用於執行期設定更新。
+- **Pause/wake MCP 工具** — `pause_instance`、`wake_instance`、`stop_instance`、`get_fleet_status`、`get_instance_logs`、`get_fleet_config`。
+- **跨 instance 閒置閘門** — outbound 訊息等目標 instance 閒置後才遞送。
+- **一次性排程** — `create_schedule({ at: "ISO-datetime", ... })` 觸發一次後自動刪除。
+- **靜默排程** — `create_schedule({ silent: true, ... })` 直接貼到 pane，不發送到聊天室。
+- **ClassicBot backend 選擇器** — `/start` 顯示 backend 選單與安裝狀態。
+- **Settings 頁面** — fleet.yaml/classicBot.yaml 的結構化 UI，表單↔YAML 雙欄同步。
+- **設定驗證器** — `agend validate` CLI + `validate_config` MCP 工具。
+- **共用 logger** — 單一 root pino transport + child loggers（省下數百 MB + 執行緒）。
+- **暫停時凍結監控** — 暫停的 instance 停止所有 timer/watcher（overhead 近乎零）。
+- **Kiro 每 instance UI 模式** — `fleet.yaml` 的 `kiro_ui: legacy | tui | v3`。
+
+### 修正 (Fixed)
+- `auto_pause_after` 預設為 0（opt-in，使用者須主動啟用）。
+- classic instance 顯示名稱移除 `[C]` 前綴。
+- 跨 instance `[from:]` 標頭顯示發送者的 `display_name`。
+- Classic instance 出現在 `agend ls`、`/status`、Web View roster。
+- Grok：ASCII-sanitize MCP server key（CJK key → 0 tools）。
+- 重啟時的 adapter 綁定競爭。
+- Kiro lambda prompt 現在被辨識為 ready pattern。
+- Stuck 通知只在有待處理 inbound 時才發送。
+- `fleet.log` 包含日期戳記。
+- Unicode instance 名稱（中文 ClassicBot channel）。
+- CLI reply 在重啟後使用持久化的 context。
+- agy：遇到未知 model key 時自動 fresh-restart。
+- CLI pane 死亡時使閒置狀態失效。
+
+### 變更 (Changed)
+- **Grok Build** — 移除實驗標記；現為穩定版。
+- **共用 logger** — 取代每 instance 的 worker thread。
+
+## [2.0.11] - 2026-07-08
+
+### 新增 (Added)
+- **`/dashboard` 指令** — 限管理員，回傳 View/Settings/WebUI URL。DC：ephemeral reply。TG：spoiler-wrapped token。
+- **Settings 網頁（`/settings`）** — 結構化設定編輯器，表單↔YAML 雙欄同步，寫入前驗證。
+- **設定驗證器** — `agend validate` CLI + `validate_config` MCP 工具。驗證 channels、instances、backends、access。
+- **Web View 增強** — sidebar 拖曳排序（SQLite）、按 tag 群組、`agend view` CLI、開放 GET 存取（無需 token）。
+- **Same-channel multi-bot ClassicBot** — composite key routing、owner-wins dedup、自動遷移、restart rebind。
+- **Quickstart persona bot** — 「Add persona bot (Discord)」選項，7 步驟流程。
+- **Multi-bot token adapter** — 每 channel 可用不同 Discord bot 身分。
+
+### 修正 (Fixed)
+- **DC general invalid topic_id** — skip + warn + unbind 而非 crash loop。
+- **Channel missing access field** — 預設 open 而非崩潰。
+- **Avatar DB path** — 存檔名（非絕對路徑）；avatar 遺失時顯示 placeholder。
+- **`/view` ctx%** — 為 0 或 null 時隱藏。
+- **Auto-General** — 只有主要 adapter 建立/認領 general。
+- **React per-adapter** — `reactMessageStatus` 使用 instance 綁定的 adapter。
+- **Warmup false trigger** — 首次執行時跳過、閒置時延後、加上「不要回覆」。
+
+## [2.0.10] - 2026-07-03
+
+### 新增 (Added)
+- **Quickstart 自動安裝系統服務** — quickstart 結束時詢問，一步完成設定。
+
+### 修正 (Fixed)
+- **Double fleet 競爭條件** — 重啟時若 systemd service 存在，不再 fallback 到 detached spawn。
+- **WSL Windows PATH 過濾** — systemd service `Environment=` 過濾 Windows PATH 項目。
+- **`IS_SANDBOX=1` for root** — systemd service 加入環境變數以相容 claude-code v2.1+。
+
+### 變更 (Changed)
+- **移除 CI GitHub Release 步驟** — leader 手動撰寫 release notes。
+
+## [2.0.9] - 2026-07-02
+
+### 修正 (Fixed)
+- **Kiro CLI v3 的 `/ctx` regex** — 符合新 λ prompt 格式（`26% λ !>`）。
+
+## [2.0.8] - 2026-07-02
+
+### 新增 (Added)
+- **取消鈕** — 每則 inbound 訊息都有行內 🛑 按鈕。Track-all 設計（per-button Map）、跨 instance cancel via `correlation_id`、5 分鐘閒置 backstop。
+- **遞送狀態 UX** — 👀 已收 → ⏳ 處理中 → ✅ 完成（或 ❌ 失敗）。Boolean 遞送結果與 backoff。
+- **Discord 內建** — Discord adapter 合併入核心；不需另裝 plugin。
+- **Fleet topic 的 `/save`** — kiro-cli 用 `/chat save`、claude-code 用 `/export`。
+- **`/cancel` 指令** — 行內按鈕的斜線指令替代方案（TG + DC）。
+- **Model pass-through** — 未知 model 名稱傳給 CLI 並顯示警告，而非靜默丟棄。
+- **Log rotation** — `fleet.log` + inbox 以 copytruncate 每日輪轉。
+
+### 修正 (Fixed)
+- **`--continue` crash loop** — resume 失敗時中斷迴圈 + 停止單一 instance 而非整個 fleet。
+- **DC forum thread-aware** — editMessage、deleteMessage、reactions 能在 forum-topic threads 中找到訊息。
+- **Health-check null retry** — 宣告崩潰前再次確認 null pane 狀態。
+- **TG bare slash ignore** — Classic group 中的裸 `/` 指令不再觸發錯誤。
+- **DC adapter error isolation** — Discord 錯誤不再拖垮 fleet 進程。
+- **Classic collab image path** — 觸發時 surface 儲存的 image path 為 `image_path`。
+- **Cancel button async race** — bounded delete retry、以 correlation_id 退場。
+
+### 變更 (Changed)
+- **Fleet stop 效能** — 大量 instance 時停止更快。
+- **`/ctx` scrollback** — kiro-cli 有 robust tmux fallback。
+
+## [2.0.5] - 2026-06-24
+
+### 新增 (Added)
+- **`agend doctor mcp`** — fleet 級 MCP 健康檢查（IPC 連通性、config 路徑、duplicates、binary PATH）。
+- **TG Classic `/ctx`** — classic 模式顯示 context 用量。
+- **`/start` 通知 General** — 未授權的 DC guild 與 TG private chat 使用者會觸發 General 通知。
+- **Decision 過濾** — instance 只看到 fleet-scope + 同專案的 decisions（不是所有 fleet decisions）。
+
+### 修正 (Fixed)
+- **TG Classic @mention 被 auto-collab 破壞** — `/start` 的 auto-collab 現在僅限 Discord；TG classic @mention 恢復正常。
+- **TG private chat reply 'thread not found'** — 私人聊天不再錯誤地把 `thread_id` 當 `message_thread_id` 傳送。
+- **`/compact` slash 遺失** — 透過 IPC `raw_paste` 統一；使用 `tmux send-keys -l`（literal mode）。
+- **DC Fleet `/compact` 被阻擋** — 不再被 classic-only 檢查錯誤阻擋。
+- **Hang detector 誤報率降低約 73%** — 只在有待處理 inbound 訊息時才標記。
+- **claude-code background session 衝突** — 以 re-entry guard 自動恢復而非 crash loop（#79）。
+- **Crash loop 錯誤訊息** — 現在與「rate-limited」區分。
+- **Chat-log 時區** — 使用本地時區而非 UTC。
+- **install.sh EEXIST** — 清理 suzuke→songsid 套件名稱升級的錯誤。
+- **Export 包含 classicBot.yaml** — 先前 `agend export` 漏掉此檔案。
+- **從 repo 移除 soul.md + CLAUDE.md** — 意外 commit 的檔案已移除。
+- **MCP env decision 過濾** — 只傳遞過濾後的 decisions，而非所有 fleet decisions。
+
+## [2.0.3] - 2026-06-21
+
+### 新增 (Added)
+- **統一 `/update`** — TG 與 DC 都 spawn `agend update`（detached）；自動偵測 beta 版本並使用 `--beta` flag。
+- **DC Fleet 斜線指令** — `/status`、`/sysinfo`、`/restart`、`/ctx`、`/compact`、`/collab` 現在可用 Discord 斜線指令（與 TG 功能對等）。
+- **TG Fleet `/ctx` `/compact` `/collab`** — 註冊到 forum bot 選單；在 General topic 與 instance topic 都能用。
+- **TG Classic `/compact`** — 限管理員，用於 compact classic instance context。
+- **TG Classic `/ctx`** — classic 模式顯示 context 用量。
+- **Fleet `/collab`** — 允許 bot/webhook 訊息進入 fleet topic（TG + DC）。Fleet open mode 繞過 bot 訊息過濾。
+- **DC auto-collab on `/start`** — Discord `/start` 自動對新 instance 啟用 collab mode。
+- **Instance warmup** — spawn 後自動觸發 context loading（steering + skills）；等 instance 到達 idle 才標記 ready。
+- **`agend ls` status indicators** — 即時顯示每個 instance 的 Idle/Busy/Crashed/Stopped。
+- **Fleet ready 版本** — 「Fleet ready」啟動通知顯示 AgEnD 版本。
+- **🔒 Admin 標記** — 斜線指令描述以 🔒 前綴標示限管理員指令。
+
+### 修正 (Fixed)
+- **Health port retry 迴圈** — 以 re-entry guard flag 防止無限健康檢查重試（#44）。
+- **`/update` beta 自動偵測** — 目前版本為 beta 時正確 spawn `agend update --beta`。
+- **DC `/collab` fleet topic 權限** — fleet topic `/collab` 現在正確需要 `allowed_users` 權限。
+- **DC 斜線指令重複** — `compact` 之前註冊兩次導致所有指令靜默失敗；已去重。
+- **`/status` 效能** — 移除序列 tmux capture fallback（48+ instance 時太慢）；改用 statusline.json。
+- **General topic `/ctx`** — TG General topic（threadId=undefined）現在正確路由到 handleInstanceCommand。
+
+## [2.0.2] - 2026-06-17
+
+### 新增 (Added)
+- **TG Rich Message 接收** — grammy middleware 攔截 Rich Message（Bot API 10.1），擷取文字供 bot-to-bot @mention 通訊。
+- **多頻道自動偵測** — 每個 adapter 取得自己的 General instance；unbound generals 以 topic_id 比對認領。
+- **`channel_id` 欄位** — 明確綁定 General instance 到特定 adapter。
+- **Quickstart live add platform** — fleet 執行中可新增第二個平台（偏好 systemd restart，fallback detached spawn）。
+- **`agend stop/start` fallback** — 在無 D-Bus/systemd 的機器上可用（PID kill / direct fleet start）。
+- **`/sysinfo` 版本顯示** — 系統資訊表格顯示 AgEnD 版本。
+- **`/status` context 百分比** — tmux capture fallback 符合 `agend ls` 行為。
+- **Multi-channel skill** — 雙平台設定指南的 General knowledge。
+- **Memory 最佳實踐** — steering 規則：Decision（簡短）→ soul.md（完整）→ skill（按需）。
+- **Configuration & commands 文件** — fleet.yaml/classicBot.yaml 完整參照 + 所有斜線指令。
+- **Reply tool instruction** — 所有 instance 知道 reply tool 後輸出「.」以避免 kiro-cli 錯誤。
+
+### 修正 (Fixed)
+- **TG ClassicBot chat-log** — 非 @mention 訊息現在正確記錄（先前因 text clearing 導致空白）。
+- **TG ClassicBot bot reply logging** — agent outbound reply 寫入 chat-log。
+- **TG ClassicBot error notifications** — classic instance 透過 routing table fallback 收到錯誤通知。
+- **Bot-to-bot @mention (TG)** — isBotMessage filter 允許帶 @ourBot mention 的 bot 訊息；Rich Message text 擷取。
+- **add platform 時 general 重複** — 認領 unbound generals 而非建立重複。
+- **`/restart` admin check** — mode:open 不再允許未授權使用者重啟 fleet。
+- **Discord `general_channel_id` required** — quickstart 迴圈直到提供（防止 routing 損壞）。
+- **未關閉的 code fence** — CLI paste 前移除，防止 input hang。
+- **TG `/chat` 從選單移除** — TG classic 未實作，改用 @mention。
+
+### 變更 (Changed)
+- **grammy 1.44.0** — 升級以支援 Bot API 10.1。
+- **`assignTopicIds`** — 使用 `channel_id` → channels config type 偵測平台（不再用 name heuristic）。
+
+## [2.0.1] - 2026-06-15
+
+### 新增 (Added)
+- **Telegram Rich Messages** — grammy 1.44.0，自動偵測 markdown 表格/code block/標題 → sendRichMessage with fallback。
+- **`/update` + `/doctor` 指令** — TG 與 Discord 皆可用（限管理員）。/doctor 執行 backend 診斷。
+- **systemd watchdog** — Type=notify、WatchdogSec=60、透過 systemd-notify 指令進行 sd_notify。
+- **非阻塞啟動** — generals 先啟動 → READY=1 → 剩餘 instance 在背景啟動。
+- **每日更新檢查** — fleet daemon 每 24 小時檢查 npm 新版本，通知 General。
+- **Admin reject 通知** — 非 admin 的 /start 或 /stop 觸發 General 通知，含使用者資訊。
+- **Workspace 路徑守衛** — create_instance 拒絕危險路徑（`.`、`~`、`/`）。
+- **npm link 自動偵測** — `agend update` 偵測並移除過時的 npm link。
+- **install.sh link 移除** — readlink fallback 偵測 npm-linked 舊版本。
+- **斜線指令前綴** — TG+DC 指令描述中的 [Fleet] / [ClassicBot]。
+- **kiro-cli 錯誤偵測** — 「having trouble responding」觸發 rate_limit 通知。
+- **`/status` + `/sysinfo` rich tables** — TG Rich Message 的 markdown table 輸出。
+
+### 修正 (Fixed)
+- **systemd startup kill** — NotifyAccess=all + TimeoutStartSec=0 支援 50+ instance fleets。
+- **Classic group unbound message** — classic group 不再顯示「not bound to an instance」。
+- **`agend update` 訊息** — 顯示 `agend start` 而非 `agend fleet start`。
+- **Collab empty log** — 跳過 collab chat log 中的空 bot 訊息。
+- **`/doctor` 指令路徑** — 使用 `agend backend doctor` 配合 fleet 預設 backend。
+
+### 變更 (Changed)
+- **版本跳號** — 從 v0.0.23 跳到 v2.0.0。新版本從 v2.x 開始。
+- **PR 流程** — 所有變更經 feature branch → PR → merge。main 分支保護。
+- **CI 自動 GitHub Release** — stable tag 自動建立 GitHub Release 並產生 notes。
+
+## [2.0.0] - 2026-06-15
+
+內容與 v0.0.23 相同。版本跳號以建立新的主版本基準。
+
+## [0.0.23] - 2026-06-12
+
+### 新增 (Added)
+- **權限矩陣** — `docs/permissions.md` 記錄所有指令 × 平台 × 存取等級。
+
+### 修正 (Fixed)
+- **TG classic `botUsername` 在主要 adapter 從未設定** — `isBotMentioned` 永遠為 false。現在在 `started` 事件處理中正確設定 `world.botUsername`，並在 `adapter.start()` 前註冊 listener。
+- **TG `/start@other_bot` 觸發所有 bot** — 帶 `@suffix` 指向其他 bot 的指令現在被完全忽略。
+- **TG `/start` `/stop` `/raw` admin 鎖定** — group-mode `/start` 與 `/stop` 現在需要 `admin_users`。`@bot /raw` 也需要 admin。
+- **`allowed_guilds: {}`（非陣列）破壞存取** — 非陣列值現在視為「允許全部」而非拒絕所有。
+
+## [0.0.22] - 2026-06-12
+
+### 修正 (Fixed)
+- **Classic instance 主動回覆** — daemon 不再在無先前 inbound 訊息時阻擋 `reply` tool。Fleet-manager 的 classicBot channelId fallback 現在正確路由 outbound 訊息。
+
+## [0.0.21] - 2026-06-12
+
+### 新增 (Added)
+- **Fleet instructions 中的 mention 規則** — 所有 instance 現在知道如何 `<@USER_ID>` mention Discord 使用者/bot 與 `@username` for Telegram。從 inbound 訊息的 `id:` 欄位擷取。
+
+## [0.0.20] - 2026-06-12
+
+### 新增 (Added)
+- **inbound 訊息中的使用者 ID** — 格式現在包含 `id:USER_ID` 以支援 mention。agent 可以 `<@ID>` mention Discord 使用者或使用 Telegram mention 語法。
+
+### 修正 (Fixed)
+- **Classic instance reply fallback** — classic channel agent 現在在 fleet restart 後也能回覆。`topic_id` 不可用時 fallback 到 `classicBot.yaml` 的 channelId。
+
+## [0.0.19] - 2026-06-11
+
+### 修正 (Fixed)
+- **agy model discovery skill** — 澄清 effort 後綴（Medium/High/Low/Thinking）不是 model 名稱的一部分。
+
+## [0.0.18] - 2026-06-11
+
+### 新增 (Added)
+- **Model 相容性檢查** — `defaults.model` 只套用到能辨識該 model name pattern 的 backend。不相容的 model 靜默跳過（例如 `claude-opus-4.6` 不會傳給 Codex）。
+
+## [0.0.17] - 2026-06-11
+
+### 新增 (Added)
+- **Antigravity CLI backend** — 完整支援 Google `agy` CLI。預設使用 CLI 模式（無 MCP）。非隱藏 workspace `~/agend-workspaces/`、instructions 在 `.agents/agents.md`、trust 提示自動 dismiss。
+- **IPC + adapter 自動重連** — IPC 斷線後指數退避重試，之後每 60 秒無限重試。Adapter 致命錯誤（Telegram polling 初始化、Discord gateway）同策略自動重啟。死亡 tmux pane 自動 respawn。
+- **Beta 更新頻道** — `agend update --beta` 從 `@beta` npm dist-tag 安裝。CI 偵測 tag 含 `-beta` 時以 `--tag beta` 發布。
+- **PSS 記憶體報告** — `agend ls` 使用 PSS 取代 RSS，避免共用頁面重複計算。
+- **平行 instance 停止** — 併發數 5 加速關閉，systemd timeout 相應延長。
+- **可配置 context_lines** — classicBot.yaml 個別 channel 聊天記錄注入深度，設 0 停用。
+- **classicBot.yaml model 支援** — 個別 channel model 覆蓋。
+- **Access mode "open"** — 允許所有使用者，無需白名單。
+- **Fleet 記憶體總計** — `agend ls` footer 顯示 instance 數量與總記憶體。
+- **`agend update` 指令** — 完整生命週期：sudo/nvm 偵測、npm install、service 重啟、健康檢查。
+- **GitHub Actions CI/CD** — ci、publish、gitleaks workflows。
+- **Workspace git init** — 自動建立的 workspace 執行 `git init`，確保 CLI backend 正確辨識 project root。
+- **`/agent` endpoint auth bypass** — POST /agent 使用 instance-level token，跳過 web UI token 驗證。
+- **agy `--model` flag** — 傳遞 model 選擇給 antigravity CLI。
+- **General-knowledge 重構** — 拆為 `steering/`（永遠載入的核心規則）+ `skills/`（按需載入、YAML frontmatter）。降低 General 預設 context 用量。
+- **動態 model 探索** — skill 教 General 執行 CLI 指令（`agy models`、`/model`）而非硬寫 model 清單。
+
+### 修正 (Fixed)
+- 安裝腳本：自動偵測 sudo、nvm-aware PATH、native modules 用 build-essential、/usr/local/bin symlink 僅 root 執行。
+- Discord：sticker 不再當作 photo attachment；collab 模式 chat log 包含附件檔名。
+- Daemon：統一 log rotation；移除過時的 context rotation 參考。
+- Update：重啟前先終止舊 fleet process；systemctl restart 前執行 daemon-reload。
+- Discord react：`threadId` 而非 `chatId`（guild ID）用於 👀、⏳、✅ reactions。
+- `agend update` 重啟：在 `systemctl start` 前加 `reset-failed` 處理 kill 後的 failed state。
+- 跨 instance 靜默：允許 agent 沒有補充時保持沉默。
+- 預設 `context_lines` 從 10 降為 5。
+
+### 效能 (Performance)
+- 平行 instance 停止（併發 5）。
+- 交錯重啟通知。
+- Discord `react()` 使用單一 REST PUT 而非 3 次序列 API 呼叫（fetchChannel → fetchMessage → react）。~1s → ~300ms。
+- 👀 auto-react 移到 `setTopicIcon`/`archive`/`processAttachments` 之前以獲得即時回饋。
+
+### 棄用 (Deprecated)
+- **gemini-cli** — 2026-06-18 sunset。fleet start 時顯示警告。
 
 ## [1.24.0] - 2026-04-21
 
