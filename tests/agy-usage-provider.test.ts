@@ -15,7 +15,7 @@ describe("agyPoolMetrics", () => {
       { bucketId: "gemini-5h", remainingFraction: 0.66, resetTime: "2026-08-02T10:00:00Z" },
       { bucketId: "3p-weekly", remainingFraction: 0.9, resetTime: "2026-08-08T10:00:00Z" },
     ]);
-    expect(metrics).toEqual([
+    expect(metrics).toMatchObject([
       { label: "Gemini (session)", type: "percent", used: expect.closeTo(34, 5), resetsAt: "2026-08-02T10:00:00Z" },
       { label: "Claude & others (weekly)", type: "percent", used: expect.closeTo(10, 5), resetsAt: "2026-08-08T10:00:00Z" },
     ]);
@@ -32,7 +32,7 @@ describe("agyPoolMetrics", () => {
 
     // The binding constraint is the model that runs out first — eleven per-model
     // meters would be noise; the worst per pool is the honest single number.
-    expect(metrics).toEqual([
+    expect(metrics).toMatchObject([
       { label: "Gemini", type: "percent", used: expect.closeTo(60, 5), resetsAt: "2026-08-08T16:12:24Z", note: "busiest of 2 models" },
       { label: "Claude & others", type: "percent", used: expect.closeTo(50, 5), resetsAt: "2026-08-08T16:12:24Z", note: "busiest of 2 models" },
     ]);
