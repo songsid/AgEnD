@@ -40,7 +40,7 @@ describe("formatUsageSummary", () => {
 
     expect(lines[0]).toContain("AI subscription usage");
     expect(lines).toHaveLength(1 + PAYLOAD.providers.length);
-    expect(text).toContain("Claude (Max): Session 34% (resets in 3h) | Weekly 12% | Extra usage $3.50/$20.00");
+    expect(text).toContain("Claude (Max): Session 34% (resets in 3h 0m) | Weekly 12% | Extra usage $3.50/$20.00");
     expect(text).toContain("Kiro: Credits 812 left");
   });
 
@@ -131,7 +131,7 @@ describe("rich rendering", () => {
 
     expect(text).toContain("📊 **AI Subscription Usage**");
     expect(text).toContain("**Claude** (Max)");
-    expect(text).toContain("`███░░░░░░░` 34% Session · resets in 3h");
+    expect(text).toContain("`███░░░░░░░` 34% Session · resets in 3h 0m");
     expect(text).toContain("`██░░░░░░░░` $3.50/$20.00 Extra usage"); // dollars w/ limit gets a bar too
     expect(text).toContain("⚪ **Codex**");
     expect(text).toContain("> not logged in");

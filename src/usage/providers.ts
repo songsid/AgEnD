@@ -29,15 +29,21 @@ import {
   type StatuslineWindow,
 } from "./statusline-usage.js";
 import Database from "better-sqlite3";
+import type { UsageI18nKey } from "./i18n-keys.js";
 
 export interface UsageMetric {
   label: string;
+  /** Locale-neutral semantic text. Renderers translate this and keep `label` as a fallback. */
+  labelI18n?: UsageI18nRef;
   type: "percent" | "dollars" | "count" | "text";
   used?: number;          // percent (0-100) or dollars
   limit?: number;         // dollars, when capped
   value?: number | string; // count / text
+  valueI18n?: UsageI18nRef;
   unit?: string;
+  unitI18n?: UsageI18nRef;
   note?: string;
+  noteI18n?: UsageI18nRef;
   resetsAt?: string | null;
   windowMs?: number | null;
 }
@@ -48,9 +54,19 @@ export interface ProviderUsage {
   status: "ok" | "error" | "no-credentials";
   plan?: string | null;
   error?: string;
+  errorI18n?: UsageI18nRef;
   hint?: string;
+  hintI18n?: UsageI18nRef;
   metrics: UsageMetric[];
 }
+
+export interface UsageI18nRef {
+  key: UsageI18nKey;
+  args?: Array<string | number>;
+}
+
+const i18n = (key: UsageI18nKey, ...args: Array<string | number>): UsageI18nRef =>
+  args.length ? { key, args } : { key };
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_MS = 5 * 60 * 60 * 1000;
@@ -210,18 +226,19 @@ export function statuslineUsage(
   now: number = Date.now(),
 ): Omit<ProviderUsage, "id" | "name"> {
   const metrics: UsageMetric[] = [];
-  const add = (w: StatuslineWindow | null, label: string, windowMs: number) => {
+  const add = (w: StatuslineWindow | null, label: string, labelKey: UsageI18nKey, windowMs: number) => {
     if (!w) return;
     metrics.push({
       label,
+      labelI18n: i18n(labelKey),
       type: "percent",
       used: w.usedPercent,
       resetsAt: w.resetsAtMs !== null ? new Date(w.resetsAtMs).toISOString() : null,
       windowMs,
     });
   };
-  add(reading.fiveHour, "Session", SESSION_MS);
-  add(reading.sevenDay, "Weekly", WEEK_MS);
+  add(reading.fiveHour, "Session", "usage.metric.session", SESSION_MS);
+  add(reading.sevenDay, "Weekly", "usage.metric.weekly", WEEK_MS);
 
   const ageMin = Math.round((now - reading.observedAtMs) / 60_000);
   const age = ageMin <= 0 ? "just now" : `${ageMin}m ago`;
@@ -231,6 +248,11 @@ export function statuslineUsage(
     // Say what is missing as well as where it came from: someone comparing this
     // against claude.ai should not have to guess why per-model rows vanished.
     hint: `from ${reading.instance}'s statusline, ${age} — no API call; plan and per-model limits need a CLI login`,
+    hintI18n: i18n(
+      ageMin <= 0 ? "usage.hint.statusline_now" : "usage.hint.statusline_minutes",
+      reading.instance,
+      ageMin,
+    ),
     metrics,
   };
 }
@@ -275,11 +297,18 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
     const hint = process.env.ANTHROPIC_API_KEY
       ? "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`)."
       : "Log in with the Claude Code CLI (`claude`).";
-    return { status: "no-credentials", hint, metrics: [] };
+    return {
+      status: "no-credentials",
+      hint,
+      hintI18n: process.env.ANTHROPIC_API_KEY
+        ? i18n("usage.hint.claude_api_key")
+        : i18n("usage.hint.login_claude"),
+      metrics: [],
+    };
   }
   if ("error" in auth) {
     if (statusline) return statuslineUsage(statusline, auth.plan);
-    return { status: "error", plan: auth.plan, error: auth.error, metrics: [] };
+    return { status: "error", plan: auth.plan, error: auth.error, errorI18n: i18n("usage.error.claude_token_expired"), metrics: [] };
   }
   const plan = auth.plan;
 
@@ -300,30 +329,36 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
-    return orStatusline({ status: "error", plan, error: "Could not reach api.anthropic.com.", metrics: [] });
+    return orStatusline({ status: "error", plan, error: "Could not reach api.anthropic.com.", errorI18n: i18n("usage.error.unreachable", "api.anthropic.com"), metrics: [] });
   }
   if (res.status === 401 || res.status === 403) {
-    return orStatusline({ status: "error", plan, error: "Token rejected. Run `claude` once to refresh the login.", metrics: [] });
+    return orStatusline({ status: "error", plan, error: "Token rejected. Run `claude` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "claude"), metrics: [] });
   }
   if (res.status === 429) {
-    return orStatusline({ status: "error", plan, error: "Rate limited by Anthropic — try again later.", metrics: [] });
+    return orStatusline({ status: "error", plan, error: "Rate limited by Anthropic — try again later.", errorI18n: i18n("usage.error.rate_limited", "Anthropic"), metrics: [] });
   }
-  if (!res.ok) return orStatusline({ status: "error", plan, error: `Usage request failed (HTTP ${res.status}).`, metrics: [] });
+  if (!res.ok) return orStatusline({ status: "error", plan, error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] });
 
   let body: Record<string, unknown>;
   try { body = await res.json() as Record<string, unknown>; } catch {
-    return orStatusline({ status: "error", plan, error: "Invalid response from usage endpoint.", metrics: [] });
+    return orStatusline({ status: "error", plan, error: "Invalid response from usage endpoint.", errorI18n: i18n("usage.error.invalid_response"), metrics: [] });
   }
 
   const metrics: UsageMetric[] = [];
-  const window = (obj: unknown, label: string, windowMs: number) => {
+  const window = (obj: unknown, label: string, labelKey: UsageI18nKey, windowMs: number) => {
     const o = obj as { utilization?: unknown; resets_at?: unknown } | undefined;
     if (typeof o?.utilization !== "number") return;
-    metrics.push({ label, type: "percent", used: o.utilization, resetsAt: claudeResetIso(o.resets_at), windowMs });
+    metrics.push({ label, labelI18n: i18n(labelKey), type: "percent", used: o.utilization, resetsAt: claudeResetIso(o.resets_at), windowMs });
   };
-  window(body.five_hour, "Session", SESSION_MS);
-  window(body.seven_day, "Weekly", WEEK_MS);
-  window(body.seven_day_sonnet, "Sonnet (weekly)", WEEK_MS);
+  window(body.five_hour, "Session", "usage.metric.session", SESSION_MS);
+  window(body.seven_day, "Weekly", "usage.metric.weekly", WEEK_MS);
+  const sonnet = body.seven_day_sonnet as { utilization?: unknown; resets_at?: unknown } | undefined;
+  if (typeof sonnet?.utilization === "number") {
+    metrics.push({
+      label: "Sonnet (weekly)", labelI18n: i18n("usage.metric.named_weekly", "Sonnet"),
+      type: "percent", used: sonnet.utilization, resetsAt: claudeResetIso(sonnet.resets_at), windowMs: WEEK_MS,
+    });
+  }
 
   // Per-model weekly windows live in the `limits` array (kind: weekly_scoped).
   // `limits` also carries which window is currently BINDING (`is_active`) and a
@@ -339,27 +374,36 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
     if (!model || typeof e.percent !== "number") continue;
     metrics.push({
       label: `${model} (weekly)`,
+      labelI18n: i18n("usage.metric.named_weekly", model),
       type: "percent",
       used: e.percent,
       resetsAt: claudeResetIso(e.resets_at),
       windowMs: WEEK_MS,
-      ...(e.is_active === true ? { note: "binding" } : {}),
-      ...(typeof e.severity === "string" && e.severity !== "normal" ? { note: `binding · ${e.severity}` } : {}),
+      ...(e.is_active === true ? { note: "binding", noteI18n: i18n("usage.note.binding") } : {}),
+      ...(typeof e.severity === "string" && e.severity !== "normal"
+        ? { note: `binding · ${e.severity}`, noteI18n: i18n("usage.note.binding_severity", e.severity) }
+        : {}),
     });
   }
   // Mark the two plain windows too, using the same source.
   for (const m of metrics) {
     if (m.note) continue;
-    if (m.label === "Session" && activeKinds.has("session")) m.note = "binding";
-    if (m.label === "Weekly" && activeKinds.has("weekly_all")) m.note = "binding";
+    if (m.label === "Session" && activeKinds.has("session")) {
+      m.note = "binding";
+      m.noteI18n = i18n("usage.note.binding");
+    }
+    if (m.label === "Weekly" && activeKinds.has("weekly_all")) {
+      m.note = "binding";
+      m.noteI18n = i18n("usage.note.binding");
+    }
   }
 
   const extra = body.extra_usage as { is_enabled?: boolean; used_credits?: unknown; monthly_limit?: unknown } | undefined;
   if (extra?.is_enabled === true && typeof extra.used_credits === "number") {
     const used = extra.used_credits / 100;
     const limit = typeof extra.monthly_limit === "number" && extra.monthly_limit > 0 ? extra.monthly_limit / 100 : null;
-    if (limit) metrics.push({ label: "Extra usage", type: "dollars", used, limit });
-    else if (used > 0) metrics.push({ label: "Extra usage", type: "dollars", used });
+    if (limit) metrics.push({ label: "Extra usage", labelI18n: i18n("usage.metric.extra_usage"), type: "dollars", used, limit });
+    else if (used > 0) metrics.push({ label: "Extra usage", labelI18n: i18n("usage.metric.extra_usage"), type: "dollars", used });
   }
 
   // A 200 with nothing in it is not better than the file on disk.
@@ -434,9 +478,11 @@ interface AgyBucket { bucketId?: string; displayName?: string; remainingFraction
  * is the one that runs out first.
  */
 export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
-  const POOLED: Record<string, string> = {
-    "gemini-5h": "Gemini (session)", "gemini-weekly": "Gemini (weekly)",
-    "3p-5h": "Claude & others (session)", "3p-weekly": "Claude & others (weekly)",
+  const POOLED: Record<string, { text: string; i18n: UsageI18nRef }> = {
+    "gemini-5h": { text: "Gemini (session)", i18n: i18n("usage.metric.named_session", "Gemini") },
+    "gemini-weekly": { text: "Gemini (weekly)", i18n: i18n("usage.metric.named_weekly", "Gemini") },
+    "3p-5h": { text: "Claude & others (session)", i18n: i18n("usage.metric.agy_claude_others_session") },
+    "3p-weekly": { text: "Claude & others (weekly)", i18n: i18n("usage.metric.agy_claude_others_weekly") },
   };
   const direct: UsageMetric[] = [];
   const pools = new Map<string, { fraction: number; resetsAt: string | null; models: number }>();
@@ -445,7 +491,7 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
     const reset = b.resetTime ?? null;
     const pooledLabel = POOLED[b.bucketId];
     if (pooledLabel) {
-      direct.push({ label: pooledLabel, type: "percent", used: (1 - b.remainingFraction) * 100, resetsAt: reset });
+      direct.push({ label: pooledLabel.text, labelI18n: pooledLabel.i18n, type: "percent", used: (1 - b.remainingFraction) * 100, resetsAt: reset });
       continue;
     }
     const pool = b.bucketId.startsWith("gemini") ? "Gemini" : "Claude & others";
@@ -465,6 +511,9 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
   if (direct.length) return direct;
   return [...pools.entries()].map(([label, p]) => ({
     label,
+    labelI18n: label === "Claude & others"
+      ? i18n("usage.metric.agy_claude_others")
+      : i18n("usage.metric.named", label),
     type: "percent" as const,
     used: (1 - p.fraction) * 100,
     resetsAt: p.resetsAt,
@@ -472,6 +521,7 @@ export function agyPoolMetrics(buckets: AgyBucket[]): UsageMetric[] {
     // it a flat 0% right after a weekly rollover is indistinguishable from a
     // broken reading — which is exactly how it was reported.
     note: `busiest of ${p.models} model${p.models === 1 ? "" : "s"}`,
+    noteI18n: i18n(p.models === 1 ? "usage.note.busiest_model" : "usage.note.busiest_models", p.models),
   }));
 }
 
@@ -498,7 +548,7 @@ function agyExpiryMs(t: AgyStoredToken): number {
   return t.expiry ? new Date(t.expiry).getTime() : 0;
 }
 
-async function agyAccessToken(): Promise<{ token: string } | { error: string } | null> {
+async function agyAccessToken(): Promise<{ token: string } | { error: string; errorI18n: UsageI18nRef } | null> {
   const home = process.env.GEMINI_HOME || join(homedir(), ".gemini");
   let raw: unknown;
   try {
@@ -518,6 +568,9 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string } |
       error: client
         ? "Access token expired and no refresh token is stored. Run `agy` once."
         : "Access token expired. Run `agy` once to refresh it (or set AGY_OAUTH_CLIENT_ID/SECRET to refresh automatically).",
+      errorI18n: client
+        ? i18n("usage.error.agy_no_refresh")
+        : i18n("usage.error.agy_token_expired"),
     };
   }
   try {
@@ -532,13 +585,13 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string } |
       }),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) return { error: "Google sign-in expired. Run `agy` once to log in again." };
+    if (!res.ok) return { error: "Google sign-in expired. Run `agy` once to log in again.", errorI18n: i18n("usage.error.agy_login_expired") };
     const body = await res.json() as { access_token?: string; expires_in?: number };
-    if (!body.access_token) return { error: "Google token refresh returned no token." };
+    if (!body.access_token) return { error: "Google token refresh returned no token.", errorI18n: i18n("usage.error.agy_refresh_empty") };
     agyTokenCache = { token: body.access_token, until: Date.now() + Math.max(60, (body.expires_in ?? 3600) - 120) * 1000 };
     return { token: body.access_token };
   } catch {
-    return { error: "Could not reach oauth2.googleapis.com." };
+    return { error: "Could not reach oauth2.googleapis.com.", errorI18n: i18n("usage.error.unreachable", "oauth2.googleapis.com") };
   }
 }
 
@@ -557,15 +610,16 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
       status: "error",
       error: `Individual cap reached — CLI is rate limited (resets in ~${resetText}). `
         + "The per-model pool quotas are a separate counter and may still read 0% used.",
+      errorI18n: i18n("usage.error.agy_cap", resetText),
       metrics: [],
     };
   }
 
   const auth = await agyAccessToken();
   if (auth === null) {
-    return { status: "no-credentials", hint: "Log in with the Antigravity CLI (`agy`).", metrics: [] };
+    return { status: "no-credentials", hint: "Log in with the Antigravity CLI (`agy`).", hintI18n: i18n("usage.hint.login_agy"), metrics: [] };
   }
-  if ("error" in auth) return { status: "error", error: auth.error, metrics: [] };
+  if ("error" in auth) return { status: "error", error: auth.error, errorI18n: auth.errorI18n, metrics: [] };
 
   for (const base of AGY_CLOUDCODE_URLS) {
     let res: Response;
@@ -582,7 +636,7 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
       });
     } catch { continue; }
     if (res.status === 401 || res.status === 403) {
-      return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", metrics: [] };
+      return { status: "error", error: "Token rejected. Run `agy` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "agy"), metrics: [] };
     }
     if (!res.ok) continue; // try the other base
     let body: { groups?: { buckets?: AgyBucket[] }[] };
@@ -591,9 +645,9 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
     const metrics = agyPoolMetrics(buckets);
     return metrics.length
       ? { status: "ok", plan: null, metrics }
-      : { status: "ok", plan: null, hint: "No quota information reported for this account.", metrics: [] };
+      : { status: "ok", plan: null, hint: "No quota information reported for this account.", hintI18n: i18n("usage.hint.no_quota"), metrics: [] };
   }
-  return { status: "error", error: "Could not reach the Cloud Code quota endpoints.", metrics: [] };
+  return { status: "error", error: "Could not reach the Cloud Code quota endpoints.", errorI18n: i18n("usage.error.unreachable", "Cloud Code quota endpoints"), metrics: [] };
 }
 
 // ── Codex ────────────────────────────────────────────────────────────────────
@@ -616,7 +670,12 @@ function codexResetIso(win: CodexWindow, nowMs: number): string | null {
 // report a monthly window — label by actual duration, never by slot.
 function codexWindows(
   rateLimit: { primary_window?: unknown; secondary_window?: unknown } | undefined,
-  labels: { session: string; weekly: string; monthly: string; other: (days: number) => string },
+  labels: {
+    session: { text: string; i18n: UsageI18nRef };
+    weekly: { text: string; i18n: UsageI18nRef };
+    monthly: { text: string; i18n: UsageI18nRef };
+    other: (days: number) => { text: string; i18n: UsageI18nRef };
+  },
   nowMs: number,
 ): UsageMetric[] {
   const candidates = [
@@ -630,13 +689,13 @@ function codexWindows(
     const explicitMs = typeof win.limit_window_seconds === "number" && Number.isFinite(win.limit_window_seconds)
       ? win.limit_window_seconds * 1000 : null;
     const windowMs = explicitMs ?? (fallback === "session" ? SESSION_MS : WEEK_MS);
-    let label: string;
+    let label: { text: string; i18n: UsageI18nRef };
     if (windowMs === SESSION_MS) label = labels.session;
     else if (windowMs === WEEK_MS) label = labels.weekly;
     else if (windowMs >= 27 * 864e5 && windowMs <= 32 * 864e5) label = labels.monthly;
     else if (explicitMs) label = labels.other(Math.round(windowMs / 864e5));
     else label = fallback === "session" ? labels.session : labels.weekly;
-    metrics.push({ label, type: "percent", used: win.used_percent, resetsAt: codexResetIso(win, nowMs), windowMs });
+    metrics.push({ label: label.text, labelI18n: label.i18n, type: "percent", used: win.used_percent, resetsAt: codexResetIso(win, nowMs), windowMs });
   }
   return metrics;
 }
@@ -656,16 +715,16 @@ export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "nam
   try {
     auth = JSON.parse(await readFile(join(home, "auth.json"), "utf8"));
   } catch {
-    return { status: "no-credentials", hint: "Log in with the Codex CLI (`codex`).", metrics: [] };
+    return { status: "no-credentials", hint: "Log in with the Codex CLI (`codex`).", hintI18n: i18n("usage.hint.login_codex"), metrics: [] };
   }
   const accessToken = auth?.tokens?.access_token;
   if (!accessToken) {
-    return { status: "no-credentials", hint: "auth.json has no OAuth login (API-key-only auth cannot read usage).", metrics: [] };
+    return { status: "no-credentials", hint: "auth.json has no OAuth login (API-key-only auth cannot read usage).", hintI18n: i18n("usage.hint.codex_no_oauth"), metrics: [] };
   }
 
   const exp = jwtExpiryMs(accessToken);
   if (exp && exp < Date.now()) {
-    return { status: "error", error: "Access token expired. Run `codex` once to refresh it.", metrics: [] };
+    return { status: "error", error: "Access token expired. Run `codex` once to refresh it.", errorI18n: i18n("usage.error.codex_token_expired"), metrics: [] };
   }
 
   const headers: Record<string, string> = {
@@ -679,21 +738,24 @@ export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "nam
   try {
     res = await fetch(CODEX_USAGE_URL, { headers, signal: AbortSignal.timeout(10_000) });
   } catch {
-    return { status: "error", error: "Could not reach chatgpt.com.", metrics: [] };
+    return { status: "error", error: "Could not reach chatgpt.com.", errorI18n: i18n("usage.error.unreachable", "chatgpt.com"), metrics: [] };
   }
   if (res.status === 401 || res.status === 403) {
-    return { status: "error", error: "Token rejected. Run `codex` once to refresh the login.", metrics: [] };
+    return { status: "error", error: "Token rejected. Run `codex` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "codex"), metrics: [] };
   }
-  if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, metrics: [] };
+  if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] };
 
   let body: Record<string, unknown>;
   try { body = await res.json() as Record<string, unknown>; } catch {
-    return { status: "error", error: "Invalid response from usage endpoint.", metrics: [] };
+    return { status: "error", error: "Invalid response from usage endpoint.", errorI18n: i18n("usage.error.invalid_response"), metrics: [] };
   }
 
   const nowMs = Date.now();
   const metrics = codexWindows(body.rate_limit as never, {
-    session: "Session", weekly: "Weekly", monthly: "Monthly", other: d => `${d}-day window`,
+    session: { text: "Session", i18n: i18n("usage.metric.session") },
+    weekly: { text: "Weekly", i18n: i18n("usage.metric.weekly") },
+    monthly: { text: "Monthly", i18n: i18n("usage.metric.monthly") },
+    other: d => ({ text: `${d}-day window`, i18n: i18n("usage.metric.days_window", d) }),
   }, nowMs);
 
   // Model-specific limits (e.g. Spark) ride in additional_rate_limits, same window shape.
@@ -702,13 +764,20 @@ export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "nam
     if (!e || typeof e !== "object" || !e.rate_limit) continue;
     const rawName = e.limit_name || e.metered_feature || "Model limit";
     metrics.push(...codexWindows(e.rate_limit as never, {
-      session: rawName, weekly: `${rawName} (weekly)`, monthly: `${rawName} (monthly)`, other: d => `${rawName} (${d}d)`,
+      session: { text: rawName, i18n: i18n("usage.metric.named", rawName) },
+      weekly: { text: `${rawName} (weekly)`, i18n: i18n("usage.metric.named_weekly", rawName) },
+      monthly: { text: `${rawName} (monthly)`, i18n: i18n("usage.metric.named_monthly", rawName) },
+      other: d => ({ text: `${rawName} (${d}d)`, i18n: i18n("usage.metric.named_days", rawName, d) }),
     }, nowMs));
   }
 
   const resets = body.rate_limit_reset_credits as { available_count?: unknown } | undefined;
   if (typeof resets?.available_count === "number" && resets.available_count >= 0) {
-    metrics.push({ label: "Rate limit resets", type: "count", value: Math.floor(resets.available_count), unit: "available" });
+    metrics.push({
+      label: "Rate limit resets", labelI18n: i18n("usage.metric.rate_limit_resets"),
+      type: "count", value: Math.floor(resets.available_count),
+      unit: "available", unitI18n: i18n("usage.unit.available"),
+    });
   }
 
   const credits = body.credits as { balance?: unknown; has_credits?: unknown } | undefined;
@@ -717,7 +786,10 @@ export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "nam
   else if (credits?.has_credits === false) remaining = 0;
   if (remaining !== null) {
     const count = Math.max(0, Math.floor(remaining));
-    metrics.push({ label: "Credits", type: "count", value: count, unit: "credits", note: `≈ $${(count * CREDIT_USD_RATE).toFixed(2)}` });
+    metrics.push({
+      label: "Credits", labelI18n: i18n("usage.metric.credits"), type: "count", value: count,
+      unit: "credits", unitI18n: i18n("usage.unit.credits"), note: `≈ $${(count * CREDIT_USD_RATE).toFixed(2)}`,
+    });
   }
 
   return { status: "ok", plan: codexPlan(body.plan_type), metrics };
@@ -758,14 +830,14 @@ async function grokRefreshAndPersist(
   auth: Record<string, GrokAuthEntry>,
   entryKey: string,
   entry: GrokAuthEntry,
-): Promise<{ token?: string; error?: string }> {
+): Promise<{ token: string; error?: never; errorI18n?: never } | { token?: never; error: string; errorI18n: UsageI18nRef }> {
   // Refuse to refresh unless the rotated tokens can be written back — a rotated
   // refresh token that only lives in our memory would break `grok` itself.
   try { await access(file, constants.W_OK); } catch {
-    return { error: "Token expired and auth.json is read-only. Run `grok` once to refresh it." };
+    return { error: "Token expired and auth.json is read-only. Run `grok` once to refresh it.", errorI18n: i18n("usage.error.grok_auth_readonly") };
   }
   const refreshToken = (entry.refresh_token || entry.refresh || "").trim();
-  if (!refreshToken) return { error: "Token expired and no refresh token found. Run `grok login`." };
+  if (!refreshToken) return { error: "Token expired and no refresh token found. Run `grok login`.", errorI18n: i18n("usage.error.grok_no_refresh") };
 
   const clientId = entry.oidc_client_id?.trim()
     || entryKey.split("::").pop()?.trim()
@@ -780,15 +852,15 @@ async function grokRefreshAndPersist(
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    return { error: "Could not reach auth.x.ai to refresh the token." };
+    return { error: "Could not reach auth.x.ai to refresh the token.", errorI18n: i18n("usage.error.grok_refresh_unreachable") };
   }
-  if (!res.ok) return { error: "Grok session expired. Run `grok login` again." };
+  if (!res.ok) return { error: "Grok session expired. Run `grok login` again.", errorI18n: i18n("usage.error.grok_expired") };
 
   let body: { access_token?: string; refresh_token?: string; id_token?: string; expires_in?: number };
   try { body = await res.json() as typeof body; } catch {
-    return { error: "Invalid refresh response from auth.x.ai." };
+    return { error: "Invalid refresh response from auth.x.ai.", errorI18n: i18n("usage.error.grok_invalid_refresh") };
   }
-  if (!body.access_token) return { error: "Grok session expired. Run `grok login` again." };
+  if (!body.access_token) return { error: "Grok session expired. Run `grok login` again.", errorI18n: i18n("usage.error.grok_expired") };
 
   // Update only this entry's fields, preserving everything else in the file
   // (other accounts' entries included).
@@ -800,7 +872,7 @@ async function grokRefreshAndPersist(
   try {
     await writeFile(file, JSON.stringify({ ...auth, [entryKey]: updated }, null, 2));
   } catch {
-    return { error: "Refreshed but could not write auth.json — refusing to continue without persisting. Run `grok` once instead." };
+    return { error: "Refreshed but could not write auth.json — refusing to continue without persisting. Run `grok` once instead.", errorI18n: i18n("usage.error.grok_persist") };
   }
   return { token: body.access_token };
 }
@@ -821,11 +893,11 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   try {
     auth = JSON.parse(await readFile(file, "utf8"));
   } catch {
-    return { status: "no-credentials", hint: "Log in with the Grok CLI (`grok login`).", metrics: [] };
+    return { status: "no-credentials", hint: "Log in with the Grok CLI (`grok login`).", hintI18n: i18n("usage.hint.login_grok"), metrics: [] };
   }
 
   const entries = Object.entries(auth).filter(([, e]) => typeof e?.key === "string" && e.key.trim());
-  if (!entries.length) return { status: "no-credentials", hint: "auth.json has no usable login. Run `grok login`.", metrics: [] };
+  if (!entries.length) return { status: "no-credentials", hint: "auth.json has no usable login. Run `grok login`.", hintI18n: i18n("usage.hint.grok_no_login"), metrics: [] };
 
   const [entryKey, entry] = entries[0];
   let token = (entry.key as string).trim();
@@ -833,7 +905,7 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
   const expiry = grokEntryExpiryMs(entry, token);
   if (expiry && expiry - Date.now() <= GROK_REFRESH_BUFFER_MS) {
     const refreshed = await grokRefreshAndPersist(file, auth, entryKey, entry);
-    if (refreshed.error) return { status: "error", error: refreshed.error, metrics: [] };
+    if (refreshed.error) return { status: "error", error: refreshed.error, errorI18n: refreshed.errorI18n, metrics: [] };
     token = refreshed.token as string;
   }
 
@@ -850,26 +922,26 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
     ({ credits, settings } = await fetchBoth(token));
     if (credits.status === 401 || credits.status === 403) {
       const refreshed = await grokRefreshAndPersist(file, auth, entryKey, entry);
-      if (refreshed.error) return { status: "error", error: refreshed.error, metrics: [] };
+      if (refreshed.error) return { status: "error", error: refreshed.error, errorI18n: refreshed.errorI18n, metrics: [] };
       token = refreshed.token as string;
       ({ credits, settings } = await fetchBoth(token));
     }
   } catch {
-    return { status: "error", error: "Could not reach cli-chat-proxy.grok.com.", metrics: [] };
+    return { status: "error", error: "Could not reach cli-chat-proxy.grok.com.", errorI18n: i18n("usage.error.unreachable", "cli-chat-proxy.grok.com"), metrics: [] };
   }
   if (credits.status === 401 || credits.status === 403) {
-    return { status: "error", error: "Grok session expired. Run `grok login` again.", metrics: [] };
+    return { status: "error", error: "Grok session expired. Run `grok login` again.", errorI18n: i18n("usage.error.grok_expired"), metrics: [] };
   }
-  if (!credits.ok) return { status: "error", error: `Billing request failed (HTTP ${credits.status}).`, metrics: [] };
+  if (!credits.ok) return { status: "error", error: `Billing request failed (HTTP ${credits.status}).`, errorI18n: i18n("usage.error.billing_http", credits.status), metrics: [] };
 
   let body: { config?: { creditUsagePercent?: unknown; currentPeriod?: { type?: string; start?: string; end?: string }; onDemandCap?: { val?: unknown } } };
   try { body = await credits.json() as typeof body; } catch {
-    return { status: "error", error: "Invalid response from billing endpoint.", metrics: [] };
+    return { status: "error", error: "Invalid response from billing endpoint.", errorI18n: i18n("usage.error.invalid_billing_response"), metrics: [] };
   }
 
   const config = body?.config;
   const period = config?.currentPeriod;
-  if (!config || !period?.type) return { status: "error", error: "Grok billing response changed.", metrics: [] };
+  if (!config || !period?.type) return { status: "error", error: "Grok billing response changed.", errorI18n: i18n("usage.error.grok_response_changed"), metrics: [] };
 
   const metrics: UsageMetric[] = [];
   if (period.type === GROK_WEEKLY_PERIOD) {
@@ -879,6 +951,7 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
     const end = new Date(period.end ?? "").getTime();
     metrics.push({
       label: "Weekly limit",
+      labelI18n: i18n("usage.metric.weekly_limit"),
       type: "percent",
       used: Math.min(100, Math.max(0, pct)),
       resetsAt: Number.isNaN(end) ? null : new Date(end).toISOString(),
@@ -886,7 +959,11 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
     });
   }
   const cap = typeof config.onDemandCap?.val === "number" ? config.onDemandCap.val : 0;
-  metrics.push({ label: "Pay as you go", type: "text", value: cap > 0 ? `${cap} cap` : "Disabled" });
+  metrics.push({
+    label: "Pay as you go", labelI18n: i18n("usage.metric.pay_as_you_go"), type: "text",
+    value: cap > 0 ? `${cap} cap` : "Disabled",
+    valueI18n: cap > 0 ? i18n("usage.value.cap", cap) : i18n("usage.value.disabled"),
+  });
 
   let plan: string | null = null;
   if (settings?.ok) {
@@ -998,12 +1075,12 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
   const { token, kind, missing, notInstalled } = readKiroToken();
   if (notInstalled) {
     // The one case that should disappear from the panel: kiro-cli isn't here.
-    return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", metrics: [] };
+    return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", hintI18n: i18n("usage.hint.login_kiro"), metrics: [] };
   }
   if (missing || !token) {
     // Installed but no readable login. Previously indistinguishable from
     // not-installed, so the whole Kiro row vanished instead of saying this.
-    return { status: "ok", plan: "Kiro", hint: "Signed out — run `kiro-cli` to log in.", metrics: [] };
+    return { status: "ok", plan: "Kiro", hint: "Signed out — run `kiro-cli` to log in.", hintI18n: i18n("usage.hint.kiro_signed_out"), metrics: [] };
   }
   const expiresAt = token.expires_at ? new Date(token.expires_at).getTime() : null;
   if (expiresAt && expiresAt < Date.now()) {
@@ -1011,7 +1088,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
     // panel showing a red failure for a routine token rollover is just noise.
     // Still `ok` rather than no-credentials, so the row stays on screen with its
     // explanation instead of the provider silently disappearing.
-    return { status: "ok", plan: "Kiro", hint: "Token refreshing — try again in a moment.", metrics: [] };
+    return { status: "ok", plan: "Kiro", hint: "Token refreshing — try again in a moment.", hintI18n: i18n("usage.hint.token_refreshing"), metrics: [] };
   }
   if (kind === "q-developer-pro") {
     // Seat-licensed subscription: GetUsageLimits describes Builder-ID credit
@@ -1020,6 +1097,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
       status: "ok",
       plan: "Q Developer Pro",
       hint: "Subscription — no credit usage to report.",
+      hintI18n: i18n("usage.hint.subscription_no_credit"),
       metrics: [],
     };
   }
@@ -1041,12 +1119,12 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
-    return { status: "error", error: `Could not reach codewhisperer.${region}.amazonaws.com.`, metrics: [] };
+    return { status: "error", error: `Could not reach codewhisperer.${region}.amazonaws.com.`, errorI18n: i18n("usage.error.unreachable", `codewhisperer.${region}.amazonaws.com`), metrics: [] };
   }
   if (res.status === 401 || res.status === 403) {
-    return { status: "error", error: "Token rejected. Use `kiro-cli` once to refresh the login.", metrics: [] };
+    return { status: "error", error: "Token rejected. Use `kiro-cli` once to refresh the login.", errorI18n: i18n("usage.error.token_rejected", "kiro-cli"), metrics: [] };
   }
-  if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, metrics: [] };
+  if (!res.ok) return { status: "error", error: `Usage request failed (HTTP ${res.status}).`, errorI18n: i18n("usage.error.http", res.status), metrics: [] };
 
   interface KiroBreakdown {
     displayName?: string; displayNamePlural?: string;
@@ -1063,7 +1141,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
     usageBreakdownList?: KiroBreakdown[];
   };
   try { body = await res.json() as typeof body; } catch {
-    return { status: "error", error: "Invalid response from GetUsageLimits.", metrics: [] };
+    return { status: "error", error: "Invalid response from GetUsageLimits.", errorI18n: i18n("usage.error.invalid_kiro_response"), metrics: [] };
   }
 
   const plan = typeof body.subscriptionInfo?.subscriptionTitle === "string"
@@ -1072,16 +1150,21 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
 
   const metrics: UsageMetric[] = [];
   for (const ub of Array.isArray(body.usageBreakdownList) ? body.usageBreakdownList : []) {
-    const unit = (ub.displayNamePlural || ub.displayName || "credits").toLowerCase();
+    const displayName = ub.displayNamePlural || ub.displayName;
+    const unit = (displayName || "credits").toLowerCase();
     const used = ub.currentUsageWithPrecision ?? ub.currentUsage ?? null;
     const limit = ub.usageLimitWithPrecision ?? ub.usageLimit ?? null;
     if (used !== null && limit !== null && limit > 0) {
       metrics.push({
-        label: `${ub.displayNamePlural || ub.displayName || "Usage"} (monthly)`,
+        label: `${displayName || "Usage"} (monthly)`,
+        labelI18n: displayName
+          ? i18n("usage.metric.named_monthly", displayName)
+          : i18n("usage.metric.usage_monthly"),
         type: "percent",
         used: Math.min(100, (used / limit) * 100),
         resetsAt: kiroEpochIso(ub.nextDateReset ?? body.nextDateReset),
         note: `${+used.toFixed(1)} / ${+limit.toFixed(0)} ${unit}`,
+        noteI18n: i18n("usage.note.used_limit_unit", +used.toFixed(1), +limit.toFixed(0), unit),
       });
     }
 
@@ -1094,30 +1177,32 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
       if (bLimit > 0) {
         metrics.push({
           label: "Bonus credits",
+          labelI18n: i18n("usage.metric.bonus_credits"),
           type: "percent",
           used: Math.min(100, (bUsed / bLimit) * 100),
           resetsAt: expiries.length ? kiroEpochIso(Math.min(...expiries)) : null,
           note: `${+bUsed.toFixed(1)} / ${+bLimit.toFixed(0)} ${unit} · ${bonuses.length} codes`,
+          noteI18n: i18n("usage.note.bonus_codes", +bUsed.toFixed(1), +bLimit.toFixed(0), unit, bonuses.length),
         });
       }
     }
 
     const overages = ub.currentOveragesWithPrecision ?? ub.currentOverages ?? 0;
     if (overages > 0 && typeof ub.overageCharges === "number") {
-      metrics.push({ label: "Overage charges", type: "dollars", used: ub.overageCharges });
+      metrics.push({ label: "Overage charges", labelI18n: i18n("usage.metric.overage_charges"), type: "dollars", used: ub.overageCharges });
     }
   }
 
   const overageStatus = body.overageConfiguration?.overageStatus;
   if (typeof overageStatus === "string") {
-    metrics.push({ label: "Pay-per-use", type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
+    metrics.push({ label: "Pay-per-use", labelI18n: i18n("usage.metric.pay_per_use"), type: "text", value: kiroTitleCase(overageStatus.replace(/_/g, " ")) });
   }
 
   if (metrics.length === 0) {
     // Amazon Q logins whose account type reports no credit buckets (#398's
     // sibling case): an OK answer with nothing in it must say so, not render an
     // empty row that reads like a failure.
-    return { status: "ok", plan: plan ?? "Amazon Q", hint: "No quota information available for this account type.", metrics: [] };
+    return { status: "ok", plan: plan ?? "Amazon Q", hint: "No quota information available for this account type.", hintI18n: i18n("usage.hint.no_quota_account"), metrics: [] };
   }
   return { status: "ok", plan, metrics };
 }

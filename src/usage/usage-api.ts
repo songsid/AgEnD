@@ -15,6 +15,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
 import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
+import { t } from "../locale.js";
+import { usageResetText, usageText } from "./i18n.js";
 
 export interface UsageApiContext {
   readonly fleetConfig: FleetConfig | null;
@@ -181,49 +183,51 @@ export async function getUsageSnapshot(force = false, providerIds?: Iterable<str
  * not logged in" is information, an absent row is a question.
  */
 export function formatUsageSummary(payload: UsagePayload): string {
-  const lines: string[] = ["📊 AI subscription usage"];
+  const lines: string[] = [`📊 ${t("usage.title_plain")}`];
   if (payload.providers.length === 0) {
-    lines.push("No active backends with usage tracking");
+    lines.push(t("usage.empty_active"));
   }
   for (const provider of payload.providers) {
     const name = provider.plan ? `${provider.name} (${provider.plan})` : provider.name;
     if (provider.status === "no-credentials") {
-      lines.push(`· ${name}: not logged in`);
+      lines.push(`· ${name}: ${t("usage.not_logged_in")}`);
       continue;
     }
     if (provider.status === "error") {
-      lines.push(`· ${name}: ⚠️ ${provider.error ?? "error"}`);
+      lines.push(`· ${name}: ⚠️ ${usageText(provider.error ?? t("usage.error_fallback"), provider.errorI18n)}`);
       continue;
     }
     const parts = provider.metrics.map(formatMetric).filter(Boolean);
-    const staleness = provider.hint ? ` (${provider.hint})` : "";
-    lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : "no data"}${staleness}`);
+    const staleness = provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
+    lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
   }
   return lines.join("\n");
 }
 
 function formatMetric(m: UsageMetric): string {
+  const label = usageText(m.label, m.labelI18n);
+  const note = m.note ? usageText(m.note, m.noteI18n) : "";
   switch (m.type) {
     case "percent":
-      return `${m.label} ${Math.round(m.used ?? 0)}%${resetSuffix(m.resetsAt)}`;
+      return `${label} ${Math.round(m.used ?? 0)}%${resetSuffix(m.resetsAt)}${note ? ` (${note})` : ""}`;
     case "dollars": {
       const used = `$${(m.used ?? 0).toFixed(2)}`;
-      return m.limit ? `${m.label} ${used}/$${m.limit.toFixed(2)}` : `${m.label} ${used}`;
+      return m.limit ? `${label} ${used}/$${m.limit.toFixed(2)}` : `${label} ${used}`;
     }
-    case "count":
-      return `${m.label} ${m.value ?? "?"}${m.unit ? ` ${m.unit}` : ""}`;
-    case "text":
-      return m.value != null ? `${m.label} ${m.value}` : "";
+    case "count": {
+      const unit = m.unit ? usageText(m.unit, m.unitI18n) : "";
+      return `${label} ${m.value ?? "?"}${unit ? ` ${unit}` : ""}${note ? ` (${note})` : ""}`;
+    }
+    case "text": {
+      const value = m.value != null ? usageText(String(m.value), m.valueI18n) : null;
+      return value != null ? `${label} ${value}${note ? ` (${note})` : ""}` : "";
+    }
   }
 }
 
 function resetSuffix(resetsAt?: string | null): string {
-  if (!resetsAt) return "";
-  const at = new Date(resetsAt);
-  if (Number.isNaN(at.getTime())) return "";
-  const hours = Math.round((at.getTime() - Date.now()) / 3_600_000);
-  if (hours <= 0) return "";
-  return hours >= 48 ? ` (resets in ${Math.round(hours / 24)}d)` : ` (resets in ${hours}h)`;
+  const text = usageResetText(resetsAt);
+  return text ? ` (${text})` : "";
 }
 
 /** True if the path belongs to the usage feature (so the caller can skip the

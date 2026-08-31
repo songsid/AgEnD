@@ -194,6 +194,50 @@
       tooltipUnavailable: "Unavailable", statusRunning: "Running", statusPaused: "Paused",
       statusStopped: "Stopped", statusCrashed: "Crashed", statusUnknown: "Unknown",
       usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data.",
+      "usage.title": "AI Subscription Usage", "usage.title_plain": "AI subscription usage", "usage.empty_active": "No active backends with usage tracking",
+      "usage.not_logged_in": "not logged in", "usage.error_fallback": "error", "usage.no_data": "no data",
+      "usage.reset.in": "resets in {0}", "usage.reset.soon": "resets soon",
+      "usage.duration.days_hours": "{0}d {1}h", "usage.duration.hours_minutes": "{0}h {1}m", "usage.duration.minutes": "{0}m",
+      "usage.metric.session": "Session", "usage.metric.weekly": "Weekly", "usage.metric.monthly": "Monthly",
+      "usage.metric.days_window": "{0}-day window", "usage.metric.named": "{0}",
+      "usage.metric.named_session": "{0} (session)", "usage.metric.named_weekly": "{0} (weekly)",
+      "usage.metric.named_monthly": "{0} (monthly)", "usage.metric.named_days": "{0} ({1}d)",
+      "usage.metric.extra_usage": "Extra usage", "usage.metric.rate_limit_resets": "Rate limit resets",
+      "usage.metric.credits": "Credits", "usage.metric.weekly_limit": "Weekly limit",
+      "usage.metric.pay_as_you_go": "Pay as you go", "usage.metric.bonus_credits": "Bonus credits",
+      "usage.metric.overage_charges": "Overage charges", "usage.metric.pay_per_use": "Pay-per-use",
+      "usage.metric.usage_monthly": "Usage (monthly)",
+      "usage.unit.available": "available", "usage.unit.credits": "credits",
+      "usage.value.disabled": "Disabled", "usage.value.cap": "{0} cap",
+      "usage.note.binding": "binding", "usage.note.binding_severity": "binding · {0}",
+      "usage.note.busiest_model": "busiest of {0} model", "usage.note.busiest_models": "busiest of {0} models",
+      "usage.note.used_limit_unit": "{0} / {1} {2}", "usage.note.bonus_codes": "{0} / {1} {2} · {3} codes",
+      "usage.metric.agy_claude_others": "Claude & others", "usage.metric.agy_claude_others_session": "Claude & others (session)",
+      "usage.metric.agy_claude_others_weekly": "Claude & others (weekly)",
+      "usage.hint.statusline_now": "from {0}'s statusline, just now — no API call; plan and per-model limits need a CLI login",
+      "usage.hint.statusline_minutes": "from {0}'s statusline, {1}m ago — no API call; plan and per-model limits need a CLI login",
+      "usage.hint.claude_api_key": "API-key login has no subscription usage. Use `claude /login` or set CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`).",
+      "usage.hint.login_claude": "Log in with the Claude Code CLI (`claude`).",
+      "usage.hint.login_agy": "Log in with the Antigravity CLI (`agy`).", "usage.hint.no_quota": "No quota information reported for this account.",
+      "usage.hint.login_codex": "Log in with the Codex CLI (`codex`).", "usage.hint.codex_no_oauth": "auth.json has no OAuth login (API-key-only auth cannot read usage).",
+      "usage.hint.login_grok": "Log in with the Grok CLI (`grok login`).", "usage.hint.grok_no_login": "auth.json has no usable login. Run `grok login`.",
+      "usage.hint.login_kiro": "Log in with the Kiro CLI (`kiro-cli`).", "usage.hint.kiro_signed_out": "Signed out — run `kiro-cli` to log in.",
+      "usage.hint.token_refreshing": "Token refreshing — try again in a moment.", "usage.hint.subscription_no_credit": "Subscription — no credit usage to report.",
+      "usage.hint.no_quota_account": "No quota information available for this account type.",
+      "usage.error.unreachable": "Could not reach {0}.", "usage.error.token_rejected": "Token rejected. Run `{0}` once to refresh the login.",
+      "usage.error.rate_limited": "Rate limited by {0} — try again later.", "usage.error.http": "Usage request failed (HTTP {0}).",
+      "usage.error.billing_http": "Billing request failed (HTTP {0}).", "usage.error.invalid_response": "Invalid response from usage endpoint.",
+      "usage.error.invalid_billing_response": "Invalid response from billing endpoint.", "usage.error.invalid_kiro_response": "Invalid response from GetUsageLimits.",
+      "usage.error.claude_token_expired": "Access token expired — it refreshes the next time any Claude instance runs.",
+      "usage.error.codex_token_expired": "Access token expired. Run `codex` once to refresh it.",
+      "usage.error.grok_expired": "Grok session expired. Run `grok login` again.", "usage.error.grok_response_changed": "Grok billing response changed.",
+      "usage.error.agy_cap": "Individual cap reached — CLI is rate limited (resets in ~{0}). The per-model pool quotas are separate and may still read 0% used.",
+      "usage.error.agy_no_refresh": "Access token expired and no refresh token is stored. Run `agy` once.",
+      "usage.error.agy_token_expired": "Access token expired. Run `agy` once to refresh it (or set AGY_OAUTH_CLIENT_ID/SECRET to refresh automatically).",
+      "usage.error.agy_login_expired": "Google sign-in expired. Run `agy` once to log in again.", "usage.error.agy_refresh_empty": "Google token refresh returned no token.",
+      "usage.error.grok_auth_readonly": "Token expired and auth.json is read-only. Run `grok` once to refresh it.", "usage.error.grok_no_refresh": "Token expired and no refresh token was found. Run `grok login`.",
+      "usage.error.grok_refresh_unreachable": "Could not reach auth.x.ai to refresh the token.", "usage.error.grok_invalid_refresh": "Invalid refresh response from auth.x.ai.",
+      "usage.error.grok_persist": "Refreshed but could not write auth.json. Run `grok` once instead.",
       usageButton: "AI usage", languageButton: "Language", helpButton: "Help", close: "Close", expandProfile: "Expand profile",
       rosterFailed: "Failed to load roster: {error}\n(Is the fleet running?)", paneFailed: "⚠ Could not load pane for {name} (HTTP {status}).",
       tokenRequired: "web.token required", avatarFailed: "Avatar upload failed: {error}", saved: "Saved", saveFailed: "Save failed: {error}" },
@@ -212,6 +256,50 @@
       tooltipUnavailable: "無資料", statusRunning: "運行中", statusPaused: "已暫停",
       statusStopped: "已停止", statusCrashed: "已崩潰", statusUnknown: "未知",
       usageResets: "{t} 後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。",
+      "usage.title": "AI 訂閱用量", "usage.title_plain": "AI 訂閱用量", "usage.empty_active": "沒有使用中且支援用量追蹤的 Backend",
+      "usage.not_logged_in": "未登入", "usage.error_fallback": "錯誤", "usage.no_data": "無資料",
+      "usage.reset.in": "{0} 後重置", "usage.reset.soon": "即將重置",
+      "usage.duration.days_hours": "{0}d {1}h", "usage.duration.hours_minutes": "{0}h {1}m", "usage.duration.minutes": "{0}m",
+      "usage.metric.session": "Session", "usage.metric.weekly": "每週", "usage.metric.monthly": "每月",
+      "usage.metric.days_window": "{0} 天視窗", "usage.metric.named": "{0}",
+      "usage.metric.named_session": "{0}（Session）", "usage.metric.named_weekly": "{0}（每週）",
+      "usage.metric.named_monthly": "{0}（每月）", "usage.metric.named_days": "{0}（{1} 天）",
+      "usage.metric.extra_usage": "額外用量", "usage.metric.rate_limit_resets": "速率限制重置",
+      "usage.metric.credits": "額度", "usage.metric.weekly_limit": "每週上限",
+      "usage.metric.pay_as_you_go": "隨用隨付", "usage.metric.bonus_credits": "贈送額度",
+      "usage.metric.overage_charges": "超額費用", "usage.metric.pay_per_use": "隨用隨付",
+      "usage.metric.usage_monthly": "用量（每月）",
+      "usage.unit.available": "可用", "usage.unit.credits": "額度",
+      "usage.value.disabled": "已停用", "usage.value.cap": "上限 {0}",
+      "usage.note.binding": "綁定", "usage.note.binding_severity": "綁定 · {0}",
+      "usage.note.busiest_model": "{0} 個模型中用量最高者", "usage.note.busiest_models": "{0} 個模型中用量最高者",
+      "usage.note.used_limit_unit": "{0} / {1} {2}", "usage.note.bonus_codes": "{0} / {1} {2} · {3} 組代碼",
+      "usage.metric.agy_claude_others": "Claude 與其他模型", "usage.metric.agy_claude_others_session": "Claude 與其他模型（Session）",
+      "usage.metric.agy_claude_others_weekly": "Claude 與其他模型（每週）",
+      "usage.hint.statusline_now": "來自 {0} 的 statusline（剛剛）；未呼叫 API，方案與各模型上限需要 CLI 登入資料",
+      "usage.hint.statusline_minutes": "來自 {0} 的 statusline（{1} 分鐘前）；未呼叫 API，方案與各模型上限需要 CLI 登入資料",
+      "usage.hint.claude_api_key": "API key 登入沒有訂閱用量資料。請使用 `claude /login`，或設定 CLAUDE_CODE_OAUTH_TOKEN（由 `claude setup-token` 取得）。",
+      "usage.hint.login_claude": "請使用 Claude Code CLI（`claude`）登入。",
+      "usage.hint.login_agy": "請使用 Antigravity CLI（`agy`）登入。", "usage.hint.no_quota": "此帳號未回報額度資訊。",
+      "usage.hint.login_codex": "請使用 Codex CLI（`codex`）登入。", "usage.hint.codex_no_oauth": "auth.json 沒有 OAuth 登入資料；只有 API key 時無法讀取用量。",
+      "usage.hint.login_grok": "請使用 Grok CLI（`grok login`）登入。", "usage.hint.grok_no_login": "auth.json 沒有可用的登入資料。請執行 `grok login`。",
+      "usage.hint.login_kiro": "請使用 Kiro CLI（`kiro-cli`）登入。", "usage.hint.kiro_signed_out": "目前已登出；請執行 `kiro-cli` 登入。",
+      "usage.hint.token_refreshing": "Token 更新中 — 請稍候再試。", "usage.hint.subscription_no_credit": "訂閱方案沒有可回報的額度用量。",
+      "usage.hint.no_quota_account": "此帳號類型沒有可用的額度資訊。",
+      "usage.error.unreachable": "無法連線至 {0}。", "usage.error.token_rejected": "Token 已被拒絕。請執行一次 `{0}` 以更新登入。",
+      "usage.error.rate_limited": "{0} 暫時限制請求速率，請稍後再試。", "usage.error.http": "用量請求失敗（HTTP {0}）。",
+      "usage.error.billing_http": "計費請求失敗（HTTP {0}）。", "usage.error.invalid_response": "用量端點回傳了無效資料。",
+      "usage.error.invalid_billing_response": "計費端點回傳了無效資料。", "usage.error.invalid_kiro_response": "GetUsageLimits 回傳了無效資料。",
+      "usage.error.claude_token_expired": "Access token 已過期；下次啟動任一 Claude instance 時會重新整理。",
+      "usage.error.codex_token_expired": "Access token 已過期。請執行一次 `codex` 以重新整理。",
+      "usage.error.grok_expired": "Grok session 已過期。請再次執行 `grok login`。", "usage.error.grok_response_changed": "Grok 計費回應格式已變更。",
+      "usage.error.agy_cap": "個人上限已用完，CLI 正受到速率限制（約 {0} 後重置）。各模型的額度池是另一組計數，因此仍可能顯示 0% 已使用。",
+      "usage.error.agy_no_refresh": "Access token 已過期，且未儲存 refresh token。請執行一次 `agy`。",
+      "usage.error.agy_token_expired": "Access token 已過期。請執行一次 `agy` 重新整理，或設定 AGY_OAUTH_CLIENT_ID/SECRET 以自動更新。",
+      "usage.error.agy_login_expired": "Google 登入已過期。請執行一次 `agy` 重新登入。", "usage.error.agy_refresh_empty": "Google token 更新回應沒有 access token。",
+      "usage.error.grok_auth_readonly": "Token 已過期且 auth.json 為唯讀。請執行一次 `grok` 重新整理。", "usage.error.grok_no_refresh": "Token 已過期且找不到 refresh token。請執行 `grok login`。",
+      "usage.error.grok_refresh_unreachable": "無法連線至 auth.x.ai 以更新 token。", "usage.error.grok_invalid_refresh": "auth.x.ai 回傳了無效的 token 更新資料。",
+      "usage.error.grok_persist": "Token 已更新但無法寫入 auth.json。請改為執行一次 `grok`。",
       usageButton: "AI 訂閱用量", languageButton: "語言", helpButton: "使用說明", close: "關閉", expandProfile: "展開個人資料",
       rosterFailed: "載入 instance 清單失敗：{error}\n（Fleet 是否正在執行？）", paneFailed: "⚠ 無法載入 {name} 的 pane（HTTP {status}）。",
       tokenRequired: "需要 web.token", avatarFailed: "上傳頭像失敗：{error}", saved: "已儲存", saveFailed: "儲存失敗：{error}" },
@@ -791,19 +879,32 @@
     if (!iso) return "";
     const ms = new Date(iso).getTime() - Date.now();
     if (isNaN(ms)) return "";
-    if (ms <= 0) return T("usageSoon");
-    const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
-    const t = h >= 48 ? `${Math.floor(h / 24)}d ${h % 24}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
-    return T("usageResets").replace("{t}", t);
+    if (ms <= 0) return T("usage.reset.soon");
+    const totalMinutes = Math.max(1, Math.ceil(ms / 60000));
+    const d = Math.floor(totalMinutes / 1440), h = Math.floor((totalMinutes % 1440) / 60), m = totalMinutes % 60;
+    const duration = totalMinutes >= 2880
+      ? usageLocalized("", { key: "usage.duration.days_hours", args: [d, h] })
+      : totalMinutes >= 60
+        ? usageLocalized("", { key: "usage.duration.hours_minutes", args: [Math.floor(totalMinutes / 60), m] })
+        : usageLocalized("", { key: "usage.duration.minutes", args: [totalMinutes] });
+    return usageLocalized("", { key: "usage.reset.in", args: [duration] });
+  }
+
+  function usageLocalized(fallback, ref) {
+    if (!ref || typeof ref.key !== "string") return fallback == null ? "" : String(fallback);
+    const args = Array.isArray(ref.args) ? ref.args : [];
+    return args.reduce((text, value, index) => text.replaceAll(`{${index}}`, String(value)), T(ref.key));
   }
 
   function usageMetricHtml(m) {
+    const label = usageLocalized(m.label, m.labelI18n);
+    const note = m.note ? usageLocalized(m.note, m.noteI18n) : "";
     if (m.type === "percent") {
       const pct = Math.min(100, Math.max(0, m.used ?? 0));
       const cls = pct >= 90 ? "crit" : pct >= 70 ? "warn" : "";
       const word = pct >= 90 ? T("usageNear") : pct >= 70 ? T("usageHigh") : "";
-      const sub = [m.note, usageResetText(m.resetsAt)].filter(Boolean).join(" · ");
-      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span>` +
+      const sub = [note, usageResetText(m.resetsAt)].filter(Boolean).join(" · ");
+      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(label)}</span>` +
         (word ? `<span class="u-status ${cls}">${esc(word)}</span>` : "") +
         `<span class="u-val">${pct.toFixed(0)}%</span></div>` +
         `<div class="u-meter"><div class="u-fill ${cls}" style="width:${pct}%"></div></div>` +
@@ -811,19 +912,22 @@
     }
     if (m.type === "dollars") {
       const val = m.limit ? `$${(m.used ?? 0).toFixed(2)} / $${m.limit.toFixed(2)}` : `$${(m.used ?? 0).toFixed(2)}`;
-      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span><span class="u-val">${esc(val)}</span></div></div>`;
+      return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(label)}</span><span class="u-val">${esc(val)}</span></div>` +
+        (note ? `<div class="u-sub">${esc(note)}</div>` : "") + `</div>`;
     }
-    const val = `${m.value ?? ""} ${m.unit ?? ""}`.trim();
-    return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(m.label)}</span><span class="u-val">${esc(val)}</span></div>` +
-      (m.note ? `<div class="u-sub">${esc(m.note)}</div>` : "") + `</div>`;
+    const value = usageLocalized(m.value ?? "", m.valueI18n);
+    const unit = usageLocalized(m.unit ?? "", m.unitI18n);
+    const val = `${value} ${unit}`.trim();
+    return `<div class="u-metric"><div class="u-row"><span class="u-label">${esc(label)}</span><span class="u-val">${esc(val)}</span></div>` +
+      (note ? `<div class="u-sub">${esc(note)}</div>` : "") + `</div>`;
   }
 
   function renderUsage() {
     const box = q("usageContent");
-    if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>${T("usageTitle")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
-    let html = `<h3>${T("usageTitle")}</h3>`;
+    if (!usageData || !Array.isArray(usageData.providers)) { box.innerHTML = `<h3>📊 ${T("usage.title")}</h3><div class="u-err">${T("usageFail")}</div>`; return; }
+    let html = `<h3>📊 ${T("usage.title")}</h3>`;
     const providers = orderedUsageProviders(usageData.providers);
-    if (!providers.length) html += `<div class="u-err">${T("usageEmpty")}</div>`;
+    if (!providers.length) html += `<div class="u-err">${T("usage.empty_active")}</div>`;
     for (let index = 0; index < providers.length; index++) {
       const p = providers[index];
       const key = providerKey(p);
@@ -831,13 +935,18 @@
         (p.plan ? `<span class="u-plan">${esc(p.plan)}</span>` : "") +
         `<span class="u-order"><button class="u-move" data-provider="${esc(key)}" data-delta="-1" title="${T("usageMoveUp")}" aria-label="${T("usageMoveUp")}"${index === 0 ? " disabled" : ""}>↑</button>` +
         `<button class="u-move" data-provider="${esc(key)}" data-delta="1" title="${T("usageMoveDown")}" aria-label="${T("usageMoveDown")}"${index === providers.length - 1 ? " disabled" : ""}>↓</button></span></div>`;
-      if (p.status === "error") html += `<div class="u-err">${esc(p.error || "error")}</div>`;
+      if (p.status === "error") html += `<div class="u-err">${esc(usageLocalized(p.error || T("usage.error_fallback"), p.errorI18n))}</div>`;
+      else if (p.status === "no-credentials") {
+        html += `<div class="u-note">${esc(T("usage.not_logged_in"))}</div>`;
+        if (p.hint) html += `<div class="u-note">${esc(usageLocalized(p.hint, p.hintI18n))}</div>`;
+      }
       else {
         html += (p.metrics || []).map(usageMetricHtml).join("");
         // A provider with nothing to meter (subscription plan) or one awaiting
         // sign-in carries a hint instead of metrics. Without this the panel
         // rendered an empty box, so those states looked broken.
-        if (p.hint) html += `<div class="u-note">${esc(p.hint)}</div>`;
+        if (p.hint) html += `<div class="u-note">${esc(usageLocalized(p.hint, p.hintI18n))}</div>`;
+        else if (!(p.metrics || []).length) html += `<div class="u-note">${esc(T("usage.no_data"))}</div>`;
       }
       html += `</div>`;
     }

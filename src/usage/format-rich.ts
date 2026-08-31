@@ -12,6 +12,8 @@
  */
 import type { ProviderUsage, UsageMetric } from "./providers.js";
 import type { UsagePayload } from "./usage-api.js";
+import { t } from "../locale.js";
+import { usageResetText, usageText } from "./i18n.js";
 
 const BAR_WIDTH = 10;
 
@@ -37,12 +39,8 @@ function metricPercent(m: UsageMetric): number | null {
 }
 
 function resetSuffix(resetsAt?: string | null): string {
-  if (!resetsAt) return "";
-  const at = new Date(resetsAt);
-  if (Number.isNaN(at.getTime())) return "";
-  const hours = Math.round((at.getTime() - Date.now()) / 3_600_000);
-  if (hours <= 0) return "";
-  return hours >= 48 ? ` · resets in ${Math.round(hours / 24)}d` : ` · resets in ${hours}h`;
+  const text = usageResetText(resetsAt);
+  return text ? ` · ${text}` : "";
 }
 
 interface MetricLine {
@@ -52,24 +50,30 @@ interface MetricLine {
 
 function metricLine(m: UsageMetric): MetricLine | null {
   const pct = metricPercent(m);
+  const label = usageText(m.label, m.labelI18n);
+  const note = m.note ? usageText(m.note, m.noteI18n) : "";
   switch (m.type) {
     case "percent":
       return {
         bar: usageBar(pct ?? 0),
         // note explains WHICH number this is (e.g. "busiest of 8 models"); it is
         // what stops a legitimate 0% from reading as a broken meter.
-        text: `${Math.round(m.used ?? 0)}% ${m.label}${m.note ? ` (${m.note})` : ""}${resetSuffix(m.resetsAt)}`,
+        text: `${Math.round(m.used ?? 0)}% ${label}${note ? ` (${note})` : ""}${resetSuffix(m.resetsAt)}`,
       };
     case "dollars": {
       const used = `$${(m.used ?? 0).toFixed(2)}`;
       return m.limit
-        ? { bar: usageBar(pct ?? 0), text: `${used}/$${m.limit.toFixed(2)} ${m.label}` }
-        : { bar: null, text: `${used} ${m.label}` };
+        ? { bar: usageBar(pct ?? 0), text: `${used}/$${m.limit.toFixed(2)} ${label}` }
+        : { bar: null, text: `${used} ${label}` };
     }
-    case "count":
-      return { bar: null, text: `${m.label}: ${m.value ?? "?"}${m.unit ? ` ${m.unit}` : ""}` };
-    case "text":
-      return m.value != null ? { bar: null, text: `${m.label}: ${m.value}` } : null;
+    case "count": {
+      const unit = m.unit ? usageText(m.unit, m.unitI18n) : "";
+      return { bar: null, text: `${label}: ${m.value ?? "?"}${unit ? ` ${unit}` : ""}${note ? ` (${note})` : ""}` };
+    }
+    case "text": {
+      const value = m.value != null ? usageText(String(m.value), m.valueI18n) : null;
+      return value != null ? { bar: null, text: `${label}: ${value}${note ? ` (${note})` : ""}` } : null;
+    }
   }
 }
 
@@ -90,22 +94,22 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
     // An ok row can carry a hint too — e.g. "cached 3m ago — live query is rate
     // limited" from the stale fallback. Shown under the metrics, not instead of
     // them, so old numbers still read as numbers.
-    note: p.status === "no-credentials" ? "not logged in"
-      : p.status === "error" ? `⚠️ ${p.error ?? "error"}`
+    note: p.status === "no-credentials" ? t("usage.not_logged_in")
+      : p.status === "error" ? `⚠️ ${usageText(p.error ?? t("usage.error_fallback"), p.errorI18n)}`
         : null,
-    okHint: p.status === "ok" && p.hint ? p.hint : null,
+    okHint: p.status === "ok" && p.hint ? usageText(p.hint, p.hintI18n) : null,
     lines: p.status === "ok" ? p.metrics.map(metricLine).filter((l): l is MetricLine => l !== null) : [],
   }));
 }
 
 /** Discord: native Markdown in plain message content. */
 export function renderUsageMarkdown(payload: UsagePayload): string {
-  const out: string[] = ["📊 **AI Subscription Usage**"];
+  const out: string[] = [`📊 **${t("usage.title")}**`];
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} **${b.name}**${b.plan ? ` (${b.plan})` : ""}`);
     if (b.note) { out.push(`> ${b.note}`); continue; }
     if (b.lines.length === 0) {
-      out.push(b.okHint ? `> ${b.okHint}` : "> no data");
+      out.push(b.okHint ? `> ${b.okHint}` : `> ${t("usage.no_data")}`);
       continue;
     }
     for (const l of b.lines) {
@@ -126,12 +130,12 @@ function escapeHtml(s: string): string {
  * `<` would make Telegram reject the whole message.
  */
 export function renderUsageHtml(payload: UsagePayload): string {
-  const out: string[] = ["📊 <b>AI Subscription Usage</b>"];
+  const out: string[] = [`📊 <b>${escapeHtml(t("usage.title"))}</b>`];
   for (const b of toBlocks(payload)) {
     out.push("", `${b.dot} <b>${escapeHtml(b.name)}</b>${b.plan ? ` (${escapeHtml(b.plan)})` : ""}`);
     if (b.note) { out.push(escapeHtml(b.note)); continue; }
     if (b.lines.length === 0) {
-      out.push(b.okHint ? escapeHtml(b.okHint) : "no data");
+      out.push(b.okHint ? escapeHtml(b.okHint) : escapeHtml(t("usage.no_data")));
       continue;
     }
     for (const l of b.lines) {
