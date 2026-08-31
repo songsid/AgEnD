@@ -1034,6 +1034,15 @@ export class Daemon extends EventEmitter {
   /** In-flight replacement grace; also the guard against three triggers stacking. */
   private mcpRestartGraceTimer: ReturnType<typeof setTimeout> | null = null;
   /**
+   * Which trigger the in-flight grace will commit under.
+   *
+   * The single-timer guard would otherwise SWALLOW a stale_timeout that lands
+   * during an idle-gated grace — and because the stale timer is one-shot and
+   * already cleared itself, the 30-minute backstop would be gone for good on an
+   * instance that never idles, which is the exact case it exists for.
+   */
+  private mcpRestartGraceTrigger: "already_idle" | "idle_edge" | "stale_timeout" | null = null;
+  /**
    * A dead-MCP sighting held back once, pending a possible replacement.
    *
    * Deliberately NOT the same field as `mcpDeathNotifiedForPid`: deferring must
@@ -1568,14 +1577,38 @@ export class Daemon extends EventEmitter {
     // Not back yet: give a CLI-driven replacement a bounded moment rather than
     // restarting the instance out from under it. One timer covers all three
     // triggers; a second trigger during the wait is a no-op.
-    if (this.mcpRestartGraceTimer) return;
+    if (this.mcpRestartGraceTimer) {
+      // stale_timeout outranks the idle-gated triggers: it is the backstop for
+      // a turn that never ends, so it must not be lost to an in-flight grace.
+      if (trigger === "stale_timeout") this.mcpRestartGraceTrigger = "stale_timeout";
+      return;
+    }
+    this.mcpRestartGraceTrigger = trigger;
     this.mcpRestartGraceTimer = setTimeout(() => {
       this.mcpRestartGraceTimer = null;
+      const committed = this.mcpRestartGraceTrigger ?? trigger;
+      this.mcpRestartGraceTrigger = null;
       if (!this.mcpRestartPending || this.runtimeMonitorsFrozen) return;
-      if (this.mcpRestartCancelledByRecovery(trigger)) return;
+      if (this.mcpRestartCancelledByRecovery(committed)) return;
       if (mcpServerState(this.instanceDir).state === "alive") {
-        this.logger.info({ trigger }, "MCP revival restart stood down — replacement came up during the grace window");
+        this.logger.info({ trigger: committed }, "MCP revival restart stood down — replacement came up during the grace window");
         this.clearMcpRestartRequest();
+        return;
+      }
+      // Re-check the idle gate. The grace turned what used to be a synchronous
+      // decision into a 2s window, and "idle edge, then a queued message lands"
+      // is the NORMAL ordering for queued delivery — so without this the
+      // restart tears down a turn that started during the wait. Worse than the
+      // race it replaced: the #485 proxy reply only runs at turn end, so an
+      // in-flight answer would be swallowed with no fallback. Only the
+      // 30-minute stale timer may interrupt a live turn, by design.
+      //
+      // Deliberately does NOT clear pending: the MCP really is gone, so the
+      // request must survive to the next idle edge (which re-enters here), and
+      // the stale timer keeps running underneath as the backstop.
+      if (committed !== "stale_timeout" && !(this.instanceState === "idle" && this.pasteQueueDepth === 0)) {
+        this.logger.info({ trigger: committed, instanceState: this.instanceState, pasteQueueDepth: this.pasteQueueDepth },
+          "MCP revival restart deferred — the pane went busy during the grace window");
         return;
       }
       // The suspicion was wrong: a real loss. Report it BEFORE asking for the
@@ -1584,8 +1617,8 @@ export class Daemon extends EventEmitter {
       // does not survive the restart to send it afterwards.
       this.reportDeferredMcpDeath();
       this.clearMcpRestartRequest();
-      this.logger.warn({ trigger }, "Requesting instance restart to revive its MCP server");
-      this.emit("mcp_restart_requested", { name: this.name, trigger });
+      this.logger.warn({ trigger: committed }, "Requesting instance restart to revive its MCP server");
+      this.emit("mcp_restart_requested", { name: this.name, trigger: committed });
     }, Daemon.MCP_REPLACEMENT_GRACE_MS);
     this.mcpRestartGraceTimer.unref?.();
   }
@@ -1632,6 +1665,7 @@ export class Daemon extends EventEmitter {
       clearTimeout(this.mcpRestartGraceTimer);
       this.mcpRestartGraceTimer = null;
     }
+    this.mcpRestartGraceTrigger = null;
   }
 
   private startHealthCheck(): void {

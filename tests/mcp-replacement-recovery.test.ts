@@ -245,3 +245,58 @@ describe("zombie protection is not weakened by the recovery changes", () => {
     }
   }, 20_000);
 });
+
+/**
+ * Blocker found by fable in review of PR #668, reproduced independently here.
+ *
+ * My claim that the grace "can only cancel a restart, never cause one" was
+ * wrong. It holds for firing with a live MCP, but not for firing mid-turn: the
+ * grace turned a synchronous decision into a 2s window, and "idle edge, then a
+ * queued message lands" is the NORMAL ordering for queued delivery. Firing into
+ * that window tears down a turn that just started — worse than the race it
+ * replaced, because the #485 proxy reply only runs at turn end, so the
+ * in-flight answer is swallowed with no fallback.
+ */
+describe("the grace must not fire into a turn that began during it", () => {
+  it("defers when a message lands mid-grace, and keeps the request for the next idle edge", async () => {
+    vi.useFakeTimers();
+    const { daemon, restarts } = makeDaemon();
+    writeFileSync(PID_FILE(), String(DEAD_PID));
+    tick(daemon); tick(daemon);
+
+    daemon.instanceState = "idle";
+    idleEdge(daemon);                            // grace armed
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    daemon.instanceState = "working";            // a queued message lands
+    daemon.pasteQueueDepth = 1;
+    await vi.advanceTimersByTimeAsync(2_000);    // grace expires mid-turn
+
+    expect(restarts).toHaveLength(0);            // the turn survives
+    expect(daemon.mcpRestartPending).toBe(true); // and the request is not lost
+
+    daemon.instanceState = "idle"; daemon.pasteQueueDepth = 0;
+    idleEdge(daemon);
+    await vi.advanceTimersByTimeAsync(2_500);
+    expect(restarts).toHaveLength(1);            // fires on the next idle edge
+  });
+
+  it("stale_timeout still interrupts a live turn, and is not swallowed by an in-flight grace", async () => {
+    // Found while writing the test above: the single-timer guard dropped a
+    // stale_timeout that arrived during an idle-gated grace. The stale timer is
+    // one-shot and had already cleared itself, so the 30-minute backstop was
+    // gone for good — on exactly the never-idles instance it exists for.
+    vi.useFakeTimers();
+    const { daemon, restarts } = makeDaemon();
+    writeFileSync(PID_FILE(), String(DEAD_PID));
+    tick(daemon); tick(daemon);                  // arms, and fires already_idle
+
+    daemon.instanceState = "working";            // the turn that never ends
+    daemon.pasteQueueDepth = 1;
+    daemon.fireMcpRestartRequest("stale_timeout");
+    await vi.advanceTimersByTimeAsync(2_500);
+
+    expect(restarts).toHaveLength(1);            // mute work is stranded work
+    expect(restarts[0].trigger).toBe("stale_timeout");
+  });
+});
