@@ -247,42 +247,102 @@ describe("zombie protection is not weakened by the recovery changes", () => {
 });
 
 /**
- * Blocker found by fable in review of PR #668, reproduced independently here.
+ * The replacement grace must not fire into a live turn (#663).
  *
- * My claim that the grace "can only cancel a restart, never cause one" was
- * wrong. It holds for firing with a live MCP, but not for firing mid-turn: the
- * grace turned a synchronous decision into a 2s window, and "idle edge, then a
- * queued message lands" is the NORMAL ordering for queued delivery. Firing into
- * that window tears down a turn that just started — worse than the race it
- * replaced, because the #485 proxy reply only runs at turn end, so the
- * in-flight answer is swallowed with no fallback.
+ * Found by fable in review of PR #668. My claim that the grace "can only cancel
+ * a restart, never cause one" held for firing with a live MCP but not for
+ * firing mid-turn: the grace turned a synchronous decision into a 2s window,
+ * and "idle edge, then a queued message lands" is the NORMAL ordering for
+ * queued delivery. Firing into it tears down a turn that just started — worse
+ * than the race it replaced, because the #485 proxy reply only runs at turn
+ * end, so the in-flight answer is swallowed with no fallback.
+ *
+ * The first case is fable's reproduction, taken as-is.
  */
-describe("the grace must not fire into a turn that began during it", () => {
-  it("defers when a message lands mid-grace, and keeps the request for the next idle edge", async () => {
+describe("the replacement grace must not fire into a live turn (#663)", () => {
+  it("a message arriving during the 2s grace does not get its turn torn down", async () => {
+    const { daemon, restarts } = makeDaemon();
+    writeFileSync(PID_FILE(), String(DEAD_PID));
+    daemon.instanceState = "working";
+    tick(daemon);   // codex deferral tick
+    tick(daemon);   // confirms, arms idle-gated restart
+    expect(restarts).toHaveLength(0);
+
+    vi.useFakeTimers();
+    // busy -> idle edge fires the chokepoint, grace timer armed
+    idleEdge(daemon);
+    // 1s into the grace, a queued message lands: pane goes busy mid-turn
+    await vi.advanceTimersByTimeAsync(1_000);
+    daemon.instanceState = "working";
+    daemon.pasteQueueDepth = 1;
+    // grace expires while the new turn is running
+    await vi.advanceTimersByTimeAsync(1_500);
+    // ORIGINAL CONTRACT (armMcpRestartWhenIdle): never interrupt a live turn
+    // before the 30min stale timeout.
+    expect(restarts).toHaveLength(0);
+  });
+
+  it("keeps the pending request alive so the next idle edge still fires it", async () => {
+    // The other half of "busy -> return without clearing pending": deferring
+    // must not silently drop a restart the instance genuinely needs.
     vi.useFakeTimers();
     const { daemon, restarts } = makeDaemon();
     writeFileSync(PID_FILE(), String(DEAD_PID));
     tick(daemon); tick(daemon);
 
     daemon.instanceState = "idle";
-    idleEdge(daemon);                            // grace armed
-
+    idleEdge(daemon);
     await vi.advanceTimersByTimeAsync(1_000);
-    daemon.instanceState = "working";            // a queued message lands
-    daemon.pasteQueueDepth = 1;
-    await vi.advanceTimersByTimeAsync(2_000);    // grace expires mid-turn
-
-    expect(restarts).toHaveLength(0);            // the turn survives
-    expect(daemon.mcpRestartPending).toBe(true); // and the request is not lost
+    daemon.instanceState = "working"; daemon.pasteQueueDepth = 1;
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(restarts).toHaveLength(0);
+    expect(daemon.mcpRestartPending).toBe(true);
 
     daemon.instanceState = "idle"; daemon.pasteQueueDepth = 0;
     idleEdge(daemon);
     await vi.advanceTimersByTimeAsync(2_500);
-    expect(restarts).toHaveLength(1);            // fires on the next idle edge
+    expect(restarts).toHaveLength(1);
+  });
+
+  it("a turn that starts AND finishes inside the grace still lets it fire", async () => {
+    // fable's boundary ruling, documented: the gate protects an in-flight turn,
+    // and a turn that reached its own idle edge has already run its proxy reply.
+    // Requiring idle for the whole window would only delay a real recovery.
+    vi.useFakeTimers();
+    const { daemon, restarts } = makeDaemon();
+    writeFileSync(PID_FILE(), String(DEAD_PID));
+    tick(daemon); tick(daemon);
+
+    daemon.instanceState = "idle";
+    idleEdge(daemon);
+    await vi.advanceTimersByTimeAsync(800);
+    daemon.instanceState = "working";            // a turn runs...
+    await vi.advanceTimersByTimeAsync(400);
+    daemon.instanceState = "idle";               // ...and completes
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(restarts).toHaveLength(1);
+  });
+
+  it("treats a queued paste as busy even while the pane still reads idle", async () => {
+    // The queue is about to make the pane busy; firing now races the delivery.
+    vi.useFakeTimers();
+    const { daemon, restarts } = makeDaemon();
+    writeFileSync(PID_FILE(), String(DEAD_PID));
+    tick(daemon); tick(daemon);
+
+    daemon.instanceState = "idle";
+    idleEdge(daemon);
+    await vi.advanceTimersByTimeAsync(1_000);
+    daemon.pasteQueueDepth = 1;                  // idle, but a paste is queued
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(restarts).toHaveLength(0);
+    expect(daemon.mcpRestartPending).toBe(true);
   });
 
   it("stale_timeout still interrupts a live turn, and is not swallowed by an in-flight grace", async () => {
-    // Found while writing the test above: the single-timer guard dropped a
+    // Found while writing the case above: the single-timer guard dropped a
     // stale_timeout that arrived during an idle-gated grace. The stale timer is
     // one-shot and had already cleared itself, so the 30-minute backstop was
     // gone for good — on exactly the never-idles instance it exists for.
