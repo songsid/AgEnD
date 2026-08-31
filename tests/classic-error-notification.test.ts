@@ -4,8 +4,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
+import { CodexBackend } from "../src/backend/codex.js";
+import { setLocale } from "../src/locale.js";
 
-afterEach(() => setAuthCheckRunnerForTests(null));
+afterEach(() => {
+  setAuthCheckRunnerForTests(null);
+  setLocale("en");
+});
 import {
   InstanceLifecycle,
   type IncidentEventSource,
@@ -25,6 +30,7 @@ function makeLifecycle(classicNames: string[]) {
     },
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     dataDir,
+    getInstanceDir: (name: string) => join(dataDir, "instances", name),
     eventLog: { insert: vi.fn() },
     isPlannedRestart: () => false,
     isClassicInstance: (name: string) => classicNames.includes(name),
@@ -82,6 +88,26 @@ describe("PTY error notification targets", () => {
       "worker",
       expect.stringMatching(/worker.*Model unavailable/s),
     );
+  });
+
+  it("localizes a Codex capacity incident and pauses the affected instance", async () => {
+    setLocale("zh-TW");
+    const { attach, notifyInstanceTopic, ctx } = makeLifecycle([]);
+    (ctx as any).fleetConfig.instances.worker.backend = "codex";
+    const daemon = attach("worker");
+    const capacity = new CodexBackend("/tmp/codex-capacity-notify-test")
+      .getErrorPatterns()
+      .find(({ pattern }) => pattern.test("⚠ Selected model is at capacity. Please try a different model."));
+
+    expect(capacity).toBeDefined();
+    daemon.emit("pty_error", { name: "worker", ...capacity });
+
+    await vi.waitFor(() => expect(daemon.requestPauseWhenIdle).toHaveBeenCalledTimes(1));
+    expect(notifyInstanceTopic).toHaveBeenCalledWith(
+      "worker",
+      expect.stringMatching(/服務擁擠.*手動重送訊息.*\/model/s),
+    );
+    expect((ctx as any).clearCancelButton).toHaveBeenCalledWith("worker");
   });
 
   it("reports Claude's live fallback model when a configured model is unavailable", () => {
