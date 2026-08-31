@@ -228,6 +228,8 @@ export const UpdateFleetDefaultsArgs = z.object({
     backend: z.string().optional().describe("Default CLI backend"),
     model: z.string().optional().describe("Default model"),
     auto_pause_after: z.number().optional().describe("Default auto-pause minutes (0 = disabled)"),
+    max_cross_instance_message_bytes: z.number().int().positive().optional()
+      .describe("Maximum UTF-8 byte size of one cross-instance message body (default 12288)"),
   }).describe("Fields to merge-patch into fleet defaults"),
 });
 

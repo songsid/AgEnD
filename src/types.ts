@@ -189,6 +189,8 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
   locale?: string;
   /** Seconds before the cancel button starts showing elapsed time (default 30). */
   progress_min_elapsed?: number;
+  /** Maximum UTF-8 byte size of one cross-instance tool message body. Default: 12288. */
+  max_cross_instance_message_bytes?: number;
   scheduler?: {
     max_schedules?: number;
     default_timezone?: string;

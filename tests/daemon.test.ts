@@ -557,6 +557,37 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
+  it("reports an accepted cross-instance paste failure back over IPC with its reason", async () => {
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("claude-code", true);
+    tmux.pasteBuffer.mockResolvedValue(false);
+    tmux.getLastPasteError = vi.fn(() => "load-buffer failed: ENOSPC");
+    tmux.isLastPasteFailureRecoverable = vi.fn(() => false);
+    const broadcast = vi.fn();
+    (daemon as any).ipcServer = { broadcast };
+
+    try {
+      daemon.pushChannelMessage("handoff", {
+        from_instance: "sender-session",
+        correlation_id: "cid-large",
+        user: "instance:sender-session",
+        chat_id: "",
+        message_id: "xmsg",
+        thread_id: "",
+      });
+      await (daemon as any).pasteLock;
+      expect(tmux.pasteBuffer).toHaveBeenCalledOnce();
+      expect(broadcast).toHaveBeenCalledWith({
+        type: "cross_instance_delivery_failed",
+        senderSession: "sender-session",
+        targetInstance: "claude-code-queue-test",
+        correlationId: "cid-large",
+        error: "load-buffer failed: ENOSPC",
+      });
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
   it("reports a failure when both Enters are swallowed instead of claiming success", async () => {
     // The message is sitting UNSUBMITTED in the CLI's input box. This used to
     // return true, leaving the reaction at 👀 forever while the next delivery

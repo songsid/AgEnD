@@ -87,7 +87,6 @@ export function validateFleetConfig(config: unknown): ValidationResult {
         err(`${path}.progress_min_elapsed`, "must be a non-negative number of seconds");
       }
     }
-
     if (value.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(value.tool_progress))) {
       err(`${path}.tool_progress`, "must be off, standard, or verbose");
     }
@@ -204,6 +203,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
       err("defaults.warm_cap", "must be a non-negative integer (0 = unlimited)");
     }
     validateInstanceOptions(config.defaults, "defaults");
+    if (config.defaults.max_cross_instance_message_bytes !== undefined) {
+      const v = config.defaults.max_cross_instance_message_bytes;
+      if (typeof v !== "number" || !Number.isSafeInteger(v) || v <= 0) {
+        err("defaults.max_cross_instance_message_bytes", "must be a positive integer number of bytes");
+      }
+    }
     if (config.defaults.tips !== undefined && typeof config.defaults.tips !== "boolean") {
       err("defaults.tips", "must be a boolean");
     }
