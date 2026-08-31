@@ -1,11 +1,14 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 import { CodexRolloutSource, KiroSessionSource, OpenCodeDbSource } from "../src/transcript-sources.js";
 
-const TEST_ROOT = "/tmp/ccd-test-transcript-sources";
-const WORK_DIR = "/tmp/ccd-test-ts-workdir";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const TEST_ROOT = mkdtempSync(join(tmpdir(), "ccd-test-transcript-sources-"));
+const WORK_DIR = mkdtempSync(join(tmpdir(), "ccd-test-ts-workdir-"));
 
 const sqlite = (process as { getBuiltinModule?: (id: string) => unknown })
   .getBuiltinModule?.("node:sqlite") as

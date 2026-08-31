@@ -1,14 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, lstatSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, lstatSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { CodexBackend } from "../../src/backend/codex.js";
 import { appendWithMarker } from "../../src/backend/marker-utils.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
 import { setLocale } from "../../src/locale.js";
 
-const TEST_DIR = "/tmp/ccd-test-codex-backend";
-const WORK_DIR = "/tmp/ccd-test-codex-workdir";
-const SHARED_CODEX_HOME = "/tmp/ccd-test-codex-shared-home";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const TEST_DIR = mkdtempSync(join(tmpdir(), "ccd-test-codex-backend-"));
+const WORK_DIR = mkdtempSync(join(tmpdir(), "ccd-test-codex-workdir-"));
+const SHARED_CODEX_HOME = mkdtempSync(join(tmpdir(), "ccd-test-codex-shared-home-"));
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {

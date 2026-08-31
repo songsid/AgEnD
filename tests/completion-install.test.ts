@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from "vitest";
-import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   detectShells,
   installBashCompletion,
@@ -9,8 +10,10 @@ import {
   ZSH_RC_MARKER,
 } from "../src/completion-install.js";
 
-const HOME = "/tmp/ccd-test-completion-home";
-const SYS = "/tmp/ccd-test-completion-sys";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const HOME = mkdtempSync(join(tmpdir(), "ccd-test-completion-home-"));
+const SYS = mkdtempSync(join(tmpdir(), "ccd-test-completion-sys-"));
 
 const BASH_SCRIPT = "# bash completion v1\ncomplete -F _agend agend\n";
 const ZSH_FPATH = "#compdef agend\n_agend() { :; }\n_agend \"$@\"\n";

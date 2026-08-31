@@ -1,15 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, realpathSync, statSync, chmodSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync, symlinkSync, realpathSync, statSync, chmodSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { ClaudeCodeBackend, acquireClaudeJsonLock, releaseClaudeJsonLock } from "../../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
 import { isModelCompatible, validateModel } from "../../src/backend/types.js";
 
-const TEST_DIR = "/tmp/ccd-test-claude-backend";
-const WORK_DIR = "/tmp/ccd-test-workdir";
-const CLAUDE_DIR = "/tmp/ccd-test-claude-config";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const TEST_DIR = mkdtempSync(join(tmpdir(), "ccd-test-claude-backend-"));
+const WORK_DIR = mkdtempSync(join(tmpdir(), "ccd-test-workdir-"));
+const CLAUDE_DIR = mkdtempSync(join(tmpdir(), "ccd-test-claude-config-"));
 const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+
+/** Mirror of Claude Code's project key encoding for test setup. */
+function claudeProjectKey(cwd: string): string {
+  let canonical = resolve(cwd);
+  try { canonical = realpathSync(canonical); } catch { /* fallback to unresolved */ }
+  const sanitized = canonical.replace(/[^a-zA-Z0-9]/g, "-");
+  if (sanitized.length <= 200) return sanitized;
+  let hash = 0;
+  for (let i = 0; i < canonical.length; i++) {
+    hash = ((hash << 5) - hash + canonical.charCodeAt(i)) | 0;
+  }
+  return `${sanitized.slice(0, 200)}-${Math.abs(hash).toString(36)}`;
+}
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {
@@ -59,7 +75,7 @@ describe("ClaudeCodeBackend", () => {
 
     it("uses --continue when session-id file exists to bypass the session picker", () => {
       writeFileSync(join(TEST_DIR, "session-id"), "sess-123");
-      const projectDir = join(CLAUDE_DIR, "projects", "-tmp-ccd-test-workdir");
+      const projectDir = join(CLAUDE_DIR, "projects", claudeProjectKey(WORK_DIR));
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(projectDir, "sess-123.jsonl"), "{}\n");
       const backend = new ClaudeCodeBackend(TEST_DIR);
@@ -73,7 +89,7 @@ describe("ClaudeCodeBackend", () => {
       const workingDirectory = join(WORK_DIR, ".agend", "with_under_score");
       mkdirSync(workingDirectory, { recursive: true });
       // Claude Code encodes dots and underscores as well as path separators.
-      const projectDir = join(CLAUDE_DIR, "projects", "-tmp-ccd-test-workdir--agend-with-under-score");
+      const projectDir = join(CLAUDE_DIR, "projects", claudeProjectKey(workingDirectory));
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(join(projectDir, "sess-special.jsonl"), "{}\n");
 
