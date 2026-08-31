@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CodexBackend } from "../../src/backend/codex.js";
 import { appendWithMarker } from "../../src/backend/marker-utils.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
+import { setLocale } from "../../src/locale.js";
 
 const TEST_DIR = "/tmp/ccd-test-codex-backend";
 const WORK_DIR = "/tmp/ccd-test-codex-workdir";
@@ -29,12 +30,14 @@ describe("CodexBackend", () => {
   const originalCodexHome = process.env.CODEX_HOME;
 
   beforeEach(() => {
+    setLocale("en");
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
     mkdirSync(SHARED_CODEX_HOME, { recursive: true });
     process.env.CODEX_HOME = SHARED_CODEX_HOME;
   });
   afterEach(() => {
+    setLocale("en");
     if (originalCodexHome === undefined) delete process.env.CODEX_HOME;
     else process.env.CODEX_HOME = originalCodexHome;
     rmSync(TEST_DIR, { recursive: true, force: true });
@@ -249,6 +252,35 @@ describe("CodexBackend", () => {
         type: "model_error",
         action: "notify",
       });
+    });
+
+    it("pauses on the exact Codex capacity rejection and explains recovery", () => {
+      const match = matchingError("⚠ Selected model is at capacity. Please try a different model.");
+
+      expect(match).toMatchObject({
+        type: "model_error",
+        action: "pause",
+        skipRecoveryWait: true,
+      });
+      expect(match?.message).toContain("Retry the message manually later");
+      expect(match?.message).toContain("/model");
+    });
+
+    it.each([
+      "The pane said ⚠ Selected model is at capacity. Please try a different model.",
+      "We should detect `⚠ Selected model is at capacity. Please try a different model.` safely.",
+      " ⚠ Selected model is at capacity. Please try a different model.",
+      "⚠ Selected model is at capacity. Please try a different model. More details follow.",
+    ])("does not pause for capacity text embedded in prose: %s", (pane) => {
+      expect(matchingError(pane)).toBeUndefined();
+    });
+
+    it("localizes the Codex capacity recovery instructions in zh-TW", () => {
+      setLocale("zh-TW");
+      const match = matchingError("⚠ Selected model is at capacity. Please try a different model.");
+
+      expect(match?.message).toContain("請稍後手動重送訊息");
+      expect(match?.message).toContain("/model");
     });
 
     it("still detects a model rejection after tmux hard-wraps it", () => {

@@ -20,6 +20,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { t } from "../locale.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
@@ -502,6 +503,18 @@ export class CodexBackend implements CliBackend {
         type: "model_error",
         action: "notify",
         message: "Codex model unavailable — use /model to switch",
+      },
+      {
+        // A capacity rejection is a completed failed turn: Codex returns to its
+        // prompt without an answer. Keep this anchored to the exact decorated
+        // TUI line so ordinary prose about model capacity cannot pause an
+        // otherwise healthy instance. The CLI is already ready again, so there
+        // is no recovery state to wait for after the pause notification.
+        pattern: /^⚠ Selected model is at capacity\. Please try a different model\.\r?$/m,
+        type: "model_error",
+        action: "pause",
+        message: t("inst.codex_model_capacity"),
+        skipRecoveryWait: true,
       },
       // Workspace (team) accounts report exhaustion differently from personal
       // ones — the full line is:
