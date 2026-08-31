@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { KiroBackend } from "../../src/backend/kiro.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
 
-const TEST_DIR = "/tmp/ccd-test-kiro-backend";
-const WORK_DIR = "/tmp/ccd-test-kiro-workdir";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const TEST_DIR = mkdtempSync(join(tmpdir(), "ccd-test-kiro-backend-"));
+const WORK_DIR = mkdtempSync(join(tmpdir(), "ccd-test-kiro-workdir-"));
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
   return {

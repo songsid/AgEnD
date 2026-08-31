@@ -1,14 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { OpenCodeBackend } from "../../src/backend/opencode.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
 import { Daemon } from "../../src/daemon.js";
 import pino from "pino";
 import type { Logger } from "../../src/logger.js";
 
-const TEST_DIR = "/tmp/ccd-test-opencode-backend";
-const WORK_DIR = "/tmp/ccd-test-opencode-workdir";
+// Use unique temp directories per test run to avoid collisions when multiple
+// vitest processes run in parallel (issue #669)
+const TEST_DIR = mkdtempSync(join(tmpdir(), "ccd-test-opencode-backend-"));
+const WORK_DIR = mkdtempSync(join(tmpdir(), "ccd-test-opencode-workdir-"));
 const rootLogger = pino({ level: "silent" }) as Logger;
 
 function makeConfig(overrides?: Partial<CliBackendConfig>): CliBackendConfig {
