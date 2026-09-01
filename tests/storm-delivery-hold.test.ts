@@ -45,4 +45,13 @@ describe("fleet delivery during a tmux storm", () => {
     expect((fm as any).sendWhenConnected).not.toHaveBeenCalled();
     fm.stormWindow.shutdown();
   });
+
+  it("routes the fleet summary through the no-General fallback", async () => {
+    const fm = manager();
+    const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    fm.stormWindow.recordServerDead("worker", ["worker"]);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(notify).toHaveBeenCalledWith(expect.stringContaining("tmux"));
+    fm.stormWindow.shutdown();
+  });
 });

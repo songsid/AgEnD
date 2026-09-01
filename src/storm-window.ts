@@ -63,7 +63,7 @@ export class StormWindow extends EventEmitter {
   private stableTimer: ReturnType<typeof setTimeout> | null = null;
   private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
   private spawnWaiters = new Set<() => void>();
-  private deliveryWaiters = new Set<() => void>();
+  private deliveryWaiters = new Map<string, Set<() => void>>();
   private stopped = false;
 
   constructor(options: StormWindowOptions = {}) {
@@ -94,7 +94,11 @@ export class StormWindow extends EventEmitter {
   isActive(): boolean { return this.phase !== "closed"; }
   isStopped(): boolean { return this.stopped; }
   isSpawnBlocked(): boolean { return !this.stopped && this.phase === "backing_off"; }
-  isDeliveryHeld(): boolean { return !this.stopped && this.phase !== "closed"; }
+  isDeliveryHeld(name?: string): boolean {
+    if (this.stopped || this.phase === "closed") return false;
+    if (this.phase === "backing_off" || name == null) return true;
+    return this.needsRecovery(name);
+  }
   needsRecovery(name: string): boolean {
     return this.isActive() && this.affected.has(name) && !this.recovered.has(name);
   }
@@ -134,6 +138,7 @@ export class StormWindow extends EventEmitter {
   markRecovered(name: string): void {
     if (!this.isActive() || !this.affected.has(name)) return;
     this.recovered.add(name);
+    this.releaseDelivery(name);
     this.emit("progress", this.snapshot());
     if (this.phase === "recovering" && this.recovered.size >= this.affected.size) {
       this.closeWindow("recovered");
@@ -151,16 +156,23 @@ export class StormWindow extends EventEmitter {
     return new Promise(resolve => this.spawnWaiters.add(resolve));
   }
 
-  waitForDeliveryAllowed(): Promise<void> {
-    if (!this.isDeliveryHeld()) return Promise.resolve();
-    return new Promise(resolve => this.deliveryWaiters.add(resolve));
+  waitForDeliveryAllowed(name: string): Promise<void> {
+    if (!this.isDeliveryHeld(name)) return Promise.resolve();
+    return new Promise(resolve => {
+      let waiters = this.deliveryWaiters.get(name);
+      if (!waiters) {
+        waiters = new Set();
+        this.deliveryWaiters.set(name, waiters);
+      }
+      waiters.add(resolve);
+    });
   }
 
   shutdown(): void {
     this.stopped = true;
     this.clearAllTimers();
     this.release(this.spawnWaiters);
-    this.release(this.deliveryWaiters);
+    this.releaseAllDelivery();
     this.phase = "closed";
   }
 
@@ -178,14 +190,9 @@ export class StormWindow extends EventEmitter {
     if (this.recoveryTimer) { this.clearTimer!(this.recoveryTimer); this.recoveryTimer = null; }
     this.backoffTimer = this.setTimer!(() => this.beginRecovery(), this.backoffMs);
     (this.backoffTimer as any)?.unref?.();
-    if (this.stableTimer) this.clearTimer!(this.stableTimer);
-    this.stableTimer = this.setTimer!(() => {
-      this.crashLevel = 0;
-      this.crashCount = 0;
-      this.stableTimer = null;
-      this.emit("stable", this.snapshot());
-    }, this.stableResetMs);
-    (this.stableTimer as any)?.unref?.();
+    // A storm is not stable merely because the current backoff itself lasts ten
+    // minutes. The reset clock begins only after recovery closes the window.
+    if (this.stableTimer) { this.clearTimer!(this.stableTimer); this.stableTimer = null; }
     this.emit(wasClosed ? "opened" : "extended", this.snapshot());
   }
 
@@ -208,16 +215,35 @@ export class StormWindow extends EventEmitter {
     this.retryAt = null;
     const snapshot = this.snapshot();
     this.release(this.spawnWaiters);
-    this.release(this.deliveryWaiters);
+    this.releaseAllDelivery();
     this.emit("closed", snapshot, reason);
     this.affected.clear();
     this.recovered.clear();
     this.suppressed.clear();
+    this.stableTimer = this.setTimer!(() => {
+      if (this.phase !== "closed") return;
+      this.crashLevel = 0;
+      this.crashCount = 0;
+      this.stableTimer = null;
+      this.emit("stable", this.snapshot());
+    }, this.stableResetMs);
+    (this.stableTimer as any)?.unref?.();
   }
 
   private release(waiters: Set<() => void>): void {
     for (const resolve of waiters) resolve();
     waiters.clear();
+  }
+
+  private releaseDelivery(name: string): void {
+    const waiters = this.deliveryWaiters.get(name);
+    if (!waiters) return;
+    this.release(waiters);
+    this.deliveryWaiters.delete(name);
+  }
+
+  private releaseAllDelivery(): void {
+    for (const name of [...this.deliveryWaiters.keys()]) this.releaseDelivery(name);
   }
 
   private clearAllTimers(): void {

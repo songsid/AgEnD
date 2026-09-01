@@ -41,7 +41,7 @@ describe("StormWindow", () => {
     const storm = new StormWindow({ backoffsMs: [10] });
     storm.recordServerDead("a", ["a", "b"]);
     let delivered = false;
-    const waiting = storm.waitForDeliveryAllowed().then(() => { delivered = true; });
+    const waiting = storm.waitForDeliveryAllowed("b").then(() => { delivered = true; });
 
     await vi.advanceTimersByTimeAsync(10);
     expect(storm.snapshot().phase).toBe("recovering");
@@ -82,8 +82,12 @@ describe("StormWindow", () => {
     storm.recordServerDead("a", ["a"]);
     await vi.advanceTimersByTimeAsync(30_000);
     storm.observeServerAlive(101);
+    storm.markRecovered("a");
     storm.recordServerDead("a", ["a"]);
     expect(storm.snapshot().crashLevel).toBe(2);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    storm.observeServerAlive(101);
+    storm.markRecovered("a");
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(storm.snapshot().crashLevel).toBe(0);
     storm.observeServerAlive(101);
@@ -91,11 +95,44 @@ describe("StormWindow", () => {
     expect(storm.snapshot().backoffMs).toBe(30_000);
   });
 
+  it("does not reset a level-three storm while its ten-minute backoff is active", async () => {
+    const storm = new StormWindow();
+    storm.recordServerDead("a", ["a"]);
+    await vi.advanceTimersByTimeAsync(30_000);
+    storm.observeServerAlive(101);
+    storm.recordServerDead("a", ["a"]);
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    storm.observeServerAlive(101);
+    storm.recordServerDead("a", ["a"]);
+    expect(storm.snapshot().crashLevel).toBe(3);
+    await vi.advanceTimersByTimeAsync(10 * 60_000 + 1);
+    expect(storm.snapshot()).toMatchObject({ phase: "recovering", crashLevel: 3 });
+    storm.observeServerAlive(101);
+    storm.recordServerDead("a", ["a"]);
+    expect(storm.snapshot().backoffMs).toBe(10 * 60_000);
+  });
+
+  it("releases each recovered instance without waiting for a straggler", async () => {
+    const storm = new StormWindow({ backoffsMs: [10] });
+    storm.recordServerDead("a", ["a", "b"]);
+    let aReleased = false;
+    let bReleased = false;
+    const a = storm.waitForDeliveryAllowed("a").then(() => { aReleased = true; });
+    const b = storm.waitForDeliveryAllowed("b").then(() => { bReleased = true; });
+    await vi.advanceTimersByTimeAsync(10);
+    storm.markRecovered("a");
+    await a;
+    expect(aReleased).toBe(true);
+    expect(bReleased).toBe(false);
+    storm.markRecovered("b");
+    await b;
+  });
+
   it("releases waiters on shutdown without reopening delivery", async () => {
     const storm = new StormWindow();
     storm.recordServerDead("a", ["a"]);
     const spawn = storm.waitForSpawnAllowed();
-    const delivery = storm.waitForDeliveryAllowed();
+    const delivery = storm.waitForDeliveryAllowed("a");
     storm.shutdown();
     await expect(Promise.all([spawn, delivery])).resolves.toEqual([undefined, undefined]);
     expect(storm.isStopped()).toBe(true);

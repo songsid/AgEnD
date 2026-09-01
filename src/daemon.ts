@@ -1769,6 +1769,7 @@ export class Daemon extends EventEmitter {
             const generationChanged = serverAlive
               ? this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName)) === true
               : false;
+            if (generationChanged) this.emit("tmux_server_crash", this.name);
             if (!serverAlive || generationChanged || this.stormWindow?.needsRecovery(this.name)) {
               crashType = "server";
               nullReason = serverAlive ? "server_storm_window_loss" : "server_gone";
@@ -3654,9 +3655,9 @@ export class Daemon extends EventEmitter {
     // Direct paths such as /steer, /btw, /raw and schedules do not pass the
     // FleetManager idle gate. Hold them at the final common pane-write path so
     // a tmux storm cannot force any text into a half-booted CLI.
-    if (this.stormWindow?.isDeliveryHeld()) {
+    if (this.stormWindow?.isDeliveryHeld(this.name)) {
       this.logger.warn("Pane delivery held during tmux server recovery");
-      await this.stormWindow.waitForDeliveryAllowed();
+      await this.stormWindow.waitForDeliveryAllowed(this.name);
       if (cancelled() || this.stormWindow.isStopped()) return false;
     }
 
@@ -4669,7 +4670,9 @@ export class Daemon extends EventEmitter {
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
-    this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName));
+    if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
+      this.emit("tmux_server_crash", this.name);
+    }
     let windowId: string;
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());

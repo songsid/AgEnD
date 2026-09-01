@@ -594,8 +594,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.stormOpenNotifyTimer = setTimeout(() => {
         this.stormOpenNotifyTimer = null;
         const current = this.stormWindow.snapshot();
-        const general = this.findGeneralInstance();
-        if (general) this.notifyInstanceTopic(general, t(
+        this.notifyFleetError(t(
           "storm.opened",
           current.affected.length,
           this.formatStormDelay(current.backoffMs),
@@ -605,8 +604,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     this.stormWindow.on("extended", (snapshot: StormSnapshot) => {
       this.logger.error({ ...snapshot }, "tmux server storm repeated — backoff extended");
-      const general = this.findGeneralInstance();
-      if (general) this.notifyInstanceTopic(general, t(
+      this.notifyFleetError(t(
         "storm.extended",
         snapshot.crashCount,
         this.formatStormDelay(snapshot.backoffMs),
@@ -618,9 +616,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.stormWindow.on("closed", (snapshot: StormSnapshot, reason: string) => {
       const unresolved = snapshot.affected.filter(name => !snapshot.recovered.includes(name));
       this.logger.info({ ...snapshot, reason, unresolved }, "tmux server storm closed");
-      const general = this.findGeneralInstance();
-      if (general) this.notifyInstanceTopic(general, t(
-        "storm.recovered",
+      this.notifyFleetError(t(
+        reason === "timeout" ? "storm.timed_out" : "storm.recovered",
         snapshot.recovered.length,
         snapshot.affected.length,
         unresolved.length > 0 ? unresolved.join(", ") : t("storm.none"),
@@ -1401,9 +1398,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async holdDeliveryForStorm(instanceName: string, deliveryEpoch: number): Promise<void> {
-    if (!this.stormWindow.isDeliveryHeld()) return;
+    if (!this.stormWindow.isDeliveryHeld(instanceName)) return;
     this.logger.warn({ instanceName, deliveryEpoch }, "Delivery held during tmux server recovery");
-    await this.stormWindow.waitForDeliveryAllowed();
+    await this.stormWindow.waitForDeliveryAllowed(instanceName);
   }
 
   /**
