@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { freemem } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -79,6 +80,8 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
+import { StormWindow, type StormSnapshot } from "./storm-window.js";
+import { SpawnGate } from "./spawn-gate.js";
 import {
   canUnlockAdvancedTips,
   DailyTipScheduler,
@@ -409,6 +412,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private children: Map<string, import("node:child_process").ChildProcess> = new Map();
   readonly lifecycle: InstanceLifecycle;
+  readonly stormWindow: StormWindow;
+  readonly spawnGate: SpawnGate;
   /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
@@ -540,6 +545,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
   private startedAt = 0;
+  private stormOpenNotifyTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Mirror topic: buffer cross-instance messages, flush every 3s
   private mirrorBuffer: string[] = [];
@@ -557,10 +563,75 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       process.on("SIGHUP", () => FleetManager.signalTarget?.handleSighup());
       FleetManager.sighupHandlerInstalled = true;
     }
+    this.stormWindow = new StormWindow();
+    this.spawnGate = new SpawnGate({
+      storm: this.stormWindow,
+      concurrency: () => this.spawnConcurrency(),
+      staggerMs: () => this.fleetConfig?.defaults?.startup?.stagger_delay_ms ?? 500,
+    });
+    this.bindStormWindowEvents();
     this.lifecycle = new InstanceLifecycle(this);
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+  }
+
+  private spawnConcurrency(): number {
+    const explicit = this.fleetConfig?.defaults?.startup?.concurrency;
+    if (explicit != null) return Math.max(1, Math.min(20, explicit));
+    const freeMemMB = Math.round(freemem() / (1024 * 1024));
+    return Math.max(2, Math.min(10, Math.floor(freeMemMB / 300)));
+  }
+
+  /** Wire the one fleet-wide storm into notification and recovery surfaces. */
+  private bindStormWindowEvents(): void {
+    this.stormWindow.on("opened", (snapshot: StormSnapshot) => {
+      for (const [name, daemon] of this.daemons) {
+        if (!daemon.isPaused) this.stormWindow.addAffected(name);
+      }
+      this.logger.error({ ...snapshot }, "tmux server storm opened — holding respawns and delivery");
+      if (this.stormOpenNotifyTimer) clearTimeout(this.stormOpenNotifyTimer);
+      this.stormOpenNotifyTimer = setTimeout(() => {
+        this.stormOpenNotifyTimer = null;
+        const current = this.stormWindow.snapshot();
+        this.notifyFleetError(t(
+          "storm.opened",
+          current.affected.length,
+          this.formatStormDelay(current.backoffMs),
+        ));
+      }, 1_000);
+      this.stormOpenNotifyTimer.unref?.();
+    });
+    this.stormWindow.on("extended", (snapshot: StormSnapshot) => {
+      this.logger.error({ ...snapshot }, "tmux server storm repeated — backoff extended");
+      this.notifyFleetError(t(
+        "storm.extended",
+        snapshot.crashCount,
+        this.formatStormDelay(snapshot.backoffMs),
+      ));
+    });
+    this.stormWindow.on("recovery_due", (snapshot: StormSnapshot) => {
+      this.logger.warn({ ...snapshot }, "tmux storm backoff elapsed — rolling recovery started");
+    });
+    this.stormWindow.on("closed", (snapshot: StormSnapshot, reason: string) => {
+      const unresolved = snapshot.affected.filter(name => !snapshot.recovered.includes(name));
+      this.logger.info({ ...snapshot, reason, unresolved }, "tmux server storm closed");
+      this.notifyFleetError(t(
+        reason === "timeout" ? "storm.timed_out" : "storm.recovered",
+        snapshot.recovered.length,
+        snapshot.affected.length,
+        unresolved.length > 0 ? unresolved.join(", ") : t("storm.none"),
+      ));
+    });
+  }
+
+  private formatStormDelay(ms: number): string {
+    if (ms >= 60_000) return `${Math.round(ms / 60_000)}m`;
+    return `${Math.round(ms / 1_000)}s`;
+  }
+
+  stormSuppressed(kind: string): boolean {
+    return this.stormWindow.shouldSuppress(kind);
   }
 
   private handleSighup(): void {
@@ -1289,7 +1360,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timeoutMs: number,
     deliveryEpoch: number,
   ): Promise<void> {
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+    await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
@@ -1312,12 +1385,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ instanceName }, "Pending delivery dropped by user cancel");
       return;
     }
+    // A server crash can land while waitForInstanceIdle is pending. Re-check
+    // immediately before the old timeout path would force text into a boot UI.
+    await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
     await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
     if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
     this.lastDeliveryAt.set(instanceName, Date.now());
+  }
+
+  private async holdDeliveryForStorm(instanceName: string, deliveryEpoch: number): Promise<void> {
+    if (!this.stormWindow.isDeliveryHeld(instanceName)) return;
+    this.logger.warn({ instanceName, deliveryEpoch }, "Delivery held during tmux server recovery");
+    await this.stormWindow.waitForDeliveryAllowed(instanceName);
   }
 
   /**
@@ -1594,80 +1677,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (runnableEntries.length === 0) return;
 
-    const raw = this.fleetConfig?.defaults?.startup;
-    const explicitConcurrency = raw?.concurrency;
-    const staggerMs = Math.max(0, Math.min(30_000, raw?.stagger_delay_ms ?? 500));
-
-    // Adaptive concurrency: if not explicitly set, estimate from available RAM.
-    // Each instance uses ~300MB (tmux + CLI process + model overhead).
-    const ESTIMATED_MB_PER_INSTANCE = 300;
-    const { freemem } = await import("node:os");
-    let concurrency: number;
-    if (explicitConcurrency != null) {
-      concurrency = Math.max(1, Math.min(20, explicitConcurrency));
-    } else {
-      const freeMemMB = Math.round(freemem() / (1024 * 1024));
-      concurrency = Math.max(2, Math.min(10, Math.floor(freeMemMB / ESTIMATED_MB_PER_INSTANCE)));
-      this.logger.info({ concurrency, freeMemMB: freeMemMB, totalInstances: runnableEntries.length }, "Adaptive startup concurrency");
+    if (this.fleetConfig?.defaults?.startup?.concurrency == null) {
+      this.logger.info({
+        concurrency: this.spawnConcurrency(),
+        freeMemMB: Math.round(freemem() / (1024 * 1024)),
+        totalInstances: runnableEntries.length,
+      }, "Adaptive startup concurrency");
     }
-
-    const byWorkDir = new Map<string, [string, InstanceConfig][]>();
-    for (const [name, config] of runnableEntries) {
-      const dir = config.working_directory;
-      if (!byWorkDir.has(dir)) byWorkDir.set(dir, []);
-      byWorkDir.get(dir)!.push([name, config]);
-    }
-    const groups = [...byWorkDir.values()];
-
-    let running = 0;
-    let idx = 0;
-    let lastStartAt = 0;
-    let pendingTimer = false;
-
-    await new Promise<void>((resolve) => {
-      if (groups.length === 0) { resolve(); return; }
-      const startNext = () => {
-        if (pendingTimer) return;
-        while (running < concurrency && idx < groups.length) {
-          // Re-check memory if adaptive (no explicit concurrency set)
-          if (explicitConcurrency == null && running > 0) {
-            const nowFreeMB = Math.round(freemem() / (1024 * 1024));
-            if (nowFreeMB < ESTIMATED_MB_PER_INSTANCE) {
-              this.logger.warn({ freeMemMB: nowFreeMB, remaining: groups.length - idx }, "Low memory — pausing instance startup");
-              // Wait and retry in 5s
-              pendingTimer = true;
-              setTimeout(() => { pendingTimer = false; startNext(); }, 5000);
-              return;
-            }
-          }
-          const now = Date.now();
-          const elapsed = now - lastStartAt;
-          if (lastStartAt > 0 && elapsed < staggerMs) {
-            pendingTimer = true;
-            setTimeout(() => { pendingTimer = false; startNext(); }, staggerMs - elapsed);
-            return;
-          }
-          const group = groups[idx++];
-          running++;
-          lastStartAt = Date.now();
-          (async () => {
-            for (const [name, config] of group) {
-              try {
-                await this.startInstance(name, config, topicMode);
-                if (this.daemons.has(name)) onReady?.(name);
-              } catch (err) {
-                this.logger.error({ err, name }, "Failed to start instance");
-              }
-            }
-          })().finally(() => {
-            running--;
-            if (idx >= groups.length && running === 0) resolve();
-            else startNext();
-          });
-        }
-      };
-      startNext();
-    });
+    await Promise.all(runnableEntries.map(([name, config]) => this.spawnGate.run({
+      instanceName: name,
+      workingDirectory: config.working_directory,
+      reason: "startup",
+    }, async () => {
+      try {
+        await this.startInstance(name, config, topicMode);
+        if (this.daemons.has(name)) onReady?.(name);
+      } catch (err) {
+        this.logger.error({ err, name }, "Failed to start instance");
+      }
+    })));
   }
 
   private runnableStartupCount(fleet: FleetConfig, includeClassic: boolean): number {
@@ -1731,7 +1759,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.info({ name }, "restartSingleInstance: joining the restart already in flight");
       return inFlight;
     }
-    const run = this.doRestartSingleInstance(name, opts)
+    const workingDirectory = this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name);
+    const run = this.spawnGate.run({
+      instanceName: name,
+      workingDirectory,
+      reason: "restart",
+    }, () => this.doRestartSingleInstance(name, opts))
       .finally(() => this.restartsInFlight.delete(name));
     this.restartsInFlight.set(name, run);
     return run;
@@ -1749,6 +1782,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (opts?.freshStart) this.writeFreshStartMarker(name);
       const topicMode = this.fleetConfig?.channel?.mode === "topic";
       await this.startInstance(name, config, topicMode ?? false);
+      this.stormWindow.markRecovered(name);
       return;
     }
     // Classic instance fallback
@@ -1766,6 +1800,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.classicChannels!.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
         this.classicChannels!.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
       );
+      this.stormWindow.markRecovered(name);
       return;
     }
     throw new Error(`Instance not found: ${name}`);
@@ -9164,6 +9199,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
     this.ipcStoppingInstances.add("__fleet_stopping__");
+    // Release held delivery promises before awaiting daemon shutdown, then
+    // reject spawn work which has not started. Otherwise a storm backoff could
+    // make `agend stop` wait forever for its own queue.
+    this.stormWindow.shutdown();
+    this.spawnGate.shutdown();
+    if (this.stormOpenNotifyTimer) {
+      clearTimeout(this.stormOpenNotifyTimer);
+      this.stormOpenNotifyTimer = null;
+    }
     sdNotifyBlocking("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
     // Cancel adapter retry timers

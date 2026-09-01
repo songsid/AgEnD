@@ -32,6 +32,8 @@ import {
   formatCrossInstanceInboundMessage,
   renderCrossInstanceHandoffMetadata,
 } from "./cross-instance-envelope.js";
+import type { SpawnGate } from "./spawn-gate.js";
+import type { StormWindow } from "./storm-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -847,10 +849,8 @@ export class Daemon extends EventEmitter {
   private currentActivity: string | null = null;
   // Session identity: map IPC socket → sessionName (from mcp_ready)
   private socketSessionNames = new Map<import("node:net").Socket, string>();
-  // Crash recovery
-  private static tmuxServerCrashTimestamps: number[] = [];
-  private static tmuxServerPaused = false;
-  private static tmuxServerRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  // Crash recovery is fleet-owned; all daemon objects share the coordinators
+  // injected by FleetManager below.
   private healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
   private crashCount = 0;
   private lastCrashAt = 0;
@@ -1052,7 +1052,7 @@ export class Daemon extends EventEmitter {
 
   /** Whether this instance is in an abnormal error state (auto-pause is normal). */
   get isErrorState(): boolean {
-    return this.errorWaitingForRecovery || (this.healthCheckPaused && !this.isPaused) || Daemon.tmuxServerPaused;
+    return this.errorWaitingForRecovery || (this.healthCheckPaused && !this.isPaused) || this.stormWindow?.isActive() === true;
   }
   get isPaused(): boolean { return this.pauseWakeState !== "active"; }
   /** Current CLI process state for status surfaces and recovery commands. */
@@ -1105,6 +1105,8 @@ export class Daemon extends EventEmitter {
     private controlClient?: TmuxControlClient,
     rootLogger?: Logger,
     private runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
+    private spawnGate?: SpawnGate,
+    private stormWindow?: StormWindow,
   ) {
     super();
     if (!rootLogger) throw new Error("Daemon requires a shared root logger");
@@ -1624,7 +1626,7 @@ export class Daemon extends EventEmitter {
    * fight the recovery. Either way the revival restart is moot.
    */
   private mcpRestartCancelledByRecovery(trigger: string): boolean {
-    if (!(this.healthCheckPaused || this.spawning || this.isPaused || this.runtimeMonitorsFrozen)) return false;
+    if (!(this.healthCheckPaused || this.spawning || this.isPaused || this.runtimeMonitorsFrozen || this.stormWindow?.isActive())) return false;
     this.logger.warn({ trigger }, "MCP revival restart cancelled — instance is already pausing/spawning/recovering");
     this.clearMcpRestartRequest();
     return true;
@@ -1694,7 +1696,7 @@ export class Daemon extends EventEmitter {
             this.emitSupervisionEnded("instance directory was removed from disk", "Recreate the instance, or delete it from fleet.yaml.");
             return;
           }
-          if (!this.tmux || this.spawning || this.healthCheckPaused || Daemon.tmuxServerPaused) {
+          if (!this.tmux || this.spawning || this.healthCheckPaused) {
             scheduleNext();
             return;
           }
@@ -1761,30 +1763,26 @@ export class Daemon extends EventEmitter {
           let nullReason: string | undefined;
           if (!paneStatus) {
             const serverAlive = await TmuxManager.sessionExists(this.tmuxSessionName);
-            if (!serverAlive) {
+            // A server may have already restarted before this daemon's health
+            // tick. The new PID is the durable generation boundary: treat it as
+            // a fleet storm even though `has-session` is true again.
+            const generationChanged = serverAlive
+              ? this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName)) === true
+              : false;
+            if (generationChanged) this.emit("tmux_server_crash", this.name);
+            if (!serverAlive || generationChanged || this.stormWindow?.needsRecovery(this.name)) {
               crashType = "server";
-              nullReason = "server_gone";
-              this.logger.error(`tmux server died — all ${cliLabel} windows lost`);
-
-              // Fleet-level circuit breaker: pause all instances on repeated tmux server crashes
-              Daemon.tmuxServerCrashTimestamps.push(Date.now());
-              const cutoff = Date.now() - 5 * 60_000;
-              Daemon.tmuxServerCrashTimestamps = Daemon.tmuxServerCrashTimestamps.filter(t => t > cutoff);
-              if (Daemon.tmuxServerCrashTimestamps.length >= 2 && !Daemon.tmuxServerPaused) {
-                Daemon.tmuxServerPaused = true;
-                this.logger.error("Fleet-level tmux server circuit breaker triggered — pausing all respawns for 30s");
-                this.emit("tmux_server_crash", this.name);
-                if (!Daemon.tmuxServerRecoveryTimer) {
-                  Daemon.tmuxServerRecoveryTimer = setTimeout(() => {
-                    Daemon.tmuxServerRecoveryTimer = null;
-                    Daemon.tmuxServerPaused = false;
-                  }, 30_000);
-                }
-                scheduleNext();
-                return;
+              nullReason = serverAlive ? "server_storm_window_loss" : "server_gone";
+              if (!serverAlive) {
+                this.logger.error(`tmux server died — all ${cliLabel} windows lost`);
+                const distinct = this.stormWindow?.recordServerDead(this.name, [this.name]) ?? true;
+                if (distinct) this.emit("tmux_server_crash", this.name);
+              } else {
+                this.stormWindow?.addAffected(this.name);
               }
-
-              await new Promise(r => setTimeout(r, 2_000)); // let session stabilize
+              // The fleet breaker owns the delay and extends it on every new
+              // server generation. Do not schedule a competing fixed timer.
+              await this.stormWindow?.waitForSpawnAllowed();
             } else {
               // null but server alive: window-level disappearance. Probe whether
               // the window truly no longer exists vs a transient query glitch.
@@ -1874,6 +1872,15 @@ export class Daemon extends EventEmitter {
 
           // Append to crash history
           this.appendCrashHistory({ exitCode, lastOutput, crashType, reason: nullReason });
+
+          // A fleet-wide server loss is one infrastructure incident, not N
+          // independent CLI crash loops. StormWindow owns its escalation; do
+          // not let the same three server generations permanently trip every
+          // daemon's per-instance 3-in-5m breaker.
+          if (crashType === "server") {
+            this.crashTimestamps = [];
+            this.crashCount = 0;
+          }
 
           if (max_retries <= 0) {
             this.healthCheckPaused = true;
@@ -1972,6 +1979,9 @@ export class Daemon extends EventEmitter {
             this.setProcessStatus("running");
             this.logger.info({ resumed }, `Respawned ${cliLabel} window after crash`);
             this.emit("crash_respawn", this.name);
+            // Emit the per-instance audit event while the storm is still active
+            // so its chat notification is suppressed into the fleet summary.
+            if (crashType === "server") this.stormWindow?.markRecovered(this.name);
           } catch (err) {
             this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
           }
@@ -3634,12 +3644,21 @@ export class Daemon extends EventEmitter {
   ): Promise<boolean> {
     const cancelled = () => opts?.deliveryEpoch !== undefined
       && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
-    if (cancelled()) return false;
+    if (cancelled() || this.stormWindow?.isStopped()) return false;
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
     if (fenceCount % 2 !== 0) {
       // Odd number of fences = unclosed. Remove all code fences from the message.
       formatted = formatted.replace(/```/g, "");
+    }
+
+    // Direct paths such as /steer, /btw, /raw and schedules do not pass the
+    // FleetManager idle gate. Hold them at the final common pane-write path so
+    // a tmux storm cannot force any text into a half-booted CLI.
+    if (this.stormWindow?.isDeliveryHeld(this.name)) {
+      this.logger.warn("Pane delivery held during tmux server recovery");
+      await this.stormWindow.waitForDeliveryAllowed(this.name);
+      if (cancelled() || this.stormWindow.isStopped()) return false;
     }
 
     // Before anything reads the window id: a spawn in progress is about to change it.
@@ -4575,6 +4594,15 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
+    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
+    return this.spawnGate.run({
+      instanceName: this.name,
+      workingDirectory: this.config.working_directory,
+      reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
+    }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+  }
+
+  private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
     const backendConfig = this.buildBackendConfig();
 
     // Compare freshly-built instructions against the last value the agent was
@@ -4642,6 +4670,9 @@ export class Daemon extends EventEmitter {
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
+    if (this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName))) {
+      this.emit("tmux_server_crash", this.name);
+    }
     let windowId: string;
     if (reuseWindow) {
       this.controlClient?.unregisterWindow(this.tmux!.getWindowId());
