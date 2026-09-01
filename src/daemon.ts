@@ -1769,7 +1769,7 @@ export class Daemon extends EventEmitter {
             const generationChanged = serverAlive
               ? this.stormWindow?.observeServerAlive(await TmuxManager.getServerPid(this.tmuxSessionName)) === true
               : false;
-            if (!serverAlive || generationChanged || this.stormWindow?.isActive()) {
+            if (!serverAlive || generationChanged || this.stormWindow?.needsRecovery(this.name)) {
               crashType = "server";
               nullReason = serverAlive ? "server_storm_window_loss" : "server_gone";
               if (!serverAlive) {

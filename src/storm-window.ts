@@ -95,6 +95,9 @@ export class StormWindow extends EventEmitter {
   isStopped(): boolean { return this.stopped; }
   isSpawnBlocked(): boolean { return !this.stopped && this.phase === "backing_off"; }
   isDeliveryHeld(): boolean { return !this.stopped && this.phase !== "closed"; }
+  needsRecovery(name: string): boolean {
+    return this.isActive() && this.affected.has(name) && !this.recovered.has(name);
+  }
 
   /** Record a confirmed tmux-server absence. Returns true for a new transition. */
   recordServerDead(reporter: string, affected: Iterable<string>): boolean {

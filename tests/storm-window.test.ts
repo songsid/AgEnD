@@ -48,6 +48,8 @@ describe("StormWindow", () => {
     expect(delivered).toBe(false);
     storm.markRecovered("a");
     expect(delivered).toBe(false);
+    expect(storm.needsRecovery("a")).toBe(false);
+    expect(storm.needsRecovery("b")).toBe(true);
     storm.markRecovered("b");
     await waiting;
     expect(delivered).toBe(true);
