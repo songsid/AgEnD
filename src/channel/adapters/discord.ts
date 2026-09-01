@@ -187,12 +187,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     client.on("error", (err) => {
       if (!this.isCurrentClient(client, generation)) return;
       console.warn(`[discord:${this.id}] client error: ${(err as Error)?.message ?? err}`);
-      this.emitGatewayError(err);
+      this.healthStatus = "retrying";
+      this.emitHealthChanged();
     });
     client.on("shardError", (err, shardId) => {
       if (!this.isCurrentClient(client, generation)) return;
       console.warn(`[discord:${this.id}] shard ${shardId} error: ${(err as Error)?.message ?? err}`);
-      this.emitGatewayError(err);
+      this.healthStatus = "retrying";
+      this.emitHealthChanged();
     });
     client.on("shardReconnecting", (shardId) => {
       if (!this.isCurrentClient(client, generation)) return;
@@ -253,7 +255,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         if (message.author?.id && message.author.id !== client.user?.id) return;
         if (message.guildId && message.guildId !== this.guildId && !this.openChannels.has(message.channelId)) return;
 
-        this.emit("reaction", {
+        this.emitFromClient(client, generation, "reaction", {
           source: "discord",
           adapterId: this.id,
           chatId: this.guildId,
@@ -447,7 +449,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         else break;
       }
 
-      this.emit("message", {
+      this.emitFromClient(client, generation, "message", {
         source: "discord",
         adapterId: this.id,
         chatId,
@@ -488,7 +490,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             // console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
             return;
           }
-          this.emit("callback_query", {
+          this.emitFromClient(client, generation, "callback_query", {
             callbackData: interaction.customId,
             chatId: this.guildId,
             threadId: interaction.channelId,
@@ -512,7 +514,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             && !this.openChannels.has(interaction.channelId ?? "")) return;
           const callbackData = interaction.values[0];
           if (!callbackData) return;
-          this.emit("callback_query", {
+          this.emitFromClient(client, generation, "callback_query", {
             callbackData,
             chatId: this.guildId,
             threadId: interaction.channelId,
@@ -533,7 +535,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           if (interaction.commandName === "chat") {
             const text = interaction.options.getString("message") ?? "";
             await interaction.deferReply();
-            this.emit("slash_command", {
+            this.emitFromClient(client, generation, "slash_command", {
               command: "chat",
               channelId: interaction.channelId,
               channelName,
@@ -553,7 +555,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             for (const opt of interaction.options.data) {
               options[opt.name] = opt.value as string | boolean;
             }
-            this.emit("slash_command", {
+            this.emitFromClient(client, generation, "slash_command", {
               command: interaction.commandName,
               channelId: interaction.channelId,
               channelName,
@@ -592,7 +594,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // Handle channel deletion (equivalent to topic_closed)
     client.on("guildCreate", (guild) => {
       if (!this.isCurrentClient(client, generation)) return;
-      this.emit("new_group_detected", {
+      this.emitFromClient(client, generation, "new_group_detected", {
         groupId: guild.id,
         groupTitle: guild.name,
         source: "discord",
@@ -606,7 +608,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         if (!this.openChannels.has(channel.id)) return;
         // Allowed: an open classic channel in a non-primary guild was deleted.
       }
-      this.emit("topic_closed", {
+      this.emitFromClient(client, generation, "topic_closed", {
         chatId: this.guildId,
         threadId: channel.id,
       });
@@ -629,9 +631,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       && this.clientGeneration === generation;
   }
 
-  private emitGatewayError(err: unknown): void {
-    if (this.listenerCount("error") > 0) this.emit("error", err);
-    void this.reconnectGateway(`gateway error: ${(err as Error)?.message ?? String(err)}`).catch(() => {});
+  private emitFromClient(client: Client, generation: number, event: string, ...args: unknown[]): boolean {
+    return this.isCurrentClient(client, generation) ? this.emit(event, ...args) : false;
   }
 
   private emitHealthChanged(): void {
@@ -804,6 +805,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       this.emitHealthChanged();
       console.warn(`[discord:${this.id}] gateway watchdog detected ${staleReason}`);
       void this.reconnectGateway(`watchdog: ${staleReason}`).catch(() => {});
+    } else if (this.client.isReady()
+      && shards.every(shard => shard.status === Status.Ready)
+      && this.healthStatus !== "connected") {
+      // discord.js owns the first recovery layer (RESUME + replay). Clear a
+      // transient error marker once ACK/status prove that native recovery won.
+      this.healthStatus = "connected";
+      this.emitHealthChanged();
     }
   }
 

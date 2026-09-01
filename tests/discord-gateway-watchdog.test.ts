@@ -133,6 +133,20 @@ describe("Discord gateway watchdog", () => {
     await h.adapter.stop();
   });
 
+  it("lets discord.js RESUME transient shard errors before the watchdog rebuilds", async () => {
+    const h = harness();
+    await h.adapter.start();
+    h.clients[1].emit("shardError", new Error("temporary websocket reset"), 0);
+    expect(h.clients).toHaveLength(2);
+    expect(h.adapter.getHealthSnapshot().status).toBe("retrying");
+    h.clients[1].ws.shards.get(0)!.lastPingTimestamp = h.now();
+    h.setNow(h.now() + 100);
+    (h.adapter as any).checkGatewayLiveness();
+    expect(h.clients).toHaveLength(2);
+    expect(h.adapter.getHealthSnapshot().status).toBe("connected");
+    await h.adapter.stop();
+  });
+
   it("coalesces watchdog/error/manual triggers and a stop fences off the pending login", async () => {
     const h = harness();
     await h.adapter.start();
