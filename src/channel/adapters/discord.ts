@@ -17,6 +17,7 @@ import {
   ApplicationCommandOptionType,
   ChannelType,
   MessageFlags,
+  Status,
   type TextChannel,
   type Message,
   type MessageReaction,
@@ -34,11 +35,16 @@ import type {
   PermissionPrompt,
   Choice,
   AlertData,
+  AdapterHealthSnapshot,
 } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 
 const DISCORD_MAX_LENGTH = 2000;
+const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
+const GATEWAY_STALE_MIN_MS = 180_000;
+const GATEWAY_RECONNECT_WAIT_MS = 30_000;
+const GATEWAY_MAX_BACKOFF_MS = 5 * 60_000;
 
 /** Curated ClassicBot backends for Discord's native slash-option dropdown. */
 export const DISCORD_START_BACKEND_CHOICES = [
@@ -61,6 +67,12 @@ export interface DiscordAdapterOptions {
   categoryName?: string;
   generalChannelId?: string;
   registerCommands?: boolean;
+  /** Test seams; production callers leave these unset. */
+  clientFactory?: () => Client;
+  now?: () => number;
+  watchdogIntervalMs?: number;
+  staleThresholdMs?: number;
+  reconnectBaseDelayMs?: number;
 }
 
 export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
@@ -69,6 +81,27 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   readonly id: string;
 
   private client: Client;
+  private readonly clientFactory: () => Client;
+  private readonly now: () => number;
+  private readonly watchdogIntervalMs: number;
+  private readonly staleThresholdMs: number;
+  private readonly reconnectBaseDelayMs: number;
+  private desiredRunning = false;
+  private lifecycleEpoch = 0;
+  private clientGeneration = 0;
+  private reconnectPromise: Promise<void> | null = null;
+  private watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  private lastWatchdogTickAt = 0;
+  private generationReadyAt = 0;
+  private generationNonReadySince = 0;
+  private shardNonReadySince = new Map<number, number>();
+  private previousHeartbeatAck = new Map<number, number>();
+  private observedHeartbeatInterval = new Map<number, number>();
+  private healthStatus: AdapterHealthSnapshot["status"] = "stopped";
+  private lastDispatchAt: number | null = null;
+  private lastReconnectAt: number | null = null;
+  private lastReconnectReason: string | null = null;
+  private reconnectCount = 0;
   private botToken: string;
   private accessManager: AccessManager;
   private inboxDir: string;
@@ -95,20 +128,12 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
     mkdirSync(this.inboxDir, { recursive: true });
 
-    this.client = new Client({
-      intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        // Required to receive messageReactionAdd/Remove at all.
-        GatewayIntentBits.GuildMessageReactions,
-      ],
-      // Reactions on messages that are not in the cache — which is every message
-      // sent before the current process started, i.e. the common case after any
-      // restart — arrive as PARTIAL objects. Without these, discord.js drops those
-      // events entirely and reactions appear to work only on very recent messages.
-      partials: [Partials.Message, Partials.Reaction, Partials.User],
-    });
+    this.clientFactory = opts.clientFactory ?? (() => this.buildClient());
+    this.now = opts.now ?? Date.now;
+    this.watchdogIntervalMs = opts.watchdogIntervalMs ?? GATEWAY_WATCHDOG_INTERVAL_MS;
+    this.staleThresholdMs = opts.staleThresholdMs ?? GATEWAY_STALE_MIN_MS;
+    this.reconnectBaseDelayMs = opts.reconnectBaseDelayMs ?? 5_000;
+    this.client = this.clientFactory();
 
     this.queue = new MessageQueue({
       send: async (chatId, threadId, text) => {
@@ -128,25 +153,81 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       },
     });
 
-    this._registerHandlers();
+    this.registerClientHandlers(this.client, this.clientGeneration);
+  }
+
+  private buildClient(): Client {
+    return new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
+      ],
+      // Events for messages/reactions created before this process started are partial.
+      partials: [Partials.Message, Partials.Reaction, Partials.User],
+    });
   }
 
   private async _fetchTextChannel(channelId: string): Promise<TextChannel> {
-    const channel = await this.client.channels.fetch(channelId);
+    const client = await this.readyClient();
+    const channel = await client.channels.fetch(channelId);
     if (!channel?.isTextBased()) {
       throw new Error(`Channel ${channelId} is not a text channel`);
     }
     return channel as TextChannel;
   }
 
-  private _registerHandlers(): void {
+  private registerClientHandlers(client: Client, generation: number): void {
     // Client/shard errors (WebSocket hiccups, gateway resumes, etc.). discord.js
     // auto-reconnects; we just need a listener so Node's EventEmitter doesn't
     // rethrow on "error" — without one it surfaces as an uncaughtException and
     // the process-level handler tears down the whole fleet (the built-in adapter
     // shares the fleet process).
-    this.client.on("error", (err) => console.warn(`[discord] client error: ${(err as Error)?.message ?? err}`));
-    this.client.on("shardError", (err) => console.warn(`[discord] shard error: ${(err as Error)?.message ?? err}`));
+    client.on("error", (err) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      console.warn(`[discord:${this.id}] client error: ${(err as Error)?.message ?? err}`);
+      this.healthStatus = "retrying";
+      this.emitHealthChanged();
+    });
+    client.on("shardError", (err, shardId) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      console.warn(`[discord:${this.id}] shard ${shardId} error: ${(err as Error)?.message ?? err}`);
+      this.healthStatus = "retrying";
+      this.emitHealthChanged();
+    });
+    client.on("shardReconnecting", (shardId) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      this.healthStatus = "retrying";
+      console.warn(`[discord:${this.id}] shard ${shardId} reconnecting`);
+    });
+    client.on("shardResume", (shardId, replayedEvents) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      this.healthStatus = "connected";
+      this.shardNonReadySince.delete(shardId);
+      console.info(`[discord:${this.id}] shard ${shardId} resumed (${replayedEvents} replayed event(s))`);
+    });
+    client.on("shardReady", (shardId) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      this.healthStatus = "connected";
+      this.shardNonReadySince.delete(shardId);
+    });
+    client.on("shardDisconnect", (event, shardId) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      this.healthStatus = "retrying";
+      this.shardNonReadySince.set(shardId, this.now());
+      console.warn(`[discord:${this.id}] shard ${shardId} disconnected (${event.code}: ${event.reason || "no reason"})`);
+    });
+    client.on("invalidated", () => {
+      if (!this.isCurrentClient(client, generation)) return;
+      console.warn(`[discord:${this.id}] gateway session invalidated; rebuilding client`);
+      void this.reconnectGateway("gateway session invalidated").catch(() => {});
+    });
+    client.on("raw", (packet) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      if ((packet as { t?: unknown }).t) this.lastDispatchAt = this.now();
+    });
+    client.once("ready", () => void this.handleClientReady(client, generation));
 
     // Reactions on the bot's messages, as inbound events (#408). Both add and remove
     // are reported so an agent can see an approval being withdrawn.
@@ -161,7 +242,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         if (reaction.partial) {
           try { await reaction.fetch(); } catch { return; }
         }
-        if (user.id === this.client.user?.id) return; // our own reaction
+        if (!this.isCurrentClient(client, generation)) return;
+        if (user.id === client.user?.id) return; // our own reaction
         // Other bots' reactions are DELIVERED on purpose: agents react to each
         // other's messages as signals (agent A 👍 → agent B sees it). The noise
         // this used to guard against — sibling AgEnD bots stamping the
@@ -170,10 +252,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         const message = reaction.message;
         // Only reactions on OUR messages are meaningful as agent signals; a user
         // reacting to another user's message is chatter.
-        if (message.author?.id && message.author.id !== this.client.user?.id) return;
+        if (message.author?.id && message.author.id !== client.user?.id) return;
         if (message.guildId && message.guildId !== this.guildId && !this.openChannels.has(message.channelId)) return;
 
-        this.emit("reaction", {
+        this.emitFromClient(client, generation, "reaction", {
           source: "discord",
           adapterId: this.id,
           chatId: this.guildId,
@@ -191,12 +273,13 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         console.warn(`[discord] reaction ${action} handler error (${(err as Error).message})`);
       }
     };
-    this.client.on("messageReactionAdd", (reaction, user) => void onReaction(reaction, user, "add"));
-    this.client.on("messageReactionRemove", (reaction, user) => void onReaction(reaction, user, "remove"));
+    client.on("messageReactionAdd", (reaction, user) => void onReaction(reaction, user, "add"));
+    client.on("messageReactionRemove", (reaction, user) => void onReaction(reaction, user, "remove"));
 
-    this.client.on("messageCreate", async (msg: Message) => {
+    client.on("messageCreate", async (msg: Message) => {
       try {
-      if (msg.author.id === this.client.user?.id) return; // Ignore own messages
+      if (!this.isCurrentClient(client, generation)) return;
+      if (msg.author.id === client.user?.id) return; // Ignore own messages
       if (!msg.guildId) return;
       if (msg.guildId !== this.guildId) {
         if (!this.openChannels.has(msg.channelId)) return;
@@ -366,7 +449,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         else break;
       }
 
-      this.emit("message", {
+      this.emitFromClient(client, generation, "message", {
         source: "discord",
         adapterId: this.id,
         chatId,
@@ -391,8 +474,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     // Handle button interactions and slash commands
     // Trust boundary: interaction responses can throw DiscordAPIError[10062] if the
     // interaction expires (>3s). Catch to prevent crashing the entire daemon.
-    this.client.on("interactionCreate", async (interaction: Interaction) => {
+    client.on("interactionCreate", async (interaction: Interaction) => {
       try {
+        if (!this.isCurrentClient(client, generation)) return;
         // Buttons: acknowledge IMMEDIATELY, before any guild/channel filtering.
         // A button has a 3s ack window; any early return (unknown guild/channel)
         // or a downstream no-op (e.g. the cancel button was already cleared) would
@@ -406,7 +490,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             // console.log(`[discord] ignoring button from non-primary guild ${interaction.guildId} channel ${interaction.channelId}`);
             return;
           }
-          this.emit("callback_query", {
+          this.emitFromClient(client, generation, "callback_query", {
             callbackData: interaction.customId,
             chatId: this.guildId,
             threadId: interaction.channelId,
@@ -430,7 +514,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             && !this.openChannels.has(interaction.channelId ?? "")) return;
           const callbackData = interaction.values[0];
           if (!callbackData) return;
-          this.emit("callback_query", {
+          this.emitFromClient(client, generation, "callback_query", {
             callbackData,
             chatId: this.guildId,
             threadId: interaction.channelId,
@@ -451,7 +535,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           if (interaction.commandName === "chat") {
             const text = interaction.options.getString("message") ?? "";
             await interaction.deferReply();
-            this.emit("slash_command", {
+            this.emitFromClient(client, generation, "slash_command", {
               command: "chat",
               channelId: interaction.channelId,
               channelName,
@@ -471,7 +555,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             for (const opt of interaction.options.data) {
               options[opt.name] = opt.value as string | boolean;
             }
-            this.emit("slash_command", {
+            this.emitFromClient(client, generation, "slash_command", {
               command: interaction.commandName,
               channelId: interaction.channelId,
               channelName,
@@ -508,21 +592,23 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     });
 
     // Handle channel deletion (equivalent to topic_closed)
-    this.client.on("guildCreate", (guild) => {
-      this.emit("new_group_detected", {
+    client.on("guildCreate", (guild) => {
+      if (!this.isCurrentClient(client, generation)) return;
+      this.emitFromClient(client, generation, "new_group_detected", {
         groupId: guild.id,
         groupTitle: guild.name,
         source: "discord",
       });
     });
 
-    this.client.on("channelDelete", (channel) => {
+    client.on("channelDelete", (channel) => {
+      if (!this.isCurrentClient(client, generation)) return;
       if (!("guildId" in channel)) return;
       if (channel.guildId !== this.guildId) {
         if (!this.openChannels.has(channel.id)) return;
         // Allowed: an open classic channel in a non-primary guild was deleted.
       }
-      this.emit("topic_closed", {
+      this.emitFromClient(client, generation, "topic_closed", {
         chatId: this.guildId,
         threadId: channel.id,
       });
@@ -537,14 +623,241 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   // ── Lifecycle ──────────────────────────────────────────────────────────
 
-  async start(): Promise<void> {
-    this.queue.start();
+  private isCurrentClient(client: Client, generation: number): boolean {
+    // lifecycleEpoch===0 preserves constructor-level handler tests; a real Client
+    // cannot dispatch gateway events before start/login.
+    return (this.desiredRunning || this.lifecycleEpoch === 0)
+      && this.client === client
+      && this.clientGeneration === generation;
+  }
 
-    this.client.once("ready", async () => {
+  private emitFromClient(client: Client, generation: number, event: string, ...args: unknown[]): boolean {
+    return this.isCurrentClient(client, generation) ? this.emit(event, ...args) : false;
+  }
+
+  private emitHealthChanged(): void {
+    this.emit("gateway_health", this.getHealthSnapshot());
+  }
+
+  private async loginFreshClient(reason: string, epoch: number): Promise<void> {
+    const oldClient = this.client;
+    // A destroyed discord.js Client cannot be logged in again. Destroy first to
+    // avoid overlapping gateway sessions delivering MESSAGE_CREATE twice.
+    oldClient.destroy();
+
+    const client = this.clientFactory();
+    const generation = ++this.clientGeneration;
+    this.client = client;
+    this.generationReadyAt = 0;
+    this.generationNonReadySince = this.now();
+    this.shardNonReadySince.clear();
+    this.previousHeartbeatAck.clear();
+    this.observedHeartbeatInterval.clear();
+    this.registerClientHandlers(client, generation);
+    this.emitHealthChanged();
+    try {
+      await client.login(this.botToken);
+      if (!this.desiredRunning || epoch !== this.lifecycleEpoch || this.client !== client) {
+        client.destroy();
+        throw new Error("Discord gateway login superseded by lifecycle change");
+      }
+      this.lastReconnectAt = this.now();
+      this.lastReconnectReason = reason;
+      this.healthStatus = client.isReady() ? "connected" : "starting";
+      this.emitHealthChanged();
+    } catch (err) {
+      client.destroy();
+      throw err;
+    }
+  }
+
+  /** Rebuild just this bot's gateway Client. Calls coalesce into one generation. */
+  reconnectGateway(reason: string): Promise<void> {
+    if (this.reconnectPromise) return this.reconnectPromise;
+    if (!this.desiredRunning) return Promise.reject(new Error("Discord adapter is stopped"));
+    const epoch = this.lifecycleEpoch;
+    const reconnect = (async () => {
+      // Yield once so reconnectPromise is installed before destroy/login can emit
+      // a synchronous gateway error and re-enter this method.
+      await Promise.resolve();
+      if (!this.desiredRunning || epoch !== this.lifecycleEpoch) {
+        throw new Error("Discord gateway reconnect cancelled by adapter stop");
+      }
+      this.healthStatus = "retrying";
+      this.lastReconnectReason = reason;
+      this.reconnectCount++;
+      this.emitHealthChanged();
+      for (let attempt = 0; this.desiredRunning && epoch === this.lifecycleEpoch; attempt++) {
+        if (attempt > 0) {
+          const delay = Math.min(this.reconnectBaseDelayMs * 2 ** Math.min(attempt - 1, 6), GATEWAY_MAX_BACKOFF_MS);
+          await new Promise<void>(resolve => {
+            const timer = setTimeout(resolve, delay);
+            timer.unref?.();
+          });
+          if (!this.desiredRunning || epoch !== this.lifecycleEpoch) break;
+        }
+        try {
+          await this.loginFreshClient(reason, epoch);
+          if (this.desiredRunning && epoch === this.lifecycleEpoch) {
+            this.healthStatus = "connected";
+            this.emitHealthChanged();
+          }
+          return;
+        } catch (err) {
+          if (!this.desiredRunning || epoch !== this.lifecycleEpoch) break;
+          this.healthStatus = "retrying";
+          console.warn(`[discord:${this.id}] gateway rebuild attempt ${attempt + 1} failed: ${(err as Error).message}`);
+          this.emitHealthChanged();
+        }
+      }
+      throw new Error("Discord gateway reconnect cancelled by adapter stop");
+    })().finally(() => {
+      if (this.reconnectPromise === reconnect) this.reconnectPromise = null;
+    });
+    this.reconnectPromise = reconnect;
+    return reconnect;
+  }
+
+  private async readyClient(): Promise<Client> {
+    // A few focused unit tests install a minimal REST-only client stand-in. Real
+    // discord.js Clients always expose isReady().
+    const isReady = typeof (this.client as any).isReady === "function"
+      ? this.client.isReady()
+      : true;
+    if (isReady && !this.reconnectPromise) return this.client;
+    const reconnect = this.reconnectPromise ?? this.reconnectGateway("outbound requested while gateway unavailable");
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        reconnect,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Discord gateway reconnect timed out")), GATEWAY_RECONNECT_WAIT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (!this.client.isReady()) throw new Error("Discord gateway is not ready");
+    return this.client;
+  }
+
+  private startGatewayWatchdog(): void {
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.lastWatchdogTickAt = this.now();
+    this.watchdogTimer = setInterval(() => this.checkGatewayLiveness(), this.watchdogIntervalMs);
+    this.watchdogTimer.unref?.();
+  }
+
+  private checkGatewayLiveness(): void {
+    if (!this.desiredRunning || this.reconnectPromise) return;
+    const now = this.now();
+    const elapsed = now - this.lastWatchdogTickAt;
+    this.lastWatchdogTickAt = now;
+    // Host suspend / an overloaded event loop makes wall-clock ACK age jump. Give
+    // discord.js a fresh heartbeat window instead of rebuilding immediately.
+    if (elapsed > this.watchdogIntervalMs * 3) {
+      this.generationReadyAt = now;
+      this.generationNonReadySince = now;
+      this.shardNonReadySince.clear();
+      return;
+    }
+
+    const shards = [...this.client.ws.shards.values()] as Array<{
+      id: number;
+      status: number;
+      lastPingTimestamp: number;
+    }>;
+    let staleReason: string | null = null;
+    if (!this.client.isReady() && this.generationNonReadySince === 0) this.generationNonReadySince = now;
+    if (this.client.isReady()) this.generationNonReadySince = 0;
+    if (!this.client.isReady() && now - this.generationNonReadySince > this.staleThresholdMs) {
+      staleReason = `client non-ready for ${now - this.generationNonReadySince}ms`;
+    }
+
+    for (const shard of shards) {
+      const lastAck = shard.lastPingTimestamp;
+      const previous = this.previousHeartbeatAck.get(shard.id);
+      if (lastAck >= 0 && previous != null && lastAck > previous) {
+        const interval = lastAck - previous;
+        if (interval >= 5_000 && interval <= 120_000) this.observedHeartbeatInterval.set(shard.id, interval);
+      }
+      if (lastAck >= 0) this.previousHeartbeatAck.set(shard.id, lastAck);
+      const threshold = Math.max(this.staleThresholdMs, 3 * (this.observedHeartbeatInterval.get(shard.id) ?? 0));
+      if (shard.status === Status.Ready) {
+        this.shardNonReadySince.delete(shard.id);
+        if (lastAck === -1) {
+          if (this.generationReadyAt > 0 && now - this.generationReadyAt > threshold) {
+            staleReason = `shard ${shard.id} has no heartbeat ACK after startup grace`;
+          }
+        } else if (now - lastAck > threshold) {
+          staleReason = `shard ${shard.id} heartbeat ACK stale by ${now - lastAck}ms`;
+        }
+      } else {
+        const since = this.shardNonReadySince.get(shard.id) ?? now;
+        this.shardNonReadySince.set(shard.id, since);
+        if (now - since > threshold) staleReason = `shard ${shard.id} status ${shard.status} for ${now - since}ms`;
+      }
+    }
+
+    if (staleReason) {
+      this.healthStatus = "stale";
+      this.emitHealthChanged();
+      console.warn(`[discord:${this.id}] gateway watchdog detected ${staleReason}`);
+      void this.reconnectGateway(`watchdog: ${staleReason}`).catch(() => {});
+    } else if (this.client.isReady()
+      && shards.every(shard => shard.status === Status.Ready)
+      && this.healthStatus !== "connected") {
+      // discord.js owns the first recovery layer (RESUME + replay). Clear a
+      // transient error marker once ACK/status prove that native recovery won.
+      this.healthStatus = "connected";
+      this.emitHealthChanged();
+    }
+  }
+
+  getHealthSnapshot(): AdapterHealthSnapshot {
+    const now = this.now();
+    const shards = [...this.client.ws.shards.values()].map(shard => {
+      const lastAck = shard.lastPingTimestamp >= 0 ? shard.lastPingTimestamp : null;
+      return {
+        id: shard.id,
+        status: shard.status,
+        lastHeartbeatAckAt: lastAck,
+        heartbeatAgeMs: lastAck == null ? null : Math.max(0, now - lastAck),
+      };
+    });
+    const heartbeatAcks = shards
+      .map(shard => shard.lastHeartbeatAckAt)
+      .filter((value): value is number => value != null);
+    const lastHeartbeatAckAt = heartbeatAcks.length > 0 ? Math.min(...heartbeatAcks) : null;
+    return {
+      id: this.id,
+      type: this.type,
+      status: this.healthStatus,
+      generation: this.clientGeneration,
+      isReady: this.client.isReady(),
+      wsStatus: this.client.ws.status ?? null,
+      lastHeartbeatAckAt,
+      heartbeatAgeMs: lastHeartbeatAckAt == null ? null : Math.max(0, now - lastHeartbeatAckAt),
+      shards,
+      lastDispatchAt: this.lastDispatchAt,
+      lastReconnectAt: this.lastReconnectAt,
+      lastReconnectReason: this.lastReconnectReason,
+      reconnectCount: this.reconnectCount,
+    };
+  }
+
+  private async handleClientReady(client: Client, generation: number): Promise<void> {
+    if (!this.isCurrentClient(client, generation)) return;
+    this.healthStatus = "connected";
+    this.generationReadyAt = this.now();
+    this.generationNonReadySince = 0;
+    this.shardNonReadySince.clear();
+    try {
       // Register classic bot slash commands (skipped for a secondary bot sharing
       // a guild with the primary — only the primary owns the guild's commands).
       if (this.registerCommands) try {
-        await this.client.application?.commands.set([
+        await client.application?.commands.set([
           {
             name: "start", description: t("slash.start"),
             options: [{
@@ -672,13 +985,37 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       } catch (err) {
         // Non-fatal — slash commands may fail on network issues
       }
-      this.emit("started", this.client.user?.username ?? "discord-bot", this.client.user?.id);
-    });
+      if (!this.isCurrentClient(client, generation)) return;
+      this.emit("started", client.user?.username ?? "discord-bot", client.user?.id);
+    } catch (err) {
+      console.warn(`[discord:${this.id}] ready handler failed: ${(err as Error).message}`);
+    }
+  }
 
-    await this.client.login(this.botToken);
+  async start(): Promise<void> {
+    if (this.desiredRunning && this.client.isReady()) return;
+    this.desiredRunning = true;
+    const epoch = ++this.lifecycleEpoch;
+    this.healthStatus = "starting";
+    this.queue.start();
+    try {
+      await this.loginFreshClient("startup", epoch);
+      this.startGatewayWatchdog();
+    } catch (err) {
+      if (epoch === this.lifecycleEpoch) {
+        this.desiredRunning = false;
+        this.healthStatus = "stopped";
+      }
+      throw err;
+    }
   }
 
   async stop(): Promise<void> {
+    this.desiredRunning = false;
+    this.lifecycleEpoch++;
+    this.healthStatus = "stopped";
+    if (this.watchdogTimer) clearInterval(this.watchdogTimer);
+    this.watchdogTimer = null;
     this.queue.stop();
     this.client.destroy();
   }
@@ -751,7 +1088,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       return;
     } catch { /* not in that channel — fall through to scan */ }
     try {
-      const guild = await this.client.guilds.fetch(this.guildId);
+      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter(
         (c) => c.type === ChannelType.GuildText,
       );
@@ -797,7 +1134,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       return;
     } catch { /* not in that channel — fall through to scan */ }
     try {
-      const guild = await this.client.guilds.fetch(this.guildId);
+      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
       for (const [, ch] of channels) {
         try {
@@ -822,7 +1159,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       return;
     } catch { /* not in that channel — fall through to scan */ }
     try {
-      const guild = await this.client.guilds.fetch(this.guildId);
+      const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
       const channels = guild.channels.cache.filter((c) => c.type === ChannelType.GuildText);
       for (const [, ch] of channels) {
         try {
@@ -844,7 +1181,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const encoded = encodeURIComponent(emoji);
     try {
       // Direct REST call — single API request instead of 3 (fetchChannel → fetchMessage → react)
-      await (this.client as any).rest.put(
+      await ((await this.readyClient()) as any).rest.put(
         `/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`
       );
       return;
@@ -1048,7 +1385,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   // ── Topology: create channel ────────────────────────────────────────────
 
   private async _resolveCategory(): Promise<string> {
-    const guild = await this.client.guilds.fetch(this.guildId);
+    const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
     await guild.channels.fetch();
     const existing = guild.channels.cache.find(
       (c: { type: ChannelType; name: string }) => c.type === ChannelType.GuildCategory && c.name === this.categoryName,
@@ -1072,7 +1409,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async createTopic(name: string): Promise<string> {
-    const guild = await this.client.guilds.fetch(this.guildId);
+    const guild = await (await this.readyClient()).guilds.fetch(this.guildId);
     const categoryId = await this.ensureCategoryId();
 
     try {
@@ -1099,7 +1436,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async deleteTopic(topicId: number | string): Promise<void> {
-    const channel = await this.client.channels.fetch(String(topicId));
+    const channel = await (await this.readyClient()).channels.fetch(String(topicId));
     // Only delete GuildText channels created by createTopic — never categories or forums
     if (channel && "type" in channel && (channel as { type: ChannelType }).type === ChannelType.GuildText && "delete" in channel) {
       await (channel as { delete(): Promise<unknown> }).delete();
@@ -1108,7 +1445,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   async topicExists(topicId: number | string): Promise<boolean> {
     try {
-      const channel = await this.client.channels.fetch(String(topicId));
+      const channel = await (await this.readyClient()).channels.fetch(String(topicId));
       return channel != null;
     } catch {
       return false;
