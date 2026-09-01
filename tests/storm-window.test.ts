@@ -128,6 +128,18 @@ describe("StormWindow", () => {
     await b;
   });
 
+  it("releases a parked non-affected instance when recovery begins", async () => {
+    const storm = new StormWindow({ backoffsMs: [10] });
+    storm.recordServerDead("a", ["a"]);
+    let released = false;
+    const waiting = storm.waitForDeliveryAllowed("paused-worker").then(() => { released = true; });
+    await vi.advanceTimersByTimeAsync(9);
+    expect(released).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await waiting;
+    expect(released).toBe(true);
+  });
+
   it("releases waiters on shutdown without reopening delivery", async () => {
     const storm = new StormWindow();
     storm.recordServerDead("a", ["a"]);

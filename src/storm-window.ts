@@ -202,6 +202,13 @@ export class StormWindow extends EventEmitter {
     this.phase = "recovering";
     this.retryAt = null;
     this.release(this.spawnWaiters);
+    // A delivery may have parked during backoff for an instance which was not
+    // running (and therefore not in `affected`). Once the server is available,
+    // that instance can follow its normal wake path immediately; do not make it
+    // wait for unrelated recovery stragglers to close the whole window.
+    for (const name of [...this.deliveryWaiters.keys()]) {
+      if (!this.isDeliveryHeld(name)) this.releaseDelivery(name);
+    }
     this.emit("recovery_due", this.snapshot());
     this.recoveryTimer = this.setTimer!(() => this.closeWindow("timeout"), this.recoveryTimeoutMs);
     (this.recoveryTimer as any)?.unref?.();
