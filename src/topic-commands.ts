@@ -12,7 +12,7 @@ import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { formatCents } from "./cost-guard.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSocketName, getTmuxSessionName } from "./paths.js";
-import { t } from "./locale.js";
+import { t, getLocale } from "./locale.js";
 import {
   clampContextPercent,
   parseContextPercent,
@@ -1078,6 +1078,7 @@ export class TopicCommands {
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
     const require = createRequire(import.meta.url);
     const agendVersion = require("../package.json").version ?? "unknown";
+    const tipsLang = getLocale() === "zh-TW" ? "zh" : "en";
 
     return [
       `## ${t("sysinfo.title")}`,
@@ -1091,6 +1092,11 @@ export class TopicCommands {
       `| ${t("sysinfo.uptime")} | ${upHours}h ${upMins}m |`,
       `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
       `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
+      "",
+      `📚 **${t("sysinfo.resources")}**`,
+      `- ${t("sysinfo.docs")}: https://songsid.github.io/AgEnD`,
+      `- ${t("sysinfo.tips")}: https://songsid.github.io/AgEnD/tips-${tipsLang}.html`,
+      `- ${t("sysinfo.github")}: https://github.com/songsid/AgEnD`,
     ].join("\n");
   }
 
