@@ -21,6 +21,8 @@ import { isFleetStartCommandLine } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows.js";
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
+import type { SpawnGate } from "./spawn-gate.js";
+import type { StormWindow } from "./storm-window.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -107,6 +109,8 @@ export interface LifecycleContext {
   readonly sessionRegistry: Map<string, string>;
   readonly eventLog: EventLog | null;
   readonly controlClient: TmuxControlClient | null;
+  readonly spawnGate?: SpawnGate;
+  readonly stormWindow?: StormWindow;
 
   getInstanceDir(name: string): string;
   saveFleetConfig(): void;
@@ -129,6 +133,8 @@ export interface LifecycleContext {
   isClassicInstance?(name: string): boolean;
   /** True while the fleet is stopping on purpose or an `agend update` is running. */
   isPlannedRestart(): boolean;
+  /** Suppress only incident kinds caused by the active tmux server storm. */
+  stormSuppressed?(kind: string): boolean;
   /** List claimed tasks for an instance (from task board). Returns empty array if unavailable. */
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }>;
   webhookEmit(event: string, name: string, data?: Record<string, unknown>): void;
@@ -339,6 +345,10 @@ export class InstanceLifecycle {
       this.ctx.logger.info({ name, kind }, "Incident notification suppressed — planned restart in progress");
       return;
     }
+    if (this.ctx.stormSuppressed?.(kind)) {
+      this.ctx.logger.info({ name, kind }, "Incident notification suppressed — included in tmux storm summary");
+      return;
+    }
     this.ctx.notifyInstanceTopic(name, text);
   }
 
@@ -475,6 +485,10 @@ export class InstanceLifecycle {
           this.ctx.logger.info({ name }, "Hang notification suppressed — planned restart in progress");
           return;
         }
+        if (this.ctx.stormSuppressed?.("hang")) {
+          this.ctx.logger.info({ name }, "Hang notification suppressed — included in tmux storm summary");
+          return;
+        }
 
         // Check if instance has claimed tasks — nudge it to continue
         const claimedTasks = this.ctx.listClaimedTasks(name);
@@ -506,6 +520,11 @@ export class InstanceLifecycle {
         this.notifyIncident(generalName, "crash_respawn", t("inst.crashed_respawned_log", name));
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
+
+    daemon.on("tmux_server_crash", safeHandler(() => {
+      this.ctx.eventLog?.insert(name, "tmux_server_crash", {});
+      this.ctx.logger.error({ name }, "tmux server crash joined fleet storm window");
+    }, this.ctx.logger, `daemon.tmux_server_crash[${name}]`));
 
     daemon.on("snapshot_failed", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "snapshot_failed", {});
@@ -554,6 +573,7 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
     daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean }) => {
+      const stormAtDetection = this.ctx.stormWindow?.isActive() === true;
       this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
       this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
       this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
@@ -567,6 +587,11 @@ export class InstanceLifecycle {
         this.notifyAuthErrorOnce(name,
           "Sign-in expired — the CLI cannot run its MCP server (agend tools are down) until it is re-authenticated.",
           this.ptyErrorNotificationTarget(name) ?? name);
+        return;
+      }
+      if (stormAtDetection) {
+        this.ctx.stormSuppressed?.("mcp_died");
+        this.ctx.logger.info({ name, pid: data.pid }, "MCP death notification suppressed — included in tmux storm summary");
         return;
       }
       // The CLI owns the MCP server's stdio pipes, so only restarting the CLI can
@@ -601,6 +626,12 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.malformed_tool_call[${name}]`));
 
     daemon.on("mcp_restart_requested", safeHandler((data: { name: string; trigger: string }) => {
+      if (this.ctx.stormWindow?.isActive()) {
+        this.ctx.eventLog?.insert(name, "mcp_auto_restart_suppressed", { trigger: data.trigger, reason: "tmux_storm" });
+        this.ctx.stormSuppressed?.("mcp_auto_restart");
+        this.ctx.logger.info({ name, trigger: data.trigger }, "MCP revival restart suppressed — tmux storm recovery will replace MCP");
+        return;
+      }
       // The daemon object dies with the restart it asks for, so the loop guard
       // lives here: if the previous auto-restart was under the cooldown, the new
       // MCP server evidently died right back (broken install, OOM pressure) and
@@ -809,6 +840,8 @@ export class InstanceLifecycle {
         backend: backendName,
         model: config.model ?? "default",
       },
+      this.ctx.spawnGate,
+      this.ctx.stormWindow,
     );
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {

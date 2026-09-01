@@ -55,6 +55,7 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
 }
 
 export class TmuxManager {
+  private static ensureSessionInFlight = new Map<string, Promise<void>>();
   private windowId: string;
   private lastSendSpecialKeyError: string | null = null;
   private lastPasteError: string | null = null;
@@ -85,19 +86,42 @@ export class TmuxManager {
   // === Static session-level methods ===
 
   static async ensureSession(name: string): Promise<void> {
-    if (!(await TmuxManager.sessionExists(name))) {
-      try {
-        await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
-      } catch (err) {
-        if (!String(err).includes("duplicate session")) throw err;
+    const existing = TmuxManager.ensureSessionInFlight.get(name);
+    if (existing) return existing;
+    const operation = (async () => {
+      if (!(await TmuxManager.sessionExists(name))) {
+        try {
+          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
+        } catch (err) {
+          if (!String(err).includes("duplicate session")) throw err;
+        }
       }
-    }
 
-    // This is deliberately a session option, not `set-option -g`: enabling the
-    // global default would also change tmux sessions that AgEnD does not own.
-    await exec("tmux", TmuxManager.tmuxArgs([
-      "set-option", "-t", name, "mouse", "on",
-    ]));
+      // This is deliberately a session option, not `set-option -g`: enabling the
+      // global default would also change tmux sessions that AgEnD does not own.
+      await exec("tmux", TmuxManager.tmuxArgs([
+        "set-option", "-t", name, "mouse", "on",
+      ]));
+    })().finally(() => {
+      if (TmuxManager.ensureSessionInFlight.get(name) === operation) {
+        TmuxManager.ensureSessionInFlight.delete(name);
+      }
+    });
+    TmuxManager.ensureSessionInFlight.set(name, operation);
+    return operation;
+  }
+
+  /** PID identifies a concrete tmux server generation. */
+  static async getServerPid(sessionName: string): Promise<number | null> {
+    try {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+        "display-message", "-p", "-t", sessionName, "#{pid}",
+      ]));
+      const pid = Number.parseInt(stdout.trim(), 10);
+      return Number.isSafeInteger(pid) && pid > 1 ? pid : null;
+    } catch {
+      return null;
+    }
   }
 
   static async sessionExists(name: string): Promise<boolean> {

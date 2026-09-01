@@ -19,6 +19,7 @@ import {
   UPDATE_MARKER_MAX_AGE_MS,
 } from "../src/update-marker.js";
 import { InstanceLifecycle, type LifecycleContext, type IncidentEventSource } from "../src/instance-lifecycle.js";
+import { StormWindow } from "../src/storm-window.js";
 
 /**
  * `agend update` is not an incident. It replaces the package on disk under the
@@ -115,9 +116,11 @@ describe("update marker", () => {
 
 // ── the gate itself ──────────────────────────────────────────────────────────
 
-function makeLifecycle(planned: boolean) {
+function makeLifecycle(planned: boolean, stormActive = false) {
   const notified: Array<{ name: string; text: string }> = [];
   const logged: string[] = [];
+  const stormWindow = new StormWindow();
+  if (stormActive) stormWindow.recordServerDead("general", ["general"]);
   const ctx = {
     fleetConfig: { instances: {}, defaults: {} },
     logger: {
@@ -127,6 +130,8 @@ function makeLifecycle(planned: boolean) {
     dataDir: "/tmp/unused",
     eventLog: { insert: vi.fn() },
     isPlannedRestart: () => planned,
+    stormWindow,
+    stormSuppressed: (kind: string) => stormWindow.shouldSuppress(kind),
     notifyInstanceTopic: (name: string, text: string) => { notified.push({ name, text }); },
     setTopicIcon: () => {},
     webhookEmit: () => {},
@@ -197,6 +202,27 @@ describe("a real crash", () => {
     daemon.emit("health_check_error", { name: "general", message: "tmux timeout" });
     daemon.emit("pty_error", { name: "general", type: "crash", action: "none", message: "boom" });
     expect(notified).toHaveLength(4);
+  });
+});
+
+describe("incident alerts during a tmux server storm", () => {
+  it("suppresses storm-family chat noise but preserves audit events", () => {
+    const { daemon, notified, eventLog } = makeLifecycle(false, true);
+    daemon.emit("crash_respawn", "general");
+    daemon.emit("snapshot_failed", "general");
+    daemon.emit("health_check_error", { name: "general", message: "tmux unavailable" });
+    expect(notified).toEqual([]);
+    expect(eventLog.insert).toHaveBeenCalledWith("general", "crash_respawn", {});
+    expect(eventLog.insert).toHaveBeenCalledWith("general", "snapshot_failed", {});
+  });
+
+  it("does not suppress model/auth/quota incident families", async () => {
+    const { daemon, notified } = makeLifecycle(false, true);
+    daemon.emit("pty_error", {
+      name: "general", type: "model_error", action: "notify", message: "model unavailable",
+    });
+    await vi.waitFor(() => expect(notified).toHaveLength(1));
+    expect(notified[0].text).toMatch(/model.*unavailable/i);
   });
 });
 
