@@ -92,6 +92,7 @@ health_port: 19280
 | `daily_summary` | object | 啟用，21:00 | 每日花費摘要 |
 | `scheduler` | object | — | 排程設定 |
 | `webhooks` | object[] | `[]` | Webhook 通知 |
+| `max_cross_instance_message_bytes` | number | `12288` | 跨 instance 訊息內容的 UTF-8 byte 上限。超限時會明確拒絕，並提示精簡內容或改傳檔案路徑。 |
 
 ### defaults.cost_guard
 

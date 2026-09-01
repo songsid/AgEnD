@@ -29,7 +29,7 @@ const { Daemon } = await import("../src/daemon.js");
 function recordTmux(): string[] {
   const calls: string[] = [];
   execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string) => void) => {
-    const verb = args.find(a => ["set-buffer", "paste-buffer", "send-keys"].includes(a));
+    const verb = args.find(a => ["load-buffer", "paste-buffer", "send-keys"].includes(a));
     if (verb) calls.push(verb === "send-keys" ? `send-keys ${args[args.length - 1]}` : verb);
     cb(null, "");
   });
@@ -39,18 +39,43 @@ function recordTmux(): string[] {
 beforeEach(() => { execFile.mockReset(); });
 
 describe("pasteText Enter retry", () => {
+  it("preserves tmux stderr and classifies load failures as non-retryable", async () => {
+    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+      if (args.includes("load-buffer")) cb(new Error("tmux exited 1"), "", "buffer storage unavailable");
+      else cb(null, "");
+    });
+    const tmux = new TmuxManager("s", "@1");
+    expect(await tmux.pasteBuffer("hello")).toBe(false);
+    expect(tmux.getLastPasteError()).toContain("buffer storage unavailable");
+    expect(tmux.isLastPasteFailureRecoverable()).toBe(false);
+  });
+
+  it("classifies a paste target failure as recoverable and preserves its reason", async () => {
+    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+      if (args.includes("paste-buffer")) {
+        const err = Object.assign(new Error("tmux exited 1"), { stderr: "can't find pane: @1", code: 1 });
+        cb(err, "", err.stderr);
+      }
+      else cb(null, "");
+    });
+    const tmux = new TmuxManager("s", "@1");
+    expect(await tmux.pasteBuffer("hello")).toBe(false);
+    expect(tmux.getLastPasteError()).toContain("can't find pane");
+    expect(tmux.isLastPasteFailureRecoverable()).toBe(true);
+  });
+
   it("sends the retry Enter by default", async () => {
     const calls = recordTmux();
     await new TmuxManager("s", "@1").pasteText("hello");
 
-    expect(calls).toEqual(["set-buffer", "paste-buffer", "send-keys Enter", "send-keys Enter"]);
+    expect(calls).toEqual(["load-buffer", "paste-buffer", "send-keys Enter", "send-keys Enter"]);
   }, 10_000);
 
   it("sends exactly one Enter when the caller opts out", async () => {
     const calls = recordTmux();
     await new TmuxManager("s", "@1").pasteText("hello", { retryEnter: false });
 
-    expect(calls).toEqual(["set-buffer", "paste-buffer", "send-keys Enter"]);
+    expect(calls).toEqual(["load-buffer", "paste-buffer", "send-keys Enter"]);
   }, 10_000);
 
   it("treats an absent option as the long-standing behaviour", async () => {

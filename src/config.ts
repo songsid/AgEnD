@@ -51,6 +51,9 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
   minute: 0,
 };
 
+/** Product-level context protection for cross-instance message bodies (12 KiB). */
+export const DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES = 12 * 1024;
+
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
   mcp_auto_restart: true, // restart (idle-gated) when the MCP server dies
@@ -82,7 +85,11 @@ export function getEffectiveInstanceDefaults(
   // Fleet-only controls live under defaults for YAML ergonomics but must not
   // leak into every daemon's InstanceConfig (where an on/off toggle would look
   // like an unknown cold field and restart the whole fleet).
-  const { tips: _tips, ...instanceDefaults } = fleetDefaults as FleetDefaults;
+  const {
+    tips: _tips,
+    max_cross_instance_message_bytes: _maxCrossInstanceMessageBytes,
+    ...instanceDefaults
+  } = fleetDefaults as FleetDefaults;
   return deepMergeGeneric(
     DEFAULT_INSTANCE_CONFIG as Partial<InstanceConfig>,
     instanceDefaults,
@@ -112,7 +119,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     channel?: FleetConfig["channel"];
     channels?: FleetConfig["channels"];
     project_roots?: string[];
-    defaults?: Partial<InstanceConfig>;
+    defaults?: FleetDefaults;
     instances?: Record<string, Partial<InstanceConfig>>;
     teams?: FleetConfig["teams"];
     templates?: Record<string, FleetTemplate>;
@@ -125,7 +132,7 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     return { defaults: {}, instances: {} };
   }
 
-  const fleetDefaults: Partial<InstanceConfig> = parsed.defaults ?? {};
+  const fleetDefaults: FleetDefaults = parsed.defaults ?? {};
   const rawInstances = parsed.instances ?? {};
   const instances: Record<string, InstanceConfig> = {};
 

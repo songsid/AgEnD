@@ -4,6 +4,32 @@ import type { TerminalConfig } from "./types.js";
 
 const exec = promisify(execFile);
 
+function formatExecError(err: unknown): string {
+  const error = err instanceof Error ? err : new Error(String(err));
+  const stderr = String((error as Error & { stderr?: string }).stderr ?? "").trim();
+  const code = (error as Error & { code?: string | number }).code;
+  return [error.message, stderr && !error.message.includes(stderr) ? stderr : "", code ? `code=${code}` : ""]
+    .filter(Boolean)
+    .join("; ");
+}
+
+/** Feed a tmux buffer through stdin so payload bytes never become an argv element. */
+function execTmuxWithInput(tmuxArgs: string[], input: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = execFile("tmux", tmuxArgs, (error, _stdout, stderr) => {
+      if (!error) {
+        resolve();
+        return;
+      }
+      const detail = String(stderr || "").trim();
+      if (detail && !error.message.includes(detail)) error.message = `${error.message}: ${detail}`;
+      reject(error);
+    });
+    child?.stdin?.on("error", reject);
+    child?.stdin?.end(input);
+  });
+}
+
 export interface TmuxLogicalSize {
   columns: number;
   rows: number;
@@ -31,6 +57,8 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
 export class TmuxManager {
   private windowId: string;
   private lastSendSpecialKeyError: string | null = null;
+  private lastPasteError: string | null = null;
+  private lastPasteFailureRecoverable = false;
 
   // Socket isolation: null = use tmux default socket (backward compatible).
   // Set to a name to use `-L <name>` for custom AGEND_HOME isolation.
@@ -305,6 +333,37 @@ export class TmuxManager {
     return this.lastSendSpecialKeyError;
   }
 
+  /** Diagnostic from the most recent failed paste, including tmux stderr/errno. */
+  getLastPasteError(): string | null {
+    return this.lastPasteError;
+  }
+
+  /** Only a target-pane failure benefits from window recovery and retry. */
+  isLastPasteFailureRecoverable(): boolean {
+    return this.lastPasteFailureRecoverable;
+  }
+
+  private async loadAndPaste(text: string): Promise<boolean> {
+    const target = `${this.sessionName}:${this.windowId}`;
+    const bufName = `paste-${this.windowId}-${Date.now()}`;
+    this.lastPasteError = null;
+    this.lastPasteFailureRecoverable = false;
+    try {
+      await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text);
+    } catch (err) {
+      this.lastPasteError = formatExecError(err);
+      return false;
+    }
+    try {
+      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
+      return true;
+    } catch (err) {
+      this.lastPasteError = formatExecError(err);
+      this.lastPasteFailureRecoverable = true;
+      return false;
+    }
+  }
+
   /**
    * Paste text and submit it.
    *
@@ -323,9 +382,7 @@ export class TmuxManager {
     const retryEnter = opts.retryEnter !== false;
     try {
       const target = `${this.sessionName}:${this.windowId}`;
-      const bufName = `paste-${this.windowId}-${Date.now()}`;
-      await exec("tmux", TmuxManager.tmuxArgs(["set-buffer", "-b", bufName, "--", text]));
-      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
+      if (!(await this.loadAndPaste(text))) return false;
       await new Promise(r => setTimeout(r, 500));
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
       if (retryEnter) {
@@ -333,7 +390,10 @@ export class TmuxManager {
         await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-t", target, "Enter"]));
       }
       return true;
-    } catch { return false; }
+    } catch (err) {
+      this.lastPasteError = formatExecError(err);
+      return false;
+    }
   }
 
   /**
@@ -342,13 +402,7 @@ export class TmuxManager {
    * together with sendSpecialKey("Enter") so they control submit timing and retries.
    */
   async pasteBuffer(text: string): Promise<boolean> {
-    try {
-      const target = `${this.sessionName}:${this.windowId}`;
-      const bufName = `paste-${this.windowId}-${Date.now()}`;
-      await exec("tmux", TmuxManager.tmuxArgs(["set-buffer", "-b", bufName, "--", text]));
-      await exec("tmux", TmuxManager.tmuxArgs(["paste-buffer", "-d", "-b", bufName, "-t", target, "-p"]));
-      return true;
-    } catch { return false; }
+    return this.loadAndPaste(text);
   }
 
   async pipeOutput(logPath: string): Promise<void> {

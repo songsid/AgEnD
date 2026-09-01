@@ -3321,6 +3321,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_progress") {
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
+        } else if (msg.type === "cross_instance_delivery_failed") {
+          const senderSession = String(msg.senderSession ?? "");
+          const targetInstance = String(msg.targetInstance ?? name);
+          const correlationId = String(msg.correlationId ?? "unknown");
+          const error = String(msg.error ?? "unknown delivery failure");
+          const senderInstance = this.instanceIpcClients.has(senderSession)
+            ? senderSession
+            : this.sessionRegistry.get(senderSession);
+          this.logger.error({ senderSession, targetInstance, correlationId, error },
+            "Cross-instance pane delivery failed after queue acceptance");
+          this.eventLog?.insert(targetInstance, "cross_instance_delivery_failed", {
+            from: senderSession, correlation_id: correlationId, error,
+          });
+          if (senderInstance) {
+            this.notifyInstanceTopic(senderInstance, t(
+              "cross_instance.delivery_failed_notice", targetInstance, error, correlationId,
+            ));
+            void this.deliverToInstance(senderInstance, {
+              type: "fleet_inbound",
+              targetSession: senderSession,
+              content: t("cross_instance.delivery_failed_agent", targetInstance, error, correlationId),
+              meta: {
+                chat_id: "",
+                message_id: `delivery-failed-${Date.now()}`,
+                user: "AgEnD",
+                user_id: "system:agend",
+                ts: new Date().toISOString(),
+                thread_id: "",
+                request_kind: "update",
+                correlation_id: correlationId,
+              },
+            }, { waitForIdle: true }).catch(deliveryError => {
+              this.logger.error({ err: deliveryError, senderSession, correlationId },
+                "Could not deliver cross-instance failure status back to sender");
+            });
+          }
         } else if (msg.type === "instance_state" || msg.type === "instance_state_response") {
           this.cacheInstanceExecutionState(name, msg);
           if (msg.type === "instance_state_response") {

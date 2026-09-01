@@ -9,6 +9,12 @@ import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycl
 import type { EventLog } from "./event-log.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES } from "./config.js";
+import { t } from "./locale.js";
+import {
+  formatCrossInstanceInboundMessage,
+  MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
+} from "./cross-instance-envelope.js";
 import {
   BroadcastArgs,
   CreateInstanceArgs,
@@ -112,6 +118,41 @@ type Respond = (result: unknown, error?: string) => void;
 type Handler = (ctx: OutboundContext, args: Record<string, unknown>, respond: Respond, meta: OutboundMeta) => Promise<void> | void;
 
 const HOME_DIR = homedir();
+
+function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const kib = bytes / 1024;
+  return `${Number.isInteger(kib) ? kib : kib.toFixed(1)} KiB`;
+}
+
+/** Hard rejects must happen while the originating MCP request can still fail. */
+function rejectOversizedCrossInstanceMessage(
+  ctx: OutboundContext,
+  message: string,
+  respond: Respond,
+): boolean {
+  const limit = ctx.fleetConfig?.defaults?.max_cross_instance_message_bytes
+    ?? DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES;
+  const actual = Buffer.byteLength(message, "utf8");
+  if (actual <= limit) return false;
+  respond(null, t("cross_instance.message_too_large", formatByteSize(actual), formatByteSize(limit)));
+  return true;
+}
+
+function rejectOversizedCrossInstanceEnvelope(
+  message: string,
+  meta: Record<string, string>,
+  respond: Respond,
+): boolean {
+  const actual = Buffer.byteLength(formatCrossInstanceInboundMessage(message, meta), "utf8");
+  if (actual <= MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES) return false;
+  respond(null, t(
+    "cross_instance.envelope_too_large",
+    formatByteSize(actual),
+    formatByteSize(MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES),
+  ));
+  return true;
+}
 
 /**
  * Sanitize an error for inclusion in outbound responses sent to agents.
@@ -244,6 +285,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(SendToInstanceArgs, rawArgs, "send_to_instance");
   if (!v.ok) { respond(null, v.error); return; }
   const { instance_name: targetName, message, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
+  if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const isExternalSender = meta.senderSessionName != null && meta.senderSessionName !== meta.instanceName;
 
@@ -300,6 +342,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // (keeps from_instance as the machine name so the reply-back target stays valid).
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
   if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
+  if (rejectOversizedCrossInstanceEnvelope(message, ipcMeta, respond)) return;
 
   // Fire-and-queue: hand the message to the fleet and respond immediately.
   // deliverToInstance owns waking a paused target, the idle gate and retries;
@@ -772,6 +815,9 @@ const updateFleetDefaults: Handler = (ctx, rawArgs, respond) => {
   if (patch.backend !== undefined) (defaults as any).backend = patch.backend;
   if (patch.model !== undefined) (defaults as any).model = patch.model;
   if (patch.auto_pause_after !== undefined) (defaults as any).auto_pause_after = patch.auto_pause_after;
+  if (patch.max_cross_instance_message_bytes !== undefined) {
+    defaults.max_cross_instance_message_bytes = patch.max_cross_instance_message_bytes;
+  }
   (ctx.fleetConfig as any).defaults = defaults;
   try {
     ctx.saveFleetConfig();
@@ -889,9 +935,30 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(BroadcastArgs, rawArgs, "broadcast");
   if (!v.ok) { respond(null, v.error); return; }
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
+  if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
+  const makeBroadcastMeta = (correlationId: string, messageId = `bcast-${Date.now()}`): Record<string, string> => {
+    const ipcMeta: Record<string, string> = {
+      chat_id: "", message_id: messageId, user: `instance:${senderLabel}`,
+      user_id: `instance:${senderLabel}`, ts: new Date().toISOString(), thread_id: "",
+      from_instance: senderLabel, correlation_id: correlationId,
+    };
+    if (request_kind) ipcMeta.request_kind = request_kind;
+    if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
+    if (task_summary) ipcMeta.task_summary = task_summary;
+    if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
+    return ipcMeta;
+  };
+  // Validate once before dispatching any target. The placeholders are the
+  // longest values generated below, so every real per-target envelope fits if
+  // this one does. Keeping this outside the loop prevents partial broadcasts.
+  if (rejectOversizedCrossInstanceEnvelope(
+    message,
+    makeBroadcastMeta("bcast-9999999999999-zzzzzz", "bcast-9999999999999"),
+    respond,
+  )) return;
 
   // Resolve target list: team, explicit targets, tag filter, or all running
   let targetNames: string[];
@@ -922,15 +989,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) { failed.push(targetName); continue; }
 
     const correlationId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const ipcMeta: Record<string, string> = {
-      chat_id: "", message_id: `bcast-${Date.now()}`, user: `instance:${senderLabel}`,
-      user_id: `instance:${senderLabel}`, ts: new Date().toISOString(), thread_id: "",
-      from_instance: senderLabel, correlation_id: correlationId,
-    };
-    if (request_kind) ipcMeta.request_kind = request_kind;
-    if (requires_reply != null) ipcMeta.requires_reply = String(requires_reply);
-    if (task_summary) ipcMeta.task_summary = task_summary;
-    if (senderDisplay && senderDisplay !== senderLabel) ipcMeta.from_display = senderDisplay;
+    const ipcMeta = makeBroadcastMeta(correlationId);
 
     // Same at-least-once treatment as send_to_instance: retry, then surface a
     // final failure on both topics instead of dying in a warn-level log line.

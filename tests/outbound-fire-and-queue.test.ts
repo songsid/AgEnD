@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { outboundHandlers, setCrossInstanceRetryForTests } from "../src/outbound-handlers.js";
+import { setLocale } from "../src/locale.js";
 
 // Real retry intervals are 30s; keep tests snappy and let background retry chains
 // finish inside the test instead of leaking timers past it.
 beforeEach(() => setCrossInstanceRetryForTests({ retries: 2, intervalMs: 5 }));
-afterEach(() => setCrossInstanceRetryForTests(null));
+afterEach(() => {
+  setCrossInstanceRetryForTests(null);
+  setLocale("en");
+});
 
 /**
  * Cross-instance tools must hand the message to the fleet and return immediately.
@@ -43,6 +47,76 @@ async function callTool(tool: string, ctx: any, args: Record<string, unknown>) {
 }
 
 describe("cross-instance tools are fire-and-queue", () => {
+  it.each([
+    ["send_to_instance", { instance_name: "target", message: "x".repeat(12_289) }],
+    ["delegate_task", { target_instance: "target", task: "x".repeat(12_289) }],
+    ["request_information", { target_instance: "target", question: "x".repeat(12_289) }],
+    ["report_result", { target_instance: "target", summary: "x".repeat(12_289) }],
+    ["broadcast", { targets: ["target"], message: "x".repeat(12_289) }],
+  ])("%s rejects an oversized body synchronously", async (tool, args) => {
+    setLocale("en");
+    const ctx = makeContext({ deliver: neverSettles() });
+    const { result, error } = await callTool(tool, ctx, args);
+    expect(result).toBeNull();
+    expect(error).toContain("12.0 KiB");
+    expect(error).toContain("limit 12 KiB");
+    expect(error).toContain("file path");
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+
+  it("measures UTF-8 bytes and honors the configured limit", async () => {
+    setLocale("zh-TW");
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.defaults.max_cross_instance_message_bytes = 8;
+    const rejected = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "中文字", // 9 UTF-8 bytes
+    });
+    expect(rejected.result).toBeNull();
+    expect(rejected.error).toContain("訊息過長");
+    expect(rejected.error).toContain("9 B");
+    expect(rejected.error).toContain("8 B");
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+    setLocale("en");
+  });
+
+  it("accepts a body exactly at the configured byte limit", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.defaults.max_cross_instance_message_bytes = 8;
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "中文ab", // 8 UTF-8 bytes
+    });
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true });
+    expect(ctx.deliverToInstance).toHaveBeenCalledOnce();
+  });
+
+  it("rejects an oversized assembled envelope before returning queued", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.defaults.max_cross_instance_message_bytes = 20_000;
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target",
+      message: "small",
+      task_summary: "x".repeat(16_000),
+    });
+    expect(result).toBeNull();
+    expect(error).toContain("assembled handoff too long");
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized broadcast envelope before dispatching any target", async () => {
+    const ctx = makeContext({ deliver: neverSettles(), connected: ["a", "b"] });
+    ctx.fleetConfig.instances = { sender: {}, a: {}, b: {} };
+    ctx.fleetConfig.defaults.max_cross_instance_message_bytes = 20_000;
+    const { result, error } = await callTool("broadcast", ctx, {
+      targets: ["a", "b"],
+      message: "small",
+      task_summary: "x".repeat(16_000),
+    });
+    expect(result).toBeNull();
+    expect(error).toContain("assembled handoff too long");
+    expect(ctx.deliverToInstance).not.toHaveBeenCalled();
+  });
+
   it("send_to_instance responds immediately when the target is busy", async () => {
     const ctx = makeContext({ deliver: neverSettles() });
     const started = Date.now();

@@ -1,5 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
 import {
   LEGACY_TMUX_LOGICAL_SIZE,
@@ -128,6 +131,23 @@ describe("TmuxManager", () => {
       expect(await tm.capturePane()).toContain("control-client-enter-regression");
     } finally {
       control.stop();
+    }
+  });
+
+  it("loads a 64 KiB paste through stdin without the tmux argv ceiling", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-large-paste-"));
+    const output = join(dir, "payload");
+    const tm = new TmuxManager(session, "");
+    try {
+      // Raw mode avoids the terminal's canonical 4096-byte line limit; the
+      // assertion then measures the tmux buffer transport itself.
+      await tm.createWindow(`stty raw -echo; head -c 65536 > '${output}'`, "/tmp", "large-paste");
+      const payload = "x".repeat(64 * 1024);
+      expect(await tm.pasteBuffer(payload)).toBe(true);
+      await expect.poll(() => readFileSync(output, "utf8").length, { timeout: 5_000 }).toBe(payload.length);
+    } finally {
+      await tm.killWindow();
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

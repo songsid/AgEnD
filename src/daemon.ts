@@ -28,6 +28,10 @@ import { PaneWriteLock } from "./pane-write-lock.js";
 import type { TmuxControlClient, TmuxPaneOutputEvent } from "./tmux-control.js";
 import { buildFleetInstructions } from "./instructions.js";
 import type { FleetInstructionsParams } from "./instructions.js";
+import {
+  formatCrossInstanceInboundMessage,
+  renderCrossInstanceHandoffMetadata,
+} from "./cross-instance-envelope.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -152,18 +156,7 @@ export function writeLastInboundAt(instanceDir: string, timestamp: number): void
  * message_id line.
  */
 export function renderHandoffMetadata(meta: Record<string, string>): string {
-  const rows: string[] = [];
-  const add = (label: string, value: string | undefined) => {
-    if (value && value.trim()) rows.push(`${label}: ${value.trim()}`);
-  };
-  add("message_id", meta.message_id);
-  add("correlation_id", meta.correlation_id);
-  add("request_kind", meta.request_kind);
-  add("task_summary", meta.task_summary);
-  add("working_directory", meta.working_directory);
-  add("branch", meta.branch);
-  add("attachment_file_id", meta.attachment_file_id);
-  return rows.length ? `\n(${rows.join(" | ")})` : "";
+  return renderCrossInstanceHandoffMetadata(meta);
 }
 
 /** Headless inactivity timer used by the daemon and unit tests. */
@@ -3407,16 +3400,7 @@ export class Daemon extends EventEmitter {
 
     let formatted: string;
     if (fromInstance) {
-      // #77: show the sender's display name for readability, keeping the machine
-      // instance name in parens so the recipient's send_to_instance target is valid.
-      const fromLabel = meta.from_display ? `${meta.from_display} (${fromInstance})` : fromInstance;
-      formatted = `[from:${fromLabel}] ${content}`;
-      formatted += renderHandoffMetadata(meta);
-      // A delegated task that requires a reply must not read like a chatty FYI —
-      // the "you may stay silent" line is for the latter only.
-      formatted += meta.requires_reply === "true"
-        ? "\n(A reply IS required: use report_result with the correlation_id above — or send_to_instance. Not direct text.)"
-        : "\n(If you need to reply, use send_to_instance tool, NOT direct text. If there is nothing to add, you may stay silent.)";
+      formatted = formatCrossInstanceInboundMessage(content, meta);
     } else {
       const via = meta.source ? ` via ${meta.source}` : "";
       const idTag = meta.user_id ? `, id:${meta.user_id}` : "";
@@ -3606,7 +3590,18 @@ export class Daemon extends EventEmitter {
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
-        if (await this.deliverMessage(formatted, status, { deliveryEpoch })) this.markTurnStarted(meta, formatted);
+        if (await this.deliverMessage(formatted, status, { deliveryEpoch })) {
+          this.markTurnStarted(meta, formatted);
+        } else if (meta.from_instance && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          const error = this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery";
+          this.ipcServer?.broadcast({
+            type: "cross_instance_delivery_failed",
+            senderSession: meta.from_instance,
+            targetInstance: this.name,
+            correlationId: meta.correlation_id ?? "unknown",
+            error,
+          });
+        }
       } finally {
         this.pasteQueueDepth--;
       }
@@ -3787,7 +3782,18 @@ export class Daemon extends EventEmitter {
       const pasteStartedAt = Date.now();
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
-        this.logger.warn({ attempt }, "pasteBuffer failed — recovering window and backing off");
+        const tmuxError = this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure";
+        const recoverable = this.tmux!.isLastPasteFailureRecoverable?.() ?? true;
+        this.logger[recoverable ? "warn" : "error"](
+          { attempt, tmuxError, recoverable },
+          recoverable
+            ? "pasteBuffer failed — recovering window and backing off"
+            : "pasteBuffer failed — non-retryable tmux error",
+        );
+        if (!recoverable) {
+          if (status) this.emit("message_failed", status);
+          return false;
+        }
         windowId = (await this.recoverWindow()) ?? windowId;
         if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
         continue;
@@ -3868,7 +3874,9 @@ export class Daemon extends EventEmitter {
         }
         const repasted = await this.tmux!.pasteBuffer(formatted);
         if (!repasted) {
-          this.logger.error("Idle-gated redelivery paste failed after native-queue silent loss");
+          this.logger.error({
+            tmuxError: this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure",
+          }, "Idle-gated redelivery paste failed after native-queue silent loss");
           if (status) this.emit("message_failed", status); // ❌
           return false;
         }

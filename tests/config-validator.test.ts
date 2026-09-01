@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { validateFleetConfig } from "../src/config-validator.js";
 
+describe("validateFleetConfig max_cross_instance_message_bytes", () => {
+  it("accepts a positive integer under defaults", () => {
+    expect(validateFleetConfig({ defaults: { max_cross_instance_message_bytes: 12_288 }, instances: {} }).errors).toEqual([]);
+  });
+
+  it.each([0, -1, 1.5, "16384"])("rejects invalid value %j", value => {
+    expect(validateFleetConfig({ defaults: { max_cross_instance_message_bytes: value }, instances: {} }).errors)
+      .toContainEqual(expect.objectContaining({ path: "defaults.max_cross_instance_message_bytes" }));
+  });
+});
+
 describe("validateFleetConfig auto_pause_after", () => {
   const config = (value: unknown, at: "defaults" | "instance") => ({
     defaults: at === "defaults" ? { auto_pause_after: value } : {},

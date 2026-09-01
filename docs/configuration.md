@@ -79,6 +79,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `webhooks` | WebhookConfig[] | — | Outbound webhook notifications |
 | `warm_cap` | number | `0` (unlimited) | Fleet-wide cap on simultaneously warm (running) instances. When the running count exceeds it, the least-recently-active idle instance is auto-paused. `general` instances are never evicted. Complementary to `auto_pause_after` (time-based). |
 | `progress_min_elapsed` | number | `30` | Seconds before the live-progress line / cancel button starts showing elapsed time. |
+| `max_cross_instance_message_bytes` | number | `12288` | Maximum UTF-8 byte size of a cross-instance message body. Oversized messages are rejected with guidance to shorten them or send a file path. |
 | `locale` | `"en"` \| `"zh-TW"` | auto-detects from timezone | UI/notification language for user-facing text. |
 
 ---
