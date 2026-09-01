@@ -19,12 +19,40 @@ export interface AlertData {
   choices?: Choice[];
 }
 
+export type AdapterHealthStatus = "connected" | "starting" | "retrying" | "stale" | "stopped";
+
+export interface AdapterShardHealth {
+  id: number;
+  status: number;
+  lastHeartbeatAckAt: number | null;
+  heartbeatAgeMs: number | null;
+}
+
+/** Serializable adapter health. Secrets and provider client objects must never appear here. */
+export interface AdapterHealthSnapshot {
+  id: string;
+  type: string;
+  status: AdapterHealthStatus;
+  generation: number;
+  isReady: boolean;
+  wsStatus: number | null;
+  shards: AdapterShardHealth[];
+  lastDispatchAt: number | null;
+  lastReconnectAt: number | null;
+  lastReconnectReason: string | null;
+  reconnectCount: number;
+}
+
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;
   readonly id: string;
 
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Hot-rebuild an adapter transport without discarding its outbound queue. */
+  reconnectGateway?(reason: string): Promise<void>;
+  /** Optional provider-specific liveness details consumed by /health and doctor. */
+  getHealthSnapshot?(): AdapterHealthSnapshot;
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage>;

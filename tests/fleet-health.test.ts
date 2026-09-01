@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { EventEmitter } from "node:events";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -12,6 +13,7 @@ type Internals = {
   fleetConfig: unknown;
   adapterState: Map<string, { status: string; retryCount: number; lastError?: string }>;
   startupComplete: boolean;
+  adapters: Map<string, { getHealthSnapshot?: () => any }>;
   getInstanceStatus(name: string): string;
 };
 
@@ -19,6 +21,7 @@ function makeFleet(opts: {
   instances?: Record<string, string>;          // name -> status
   adapters?: Record<string, string>;           // id -> status
   startupComplete?: boolean;
+  adapterHealth?: Record<string, any>;
 } = {}) {
   const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-health-")));
   const internals = fm as unknown as Internals;
@@ -31,6 +34,9 @@ function makeFleet(opts: {
   internals.adapterState = new Map(
     Object.entries(opts.adapters ?? {}).map(([id, status]) => [id, { status, retryCount: 0 }]),
   );
+  internals.adapters = new Map(Object.entries(opts.adapterHealth ?? {}).map(([id, snapshot]) => [id, {
+    getHealthSnapshot: () => snapshot,
+  }]));
   internals.startupComplete = opts.startupComplete ?? true;
   return fm;
 }
@@ -82,6 +88,23 @@ describe("getFleetHealth", () => {
     expect(health.problems.some(p => p.includes("discord"))).toBe(true);
   });
 
+  it("degrades health and exposes per-bot gateway liveness without changing the legacy states", () => {
+    const snapshot = {
+      id: "persona-2", type: "discord", status: "stale", generation: 4,
+      isReady: true, wsStatus: 0, shards: [{ id: 0, status: 0, lastHeartbeatAckAt: 1, heartbeatAgeMs: 190_000 }],
+      lastDispatchAt: null, lastReconnectAt: 2, lastReconnectReason: "watchdog", reconnectCount: 3,
+    };
+    const health = makeFleet({
+      instances: { alpha: "running" },
+      adapters: { "persona-2": "connected" },
+      adapterHealth: { "persona-2": snapshot },
+    }).getFleetHealth();
+
+    expect(health.status).toBe("down");
+    expect(health.adapters.states).toEqual({ "persona-2": "retrying" });
+    expect(health.adapters.details["persona-2"]).toEqual(snapshot);
+  });
+
   it("counts paused and stopped instances without calling them problems", () => {
     const health = makeFleet({
       instances: { alpha: "running", beta: "paused", gamma: "stopped" },
@@ -106,5 +129,23 @@ describe("getFleetHealth", () => {
   it("is ok with no adapters configured at all (a local-only fleet)", () => {
     const health = makeFleet({ instances: { alpha: "running" } }).getFleetHealth();
     expect(health.status).toBe("ok");
+  });
+});
+
+describe("adapter hot restart", () => {
+  it("uses the adapter fresh-gateway rebuild hook instead of stop/start reuse", async () => {
+    const fm = makeFleet({ adapters: { discord: "connected" } }) as any;
+    const adapter = Object.assign(new EventEmitter(), {
+      reconnectGateway: vi.fn(async () => {}),
+      stop: vi.fn(async () => {}),
+      start: vi.fn(async () => {}),
+    });
+
+    await fm.restartAdapter(adapter, "discord");
+
+    expect(adapter.reconnectGateway).toHaveBeenCalledOnce();
+    expect(adapter.stop).not.toHaveBeenCalled();
+    expect(adapter.start).not.toHaveBeenCalled();
+    expect(fm.adapterState.get("discord").status).toBe("connected");
   });
 });

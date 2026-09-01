@@ -35,7 +35,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
+import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
@@ -2623,6 +2623,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.adapterState;
   }
 
+  private bindAdapterHealth(adapter: ChannelAdapter, adapterId: string): void {
+    adapter.on("gateway_health", (snapshot: AdapterHealthSnapshot) => {
+      const previous = this.adapterState.get(adapterId);
+      const status = snapshot.status === "connected" ? "connected"
+        : snapshot.status === "stopped" ? "failed"
+          : "retrying";
+      this.adapterState.set(adapterId, {
+        status,
+        retryCount: previous?.retryCount ?? 0,
+        lastError: status === "connected" ? undefined : snapshot.lastReconnectReason ?? previous?.lastError,
+      });
+    });
+  }
+
   /**
    * Real, checkable fleet health for `/health` and the operator.
    *
@@ -2641,7 +2655,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     status: "ok" | "degraded" | "down";
     uptime: number;
     instances: { configured: number; running: number; crashed: number; paused: number; stopped: number };
-    adapters: { total: number; connected: number; states: Record<string, string> };
+    adapters: { total: number; connected: number; states: Record<string, string>; details: Record<string, AdapterHealthSnapshot> };
     startupComplete: boolean;
     /** See process-memory.ts: the fleet process and the whole service cgroup are
      *  reported separately because they differ by ~60x and only one of them can
@@ -2660,17 +2674,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const states: Record<string, string> = {};
+    const details: Record<string, AdapterHealthSnapshot> = {};
     let connected = 0;
     for (const [id, state] of this.adapterState) {
-      states[id] = state.status;
-      if (state.status === "connected") connected++;
+      const snapshot = this.adapters.get(id)?.getHealthSnapshot?.();
+      if (snapshot) details[id] = snapshot;
+      const effectiveStatus = snapshot?.status === "connected" ? "connected"
+        : snapshot && snapshot.status !== "stopped" ? "retrying"
+          : state.status;
+      states[id] = effectiveStatus;
+      if (effectiveStatus === "connected") connected++;
     }
 
     const problems: string[] = [];
     if (this.adapterState.size > 0 && connected === 0) problems.push("no channel adapter is connected");
     if (counts.crashed > 0) problems.push(`${counts.crashed} instance(s) crashed`);
-    for (const [id, state] of this.adapterState) {
-      if (state.status !== "connected") problems.push(`adapter ${id} is ${state.status}`);
+    for (const [id, state] of Object.entries(states)) {
+      if (state !== "connected") problems.push(`adapter ${id} is ${state}`);
     }
     if (!this.startupComplete) problems.push("startup has not completed");
 
@@ -2684,7 +2704,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       status,
       uptime: Math.floor((Date.now() - this.startedAt) / 1000),
       instances: counts,
-      adapters: { total: this.adapterState.size, connected, states },
+      adapters: { total: this.adapterState.size, connected, states, details },
       startupComplete: this.startupComplete,
       memory: readFleetMemory(),
       problems,
@@ -2719,6 +2739,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const world = new AdapterWorld(adapterId, this.adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, this.adapter);
+    this.bindAdapterHealth(this.adapter, adapterId);
 
     this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       await this.handleInboundMessage(msg);
@@ -2987,7 +3008,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, "adapter.handler_error"));
     this.adapter.on("error", (err: unknown) => {
       this.logger.error({ err }, "Primary adapter fatal error");
-      this.restartAdapter(this.adapter!, "primary").catch(() => {});
+      this.restartAdapter(this.adapter!, adapterId).catch(() => {});
     });
 
     this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
@@ -3039,6 +3060,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
+    this.bindAdapterHealth(adapter, adapterId);
 
     // Wire up event handlers (same as primary, routes through shared handleInboundMessage)
     adapter.on("message", safeHandler(async (msg: InboundMessage) => {
@@ -3246,11 +3268,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
-    await adapter.start();
-    if (channelConfig.group_id) {
-      adapter.setChatId(String(channelConfig.group_id));
-    }
-
     adapter.on("started", safeHandler((username: string, userId?: string) => {
       this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
       const world = this.worlds.get(adapterId);
@@ -3269,6 +3286,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.error({ err, adapterId }, "Additional adapter fatal error");
       this.restartAdapter(adapter, adapterId).catch(() => {});
     });
+
+    // Register lifecycle listeners before login; a fast ready/error must not be lost.
+    await adapter.start();
+    if (channelConfig.group_id) {
+      adapter.setChatId(String(channelConfig.group_id));
+    }
 
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
   }
@@ -3502,6 +3525,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const previous = this.adapterState.get(id);
     this.adapterState.set(id, { status: "retrying", retryCount: 0, lastError: previous?.lastError });
     try {
+      if (adapter.reconnectGateway) {
+        try {
+          // Discord requires a fresh Client after destroy(). Its adapter owns the
+          // single-flight, generation fence and bounded IDENTIFY backoff, so all
+          // watchdog/manual/error triggers must converge here instead of stop/start.
+          await adapter.reconnectGateway(previous?.lastError ?? "fleet adapter restart");
+          this.adapterState.set(id, { status: "connected", retryCount: 0 });
+          this.logger.info({ id }, "Adapter gateway rebuilt successfully");
+        } catch (err) {
+          if (!this.ipcStoppingInstances.has("__fleet_stopping__")) {
+            this.adapterState.set(id, {
+              status: "failed",
+              retryCount: previous?.retryCount ?? 0,
+              lastError: (err as Error)?.message ?? String(err),
+            });
+          }
+        }
+        return;
+      }
       for (let attempt = 1; ; attempt++) {
         if (this.ipcStoppingInstances.has("__fleet_stopping__")) return;
         const delay = attempt <= 3 ? 5000 * Math.pow(2, attempt - 1) : 60_000; // 5s, 10s, 20s, then 60s

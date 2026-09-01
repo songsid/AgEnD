@@ -18,7 +18,7 @@ import {
 export type DoctorCheckStatus = "ok" | "warn" | "error";
 
 export interface DoctorCheck {
-  section: "Prerequisites" | "Service" | "Fleet" | "MCP IPC";
+  section: "Prerequisites" | "Service" | "Fleet" | "Channel gateways" | "MCP IPC";
   status: DoctorCheckStatus;
   label: string;
   detail: string;
@@ -37,6 +37,9 @@ interface DoctorDeps {
   processAlive: (pid: number) => boolean;
   connectSocket: (path: string) => Promise<boolean>;
   networkFamily: () => NetworkFamilyState;
+  fetchFleetHealth: (port: number) => Promise<{
+    adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
+  }>;
 }
 
 const defaultDeps: DoctorDeps = {
@@ -53,6 +56,10 @@ const defaultDeps: DoctorDeps = {
   },
   connectSocket: connectUnixSocket,
   networkFamily: getNetworkFamilyState,
+  fetchFleetHealth: async port => {
+    const response = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(3000) });
+    return await response.json() as any;
+  },
 };
 
 function tmuxArgs(args: string[]): string[] {
@@ -255,6 +262,42 @@ export async function collectDoctorReport(
     t("doctor.instance_counts", counts.running, counts.paused, counts.stopped, counts.crashed, names.length),
   );
 
+  const rawChannels = Array.isArray((raw as any).channels)
+    ? (raw as any).channels
+    : (raw as any).channel ? [(raw as any).channel] : [];
+  const hasDiscord = rawChannels.some((channel: any) => channel?.type === "discord");
+  if (!hasDiscord) {
+    // Telegram and local-only fleets have no Discord Gateway session to inspect.
+  } else if (!fleetAlive) {
+    add("Channel gateways", "warn", t("doctor.gateway_health"), t("doctor.gateway_unknown"));
+  } else {
+    try {
+      const healthPort = typeof raw.health_port === "number" ? raw.health_port : 19280;
+      const health = await deps.fetchFleetHealth(healthPort);
+      const details = health.adapters?.details ?? {};
+      const entries = Object.entries(details);
+      if (entries.length === 0) {
+        add("Channel gateways", "warn", t("doctor.gateway_health"), t("doctor.gateway_no_details"));
+      } else {
+        for (const [id, detail] of entries) {
+          const ages = (detail.shards ?? [])
+            .map(shard => shard.heartbeatAgeMs)
+            .filter((age): age is number => typeof age === "number");
+          const newestAge = ages.length > 0 ? Math.max(...ages) : null;
+          const healthy = detail.status === "connected" && detail.isReady === true;
+          add(
+            "Channel gateways",
+            healthy ? "ok" : "error",
+            id,
+            t("doctor.gateway_detail", detail.status ?? "unknown", detail.reconnectCount ?? 0, newestAge == null ? "—" : `${Math.round(newestAge / 1000)}s`),
+          );
+        }
+      }
+    } catch (err) {
+      add("Channel gateways", "warn", t("doctor.gateway_health"), t("doctor.gateway_unreachable", (err as Error).message));
+    }
+  }
+
   const ipcResults = await Promise.all(runningNames.map(async name => {
     const socketPath = join(dataDir, "instances", name, "channel.sock");
     return { name, socketPath, exists: existsSync(socketPath), connected: await deps.connectSocket(socketPath) };
@@ -284,6 +327,7 @@ export function formatDoctorReport(report: DoctorReport): string {
     Prerequisites: t("doctor.section.prerequisites"),
     Service: t("doctor.section.service"),
     Fleet: t("doctor.section.fleet"),
+    "Channel gateways": t("doctor.section.gateways"),
     "MCP IPC": t("doctor.section.ipc"),
   };
   const lines = ["", `  \x1b[1m${t("doctor.title")}\x1b[0m`];

@@ -28,6 +28,9 @@ instances:
   live: {}
   sleeping: {}
   stopped: {}
+channels:
+  - type: discord
+    bot_token_env: DISCORD_BOT_TOKEN
 `);
     for (const name of ["live", "sleeping", "stopped"]) {
       mkdirSync(join(dataDir, "instances", name), { recursive: true });
@@ -48,6 +51,13 @@ instances:
       env: { TERM: "xterm-256color", DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1/bus" },
       platform: "linux",
       networkFamily: () => ({ autoSelectFamily: true, attemptTimeoutMs: 2_500 }),
+      fetchFleetHealth: async () => ({
+        adapters: {
+          details: {
+            discord: { status: "connected", isReady: true, reconnectCount: 1, shards: [{ heartbeatAgeMs: 12_000 }] },
+          },
+        },
+      }),
       processAlive: pid => pid === 4242,
       connectSocket: async path => path.endsWith("/live/channel.sock"),
       run: (file, args) => {
@@ -65,6 +75,7 @@ instances:
       expect.objectContaining({ section: "Prerequisites", label: "network family", status: "ok", detail: expect.stringContaining("2500 ms") }),
       expect.objectContaining({ section: "Fleet", label: "fleet process", detail: "PID 4242 is alive" }),
       expect.objectContaining({ section: "Fleet", label: "instances", detail: "1 running, 1 paused, 1 stopped, 0 crashed (3 total)" }),
+      expect.objectContaining({ section: "Channel gateways", label: "discord", status: "ok", detail: expect.stringContaining("heartbeat ACK age 12s") }),
       expect.objectContaining({ section: "MCP IPC", label: "channel.sock", detail: "1/1 running instance socket(s) reachable" }),
     ]));
     const formatted = formatDoctorReport(report);
