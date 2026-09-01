@@ -69,11 +69,11 @@ describe("localized usage renderers", () => {
     for (const text of [markdown, plain]) {
       expect(text).toContain("AI 訂閱用量");
       expect(text).toMatch(/(?:28% Session|Session 28%)/);
-      expect(text).toContain("2h 20m 後重置");
+      expect(text).toContain("2小時20分鐘後重置");
       expect(text).toMatch(/(?:41% 每週|每週 41%)/);
-      expect(text).toContain("4d 16h 後重置");
+      expect(text).toContain("4天16小時後重置");
       expect(text).toContain("Model <X>（每週）");
-      expect(text).toContain("速率限制重置");
+      expect(text).toContain("額度重置券");
       expect(text).toContain("1 可用");
       expect(text).toContain("額度");
       expect(text).toContain("0 額度");
