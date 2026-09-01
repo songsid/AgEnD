@@ -43,7 +43,7 @@ describe("tips catalog and persistence", () => {
     expect(byId.get("tip-001")?.text_en).toMatch(/Instance = Agent = one AI CLI/);
     expect(byId.get("tip-001")?.text_zh).toMatch(/instance = Agent =/u);
     expect(byId.get("tip-020")?.text_en).toMatch(/already in conversation history/i);
-    expect(byId.get("tip-020")?.text_zh).toMatch(/已經進入 Context/u);
+    expect(byId.get("tip-020")?.text_zh).toMatch(/已進入 Context/u);
     expect(byId.get("tip-021")?.text_en).toMatch(/AgEnD =.+Telegram.+Discord.+Agents/i);
     expect(byId.get("tip-052")?.text_en).toMatch(/localhost.+only on the AgEnD machine/i);
     expect(byId.get("tip-061")?.text_en).toMatch(/Context =.+current conversation.+remember/i);
