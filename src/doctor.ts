@@ -38,7 +38,7 @@ interface DoctorDeps {
   connectSocket: (path: string) => Promise<boolean>;
   networkFamily: () => NetworkFamilyState;
   fetchFleetHealth: (port: number) => Promise<{
-    adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
+    adapters?: { details?: Record<string, { status?: string; isReady?: boolean; reconnectCount?: number; heartbeatAgeMs?: number | null; shards?: Array<{ heartbeatAgeMs?: number | null }> }> };
   }>;
 }
 
@@ -283,7 +283,9 @@ export async function collectDoctorReport(
           const ages = (detail.shards ?? [])
             .map(shard => shard.heartbeatAgeMs)
             .filter((age): age is number => typeof age === "number");
-          const newestAge = ages.length > 0 ? Math.max(...ages) : null;
+          const newestAge = typeof detail.heartbeatAgeMs === "number"
+            ? detail.heartbeatAgeMs
+            : ages.length > 0 ? Math.max(...ages) : null;
           const healthy = detail.status === "connected" && detail.isReady === true;
           add(
             "Channel gateways",

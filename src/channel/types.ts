@@ -36,6 +36,9 @@ export interface AdapterHealthSnapshot {
   generation: number;
   isReady: boolean;
   wsStatus: number | null;
+  /** Oldest shard ACK, so a single stale shard remains visible in the aggregate. */
+  lastHeartbeatAckAt: number | null;
+  heartbeatAgeMs: number | null;
   shards: AdapterShardHealth[];
   lastDispatchAt: number | null;
   lastReconnectAt: number | null;

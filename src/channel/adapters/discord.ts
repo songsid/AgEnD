@@ -818,6 +818,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         heartbeatAgeMs: lastAck == null ? null : Math.max(0, now - lastAck),
       };
     });
+    const heartbeatAcks = shards
+      .map(shard => shard.lastHeartbeatAckAt)
+      .filter((value): value is number => value != null);
+    const lastHeartbeatAckAt = heartbeatAcks.length > 0 ? Math.min(...heartbeatAcks) : null;
     return {
       id: this.id,
       type: this.type,
@@ -825,6 +829,8 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       generation: this.clientGeneration,
       isReady: this.client.isReady(),
       wsStatus: this.client.ws.status ?? null,
+      lastHeartbeatAckAt,
+      heartbeatAgeMs: lastHeartbeatAckAt == null ? null : Math.max(0, now - lastHeartbeatAckAt),
       shards,
       lastDispatchAt: this.lastDispatchAt,
       lastReconnectAt: this.lastReconnectAt,

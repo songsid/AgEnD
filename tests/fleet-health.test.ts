@@ -91,7 +91,8 @@ describe("getFleetHealth", () => {
   it("degrades health and exposes per-bot gateway liveness without changing the legacy states", () => {
     const snapshot = {
       id: "persona-2", type: "discord", status: "stale", generation: 4,
-      isReady: true, wsStatus: 0, shards: [{ id: 0, status: 0, lastHeartbeatAckAt: 1, heartbeatAgeMs: 190_000 }],
+      isReady: true, wsStatus: 0, lastHeartbeatAckAt: 1, heartbeatAgeMs: 190_000,
+      shards: [{ id: 0, status: 0, lastHeartbeatAckAt: 1, heartbeatAgeMs: 190_000 }],
       lastDispatchAt: null, lastReconnectAt: 2, lastReconnectReason: "watchdog", reconnectCount: 3,
     };
     const health = makeFleet({
