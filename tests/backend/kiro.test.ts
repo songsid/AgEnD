@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   KiroBackend,
+  getCachedKiroCliCompatibility,
   probeKiroCliCompatibility,
+  resetKiroCompatibilityCacheForTests,
   type KiroCliCompatibility,
 } from "../../src/backend/kiro.js";
 import type { CliBackendConfig } from "../../src/backend/types.js";
@@ -51,6 +53,7 @@ function compatibilityForVersion(version: string): KiroCliCompatibility {
 
 describe("KiroBackend", () => {
   beforeEach(() => {
+    resetKiroCompatibilityCacheForTests();
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(WORK_DIR, { recursive: true });
   });
@@ -191,6 +194,20 @@ describe("KiroBackend", () => {
       });
     });
 
+    it("probes a binary generation only once per process", () => {
+      const binary = join(TEST_DIR, "kiro-cli-cache-test");
+      writeFileSync(binary, "generation-one");
+      const run = vi.fn(() => "kiro-cli 2.21.0\n");
+
+      expect(getCachedKiroCliCompatibility(binary, run).source).toBe("version");
+      expect(getCachedKiroCliCompatibility(binary, run).source).toBe("version");
+      expect(run).toHaveBeenCalledTimes(1);
+
+      writeFileSync(binary, "generation-two-with-a-different-size");
+      expect(getCachedKiroCliCompatibility(binary, run).source).toBe("version");
+      expect(run).toHaveBeenCalledTimes(2);
+    });
+
     it("conservatively omits all gated flags when version and help both fail", () => {
       const compatibility = probeKiroCliCompatibility("/fake/kiro-cli", () => {
         throw new Error("binary unavailable");
@@ -207,8 +224,8 @@ describe("KiroBackend", () => {
       warn.mockRestore();
     });
 
-    it("reports effort as unsupported for pre-2.6 clients", () => {
-      expect(makeBackend(compatibilityForVersion("2.5.0")).getEffortStrategy()).toBe("unsupported");
+    it("keeps the effort configuration surface stable while gating only the launch flag", () => {
+      expect(makeBackend(compatibilityForVersion("2.5.0")).getEffortStrategy()).toBe("restart");
       expect(makeBackend(compatibilityForVersion("2.6.0")).getEffortStrategy()).toBe("restart");
     });
   });
