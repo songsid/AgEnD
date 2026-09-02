@@ -5463,6 +5463,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         message: opts.message,
         choices: opts.choices.map(c => ({ id: `${opts.prefix}${nonce}:${c.action}`, label: c.label })),
       }, opts.threadId ? { threadId: opts.threadId } : undefined);
+      // Bind the nonce to the provider's canonical delivery address, not the
+      // logical routing input. Telegram, for example, represents General as
+      // AgEnD topic "1" on input but omits message_thread_id on the wire and in
+      // callback queries. Exact callback matching below remains fail-closed.
+      entry.chatId = sent.chatId;
+      // Preserve compatibility with adapters that predate SentMessage.threadId
+      // and omit the optional property altogether. An explicit undefined is a
+      // canonical flat/root delivery context (notably Telegram General).
+      if (Object.prototype.hasOwnProperty.call(sent, "threadId")) {
+        entry.threadId = sent.threadId;
+      }
       entry.messageId = sent.messageId;
       return nonce;
     } catch (err) {

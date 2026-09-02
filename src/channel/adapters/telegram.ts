@@ -1049,7 +1049,15 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
         ...threadOptions(threadId),
         reply_markup: keyboard,
       });
-      return { messageId: String(msg.message_id), chatId, threadId };
+      const deliveredThreadId = toThreadId(threadId);
+      return {
+        messageId: String(msg.message_id),
+        chatId,
+        // Report the provider-visible delivery address. AgEnD's logical
+        // General-topic sentinel ("1") is omitted from Telegram requests, so
+        // callback_query.message has no message_thread_id for that destination.
+        threadId: deliveredThreadId === undefined ? undefined : String(deliveredThreadId),
+      };
     }
     return this.sendText(chatId, alert.message, opts);
   }
