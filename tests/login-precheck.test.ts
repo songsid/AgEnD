@@ -19,7 +19,9 @@ describe("/login auth pre-check", () => {
   function setup() {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: {}, instances: {} } as any;
-    const notifyAlert = vi.fn().mockResolvedValue({ messageId: "prompt-1" });
+    const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
+      messageId: "prompt-1", chatId, threadId: opts?.threadId,
+    }));
     const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
     const adapter = { id: "discord", type: "discord", notifyAlert, sendText, editMessageRemoveButtons } as any;

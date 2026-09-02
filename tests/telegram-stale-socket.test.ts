@@ -166,6 +166,28 @@ describe("Telegram stale HTTP socket recovery", () => {
     (adapter as any).httpsAgent.destroy();
   });
 
+  it("reports Telegram's provider-visible thread context for button alerts", async () => {
+    const adapter = makeAdapter();
+    const send = vi.spyOn(adapter.getBot().api, "sendMessage")
+      .mockResolvedValueOnce({ message_id: 9 } as never)
+      .mockResolvedValueOnce({ message_id: 10 } as never);
+    const alert = {
+      type: "tip" as const,
+      instanceName: "general",
+      message: "Tip",
+      choices: [{ id: "tip-dismiss:nonce:dismiss", label: "Dismiss" }],
+    };
+
+    await expect(adapter.notifyAlert("-100123", alert, { threadId: "1" }))
+      .resolves.toEqual({ messageId: "9", chatId: "-100123", threadId: undefined });
+    await expect(adapter.notifyAlert("-100123", alert, { threadId: "42" }))
+      .resolves.toEqual({ messageId: "10", chatId: "-100123", threadId: "42" });
+    expect(send.mock.calls[0][2]).not.toHaveProperty("message_thread_id");
+    expect(send.mock.calls[1][2]).toHaveProperty("message_thread_id", 42);
+    (adapter as any).httpAgent.destroy();
+    (adapter as any).httpsAgent.destroy();
+  });
+
   it("omits the General sentinel from approval messages too", async () => {
     const adapter = makeAdapter();
     adapter.setChatId("-100123");

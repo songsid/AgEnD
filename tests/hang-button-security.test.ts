@@ -282,7 +282,9 @@ describe("sol review findings — regression pins", () => {
   });
 
   function baseFm() {
-    const notifyAlert = vi.fn().mockResolvedValue({ messageId: "m1", chatId: "c1" });
+    const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
+      messageId: "m1", chatId, threadId: opts?.threadId,
+    }));
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
     const adapter = {
       id: "telegram-main",

@@ -229,6 +229,108 @@ describe("tip button flow", () => {
     expect(dismissEditText).toContain("Tip dismissed");  // Confirmation added
   });
 
+  it("binds Telegram General tip callbacks to the canonical provider context", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-tip-telegram-general-"));
+    dirs.push(dir);
+    const notifyAlert = vi.fn().mockResolvedValue({
+      messageId: "tip-message", chatId: "fleet", threadId: undefined,
+    });
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "feedback", chatId: "fleet" });
+    const adapter = {
+      id: "tg-main", type: "telegram", notifyAlert, editMessageRemoveButtons, sendText,
+    } as any;
+    const dismissTip = vi.fn();
+    const recordTipFeedback = vi.fn();
+    const fm = new FleetManager(dir);
+    (fm as any).scheduler = { db: {
+      listDismissedTipIds: vi.fn(() => new Set<string>()),
+      isAdvancedTipsUnlocked: vi.fn(() => false),
+      dismissTip,
+      recordTipFeedback,
+    } };
+    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
+
+    // "1" is AgEnD's logical General sentinel. Telegram omits it from the API
+    // request and therefore from callback_query.message.message_thread_id.
+    expect(await fm.promptTip("general", adapter, "fleet", "1")).toBe("posted");
+    const firstAlert = notifyAlert.mock.calls[0][1];
+    await (fm as any).handleTipDismiss({
+      callbackData: firstAlert.choices[1].id,
+      chatId: "fleet",
+      threadId: undefined,
+      messageId: "tip-message",
+      userId: "reader",
+    }, "tg-main", adapter);
+
+    expect(recordTipFeedback).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/), "confused");
+    expect(dismissTip).not.toHaveBeenCalled();
+    expect(editMessageRemoveButtons).toHaveBeenLastCalledWith(
+      "fleet", "tip-message", firstAlert.message, undefined,
+    );
+
+    expect(await fm.promptTip("general", adapter, "fleet", "1")).toBe("posted");
+    const secondAlert = notifyAlert.mock.calls[1][1];
+    await (fm as any).handleTipDismiss({
+      callbackData: secondAlert.choices[0].id,
+      chatId: "fleet",
+      threadId: undefined,
+      messageId: "tip-message",
+      userId: "reader",
+    }, "tg-main", adapter);
+
+    expect(dismissTip).toHaveBeenCalledWith("reader", expect.stringMatching(/^tip-/));
+    expect(editMessageRemoveButtons).toHaveBeenLastCalledWith(
+      "fleet", "tip-message", expect.stringContaining("Tip dismissed"), undefined,
+    );
+  });
+
+  it("keeps exact nonce world binding after canonicalizing the delivery context", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-tip-canonical-security-"));
+    dirs.push(dir);
+    const notifyAlert = vi.fn().mockResolvedValue({
+      messageId: "actual-message", chatId: "actual-chat", threadId: "42",
+    });
+    const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
+    const adapter = {
+      id: "tg-main", type: "telegram", notifyAlert, editMessageRemoveButtons,
+    } as any;
+    const dismissTip = vi.fn();
+    const fm = new FleetManager(dir);
+    (fm as any).scheduler = { db: {
+      listDismissedTipIds: vi.fn(() => new Set<string>()),
+      isAdvancedTipsUnlocked: vi.fn(() => false),
+      dismissTip,
+    } };
+    fm.fleetConfig = { defaults: {}, instances: { general: { general_topic: true } } } as any;
+
+    expect(await fm.promptTip("general", adapter, "logical-chat", "logical-thread")).toBe("posted");
+    const alert = notifyAlert.mock.calls[0][1];
+    const valid = {
+      callbackData: alert.choices[0].id,
+      chatId: "actual-chat",
+      threadId: "42",
+      messageId: "actual-message",
+      userId: "reader",
+    };
+
+    for (const mismatch of [
+      { ...valid, chatId: "copied-chat" },
+      { ...valid, threadId: "copied-thread" },
+      { ...valid, messageId: "copied-message" },
+    ]) {
+      expect(await (fm as any).handleTipDismiss(mismatch, "tg-main", adapter)).toBe(true);
+      expect(dismissTip).not.toHaveBeenCalled();
+    }
+    expect(await (fm as any).handleTipDismiss(valid, "copied-adapter", adapter)).toBe(true);
+    expect(dismissTip).not.toHaveBeenCalled();
+
+    // Mismatched copies do not consume the real nonce; the exact callback can
+    // still claim it once.
+    expect(await (fm as any).handleTipDismiss(valid, "tg-main", adapter)).toBe(true);
+    expect(dismissTip).toHaveBeenCalledOnce();
+  });
+
   it("posts a Discord /tips request in the current non-General channel without an ephemeral corpse", async () => {
     const fm = new FleetManager(mkdtempSync(join(tmpdir(), "agend-tip-slash-")));
     dirs.push(fm.dataDir);

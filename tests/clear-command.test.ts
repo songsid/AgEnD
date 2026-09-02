@@ -130,11 +130,11 @@ describe("/clear nonce confirmation", () => {
 
   function setup(type: "telegram" | "discord" = "telegram") {
     const ipcSend = vi.fn();
-    const notifyAlert = vi.fn().mockResolvedValue({
+    const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
       messageId: "clear-message",
-      chatId: "fleet-group",
-      threadId: "worker-topic",
-    });
+      chatId,
+      threadId: opts?.threadId,
+    }));
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
     const editMessage = vi.fn().mockResolvedValue(undefined);
     const adapter = {
