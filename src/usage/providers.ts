@@ -35,6 +35,8 @@ export interface UsageMetric {
   label: string;
   /** Locale-neutral semantic text. Renderers translate this and keep `label` as a fallback. */
   labelI18n?: UsageI18nRef;
+  /** Vendor-reported per-model quota, rather than an account's primary window. */
+  scope?: "model";
   type: "percent" | "dollars" | "count" | "text";
   used?: number;          // percent (0-100) or dollars
   limit?: number;         // dollars, when capped
@@ -356,6 +358,7 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
   if (typeof sonnet?.utilization === "number") {
     metrics.push({
       label: "Sonnet (weekly)", labelI18n: i18n("usage.metric.named_weekly", "Sonnet"),
+      scope: "model",
       type: "percent", used: sonnet.utilization, resetsAt: claudeResetIso(sonnet.resets_at), windowMs: WEEK_MS,
     });
   }
@@ -375,6 +378,7 @@ export async function fetchClaudeUsage(): Promise<Omit<ProviderUsage, "id" | "na
     metrics.push({
       label: `${model} (weekly)`,
       labelI18n: i18n("usage.metric.named_weekly", model),
+      scope: "model",
       type: "percent",
       used: e.percent,
       resetsAt: claudeResetIso(e.resets_at),
@@ -768,7 +772,7 @@ export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "nam
       weekly: { text: `${rawName} (weekly)`, i18n: i18n("usage.metric.named_weekly", rawName) },
       monthly: { text: `${rawName} (monthly)`, i18n: i18n("usage.metric.named_monthly", rawName) },
       other: d => ({ text: `${rawName} (${d}d)`, i18n: i18n("usage.metric.named_days", rawName, d) }),
-    }, nowMs));
+    }, nowMs).map(metric => ({ ...metric, scope: "model" as const })));
   }
 
   const resets = body.rate_limit_reset_credits as { available_count?: unknown } | undefined;

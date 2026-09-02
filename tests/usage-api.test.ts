@@ -106,6 +106,35 @@ describe("GET /api/ai-usage", () => {
     expect(JSON.parse(out.body).providers.map((provider: { id: string }) => provider.id)).toEqual(["codex"]);
   });
 
+  it("filters unused model-scoped metrics from the shared web/chat/MCP snapshot", async () => {
+    const rawMetrics = [
+      { label: "Session", type: "percent" as const, used: 0 },
+      { label: "Weekly", type: "percent" as const, used: 0 },
+      { label: "GPT-5.3-Codex-Spark", scope: "model" as const, type: "percent" as const, used: 0 },
+      { label: "Fable (weekly)", scope: "model" as const, type: "percent" as const, used: 17 },
+      { label: "Tiny scoped", scope: "model" as const, type: "percent" as const, used: 0.4 },
+      { label: "Rate limit resets", type: "count" as const, value: 0 },
+      { label: "Credits", type: "count" as const, value: 0 },
+    ];
+    setUsageFetcherForTests(async () => ({
+      fetchedAt: "2026-01-01T00:00:00.000Z",
+      providers: [{ id: "codex", name: "Codex", status: "ok" as const, metrics: rawMetrics }],
+    }));
+
+    const snapshot = await getUsageSnapshot();
+    expect(snapshot.providers[0].metrics.map(metric => metric.label)).toEqual([
+      "Session", "Weekly", "Fable (weekly)", "Tiny scoped", "Rate limit resets", "Credits",
+    ]);
+    // Filtering clones the presentation payload; the cached vendor data remains intact.
+    expect(rawMetrics).toHaveLength(7);
+
+    const { res, out } = fakeRes();
+    handleUsageRequest(fakeReq(), res, urlFor("/api/ai-usage"), fakeCtx());
+    await out.done;
+    expect(JSON.parse(out.body).providers[0].metrics.map((metric: { label: string }) => metric.label))
+      .toEqual(snapshot.providers[0].metrics.map(metric => metric.label));
+  });
+
   it("keeps last-good Kiro data during rollover and refreshes after 30 seconds", async () => {
     vi.useFakeTimers();
     try {

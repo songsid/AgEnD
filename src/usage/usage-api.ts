@@ -27,6 +27,14 @@ export interface UsageApiContext {
 
 export type UsagePayload = { fetchedAt: string; providers: ProviderUsage[] };
 
+/** Keep primary account limits even at zero; hide only unused per-model noise. */
+export function isVisibleUsageMetric(metric: UsageMetric): boolean {
+  return !(metric.scope === "model"
+    && metric.type === "percent"
+    && typeof metric.used === "number"
+    && metric.used <= 0);
+}
+
 /** Map runtime backend names to the subscription provider row they consume. */
 export function usageProviderIdForBackend(backend: string | undefined): string | null {
   switch (backend) {
@@ -44,9 +52,18 @@ export function filterUsageProviders(
   payload: UsagePayload,
   providerIds?: Iterable<string>,
 ): UsagePayload {
-  if (!providerIds) return payload;
-  const active = providerIds instanceof Set ? providerIds : new Set(providerIds);
-  return { ...payload, providers: payload.providers.filter(provider => active.has(provider.id)) };
+  const active = providerIds
+    ? (providerIds instanceof Set ? providerIds : new Set(providerIds))
+    : null;
+  return {
+    ...payload,
+    providers: payload.providers
+      .filter(provider => !active || active.has(provider.id))
+      .map(provider => ({
+        ...provider,
+        metrics: provider.metrics.filter(isVisibleUsageMetric),
+      })),
+  };
 }
 
 const CACHE_MS = 5 * 60 * 1000;
@@ -197,7 +214,7 @@ export function formatUsageSummary(payload: UsagePayload): string {
       lines.push(`· ${name}: ⚠️ ${usageText(provider.error ?? t("usage.error_fallback"), provider.errorI18n)}`);
       continue;
     }
-    const parts = provider.metrics.map(formatMetric).filter(Boolean);
+    const parts = provider.metrics.filter(isVisibleUsageMetric).map(formatMetric).filter(Boolean);
     const staleness = provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
     lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
   }
