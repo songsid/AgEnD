@@ -4,12 +4,100 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSy
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
+// Kiro CLI feature gates. These are deliberately separate: the flags shipped
+// in different releases, so one broad "old Kiro" check would still crash some
+// supported versions with an unknown argument.
+// - 1.25.0: https://kiro.dev/changelog/cli/1-25/ (MCP startup checks)
+// - 1.27.0: verified against Kiro's archived 1.26.0/1.27.0 binaries. Before
+//   this, classic was the only UI and neither --legacy-ui nor --classic existed.
+// - 2.6.0: https://kiro.dev/changelog/cli/2-6/ (initial effort flag)
+export const KIRO_REQUIRE_MCP_MIN = "1.25.0";
+export const KIRO_LEGACY_UI_MIN = "1.27.0";
+export const KIRO_EFFORT_FLAG_MIN = "2.6.0";
+
+export interface KiroCliCompatibility {
+  version?: string;
+  supportsRequireMcpStartup: boolean;
+  supportsLegacyUi: boolean;
+  supportsEffortFlag: boolean;
+  source: "version" | "help" | "unknown";
+}
+
+type KiroProbeRunner = (binaryPath: string, args: string[]) => string;
+
+const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
+  supportsRequireMcpStartup: false,
+  supportsLegacyUi: false,
+  supportsEffortFlag: false,
+  source: "unknown",
+};
+
+function parseSemver(value: string | undefined): [number, number, number] | undefined {
+  const match = value?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+  if (!match) return undefined;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function versionAtLeast(version: [number, number, number], minimum: string): boolean {
+  const required = parseSemver(minimum)!;
+  for (let i = 0; i < 3; i++) {
+    if (version[i] !== required[i]) return version[i] > required[i];
+  }
+  return true;
+}
+
+function helpAdvertisesFlag(help: string, flag: string): boolean {
+  return new RegExp(`^\\s*${flag}(?:[ =<]|$)`, "m").test(help);
+}
+
+/** Probe once per backend construction, falling back from semver to --help. */
+export function probeKiroCliCompatibility(
+  binaryPath: string,
+  run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
+    encoding: "utf-8",
+    timeout: 5000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }),
+): KiroCliCompatibility {
+  let version: string | undefined;
+  try {
+    version = run(binaryPath, ["--version"]).trim().split("\n")[0].slice(0, 80) || undefined;
+  } catch { /* fall through to capability help */ }
+
+  const parsed = parseSemver(version);
+  if (parsed) {
+    return {
+      version,
+      supportsRequireMcpStartup: versionAtLeast(parsed, KIRO_REQUIRE_MCP_MIN),
+      supportsLegacyUi: versionAtLeast(parsed, KIRO_LEGACY_UI_MIN),
+      supportsEffortFlag: versionAtLeast(parsed, KIRO_EFFORT_FLAG_MIN),
+      source: "version",
+    };
+  }
+
+  try {
+    const help = run(binaryPath, ["chat", "--help"]);
+    return {
+      version,
+      supportsRequireMcpStartup: helpAdvertisesFlag(help, "--require-mcp-startup"),
+      supportsLegacyUi: helpAdvertisesFlag(help, "--legacy-ui"),
+      supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
+      source: "help",
+    };
+  } catch {
+    return { ...UNKNOWN_KIRO_COMPATIBILITY, version };
+  }
+}
+
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
   private binaryPath: string;
+  private readonly compatibility: KiroCliCompatibility;
+  private warnedUnsupportedEffort = false;
 
-  constructor(private instanceDir: string) {
+  constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
+    this.compatibility = compatibility ?? probeKiroCliCompatibility(this.binaryPath);
   }
 
   requiresDeliveryEnterRetry(): boolean {
@@ -25,7 +113,7 @@ export class KiroBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     const ui = config.kiroUi ?? "legacy";
     let cmd = `${this.binaryPath} chat`;
-    if (ui === "legacy") cmd += " --legacy-ui";
+    if (ui === "legacy" && this.compatibility.supportsLegacyUi) cmd += " --legacy-ui";
     else if (ui === "v3") cmd += " --v3";
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
@@ -35,8 +123,17 @@ export class KiroBackend implements CliBackend {
       warnIfModelMismatch("kiro-cli", model);
       cmd += ` --model ${shellQuote(model)}`;
     }
-    if (config.effort) cmd += ` --effort ${validateEffort(config.effort)}`;
-    cmd += " --require-mcp-startup";
+    if (config.effort) {
+      const effort = validateEffort(config.effort);
+      if (this.compatibility.supportsEffortFlag) {
+        cmd += ` --effort ${effort}`;
+      } else if (!this.warnedUnsupportedEffort) {
+        const detected = this.compatibility.version ?? "an unknown version";
+        console.warn(`[agend] kiro-cli ${detected} does not support the --effort launch flag (requires >= ${KIRO_EFFORT_FLAG_MIN}); configured effort "${effort}" was not applied`);
+        this.warnedUnsupportedEffort = true;
+      }
+    }
+    if (this.compatibility.supportsRequireMcpStartup) cmd += " --require-mcp-startup";
     return cmd;
   }
 
@@ -327,9 +424,8 @@ export class KiroBackend implements CliBackend {
   }
 
   async probeCLIEnv() {
-    const { probeCliVersion } = await import("./types.js");
     const { models, defaultModel } = this.readModelsPayload();
-    return { version: probeCliVersion(this.binaryPath), models, currentModel: defaultModel };
+    return { version: this.compatibility.version, models, currentModel: defaultModel };
   }
 
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).
@@ -338,7 +434,9 @@ export class KiroBackend implements CliBackend {
   // `kiro-cli chat --effort <EFFORT>` (low|medium|high|xhigh|max) — it is on the
   // `chat` SUBCOMMAND, which is why a top-level `--help` search misses it. No
   // `/effort` in the TUI command table, so changing it needs a respawn.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+  getEffortStrategy(): "runtime" | "restart" | "unsupported" {
+    return this.compatibility.supportsEffortFlag ? "restart" : "unsupported";
+  }
   getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
 
   cleanup(config: CliBackendConfig): void {
