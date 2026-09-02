@@ -1,15 +1,155 @@
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
+
+// Kiro CLI feature gates. These are deliberately separate: the flags shipped
+// in different releases, so one broad "old Kiro" check would still crash some
+// supported versions with an unknown argument.
+// - 1.25.0: https://kiro.dev/changelog/cli/1-25/ (MCP startup checks)
+// - 1.27.0: verified against Kiro's archived 1.26.0/1.27.0 binaries. Before
+//   this, classic was the only UI and neither --legacy-ui nor --classic existed.
+// - 2.6.0: https://kiro.dev/changelog/cli/2-6/ (initial effort flag)
+export const KIRO_REQUIRE_MCP_MIN = "1.25.0";
+export const KIRO_LEGACY_UI_MIN = "1.27.0";
+export const KIRO_EFFORT_FLAG_MIN = "2.6.0";
+
+export interface KiroCliCompatibility {
+  version?: string;
+  supportsRequireMcpStartup: boolean;
+  supportsLegacyUi: boolean;
+  supportsEffortFlag: boolean;
+  source: "version" | "help" | "unknown";
+}
+
+type KiroProbeRunner = (binaryPath: string, args: string[]) => string;
+
+const UNKNOWN_KIRO_COMPATIBILITY: KiroCliCompatibility = {
+  supportsRequireMcpStartup: false,
+  supportsLegacyUi: false,
+  supportsEffortFlag: false,
+  source: "unknown",
+};
+
+interface CachedKiroCompatibility {
+  cacheKey: string;
+  compatibility: KiroCliCompatibility;
+}
+
+const compatibilityCache = new Map<string, CachedKiroCompatibility>();
+const warnedUnsupportedEffortCacheKeys = new Set<string>();
+
+function parseSemver(value: string | undefined): [number, number, number] | undefined {
+  const match = value?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+  if (!match) return undefined;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function versionAtLeast(version: [number, number, number], minimum: string): boolean {
+  const required = parseSemver(minimum)!;
+  for (let i = 0; i < 3; i++) {
+    if (version[i] !== required[i]) return version[i] > required[i];
+  }
+  return true;
+}
+
+function helpAdvertisesFlag(help: string, flag: string): boolean {
+  return new RegExp(`^\\s*${flag}(?:[ =<]|$)`, "m").test(help);
+}
+
+/** Probe once per backend construction, falling back from semver to --help. */
+export function probeKiroCliCompatibility(
+  binaryPath: string,
+  run: KiroProbeRunner = (binary, args) => execFileSync(binary, args, {
+    encoding: "utf-8",
+    timeout: 5000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }),
+): KiroCliCompatibility {
+  let version: string | undefined;
+  try {
+    version = run(binaryPath, ["--version"]).trim().split("\n")[0].slice(0, 80) || undefined;
+  } catch { /* fall through to capability help */ }
+
+  const parsed = parseSemver(version);
+  if (parsed) {
+    return {
+      version,
+      supportsRequireMcpStartup: versionAtLeast(parsed, KIRO_REQUIRE_MCP_MIN),
+      supportsLegacyUi: versionAtLeast(parsed, KIRO_LEGACY_UI_MIN),
+      supportsEffortFlag: versionAtLeast(parsed, KIRO_EFFORT_FLAG_MIN),
+      source: "version",
+    };
+  }
+
+  try {
+    const help = run(binaryPath, ["chat", "--help"]);
+    return {
+      version,
+      supportsRequireMcpStartup: helpAdvertisesFlag(help, "--require-mcp-startup"),
+      supportsLegacyUi: helpAdvertisesFlag(help, "--legacy-ui"),
+      supportsEffortFlag: helpAdvertisesFlag(help, "--effort"),
+      source: "help",
+    };
+  } catch {
+    return { ...UNKNOWN_KIRO_COMPATIBILITY, version };
+  }
+}
+
+function kiroBinaryCacheKey(binaryPath: string): string {
+  try {
+    const stat = statSync(binaryPath);
+    // Kiro may upgrade its binary in place. Metadata makes a new binary
+    // generation probe again without putting synchronous CLI calls on every
+    // createBackend() hot path.
+    return `${binaryPath}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    // If the binary is installed later, its new stat-derived key invalidates
+    // this conservative "unavailable" result automatically.
+    return `${binaryPath}\0unavailable`;
+  }
+}
+
+function cachedKiroCliCompatibility(binaryPath: string, run?: KiroProbeRunner): CachedKiroCompatibility {
+  const cacheKey = kiroBinaryCacheKey(binaryPath);
+  const cached = compatibilityCache.get(cacheKey);
+  if (cached) return cached;
+  const entry = { cacheKey, compatibility: probeKiroCliCompatibility(binaryPath, run) };
+  compatibilityCache.set(cacheKey, entry);
+  return entry;
+}
+
+/** Process-level memo used by backend construction; exported for regression tests. */
+export function getCachedKiroCliCompatibility(
+  binaryPath: string,
+  run?: KiroProbeRunner,
+): KiroCliCompatibility {
+  return cachedKiroCliCompatibility(binaryPath, run).compatibility;
+}
+
+/** Test-only reset for the process-level compatibility and warning memo. */
+export function resetKiroCompatibilityCacheForTests(): void {
+  compatibilityCache.clear();
+  warnedUnsupportedEffortCacheKeys.clear();
+}
 
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
   private binaryPath: string;
+  private readonly compatibility: KiroCliCompatibility;
+  private readonly compatibilityCacheKey?: string;
+  private warnedUnsupportedEffort = false;
 
-  constructor(private instanceDir: string) {
+  constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
+    if (compatibility) {
+      this.compatibility = compatibility;
+    } else {
+      const cached = cachedKiroCliCompatibility(this.binaryPath);
+      this.compatibility = cached.compatibility;
+      this.compatibilityCacheKey = cached.cacheKey;
+    }
   }
 
   requiresDeliveryEnterRetry(): boolean {
@@ -25,7 +165,7 @@ export class KiroBackend implements CliBackend {
   buildCommand(config: CliBackendConfig): string {
     const ui = config.kiroUi ?? "legacy";
     let cmd = `${this.binaryPath} chat`;
-    if (ui === "legacy") cmd += " --legacy-ui";
+    if (ui === "legacy" && this.compatibility.supportsLegacyUi) cmd += " --legacy-ui";
     else if (ui === "v3") cmd += " --v3";
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
@@ -35,9 +175,30 @@ export class KiroBackend implements CliBackend {
       warnIfModelMismatch("kiro-cli", model);
       cmd += ` --model ${shellQuote(model)}`;
     }
-    if (config.effort) cmd += ` --effort ${validateEffort(config.effort)}`;
-    cmd += " --require-mcp-startup";
+    if (config.effort) {
+      const effort = validateEffort(config.effort);
+      if (this.compatibility.supportsEffortFlag) {
+        cmd += ` --effort ${effort}`;
+      } else if (this.shouldWarnUnsupportedEffort()) {
+        const detected = this.compatibility.version
+          ? `detected ${this.compatibility.version}`
+          : "unknown version";
+        console.warn(`[agend] kiro-cli ${detected} does not support the --effort launch flag (requires >= ${KIRO_EFFORT_FLAG_MIN}); configured effort "${effort}" was not applied`);
+      }
+    }
+    if (this.compatibility.supportsRequireMcpStartup) cmd += " --require-mcp-startup";
     return cmd;
+  }
+
+  private shouldWarnUnsupportedEffort(): boolean {
+    if (!this.compatibilityCacheKey) {
+      if (this.warnedUnsupportedEffort) return false;
+      this.warnedUnsupportedEffort = true;
+      return true;
+    }
+    if (warnedUnsupportedEffortCacheKeys.has(this.compatibilityCacheKey)) return false;
+    warnedUnsupportedEffortCacheKeys.add(this.compatibilityCacheKey);
+    return true;
   }
 
   writeConfig(config: CliBackendConfig): void {
@@ -327,9 +488,8 @@ export class KiroBackend implements CliBackend {
   }
 
   async probeCLIEnv() {
-    const { probeCliVersion } = await import("./types.js");
     const { models, defaultModel } = this.readModelsPayload();
-    return { version: probeCliVersion(this.binaryPath), models, currentModel: defaultModel };
+    return { version: this.compatibility.version, models, currentModel: defaultModel };
   }
 
   // kiro-cli interrupts generation on Ctrl+C (others use Escape).
@@ -337,8 +497,10 @@ export class KiroBackend implements CliBackend {
 
   // `kiro-cli chat --effort <EFFORT>` (low|medium|high|xhigh|max) — it is on the
   // `chat` SUBCOMMAND, which is why a top-level `--help` search misses it. No
-  // `/effort` in the TUI command table, so changing it needs a respawn.
-  getEffortStrategy(): "runtime" | "restart" | "unsupported" { return "restart"; }
+  // `/effort` in the TUI command table, so changing it needs a respawn. Keep
+  // this capability surface stable when the binary is absent or old; buildCommand
+  // is the compatibility boundary that omits an unsupported flag and warns.
+  getEffortStrategy(): "runtime" | "restart" { return "restart"; }
   getEffortLevels(): string[] { return ["low", "medium", "high", "xhigh", "max"]; }
 
   cleanup(config: CliBackendConfig): void {
