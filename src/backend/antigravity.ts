@@ -14,24 +14,41 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, resolveBinary, shellQuote, warnIfModelMismatch } from "./types.js";
+import {
+  type CliBackend,
+  type CliBackendConfig,
+  type ErrorPattern,
+  type RuntimeDialog,
+  type StartupDialog,
+  resolveBinary,
+  shellQuote,
+  warnIfModelMismatch,
+} from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { getAgendHome } from "../paths.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
 
-/** Parse `agy models`, which may emit slugs or human-readable display names. */
+/** Parse `agy models`, which may emit TSV slug/display pairs or legacy single-column names. */
 export function parseAntigravityModelsOutput(output: string): import("./types.js").ModelOption[] {
   const models: import("./types.js").ModelOption[] = [];
   const seen = new Set<string>();
+  const validSlug = /^[A-Za-z0-9][A-Za-z0-9._:/+-]*$/;
+  const validLabel = /^[A-Za-z0-9][A-Za-z0-9 ._:/()+-]*$/;
 
   for (const rawLine of output.split(/\r?\n/)) {
-    const id = rawLine.trim().replace(/^(?:[*•-]|\d+\.)\s*/, "").trim();
+    const line = rawLine.trim();
+    if (!line || /^(?:Fetching available models|Available models|Default model):?/i.test(line)) continue;
+
+    const tab = line.indexOf("\t");
+    const id = (tab >= 0 ? line.slice(0, tab) : line)
+      .trim().replace(/^(?:[*•-]|\d+\.)\s*/, "").trim();
+    const label = tab >= 0 ? line.slice(tab + 1).trim() : id;
     if (!id
-      || /^(?:Available models|Default model):/i.test(id)
-      || !/^[A-Za-z0-9][A-Za-z0-9 ._:/()+-]*$/.test(id)
+      || !(tab >= 0 ? validSlug.test(id) : validLabel.test(id))
+      || !validLabel.test(label)
       || seen.has(id)) continue;
     seen.add(id);
-    models.push({ id, label: id });
+    models.push({ id, label });
   }
   return models;
 }
@@ -332,9 +349,9 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
   getModelSwitchStrategy(): "runtime" | "restart" { return "restart"; }
 
   async listModels(): Promise<import("./types.js").ModelOption[]> {
-    // Verified current format is one model slug per line. Older releases emitted
-    // display names such as "Gemini 3.5 Flash (Medium)", which must remain intact
-    // because the effort suffix is part of the selectable model name.
+    // agy 1.1.24 emits `slug<TAB>Display Name`; older releases emitted one slug
+    // or human-readable name per line. stderr carries the fetching spinner and
+    // is intentionally ignored.
     try {
       const out = execFileSync(this.binaryPath, ["models"],
         { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
@@ -353,7 +370,13 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
       const s = JSON.parse(readFileSync(join(this.userHome, ".gemini", "antigravity-cli", "settings.json"), "utf-8"));
       if (typeof s?.model === "string" && s.model.trim()) currentModel = s.model.trim();
     } catch { /* no settings / unreadable */ }
-    return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
+    const models = await this.listModels();
+    if (currentModel) {
+      // settings.json stores the display name, while `agy --model` and the
+      // Settings picker use the TSV slug. Keep an already-slug value unchanged.
+      currentModel = models.find(model => model.label === currentModel)?.id ?? currentModel;
+    }
+    return { version: probeCliVersion(this.binaryPath), models, currentModel };
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -390,7 +413,15 @@ node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{t
     ];
   }
 
-  getRuntimeDialogs(): StartupDialog[] {
-    return [];
+  getRuntimeDialogs(): RuntimeDialog[] {
+    return [
+      {
+        // Google may sample this after any completed turn. A single numeric
+        // hotkey dismisses it; Enter would submit an empty follow-up prompt.
+        pattern: /^\s*\[1\] Good\s+\[2\] Fine\s+\[3\] Bad\s+\[0\] Skip\s*$/m,
+        keys: ["0"],
+        description: "Antigravity feedback survey — skip",
+      },
+    ];
   }
 }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
   mkdirSync,
@@ -159,5 +159,38 @@ describe("AntigravityBackend MCP and workspace isolation", () => {
 
     expect(existsSync(join(instanceDir, "agy-mcp-env.sh"))).toBe(false);
     expect(backend.buildCommand(cliConfig)).not.toContain("agy-mcp-env.sh");
+  });
+
+  it("maps the settings display name to the selectable model slug", async () => {
+    const settingsDir = join(home, ".gemini", "antigravity-cli");
+    mkdirSync(settingsDir, { recursive: true });
+    writeFileSync(join(settingsDir, "settings.json"), JSON.stringify({
+      model: "Claude Sonnet 4.6 (Thinking)",
+    }));
+    const models = [
+      { id: "claude-sonnet-4-6-thinking", label: "Claude Sonnet 4.6 (Thinking)" },
+      { id: "gemini-3.7-flash-high", label: "Gemini 3.7 Flash (High)" },
+    ];
+    const listModels = vi.spyOn(backend, "listModels").mockResolvedValue(models);
+
+    await expect(backend.probeCLIEnv()).resolves.toMatchObject({
+      models,
+      currentModel: "claude-sonnet-4-6-thinking",
+    });
+    expect(listModels).toHaveBeenCalledOnce();
+  });
+
+  it("auto-skips only the exact runtime feedback survey menu", () => {
+    const [survey] = backend.getRuntimeDialogs();
+    expect(survey.keys).toEqual(["0"]);
+    expect(survey.pattern.test(` How's the CLI experience so far? Help us improve:
+ [1] Good  [2] Fine  [3] Bad  [0] Skip`)).toBe(true);
+    for (const pane of [
+      "The user said [1] Good [2] Fine [3] Bad [0] Skip in prose.",
+      "Good advice: select Skip when appropriate.",
+      "────────\n>\n────────\nContext 12% used",
+    ]) {
+      expect(survey.pattern.test(pane), pane).toBe(false);
+    }
   });
 });
