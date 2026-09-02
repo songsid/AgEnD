@@ -11,7 +11,7 @@
  * without a code block.
  */
 import type { ProviderUsage, UsageMetric } from "./providers.js";
-import type { UsagePayload } from "./usage-api.js";
+import { isVisibleUsageMetric, type UsagePayload } from "./usage-api.js";
 import { t } from "../locale.js";
 import { usageResetText, usageText } from "./i18n.js";
 
@@ -98,7 +98,9 @@ function toBlocks(payload: UsagePayload): ProviderBlock[] {
       : p.status === "error" ? `⚠️ ${usageText(p.error ?? t("usage.error_fallback"), p.errorI18n)}`
         : null,
     okHint: p.status === "ok" && p.hint ? usageText(p.hint, p.hintI18n) : null,
-    lines: p.status === "ok" ? p.metrics.map(metricLine).filter((l): l is MetricLine => l !== null) : [],
+    lines: p.status === "ok"
+      ? p.metrics.filter(isVisibleUsageMetric).map(metricLine).filter((l): l is MetricLine => l !== null)
+      : [],
   }));
 }
 

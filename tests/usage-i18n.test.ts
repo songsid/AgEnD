@@ -51,7 +51,8 @@ describe("localized usage renderers", () => {
       metrics: [
         { label: "Session", labelI18n: { key: "usage.metric.session" }, type: "percent", used: 28, resetsAt: at(0, 2, 20) },
         { label: "Weekly", labelI18n: { key: "usage.metric.weekly" }, type: "percent", used: 41, resetsAt: at(4, 16, 0) },
-        { label: "Model <X> (weekly)", labelI18n: { key: "usage.metric.named_weekly", args: ["Model <X>"] }, type: "percent", used: 7 },
+        { label: "Model <X> (weekly)", labelI18n: { key: "usage.metric.named_weekly", args: ["Model <X>"] }, scope: "model", type: "percent", used: 7 },
+        { label: "Unused model (weekly)", labelI18n: { key: "usage.metric.named_weekly", args: ["Unused model"] }, scope: "model", type: "percent", used: 0 },
         { label: "Rate limit resets", labelI18n: { key: "usage.metric.rate_limit_resets" }, type: "count", value: 1, unit: "available", unitI18n: { key: "usage.unit.available" } },
         { label: "Credits", labelI18n: { key: "usage.metric.credits" }, type: "count", value: 0, unit: "credits", unitI18n: { key: "usage.unit.credits" }, note: "≈ $0.00" },
         { label: "Pay as you go", labelI18n: { key: "usage.metric.pay_as_you_go" }, type: "text", value: "Disabled", valueI18n: { key: "usage.value.disabled" } },
@@ -69,16 +70,42 @@ describe("localized usage renderers", () => {
     for (const text of [markdown, plain]) {
       expect(text).toContain("AI 訂閱用量");
       expect(text).toMatch(/(?:28% Session|Session 28%)/);
-      expect(text).toContain("2小時20分鐘後重置");
+      expect(text).toContain("2h20m 後重置");
       expect(text).toMatch(/(?:41% 每週|每週 41%)/);
-      expect(text).toContain("4天16小時後重置");
-      expect(text).toContain("Model <X>（每週）");
+      expect(text).toContain("4d16h 後重置");
+      expect(text).toContain("Model <X>（週）");
+      expect(text).not.toContain("Unused model");
       expect(text).toContain("額度重置券");
       expect(text).toContain("1 可用");
       expect(text).toContain("額度");
       expect(text).toContain("0 額度");
       expect(text).toContain("隨用隨付");
       expect(text).toContain("已停用");
+    }
+  });
+
+  it("keeps zero-valued primary metrics while hiding only zero model-scoped metrics", () => {
+    const scoped: UsagePayload = {
+      fetchedAt: new Date().toISOString(),
+      providers: [{
+        id: "codex", name: "Codex", status: "ok",
+        metrics: [
+          { label: "Session", type: "percent", used: 0 },
+          { label: "GPT-5.3-Codex-Spark", scope: "model", type: "percent", used: 0 },
+          { label: "Fable (weekly)", scope: "model", type: "percent", used: 17 },
+          { label: "Tiny model", scope: "model", type: "percent", used: 0.4 },
+          { label: "Rate limit resets", type: "count", value: 0 },
+          { label: "Credits", type: "count", value: 0 },
+        ],
+      }],
+    };
+    for (const text of [renderUsageMarkdown(scoped), formatUsageSummary(scoped)]) {
+      expect(text).toMatch(/(?:0% Session|Session 0%)/);
+      expect(text).not.toContain("GPT-5.3-Codex-Spark");
+      expect(text).toMatch(/(?:17% Fable \(weekly\)|Fable \(weekly\) 17%)/);
+      expect(text).toMatch(/(?:0% Tiny model|Tiny model 0%)/);
+      expect(text).toContain("Rate limit resets");
+      expect(text).toContain("Credits");
     }
   });
 

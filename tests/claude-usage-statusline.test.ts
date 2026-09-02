@@ -198,6 +198,7 @@ describe("fetchClaudeUsage source preference", () => {
 
     const out = await fetchClaudeUsage();
     expect(out.metrics.map(m => m.label)).toContain("Fable (weekly)");
+    expect(out.metrics.find(m => m.label === "Fable (weekly)")?.scope).toBe("model");
     expect(out.metrics.find(m => m.label === "Session")!.used).toBe(31); // API's number, not the file's 29
     expect(out.hint).toBeUndefined();
   });
