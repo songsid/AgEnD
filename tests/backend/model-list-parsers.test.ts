@@ -29,6 +29,27 @@ status: ready
 });
 
 describe("Antigravity model list parser", () => {
+  it("parses the live TSV slug and display-name format", () => {
+    const rows = [
+      ["gemini-3.7-flash-high", "Gemini 3.7 Flash (High)"],
+      ["gemini-3.7-flash-low", "Gemini 3.7 Flash (Low)"],
+      ["gemini-3.6-pro-high", "Gemini 3.6 Pro (High)"],
+      ["claude-sonnet-4-6", "Claude Sonnet 4.6"],
+      ["claude-sonnet-4-6-thinking", "Claude Sonnet 4.6 (Thinking)"],
+      ["claude-opus-4-6", "Claude Opus 4.6"],
+      ["claude-opus-4-6-thinking", "Claude Opus 4.6 (Thinking)"],
+      ["gpt-oss-120b-medium", "GPT OSS 120B (Medium)"],
+      ["gpt-oss-120b-high", "GPT OSS 120B (High)"],
+      ["gemini-3.5-flash-medium", "Gemini 3.5 Flash (Medium)"],
+      ["gemini-3.5-flash-high", "Gemini 3.5 Flash (High)"],
+    ] as const;
+    const output = rows.map(row => row.join("\t")).join("\n");
+
+    expect(parseAntigravityModelsOutput(output)).toEqual(
+      rows.map(([id, label]) => ({ id, label })),
+    );
+  });
+
   it("parses the live one-slug-per-line format", () => {
     expect(parseAntigravityModelsOutput(`gemini-3.6-flash-high
 claude-sonnet-4-6
@@ -50,6 +71,14 @@ Available models:
       { id: "Gemini 3.5 Flash (Medium)", label: "Gemini 3.5 Flash (Medium)" },
       { id: "Gemini 3.5 Flash (High)", label: "Gemini 3.5 Flash (High)" },
       { id: "Claude Opus 4.6 (Thinking)", label: "Claude Opus 4.6 (Thinking)" },
+    ]);
+  });
+
+  it("does not treat the fetching spinner as a model", () => {
+    expect(parseAntigravityModelsOutput(`Fetching available models...
+gemini-3.7-flash-high\tGemini 3.7 Flash (High)
+`)).toEqual([
+      { id: "gemini-3.7-flash-high", label: "Gemini 3.7 Flash (High)" },
     ]);
   });
 
