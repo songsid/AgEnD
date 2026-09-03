@@ -166,13 +166,15 @@ describe("pane-input-residue: prompt pattern follows the launched UI and trust m
     expect(be.dropsEnterWhileBusy()).toBe(false);
   });
 
-  it("requires the `!` marker under --trust-all-tools and accepts `N% >` without it", () => {
+  it("disables the gate without --trust-all-tools (a bare `N% >` row cannot be told from tool output)", () => {
     const be = new KiroBackend("/tmp/kiro-residue-test", compat);
     be.buildCommand({ ...base, skipPermissions: false });
-    expect(bottomRowIsReady("> ok\n12% >", be.getBottomReadyPattern()!)).toBe(true);
-    expect(bottomRowIsReady("> ok\n12% !>", be.getBottomReadyPattern()!)).toBe(true);
+    expect(be.dropsEnterWhileBusy()).toBe(false);
+    expect(be.getBottomReadyPattern()).toBeNull();
     be.buildCommand({ ...base });
+    expect(be.dropsEnterWhileBusy()).toBe(true);
     expect(bottomRowIsReady("> ok\n12% >", be.getBottomReadyPattern()!)).toBe(false);
+    expect(bottomRowIsReady("> ok\n12% !>", be.getBottomReadyPattern()!)).toBe(true);
   });
 });
 

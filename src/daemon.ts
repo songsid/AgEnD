@@ -406,6 +406,8 @@ const NORMAL_ENTER_SETTLE_MS = 500;
 const BOTTOM_READY_POLL_MS = 250;
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
+/** How many "stranded text → submit → wait for prompt → re-check" rounds a delivery tolerates before failing. */
+const STRANDED_INPUT_MAX_ROUNDS = 3;
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
@@ -3712,12 +3714,21 @@ export class Daemon extends EventEmitter {
     // prompt, verified live), then wait for the prompt to come back before our
     // own paste. The wait happens OUTSIDE the pane lock like every other wait.
     if (windowId && this.controlClient && !handingOffToNativeQueue) {
-      const stranded = await this.submitStrandedInputIfAny(windowId);
-      if (cancelled()) return false;
-      if (stranded !== "idle") {
-        // "submitted": the stranded text's turn is running. "busy": the pane
-        // changed under us between the ready check and the lock (the CLI
-        // started generating) — either way the prompt must come back first.
+      // Only a positively verified clear input row ("idle") lets the paste
+      // proceed. After "submitted" (the stranded text's turn is running) or
+      // "busy" (the pane changed under us, or could not be read) the prompt
+      // must come back AND the check runs again — the stranded text may still
+      // be there. "failed" (the Enter could not be sent) fails the delivery:
+      // pasting now would submit both messages as one.
+      for (let round = 0; ; round++) {
+        const stranded = await this.submitStrandedInputIfAny(windowId);
+        if (cancelled()) return false;
+        if (stranded === "idle") break;
+        if (stranded === "failed" || round >= STRANDED_INPUT_MAX_ROUNDS) {
+          this.logger.error({ outcome: stranded, round }, "Could not clear the input row of stranded text — reporting delivery failure");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
         const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
         if (cancelled()) return false;
         if (!readyAgain) {
@@ -3767,13 +3778,17 @@ export class Daemon extends EventEmitter {
       // exactly as before. The prompt row is the only evidence Kiro accepts an
       // Enter; a modal or panel is handled by the dialog dismisser, and the
       // bounded wait reports a failure rather than pasting into a screen we do
-      // not understand. A completely blank capture (nothing painted yet) still
-      // defers to the silence gate: there is nothing there to strand text into.
-      if (lastNonBlankRow(pane) == null) return true;
+      // not understand. That includes a completely BLANK capture: a clear /
+      // redraw / alternate-screen transition paints nothing for a frame, tmux
+      // still accepts a paste, and "nothing visible" is not evidence the TUI is
+      // idle. The next 250ms poll sees the prompt if it is coming.
       return false;
-    } catch {
-      // A failed capture must not wedge delivery forever; the silence gate stands.
-      return true;
+    } catch (err) {
+      // Same rule for a capture that fails: no positive proof, no paste. The
+      // poll retries; a persistently unreadable pane ends in the bounded
+      // timeout's ❌ rather than in a silently stranded message.
+      this.logger.debug({ err }, "capture-pane failed during the readiness check — treating the pane as not ready");
+      return false;
     }
   }
 
@@ -3802,20 +3817,29 @@ export class Daemon extends EventEmitter {
    * F3: if an AgEnD message is sitting unsubmitted in the input row (a previous
    * delivery's Enter was dropped), submit it with one bare Enter under the pane
    * lock. Only acts on a positive signature — the `[user:`/`[from:` marker every
-   * pasted message carries — never on Kiro's own placeholder hints. Returns
-   * "submitted" when an Enter went out, "busy" when the lock-time re-check found
-   * the pane no longer at its prompt (the caller must wait for it again before
-   * pasting), and "idle" when there was nothing to do.
+   * pasted message carries — never on Kiro's own placeholder hints.
+   *
+   * Outcomes: "idle" = positively verified nothing stranded (the caller may
+   * paste); "submitted" = an Enter went out for the stranded text; "busy" = the
+   * pane is not at its prompt or could not be read (the caller must wait for
+   * the prompt and run this check AGAIN before pasting — never assume someone
+   * else submitted it); "failed" = the Enter could not be sent (the delivery
+   * must fail rather than paste on top of the stranded text).
    */
-  private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy"> {
+  private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy" | "failed"> {
     if (this.backend?.dropsEnterWhileBusy?.() !== true || !this.tmux) return "idle";
     const prompt = this.backend.getBottomReadyPattern?.();
     if (!prompt) return "idle";
-    // Cheap pre-check outside the lock so the common case (nothing stranded)
-    // never contends with the dialog dismisser.
-    if ((await this.strandedInputState(prompt)) !== "stranded") return "idle";
-    this.logger.warn({ windowId }, "Unsubmitted message found in the input row — submitting it before this delivery");
-    return this.paneWriteLock.run(async (): Promise<"idle" | "submitted" | "busy"> => {
+    // Pre-check outside the lock so the common case (verified clear) never
+    // contends with the dialog dismisser. Only a POSITIVE "clear" skips the
+    // lock; an unreadable pane is re-examined under it, not waved through.
+    const pre = await this.strandedInputState(prompt);
+    if (pre === "clear") return "idle";
+    if (pre === "busy") return "busy";
+    if (pre === "stranded") {
+      this.logger.warn({ windowId }, "Unsubmitted message found in the input row — submitting it before this delivery");
+    }
+    return this.paneWriteLock.run(async (): Promise<"idle" | "submitted" | "busy" | "failed"> => {
       // Re-check UNDER the lock right before the key goes out: between the
       // pre-check and acquiring the lock the CLI may have started generating
       // (the stranded text got submitted by someone else, or the dismisser
@@ -3823,53 +3847,54 @@ export class Daemon extends EventEmitter {
       // no-op at an empty prompt, but into a modal it is a confirmation.
       if (this.fatalStartupBlocked) return "busy";
       const state = await this.strandedInputState(prompt);
-      if (state !== "stranded") return state === "busy" ? "busy" : "idle";
+      if (state === "clear") return "idle";
+      if (state !== "stranded") return "busy"; // busy, or unreadable: no evidence the prompt is free
       const sent = await this.sendDeliveryEnter("stranded-input-submit");
-      return sent ? "submitted" : "idle";
+      return sent ? "submitted" : "failed";
     });
   }
 
-  /** "stranded": an AgEnD message sits in the input row; "busy": the pane is not at its prompt; "clear" otherwise. */
-  private async strandedInputState(prompt: RegExp): Promise<"stranded" | "busy" | "clear"> {
+  /**
+   * "stranded": an AgEnD message sits in the input row; "clear": the prompt is
+   * at the bottom with no stranded text; "busy": generating, or the prompt is
+   * not at the bottom (incl. a blank frame); "unknown": the pane could not be
+   * read. Only "clear" is positive evidence.
+   */
+  private async strandedInputState(prompt: RegExp): Promise<"stranded" | "busy" | "clear" | "unknown"> {
     let pane: string;
-    try { pane = await this.tmux!.capturePane(); } catch { return "clear"; }
+    try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
-    return bottomRowIsReady(pane, prompt) || lastNonBlankRow(pane) == null ? "clear" : "busy";
-  }
-
-  /** True when the pane is not generating and an AgEnD message sits in the input row. */
-  private async strandedInputPresent(prompt: RegExp): Promise<boolean> {
-    let pane: string;
-    try { pane = await this.tmux!.capturePane(); } catch { return false; }
-    if (this.backend?.getBusyPattern?.()?.test(pane)) return false;
-    return strandedAgendMessageInInput(pane, prompt);
+    return bottomRowIsReady(pane, prompt) ? "clear" : "busy";
   }
 
   /**
    * F2: for Enter-dropping TUIs, "some output after Enter" proves nothing — the
    * turn that made the pane look idle keeps producing output. Confirm the
-   * SUBMISSION instead: the pasted text is gone from the input row, or the
-   * TUI's own busy marker is up. Polls on the same cadence as confirmBusyAfterEnter.
+   * SUBMISSION instead: the pasted text is gone from the input row ("absent"),
+   * or the TUI's own busy marker is up. "unknown" = the pane could not be read;
+   * it never counts as confirmed.
    */
-  private async pasteStillInInput(formatted: string): Promise<boolean> {
+  private async pasteResidue(formatted: string): Promise<"present" | "absent" | "unknown"> {
     const prompt = this.backend?.getBottomReadyPattern?.();
-    if (!prompt || !this.tmux) return false;
+    if (!prompt || !this.tmux) return "absent";
     let pane: string;
-    try { pane = await this.tmux.capturePane(); } catch { return false; }
-    if (this.backend?.getBusyPattern?.()?.test(pane)) return false; // generating = submitted
-    return pasteLeftInInput(pane, prompt, formatted);
+    try { pane = await this.tmux.capturePane(); } catch { return "unknown"; }
+    if (this.backend?.getBusyPattern?.()?.test(pane)) return "absent"; // generating = submitted
+    return pasteLeftInInput(pane, prompt, formatted) ? "present" : "absent";
   }
 
   /**
-   * Submission = the legacy idle→busy output signal AND the pasted text has left
-   * the input row. The first alone is what produced false ✅s: the turn that
-   * made the pane look idle keeps emitting output after our (dropped) Enter.
+   * Submission = the legacy idle→busy output signal AND the pasted text has
+   * verifiably left the input row. The first alone is what produced false ✅s:
+   * the turn that made the pane look idle keeps emitting output after our
+   * (dropped) Enter — and an unreadable pane is not a verified absence either.
    */
   private async confirmSubmittedAfterEnter(windowId: string, enterAt: number, formatted: string): Promise<boolean> {
     const sawOutput = await this.confirmBusyAfterEnter(windowId, enterAt);
-    if (await this.pasteStillInInput(formatted)) return false;
-    return sawOutput;
+    const residue = await this.pasteResidue(formatted);
+    if (residue === "unknown") this.logger.warn("Could not read the pane after Enter — not confirming the submission");
+    return sawOutput && residue === "absent";
   }
 
   /**

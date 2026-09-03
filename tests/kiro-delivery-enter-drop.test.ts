@@ -70,6 +70,7 @@ function makeHarness(backend: unknown): Harness {
     getWindowId: () => "@7",
     getLastPasteError: () => null,
     isLastPasteFailureRecoverable: () => true,
+    getLastSendSpecialKeyError: () => "send-keys failed",
   };
   daemon.controlClient = {
     isIdle: () => state.silent,
@@ -86,12 +87,12 @@ function makeHarness(backend: unknown): Harness {
 }
 
 /** Drive a delivery under fake timers until it settles (or the budget runs out). */
-async function settle<T>(promise: Promise<T>, maxMs = 120_000): Promise<T> {
+async function settle<T>(promise: Promise<T>, maxMs = 120_000, stepMs = 100): Promise<T> {
   let done = false;
   let result!: T;
   void promise.then(v => { result = v; done = true; });
-  for (let elapsed = 0; !done && elapsed <= maxMs; elapsed += 100) {
-    await vi.advanceTimersByTimeAsync(100);
+  for (let elapsed = 0; !done && elapsed <= maxMs; elapsed += stepMs) {
+    await vi.advanceTimersByTimeAsync(stepMs);
   }
   if (!done) throw new Error(`delivery did not settle within ${maxMs}ms of fake time`);
   return result;
@@ -175,12 +176,88 @@ describe("kiro delivery: the gate FAILS CLOSED on screens without the prompt (so
     expect(h.paste).not.toHaveBeenCalled();
   });
 
-  it("still defers to the silence gate on a completely blank capture (nothing to strand text into)", async () => {
+  it("a blank capture is NOT ready (clear/redraw frame): no paste until the prompt paints", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.pane = "";
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, {});
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.paste).not.toHaveBeenCalled();
+    h.state.pane = IDLE_BARE;
     h.paste.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
-    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}), 10_000)).toBe(true);
+    expect(await settle(delivery)).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failing capture-pane is NOT ready: the bounded wait fails without pasting (F1)", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.capture.mockRejectedValue(new Error("tmux gone"));
+    expect(await settle(h.daemon.waitForPaneReadyForDelivery("@7", 2_000), 5_000)).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled();
+  });
+});
+
+describe("kiro delivery: I/O failures never become success (sol review, M2)", () => {
+  it("F2: capture fails after the paste → not confirmed, retry path, then ❌ — never a false ✅", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = true;           // the old output-only signal would have said ✅
+    h.paste.mockImplementation(async () => { h.capture.mockRejectedValue(new Error("tmux gone")); return true; });
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}));
+
+    expect(ok).toBe(false);
+    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_confirmed");
+  });
+
+  it("F3: the lock-time capture fails → treated as busy, re-waits, and re-checks before pasting", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    let captures = 0;
+    h.capture.mockImplementation(async () => {
+      captures++;
+      if (captures <= 2) return OLD_STRANDED;                 // F1 ready check + F3 pre-check
+      if (captures <= 6) throw new Error("tmux hiccup");      // lock-time re-check + a few polls
+      return h.state.pane;
+    });
+    h.state.pane = OLD_STRANDED;                              // still stranded once readable again
+    const order: string[] = [];
+    h.enter.mockImplementation(async () => {
+      order.push("enter");
+      h.state.pane = h.state.pane === OLD_STRANDED ? IDLE_BARE : GENERATING;
+      return true;
+    });
+    h.paste.mockImplementation(async () => { order.push("paste"); h.state.pane = STRANDED; return true; });
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}));
+
+    expect(ok).toBe(true);
+    // The stranded text was submitted (after the pane became readable again),
+    // and only then was the new message pasted.
+    expect(order[0]).toBe("enter");
+    expect(order.indexOf("paste")).toBeGreaterThan(0);
+  });
+
+  it("F3: capture keeps failing → bounded ❌, nothing pasted", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    let captures = 0;
+    h.capture.mockImplementation(async () => {
+      captures++;
+      if (captures <= 2) return OLD_STRANDED;
+      throw new Error("tmux gone");
+    });
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}), 31 * 60_000, 5_000);
+    expect(ok).toBe(false);
+    expect(h.events).toContain("message_failed");
+    expect(h.paste).not.toHaveBeenCalled();
+  });
+
+  it("F3: the stranded-text Enter cannot be sent → ❌, nothing pasted on top of it", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.pane = OLD_STRANDED;
+    h.enter.mockResolvedValue(false);
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}));
+    expect(ok).toBe(false);
+    expect(h.events).toContain("message_failed");
+    expect(h.paste).not.toHaveBeenCalled();
   });
 });
 

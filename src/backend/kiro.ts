@@ -179,14 +179,17 @@ export class KiroBackend implements CliBackend {
     // discarded, not queued — so the daemon must not treat a quiet pane as an
     // open prompt (tool execution and backend retries are silent for seconds).
     //
-    // Legacy UI only: the gate needs the legacy prompt row to decide readiness
-    // and the daemon fails CLOSED without it. The v3/new TUI paints a different
-    // screen; until its ready marker is verified live it keeps the silence gate.
-    return this.activeUi === "legacy";
+    // Legacy UI with --trust-all-tools only: the gate needs a prompt row it can
+    // recognise row-locally, and the daemon fails CLOSED without one. The
+    // v3/new TUI paints a different screen; without trust-all the legacy row
+    // would be a bare `N% >`, indistinguishable from tool output such as
+    // `100% > done` — and never verified live. Both keep the silence gate until
+    // their ready marker is verified.
+    return this.activeUi === "legacy" && this.activeTrustAll;
   }
 
   getBottomReadyPattern(): RegExp | null {
-    if (this.activeUi !== "legacy") return null;
+    if (!this.dropsEnterWhileBusy()) return null;
     // Legacy-UI prompt row, live captures: "51% !>", "1% !> How can I help?",
     // "2% !> Not sure where to start? …" (placeholder hint shares the row), and
     // the mode-glyph form "20% λ !>". While a tool runs the bottom row is the
@@ -197,14 +200,11 @@ export class KiroBackend implements CliBackend {
     // the prompt row, then an optional mode glyph, then the marker. Unanchored
     // (`\d+%[^\n]*[!❯>]`) matched ordinary tool output such as
     // `Progress 50% > /tmp/output` or `download 100% -> done` and declared a busy
-    // pane ready. With --trust-all-tools (the AgEnD default) the ASCII marker is
-    // `!>` and its `!` is REQUIRED, so a bare `100% > done` at a row start is not
-    // a prompt either; the glyph form `8% ❯` (see getReadyPattern) needs no `!`
-    // because `❯` never occurs in tool output. Without trust-all the row is
-    // `N% >` and `!` is optional.
-    return this.activeTrustAll
-      ? /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/
-      : /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?!?\s?[❯>]/;
+    // pane ready. Under --trust-all-tools (the only mode the gate runs in) the
+    // ASCII marker is `!>` and its `!` is REQUIRED, so a bare `100% > done` at a
+    // row start is not a prompt either; the glyph form `8% ❯` (see
+    // getReadyPattern) needs no `!` because `❯` never occurs in tool output.
+    return /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
   }
 
   buildCommand(config: CliBackendConfig): string {
