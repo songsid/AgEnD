@@ -158,16 +158,23 @@ export interface CliBackend {
    * without painting anything, and a paste+Enter landing in that window leaves
    * the text sitting unsubmitted in the prompt row until the next Enter — which
    * then submits two messages as one. When true, the daemon requires the
-   * bottom-anchored ready marker (`getBottomReadyPattern`) before pasting,
-   * verifies SUBMISSION (not just "some output") after Enter, and submits any
-   * stranded text before pasting a new message. Absent means false.
+   * bottom-anchored ready marker (`getBottomReadyPattern`) before pasting and
+   * FAILS CLOSED without it (a non-blank pane whose bottom row is not the
+   * prompt is treated as busy — the prompt may simply have scrolled out of the
+   * viewport behind tool output), verifies SUBMISSION (not just "some output")
+   * after Enter, and submits any stranded text before pasting a new message.
+   * Return true only for a UI whose prompt row the pattern below recognises;
+   * other UI flavours of the same CLI should return false and keep the
+   * silence gate. Absent means false.
    */
   dropsEnterWhileBusy?(): boolean;
 
   /**
-   * Ready marker tested against the LAST non-blank pane row only. Distinct from
-   * `getReadyPattern()`, which may match anywhere on screen (a prompt higher up
-   * is history). Required for `dropsEnterWhileBusy()` backends; others may omit.
+   * Ready marker tested against ONE pane row at a time (the LAST non-blank row
+   * for readiness), so `^` anchors the row start — anchor it: an unanchored
+   * marker matches ordinary tool output (`Progress 50% > /tmp/out`). Distinct
+   * from `getReadyPattern()`, which may match anywhere on screen (a prompt
+   * higher up is history). Required for `dropsEnterWhileBusy()` backends.
    */
   getBottomReadyPattern?(): RegExp | null;
 

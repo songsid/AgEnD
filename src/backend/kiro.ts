@@ -140,6 +140,16 @@ export class KiroBackend implements CliBackend {
   private readonly compatibility: KiroCliCompatibility;
   private readonly compatibilityCacheKey?: string;
   private warnedUnsupportedEffort = false;
+  /**
+   * UI flavour and trust mode of the LAST command built. The Enter-drop
+   * delivery gate (dropsEnterWhileBusy / getBottomReadyPattern) is specific to
+   * the legacy UI's prompt row, so both are derived from what was actually
+   * launched rather than assumed. Defaults match kiro's config defaults
+   * (`kiro_ui: legacy`, `--trust-all-tools`) for a backend that has not built a
+   * command yet.
+   */
+  private activeUi: "legacy" | "tui" | "v3" = "legacy";
+  private activeTrustAll = true;
 
   constructor(private instanceDir: string, compatibility?: KiroCliCompatibility) {
     this.binaryPath = resolveBinary("kiro-cli");
@@ -168,16 +178,33 @@ export class KiroBackend implements CliBackend {
     // next message's Enter submitted both as one. Enter during a turn is
     // discarded, not queued — so the daemon must not treat a quiet pane as an
     // open prompt (tool execution and backend retries are silent for seconds).
-    return true;
+    //
+    // Legacy UI with --trust-all-tools only: the gate needs a prompt row it can
+    // recognise row-locally, and the daemon fails CLOSED without one. The
+    // v3/new TUI paints a different screen; without trust-all the legacy row
+    // would be a bare `N% >`, indistinguishable from tool output such as
+    // `100% > done` — and never verified live. Both keep the silence gate until
+    // their ready marker is verified.
+    return this.activeUi === "legacy" && this.activeTrustAll;
   }
 
-  getBottomReadyPattern(): RegExp {
+  getBottomReadyPattern(): RegExp | null {
+    if (!this.dropsEnterWhileBusy()) return null;
     // Legacy-UI prompt row, live captures: "51% !>", "1% !> How can I help?",
     // "2% !> Not sure where to start? …" (placeholder hint shares the row), and
     // the mode-glyph form "20% λ !>". While a tool runs the bottom row is the
     // tool banner ("Purpose: …"); while generating it is "⠇ Thinking…" — neither
     // matches, which is exactly the point.
-    return /\d+%[^\n]*[!❯>]/;
+    //
+    // Anchored to the ROW START: the context percentage is the first thing on
+    // the prompt row, then an optional mode glyph, then the marker. Unanchored
+    // (`\d+%[^\n]*[!❯>]`) matched ordinary tool output such as
+    // `Progress 50% > /tmp/output` or `download 100% -> done` and declared a busy
+    // pane ready. Under --trust-all-tools (the only mode the gate runs in) the
+    // ASCII marker is `!>` and its `!` is REQUIRED, so a bare `100% > done` at a
+    // row start is not a prompt either; the glyph form `8% ❯` (see
+    // getReadyPattern) needs no `!` because `❯` never occurs in tool output.
+    return /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
   }
 
   buildCommand(config: CliBackendConfig): string {
@@ -185,6 +212,11 @@ export class KiroBackend implements CliBackend {
     let cmd = `${this.binaryPath} chat`;
     if (ui === "legacy" && this.compatibility.supportsLegacyUi) cmd += " --legacy-ui";
     else if (ui === "v3") cmd += " --v3";
+    // Record what is actually being launched for the delivery gate (see
+    // dropsEnterWhileBusy): a "legacy" request on a binary without --legacy-ui
+    // runs the default new TUI, not the legacy screen.
+    this.activeUi = ui === "legacy" && this.compatibility.supportsLegacyUi ? "legacy" : ui === "v3" ? "v3" : "tui";
+    this.activeTrustAll = config.skipPermissions !== false;
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
     // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
     if (!config.skipResume) cmd += " --resume";

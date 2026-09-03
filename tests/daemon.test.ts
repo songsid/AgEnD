@@ -474,7 +474,9 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("always retries the first post-restart Enter for Kiro before trusting redraw output", async () => {
-    const { backend, daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true);
+    // The pane shows Kiro's legacy prompt: the Enter-drop gate fails closed on
+    // anything else (a blank stub is "not ready", not "nothing to strand into").
+    const { backend, daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true, "51% !>");
     // Simulate the regression: Kiro's final startup redraw makes the pane look
     // busy even though it swallowed the first Enter. The ordinary conditional
     // confirmation would therefore return true and never send the retry.
@@ -505,7 +507,7 @@ describe("Daemon backend-native input queue delivery", () => {
     // message is confirmed while its text sits unsubmitted. A bare extra Enter is
     // a no-op for kiro at an empty prompt AND during generation (verified live),
     // so every delivery gets the defensive retry.
-    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true);
+    const { daemon, instanceDir, tmux } = makeDeliveryDaemon("kiro-cli", true, "51% !>");
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
     (daemon as any).firstDeliveryDelay = { consume: () => 500 };
