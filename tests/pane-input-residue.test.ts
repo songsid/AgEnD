@@ -79,6 +79,23 @@ describe("pane-input-residue: bottom-anchored readiness", () => {
   it("is ready on a bare prompt and on a prompt sharing its row with the placeholder hint", () => {
     expect(bottomRowIsReady(IDLE_BARE, PROMPT)).toBe(true);
     expect(bottomRowIsReady(IDLE_WITH_HINT, PROMPT)).toBe(true);
+    expect(bottomRowIsReady("> ok\n20% λ !>", PROMPT)).toBe(true);      // mode-glyph form
+    expect(bottomRowIsReady("> ok\n  7% !> ", PROMPT)).toBe(true);      // leading indent
+  });
+
+  it("is NOT ready when the bottom row is tool output that merely contains a percentage and a chevron", () => {
+    // sol's review: the unanchored marker declared both of these ready.
+    expect(bottomRowIsReady("running…\nProgress 50% > /tmp/output", PROMPT)).toBe(false);
+    expect(bottomRowIsReady("running…\ndownload 100% -> done", PROMPT)).toBe(false);
+    expect(bottomRowIsReady("running…\n100% > done", PROMPT)).toBe(false);          // no `!` under --trust-all-tools
+    expect(bottomRowIsReady("running…\nSee 12% !> in the docs", PROMPT)).toBe(false); // not at the row start
+  });
+
+  it("is NOT ready when the turn's own prompt row has scrolled out of the viewport", () => {
+    // Long tool output: the pane holds only output rows, no `N% !>` anywhere.
+    const scrolled = Array.from({ length: 40 }, (_, i) => `line ${i} of a long tool output`).join("\n");
+    expect(bottomRowIsReady(scrolled, PROMPT)).toBe(false);
+    expect(inputAreaText(scrolled, PROMPT)).toBeNull();
   });
 
   it("is ready (prompt row visible) even when stranded text sits after the marker", () => {
@@ -125,6 +142,37 @@ describe("pane-input-residue: did our paste get submitted?", () => {
 
   it("is a whitespace-insensitive prefix match, so a different message is not mistaken for ours", () => {
     expect(pasteLeftInInput(STRANDED, PROMPT, "[user:hanhanv via discord, id:368442276000694273] MSG-9 something else")).toBe(false);
+  });
+});
+
+describe("pane-input-residue: prompt pattern follows the launched UI and trust mode", () => {
+  const compat = { version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const };
+  const base = { workingDirectory: "/tmp", instanceName: "x" } as any;
+
+  it("is legacy-only: a v3 or new-TUI launch disables the Enter-drop gate", () => {
+    const be = new KiroBackend("/tmp/kiro-residue-test", compat);
+    be.buildCommand({ ...base, kiroUi: "v3" });
+    expect(be.dropsEnterWhileBusy()).toBe(false);
+    expect(be.getBottomReadyPattern()).toBeNull();
+    be.buildCommand({ ...base, kiroUi: "tui" });
+    expect(be.dropsEnterWhileBusy()).toBe(false);
+    be.buildCommand({ ...base, kiroUi: "legacy" });
+    expect(be.dropsEnterWhileBusy()).toBe(true);
+  });
+
+  it("treats a legacy request on a binary without --legacy-ui as the new TUI", () => {
+    const be = new KiroBackend("/tmp/kiro-residue-test", { ...compat, supportsLegacyUi: false });
+    be.buildCommand({ ...base, kiroUi: "legacy" });
+    expect(be.dropsEnterWhileBusy()).toBe(false);
+  });
+
+  it("requires the `!` marker under --trust-all-tools and accepts `N% >` without it", () => {
+    const be = new KiroBackend("/tmp/kiro-residue-test", compat);
+    be.buildCommand({ ...base, skipPermissions: false });
+    expect(bottomRowIsReady("> ok\n12% >", be.getBottomReadyPattern()!)).toBe(true);
+    expect(bottomRowIsReady("> ok\n12% !>", be.getBottomReadyPattern()!)).toBe(true);
+    be.buildCommand({ ...base });
+    expect(bottomRowIsReady("> ok\n12% >", be.getBottomReadyPattern()!)).toBe(false);
   });
 });
 

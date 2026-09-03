@@ -33,7 +33,7 @@ import {
   renderCrossInstanceHandoffMetadata,
 } from "./cross-instance-envelope.js";
 import type { SpawnGate } from "./spawn-gate.js";
-import { bottomRowIsReady, inputAreaText, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
+import { bottomRowIsReady, lastNonBlankRow, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -3712,9 +3712,12 @@ export class Daemon extends EventEmitter {
     // prompt, verified live), then wait for the prompt to come back before our
     // own paste. The wait happens OUTSIDE the pane lock like every other wait.
     if (windowId && this.controlClient && !handingOffToNativeQueue) {
-      const submittedStranded = await this.submitStrandedInputIfAny(windowId);
+      const stranded = await this.submitStrandedInputIfAny(windowId);
       if (cancelled()) return false;
-      if (submittedStranded) {
+      if (stranded !== "idle") {
+        // "submitted": the stranded text's turn is running. "busy": the pane
+        // changed under us between the ready check and the lock (the CLI
+        // started generating) — either way the prompt must come back first.
         const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
         if (cancelled()) return false;
         if (!readyAgain) {
@@ -3756,11 +3759,18 @@ export class Daemon extends EventEmitter {
       const pane = await this.tmux.capturePane();
       if (this.backend.getBusyPattern?.()?.test(pane)) return false;
       if (bottomRowIsReady(pane, prompt)) return true;
-      // Gate only a screen we recognise as the chat (a prompt row is visible —
-      // during a tool call it is the submitted message's own `N% !>` line higher
-      // up). A pane with no prompt row anywhere (a panel, a modal, an unknown
-      // layout) falls back to the silence decision rather than waiting 30 min.
-      return inputAreaText(pane, prompt) == null;
+      // FAIL CLOSED on any non-blank screen without the prompt at the bottom.
+      // The obvious "unknown layout → fall back to silence" shortcut re-opened
+      // the bug: a long tool output scrolls the turn's own `N% !>` row out of
+      // the visible pane (capture-pane -p is the viewport only), the bottom row
+      // is tool output, the pane is quiet — and a paste there strands the text
+      // exactly as before. The prompt row is the only evidence Kiro accepts an
+      // Enter; a modal or panel is handled by the dialog dismisser, and the
+      // bounded wait reports a failure rather than pasting into a screen we do
+      // not understand. A completely blank capture (nothing painted yet) still
+      // defers to the silence gate: there is nothing there to strand text into.
+      if (lastNonBlankRow(pane) == null) return true;
+      return false;
     } catch {
       // A failed capture must not wedge delivery forever; the silence gate stands.
       return true;
@@ -3793,19 +3803,47 @@ export class Daemon extends EventEmitter {
    * delivery's Enter was dropped), submit it with one bare Enter under the pane
    * lock. Only acts on a positive signature — the `[user:`/`[from:` marker every
    * pasted message carries — never on Kiro's own placeholder hints. Returns
-   * whether an Enter was sent.
+   * "submitted" when an Enter went out, "busy" when the lock-time re-check found
+   * the pane no longer at its prompt (the caller must wait for it again before
+   * pasting), and "idle" when there was nothing to do.
    */
-  private async submitStrandedInputIfAny(windowId: string): Promise<boolean> {
-    if (this.backend?.dropsEnterWhileBusy?.() !== true || !this.tmux) return false;
+  private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy"> {
+    if (this.backend?.dropsEnterWhileBusy?.() !== true || !this.tmux) return "idle";
     const prompt = this.backend.getBottomReadyPattern?.();
-    if (!prompt) return false;
-    let pane: string;
-    try { pane = await this.tmux.capturePane(); } catch { return false; }
-    if (this.backend.getBusyPattern?.()?.test(pane)) return false;
-    if (!strandedAgendMessageInInput(pane, prompt)) return false;
+    if (!prompt) return "idle";
+    // Cheap pre-check outside the lock so the common case (nothing stranded)
+    // never contends with the dialog dismisser.
+    if ((await this.strandedInputState(prompt)) !== "stranded") return "idle";
     this.logger.warn({ windowId }, "Unsubmitted message found in the input row — submitting it before this delivery");
-    const sent = await this.paneWriteLock.run(() => this.sendDeliveryEnter("stranded-input-submit"));
-    return sent === true;
+    return this.paneWriteLock.run(async (): Promise<"idle" | "submitted" | "busy"> => {
+      // Re-check UNDER the lock right before the key goes out: between the
+      // pre-check and acquiring the lock the CLI may have started generating
+      // (the stranded text got submitted by someone else, or the dismisser
+      // acted), or a fatal startup screen may have come up. A bare Enter is a
+      // no-op at an empty prompt, but into a modal it is a confirmation.
+      if (this.fatalStartupBlocked) return "busy";
+      const state = await this.strandedInputState(prompt);
+      if (state !== "stranded") return state === "busy" ? "busy" : "idle";
+      const sent = await this.sendDeliveryEnter("stranded-input-submit");
+      return sent ? "submitted" : "idle";
+    });
+  }
+
+  /** "stranded": an AgEnD message sits in the input row; "busy": the pane is not at its prompt; "clear" otherwise. */
+  private async strandedInputState(prompt: RegExp): Promise<"stranded" | "busy" | "clear"> {
+    let pane: string;
+    try { pane = await this.tmux!.capturePane(); } catch { return "clear"; }
+    if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
+    if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
+    return bottomRowIsReady(pane, prompt) || lastNonBlankRow(pane) == null ? "clear" : "busy";
+  }
+
+  /** True when the pane is not generating and an AgEnD message sits in the input row. */
+  private async strandedInputPresent(prompt: RegExp): Promise<boolean> {
+    let pane: string;
+    try { pane = await this.tmux!.capturePane(); } catch { return false; }
+    if (this.backend?.getBusyPattern?.()?.test(pane)) return false;
+    return strandedAgendMessageInInput(pane, prompt);
   }
 
   /**

@@ -132,16 +132,71 @@ describe("kiro delivery: Enter dropped while busy (F1 bottom-anchored ready gate
   });
 });
 
-describe("kiro delivery: unknown pane shapes never wedge the gate", () => {
-  it("falls back to the silence decision when no prompt row is visible anywhere (panel/modal/blank)", async () => {
+describe("kiro delivery: the gate FAILS CLOSED on screens without the prompt (sol review of #686)", () => {
+  it("does not paste when a long tool output has scrolled the prompt row out of the viewport", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
-    h.state.pane = "";                    // nothing recognisable on screen
+    // capture-pane -p is the viewport only: 40 rows of tool output, no `N% !>`
+    // anywhere, no spinner, control-mode quiet. The old "unknown layout → use
+    // the silence decision" fallback pasted here and reproduced the Enter drop.
+    h.state.pane = Array.from({ length: 40 }, (_, i) => `[stdout] chunk ${i} of the tool's output`).join("\n");
+    h.state.silent = true;
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, {});
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(h.paste).not.toHaveBeenCalled();
+    expect(h.events).toContain("message_queued");
+
+    // The turn ends and the prompt returns at the bottom: now it pastes.
+    h.state.pane = IDLE_BARE;
     h.paste.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
-
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}), 10_000);
-
-    expect(ok).toBe(true);
+    expect(await settle(delivery)).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
+    expect(h.events).toContain("message_confirmed");
+  });
+
+  it("does not paste when the bottom row is tool output that looks like a prompt (`Progress 50% > …`)", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.pane = "1% !> run the download\nI will run the following command (using tool: shell)\nProgress 50% > /tmp/output";
+    void h.daemon.deliverMessage(MESSAGE, STATUS, {});
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.paste).not.toHaveBeenCalled();
+
+    h.state.pane = "…\ndownload 100% -> done";
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.paste).not.toHaveBeenCalled();
+  });
+
+  it("reports a bounded failure instead of pasting when the prompt never comes back", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.pane = "Some panel we do not recognise\n[ OK ]";
+    const ready = h.daemon.waitForPaneReadyForDelivery("@7", 2_000);
+    const result = await settle(ready, 5_000);
+    expect(result).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled();
+  });
+
+  it("still defers to the silence gate on a completely blank capture (nothing to strand text into)", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.pane = "";
+    h.paste.mockImplementation(async () => { h.state.pane = GENERATING; return true; });
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}), 10_000)).toBe(true);
+    expect(h.paste).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("kiro delivery: the Enter-drop gate is legacy-UI only", () => {
+  it("a kiro v3 launch keeps the silence-based path (no bottom-row gating)", async () => {
+    const be = kiro();
+    be.buildCommand({ workingDirectory: "/tmp", instanceName: "x", kiroUi: "v3" } as any);
+    expect(be.dropsEnterWhileBusy()).toBe(false);
+    const h = makeHarness(be); dirs.push(h.dir);
+    h.state.pane = TOOL_RUNNING;        // would block the legacy gate
+    h.state.silent = true;
+    h.state.outputSince = true;
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}))).toBe(true);
+    expect(h.paste).toHaveBeenCalledTimes(1);
+    expect(h.events).toContain("message_confirmed");
   });
 });
 
@@ -200,6 +255,30 @@ describe("kiro delivery: stranded message from an earlier delivery (F3)", () => 
     expect(order[0]).toBe("enter");                 // stranded text submitted first
     expect(order.indexOf("paste")).toBeGreaterThan(0);
     expect(h.events).toContain("message_confirmed");
+  });
+
+  it("re-checks the pane under the write lock and skips the Enter if the CLI started generating meanwhile", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    // Pre-check (outside the lock) sees the stranded text; by the time the lock
+    // is held the stranded message has been submitted and Kiro is generating.
+    let captures = 0;
+    h.capture.mockImplementation(async () => {
+      captures++;
+      return captures <= 2 ? OLD_STRANDED : h.state.pane;
+    });
+    h.state.pane = "2% !> [from:agend-leader-t1503382358143799511] an earlier message whose Enter was dropped\n⠇ Thinking...";
+    const enters: string[] = [];
+    h.enter.mockImplementation(async () => { enters.push("enter"); h.state.pane = GENERATING; return true; });
+    h.paste.mockImplementation(async () => { enters.push("paste"); h.state.pane = STRANDED; return true; });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, {});
+    await vi.advanceTimersByTimeAsync(2_000);
+    // No stranded-input Enter went out (the lock-time re-check saw "generating").
+    expect(enters).not.toContain("enter");
+    // Once the pane is idle again the normal delivery proceeds.
+    h.state.pane = IDLE_BARE;
+    expect(await settle(delivery)).toBe(true);
+    expect(enters[0]).toBe("paste");
   });
 
   it("never sends a bare Enter for Kiro's own placeholder hint or an empty prompt", async () => {
