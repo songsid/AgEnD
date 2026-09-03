@@ -1712,14 +1712,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       workingDirectory: config.working_directory,
       reason: "startup",
     }, async () => {
-      try {
-        await this.startInstance(name, config, topicMode);
-        if (this.daemons.has(name)) onReady?.(name);
-      } catch (err) {
-        this.logger.error({ err, name }, "Failed to start instance");
-        this.scheduleStartupRetry(name, 0);
-      }
+      if (await this.startInstanceUnattended(name, config, topicMode, "instance")) onReady?.(name);
     })));
+  }
+
+  /**
+   * Start from an UNATTENDED path (fleet startup, full restart, config
+   * reconcile): nobody is watching the result, so a failure is logged and
+   * handed to the delayed automatic retry instead of leaving the instance
+   * `stopped` forever. Explicit operator/API starts call startInstance directly
+   * and keep their synchronous error. Returns whether the instance is up.
+   */
+  private async startInstanceUnattended(name: string, config: InstanceConfig, topicMode: boolean, what: string): Promise<boolean> {
+    try {
+      await this.startInstance(name, config, topicMode);
+      return this.daemons.has(name);
+    } catch (err) {
+      this.logger.error({ err, name }, `Failed to start ${what}`);
+      this.scheduleStartupRetry(name, 0);
+      return false;
+    }
   }
 
   // ── Delayed automatic startup retries ──────────────────────────────────
@@ -2400,6 +2412,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (this.daemons.has(name)) startupProgress.markReady();
         } catch (err) {
           this.logger.error({ err, name }, "Failed to start general instance");
+          // General is the most important instance to bring back: it also gets
+          // the delayed automatic retry (the topic notice below still goes out).
+          this.scheduleStartupRetry(name, 0);
           const errorMsg = err instanceof Error ? err.message : String(err);
           const topicId = cfg.topic_id ? String(cfg.topic_id) : undefined;
           if (this.adapter && topicId) {
@@ -9791,8 +9806,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance
         this.logger.info({ name }, "New instance in config — starting");
-        await this.startInstance(name, config, topicMode).catch(err =>
-          this.logger.error({ err, name }, "Failed to start new instance"));
+        await this.startInstanceUnattended(name, config, topicMode, "new instance");
       } else if (oldConfig?.instances[name]) {
         const daemon = this.daemons.get(name)!;
         const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
@@ -9802,8 +9816,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (!isDeepStrictEqual(oldParts.cold, newParts.cold)) {
           this.logger.info({ name }, "Instance config changed — restarting");
           await this.stopInstance(name).catch(() => {});
-          await this.startInstance(name, config, topicMode).catch(err =>
-            this.logger.error({ err, name }, "Failed to restart modified instance"));
+          await this.startInstanceUnattended(name, config, topicMode, "modified instance");
         } else if (!isDeepStrictEqual(oldParts.hot, newParts.hot)) {
           const update = hotConfigUpdate(config);
           const ipc = this.instanceIpcClients.get(name);
@@ -9920,12 +9933,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const restartGenerals = restartEntries.filter(([_, cfg]) => cfg.general_topic);
     const restartOthers = restartEntries.filter(([_, cfg]) => !cfg.general_topic);
     for (const [name, cfg] of restartGenerals) {
-      try {
-        await this.startInstance(name, cfg, topicMode);
-        if (this.daemons.has(name)) restartProgress.markReady();
-      } catch (err) {
-        this.logger.error({ err, name }, "Failed to start general instance");
-      }
+      if (await this.startInstanceUnattended(name, cfg, topicMode, "general instance")) restartProgress.markReady();
     }
     // General is ready again; now its topic can own the live progress message.
     await restartProgress.start(progressTarget);

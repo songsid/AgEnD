@@ -15,8 +15,17 @@
  * recovery — the memory simply ages out once the CLI stops printing the error.
  */
 
-/** How long after the last sighting a backend is still considered down. */
-export const BACKEND_OUTAGE_ACTIVE_MS = 5 * 60_000;
+/**
+ * How long after the last sighting a backend is still considered down.
+ *
+ * Longer than the longest startup-retry backoff (15 min) plus a startup budget:
+ * in an all-down fleet nothing is running to refresh the memory, and a retry
+ * that begins after it expired would clear the session it was meant to keep.
+ * Recovery is also cleared POSITIVELY — a successful `--resume` launch on the
+ * backend proves it reachable (see Daemon.spawnClaudeWindow) — so the long TTL
+ * costs nothing once the service is back.
+ */
+export const BACKEND_OUTAGE_ACTIVE_MS = 20 * 60_000;
 
 export interface BackendOutageSighting {
   firstSeenAt: number;
@@ -75,4 +84,5 @@ export class BackendOutageTracker {
 export interface BackendOutageView {
   isActive(backend: string): boolean;
   record(backend: string, instance?: string, detail?: string): { isNew: boolean };
+  clear(backend: string): void;
 }

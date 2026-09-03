@@ -438,8 +438,15 @@ export class KiroBackend implements CliBackend {
       // one outage, not N incidents — the lifecycle notifies once and the daemon
       // stops burning `--resume` attempts (and sessions) while it lasts.
       // skipRecoveryWait: kiro is back at its prompt between retries.
+      //
+      // Matched on kiro's numbered error structure (`   1: dispatch failure
+      // (timeout)` at a row start — the live line wraps after it, which is why
+      // the URL alternative is unanchored) rather than on the bare phrase: an
+      // agent quoting "dispatch failure (timeout)" in conversation must not mark
+      // the whole backend down and change every instance's startup semantics.
+      // The URL alternative requires the complete sentence plus a kiro.dev host.
       {
-        pattern: /dispatch failure \(timeout\)|request timed out: error sending request for url \((https?:\/\/[^)\s]*kiro\.dev[^)\s]*)\)/i,
+        pattern: /^\s*\d+:\s*dispatch failure \(timeout\)|request timed out: error sending request for url \((https?:\/\/[^)\s]*kiro\.dev[^)\s]*)\)/im,
         type: "network",
         action: "notify",
         message: "Kiro backend unreachable — requests to the kiro.dev runtime are timing out",

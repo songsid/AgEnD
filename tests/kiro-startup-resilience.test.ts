@@ -66,10 +66,20 @@ describe("#4 kiro backend-unreachable error pattern", () => {
     expect(network.pattern.test(AUTH_PANE)).toBe(false);
   });
 
-  it("does not fire on an agent merely mentioning timeouts or kiro.dev", () => {
+  it("does not fire on an agent merely mentioning timeouts or kiro.dev — including the literal phrase", () => {
     const network = patterns().find(p => p.type === "network")!;
     expect(network.pattern.test("the request timed out, let me retry")).toBe(false);
     expect(network.pattern.test("docs live at https://kiro.dev/docs")).toBe(false);
+    // sol's review: the bare phrase in conversation must not mark the backend down.
+    expect(network.pattern.test("> Earlier we saw a dispatch failure (timeout) on that instance; the fix is in #690.")).toBe(false);
+    expect(network.pattern.test("1 dispatch failure (timeout) was mentioned")).toBe(false);
+  });
+
+  it("matches kiro's numbered error row, including the live line wrapped at the pane width", () => {
+    const network = patterns().find(p => p.type === "network")!;
+    expect(network.pattern.test("   1: dispatch failure (timeout): request timed out: error sending request for url (https://runtime.us-east-1.kiro.dev/)")).toBe(true);
+    expect(network.pattern.test("   1: dispatch failure (timeout): request timed out: error sending request for u\nrl (https://runtime.us-east-1.kiro.dev/)")).toBe(true);
+    expect(network.pattern.test("1: dispatch failure (timeout)")).toBe(true);
   });
 });
 
@@ -197,6 +207,27 @@ describe("#4 short-circuit: no session burn while the backend is down", () => {
     expect(h.trySpawn).toHaveBeenCalledTimes(1);
     expect(sessionKept(h)).toBe(true);
     expect(h.daemon.skipResume).toBe(false); // the delayed retry will resume again
+    // The failed window is torn down, not left alive-but-never-ready behind a `crashed` daemon.
+    expect(h.killed).toBe(1);
+    expect(h.daemon.tmux.killWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("a successful resume positively clears the outage memory (a fresh start does not)", async () => {
+    const outage = new BackendOutageTracker();
+    outage.record("kiro-cli", "kiro-b", "down");
+    const h = makeSpawnHarness(kiro(), { outage });
+    h.trySpawn.mockResolvedValueOnce(true);
+    // The tracker says "down" but this instance's resume comes back: outage over.
+    // (isActive is consulted only after a FAILED resume, so the success path runs.)
+    expect(await h.daemon.spawnClaudeWindow()).toBe(true);
+    expect(outage.isActive("kiro-cli")).toBe(false);
+
+    outage.record("kiro-cli", "kiro-b", "down");
+    const fresh = makeSpawnHarness(kiro(), { outage });
+    fresh.daemon.skipResume = true;
+    fresh.trySpawn.mockResolvedValueOnce(true);
+    expect(await fresh.daemon.spawnClaudeWindow()).toBe(false);
+    expect(outage.isActive("kiro-cli")).toBe(true); // a local fresh prompt proves nothing
   });
 
   it("the failed startup pane itself shows the outage text → records the outage and throws (nothing else running yet)", async () => {
@@ -216,6 +247,53 @@ describe("#4 short-circuit: no session burn while the backend is down", () => {
     const h = makeSpawnHarness(kiro(), { outage });
     h.trySpawn.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     expect(await h.daemon.spawnClaudeWindow()).toBe(true);
+  });
+});
+
+describe("#1 wake uses the resume budget too (sol blocker 1)", () => {
+  function wakeable(h: SpawnHarness) {
+    h.daemon.pauseWakeState = "paused";
+    h.daemon.autoPauseController = { wakeOnDeliver: (fn: () => Promise<void>) => fn() };
+    h.daemon.clearErrorRecoveryGate = vi.fn();
+    h.daemon.resumeRuntimeMonitors = vi.fn();
+    h.trySpawn.mockResolvedValue(true);
+  }
+
+  it("kiro wake passes the 60s resume budget to trySpawn instead of the caller's 30s", async () => {
+    const h = makeSpawnHarness(kiro());
+    wakeable(h);
+    await h.daemon.wake(30_000);
+    expect(h.trySpawn).toHaveBeenCalledWith(true, KIRO_RESUME_STARTUP_BUDGET_MS);
+    expect(h.daemon.wakeBudgetMs(30_000)).toBe(KIRO_RESUME_STARTUP_BUDGET_MS);
+    expect(h.daemon.wakeBudgetMs(120_000)).toBe(120_000); // never below the caller's
+  });
+
+  it("a backend without the capability keeps the caller's 30s (or its configured startup_timeout_ms if larger)", async () => {
+    const plain = { binaryName: "claude", getReadyPattern: () => /❯/, getErrorPatterns: () => [] };
+    const h = makeSpawnHarness(plain, { backendName: "claude-code" });
+    wakeable(h);
+    await h.daemon.wake(30_000);
+    expect(h.trySpawn).toHaveBeenCalledWith(true, 30_000);
+    const configured = makeSpawnHarness(plain, { backendName: "claude-code", startupTimeoutMs: 90_000 });
+    expect(configured.daemon.wakeBudgetMs(30_000)).toBe(90_000);
+  });
+});
+
+describe("crash-respawn during an outage hands off instead of stranding `crashed` (sol blocker 3)", () => {
+  it("emits startup_backend_unreachable and pauses health monitoring when the fleet is listening", () => {
+    const h = makeSpawnHarness(kiro());
+    const events: unknown[] = [];
+    h.daemon.on("startup_backend_unreachable", (e: unknown) => events.push(e));
+    expect(h.daemon.handOffBackendUnreachableRespawn(new BackendUnreachableStartupError("kiro-cli"))).toBe(true);
+    expect(events).toEqual([{ name: "kiro-a", backend: "kiro-cli" }]);
+    expect(h.daemon.healthCheckPaused).toBe(true);
+  });
+
+  it("is a no-op for other errors and when nobody listens (old log-only path)", () => {
+    const h = makeSpawnHarness(kiro());
+    expect(h.daemon.handOffBackendUnreachableRespawn(new Error("CLI failed to start after retry"))).toBe(false);
+    expect(h.daemon.handOffBackendUnreachableRespawn(new BackendUnreachableStartupError("kiro-cli"))).toBe(false);
+    expect(h.daemon.healthCheckPaused).toBe(false);
   });
 });
 
@@ -240,6 +318,7 @@ function makeLifecycle() {
     isClassicInstance: () => false,
     notifyInstanceTopic,
     notifyFleetError,
+    scheduleStartupRetry: vi.fn(),
     backendOutage: new BackendOutageTracker(),
     setTopicIcon: vi.fn(),
     webhookEmit: vi.fn(),
@@ -253,7 +332,7 @@ function makeLifecycle() {
     lifecycle.attachIncidentHandlers(name, daemon);
     return daemon;
   };
-  return { attach, notifyInstanceTopic, notifyFleetError, ctx };
+  return { attach, notifyInstanceTopic, notifyFleetError, ctx, lifecycle };
 }
 
 const flush = () => new Promise(r => setImmediate(r));
@@ -277,6 +356,16 @@ describe("#4 lifecycle: fleet-wide network errors notify once and feed the outag
     expect(notifyInstanceTopic).not.toHaveBeenCalled();
     expect(ctx.backendOutage!.isActive("kiro-cli")).toBe(true);
     expect([...ctx.backendOutage!.active("kiro-cli")!.instances].sort()).toEqual(["kiro-a", "kiro-b"]);
+  });
+
+  it("startup_backend_unreachable from a daemon → stop it (session kept) and hand it to the fleet's delayed retry", async () => {
+    const { attach, ctx, lifecycle } = makeLifecycle();
+    const stop = vi.spyOn(lifecycle, "stop").mockResolvedValue(undefined);
+    const a = attach("kiro-a");
+    a.emit("startup_backend_unreachable", { name: "kiro-a", backend: "kiro-cli" });
+    await flush();
+    expect(stop).toHaveBeenCalledWith("kiro-a");
+    expect((ctx as any).scheduleStartupRetry).toHaveBeenCalledWith("kiro-a", 0);
   });
 
   it("a plain (non-fleetWide) network error keeps the per-instance incident path", async () => {
@@ -414,6 +503,25 @@ describe("#3 delayed automatic startup retries", () => {
       delete (fm.fleetConfig as any).instances.b;                           // b removed from fleet.yaml
       await vi.advanceTimersByTimeAsync(60_000);
       expect(startInstance).toHaveBeenCalledTimes(2);                       // neither retried
+    } finally { cleanup(); }
+  });
+
+  it("General and other unattended starts get the retry; an explicit start keeps its synchronous error (sol blocker 2)", async () => {
+    const { fm, startInstance, cleanup } = makeFleet();
+    try {
+      (fm.fleetConfig as any).instances.general = { working_directory: "/tmp/g", general_topic: true };
+      expect(await (fm as any).startInstanceUnattended("general", (fm.fleetConfig as any).instances.general, true, "general instance")).toBe(false);
+      expect(fm.pendingStartupRetry("general")).toEqual({ attempt: 0 });
+      // The retry itself resolves the General config and runs through the gate.
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(startInstance).toHaveBeenCalledTimes(2);
+      expect(startInstance.mock.calls[1][0]).toBe("general");
+
+      // Explicit start: the error propagates, nothing is scheduled.
+      startInstance.mockRestore();
+      vi.spyOn(fm.lifecycle, "start").mockRejectedValue(new Error("boom"));
+      await expect(fm.startInstance("a", (fm.fleetConfig as any).instances.a, false)).rejects.toThrow("boom");
+      expect(fm.pendingStartupRetry("a")).toBeNull();
     } finally { cleanup(); }
   });
 

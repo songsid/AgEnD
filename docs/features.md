@@ -390,7 +390,7 @@ Kiro's `--resume` needs a round trip to its backend before it paints anything, s
 - recognises kiro's `dispatch failure (timeout) … kiro.dev` output as a **fleet-wide backend outage**: one General-topic notice per outage instead of one per instance, and while it lasts a failed resume keeps its session and fails the startup instead of starting fresh;
 - **retries failed startups automatically** after 1, 5 and 15 minutes (continuing every 15 minutes, up to 6 attempts, while the backend is down), through the spawn gate and never during a tmux storm. One aggregated "N instances failed to start" notice and, if it comes to that, one "gave up" notice. An `agend start`/`/restart` supersedes the pending retry.
 
-Other backends keep their previous startup behaviour.
+The resume budget, resume retry and outage short-circuit are kiro-only (they are backend capabilities). The delayed automatic startup retry applies to **every** backend and every unattended start path (fleet startup incl. General, full restart, config reconcile): a failed start that stayed `stopped` forever was never kiro-specific. Explicit `agend start` / API starts still report their error synchronously. An auto-paused kiro instance's wake uses the same 60s resume budget.
 
 ## agend quickstart
 

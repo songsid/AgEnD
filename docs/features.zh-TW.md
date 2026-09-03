@@ -332,7 +332,7 @@ Kiro 的 `--resume` 要先向後端拿回對話才會畫出任何東西，所以
 - 把 kiro 的 `dispatch failure (timeout) … kiro.dev` 輸出視為**全 fleet 的後端故障**：每次故障只在 General 發一則通知（而不是每個 instance 一則），故障期間 resume 失敗會保留 session 並讓啟動失敗，而不是改用 fresh；
 - **自動重試啟動失敗的 instance**：1、5、15 分鐘後重試（後端仍故障時每 15 分鐘持續，最多 6 次），走 spawn gate、tmux storm 期間不重試。只發一則彙整的「N 個 instance 啟動失敗」通知，真的放棄時再發一則。`agend start` / `/restart` 會取代待執行的重試。
 
-其他 backend 的啟動行為不變。
+resume 預算、resume 重試與故障短路只針對 kiro（backend capability）。延遲自動重試則對**所有** backend、所有無人值守的啟動路徑生效（fleet 啟動含 General、完整重啟、設定 reconcile）：啟動失敗就永遠 `stopped` 本來就不是 kiro 專屬問題。手動 `agend start` / API 啟動仍同步回報錯誤。auto-pause 的 kiro instance 喚醒時同樣使用 60 秒 resume 預算。
 
 ## agend quickstart
 

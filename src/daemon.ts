@@ -2004,7 +2004,9 @@ export class Daemon extends EventEmitter {
             // so its chat notification is suppressed into the fleet summary.
             if (crashType === "server") this.stormWindow?.markRecovered(this.name);
           } catch (err) {
-            this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
+            if (!this.handOffBackendUnreachableRespawn(err)) {
+              this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
+            }
           }
 
         } catch (err) {
@@ -2694,14 +2696,19 @@ export class Daemon extends EventEmitter {
 
     this.pauseWakeState = "waking";
     this.beginSpawn();
+    // A wake is a real resume launch: it gets at least the backend's resume
+    // budget (kiro: 60s — the conversation must come back from the backend
+    // before anything paints), never less than the caller's or the configured
+    // startup_timeout_ms.
+    const budgetMs = this.wakeBudgetMs(timeoutMs);
     const transition = this.autoPauseController.wakeOnDeliver(async () => {
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
         const ready = await Promise.race([
-          this.trySpawn(true, timeoutMs),
-          new Promise<false>(resolve => { timeout = setTimeout(() => resolve(false), timeoutMs); }),
+          this.trySpawn(true, budgetMs),
+          new Promise<false>(resolve => { timeout = setTimeout(() => resolve(false), budgetMs); }),
         ]);
-        if (!ready) throw new Error(`Wake timed out before CLI became ready (${timeoutMs}ms)`);
+        if (!ready) throw new Error(`Wake timed out before CLI became ready (${budgetMs}ms)`);
       } finally {
         if (timeout) clearTimeout(timeout);
       }
@@ -4788,7 +4795,7 @@ export class Daemon extends EventEmitter {
       //  2. Otherwise, for backends that ask for it, retry resume ONCE — the
       //     first miss is usually slowness, not a broken session.
       await this.noteStartupPaneForBackendOutage();
-      this.throwIfBackendUnreachable();
+      await this.failStartupIfBackendUnreachable();
       if (this.backend.retriesResumeOnStartupFailure?.() === true) {
         this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
         await this.killProcessTree();
@@ -4796,7 +4803,7 @@ export class Daemon extends EventEmitter {
         alive = await this.trySpawn(false, resumeBudget);
         if (!alive) {
           await this.noteStartupPaneForBackendOutage();
-          this.throwIfBackendUnreachable();
+          await this.failStartupIfBackendUnreachable();
         }
       }
     }
@@ -4820,6 +4827,9 @@ export class Daemon extends EventEmitter {
       }
     } else if (attemptedResume) {
       resumedSuccessfully = true;
+      // A resume needs the backend: its success is positive proof the backend
+      // is reachable again (a fresh prompt is local and proves nothing).
+      this.backendOutage?.clear(this.backendKey());
     }
 
     this.lastSpawnAt = Date.now();
@@ -4840,6 +4850,11 @@ export class Daemon extends EventEmitter {
     if (override == null) return undefined;
     const configured = this.config.startup_timeout_ms;
     return configured != null ? Math.max(configured, override) : override;
+  }
+
+  /** Effective wake budget = max(caller timeout, backend resume override, configured startup_timeout_ms). */
+  wakeBudgetMs(timeoutMs: number): number {
+    return Math.max(timeoutMs, this.startupBudgetFor(!this.skipResume) ?? 0, this.config.startup_timeout_ms ?? 0);
   }
 
   /** The fleet-level backend key this instance runs on (matches the lifecycle's backendOf). */
@@ -4867,11 +4882,34 @@ export class Daemon extends EventEmitter {
     } catch { /* capture failed — nothing to learn */ }
   }
 
-  /** Fail the startup WITHOUT touching the session while the backend is known to be down. */
-  private throwIfBackendUnreachable(): void {
+  /**
+   * Fail the startup WITHOUT touching the session while the backend is known to
+   * be down. The failed window is torn down first: the alternative — a live but
+   * never-ready CLI left behind while the daemon reports `crashed` — would keep
+   * the health monitor from ever seeing a dead pane and retrying.
+   */
+  private async failStartupIfBackendUnreachable(): Promise<void> {
     if (!this.backendOutage?.isActive(this.backendKey())) return;
     this.logger.warn("Backend unreachable — keeping the session and failing startup for a delayed retry");
+    await this.killProcessTree();
+    await this.tmux!.killWindow();
     throw new BackendUnreachableStartupError(this.backendKey());
+  }
+
+  /**
+   * Crash-respawn ran into the backend outage: the ordinary path would leave
+   * `crashed` + a paused monitor + nothing scheduled (and count it as a crash).
+   * Hand the instance to the fleet instead — the lifecycle stops this daemon
+   * and the fleet's delayed startup retry re-creates it later with the session
+   * intact. Returns true when someone took the hand-off.
+   */
+  private handOffBackendUnreachableRespawn(err: unknown): boolean {
+    if (!(err instanceof BackendUnreachableStartupError)) return false;
+    if (this.listenerCount("startup_backend_unreachable") === 0) return false;
+    this.logger.warn({ backend: err.backend }, "Respawn blocked by backend outage — handing off to the fleet's delayed startup retry");
+    this.healthCheckPaused = true;
+    this.emit("startup_backend_unreachable", { name: this.name, backend: err.backend });
+    return true;
   }
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */

@@ -118,6 +118,8 @@ export interface LifecycleContext {
   getInstanceDir(name: string): string;
   /** Fleet-level (General topic) notification, throttled per message text. */
   notifyFleetError?(text: string): void;
+  /** Hand a failed/blocked instance to the fleet's delayed automatic startup retry. */
+  scheduleStartupRetry?(name: string, attempt: number): void;
   saveFleetConfig(): void;
   /** Full stop+start. freshStart forces the respawn to skip session resume. */
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
@@ -544,6 +546,16 @@ export class InstanceLifecycle {
         this.notifyIncident(generalName, "crash_respawn", t("inst.crashed_respawned_log", name));
       }
     }, this.ctx.logger, `daemon.crash_respawn[${name}]`));
+
+    daemon.on("startup_backend_unreachable", safeHandler(async (data: { name: string; backend: string }) => {
+      // The daemon's crash-respawn hit the backend outage and paused itself.
+      // Stop it cleanly (session kept) and let the fleet's delayed retry bring
+      // it back once the backend answers — instead of `crashed` forever.
+      this.ctx.eventLog?.insert(name, "startup_backend_unreachable", { backend: data.backend });
+      this.ctx.logger.warn({ name, backend: data.backend }, "Respawn blocked by backend outage — stopping the daemon for a delayed startup retry");
+      await this.stop(name);
+      this.ctx.scheduleStartupRetry?.(name, 0);
+    }, this.ctx.logger, `daemon.startup_backend_unreachable[${name}]`));
 
     daemon.on("tmux_server_crash", safeHandler(() => {
       this.ctx.eventLog?.insert(name, "tmux_server_crash", {});
