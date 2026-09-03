@@ -406,7 +406,7 @@ const NORMAL_ENTER_SETTLE_MS = 500;
 const BOTTOM_READY_POLL_MS = 250;
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
-/** How many "stranded text → submit → wait for prompt → re-check" rounds a delivery tolerates before failing. */
+/** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
@@ -3721,11 +3721,18 @@ export class Daemon extends EventEmitter {
       // be there. "failed" (the Enter could not be sent) fails the delivery:
       // pasting now would submit both messages as one.
       for (let round = 0; ; round++) {
+        // Budget check BEFORE the next mutating call: each round may send one
+        // recovery Enter, so exactly STRANDED_INPUT_MAX_ROUNDS of them go out.
+        if (round >= STRANDED_INPUT_MAX_ROUNDS) {
+          this.logger.error({ round }, "Input row still not clear after the stranded-text recovery budget — reporting delivery failure");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
         const stranded = await this.submitStrandedInputIfAny(windowId);
         if (cancelled()) return false;
         if (stranded === "idle") break;
-        if (stranded === "failed" || round >= STRANDED_INPUT_MAX_ROUNDS) {
-          this.logger.error({ outcome: stranded, round }, "Could not clear the input row of stranded text — reporting delivery failure");
+        if (stranded === "failed") {
+          this.logger.error({ round }, "Could not submit the stranded text — reporting delivery failure");
           if (status) this.emit("message_failed", status); // ❌
           return false;
         }
