@@ -33,6 +33,7 @@ import {
   renderCrossInstanceHandoffMetadata,
 } from "./cross-instance-envelope.js";
 import type { SpawnGate } from "./spawn-gate.js";
+import { bottomRowIsReady, inputAreaText, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -401,6 +402,10 @@ export class PendingWorkTracker {
 }
 
 const NORMAL_ENTER_SETTLE_MS = 500;
+/** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
+const BOTTOM_READY_POLL_MS = 250;
+/** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
+const STRANDED_RETRY_READY_WAIT_MS = 30_000;
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
@@ -3674,7 +3679,7 @@ export class Daemon extends EventEmitter {
     // If the CLI is busy, either hand the complete submission to its native input
     // queue or wait for idle. Native queue support is an explicit backend capability:
     // normal Enter input has steering/interrupt semantics in several other CLIs.
-    if (windowId && this.controlClient && !this.isPaneIdleForDelivery(windowId)) {
+    if (windowId && this.controlClient && !(await this.isPaneReadyForDelivery(windowId))) {
       if (status) this.emit("message_queued", status);
       if (supportsQueuedInput || opts?.steer) {
         // Native queue (codex), or an explicit /steer: hand the complete
@@ -3688,13 +3693,32 @@ export class Daemon extends EventEmitter {
         );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
-        const becameIdle = await this.waitForPaneIdleForDelivery(windowId);
+        const becameIdle = await this.waitForPaneReadyForDelivery(windowId);
         if (cancelled()) return false;
         if (!becameIdle) {
           // The pane never freed up. Report the failure instead of pasting into a
           // wedged CLI (where the text would sit unsubmitted and the next message
           // would land on top of it) — and instead of holding the queue silently.
           this.logger.error("Pane still busy after the idle wait — reporting delivery failure");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
+      }
+    }
+
+    // F3 (#kiro-enter-drop): an earlier delivery's Enter may have been dropped,
+    // leaving that message in the input row. Pasting on top would submit both as
+    // one. Submit the stranded text first (a bare Enter — a no-op on an empty
+    // prompt, verified live), then wait for the prompt to come back before our
+    // own paste. The wait happens OUTSIDE the pane lock like every other wait.
+    if (windowId && this.controlClient && !handingOffToNativeQueue) {
+      const submittedStranded = await this.submitStrandedInputIfAny(windowId);
+      if (cancelled()) return false;
+      if (submittedStranded) {
+        const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
+        if (cancelled()) return false;
+        if (!readyAgain) {
+          this.logger.error("Pane never returned to its prompt after submitting stranded input — reporting delivery failure");
           if (status) this.emit("message_failed", status); // ❌
           return false;
         }
@@ -3712,6 +3736,102 @@ export class Daemon extends EventEmitter {
       if (this.refuseFatalStartupDelivery(status)) return false;
       return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
     });
+  }
+
+  /**
+   * Bottom-anchored readiness for TUIs that drop Enter while busy (see
+   * CliBackend.dropsEnterWhileBusy). Output silence is necessary but not
+   * sufficient for them: Kiro paints nothing for the whole duration of a shell
+   * or MCP tool call (and for each 10s backend retry), yet an Enter arriving
+   * then is discarded. Reproduced deterministically: `sleep 9` tool, paste at
+   * t+6s → text stranded in the prompt row, next message submitted both.
+   * Other backends keep the silence-based gate byte-for-byte.
+   */
+  private async isPaneReadyForDelivery(windowId: string): Promise<boolean> {
+    if (!this.isPaneIdleForDelivery(windowId)) return false;
+    if (this.backend?.dropsEnterWhileBusy?.() !== true) return true;
+    const prompt = this.backend.getBottomReadyPattern?.();
+    if (!prompt || !this.tmux) return true;
+    try {
+      const pane = await this.tmux.capturePane();
+      if (this.backend.getBusyPattern?.()?.test(pane)) return false;
+      if (bottomRowIsReady(pane, prompt)) return true;
+      // Gate only a screen we recognise as the chat (a prompt row is visible —
+      // during a tool call it is the submitted message's own `N% !>` line higher
+      // up). A pane with no prompt row anywhere (a panel, a modal, an unknown
+      // layout) falls back to the silence decision rather than waiting 30 min.
+      return inputAreaText(pane, prompt) == null;
+    } catch {
+      // A failed capture must not wedge delivery forever; the silence gate stands.
+      return true;
+    }
+  }
+
+  /**
+   * Like waitForPaneIdleForDelivery, plus the bottom-anchored prompt check for
+   * Enter-dropping TUIs. Polls at a coarse cadence (each poll is a capture-pane)
+   * only after the pane is already quiet, so the common fast-idle delivery still
+   * costs a single capture.
+   */
+  private async waitForPaneReadyForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
+    if (this.backend?.dropsEnterWhileBusy?.() !== true) {
+      return this.waitForPaneIdleForDelivery(windowId, timeoutMs);
+    }
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return false;
+      const idle = await this.waitForPaneIdleForDelivery(windowId, remaining);
+      if (!idle) return false;
+      if (await this.isPaneReadyForDelivery(windowId)) return true;
+      await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
+    }
+  }
+
+  /**
+   * F3: if an AgEnD message is sitting unsubmitted in the input row (a previous
+   * delivery's Enter was dropped), submit it with one bare Enter under the pane
+   * lock. Only acts on a positive signature — the `[user:`/`[from:` marker every
+   * pasted message carries — never on Kiro's own placeholder hints. Returns
+   * whether an Enter was sent.
+   */
+  private async submitStrandedInputIfAny(windowId: string): Promise<boolean> {
+    if (this.backend?.dropsEnterWhileBusy?.() !== true || !this.tmux) return false;
+    const prompt = this.backend.getBottomReadyPattern?.();
+    if (!prompt) return false;
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    if (this.backend.getBusyPattern?.()?.test(pane)) return false;
+    if (!strandedAgendMessageInInput(pane, prompt)) return false;
+    this.logger.warn({ windowId }, "Unsubmitted message found in the input row — submitting it before this delivery");
+    const sent = await this.paneWriteLock.run(() => this.sendDeliveryEnter("stranded-input-submit"));
+    return sent === true;
+  }
+
+  /**
+   * F2: for Enter-dropping TUIs, "some output after Enter" proves nothing — the
+   * turn that made the pane look idle keeps producing output. Confirm the
+   * SUBMISSION instead: the pasted text is gone from the input row, or the
+   * TUI's own busy marker is up. Polls on the same cadence as confirmBusyAfterEnter.
+   */
+  private async pasteStillInInput(formatted: string): Promise<boolean> {
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    if (!prompt || !this.tmux) return false;
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return false; }
+    if (this.backend?.getBusyPattern?.()?.test(pane)) return false; // generating = submitted
+    return pasteLeftInInput(pane, prompt, formatted);
+  }
+
+  /**
+   * Submission = the legacy idle→busy output signal AND the pasted text has left
+   * the input row. The first alone is what produced false ✅s: the turn that
+   * made the pane look idle keeps emitting output after our (dropped) Enter.
+   */
+  private async confirmSubmittedAfterEnter(windowId: string, enterAt: number, formatted: string): Promise<boolean> {
+    const sawOutput = await this.confirmBusyAfterEnter(windowId, enterAt);
+    if (await this.pasteStillInInput(formatted)) return false;
+    return sawOutput;
   }
 
   /**
@@ -3929,7 +4049,31 @@ export class Daemon extends EventEmitter {
         return false;
       }
 
-      if (windowId && this.controlClient) {
+      if (windowId && this.controlClient && this.backend?.dropsEnterWhileBusy?.() === true) {
+        // F2: output after Enter is necessary but not sufficient — the paste
+        // must also have LEFT the input row.
+        let submitted = await this.confirmSubmittedAfterEnter(windowId, enterAt, formatted);
+        if (!submitted) {
+          // The Enter landed while the TUI was still busy (it kept the text but
+          // dropped the key). A retry is only useful once the prompt is back —
+          // bounded, since we hold the pane lock here.
+          this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
+          const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
+          const retryAt = Date.now();
+          if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry"))) {
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
+          submitted = promptBack && await this.confirmSubmittedAfterEnter(windowId, retryAt, formatted);
+        }
+        if (submitted) {
+          if (status) this.emit("message_confirmed", status); // ✅
+        } else {
+          this.logger.error("Message pasted but never submitted (text still in the input row after Enter retry)");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
+      } else if (windowId && this.controlClient) {
         let becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
