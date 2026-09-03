@@ -82,6 +82,7 @@ import { RestartProgress, type RestartProgressTarget } from "./restart-progress.
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
 import { SpawnGate } from "./spawn-gate.js";
+import { BackendOutageTracker } from "./backend-outage.js";
 import {
   canUnlockAdvancedTips,
   DailyTipScheduler,
@@ -415,6 +416,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly lifecycle: InstanceLifecycle;
   readonly stormWindow: StormWindow;
   readonly spawnGate: SpawnGate;
+  /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
+  readonly backendOutage = new BackendOutageTracker();
   /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
@@ -498,6 +501,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private ipcWaitTails = new Map<string, Promise<void>>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
+  /**
+   * Delayed automatic retries for instances whose startup failed. Before this a
+   * failed start was logged once and the instance stayed `stopped` until an
+   * operator noticed (2026-09-03: 4 kiro instances, all victims of the same
+   * backend outage during a post-update herd). instanceName → pending retry.
+   */
+  private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
+  /** Bumped by every explicit stop (incl. the stop half of a restart); fences the outage hand-off. */
+  private explicitStopGeneration = new Map<string, number>();
+  /** instanceName → outage hand-off currently executing; a repeat joins it. */
+  private handOffsInFlight = new Map<string, Promise<void>>();
+  /** instanceName → explicit stop currently executing; the outage hand-off waits for it. */
+  private stopsInFlight = new Map<string, Promise<void>>();
+  /** Aggregation window for the "N instances failed to start" notice. */
+  private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
+  /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
+  static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
+  /** Hard cap on automatic startup retries (3 backoff steps + up to 3 more during a backend outage). */
+  static readonly STARTUP_RETRY_MAX_ATTEMPTS = 6;
+  /** Re-check interval when a retry is due but the tmux storm window still blocks spawns. */
+  static readonly STARTUP_RETRY_STORM_DEFER_MS = 60_000;
+  static readonly STARTUP_RETRY_NOTICE_AGGREGATE_MS = 1_000;
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -1577,6 +1602,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
      */
     resumePaused = false,
   ): Promise<void> {
+    // Any start supersedes a pending automatic retry (it would otherwise fire
+    // into a running instance — harmless, but noisy — or race this start).
+    this.cancelStartupRetry(name);
     if (resumePaused && this.lifecycle.isPaused(name)) {
       await this.lifecycle.wake(name, 30_000);
       // A successful wake clears the persisted pause marker and produces a
@@ -1690,13 +1718,235 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       workingDirectory: config.working_directory,
       reason: "startup",
     }, async () => {
-      try {
-        await this.startInstance(name, config, topicMode);
-        if (this.daemons.has(name)) onReady?.(name);
-      } catch (err) {
-        this.logger.error({ err, name }, "Failed to start instance");
-      }
+      if (await this.startInstanceUnattended(name, config, topicMode, "instance")) onReady?.(name);
     })));
+  }
+
+  /**
+   * Start from an UNATTENDED path (fleet startup, full restart, config
+   * reconcile): nobody is watching the result, so a failure is logged and
+   * handed to the delayed automatic retry instead of leaving the instance
+   * `stopped` forever. Explicit operator/API starts call startInstance directly
+   * and keep their synchronous error. Returns whether the instance is up.
+   */
+  private async startInstanceUnattended(name: string, config: InstanceConfig, topicMode: boolean, what: string): Promise<boolean> {
+    try {
+      await this.startInstance(name, config, topicMode);
+      return this.daemons.has(name);
+    } catch (err) {
+      this.logger.error({ err, name }, `Failed to start ${what}`);
+      this.scheduleStartupRetry(name, 0);
+      return false;
+    }
+  }
+
+  // ── Delayed automatic startup retries ──────────────────────────────────
+
+  /**
+   * Schedule attempt `attempt` (0-based) of the automatic startup retry for an
+   * instance whose start just failed. Backoff 1 → 5 → 15 min; while the
+   * instance's backend is known to be unreachable the 15-min step repeats up to
+   * STARTUP_RETRY_MAX_ATTEMPTS, after which we give up with one notice. Each
+   * retry re-checks the world (still configured, not running, not paused, no
+   * tmux storm) and runs through the SpawnGate as "recovery" — so a herd of
+   * failed instances comes back at the gate's concurrency, never all at once.
+   */
+  scheduleStartupRetry(name: string, attempt: number): void {
+    if (this.shuttingDown) return;
+    if (this.startupRetries.has(name)) return;
+    const backoff = FleetManager.STARTUP_RETRY_BACKOFF_MS;
+    const outage = this.backendOutage.isActive(this.backendNameOf(name));
+    const exhausted = attempt >= backoff.length && !(outage && attempt < FleetManager.STARTUP_RETRY_MAX_ATTEMPTS);
+    if (attempt >= FleetManager.STARTUP_RETRY_MAX_ATTEMPTS || exhausted) {
+      this.logger.error({ name, attempts: attempt }, "Giving up automatic startup retries");
+      this.queueStartupRetryNotice("gave_up", name, 0);
+      return;
+    }
+    const delayMs = backoff[Math.min(attempt, backoff.length - 1)];
+    const timer = setTimeout(() => { void this.runStartupRetry(name, attempt); }, delayMs);
+    timer.unref?.();
+    this.startupRetries.set(name, { attempt, timer });
+    this.logger.warn({ name, attempt: attempt + 1, delayMs, backendOutage: outage }, "Startup failed — automatic retry scheduled");
+    if (attempt === 0) this.queueStartupRetryNotice("scheduled", name, delayMs);
+  }
+
+  /** Drop a pending automatic retry (an operator start/stop/restart supersedes it). */
+  cancelStartupRetry(name: string): void {
+    const pending = this.startupRetries.get(name);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.startupRetries.delete(name);
+    this.logger.info({ name }, "Pending automatic startup retry cancelled");
+  }
+
+  /** Pending automatic retry, if any (status display / tests). */
+  pendingStartupRetry(name: string): { attempt: number } | null {
+    const pending = this.startupRetries.get(name);
+    return pending ? { attempt: pending.attempt } : null;
+  }
+
+  /**
+   * A daemon's crash-respawn hit the backend outage (startup_backend_unreachable):
+   * stop THAT daemon and schedule the delayed retry. Serialized against the
+   * operator paths: an in-flight restart is awaited first (it replaces the
+   * daemon itself), the stop is identity-checked so a fresh daemon registered
+   * meanwhile is never deleted, and an explicit stop/restart that began during
+   * the hand-off (generation bump) owns the outcome — no retry is scheduled
+   * behind an operator's back.
+   */
+  async handOffToStartupRetry(name: string, daemon: unknown): Promise<void> {
+    const joined = this.handOffsInFlight.get(name);
+    if (joined) return joined;
+    const run = (async () => {
+      // Let any operator restart/stop that is already executing finish first:
+      // a restart replaces the daemon itself, a stop removes it — either way
+      // the identity check below then sees "not ours any more" and we do
+      // nothing. Loop: one operation can be chained behind another.
+      for (;;) {
+        const inFlight = this.restartsInFlight.get(name) ?? this.stopsInFlight.get(name);
+        if (!inFlight) break;
+        await inFlight.catch(() => { /* the operation reports its own failure */ });
+      }
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      if (this.lifecycle.daemons.get(name) !== daemon) return; // already replaced or stopped
+      await this.lifecycle.stopIfCurrent(name, daemon);
+      if (this.shuttingDown) return;
+      if ((this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        this.logger.info({ name }, "Outage hand-off superseded by an explicit stop/restart — no automatic retry");
+        return;
+      }
+      if (this.lifecycle.daemons.has(name) || this.lifecycle.isPaused(name)) return;
+      this.scheduleStartupRetry(name, 0);
+    })().finally(() => this.handOffsInFlight.delete(name));
+    this.handOffsInFlight.set(name, run);
+    return run;
+  }
+
+  private async runStartupRetry(name: string, attempt: number): Promise<void> {
+    this.startupRetries.delete(name);
+    if (this.shuttingDown) return;
+    if (!this.isConfiguredInstance(name)) return; // removed from fleet.yaml / classic channel meanwhile
+    if (this.lifecycle.isPaused(name) || this.daemons.has(name)) return; // operator acted meanwhile
+    if (this.stormWindow.isSpawnBlocked()) {
+      // The tmux server is being restarted; joining that herd is what we are
+      // trying to avoid. Same attempt again after the storm's own recovery.
+      const timer = setTimeout(() => { void this.runStartupRetry(name, attempt); }, FleetManager.STARTUP_RETRY_STORM_DEFER_MS);
+      timer.unref?.();
+      this.startupRetries.set(name, { attempt, timer });
+      this.logger.info({ name, attempt: attempt + 1 }, "Startup retry deferred — tmux storm window is blocking spawns");
+      return;
+    }
+    const topicMode = this.fleetConfig?.channel?.mode === "topic"
+      || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    try {
+      await this.spawnGate.run({
+        instanceName: name,
+        workingDirectory: this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name),
+        reason: "recovery",
+      }, () => this.startConfiguredInstance(name, topicMode));
+      if (this.daemons.has(name)) {
+        this.logger.info({ name, attempt: attempt + 1 }, "Automatic startup retry succeeded");
+      }
+    } catch (err) {
+      this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
+      this.scheduleStartupRetry(name, attempt + 1);
+    }
+  }
+
+  /** Fleet-topic (fleet.yaml) or ClassicBot (classic channel) — both are retryable; anything else is gone. */
+  private isConfiguredInstance(name: string): boolean {
+    if (this.fleetConfig?.instances[name]) return true;
+    return !!this.classicChannels?.getAll().some(channel => channel.instanceName === name);
+  }
+
+  /**
+   * Kind-aware start for the automatic retry: fleet-topic instances come from
+   * fleet.yaml, ClassicBot instances exist only in the classic channel manager
+   * and must be rebuilt through startClassicInstance (a fleet.yaml lookup alone
+   * silently dropped them — the retry timer fired and nothing happened).
+   */
+  private async startConfiguredInstance(name: string, topicMode: boolean): Promise<void> {
+    const config = this.fleetConfig?.instances[name];
+    if (config) {
+      await this.startInstance(name, config, topicMode);
+      return;
+    }
+    const channel = this.classicChannels?.getAll().find(item => item.instanceName === name);
+    if (!channel || !this.classicChannels) throw new Error(`Instance '${name}' is no longer configured`);
+    await this.startClassicInstance(
+      name,
+      this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
+      this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+    );
+  }
+
+  /**
+   * Unattended ClassicBot start (fleet startup batch, full-restart batch, the
+   * classicBot.yaml reconcile): same contract as startInstanceUnattended —
+   * failures are logged and handed to the delayed automatic retry, whose
+   * kind-aware startConfiguredInstance rebuilds the Classic instance. Returns
+   * whether the instance is up.
+   */
+  private async startClassicInstanceUnattended(
+    ch: { instanceName: string; channelId: string; adapterId?: string },
+    what: string,
+  ): Promise<boolean> {
+    try {
+      await this.startClassicInstance(
+        ch.instanceName,
+        this.classicChannels!.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend),
+        this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+        this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+        this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+      );
+      return this.daemons.has(ch.instanceName);
+    } catch (err) {
+      this.logger.warn({ err, instanceName: ch.instanceName }, `Failed to start ${what}`);
+      this.scheduleStartupRetry(ch.instanceName, 0);
+      return false;
+    }
+  }
+
+  private backendNameOf(name: string): string {
+    const fleetDefault = this.fleetConfig?.defaults?.backend;
+    const configured = this.fleetConfig?.instances[name]?.backend;
+    if (configured) return configured;
+    // ClassicBot channels pick their own backend; the fleet default is only the fallback.
+    if (this.classicChannels?.getAll().some(channel => channel.instanceName === name)) {
+      return this.classicChannels.getBackendByInstance(name, fleetDefault);
+    }
+    return fleetDefault ?? "claude-code";
+  }
+
+  /**
+   * One fleet-level notice per burst, not one per instance: a post-update herd
+   * fails many instances within the same second. Two notices per incident at
+   * most — "N failed, retrying in X" and, if it comes to that, "gave up on N".
+   */
+  private queueStartupRetryNotice(kind: "scheduled" | "gave_up", name: string, delayMs: number): void {
+    const pending = this.startupRetryNotices.get(kind);
+    if (pending) {
+      if (!pending.names.includes(name)) pending.names.push(name);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const entry = this.startupRetryNotices.get(kind);
+      this.startupRetryNotices.delete(kind);
+      if (!entry) return;
+      const list = entry.names.join(", ");
+      if (kind === "scheduled") {
+        let text = t("fleet.startup_retry_scheduled", entry.names.length, list, this.formatStormDelay(entry.delayMs));
+        const downBackends = [...new Set(entry.names.map(n => this.backendNameOf(n)))].filter(b => this.backendOutage.isActive(b));
+        if (downBackends.length) text += `\n${t("fleet.startup_retry_outage", downBackends.join(", "))}`;
+        this.notifyFleetError(text);
+      } else {
+        this.notifyFleetError(t("fleet.startup_retry_gave_up", entry.names.length, list));
+      }
+    }, FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
+    timer.unref?.();
+    this.startupRetryNotices.set(kind, { names: [name], delayMs, timer });
   }
 
   private runnableStartupCount(fleet: FleetConfig, includeClassic: boolean): number {
@@ -1731,6 +1981,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async stopInstance(name: string): Promise<void> {
+    this.explicitStopGeneration.set(name, (this.explicitStopGeneration.get(name) ?? 0) + 1);
+    this.cancelStartupRetry(name);
     this.failoverActive.delete(name);
     this.cancelIdleButtonRetirement(name);
     this.instanceStateCache.delete(name);
@@ -1742,11 +1994,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // interactive-prompt / clean-exit events whose handlers post fresh prompts
     // while the stop is still awaiting (the TOCTOU sol's review called out).
     this.clearNoncePromptsForInstance(name);
-    try {
-      return await this.lifecycle.stop(name);
-    } finally {
-      this.clearNoncePromptsForInstance(name);
-    }
+    // Published so the outage hand-off can wait for an explicit stop that began
+    // BEFORE it (the generation fence alone only catches stops that begin after
+    // the hand-off snapshotted it).
+    const run = (async () => {
+      try {
+        await this.lifecycle.stop(name);
+      } finally {
+        this.clearNoncePromptsForInstance(name);
+      }
+    })().finally(() => { if (this.stopsInFlight.get(name) === run) this.stopsInFlight.delete(name); });
+    this.stopsInFlight.set(name, run);
+    return run;
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
@@ -2046,14 +2305,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await this.stopInstance(ch.instanceName).catch(() => {});
             // Small delay to let tmux window clean up
             await new Promise(r => setTimeout(r, 2000));
-            await this.startClassicInstance(
-              ch.instanceName,
-              newBackend,
-              this.classicChannels.getPreTaskCommand(ch.channelId, ch.adapterId),
-              newModel,
-              newAutoPause,
-            ).catch(err =>
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to restart classic instance"));
+            // The manager already holds the new backend/model/auto-pause; the
+            // unattended helper reads them from it and schedules the delayed
+            // retry on failure like every other unattended start.
+            await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
           }
         }
       } catch (err) {
@@ -2266,6 +2521,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (this.daemons.has(name)) startupProgress.markReady();
         } catch (err) {
           this.logger.error({ err, name }, "Failed to start general instance");
+          // General is the most important instance to bring back: it also gets
+          // the delayed automatic retry (the topic notice below still goes out).
+          this.scheduleStartupRetry(name, 0);
           const errorMsg = err instanceof Error ? err.message : String(err);
           const topicId = cfg.topic_id ? String(cfg.topic_id) : undefined;
           if (this.adapter && topicId) {
@@ -2393,18 +2651,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(async ch => {
-            try {
-              await this.startClassicInstance(
-                ch.instanceName,
-                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-              );
-              if (this.daemons.has(ch.instanceName)) startupProgress.markReady();
-            } catch (err) {
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
-            }
+            if (await this.startClassicInstanceUnattended(ch, "classic instance")) startupProgress.markReady();
           }));
           idx += concurrency;
         }
@@ -9334,6 +9581,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // make `agend stop` wait forever for its own queue.
     this.stormWindow.shutdown();
     this.spawnGate.shutdown();
+    for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
+    this.startupRetries.clear();
+    for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);
+    this.startupRetryNotices.clear();
     if (this.stormOpenNotifyTimer) {
       clearTimeout(this.stormOpenNotifyTimer);
       this.stormOpenNotifyTimer = null;
@@ -9653,8 +9904,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance
         this.logger.info({ name }, "New instance in config — starting");
-        await this.startInstance(name, config, topicMode).catch(err =>
-          this.logger.error({ err, name }, "Failed to start new instance"));
+        await this.startInstanceUnattended(name, config, topicMode, "new instance");
       } else if (oldConfig?.instances[name]) {
         const daemon = this.daemons.get(name)!;
         const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
@@ -9664,8 +9914,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (!isDeepStrictEqual(oldParts.cold, newParts.cold)) {
           this.logger.info({ name }, "Instance config changed — restarting");
           await this.stopInstance(name).catch(() => {});
-          await this.startInstance(name, config, topicMode).catch(err =>
-            this.logger.error({ err, name }, "Failed to restart modified instance"));
+          await this.startInstanceUnattended(name, config, topicMode, "modified instance");
         } else if (!isDeepStrictEqual(oldParts.hot, newParts.hot)) {
           const update = hotConfigUpdate(config);
           const ipc = this.instanceIpcClients.get(name);
@@ -9782,12 +10031,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const restartGenerals = restartEntries.filter(([_, cfg]) => cfg.general_topic);
     const restartOthers = restartEntries.filter(([_, cfg]) => !cfg.general_topic);
     for (const [name, cfg] of restartGenerals) {
-      try {
-        await this.startInstance(name, cfg, topicMode);
-        if (this.daemons.has(name)) restartProgress.markReady();
-      } catch (err) {
-        this.logger.error({ err, name }, "Failed to start general instance");
-      }
+      if (await this.startInstanceUnattended(name, cfg, topicMode, "general instance")) restartProgress.markReady();
     }
     // General is ready again; now its topic can own the live progress message.
     await restartProgress.start(progressTarget);
@@ -9810,18 +10054,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(async ch => {
-            try {
-              await this.startClassicInstance(
-                ch.instanceName,
-                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-              );
-              if (this.daemons.has(ch.instanceName)) restartProgress.markReady();
-            } catch (err) {
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
-            }
+            if (await this.startClassicInstanceUnattended(ch, "classic instance")) restartProgress.markReady();
           }));
           idx += concurrency;
         }

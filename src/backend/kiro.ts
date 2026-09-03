@@ -134,6 +134,9 @@ export function resetKiroCompatibilityCacheForTests(): void {
   warnedUnsupportedEffortCacheKeys.clear();
 }
 
+/** Startup budget for a `--resume` launch (60% first output, 40% ready). */
+export const KIRO_RESUME_STARTUP_BUDGET_MS = 60_000;
+
 export class KiroBackend implements CliBackend {
   readonly binaryName = "kiro-cli";
   private binaryPath: string;
@@ -186,6 +189,24 @@ export class KiroBackend implements CliBackend {
     // `100% > done` — and never verified live. Both keep the silence gate until
     // their ready marker is verified.
     return this.activeUi === "legacy" && this.activeTrustAll;
+  }
+
+  /**
+   * Live evidence (kiro-cli 2.21.0, 2026-09-03): `--resume` prints nothing
+   * until the conversation comes back from the backend ("Picking up where we
+   * left off…") — >15s blank while runtime.us-east-1.kiro.dev timed out and
+   * kiro retried every 10s — and the default 25s budget (15s to first output)
+   * declared it dead, cleared the session, and started fresh. A fresh prompt
+   * is local (~5s even with MCP), so it keeps the default budget.
+   */
+  getStartupBudgetMs(ctx: { resume: boolean }): number | undefined {
+    return ctx.resume ? KIRO_RESUME_STARTUP_BUDGET_MS : undefined;
+  }
+
+  retriesResumeOnStartupFailure(): boolean {
+    // A resume miss is far more often "the backend was slow" than "the session
+    // is broken"; one more attempt before abandoning the conversation is cheap.
+    return true;
   }
 
   getBottomReadyPattern(): RegExp | null {
@@ -407,6 +428,36 @@ export class KiroBackend implements CliBackend {
         type: "auth_error",
         action: "pause",
         message: "Kiro login is missing or expired — run `kiro-cli login` to restore all kiro instances",
+      },
+      // Backend unreachable. Live 2026-09-03: runtime.us-east-1.kiro.dev stopped
+      // answering for hours; every kiro instance printed
+      //   `1: dispatch failure (timeout): request timed out: error sending
+      //    request for url (https://runtime.us-east-1.kiro.dev/)`
+      // and retried every 10s. Distinct from the auth line above
+      // (`dispatch failure (other): No token`, matched first). fleetWide: this is
+      // one outage, not N incidents — the lifecycle notifies once and the daemon
+      // stops burning `--resume` attempts (and sessions) while it lasts.
+      // skipRecoveryWait: kiro is back at its prompt between retries.
+      //
+      // Matched on kiro's numbered error structure (`   1: dispatch failure
+      // (timeout)` at a row start — the live line wraps after it, which is why
+      // the URL alternative is unanchored) rather than on the bare phrase: an
+      // agent quoting "dispatch failure (timeout)" in conversation must not mark
+      // the whole backend down and change every instance's startup semantics.
+      // The URL alternative requires the complete sentence plus a kiro.dev host.
+      {
+        pattern: /^\s*\d+:\s*dispatch failure \(timeout\)|request timed out: error sending request for url \((https?:\/\/[^)\s]*kiro\.dev[^)\s]*)\)/im,
+        type: "network",
+        action: "notify",
+        message: "Kiro backend unreachable — requests to the kiro.dev runtime are timing out",
+        formatMessage: match => {
+          const host = match[1]?.match(/^https?:\/\/([^/]+)/)?.[1];
+          return host
+            ? `Kiro backend unreachable — requests to ${host} are timing out`
+            : "Kiro backend unreachable — requests to the kiro.dev runtime are timing out";
+        },
+        skipRecoveryWait: true,
+        fleetWide: true,
       },
       // #384: the AgEnD MCP server died, or something wrote non-JSON-RPC to its
       // stdout and kiro dropped the connection. kiro keeps running and keeps

@@ -323,6 +323,17 @@ daemon 會發現符合 `agend-adapter-*` 命名慣例的轉接器。頻道類型
 
 支援 AWS Kiro CLI 作為後端（`backend: kiro-cli`）。支援 session 恢復、MCP 設定，以及模型選擇：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5`。在 `fleet.yaml` 中與其他後端相同方式配置。
 
+### 啟動韌性（kiro）
+
+Kiro 的 `--resume` 要先向後端拿回對話才會畫出任何東西，所以 `runtime.*.kiro.dev` 變慢或斷線時看起來就像 CLI 死掉。v2.1.4 起 daemon 會：
+
+- 給 kiro 的 **resume** 啟動 60 秒預算（fresh 啟動維持預設 25 秒；使用者設定較大的 `startup_timeout_ms` 不會被調低）；
+- 清除 session 前先**再 resume 一次**，後端慢不再賠掉對話（最多 2 次 resume + 1 次 fresh）；
+- 把 kiro 的 `dispatch failure (timeout) … kiro.dev` 輸出視為**全 fleet 的後端故障**：每次故障只在 General 發一則通知（而不是每個 instance 一則），故障期間 resume 失敗會保留 session 並讓啟動失敗，而不是改用 fresh；
+- **自動重試啟動失敗的 instance**：1、5、15 分鐘後重試（後端仍故障時每 15 分鐘持續，最多 6 次），走 spawn gate、tmux storm 期間不重試。只發一則彙整的「N 個 instance 啟動失敗」通知，真的放棄時再發一則。`agend start` / `/restart` 會取代待執行的重試。
+
+resume 預算、resume 重試與故障短路只針對 kiro（backend capability）。延遲自動重試則對**所有** backend、所有無人值守的啟動路徑生效（fleet 啟動含 General、完整重啟、設定 reconcile）：啟動失敗就永遠 `stopped` 本來就不是 kiro 專屬問題。手動 `agend start` / API 啟動仍同步回報錯誤。auto-pause 的 kiro instance 喚醒時同樣使用 60 秒 resume 預算。
+
 ## agend quickstart
 
 簡化的 4 步驟設定精靈，為新使用者設計。自動偵測已安裝的後端、透過 `getUpdates` 輪詢自動發現 Telegram 群組 ID，並產生帶有合理預設值的最小 `fleet.yaml`。取代原本 9 步驟的 `agend init`，成為推薦的初始設定流程。
