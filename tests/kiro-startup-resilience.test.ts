@@ -667,6 +667,56 @@ describe("outage hand-off is serialized against operator stop/restart", () => {
     } finally { cleanup(); }
   });
 
+  it("REVERSE order: an explicit stop that began BEFORE the hand-off is never undone by a retry", async () => {
+    const { fm, daemon, release, cleanup } = fleetWithDaemon();
+    try {
+      vi.spyOn(fm.lifecycle, "stop").mockImplementation(async (name: string) => {
+        const d = fm.lifecycle.daemons.get(name); if (d) { await d.stop(); if (fm.lifecycle.daemons.get(name) === d) fm.lifecycle.daemons.delete(name); }
+      });
+      const operatorStop = fm.stopInstance("a");            // 1. begins first, blocks in old.stop()
+      const handOff = fm.handOffToStartupRetry("a", daemon); // 2. health tick hands off meanwhile
+      release();                                             // 3. both stops complete
+      await Promise.all([operatorStop, handOff]);
+      expect(fm.lifecycle.daemons.has("a")).toBe(false);
+      expect(fm.pendingStartupRetry("a")).toBeNull();        // no retry one minute later
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+      expect(fm.pendingStartupRetry("a")).toBeNull();
+    } finally { cleanup(); }
+  });
+
+  it("ClassicBot kiro: the hand-off's retry rebuilds the instance through startClassicInstance", async () => {
+    const { fm, daemon, release, startInstance, cleanup } = fleetWithDaemon();
+    try {
+      // "cls" lives only in the classic channel manager, not in fleet.yaml.
+      fm.lifecycle.daemons.delete("a");
+      fm.lifecycle.daemons.set("cls", daemon);
+      fm.classicChannels = {
+        getAll: () => [{ instanceName: "cls", channelId: "c1", adapterId: "discord" }],
+        getBackendByInstance: () => "kiro-cli",
+        getChannelIdByInstance: () => "c1",
+        getAdapterIdByInstance: () => "discord",
+        getPreTaskCommand: () => undefined,
+        getModel: () => undefined,
+        getAutoPauseAfter: () => undefined,
+      } as any;
+      (fm.fleetConfig as any).defaults.backend = "claude-code";  // fleet default ≠ the channel's backend
+      const startClassic = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+
+      expect((fm as any).backendNameOf("cls")).toBe("kiro-cli");
+      const handOff = fm.handOffToStartupRetry("cls", daemon);
+      release();
+      await handOff;
+      expect(fm.lifecycle.daemons.has("cls")).toBe(false);
+      expect(fm.pendingStartupRetry("cls")).toEqual({ attempt: 0 });
+
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(startClassic).toHaveBeenCalledTimes(1);
+      expect(startClassic.mock.calls[0][0]).toBe("cls");
+      expect(startClassic.mock.calls[0][1]).toBe("kiro-cli");
+      expect(startInstance).not.toHaveBeenCalled();           // not the fleet.yaml path
+    } finally { cleanup(); }
+  });
+
   it("a hand-off for a daemon that was already replaced is a no-op", async () => {
     const { fm, daemon, cleanup } = fleetWithDaemon();
     try {

@@ -512,6 +512,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private explicitStopGeneration = new Map<string, number>();
   /** instanceName → outage hand-off currently executing; a repeat joins it. */
   private handOffsInFlight = new Map<string, Promise<void>>();
+  /** instanceName → explicit stop currently executing; the outage hand-off waits for it. */
+  private stopsInFlight = new Map<string, Promise<void>>();
   /** Aggregation window for the "N instances failed to start" notice. */
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
@@ -1796,8 +1798,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const joined = this.handOffsInFlight.get(name);
     if (joined) return joined;
     const run = (async () => {
-      const restart = this.restartsInFlight.get(name);
-      if (restart) await restart.catch(() => { /* the restart reports its own failure */ });
+      // Let any operator restart/stop that is already executing finish first:
+      // a restart replaces the daemon itself, a stop removes it — either way
+      // the identity check below then sees "not ours any more" and we do
+      // nothing. Loop: one operation can be chained behind another.
+      for (;;) {
+        const inFlight = this.restartsInFlight.get(name) ?? this.stopsInFlight.get(name);
+        if (!inFlight) break;
+        await inFlight.catch(() => { /* the operation reports its own failure */ });
+      }
       const stopGen = this.explicitStopGeneration.get(name) ?? 0;
       if (this.lifecycle.daemons.get(name) !== daemon) return; // already replaced or stopped
       await this.lifecycle.stopIfCurrent(name, daemon);
@@ -1816,8 +1825,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async runStartupRetry(name: string, attempt: number): Promise<void> {
     this.startupRetries.delete(name);
     if (this.shuttingDown) return;
-    const config = this.fleetConfig?.instances[name];
-    if (!config) return; // removed from fleet.yaml meanwhile
+    if (!this.isConfiguredInstance(name)) return; // removed from fleet.yaml / classic channel meanwhile
     if (this.lifecycle.isPaused(name) || this.daemons.has(name)) return; // operator acted meanwhile
     if (this.stormWindow.isSpawnBlocked()) {
       // The tmux server is being restarted; joining that herd is what we are
@@ -1833,9 +1841,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       await this.spawnGate.run({
         instanceName: name,
-        workingDirectory: config.working_directory,
+        workingDirectory: this.fleetConfig?.instances[name]?.working_directory || this.getInstanceDir(name),
         reason: "recovery",
-      }, () => this.startInstance(name, config, topicMode));
+      }, () => this.startConfiguredInstance(name, topicMode));
       if (this.daemons.has(name)) {
         this.logger.info({ name, attempt: attempt + 1 }, "Automatic startup retry succeeded");
       }
@@ -1845,8 +1853,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** Fleet-topic (fleet.yaml) or ClassicBot (classic channel) — both are retryable; anything else is gone. */
+  private isConfiguredInstance(name: string): boolean {
+    if (this.fleetConfig?.instances[name]) return true;
+    return !!this.classicChannels?.getAll().some(channel => channel.instanceName === name);
+  }
+
+  /**
+   * Kind-aware start for the automatic retry: fleet-topic instances come from
+   * fleet.yaml, ClassicBot instances exist only in the classic channel manager
+   * and must be rebuilt through startClassicInstance (a fleet.yaml lookup alone
+   * silently dropped them — the retry timer fired and nothing happened).
+   */
+  private async startConfiguredInstance(name: string, topicMode: boolean): Promise<void> {
+    const config = this.fleetConfig?.instances[name];
+    if (config) {
+      await this.startInstance(name, config, topicMode);
+      return;
+    }
+    const channel = this.classicChannels?.getAll().find(item => item.instanceName === name);
+    if (!channel || !this.classicChannels) throw new Error(`Instance '${name}' is no longer configured`);
+    await this.startClassicInstance(
+      name,
+      this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
+      this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+    );
+  }
+
   private backendNameOf(name: string): string {
-    return this.fleetConfig?.instances[name]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+    const fleetDefault = this.fleetConfig?.defaults?.backend;
+    const configured = this.fleetConfig?.instances[name]?.backend;
+    if (configured) return configured;
+    // ClassicBot channels pick their own backend; the fleet default is only the fallback.
+    if (this.classicChannels?.getAll().some(channel => channel.instanceName === name)) {
+      return this.classicChannels.getBackendByInstance(name, fleetDefault);
+    }
+    return fleetDefault ?? "claude-code";
   }
 
   /**
@@ -1923,11 +1967,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // interactive-prompt / clean-exit events whose handlers post fresh prompts
     // while the stop is still awaiting (the TOCTOU sol's review called out).
     this.clearNoncePromptsForInstance(name);
-    try {
-      return await this.lifecycle.stop(name);
-    } finally {
-      this.clearNoncePromptsForInstance(name);
-    }
+    // Published so the outage hand-off can wait for an explicit stop that began
+    // BEFORE it (the generation fence alone only catches stops that begin after
+    // the hand-off snapshotted it).
+    const run = (async () => {
+      try {
+        await this.lifecycle.stop(name);
+      } finally {
+        this.clearNoncePromptsForInstance(name);
+      }
+    })().finally(() => { if (this.stopsInFlight.get(name) === run) this.stopsInFlight.delete(name); });
+    this.stopsInFlight.set(name, run);
+    return run;
   }
 
   /** Restart a single instance, reloading fleet.yaml first to pick up config changes. */
