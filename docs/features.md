@@ -381,6 +381,17 @@ The daemon discovers adapters matching the `agend-plugin-*` or `agend-adapter-*`
 
 Backend for AWS Kiro CLI (`backend: kiro-cli`). Supports session resume, MCP config, and models: `auto`, `claude-sonnet-4.5`, `claude-haiku-4.5`. Configure in `fleet.yaml` like any other backend.
 
+### Startup resilience (kiro)
+
+Kiro's `--resume` needs a round trip to its backend before it paints anything, so a slow or unreachable `runtime.*.kiro.dev` used to look like a dead CLI. Since v2.1.4 the daemon:
+
+- gives a kiro **resume** launch a 60s startup budget (a fresh prompt keeps the 25s default; a larger `startup_timeout_ms` is never lowered);
+- retries resume **once** before clearing the session, so a slow backend no longer costs the conversation (at most 2 resume attempts + 1 fresh);
+- recognises kiro's `dispatch failure (timeout) … kiro.dev` output as a **fleet-wide backend outage**: one General-topic notice per outage instead of one per instance, and while it lasts a failed resume keeps its session and fails the startup instead of starting fresh;
+- **retries failed startups automatically** after 1, 5 and 15 minutes (continuing every 15 minutes, up to 6 attempts, while the backend is down), through the spawn gate and never during a tmux storm. One aggregated "N instances failed to start" notice and, if it comes to that, one "gave up" notice. An `agend start`/`/restart` supersedes the pending retry.
+
+Other backends keep their previous startup behaviour.
+
 ## agend quickstart
 
 Simplified 4-question setup wizard for new users. Auto-detects installed backends, auto-discovers Telegram group ID via `getUpdates` polling, and generates a minimal `fleet.yaml` with sensible defaults. Replaces the 9-step `agend init` as the recommended onboarding path.

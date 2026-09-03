@@ -23,6 +23,7 @@ import { BACKEND_AUTH_CHECKS, checkAuthStatus, LOGIN_FLOWS } from "./login-flows
 import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/providers.js";
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
+import type { BackendOutageTracker } from "./backend-outage.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -111,8 +112,12 @@ export interface LifecycleContext {
   readonly controlClient: TmuxControlClient | null;
   readonly spawnGate?: SpawnGate;
   readonly stormWindow?: StormWindow;
+  /** Fleet-level backend reachability memory (see backend-outage.ts). */
+  readonly backendOutage?: BackendOutageTracker;
 
   getInstanceDir(name: string): string;
+  /** Fleet-level (General topic) notification, throttled per message text. */
+  notifyFleetError?(text: string): void;
   saveFleetConfig(): void;
   /** Full stop+start. freshStart forces the respawn to skip session resume. */
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
@@ -449,6 +454,25 @@ export class InstanceLifecycle {
   }
 
   /**
+   * A fleet-wide backend outage (see backend-outage.ts): record the sighting so
+   * startup stops spending `--resume` attempts on it, and notify ONCE per
+   * outage at fleet level — kiro prints the line every 10s on every instance,
+   * so per-instance incidents would be N × (one message per cooldown).
+   */
+  private noteBackendOutage(name: string, message: string, notificationTarget?: string): void {
+    const backend = this.backendOf(name);
+    const result = this.ctx.backendOutage?.record(backend, name, message);
+    this.ctx.eventLog?.insert(name, "backend_unreachable", { backend, message });
+    if (result && !result.isNew) {
+      this.ctx.logger.info({ name, backend }, "backend outage sighting (already alerted)");
+      return;
+    }
+    const text = t("inst.backend_unreachable", backend, message);
+    if (this.ctx.notifyFleetError) this.ctx.notifyFleetError(text);
+    else if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", text);
+  }
+
+  /**
    * System errors from a ClassicBot belong in the operator's General topic,
    * never in the end user's chat channel. Fleet-topic instances retain their
    * existing local notification target.
@@ -672,7 +696,7 @@ export class InstanceLifecycle {
       await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
 
-    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string }) => {
+    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string; fleetWide?: boolean }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
@@ -746,7 +770,9 @@ export class InstanceLifecycle {
       // one instance: every instance on that CLI fails at once, and one re-login
       // fixes them all. Notify once per backend (listing who's affected) instead
       // of N near-identical alerts, and suppress repeats fleet-wide.
-      if (data.type === "auth_error") {
+      if (data.type === "network" && data.fleetWide) {
+        this.noteBackendOutage(name, data.message, notificationTarget);
+      } else if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
       } else if (notificationTarget) {
         this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
@@ -842,6 +868,7 @@ export class InstanceLifecycle {
       },
       this.ctx.spawnGate,
       this.ctx.stormWindow,
+      this.ctx.backendOutage,
     );
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {

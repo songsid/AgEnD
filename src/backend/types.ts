@@ -71,6 +71,12 @@ export interface ErrorPattern {
    * immediately) whose backend ready-pattern only matches the startup banner,
    * so waiting would block ALL future error detection forever. */
   skipRecoveryWait?: boolean;
+  /** This error is a property of the BACKEND (its service is unreachable), not
+   * of one instance: every instance on that CLI fails at once. The lifecycle
+   * then records a fleet-level backend outage, notifies ONCE fleet-wide instead
+   * of per instance, and the daemon stops spending `--resume` attempts (and
+   * sessions) on it while it lasts. Only meaningful with type "network". */
+  fleetWide?: boolean;
 }
 
 /** A selectable model, surfaced by `/model` (id is what gets applied). */
@@ -177,6 +183,26 @@ export interface CliBackend {
    * higher up is history). Required for `dropsEnterWhileBusy()` backends.
    */
   getBottomReadyPattern?(): RegExp | null;
+
+  /**
+   * Startup budget override, in ms, for reaching first output + ready state.
+   * `ctx.resume` is true when the CLI is launched with session resume. Return
+   * undefined to use `startup_timeout_ms` / the 25s default. Kiro's `--resume`
+   * needs a backend round trip before it paints anything (blank for >15s while
+   * the runtime host retried, live 2026-09-03) whereas a fresh prompt is local
+   * — so only the resume launch should get more time; a fresh start must stay
+   * tight. The daemon never lowers a user-configured `startup_timeout_ms`.
+   */
+  getStartupBudgetMs?(ctx: { resume: boolean }): number | undefined;
+
+  /**
+   * Whether a failed resume launch should be retried ONCE with resume before
+   * the session is abandoned. For CLIs whose resume depends on a remote round
+   * trip, the first miss is usually the backend being slow, not the session
+   * being corrupt — and dropping to a fresh session loses the conversation.
+   * The daemon bounds this to one extra attempt. Absent means false.
+   */
+  retriesResumeOnStartupFailure?(): boolean;
 
   /**
    * Whether the TUI can emit terminal output while its visible pane is

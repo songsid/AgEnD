@@ -35,6 +35,7 @@ import {
 import type { SpawnGate } from "./spawn-gate.js";
 import { bottomRowIsReady, lastNonBlankRow, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
+import type { BackendOutageView } from "./backend-outage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -404,6 +405,17 @@ export class PendingWorkTracker {
 const NORMAL_ENTER_SETTLE_MS = 500;
 /** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
 const BOTTOM_READY_POLL_MS = 250;
+
+/**
+ * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
+ * The session-id is deliberately KEPT; the fleet schedules a delayed retry.
+ */
+export class BackendUnreachableStartupError extends Error {
+  constructor(readonly backend: string) {
+    super(`CLI failed to start: the ${backend} backend is unreachable — session kept for a later retry`);
+    this.name = "BackendUnreachableStartupError";
+  }
+}
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
@@ -1114,6 +1126,8 @@ export class Daemon extends EventEmitter {
     private runtimeIdentity?: FleetInstructionsParams["runtimeIdentity"],
     private spawnGate?: SpawnGate,
     private stormWindow?: StormWindow,
+    /** Fleet-level "is this CLI's backend down?" memory — see backend-outage.ts. */
+    private backendOutage?: BackendOutageView,
   ) {
     super();
     if (!rootLogger) throw new Error("Daemon requires a shared root logger");
@@ -4759,9 +4773,37 @@ export class Daemon extends EventEmitter {
     }
 
     const attemptedResume = !this.skipResume;
-    const alive = await this.trySpawn();
+    // A resume launch may get a longer budget than a fresh one (kiro: the
+    // conversation must come back from the backend before anything paints).
+    const resumeBudget = attemptedResume ? this.startupBudgetFor(true) : undefined;
+    let alive = await this.trySpawn(false, resumeBudget);
+
+    if (!alive && attemptedResume) {
+      // Resume failed. Before abandoning the session:
+      //  1. If the backend is unreachable (fleet-level memory, or this very pane
+      //     shows the outage text), clearing the session would trade a
+      //     transient outage for permanent conversation loss — and the fresh
+      //     start would hang on the same backend. Fail the startup and keep the
+      //     session; the fleet's delayed retry comes back once it is up.
+      //  2. Otherwise, for backends that ask for it, retry resume ONCE — the
+      //     first miss is usually slowness, not a broken session.
+      await this.noteStartupPaneForBackendOutage();
+      this.throwIfBackendUnreachable();
+      if (this.backend.retriesResumeOnStartupFailure?.() === true) {
+        this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
+        await this.killProcessTree();
+        await this.tmux!.killWindow();
+        alive = await this.trySpawn(false, resumeBudget);
+        if (!alive) {
+          await this.noteStartupPaneForBackendOutage();
+          this.throwIfBackendUnreachable();
+        }
+      }
+    }
+
     if (!alive) {
-      // First attempt failed (stale --resume, crash, rate limit, etc.)
+      // Resume (or a fresh start) failed for a reason we do not recognise as an
+      // outage (stale --resume, crash, rate limit, etc.).
       // Clean slate: clear session-id, skip resume, and retry once.
       this.logger.warn("CLI startup failed — clearing session-id and retrying without resume");
       const sidFile = join(this.instanceDir, "session-id");
@@ -4770,7 +4812,7 @@ export class Daemon extends EventEmitter {
       await this.killProcessTree();
       await this.tmux!.killWindow();
 
-      const retryAlive = await this.trySpawn();
+      const retryAlive = await this.trySpawn(false, this.startupBudgetFor(false));
       if (!retryAlive) {
         await this.killProcessTree();
         await this.tmux!.killWindow();
@@ -4787,6 +4829,49 @@ export class Daemon extends EventEmitter {
       this.endSpawn();
     }
     return resumedSuccessfully;
+  }
+
+  /**
+   * Startup budget for this launch: the backend's override (resume-aware), never
+   * below a user-configured startup_timeout_ms; undefined = trySpawn's default.
+   */
+  private startupBudgetFor(resume: boolean): number | undefined {
+    const override = this.backend?.getStartupBudgetMs?.({ resume });
+    if (override == null) return undefined;
+    const configured = this.config.startup_timeout_ms;
+    return configured != null ? Math.max(configured, override) : override;
+  }
+
+  /** The fleet-level backend key this instance runs on (matches the lifecycle's backendOf). */
+  private backendKey(): string {
+    return this.runtimeIdentity?.backend ?? this.config.backend ?? this.backend?.binaryName ?? "unknown";
+  }
+
+  /**
+   * After a failed launch, read the pane for the backend's fleet-wide outage
+   * text (e.g. kiro's `dispatch failure (timeout) … kiro.dev`) and record it.
+   * The lifecycle only learns about outages from RUNNING instances; during a
+   * post-update herd nothing is running yet, so the startup path must report
+   * what it sees or the first instance in would clear its session for nothing.
+   */
+  private async noteStartupPaneForBackendOutage(): Promise<void> {
+    if (!this.backendOutage || !this.backend || !this.tmux) return;
+    const outagePattern = this.backend.getErrorPatterns?.().find(p => p.fleetWide && p.type === "network");
+    if (!outagePattern) return;
+    try {
+      const pane = await this.tmux.capturePane();
+      if (!outagePattern.pattern.test(pane)) return;
+      const detail = this.resolveErrorMessage(pane, outagePattern);
+      this.backendOutage.record(this.backendKey(), this.name, detail);
+      this.logger.warn({ detail }, "Startup pane shows the backend outage text");
+    } catch { /* capture failed — nothing to learn */ }
+  }
+
+  /** Fail the startup WITHOUT touching the session while the backend is known to be down. */
+  private throwIfBackendUnreachable(): void {
+    if (!this.backendOutage?.isActive(this.backendKey())) return;
+    this.logger.warn("Backend unreachable — keeping the session and failing startup for a delayed retry");
+    throw new BackendUnreachableStartupError(this.backendKey());
   }
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */

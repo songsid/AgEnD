@@ -82,6 +82,7 @@ import { RestartProgress, type RestartProgressTarget } from "./restart-progress.
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
 import { SpawnGate } from "./spawn-gate.js";
+import { BackendOutageTracker } from "./backend-outage.js";
 import {
   canUnlockAdvancedTips,
   DailyTipScheduler,
@@ -415,6 +416,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly lifecycle: InstanceLifecycle;
   readonly stormWindow: StormWindow;
   readonly spawnGate: SpawnGate;
+  /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
+  readonly backendOutage = new BackendOutageTracker();
   /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
@@ -498,6 +501,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private ipcWaitTails = new Map<string, Promise<void>>();
   /** instanceName → restart currently executing; concurrent callers join it. */
   private restartsInFlight = new Map<string, Promise<void>>();
+  /**
+   * Delayed automatic retries for instances whose startup failed. Before this a
+   * failed start was logged once and the instance stayed `stopped` until an
+   * operator noticed (2026-09-03: 4 kiro instances, all victims of the same
+   * backend outage during a post-update herd). instanceName → pending retry.
+   */
+  private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
+  /** Aggregation window for the "N instances failed to start" notice. */
+  private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
+  /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
+  static readonly STARTUP_RETRY_BACKOFF_MS = [60_000, 5 * 60_000, 15 * 60_000];
+  /** Hard cap on automatic startup retries (3 backoff steps + up to 3 more during a backend outage). */
+  static readonly STARTUP_RETRY_MAX_ATTEMPTS = 6;
+  /** Re-check interval when a retry is due but the tmux storm window still blocks spawns. */
+  static readonly STARTUP_RETRY_STORM_DEFER_MS = 60_000;
+  static readonly STARTUP_RETRY_NOTICE_AGGREGATE_MS = 1_000;
   // Last user message delivered to each instance — used to react ✅ on completion.
   private lastInboundMsg = new Map<string, { adapterId?: string; chatId: string; threadId?: string; messageId: string; source?: string }>();
   private topicArchiver: TopicArchiver;
@@ -1577,6 +1596,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
      */
     resumePaused = false,
   ): Promise<void> {
+    // Any start supersedes a pending automatic retry (it would otherwise fire
+    // into a running instance — harmless, but noisy — or race this start).
+    this.cancelStartupRetry(name);
     if (resumePaused && this.lifecycle.isPaused(name)) {
       await this.lifecycle.wake(name, 30_000);
       // A successful wake clears the persisted pause marker and produces a
@@ -1695,8 +1717,119 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (this.daemons.has(name)) onReady?.(name);
       } catch (err) {
         this.logger.error({ err, name }, "Failed to start instance");
+        this.scheduleStartupRetry(name, 0);
       }
     })));
+  }
+
+  // ── Delayed automatic startup retries ──────────────────────────────────
+
+  /**
+   * Schedule attempt `attempt` (0-based) of the automatic startup retry for an
+   * instance whose start just failed. Backoff 1 → 5 → 15 min; while the
+   * instance's backend is known to be unreachable the 15-min step repeats up to
+   * STARTUP_RETRY_MAX_ATTEMPTS, after which we give up with one notice. Each
+   * retry re-checks the world (still configured, not running, not paused, no
+   * tmux storm) and runs through the SpawnGate as "recovery" — so a herd of
+   * failed instances comes back at the gate's concurrency, never all at once.
+   */
+  scheduleStartupRetry(name: string, attempt: number): void {
+    if (this.shuttingDown) return;
+    if (this.startupRetries.has(name)) return;
+    const backoff = FleetManager.STARTUP_RETRY_BACKOFF_MS;
+    const outage = this.backendOutage.isActive(this.backendNameOf(name));
+    const exhausted = attempt >= backoff.length && !(outage && attempt < FleetManager.STARTUP_RETRY_MAX_ATTEMPTS);
+    if (attempt >= FleetManager.STARTUP_RETRY_MAX_ATTEMPTS || exhausted) {
+      this.logger.error({ name, attempts: attempt }, "Giving up automatic startup retries");
+      this.queueStartupRetryNotice("gave_up", name, 0);
+      return;
+    }
+    const delayMs = backoff[Math.min(attempt, backoff.length - 1)];
+    const timer = setTimeout(() => { void this.runStartupRetry(name, attempt); }, delayMs);
+    timer.unref?.();
+    this.startupRetries.set(name, { attempt, timer });
+    this.logger.warn({ name, attempt: attempt + 1, delayMs, backendOutage: outage }, "Startup failed — automatic retry scheduled");
+    if (attempt === 0) this.queueStartupRetryNotice("scheduled", name, delayMs);
+  }
+
+  /** Drop a pending automatic retry (an operator start/stop/restart supersedes it). */
+  cancelStartupRetry(name: string): void {
+    const pending = this.startupRetries.get(name);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.startupRetries.delete(name);
+    this.logger.info({ name }, "Pending automatic startup retry cancelled");
+  }
+
+  /** Pending automatic retry, if any (status display / tests). */
+  pendingStartupRetry(name: string): { attempt: number } | null {
+    const pending = this.startupRetries.get(name);
+    return pending ? { attempt: pending.attempt } : null;
+  }
+
+  private async runStartupRetry(name: string, attempt: number): Promise<void> {
+    this.startupRetries.delete(name);
+    if (this.shuttingDown) return;
+    const config = this.fleetConfig?.instances[name];
+    if (!config) return; // removed from fleet.yaml meanwhile
+    if (this.lifecycle.isPaused(name) || this.daemons.has(name)) return; // operator acted meanwhile
+    if (this.stormWindow.isSpawnBlocked()) {
+      // The tmux server is being restarted; joining that herd is what we are
+      // trying to avoid. Same attempt again after the storm's own recovery.
+      const timer = setTimeout(() => { void this.runStartupRetry(name, attempt); }, FleetManager.STARTUP_RETRY_STORM_DEFER_MS);
+      timer.unref?.();
+      this.startupRetries.set(name, { attempt, timer });
+      this.logger.info({ name, attempt: attempt + 1 }, "Startup retry deferred — tmux storm window is blocking spawns");
+      return;
+    }
+    const topicMode = this.fleetConfig?.channel?.mode === "topic"
+      || !!this.fleetConfig?.channels?.some(channel => channel.mode === "topic");
+    try {
+      await this.spawnGate.run({
+        instanceName: name,
+        workingDirectory: config.working_directory,
+        reason: "recovery",
+      }, () => this.startInstance(name, config, topicMode));
+      if (this.daemons.has(name)) {
+        this.logger.info({ name, attempt: attempt + 1 }, "Automatic startup retry succeeded");
+      }
+    } catch (err) {
+      this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
+      this.scheduleStartupRetry(name, attempt + 1);
+    }
+  }
+
+  private backendNameOf(name: string): string {
+    return this.fleetConfig?.instances[name]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+  }
+
+  /**
+   * One fleet-level notice per burst, not one per instance: a post-update herd
+   * fails many instances within the same second. Two notices per incident at
+   * most — "N failed, retrying in X" and, if it comes to that, "gave up on N".
+   */
+  private queueStartupRetryNotice(kind: "scheduled" | "gave_up", name: string, delayMs: number): void {
+    const pending = this.startupRetryNotices.get(kind);
+    if (pending) {
+      if (!pending.names.includes(name)) pending.names.push(name);
+      return;
+    }
+    const timer = setTimeout(() => {
+      const entry = this.startupRetryNotices.get(kind);
+      this.startupRetryNotices.delete(kind);
+      if (!entry) return;
+      const list = entry.names.join(", ");
+      if (kind === "scheduled") {
+        let text = t("fleet.startup_retry_scheduled", entry.names.length, list, this.formatStormDelay(entry.delayMs));
+        const downBackends = [...new Set(entry.names.map(n => this.backendNameOf(n)))].filter(b => this.backendOutage.isActive(b));
+        if (downBackends.length) text += `\n${t("fleet.startup_retry_outage", downBackends.join(", "))}`;
+        this.notifyFleetError(text);
+      } else {
+        this.notifyFleetError(t("fleet.startup_retry_gave_up", entry.names.length, list));
+      }
+    }, FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
+    timer.unref?.();
+    this.startupRetryNotices.set(kind, { names: [name], delayMs, timer });
   }
 
   private runnableStartupCount(fleet: FleetConfig, includeClassic: boolean): number {
@@ -1731,6 +1864,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async stopInstance(name: string): Promise<void> {
+    this.cancelStartupRetry(name);
     this.failoverActive.delete(name);
     this.cancelIdleButtonRetirement(name);
     this.instanceStateCache.delete(name);
@@ -9334,6 +9468,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // make `agend stop` wait forever for its own queue.
     this.stormWindow.shutdown();
     this.spawnGate.shutdown();
+    for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
+    this.startupRetries.clear();
+    for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);
+    this.startupRetryNotices.clear();
     if (this.stormOpenNotifyTimer) {
       clearTimeout(this.stormOpenNotifyTimer);
       this.stormOpenNotifyTimer = null;
