@@ -1882,6 +1882,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
   }
 
+  /**
+   * Unattended ClassicBot start (fleet startup batch, full-restart batch, the
+   * classicBot.yaml reconcile): same contract as startInstanceUnattended —
+   * failures are logged and handed to the delayed automatic retry, whose
+   * kind-aware startConfiguredInstance rebuilds the Classic instance. Returns
+   * whether the instance is up.
+   */
+  private async startClassicInstanceUnattended(
+    ch: { instanceName: string; channelId: string; adapterId?: string },
+    what: string,
+  ): Promise<boolean> {
+    try {
+      await this.startClassicInstance(
+        ch.instanceName,
+        this.classicChannels!.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend),
+        this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
+        this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+        this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
+      );
+      return this.daemons.has(ch.instanceName);
+    } catch (err) {
+      this.logger.warn({ err, instanceName: ch.instanceName }, `Failed to start ${what}`);
+      this.scheduleStartupRetry(ch.instanceName, 0);
+      return false;
+    }
+  }
+
   private backendNameOf(name: string): string {
     const fleetDefault = this.fleetConfig?.defaults?.backend;
     const configured = this.fleetConfig?.instances[name]?.backend;
@@ -2278,14 +2305,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             await this.stopInstance(ch.instanceName).catch(() => {});
             // Small delay to let tmux window clean up
             await new Promise(r => setTimeout(r, 2000));
-            await this.startClassicInstance(
-              ch.instanceName,
-              newBackend,
-              this.classicChannels.getPreTaskCommand(ch.channelId, ch.adapterId),
-              newModel,
-              newAutoPause,
-            ).catch(err =>
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to restart classic instance"));
+            // The manager already holds the new backend/model/auto-pause; the
+            // unattended helper reads them from it and schedules the delayed
+            // retry on failure like every other unattended start.
+            await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
           }
         }
       } catch (err) {
@@ -2628,18 +2651,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(async ch => {
-            try {
-              await this.startClassicInstance(
-                ch.instanceName,
-                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-              );
-              if (this.daemons.has(ch.instanceName)) startupProgress.markReady();
-            } catch (err) {
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
-            }
+            if (await this.startClassicInstanceUnattended(ch, "classic instance")) startupProgress.markReady();
           }));
           idx += concurrency;
         }
@@ -10042,18 +10054,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         while (idx < channels.length) {
           const batch = channels.slice(idx, idx + concurrency);
           await Promise.allSettled(batch.map(async ch => {
-            try {
-              await this.startClassicInstance(
-                ch.instanceName,
-                this.classicChannels!.getBackendByInstance(ch.instanceName, fleetBackend),
-                this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-                this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
-                this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
-              );
-              if (this.daemons.has(ch.instanceName)) restartProgress.markReady();
-            } catch (err) {
-              this.logger.warn({ err, instanceName: ch.instanceName }, "Failed to start classic instance");
-            }
+            if (await this.startClassicInstanceUnattended(ch, "classic instance")) restartProgress.markReady();
           }));
           idx += concurrency;
         }

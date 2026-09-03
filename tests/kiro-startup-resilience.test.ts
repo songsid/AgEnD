@@ -717,6 +717,35 @@ describe("outage hand-off is serialized against operator stop/restart", () => {
     } finally { cleanup(); }
   });
 
+  it("ClassicBot: an unattended start failure (fleet startup / full restart / reconcile batches) schedules the retry, which rebuilds it", async () => {
+    const { fm, startInstance, cleanup } = makeFleet();
+    try {
+      fm.lifecycle.daemons.clear();
+      const ch = { instanceName: "cls", channelId: "c1", adapterId: "discord" };
+      fm.classicChannels = {
+        getAll: () => [ch],
+        getBackendByInstance: () => "kiro-cli",
+        getChannelIdByInstance: () => "c1",
+        getAdapterIdByInstance: () => "discord",
+        getPreTaskCommand: () => undefined,
+        getModel: () => undefined,
+        getAutoPauseAfter: () => undefined,
+      } as any;
+      const startClassic = vi.spyOn(fm as any, "startClassicInstance").mockRejectedValue(new Error("CLI failed to start after retry"));
+
+      // The shared helper is what all three unattended Classic entry points call.
+      expect(await (fm as any).startClassicInstanceUnattended(ch, "classic instance")).toBe(false);
+      expect(fm.pendingStartupRetry("cls")).toEqual({ attempt: 0 });
+
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(startClassic).toHaveBeenCalledTimes(2);                 // initial + retry
+      expect(startClassic.mock.calls[1][0]).toBe("cls");
+      expect(startClassic.mock.calls[1][1]).toBe("kiro-cli");
+      expect(startInstance).not.toHaveBeenCalled();
+      expect(fm.pendingStartupRetry("cls")).toEqual({ attempt: 1 });  // still failing → next backoff step
+    } finally { cleanup(); }
+  });
+
   it("a hand-off for a daemon that was already replaced is a no-op", async () => {
     const { fm, daemon, cleanup } = fleetWithDaemon();
     try {
