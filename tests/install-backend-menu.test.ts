@@ -49,6 +49,18 @@ describe("bare /install-cli offers a backend chooser", () => {
     expect(offered).toHaveLength(6);
   });
 
+  it("keeps every callback id inside Telegram's 64-byte callback_data cap", async () => {
+    // Only 5 bytes of headroom today: "install-select:" (15) + 32 hex + ":"
+    // leaves 16 for the backend name, and the longest is 11. A name of 17+
+    // characters would push past 64 and Telegram would reject the button
+    // silently — no error, just a menu that does nothing.
+    const { fm, adapter, notifyAlert } = makeFleet();
+    await fm.promptInstallBackends(chat(adapter, "t1"));
+    for (const c of notifyAlert.mock.calls[0][1].choices) {
+      expect(Buffer.byteLength(c.id, "utf8"), `callback_data too long: ${c.id}`).toBeLessThanOrEqual(64);
+    }
+  });
+
   it("does NOT filter to backends the fleet already runs", async () => {
     // Installing is how you get a backend you do not have; filtering by
     // configured backends would hide the only entry the admin came for.

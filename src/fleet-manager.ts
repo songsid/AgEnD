@@ -5429,8 +5429,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timeoutMs?: number;
   }): Promise<string | null> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
-    // callback_data cap still holds: longest id is "interactive-assist:" (19)
-    // + 32 hex + ":confirm" (8) = 59 bytes.
+    // callback_data cap still holds, with two prefixes tied at the longest:
+    // "interactive-assist:" (19) + 32 hex + ":confirm" (8) = 59, and
+    // "install-select:" (15) + 32 hex + ":" + the longest backend name
+    // ("claude-code"/"antigravity", 11) = 59. Only 5 bytes of headroom: a
+    // backend name of 17+ characters, or a longer prefix, would be silently
+    // rejected by Telegram — see the callback_data assertion in
+    // install-backend-menu.test.ts.
     const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
       prefix: opts.prefix,
