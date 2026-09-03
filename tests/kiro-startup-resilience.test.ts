@@ -297,6 +297,44 @@ describe("crash-respawn during an outage hands off instead of stranding `crashed
   });
 });
 
+describe("a rejected start() disposes the half-started daemon (sol round 3, B1)", () => {
+  it("abortStartup closes the IPC server, kills the window, removes pid/window-id, and is idempotent", async () => {
+    const h = makeSpawnHarness(kiro());
+    const close = vi.fn(async () => {});
+    h.daemon.ipcServer = { close };
+    writeFileSync(join(h.dir, "daemon.pid"), String(process.pid));
+    writeFileSync(join(h.dir, "window-id"), "@1");
+
+    await h.daemon.abortStartup();
+    await h.daemon.abortStartup();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(h.daemon.ipcServer).toBeNull();
+    expect(h.killed).toBe(1);
+    expect(h.daemon.tmux.killWindow).toHaveBeenCalledTimes(1);
+    expect(existsSync(join(h.dir, "daemon.pid"))).toBe(false);
+    expect(existsSync(join(h.dir, "window-id"))).toBe(false);
+  });
+
+  it("the lifecycle ownership boundary aborts the daemon when start() rejects, then rethrows", async () => {
+    const abortStartup = vi.fn(async () => {});
+    const daemon = { start: vi.fn(async () => { throw new BackendUnreachableStartupError("kiro-cli"); }), abortStartup };
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as any;
+    await expect(InstanceLifecycle.startOrDispose(daemon, "kiro-a", logger)).rejects.toBeInstanceOf(BackendUnreachableStartupError);
+    expect(abortStartup).toHaveBeenCalledTimes(1);
+
+    // A failing abort must not mask the start error.
+    const daemon2 = { start: vi.fn(async () => { throw new Error("CLI failed to start after retry"); }), abortStartup: vi.fn(async () => { throw new Error("close exploded"); }) };
+    await expect(InstanceLifecycle.startOrDispose(daemon2, "kiro-a", logger)).rejects.toThrow("CLI failed to start after retry");
+    expect(logger.warn).toHaveBeenCalled();
+
+    // A successful start never aborts.
+    const daemon3 = { start: vi.fn(async () => {}), abortStartup: vi.fn(async () => {}) };
+    await InstanceLifecycle.startOrDispose(daemon3, "kiro-a", logger);
+    expect(daemon3.abortStartup).not.toHaveBeenCalled();
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // #4 lifecycle: one fleet-level notice per outage
 // ─────────────────────────────────────────────────────────────────────────────
@@ -319,8 +357,12 @@ function makeLifecycle() {
     notifyInstanceTopic,
     notifyFleetError,
     scheduleStartupRetry: vi.fn(),
-    backendOutage: new BackendOutageTracker(),
     setTopicIcon: vi.fn(),
+    stopStatuslineWatcher: vi.fn(),
+    instanceIpcClients: new Map(),
+    ipcStoppingInstances: new Set(),
+    sessionRegistry: new Map(),
+    backendOutage: new BackendOutageTracker(),
     webhookEmit: vi.fn(),
     clearCancelButton: vi.fn(),
     checkModelFailover: vi.fn(),
@@ -358,14 +400,37 @@ describe("#4 lifecycle: fleet-wide network errors notify once and feed the outag
     expect([...ctx.backendOutage!.active("kiro-cli")!.instances].sort()).toEqual(["kiro-a", "kiro-b"]);
   });
 
-  it("startup_backend_unreachable from a daemon → stop it (session kept) and hand it to the fleet's delayed retry", async () => {
-    const { attach, ctx, lifecycle } = makeLifecycle();
-    const stop = vi.spyOn(lifecycle, "stop").mockResolvedValue(undefined);
+  it("startup_backend_unreachable → the fleet-owned hand-off gets THIS daemon (identity), not just a name", async () => {
+    const { attach, ctx } = makeLifecycle();
+    const handOff = vi.fn(async () => {});
+    (ctx as any).handOffToStartupRetry = handOff;
     const a = attach("kiro-a");
     a.emit("startup_backend_unreachable", { name: "kiro-a", backend: "kiro-cli" });
     await flush();
-    expect(stop).toHaveBeenCalledWith("kiro-a");
-    expect((ctx as any).scheduleStartupRetry).toHaveBeenCalledWith("kiro-a", 0);
+    expect(handOff).toHaveBeenCalledWith("kiro-a", a);
+    expect((ctx as any).scheduleStartupRetry).not.toHaveBeenCalled(); // the fleet decides
+  });
+
+  it("without a fleet coordinator it stops only if this daemon is still the registered one", async () => {
+    const { attach, ctx, lifecycle } = makeLifecycle();
+    const a = attach("kiro-a");
+    const fresh = { stop: vi.fn(async () => {}) };
+    lifecycle.daemons.set("kiro-a", fresh as any);           // a restart already replaced it
+    a.emit("startup_backend_unreachable", { name: "kiro-a", backend: "kiro-cli" });
+    await flush();
+    expect(fresh.stop).not.toHaveBeenCalled();
+    expect(lifecycle.daemons.get("kiro-a")).toBe(fresh);
+    expect((ctx as any).scheduleStartupRetry).not.toHaveBeenCalled();
+  });
+
+  it("stop() is identity-safe: a fresh daemon registered during the old one's stop survives", async () => {
+    const { lifecycle } = makeLifecycle();
+    const fresh = { stop: vi.fn(async () => {}) };
+    const old = { stop: vi.fn(async () => { lifecycle.daemons.set("kiro-a", fresh as any); }) };
+    lifecycle.daemons.set("kiro-a", old as any);
+    await lifecycle.stop("kiro-a");
+    expect(old.stop).toHaveBeenCalledTimes(1);
+    expect(lifecycle.daemons.get("kiro-a")).toBe(fresh);
   });
 
   it("a plain (non-fleetWide) network error keeps the per-instance incident path", async () => {
@@ -533,6 +598,83 @@ describe("#3 delayed automatic startup retries", () => {
       await vi.advanceTimersByTimeAsync(2_000);
       expect(fm.pendingStartupRetry("a")).toBeNull();
       expect(notifyFleetError).not.toHaveBeenCalled();
+    } finally { cleanup(); }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// hand-off vs operator races (sol round 3, M2)
+// ─────────────────────────────────────────────────────────────────────────────
+describe("outage hand-off is serialized against operator stop/restart", () => {
+  beforeEach(() => vi.useFakeTimers());
+
+  function slowDaemon() {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const stop = vi.fn(async () => { await gate; });
+    return { daemon: { stop } as any, release, stop };
+  }
+  function fleetWithDaemon() {
+    const made = makeFleet();
+    made.fm.setTopicIcon = vi.fn();
+    const { daemon, release, stop } = slowDaemon();
+    made.fm.lifecycle.daemons.set("a", daemon);
+    return { ...made, daemon, release, stop };
+  }
+
+  it("plain hand-off: stops the daemon and schedules attempt 0", async () => {
+    const { fm, daemon, release, cleanup } = fleetWithDaemon();
+    try {
+      const handOff = fm.handOffToStartupRetry("a", daemon);
+      release();
+      await handOff;
+      expect(fm.lifecycle.daemons.has("a")).toBe(false);
+      expect(fm.pendingStartupRetry("a")).toEqual({ attempt: 0 });
+    } finally { cleanup(); }
+  });
+
+  it("an explicit stop during the hand-off wins: no automatic retry is scheduled behind it", async () => {
+    const { fm, daemon, release, cleanup } = fleetWithDaemon();
+    try {
+      vi.spyOn(fm.lifecycle, "stop").mockImplementation(async (name: string) => {
+        const d = fm.lifecycle.daemons.get(name); if (d) { await d.stop(); if (fm.lifecycle.daemons.get(name) === d) fm.lifecycle.daemons.delete(name); }
+      });
+      const handOff = fm.handOffToStartupRetry("a", daemon);
+      const operatorStop = fm.stopInstance("a");            // begins while the old daemon is still stopping
+      release();
+      await Promise.all([handOff, operatorStop]);
+      expect(fm.lifecycle.daemons.has("a")).toBe(false);
+      expect(fm.pendingStartupRetry("a")).toBeNull();        // the operator's stop is not undone
+    } finally { cleanup(); }
+  });
+
+  it("an operator restart during the hand-off keeps the FRESH daemon and schedules no retry", async () => {
+    const { fm, daemon, release, startInstance, cleanup } = fleetWithDaemon();
+    try {
+      const fresh = { stop: vi.fn(async () => {}) } as any;
+      startInstance.mockImplementation(async (name: string) => { fm.lifecycle.daemons.set(name, fresh); });
+      vi.spyOn(fm.lifecycle, "stop").mockImplementation(async (name: string) => {
+        const d = fm.lifecycle.daemons.get(name); if (d) { await d.stop(); if (fm.lifecycle.daemons.get(name) === d) fm.lifecycle.daemons.delete(name); }
+      });
+      const handOff = fm.handOffToStartupRetry("a", daemon);
+      const restart = fm.restartSingleInstance("a");
+      release();
+      await vi.advanceTimersByTimeAsync(10);
+      await Promise.all([handOff, restart]);
+      expect(fm.lifecycle.daemons.get("a")).toBe(fresh);      // the late hand-off did not delete it
+      expect(fresh.stop).not.toHaveBeenCalled();
+      expect(fm.pendingStartupRetry("a")).toBeNull();
+    } finally { cleanup(); }
+  });
+
+  it("a hand-off for a daemon that was already replaced is a no-op", async () => {
+    const { fm, daemon, cleanup } = fleetWithDaemon();
+    try {
+      const fresh = { stop: vi.fn(async () => {}) } as any;
+      fm.lifecycle.daemons.set("a", fresh);
+      await fm.handOffToStartupRetry("a", daemon);
+      expect(fm.lifecycle.daemons.get("a")).toBe(fresh);
+      expect(fm.pendingStartupRetry("a")).toBeNull();
     } finally { cleanup(); }
   });
 });

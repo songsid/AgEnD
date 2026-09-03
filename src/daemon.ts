@@ -890,6 +890,7 @@ export class Daemon extends EventEmitter {
   private resolveSpawnSettled: (() => void) | null = null;
   private spawnDepth = 0;
   private skipResume = false;
+  private startupAborted = false;
   private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
   isNewSession = false;
@@ -4910,6 +4911,34 @@ export class Daemon extends EventEmitter {
     this.healthCheckPaused = true;
     this.emit("startup_backend_unreachable", { name: this.name, backend: err.backend });
     return true;
+  }
+
+  /**
+   * Dispose a Daemon whose start() rejected. The lifecycle registers a daemon
+   * only after start() resolves, so nothing else owns this object — and by the
+   * time the spawn fails it has already bound its IPC server (channel.sock),
+   * written daemon.pid and possibly created a window. Left alone, each failed
+   * start leaks one live-but-unreachable server handle (the next start unlinks
+   * the socket path and binds a new one), multiplied by the automatic startup
+   * retries. Idempotent, and fast: no graceful CLI quit, the CLI never reached
+   * its prompt.
+   */
+  async abortStartup(): Promise<void> {
+    if (this.startupAborted) return;
+    this.startupAborted = true;
+    this.freezeRuntimeMonitors();
+    this.pendingIpcRequests.clear();
+    try { await this.killProcessTree(); } catch { /* nothing running */ }
+    if (this.tmux) {
+      const windowId = this.tmux.getWindowId();
+      try { await this.tmux.killWindow(); } catch { /* window may not exist */ }
+      if (windowId) this.controlClient?.unregisterWindow(windowId);
+    }
+    try { await this.ipcServer?.close(); } catch (err) { this.logger.debug({ err }, "IPC server close failed during startup abort"); }
+    this.ipcServer = null;
+    for (const file of ["daemon.pid", "window-id"]) {
+      try { unlinkSync(join(this.instanceDir, file)); } catch { /* absent */ }
+    }
   }
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */

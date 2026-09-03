@@ -508,6 +508,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * backend outage during a post-update herd). instanceName → pending retry.
    */
   private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
+  /** Bumped by every explicit stop (incl. the stop half of a restart); fences the outage hand-off. */
+  private explicitStopGeneration = new Map<string, number>();
+  /** instanceName → outage hand-off currently executing; a repeat joins it. */
+  private handOffsInFlight = new Map<string, Promise<void>>();
   /** Aggregation window for the "N instances failed to start" notice. */
   private startupRetryNotices = new Map<"scheduled" | "gave_up", { names: string[]; delayMs: number; timer: NodeJS.Timeout }>();
   /** Backoff between automatic startup retries; the last step repeats while the backend is down. */
@@ -1779,6 +1783,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return pending ? { attempt: pending.attempt } : null;
   }
 
+  /**
+   * A daemon's crash-respawn hit the backend outage (startup_backend_unreachable):
+   * stop THAT daemon and schedule the delayed retry. Serialized against the
+   * operator paths: an in-flight restart is awaited first (it replaces the
+   * daemon itself), the stop is identity-checked so a fresh daemon registered
+   * meanwhile is never deleted, and an explicit stop/restart that began during
+   * the hand-off (generation bump) owns the outcome — no retry is scheduled
+   * behind an operator's back.
+   */
+  async handOffToStartupRetry(name: string, daemon: unknown): Promise<void> {
+    const joined = this.handOffsInFlight.get(name);
+    if (joined) return joined;
+    const run = (async () => {
+      const restart = this.restartsInFlight.get(name);
+      if (restart) await restart.catch(() => { /* the restart reports its own failure */ });
+      const stopGen = this.explicitStopGeneration.get(name) ?? 0;
+      if (this.lifecycle.daemons.get(name) !== daemon) return; // already replaced or stopped
+      await this.lifecycle.stopIfCurrent(name, daemon);
+      if (this.shuttingDown) return;
+      if ((this.explicitStopGeneration.get(name) ?? 0) !== stopGen) {
+        this.logger.info({ name }, "Outage hand-off superseded by an explicit stop/restart — no automatic retry");
+        return;
+      }
+      if (this.lifecycle.daemons.has(name) || this.lifecycle.isPaused(name)) return;
+      this.scheduleStartupRetry(name, 0);
+    })().finally(() => this.handOffsInFlight.delete(name));
+    this.handOffsInFlight.set(name, run);
+    return run;
+  }
+
   private async runStartupRetry(name: string, attempt: number): Promise<void> {
     this.startupRetries.delete(name);
     if (this.shuttingDown) return;
@@ -1876,6 +1910,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async stopInstance(name: string): Promise<void> {
+    this.explicitStopGeneration.set(name, (this.explicitStopGeneration.get(name) ?? 0) + 1);
     this.cancelStartupRetry(name);
     this.failoverActive.delete(name);
     this.cancelIdleButtonRetirement(name);

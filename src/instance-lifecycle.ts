@@ -120,6 +120,12 @@ export interface LifecycleContext {
   notifyFleetError?(text: string): void;
   /** Hand a failed/blocked instance to the fleet's delayed automatic startup retry. */
   scheduleStartupRetry?(name: string, attempt: number): void;
+  /**
+   * Stop THIS daemon (identity-checked) and schedule the delayed startup retry,
+   * serialized against operator stop/restart so neither can be undone by the
+   * other. Fleet-owned; the lifecycle falls back to stopIfCurrent without it.
+   */
+  handOffToStartupRetry?(name: string, daemon: unknown): Promise<void>;
   saveFleetConfig(): void;
   /** Full stop+start. freshStart forces the respawn to skip session resume. */
   restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
@@ -553,8 +559,12 @@ export class InstanceLifecycle {
       // it back once the backend answers — instead of `crashed` forever.
       this.ctx.eventLog?.insert(name, "startup_backend_unreachable", { backend: data.backend });
       this.ctx.logger.warn({ name, backend: data.backend }, "Respawn blocked by backend outage — stopping the daemon for a delayed startup retry");
-      await this.stop(name);
-      this.ctx.scheduleStartupRetry?.(name, 0);
+      if (this.ctx.handOffToStartupRetry) {
+        await this.ctx.handOffToStartupRetry(name, daemon);
+        return;
+      }
+      // No fleet coordinator: stop only if this daemon is still the registered one.
+      if (await this.stopIfCurrent(name, daemon)) this.ctx.scheduleStartupRetry?.(name, 0);
     }, this.ctx.logger, `daemon.startup_backend_unreachable[${name}]`));
 
     daemon.on("tmux_server_crash", safeHandler(() => {
@@ -886,7 +896,7 @@ export class InstanceLifecycle {
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
     });
-    await daemon.start();
+    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
     this.daemons.set(name, daemon);
 
 
@@ -987,13 +997,43 @@ export class InstanceLifecycle {
     this.ctx.startStatuslineWatcher(name);
   }
 
+  /**
+   * Ownership boundary for a daemon that is not yet registered: if start()
+   * rejects, nothing else will ever dispose it, so do it here before
+   * rethrowing. The abort is best-effort — the start error is the one to
+   * surface.
+   */
+  static async startOrDispose(
+    daemon: { start(): Promise<void>; abortStartup(): Promise<void> },
+    name: string,
+    logger: Logger,
+  ): Promise<void> {
+    try {
+      await daemon.start();
+    } catch (err) {
+      await daemon.abortStartup().catch(abortErr =>
+        logger.warn({ err: abortErr, name }, "Failed to dispose a daemon whose start() rejected"));
+      throw err;
+    }
+  }
+
+  /** Stop the registered daemon only if it is still `daemon` (a concurrent restart may have replaced it). */
+  async stopIfCurrent(name: string, daemon: unknown): Promise<boolean> {
+    if (this.daemons.get(name) !== daemon) return false;
+    await this.stop(name);
+    return true;
+  }
+
   async stop(name: string): Promise<void> {
     this.ctx.setTopicIcon(name, "remove");
 
     const daemon = this.daemons.get(name);
     if (daemon) {
       await daemon.stop();
-      this.daemons.delete(name);
+      // Identity-safe: while we awaited, a concurrent restart may have
+      // registered a FRESH daemon under this name — deleting by name alone
+      // would drop it from supervision while its CLI keeps running.
+      if (this.daemons.get(name) === daemon) this.daemons.delete(name);
     } else {
       const instanceDir = this.ctx.getInstanceDir(name);
       const pidPath = join(instanceDir, "daemon.pid");
