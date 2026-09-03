@@ -162,6 +162,24 @@ export class KiroBackend implements CliBackend {
     return true;
   }
 
+  dropsEnterWhileBusy(): boolean {
+    // Verified live (kiro-cli 2.21.0, --legacy-ui): text pasted while a shell
+    // tool ran surfaced in the prompt row after the turn, UNSUBMITTED, and the
+    // next message's Enter submitted both as one. Enter during a turn is
+    // discarded, not queued — so the daemon must not treat a quiet pane as an
+    // open prompt (tool execution and backend retries are silent for seconds).
+    return true;
+  }
+
+  getBottomReadyPattern(): RegExp {
+    // Legacy-UI prompt row, live captures: "51% !>", "1% !> How can I help?",
+    // "2% !> Not sure where to start? …" (placeholder hint shares the row), and
+    // the mode-glyph form "20% λ !>". While a tool runs the bottom row is the
+    // tool banner ("Purpose: …"); while generating it is "⠇ Thinking…" — neither
+    // matches, which is exactly the point.
+    return /\d+%[^\n]*[!❯>]/;
+  }
+
   buildCommand(config: CliBackendConfig): string {
     const ui = config.kiroUi ?? "legacy";
     let cmd = `${this.binaryPath} chat`;

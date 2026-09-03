@@ -151,6 +151,27 @@ export interface CliBackend {
   requiresDeliveryEnterRetry?(): boolean;
 
   /**
+   * Whether the TUI DROPS an Enter that arrives while it is generating or
+   * running a tool, while still accepting the typed text as typeahead (Kiro's
+   * legacy UI, verified live on kiro-cli 2.21.0). For such a TUI, a quiet pane
+   * is not evidence of readiness: a shell/MCP tool can run for many seconds
+   * without painting anything, and a paste+Enter landing in that window leaves
+   * the text sitting unsubmitted in the prompt row until the next Enter — which
+   * then submits two messages as one. When true, the daemon requires the
+   * bottom-anchored ready marker (`getBottomReadyPattern`) before pasting,
+   * verifies SUBMISSION (not just "some output") after Enter, and submits any
+   * stranded text before pasting a new message. Absent means false.
+   */
+  dropsEnterWhileBusy?(): boolean;
+
+  /**
+   * Ready marker tested against the LAST non-blank pane row only. Distinct from
+   * `getReadyPattern()`, which may match anywhere on screen (a prompt higher up
+   * is history). Required for `dropsEnterWhileBusy()` backends; others may omit.
+   */
+  getBottomReadyPattern?(): RegExp | null;
+
+  /**
    * Whether the TUI can emit terminal output while its visible pane is
    * unchanged (for example, rerunning and repainting a status-line hook).
    *

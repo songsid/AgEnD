@@ -62,6 +62,22 @@ describe("KiroBackend", () => {
     rmSync(WORK_DIR, { recursive: true, force: true });
   });
 
+  describe("delivery capabilities (Enter dropped while busy)", () => {
+    it("declares that Enter is dropped while busy and supplies a bottom-anchored prompt pattern", () => {
+      const backend = makeBackend();
+      expect(backend.dropsEnterWhileBusy()).toBe(true);
+      const prompt = backend.getBottomReadyPattern();
+      // Live legacy-UI bottom rows (kiro-cli 2.21.0, 2026-09-03).
+      for (const row of ["51% !>", "1% !> How can I help?", "2% !> Not sure where to start? Ask me about my features", "20% λ !>", "8% ❯"]) {
+        expect(prompt.test(row), row).toBe(true);
+      }
+      // Busy-phase bottom rows must NOT read as ready.
+      for (const row of ["⠇ Thinking...", "Purpose: Sleep 9 seconds then echo marker", "I will run the following command: sleep 9 (using tool: shell)", " ▸ Time: 15s"]) {
+        expect(prompt.test(row), row).toBe(false);
+      }
+    });
+  });
+
   describe("buildCommand", () => {
     it("generates chat command with --trust-all-tools and --resume", () => {
       const backend = makeBackend();
