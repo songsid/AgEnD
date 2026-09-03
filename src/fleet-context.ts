@@ -79,6 +79,13 @@ export interface FleetContext {
   ): Promise<"posted" | "empty" | "unavailable">;
   /** Persistently enable advanced tips without waiting for the dismissal threshold. */
   unlockAdvancedTips?(userId: string): boolean;
+  /** `/install-cli` backend chooser buttons. Caller enforces fleet-admin. */
+  promptInstallBackends?(chat: {
+    adapter: import("./channel/types.js").ChannelAdapter;
+    adapterId: string;
+    chatId: string;
+    threadId?: string;
+  }): Promise<void>;
   /** `/login` backend chooser buttons. Caller enforces fleet-admin. */
   promptLoginBackends?(chat: {
     adapter: import("./channel/types.js").ChannelAdapter;

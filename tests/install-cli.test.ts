@@ -178,8 +178,12 @@ describe("slash helpers", () => {
     expect(start).toHaveBeenCalledWith("grok", expect.objectContaining({ chatId: "c" }));
     await (fm as any).handleInstallCliSlash({ userId: "a", channelId: "c", options: { cancel: true }, respond }, "discord", adapter);
     expect(cancel).toHaveBeenCalled();
+    // Bare call now opens the backend chooser instead of printing a usage line
+    // the admin would have to retype — matching bare `/login`.
+    const chooser = vi.spyOn(fm as any, "promptInstallBackends").mockResolvedValue(undefined);
     await (fm as any).handleInstallCliSlash({ userId: "a", channelId: "c", respond }, "discord", adapter);
-    expect(String(respond.mock.calls.at(-1)![0])).toContain("/install-cli");
+    expect(chooser).toHaveBeenCalledWith(expect.objectContaining({ chatId: "c" }));
+    expect(String(respond.mock.calls.at(-1)![0])).not.toContain("Usage");
   });
 });
 
