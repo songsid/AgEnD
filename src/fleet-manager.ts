@@ -397,6 +397,7 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 const LOGIN_CALLBACK_PREFIX = "login:";
+const INSTALL_CALLBACK_PREFIX = "install-select:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
 const INSTALL_LOGIN_CALLBACK_PREFIX = "install-login:";
@@ -2753,6 +2754,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleInstallBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
@@ -3075,6 +3077,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipDismiss(data, adapterId, adapter)) return;
       if (await this.handleTipUnlock(data, adapterId, adapter)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
+      if (await this.handleInstallBackendSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return;
@@ -5426,8 +5429,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     timeoutMs?: number;
   }): Promise<string | null> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
-    // callback_data cap still holds: longest id is "interactive-assist:" (19)
-    // + 32 hex + ":confirm" (8) = 59 bytes.
+    // callback_data cap still holds, with two prefixes tied at the longest:
+    // "interactive-assist:" (19) + 32 hex + ":confirm" (8) = 59, and
+    // "install-select:" (15) + 32 hex + ":" + the longest backend name
+    // ("claude-code"/"antigravity", 11) = 59. Only 5 bytes of headroom: a
+    // backend name of 17+ characters, or a longer prefix, would be silently
+    // rejected by Telegram — see the callback_data assertion in
+    // install-backend-menu.test.ts.
     const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
       prefix: opts.prefix,
@@ -6920,6 +6928,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Backend chooser for a bare `/install-cli`, mirroring promptLoginBackends so
+   * both commands feel the same. Built on postNonceButtonPrompt rather than the
+   * `/model` selection coordinator: that is the mechanism `/login` already uses,
+   * and the one whose canonical-address binding (#682) makes the buttons answer
+   * in a Telegram General topic.
+   *
+   * Unlike the login chooser this does NOT filter to backends the fleet already
+   * runs. Installing is how you get a backend you do not have yet, so filtering
+   * by configured backends would hide the only entry the admin came for.
+   *
+   * gemini-cli is omitted: it is deprecated (see backend/factory.ts). Typing
+   * `/install-cli gemini-cli` still works — this only stops recommending it.
+   */
+  async promptInstallBackends(chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+  }): Promise<void> {
+    const choices = Object.keys(BACKEND_INSTALLATION_INFO)
+      .filter(backend => backend !== "gemini-cli")
+      .map(backend => ({ action: backend, label: backend }));
+    await this.postNonceButtonPrompt({
+      prefix: INSTALL_CALLBACK_PREFIX,
+      alertType: "install",
+      instanceName: "install",
+      adapter: chat.adapter,
+      adapterId: chat.adapterId,
+      chatId: chat.chatId,
+      threadId: chat.threadId,
+      message: t("install.choose_backend"),
+      choices,
+      expiredText: t("buttons.stale"),
+    });
+  }
+
+  /** Backend chooser button → start that backend's install session. */
+  private async handleInstallBackendSelect(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      INSTALL_CALLBACK_PREFIX,
+      /^install-select:([0-9a-f]+):([a-z][a-z-]*)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action: backend } = claimed;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      t("install.starting_backend", backend));
+    const text = await this.startInstallSession(backend, {
+      adapter: entry.adapter,
+      adapterId: entry.adapterId,
+      chatId: entry.chatId,
+      threadId: entry.threadId,
+    });
+    if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    return true;
+  }
+
+  /**
    * Start a login session for one backend. Caller enforces admin.
    * Returns a status line to post, or null when a confirmation prompt was
    * posted instead (auth still valid — see the pre-check below).
@@ -7363,7 +7433,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     if (data.options?.cancel === true) { await data.respond(await this.cancelInstallSession()); return; }
     const backend = String(data.options?.backend ?? "").trim();
-    if (!backend) { await data.respond(t("install.usage")); return; }
+    if (!backend) {
+      // Bare call: offer the backends instead of printing a usage line the user
+      // then has to retype. A Discord slash that DID pick the native `backend`
+      // choice never lands here, so the two paths cannot both fire.
+      await this.promptInstallBackends({ adapter, adapterId, chatId: data.channelId });
+      await data.respond(t("install.chooser_posted"));
+      return;
+    }
     await data.respond(await this.startInstallSession(backend, { adapter, adapterId, chatId: data.channelId }));
   }
 

@@ -877,6 +877,17 @@ export class TopicCommands {
       return;
     }
     const arg = msg.text.trim().replace(/^\/install[-_]cli(?:@\S+)?/, "").trim();
+    // Bare call → offer the backends, matching bare `/login`. A multi-word arg
+    // is still a usage error: it means they typed something, just not a backend.
+    if (!arg && this.ctx.promptInstallBackends) {
+      await this.ctx.promptInstallBackends({
+        adapter,
+        adapterId: msg.adapterId ?? adapter.id,
+        chatId: msg.chatId,
+        threadId: msg.threadId,
+      });
+      return;
+    }
     if (!arg || /\s/.test(arg)) {
       await adapter.sendText(msg.chatId, t("install.usage"), { threadId: msg.threadId });
       return;
