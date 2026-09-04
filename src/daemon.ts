@@ -3475,7 +3475,8 @@ export class Daemon extends EventEmitter {
    * /steer: interject into the CURRENT turn instead of queueing for idle.
    *
    * Differences from pushChannelMessage, and nothing else:
-   *  - serialized on steerLock, not pasteLock — it must overtake, not queue
+   *  - serialized on steerLock, not pasteLock — it may overtake current work,
+   *    but never an ordinary delivery already queued ahead of it
    *  - deliverMessage runs with { steer: true }, which takes the busy branch
    *    that pastes immediately (the codex native-queue transaction) instead of
    *    waiting for idle. Verification and silent-loss fallback are the ones
@@ -3488,6 +3489,14 @@ export class Daemon extends EventEmitter {
    */
   steerMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    // The fleet facade prevents a steer from overtaking an item still in its
+    // idle queue. Close the second race window here: an earlier item may already
+    // have reached this daemon's paste queue by the time the steer IPC arrives.
+    if (this.pasteQueueDepth > 0) {
+      this.logger.info("Steer queued behind an earlier pane delivery to preserve message order");
+      this.pushChannelMessage(content, meta, undefined, deliveryEpoch);
+      return;
+    }
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);

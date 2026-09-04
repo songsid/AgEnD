@@ -87,6 +87,8 @@ export interface OutboundContext {
     payload: Record<string, unknown>,
     options?: OutboundDeliveryOptions,
   ): Promise<void>;
+  /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
+  hasPendingIdleGatedDelivery?(instanceName: string): boolean;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
@@ -362,13 +364,21 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const targetBackend = steer === true
     ? effectiveBackendForTarget(ctx, targetInstanceName)
     : undefined;
-  const useSteer = steer === true
+  const steerCapable = steer === true
     && !isExternalSession
     && targetBackend !== undefined
     && backendSupportsSteer(targetBackend);
+  // A supplement must not jump ahead of the work it is meant to amend. The
+  // facade publishes its idle-gated tail synchronously, so a send immediately
+  // followed by steer observes the predecessor and joins the same FIFO queue.
+  const queuedPredecessor = steerCapable
+    && ctx.hasPendingIdleGatedDelivery?.(targetInstanceName) === true;
+  const useSteer = steerCapable && !queuedPredecessor;
   const steerFallbackWarning = steer === true && !useSteer
     ? isExternalSession
       ? "Steer was not applied because external sessions cannot be targeted safely at pane level. The message was safely queued for idle delivery instead."
+      : queuedPredecessor
+        ? "Steer was not applied because a previous message to this target is still queued and steering would overtake it. The supplement was safely queued behind it for idle delivery instead."
       : targetBackend === undefined
         ? "Steer was not applied because the target backend could not be confirmed. The message was safely queued for idle delivery instead."
         : `Steer was not applied because the '${targetBackend}' backend cannot accept mid-turn input. The message was safely queued for idle delivery instead.`

@@ -1557,6 +1557,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
+  /** Whether this target already has an ordinary non-user delivery in its FIFO. */
+  hasPendingIdleGatedDelivery(instanceName: string): boolean {
+    return this.idleGatedDeliveryTails.has(instanceName);
+  }
+
   /** Single delivery facade: wake paused CLIs and serialize non-user work behind idle. */
   async deliverToInstance(
     instanceName: string,

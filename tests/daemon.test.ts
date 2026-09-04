@@ -1029,6 +1029,26 @@ describe("Daemon /steer delivery", () => {
     });
   });
 
+  it("queues a steer behind an earlier pane delivery instead of overtaking it", () => {
+    const { daemon } = makeSteerDaemon("claude-code", true);
+    const queued = vi.spyOn(daemon, "pushChannelMessage").mockImplementation(() => {});
+    (daemon as any).pasteQueueDepth = 1;
+    const meta = {
+      from_instance: "sender-session",
+      correlation_id: "cid-steer-order",
+      chat_id: "",
+      message_id: "xmsg-steer-order",
+      user: "instance:sender-session",
+      user_id: "instance:sender-session",
+      thread_id: "",
+    };
+
+    (daemon as any).steerMessage("amend the queued task", meta, 0);
+
+    expect(queued).toHaveBeenCalledWith("amend the queued task", meta, undefined, 0);
+    expect((daemon as any).pendingWork.hasPendingWork()).toBe(false);
+  });
+
   it("btwMessage submits a reply-capable side-question wrapper instead of native /btw", async () => {
     const { daemon } = makeSteerDaemon("claude-code", true);
     const deliverMessage = vi.fn().mockResolvedValue(true);

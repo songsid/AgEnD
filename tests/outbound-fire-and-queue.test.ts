@@ -236,6 +236,25 @@ describe("cross-instance tools are fire-and-queue", () => {
     );
   });
 
+  it("queues a steer behind an earlier idle-gated delivery instead of overtaking it", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.instances.target.backend = "claude-code";
+    ctx.hasPendingIdleGatedDelivery = vi.fn(() => true);
+
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "supplement", steer: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
+    expect(result.warning).toContain("previous message to this target is still queued");
+    expect(result.warning).toContain("would overtake it");
+    expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+      "target",
+      expect.objectContaining({ type: "fleet_inbound", content: "supplement" }),
+    );
+  });
+
   it.each([undefined, false])("keeps ordinary delivery unchanged when steer is %s", async steer => {
     const ctx = makeContext({ deliver: neverSettles() });
     const args: Record<string, unknown> = { instance_name: "target", message: "new task" };
