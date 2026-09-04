@@ -249,6 +249,7 @@ export class ClassicChannelManager {
       const raw = yaml.load(readFileSync(this.configPath, "utf-8")) as ClassicBotYaml | null;
       if (!raw) return false;
       this.defaults = raw.defaults ?? {};
+      this.reportUnquotedIds();
       this.channels.clear();
       let repaired = false;
       if (raw.channels) {
@@ -425,21 +426,42 @@ export class ClassicChannelManager {
   isGuildAllowed(guildId: string): boolean {
     const list = this.defaults.allowed_guilds;
     if (!Array.isArray(list) || list.length === 0) return true;
-    return list.includes(guildId);
+    // String comparison, matching isAdmin. A hand-edited config can hold an
+    // UNQUOTED id, which YAML parses as a number; a strict includes() then
+    // never matches the string an adapter supplies, and the chat is locked out
+    // with no error anywhere. Note this recovers ids below 2^53 only — a
+    // Discord snowflake was already truncated at parse time and no comparison
+    // can restore it, which is why load() reports those instead (see
+    // normalizeId).
+    return list.some(entry => String(entry) === String(guildId));
   }
 
   /** Check if a Telegram group is allowed. Empty/unset/non-array = allow all. */
   isGroupAllowed(groupId: string): boolean {
     const list = this.defaults.allowed_groups;
     if (!Array.isArray(list) || list.length === 0) return true;
-    return list.includes(groupId);
+    // String comparison, matching isAdmin. A hand-edited config can hold an
+    // UNQUOTED id, which YAML parses as a number; a strict includes() then
+    // never matches the string an adapter supplies, and the chat is locked out
+    // with no error anywhere. Note this recovers ids below 2^53 only — a
+    // Discord snowflake was already truncated at parse time and no comparison
+    // can restore it, which is why load() reports those instead (see
+    // normalizeId).
+    return list.some(entry => String(entry) === String(groupId));
   }
 
   /** Check if a Telegram user (private chat) is allowed. Empty/unset/non-array = allow all. */
   isUserAllowed(userId: string): boolean {
     const list = this.defaults.allowed_users;
     if (!Array.isArray(list) || list.length === 0) return true;
-    return list.includes(userId);
+    // String comparison, matching isAdmin. A hand-edited config can hold an
+    // UNQUOTED id, which YAML parses as a number; a strict includes() then
+    // never matches the string an adapter supplies, and the chat is locked out
+    // with no error anywhere. Note this recovers ids below 2^53 only — a
+    // Discord snowflake was already truncated at parse time and no comparison
+    // can restore it, which is why load() reports those instead (see
+    // normalizeId).
+    return list.some(entry => String(entry) === String(userId));
   }
 
   /** Check if a user is admin. Empty/unset admin_users = no admins (secure default). */
@@ -470,10 +492,76 @@ export class ClassicChannelManager {
     const list = this.defaults[field];
     // admin_users has no allow-all semantics: empty means nobody is admin.
     if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
+    // A truncated entry can never equal the real id, so this comparison will
+    // not treat it as a duplicate: the correct quoted id is ADDED ALONGSIDE the
+    // broken one, which stays until a human removes it. That is the right
+    // outcome — access starts working immediately, and nothing silently
+    // discards a line the operator wrote.
     if (Array.isArray(list) && list.some(x => String(x) === value)) return "already";
-    this.defaults[field] = [...(Array.isArray(list) ? list.map(String) : []), value];
+    // Cast: a preserved out-of-range number stays a number on purpose (see
+    // normalizeId). The isAllowed checks compare with String() either way, so
+    // the runtime contract holds; only the declared type is narrower than what
+    // a hand-edited file can contain.
+    this.defaults[field] = [
+      ...(Array.isArray(list) ? list.map(v => this.normalizeId(field, v)) : []),
+      value,
+    ] as string[];
     this.save();
     return "added";
+  }
+
+  /**
+   * Coerce an existing list entry to the string form the isAllowed checks
+   * compare against — but only when that is lossless.
+   *
+   * A YAML number below 2^53 (every Telegram group id) round-trips exactly, so
+   * String() genuinely repairs it. A Discord snowflake does NOT: YAML already
+   * truncated it at parse time (1496407196106494055 arrives as ...494000), so
+   * String() would write a plausible-looking WRONG id back to disk and erase
+   * the one clue that something is broken — that the entry is a number rather
+   * than a quoted string. Leave those untouched and say so; nothing but the
+   * original text can recover the id.
+   */
+  private normalizeId(field: string, value: unknown): unknown {
+    if (typeof value !== "number") return value;
+    if (Number.isSafeInteger(value)) return String(value);
+    // Preserve silently: reportUnquotedIds() already names this entry once at
+    // load. Logging here too would emit an error on every subsequent write for
+    // a condition the operator has already been told about and cannot fix from
+    // this side.
+    //
+    // Preserving it does NOT keep the original digits: save() re-dumps the
+    // truncated number, so after the first write the file itself shows the
+    // wrong id. Keeping it as a number is still worth doing — that is the only
+    // signal reportUnquotedIds has to find it by — but the file cannot be the
+    // source of the correct value, which is why the error says so.
+    return value;
+  }
+
+  /**
+   * Report ids YAML has already truncated, at load rather than on first write.
+   *
+   * String comparison in the isAllowed checks recovers an unquoted id below
+   * 2^53, so those need no warning. A Discord snowflake is different: YAML
+   * parsed it into a number that lost its last digits before this code ran, so
+   * no comparison can match it and nothing in the stored value can recover it.
+   * Without this the symptom is a guild that simply never gets in, with no
+   * error anywhere — which is the failure this change exists to remove.
+   */
+  private reportUnquotedIds(): void {
+    for (const field of ["allowed_guilds", "allowed_groups", "allowed_users", "admin_users"] as const) {
+      const list = this.defaults[field];
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        if (typeof entry === "number" && !Number.isSafeInteger(entry)) {
+          this.logger.error({ field, value: entry, path: this.configPath },
+            "classicBot.yaml holds an unquoted id too large for YAML — its precision was lost when the "
+            + "file was parsed, so it can never match. Re-enter it as a QUOTED string taken from Discord "
+            + "or Telegram: the digits currently in the file are themselves already wrong, because any "
+            + "save rewrites this entry from the truncated value. Do not copy it from the file.");
+        }
+      }
+    }
   }
 
   /** Allow a Discord guild to use ClassicBot. */
