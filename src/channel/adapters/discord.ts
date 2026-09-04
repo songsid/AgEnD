@@ -39,6 +39,7 @@ import type {
 } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
+import { splitTextFenceAware } from "../markdown-chunk.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -1036,7 +1037,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       const message = await interaction.editReply({ content: reply, components: [] });
       return message.id;
     }
-    const chunks = splitText(reply, EMBED_MAX);
+    const chunks = splitTextFenceAware(reply, EMBED_MAX);
     const message = await interaction.editReply({ content: "", embeds: [{ description: chunks[0] }], components: [] });
     for (let i = 1; i < chunks.length; i++) {
       await interaction.followUp({ ephemeral: true, embeds: [{ description: chunks[i] }] });
@@ -1049,7 +1050,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     const channel = await this._fetchTextChannel(channelId);
     const chunkLimit = opts?.chunkLimit ?? DISCORD_MAX_LENGTH;
 
-    const chunks = splitText(text, chunkLimit);
+    const chunks = splitTextFenceAware(text, chunkLimit);
     if (chunks.length === 0) throw new Error("Empty text");
 
     // Await every platform POST before reporting success. Previously only the
@@ -1466,12 +1467,4 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function splitText(text: string, limit: number): string[] {
-  const chunks: string[] = [];
-  let offset = 0;
-  while (offset < text.length) {
-    chunks.push(text.slice(offset, offset + limit));
-    offset += limit;
-  }
-  return chunks;
-}
+

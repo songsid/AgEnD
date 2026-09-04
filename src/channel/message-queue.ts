@@ -1,4 +1,5 @@
 import type { QueuedMessage } from "./types.js";
+import { splitTextFenceAware } from "./markdown-chunk.js";
 
 const MAX_MESSAGE_LENGTH = 4096;
 const WORKER_IDLE_WAIT_MS = 200;
@@ -105,13 +106,7 @@ class QueueDeliveryError extends Error {
 }
 
 function splitText(text: string): string[] {
-  const chunks: string[] = [];
-  let offset = 0;
-  while (offset < text.length) {
-    chunks.push(text.slice(offset, offset + MAX_MESSAGE_LENGTH));
-    offset += MAX_MESSAGE_LENGTH;
-  }
-  return chunks;
+  return splitTextFenceAware(text, MAX_MESSAGE_LENGTH);
 }
 
 export class MessageQueue {

@@ -11,6 +11,7 @@ import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES } from "./config.js";
 import { t } from "./locale.js";
+import { truncatePreview } from "./channel/markdown-chunk.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -399,7 +400,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
         const showFull = requestKind === "task" || requestKind === "query";
         const text = showFull
           ? `${notificationLabel}:\n${message}`
-          : `${notificationLabel}: ${ipcMeta.task_summary ?? `${message.slice(0, 100)}${message.length > 100 ? "…" : ""}`}`;
+          : `${notificationLabel}: ${ipcMeta.task_summary ?? truncatePreview(message, 100)}`;
         targetAdapter!.sendText(String(targetGroupId), text, { threadId: String(targetTopicId) })
           .catch(e => ctx.logger.warn({ err: e }, "Failed to post target topic notification"));
       }
@@ -420,7 +421,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   ctx.logger.info(`✉ ${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 100)}`);
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
-  ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${(message ?? "").slice(0, 500)}${(message ?? "").length > 500 ? " […]" : ""}`);
+  ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
     ...(ctx.lifecycle.daemons.get(targetInstanceName)?.isErrorState && {
@@ -1009,7 +1010,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   for (const target of sentTo) {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
-  ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${message.slice(0, 500)}${message.length > 500 ? " […]" : ""}`);
+  ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${truncatePreview(message, 500)}`);
   respond({ sent_to: sentTo, failed, count: sentTo.length, queued: true });
 };
 
