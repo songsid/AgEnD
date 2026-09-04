@@ -5696,20 +5696,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const general = Object.entries(this.fleetConfig?.instances ?? {})
       .find(([, config]) => config.general_topic === true)?.[0];
 
-    let delivered = false;
+    // "dispatched", not "delivered": see notifyInstanceTopic. A platform that
+    // rejects the message afterwards still consumes the throttle window, which
+    // is the pre-existing semantic and not something this change alters.
+    let dispatched = false;
     if (general) {
-      delivered = this.notifyInstanceTopic(general, body);
+      dispatched = this.notifyInstanceTopic(general, body);
     } else {
       // No General instance — fall back to the primary channel's group.
       const groupId = this.getChannelConfig()?.group_id;
       if (this.adapter && groupId) {
         this.adapter.sendText(String(groupId), body)
           .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
-        delivered = true;
+        dispatched = true;
       }
     }
 
-    if (!delivered) {
+    if (!dispatched) {
       // Do NOT record the throttle key. It used to be claimed before delivery
       // was attempted, so a message nobody could receive — every fleet error
       // raised before adapters exist, which is when startup faults happen —
@@ -5734,10 +5737,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fleetErrorNotices = new Map<string, { at: number; suppressed: number }>();
 
   /**
-   * Post into an instance's topic. Returns whether a send was actually
-   * dispatched, so a caller that must not lose the message — notifyFleetError,
-   * which spends a throttle key — can tell delivery from silence. Existing
-   * callers ignore the result and are unaffected.
+   * Post into an instance's topic. Returns whether a send was DISPATCHED — a
+   * target was resolved and sendText was called — so a caller that must not
+   * lose the message (notifyFleetError, which spends a throttle key) can tell
+   * that from silence. Existing callers ignore the result and are unaffected.
+   *
+   * Not a delivery guarantee: sendText is fire-and-forget, and a platform-side
+   * rejection surfaces only as a warn in its .catch. True delivery confirmation
+   * would have to make this async and change every caller.
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
