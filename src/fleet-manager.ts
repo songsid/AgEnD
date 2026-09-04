@@ -5685,14 +5685,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     const suppressed = seen?.suppressed ?? 0;
-    this.fleetErrorNotices.set(key, { at: now, suppressed: 0 });
-    // Bound the map: it is keyed by message text, and a message with a varying
-    // suffix (a path, an id) would otherwise grow it without limit.
-    if (this.fleetErrorNotices.size > 100) {
-      const oldest = this.fleetErrorNotices.keys().next().value;
-      if (oldest !== undefined) this.fleetErrorNotices.delete(oldest);
-    }
-
     const body = suppressed > 0
       ? `${text}\n${t("fleet.error_suppressed", suppressed, Math.round(FleetManager.FLEET_ERROR_THROTTLE_MS / 60_000))}`
       : text;
@@ -5703,27 +5695,64 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // topic_id to post into it.
     const general = Object.entries(this.fleetConfig?.instances ?? {})
       .find(([, config]) => config.general_topic === true)?.[0];
+
+    // "dispatched", not "delivered": see notifyInstanceTopic. A platform that
+    // rejects the message afterwards still consumes the throttle window, which
+    // is the pre-existing semantic and not something this change alters.
+    let dispatched = false;
     if (general) {
-      this.notifyInstanceTopic(general, body);
+      dispatched = this.notifyInstanceTopic(general, body);
+    } else {
+      // No General instance — fall back to the primary channel's group.
+      const groupId = this.getChannelConfig()?.group_id;
+      if (this.adapter && groupId) {
+        this.adapter.sendText(String(groupId), body)
+          .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
+        dispatched = true;
+      }
+    }
+
+    if (!dispatched) {
+      // Do NOT record the throttle key. It used to be claimed before delivery
+      // was attempted, so a message nobody could receive — every fleet error
+      // raised before adapters exist, which is when startup faults happen —
+      // also suppressed the next ten minutes of identical ones. Leaving the key
+      // unspent lets the next caller, once an adapter is up, actually get
+      // through. The counter is not reset either: nothing was shown.
+      this.logger.warn({ text: body },
+        "Fleet error could not be delivered (no adapter or no target yet) — not consuming the throttle window");
       return;
     }
-    // No General instance — fall back to the primary channel's group.
-    const channelCfg = this.getChannelConfig();
-    const groupId = channelCfg?.group_id;
-    if (this.adapter && groupId) {
-      this.adapter.sendText(String(groupId), body)
-        .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
-      return;
+
+    this.fleetErrorNotices.set(key, { at: now, suppressed: 0 });
+    // Bound the map: it is keyed by message text, and a message with a varying
+    // suffix (a path, an id) would otherwise grow it without limit.
+    if (this.fleetErrorNotices.size > 100) {
+      const oldest = this.fleetErrorNotices.keys().next().value;
+      if (oldest !== undefined) this.fleetErrorNotices.delete(oldest);
     }
-    this.logger.warn({ text: body }, "Fleet error had no notification target (no General instance, no adapter)");
   }
 
   private static readonly FLEET_ERROR_THROTTLE_MS = 10 * 60_000;
   private fleetErrorNotices = new Map<string, { at: number; suppressed: number }>();
 
-  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): void {
+  /**
+   * Post into an instance's topic. Returns whether a send was DISPATCHED — a
+   * target was resolved and sendText was called — so a caller that must not
+   * lose the message (notifyFleetError, which spends a throttle key) can tell
+   * that from silence. Existing callers ignore the result and are unaffected.
+   *
+   * Not a delivery guarantee: sendText is fire-and-forget, and a platform-side
+   * rejection surfaces only as a warn in its .catch. True delivery confirmation
+   * would have to make this async and change every caller.
+   */
+  notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts): boolean {
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    if (!adapter) return;
+    if (!adapter) {
+      // Early startup: adapters are created well after the fleet object exists.
+      this.logger.warn({ instanceName }, "No adapter yet — instance topic notification not sent");
+      return false;
+    }
     const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
     const groupId = channelCfg?.group_id;
 
@@ -5732,7 +5761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (threadId != null && groupId) {
       adapter.sendText(String(groupId), text, { threadId: String(threadId), ...extraOpts })
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send instance topic notification"));
-      return;
+      return true;
     }
 
     // Classic instance: find its channelId from the classic manager
@@ -5740,14 +5769,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (classicChatId) {
       adapter.sendText(classicChatId, text, extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send classic notification"));
-      return;
+      return true;
     }
 
     // Fallback: send to group without threadId
     if (groupId) {
       adapter.sendText(String(groupId), text, extraOpts)
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
+      return true;
     }
+    this.logger.warn({ instanceName }, "No group id — instance topic notification not sent");
+    return false;
   }
 
   // ── Nonce-armed button prompts (hang / assist / exit / clear) ──
