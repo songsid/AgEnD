@@ -62,6 +62,19 @@ describe("ClassicBot approval buttons", () => {
     expect(actions).toEqual(["allow", "allow-admin", "ignore"]);
   });
 
+  it("keeps every callback id inside Telegram's 64-byte cap", async () => {
+    // "classic-approve:" (16) + 32 hex + ":allow-admin" (12) = 60 — the longest
+    // callback_data in the codebase, with 4 bytes to spare. Over 64 Telegram
+    // rejects the button silently: no error, just a menu that does nothing.
+    const { fm, notifyAlert } = makeFleet();
+    await fm.promptClassicApproval({
+      generalName: "general", message: "x", groupId: "grp-1", scope: "group", userId: "u-7",
+    });
+    for (const c of notifyAlert.mock.calls[0][1].choices) {
+      expect(Buffer.byteLength(c.id, "utf8"), `callback_data too long: ${c.id}`).toBeLessThanOrEqual(64);
+    }
+  });
+
   it("ignore changes no config and says so", async () => {
     const { fm, notifyAlert, editMessageRemoveButtons, notified } = makeFleet();
     await fm.promptClassicApproval({ generalName: "general", message: "/start", groupId: "grp-1", scope: "group", userId: "u-7" });
