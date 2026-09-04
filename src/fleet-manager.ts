@@ -2281,7 +2281,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
     const classicAdapters = fleet.channels?.length ? fleet.channels : (fleet.channel ? [fleet.channel] : []);
     this.classicChannels.configureAdapters(classicAdapters);
-    this.reportClassicUnrecoverableIds();
+    // The unrecoverable-id report is deliberately NOT sent here: no adapter
+    // exists yet at this point in startAll(), so notifyFleetError would find
+    // nothing to deliver through, drop the message silently, AND burn its
+    // 10-minute throttle key on the way out. It is sent once the shared adapter
+    // is up — see the adapterStartup continuation below.
     // Restore the persisted bot binding so replies/cancel go through the right
     // bot after a restart (before this, inbound would re-bind lazily).
     for (const ch of this.classicChannels.getAll()) {
@@ -2569,6 +2573,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         } catch (err) {
           this.logger.error({ err }, "startSharedAdapter failed — fleet continues without some adapters");
         }
+        // Now that there is somewhere to deliver: a classicBot.yaml that already
+        // holds an unmatchable id at boot is the COMMON case, and reporting it
+        // before the adapter existed meant the operator heard nothing at all.
+        this.reportClassicUnrecoverableIds();
       })();
       progressStart = adapterStartup.then(() => {
         if (pendingUpdateProgress) {
@@ -5610,6 +5618,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private reportClassicUnrecoverableIds(): void {
     const bad = this.classicChannels?.getUnrecoverableIds?.() ?? [];
     if (bad.length === 0) return;
+    // notifyFleetError claims its throttle key BEFORE attempting delivery, so
+    // calling it with no adapter would silence this message for ten minutes
+    // without anyone having seen it. Log and leave the key unspent; a later
+    // call, once an adapter exists, still gets through.
+    if (!this.adapter && this.adapters.size === 0) {
+      this.logger.error({ ids: bad },
+        "classicBot.yaml holds ids that can never match — deferring the operator notice until an adapter is up");
+      return;
+    }
     const list = bad.map(e => `${e.field}: ${e.value}`).join(", ");
     this.logger.error({ ids: bad }, "classicBot.yaml holds ids that can never match");
     this.notifyFleetError(t("classic.unrecoverable_ids", list));

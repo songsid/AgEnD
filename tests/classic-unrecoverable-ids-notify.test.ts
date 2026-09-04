@@ -62,6 +62,12 @@ describe("surfacing to the operator", () => {
     const fm = new FleetManager(dir) as any;
     fm.fleetConfig = { defaults: {}, channel: { group_id: "g1" }, instances: {} };
     fm.classicChannels = { getUnrecoverableIds: () => bad };
+    // An adapter must exist: with none, the report is correctly deferred rather
+    // than burning notifyFleetError's throttle key on an undeliverable message
+    // (see "the report must survive having no adapter yet" below).
+    const adapter = { id: "telegram", type: "telegram", sendText: vi.fn().mockResolvedValue(undefined) } as any;
+    fm.adapter = adapter;
+    fm.adapters.set("telegram", adapter);
     const notices: string[] = [];
     fm.notifyFleetError = vi.fn((t: string) => { notices.push(t); });
     return { fm, notices };
@@ -98,5 +104,73 @@ describe("surfacing to the operator", () => {
     fm.reportClassicUnrecoverableIds();
     fm.reportClassicUnrecoverableIds();
     expect(notices).toHaveLength(2);   // both reach notifyFleetError, which throttles
+  });
+});
+
+/**
+ * Found by fable in review: the initial report ran at ClassicChannelManager
+ * construction, ~300 lines of startAll() before any adapter existed. It was
+ * dropped silently by notifyInstanceTopic's `if (!adapter) return`, AND
+ * notifyFleetError had already claimed its throttle key on the way out — so the
+ * most common case (a bad id present at boot) told the operator nothing for ten
+ * minutes, with the only re-trigger being a file mtime change.
+ *
+ * These drive the REAL notifyFleetError. The original tests stubbed it, which
+ * is exactly why they could not see this.
+ */
+describe("the report must survive having no adapter yet", () => {
+  function makeFleet(bad: Array<{ field: string; value: number }>) {
+    const dir = mkdtempSync(join(tmpdir(), "agend-unrecboot-"));
+    dirs.push(dir);
+    const fm = new FleetManager(dir) as any;
+    fm.fleetConfig = {
+      defaults: {}, channel: { group_id: "g1" },
+      instances: { general: { general_topic: true, topic_id: "t1" } },
+    };
+    fm.classicChannels = { getUnrecoverableIds: () => bad };
+    return fm;
+  }
+  const BAD = [{ field: "allowed_guilds", value: 1496407196106494000 }];
+
+  it("does not spend the throttle key when there is nowhere to deliver", () => {
+    const fm = makeFleet(BAD);
+    fm.adapter = null;                       // startAll() before startSharedAdapter
+
+    fm.reportClassicUnrecoverableIds();
+
+    // The key must stay unspent, or the real report ten seconds later is eaten.
+    expect(fm.fleetErrorNotices.size).toBe(0);
+  });
+
+  it("still reports once an adapter is up", () => {
+    const fm = makeFleet(BAD);
+    fm.adapter = null;
+    fm.reportClassicUnrecoverableIds();       // deferred, key unspent
+
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const adapter = { id: "telegram", type: "telegram", sendText } as any;
+    fm.adapter = adapter;
+    fm.adapters.set("telegram", adapter);
+
+    fm.reportClassicUnrecoverableIds();
+
+    expect(sendText).toHaveBeenCalled();
+    expect(String(sendText.mock.calls[0][1])).toContain("allowed_guilds");
+  });
+
+  it("reaches the operator on the boot path, not just on a file edit", async () => {
+    // The scenario that mattered: bad id already in the file at startup. The
+    // call site must sit after the adapter exists, so this asserts delivery
+    // through the real notifyFleetError rather than a stub.
+    const fm = makeFleet(BAD);
+    const sendText = vi.fn().mockResolvedValue(undefined);
+    const adapter = { id: "telegram", type: "telegram", sendText } as any;
+    fm.adapter = adapter;
+    fm.adapters.set("telegram", adapter);
+
+    fm.reportClassicUnrecoverableIds();
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(fm.fleetErrorNotices.size).toBe(1);   // now the key is legitimately spent
   });
 });
