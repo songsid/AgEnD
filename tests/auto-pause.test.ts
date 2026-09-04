@@ -279,20 +279,64 @@ describe("paused status visibility", () => {
       costGuard: null,
     } as any);
 
+    // Default (Telegram): markdown table format
     const sysinfo = commands.getSysInfoText();
     // System facts stay (and OS/Node/tmux are new).
     expect(sysinfo).toContain("| Uptime | 1h 1m |");
     expect(sysinfo).toContain(`| Node | ${process.version} |`);
     expect(sysinfo).toContain("| OS |");
     expect(sysinfo).toContain("| tmux |");
-    // Fleet summary line
+    // Fleet summary lines (now multi-line for mobile readability)
     expect(sysinfo).toContain("Instances: 1 running, 0 paused");
     expect(sysinfo).toContain("Fleet Mem: 0.5 GB");
     expect(sysinfo).toContain("System Memory: 8.5 / 16 GB");
+    // Each metric on separate line (no | separators)
+    expect(sysinfo).not.toContain("Instances: 1 running, 0 paused |");
     // Instance information is /status's job now — even instances the sys-info
     // payload still carries must not be rendered here.
     expect(sysinfo).not.toContain("| busy |");
     expect(sysinfo).not.toContain("classic-lab-5678");
+  });
+
+  it("/sysinfo uses plain lines for Discord (no markdown table)", () => {
+    const commands = new TopicCommands({
+      fleetConfig: { defaults: {}, instances: {} },
+      getSysInfo: () => ({
+        uptime_seconds: 3660,
+        memory_mb: { rss: 256, heapUsed: 100, heapTotal: 200 },
+        instances: [],
+        fleet_cost_cents: 0,
+        fleet_cost_limit_cents: 0,
+        running_count: 5,
+        paused_count: 3,
+        fleet_mem_mb: 2048,
+        system_mem_gb: { used: 12.5, total: 32.0 },
+      }),
+      getInstanceStatus: () => "running",
+      getInstanceExecutionState: () => "idle",
+      instanceIpcClients: new Map(),
+      classicChannels: { getAll: () => [] },
+      costGuard: null,
+    } as any);
+
+    const discordSysinfo = commands.getSysInfoText({ platform: "discord" });
+    // Discord format: plain key-value lines, no table syntax
+    expect(discordSysinfo).toContain("Uptime: 1h 1m");
+    expect(discordSysinfo).toContain(`Node: ${process.version}`);
+    expect(discordSysinfo).toContain("Memory: 256 MB RSS");
+    expect(discordSysinfo).toContain("Heap: 100 / 200 MB");
+    // Fleet summary lines (multi-line for mobile readability)
+    expect(discordSysinfo).toContain("Instances: 5 running, 3 paused");
+    expect(discordSysinfo).toContain("Fleet Mem: 2.0 GB");
+    expect(discordSysinfo).toContain("System Memory: 12.5 / 32 GB");
+    // Each metric on separate line (no | separators)
+    expect(discordSysinfo).not.toContain("Instances: 5 running, 3 paused |");
+    // Resources section still present
+    expect(discordSysinfo).toContain("📚");
+    expect(discordSysinfo).toContain("https://songsid.github.io/AgEnD");
+    // No markdown table syntax
+    expect(discordSysinfo).not.toContain("|--------|");
+    expect(discordSysinfo).not.toContain("| Metric |");
   });
 
   it("running_count and paused_count include Classic instances (M1 regression)", () => {

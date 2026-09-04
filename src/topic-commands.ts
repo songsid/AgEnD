@@ -1071,19 +1071,22 @@ export class TopicCommands {
   private async handleSysInfoCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
-    const text = this.getSysInfoText();
+    const platform = adapter.type === "discord" ? "discord" : "telegram";
+    const text = this.getSysInfoText({ platform });
     await adapter.sendText(msg.chatId, text, { threadId: msg.threadId });
   }
 
   /**
-   * Get system info as markdown text (shared by TG + DC).
+   * Get system info as formatted text.
    *
    * System-level only. The per-instance table (state/IPC/cost) moved to /status,
    * which was already the fleet-per-instance view — the two tables overlapped on
    * everything but the IPC column, and each command answered half of "is the
    * machine fine and are the instances fine".
+   *
+   * @param opts.platform - "telegram" uses markdown table, "discord" uses plain lines
    */
-  getSysInfoText(): string {
+  getSysInfoText(opts?: { platform?: "telegram" | "discord" }): string {
     const info = this.ctx.getSysInfo();
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
@@ -1091,12 +1094,39 @@ export class TopicCommands {
     const agendVersion = require("../package.json").version ?? "unknown";
     const tipsLang = getLocale() === "zh-TW" ? "zh" : "en";
 
-    // Fleet summary line (like agend ls bottom line)
-    const fleetMemPart = info.fleet_mem_mb !== null
-      ? ` | ${t("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`
-      : "";
-    const summaryLine = `${t("sysinfo.instances")}: ${info.running_count} ${t("sysinfo.running")}, ${info.paused_count} ${t("sysinfo.paused")}${fleetMemPart} | ${t("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`;
+    // Fleet summary lines (multi-line for mobile readability)
+    const summaryLines = [
+      `${t("sysinfo.instances")}: ${info.running_count} ${t("sysinfo.running")}, ${info.paused_count} ${t("sysinfo.paused")}`,
+      ...(info.fleet_mem_mb !== null ? [`${t("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`] : []),
+      `${t("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`,
+    ];
 
+    const resources = [
+      `📚 **${t("sysinfo.resources")}**`,
+      `- ${t("sysinfo.docs")}: https://songsid.github.io/AgEnD`,
+      `- ${t("sysinfo.tips")}: https://songsid.github.io/AgEnD/tips-${tipsLang}.html`,
+      `- ${t("sysinfo.github")}: https://github.com/songsid/AgEnD`,
+    ];
+
+    // Discord: plain key-value lines (Discord doesn't render markdown tables)
+    if (opts?.platform === "discord") {
+      return [
+        `## ${t("sysinfo.title")}`,
+        `AgEnD: v${agendVersion}`,
+        `OS: ${process.platform} ${osRelease()} (${process.arch})`,
+        `Node: ${process.version}`,
+        `tmux: ${tmuxVersion()}`,
+        `${t("sysinfo.uptime")}: ${upHours}h ${upMins}m`,
+        `${t("sysinfo.memory")}: ${info.memory_mb.rss} MB RSS`,
+        `${t("sysinfo.heap")}: ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB`,
+        "",
+        ...summaryLines,
+        "",
+        ...resources,
+      ].join("\n");
+    }
+
+    // Telegram (default): markdown table
     return [
       `## ${t("sysinfo.title")}`,
       "",
@@ -1110,12 +1140,9 @@ export class TopicCommands {
       `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
       `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
       "",
-      summaryLine,
+      ...summaryLines,
       "",
-      `📚 **${t("sysinfo.resources")}**`,
-      `- ${t("sysinfo.docs")}: https://songsid.github.io/AgEnD`,
-      `- ${t("sysinfo.tips")}: https://songsid.github.io/AgEnD/tips-${tipsLang}.html`,
-      `- ${t("sysinfo.github")}: https://github.com/songsid/AgEnD`,
+      ...resources,
     ].join("\n");
   }
 
