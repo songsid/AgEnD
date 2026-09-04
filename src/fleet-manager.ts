@@ -342,6 +342,17 @@ interface NonceButtonEntry {
   allowAnyUser?: boolean;
   /** tip-dismiss only: stable catalog id written to scheduler.db. */
   tipId?: string;
+  /** classic-approve only: the guild/group the prompt is about. Always a string —
+   * a Discord snowflake loses precision if it ever becomes a YAML integer. */
+  classicGroupId?: string;
+  /**
+   * classic-approve only: WHICH allow-list this request belongs to. Discord
+   * guilds are gated by `allowed_guilds`, Telegram groups by `allowed_groups`,
+   * and writing the wrong one changes a file without unblocking anything.
+   */
+  classicScope?: "guild" | "group";
+  /** classic-approve only: the user who asked, when the trigger had one. */
+  classicUserId?: string;
 }
 
 interface AdapterCallbackData {
@@ -399,6 +410,7 @@ const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
 const LOGIN_CALLBACK_PREFIX = "login:";
 const INSTALL_CALLBACK_PREFIX = "install-select:";
+const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
 const LOGIN_CONFIRM_CALLBACK_PREFIX = "login-confirm:";
 const INSTALL_LOGIN_CALLBACK_PREFIX = "install-login:";
@@ -3002,6 +3014,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInstallBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleClassicApproval(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
@@ -3260,10 +3273,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.restartAdapter(this.adapter!, adapterId).catch(() => {});
     });
 
-    this.adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
+    this.adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
       const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance();
-      if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
+      // No user to promote: the bot was just added, nobody has run /start yet.
+      if (generalId) await this.promptClassicApproval({ generalName: generalId, message: adminMsg, groupId: data.groupId, scope: data.source === "telegram" ? "group" : "guild" });
     }, this.logger, "adapter.new_group_detected"));
 
     // Start adapter AFTER all event listeners are registered (started event sets botUsername)
@@ -3325,6 +3339,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleTipUnlock(data, adapterId, adapter)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
       if (await this.handleInstallBackendSelect(data, adapterId, adapter)) return;
+      if (await this.handleClassicApproval(data, adapterId, adapter)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return;
@@ -3527,10 +3542,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, `adapter[${adapterId}].started`));
 
-    adapter.on("new_group_detected", safeHandler((data: { groupId: string; groupTitle: string; source: string }) => {
+    adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
       const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance(adapterId);
-      if (generalId) this.notifyInstanceTopic(generalId, adminMsg);
+      if (generalId) await this.promptClassicApproval({ generalName: generalId, message: adminMsg, groupId: data.groupId, scope: data.source === "telegram" ? "group" : "guild" });
     }, this.logger, `adapter[${adapterId}].new_group_detected`));
     adapter.on("error", (err: unknown) => {
       this.logger.error({ err, adapterId }, "Additional adapter fatal error");
@@ -4025,7 +4040,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               const adminMsg = t("alert.new_group", groupTitle, chatId, msg.username, msg.userId, msg.source);
               const generalId = this.findGeneralInstance(msg.adapterId);
               if (generalId) {
-                this.notifyInstanceTopic(generalId, adminMsg);
+                await this.promptClassicApproval({
+                  // Guarded by isGroupAllowed → this belongs in allowed_groups,
+                  // NOT allowed_guilds; writing the latter would change the file
+                  // without unblocking the group.
+                  generalName: generalId, message: adminMsg, groupId: String(chatId),
+                  scope: "group", userId: msg.userId,
+                });
               }
               await msgAdapter?.sendText(chatId, t("classic.access_requested"));
               return;
@@ -5672,17 +5693,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     message: string;
     choices: Array<{ action: string; label: string }>;
     expiredText: string;
-    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId">;
+    extra?: Pick<NonceButtonEntry, "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope">;
     timeoutMs?: number;
   }): Promise<string | null> {
     // 16 bytes = the 128-bit capability the design claims. Telegram's 64-byte
     // callback_data cap still holds, with two prefixes tied at the longest:
     // "interactive-assist:" (19) + 32 hex + ":confirm" (8) = 59, and
     // "install-select:" (15) + 32 hex + ":" + the longest backend name
-    // ("claude-code"/"antigravity", 11) = 59. Only 5 bytes of headroom: a
-    // backend name of 17+ characters, or a longer prefix, would be silently
-    // rejected by Telegram — see the callback_data assertion in
-    // install-backend-menu.test.ts.
+    // ("claude-code"/"antigravity", 11) = 59. The longest overall is
+    // "classic-approve:" (16) + 32 hex + ":allow-admin" (12) = 60, leaving 4
+    // bytes. A longer prefix or action would be silently rejected by Telegram —
+    // both sets are pinned by callback_data assertions in
+    // install-backend-menu.test.ts and classic-approve-buttons.test.ts.
     const nonce = randomBytes(16).toString("hex");
     const entry: NonceButtonEntry = {
       prefix: opts.prefix,
@@ -7175,6 +7197,126 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Ask the General topic to approve a ClassicBot access request.
+   *
+   * Two affirmative buttons rather than one, when the trigger identified a
+   * user. Allowing a group to talk and granting that person ClassicBot admin
+   * (start/stop/model on classic channels — NOT fleet admin, which reads
+   * fleet.yaml `channel.access.allowed_users`) have different blast radii, and
+   * bundling them would force anyone who wants only the cheap one to accept the
+   * expensive one or go edit YAML by hand.
+   *
+   * Built on postNonceButtonPrompt, so it inherits the canonical-address
+   * binding (#682) that makes these buttons answer in a Telegram General topic.
+   */
+  private async promptClassicApproval(opts: {
+    generalName: string;
+    message: string;
+    groupId: string;
+    /** Discord guild (allowed_guilds) or Telegram group (allowed_groups). */
+    scope: "guild" | "group";
+    userId?: string;
+  }): Promise<void> {
+    const adapter = this.getAdapterForInstance(opts.generalName);
+    // An instance with no world binding yet (fresh restart, or a fleet whose
+    // primary `channel:` block carries the config) still has a usable adapter —
+    // fall back to that adapter's own id rather than dropping the buttons. The
+    // id only has to match what the callback arrives with, which is this same
+    // adapter.
+    const adapterId = this.getInstanceAdapterId(opts.generalName) ?? adapter?.id;
+    const chatId = this.getGroupIdForInstance(opts.generalName);
+    const topicId = this.fleetConfig?.instances[opts.generalName]?.topic_id;
+    if (!adapter || !adapterId || !chatId) {
+      // Never lose the notification because the buttons could not be addressed.
+      this.notifyInstanceTopic(opts.generalName, opts.message);
+      return;
+    }
+    const choices = [{ action: "allow", label: t("classic.approve_group") }];
+    if (opts.userId) choices.push({ action: "allow-admin", label: t("classic.approve_group_admin") });
+    choices.push({ action: "ignore", label: t("classic.approve_ignore") });
+
+    await this.postNonceButtonPrompt({
+      prefix: CLASSIC_APPROVE_CALLBACK_PREFIX,
+      alertType: "classic_approve",
+      instanceName: opts.generalName,
+      adapter,
+      adapterId,
+      chatId,
+      threadId: topicId != null ? String(topicId) : undefined,
+      message: opts.message,
+      choices,
+      expiredText: t("buttons.stale"),
+      extra: { classicGroupId: opts.groupId, classicUserId: opts.userId, classicScope: opts.scope },
+    });
+  }
+
+  /**
+   * Apply an approved ClassicBot access request.
+   *
+   * Writes through ClassicChannelManager's typed mutators rather than handing
+   * General a YAML edit: the id is stored via String() so a Discord snowflake
+   * cannot land as a YAML integer and lose precision, the existing save() path
+   * is reused, in-memory state is correct immediately (no waiting on the 30s
+   * reload poll), and a click cannot silently do nothing because General
+   * happened to be paused. General is still told the outcome.
+   */
+  private async applyClassicApproval(
+    entry: NonceButtonEntry,
+    groupId: string,
+    adminUserId?: string,
+  ): Promise<void> {
+    const classic = this.classicChannels;
+    if (!classic) {
+      this.notifyInstanceTopic(entry.instanceName, t("classic.approve_failed", groupId));
+      return;
+    }
+    const scope = entry.classicScope ?? "guild";
+    const access = scope === "group" ? classic.allowGroup(groupId) : classic.allowGuild(groupId);
+    const admin = adminUserId ? classic.addAdminUser(adminUserId) : null;
+
+    const lines = [t(access === "added" ? "classic.approve_done_group"
+      : access === "already" ? "classic.approve_done_group_already"
+      : "classic.approve_done_group_open", groupId)];
+    if (admin) {
+      lines.push(t(admin === "added" ? "classic.approve_done_admin" : "classic.approve_done_admin_already",
+        adminUserId ?? ""));
+    }
+    this.notifyInstanceTopic(entry.instanceName, lines.join("\n"));
+  }
+
+  /** Consume a ClassicBot approval button. */
+  private async handleClassicApproval(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      CLASSIC_APPROVE_CALLBACK_PREFIX,
+      /^classic-approve:([0-9a-f]+):(allow|allow-admin|ignore)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const groupId = entry.classicGroupId ?? "";
+    const userId = entry.classicUserId;
+
+    if (action === "ignore") {
+      await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+        t("classic.approve_ignored", groupId));
+      return true;
+    }
+    const grantAdmin = action === "allow-admin" && !!userId;
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId,
+      grantAdmin ? t("classic.approve_applying_admin", groupId, userId ?? "")
+                 : t("classic.approve_applying", groupId));
+    await this.applyClassicApproval(entry, groupId, grantAdmin ? userId : undefined);
+    return true;
+  }
+
+    /**
    * Backend chooser for a bare `/install-cli`, mirroring promptLoginBackends so
    * both commands feel the same. Built on postNonceButtonPrompt rather than the
    * `/model` selection coordinator: that is the mechanism `/login` already uses,
@@ -9328,7 +9470,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (!this.classicChannels) return t("classic.manager_unavailable");
     if (guildId && !this.classicChannels.isGuildAllowed(guildId)) {
       const generalId = this.findGeneralInstance(adapterId);
-      if (generalId) this.notifyInstanceTopic(generalId, t("alert.unauth_guild", guildId, userId));
+      if (generalId) {
+        // Fire-and-forget, exactly as the notifyInstanceTopic it replaces: this
+        // function's return value is the rejection shown to the user, and it
+        // must not wait on posting buttons into the General topic.
+        void this.promptClassicApproval({
+          generalName: generalId,
+          message: t("alert.unauth_guild", guildId, userId),
+          groupId: String(guildId),
+          scope: "guild",
+          userId: userId ? String(userId) : undefined,
+        }).catch(err => this.logger.warn({ err, guildId }, "Classic approval prompt failed"));
+      }
       return t("classic.not_authorized_guild");
     }
     if (this.classicChannels.isClassicChannel(channelId, adapterId)) return t("classic.already_active");
