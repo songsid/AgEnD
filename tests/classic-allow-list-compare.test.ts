@@ -70,6 +70,29 @@ describe("allow-lists compare as strings", () => {
     expect(logged).toMatch(/quoted string/i);
   });
 
+  it("adds the correct id alongside a broken one rather than repairing it", () => {
+    // A truncated entry cannot equal the real id, so it is not seen as a
+    // duplicate. Access starts working immediately via the new quoted entry;
+    // the broken line stays until a human removes it, because nothing here
+    // should silently discard something the operator wrote.
+    const { m } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    expect(m.allowGuild("1496407196106494055")).toBe("added");
+
+    expect(m.isGuildAllowed("1496407196106494055")).toBe(true);   // works now
+    expect(m.defaults.allowed_guilds).toHaveLength(2);            // broken one kept
+    expect(m.defaults.allowed_guilds.some((v: unknown) => typeof v === "number")).toBe(true);
+  });
+
+  it("reports a bad id once at load, not on every write", () => {
+    // One unquoted id used to emit an error on every save. The operator has
+    // already been told and cannot fix it from this side.
+    const { m, logger } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    expect(logger.error).toHaveBeenCalledTimes(1);
+
+    m.allowGuild("a"); m.allowGuild("b");
+    expect(logger.error).toHaveBeenCalledTimes(1);
+  });
+
   it("says nothing about ids that are fine", () => {
     const { logger } = makeManager('defaults:\n  allowed_guilds: ["g1", 111]\n');
     expect(logger.error).not.toHaveBeenCalled();

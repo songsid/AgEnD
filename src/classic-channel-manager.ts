@@ -492,6 +492,11 @@ export class ClassicChannelManager {
     const list = this.defaults[field];
     // admin_users has no allow-all semantics: empty means nobody is admin.
     if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
+    // A truncated entry can never equal the real id, so this comparison will
+    // not treat it as a duplicate: the correct quoted id is ADDED ALONGSIDE the
+    // broken one, which stays until a human removes it. That is the right
+    // outcome — access starts working immediately, and nothing silently
+    // discards a line the operator wrote.
     if (Array.isArray(list) && list.some(x => String(x) === value)) return "already";
     // Cast: a preserved out-of-range number stays a number on purpose (see
     // normalizeId). The isAllowed checks compare with String() either way, so
@@ -520,9 +525,10 @@ export class ClassicChannelManager {
   private normalizeId(field: string, value: unknown): unknown {
     if (typeof value !== "number") return value;
     if (Number.isSafeInteger(value)) return String(value);
-    this.logger.error({ field, value },
-      "classicBot.yaml holds an unquoted id too large for YAML — its precision is already lost. "
-      + "Re-enter it as a quoted string; it cannot be recovered from the stored value.");
+    // Preserve silently: reportUnquotedIds() already names this entry once at
+    // load. Logging here too would emit an error on every subsequent write for
+    // a condition the operator has already been told about and cannot fix from
+    // this side.
     return value;
   }
 
