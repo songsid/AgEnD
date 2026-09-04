@@ -174,3 +174,35 @@ describe("the report must survive having no adapter yet", () => {
     expect(fm.fleetErrorNotices.size).toBe(1);   // now the key is legitimately spent
   });
 });
+
+/**
+ * The call-site ordering is the actual fix, and calling the method directly
+ * cannot see it. This pins the invariant structurally: the boot-time report
+ * must sit AFTER the shared adapter is started, because before that there is
+ * nowhere to deliver and notifyFleetError would burn its throttle key.
+ *
+ * A source-shape assertion is blunt, but the alternative is a full startAll()
+ * e2e, and the failure it guards (silent at boot, silent for ten minutes after)
+ * is precisely the bug this PR exists to remove.
+ */
+describe("startAll orders the boot report after the adapter", () => {
+  it("does not report before the shared adapter is started", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf-8");
+
+    const adapterStart = src.indexOf("await this.startSharedAdapter(fleet);");
+    expect(adapterStart).toBeGreaterThan(-1);
+
+    // Narrow to the construction block itself. The reload poll is registered in
+    // this same stretch and legitimately reports — but from a timer that fires
+    // long after startup, so a plain source-order check cannot tell them apart.
+    const ctor = src.indexOf("this.classicChannels = new ClassicChannelManager(");
+    expect(ctor).toBeGreaterThan(-1);
+    const constructionBlock = src.slice(ctor, ctor + 800);
+    expect(constructionBlock).toContain("configureAdapters(classicAdapters)");
+    expect(constructionBlock).not.toContain("this.reportClassicUnrecoverableIds();");
+
+    // ...and one must follow it, or a bad id present at boot is never surfaced.
+    expect(src.slice(adapterStart)).toContain("this.reportClassicUnrecoverableIds();");
+  });
+});
