@@ -3248,7 +3248,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
       } else if (data.command === "sysinfo") {
-        await data.respond(this.topicCommands.getSysInfoText());
+        // Slash commands are Discord-only; use plain lines (no markdown table)
+        await data.respond(this.topicCommands.getSysInfoText({ platform: "discord" }));
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
@@ -3537,7 +3538,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const text = await this.topicCommands.getStatusText();
         await data.respond(text);
       } else if (data.command === "sysinfo") {
-        await data.respond(this.topicCommands.getSysInfoText());
+        // Slash commands are Discord-only; use plain lines (no markdown table)
+        await data.respond(this.topicCommands.getSysInfoText({ platform: "discord" }));
       } else if (data.command === "dashboard") {
         // Reply is ephemeral (adapter defers non-chat commands ephemerally), so
         // the web-token-bearing URLs are only visible to the caller.
