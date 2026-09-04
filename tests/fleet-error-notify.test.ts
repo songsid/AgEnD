@@ -17,7 +17,9 @@ function fm(overrides: Record<string, unknown> = {}) {
 
 describe("notifyFleetError", () => {
   it("sends to the General instance's topic", () => {
-    const notify = vi.fn();
+    // Returns true: notifyInstanceTopic now reports whether it dispatched, and
+    // notifyFleetError only consumes its throttle window on a real delivery.
+    const notify = vi.fn().mockReturnValue(true);
     const manager = fm({ notifyInstanceTopic: notify });
     (manager as unknown as { fleetConfig: unknown }).fleetConfig = {
       defaults: {},
@@ -32,7 +34,9 @@ describe("notifyFleetError", () => {
   });
 
   it("throttles repeats of the same message, then reports how many were suppressed", () => {
-    const notify = vi.fn();
+    // Returns true: notifyInstanceTopic now reports whether it dispatched, and
+    // notifyFleetError only consumes its throttle window on a real delivery.
+    const notify = vi.fn().mockReturnValue(true);
     const manager = fm({ notifyInstanceTopic: notify });
     (manager as unknown as { fleetConfig: unknown }).fleetConfig = {
       defaults: {},
@@ -55,7 +59,9 @@ describe("notifyFleetError", () => {
   });
 
   it("does not throttle a different message", () => {
-    const notify = vi.fn();
+    // Returns true: notifyInstanceTopic now reports whether it dispatched, and
+    // notifyFleetError only consumes its throttle window on a real delivery.
+    const notify = vi.fn().mockReturnValue(true);
     const manager = fm({ notifyInstanceTopic: notify });
     (manager as unknown as { fleetConfig: unknown }).fleetConfig = {
       defaults: {},
@@ -68,7 +74,9 @@ describe("notifyFleetError", () => {
   });
 
   it("bounds the throttle map so varying messages cannot grow it forever", () => {
-    const notify = vi.fn();
+    // Returns true: notifyInstanceTopic now reports whether it dispatched, and
+    // notifyFleetError only consumes its throttle window on a real delivery.
+    const notify = vi.fn().mockReturnValue(true);
     const manager = fm({ notifyInstanceTopic: notify });
     (manager as unknown as { fleetConfig: unknown }).fleetConfig = {
       defaults: {},
