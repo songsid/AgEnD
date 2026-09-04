@@ -294,4 +294,37 @@ describe("paused status visibility", () => {
     expect(sysinfo).not.toContain("| busy |");
     expect(sysinfo).not.toContain("classic-lab-5678");
   });
+
+  it("running_count and paused_count include Classic instances (M1 regression)", () => {
+    // #695 fix: counts must include Classic instances to match /api/fleet roster
+    const commands = new TopicCommands({
+      fleetConfig: { defaults: {}, instances: { worker: { backend: "codex" } } },
+      getSysInfo: () => ({
+        uptime_seconds: 100,
+        memory_mb: { rss: 1, heapUsed: 1, heapTotal: 2 },
+        instances: [{ name: "worker", status: "running", state: "idle", ipc: true, costCents: 0, rateLimits: null }],
+        fleet_cost_cents: 0,
+        fleet_cost_limit_cents: 0,
+        // These counts should include Classic instances (2 running: 1 fleet + 1 classic, 1 paused classic)
+        running_count: 2,
+        paused_count: 1,
+        fleet_mem_mb: null,
+        system_mem_gb: { used: 4.0, total: 8.0 },
+      }),
+      getInstanceStatus: () => "running",
+      getInstanceExecutionState: () => "idle",
+      instanceIpcClients: new Map(),
+      classicChannels: {
+        getAll: () => [
+          { instanceName: "classic-active-1", name: "active", channelId: "1" },
+          { instanceName: "classic-sleeping-2", name: "sleeping", channelId: "2" },
+        ],
+      },
+      costGuard: null,
+    } as any);
+
+    const sysinfo = commands.getSysInfoText();
+    // Fleet summary line must show combined counts (fleet + Classic)
+    expect(sysinfo).toContain("Instances: 2 running, 1 paused");
+  });
 });
