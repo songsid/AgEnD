@@ -448,6 +448,49 @@ export class ClassicChannelManager {
     return !!list && list.length > 0 && list.some(id => String(id) === String(userId));
   }
 
+  /**
+   * Grant access to a Discord guild / Telegram group, or promote a user to
+   * ClassicBot admin, and persist. Returns what happened so the caller can say
+   * so rather than claiming a change that did not occur.
+   *
+   * Ids are stored with String(): a Discord snowflake exceeds 2^53 and silently
+   * loses precision as a YAML integer, after which the strict `includes()` in
+   * the isAllowed checks stops matching it.
+   *
+   * "already-open" is not a no-op for tidiness — it is a guard. An empty
+   * allowed_guilds/allowed_groups means allow-all, so writing the FIRST entry
+   * would flip the fleet to an allow-list and lock out every other guild that
+   * works today. The caller asked to allow this one, not to restrict the rest.
+   */
+  private grantTo(
+    field: "allowed_guilds" | "allowed_groups" | "admin_users",
+    id: string,
+  ): "added" | "already" | "already-open" {
+    const value = String(id);
+    const list = this.defaults[field];
+    // admin_users has no allow-all semantics: empty means nobody is admin.
+    if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
+    if (Array.isArray(list) && list.some(x => String(x) === value)) return "already";
+    this.defaults[field] = [...(Array.isArray(list) ? list.map(String) : []), value];
+    this.save();
+    return "added";
+  }
+
+  /** Allow a Discord guild to use ClassicBot. */
+  allowGuild(guildId: string): "added" | "already" | "already-open" {
+    return this.grantTo("allowed_guilds", guildId);
+  }
+
+  /** Allow a Telegram group to use ClassicBot. */
+  allowGroup(groupId: string): "added" | "already" | "already-open" {
+    return this.grantTo("allowed_groups", groupId);
+  }
+
+  /** Promote a user to ClassicBot admin (start/stop/model on classic channels). */
+  addAdminUser(userId: string): "added" | "already" | "already-open" {
+    return this.grantTo("admin_users", userId);
+  }
+
   /** Set the model override for the channel owning `instanceName` and persist. Returns true if found. */
   setModelByInstance(instanceName: string, model: string): boolean {
     for (const ch of this.channels.values()) {
