@@ -471,9 +471,37 @@ export class ClassicChannelManager {
     // admin_users has no allow-all semantics: empty means nobody is admin.
     if (field !== "admin_users" && (!Array.isArray(list) || list.length === 0)) return "already-open";
     if (Array.isArray(list) && list.some(x => String(x) === value)) return "already";
-    this.defaults[field] = [...(Array.isArray(list) ? list.map(String) : []), value];
+    // Cast: a preserved out-of-range number stays a number on purpose (see
+    // normalizeId). The isAllowed checks compare with String() either way, so
+    // the runtime contract holds; only the declared type is narrower than what
+    // a hand-edited file can contain.
+    this.defaults[field] = [
+      ...(Array.isArray(list) ? list.map(v => this.normalizeId(field, v)) : []),
+      value,
+    ] as string[];
     this.save();
     return "added";
+  }
+
+  /**
+   * Coerce an existing list entry to the string form the isAllowed checks
+   * compare against — but only when that is lossless.
+   *
+   * A YAML number below 2^53 (every Telegram group id) round-trips exactly, so
+   * String() genuinely repairs it. A Discord snowflake does NOT: YAML already
+   * truncated it at parse time (1496407196106494055 arrives as ...494000), so
+   * String() would write a plausible-looking WRONG id back to disk and erase
+   * the one clue that something is broken — that the entry is a number rather
+   * than a quoted string. Leave those untouched and say so; nothing but the
+   * original text can recover the id.
+   */
+  private normalizeId(field: string, value: unknown): unknown {
+    if (typeof value !== "number") return value;
+    if (Number.isSafeInteger(value)) return String(value);
+    this.logger.error({ field, value },
+      "classicBot.yaml holds an unquoted id too large for YAML — its precision is already lost. "
+      + "Re-enter it as a quoted string; it cannot be recovered from the stored value.");
+    return value;
   }
 
   /** Allow a Discord guild to use ClassicBot. */

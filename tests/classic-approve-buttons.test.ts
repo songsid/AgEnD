@@ -208,12 +208,26 @@ describe("ClassicChannelManager access mutators", () => {
     // a number that has already lost precision. Writing must not preserve that
     // shape: isGuildAllowed compares with a strict includes(), so a numeric
     // entry silently never matches the string id a callback carries.
+    // Small ints round-trip exactly, so String() genuinely repairs them.
     const { m, dir } = await makeManager("defaults:\n  allowed_guilds: [111, 222]\n");
     expect(m.allowGuild("333")).toBe("added");
 
     const raw = await read(dir);
     expect(raw.defaults.allowed_guilds).toEqual(["111", "222", "333"]);
     for (const v of raw.defaults.allowed_guilds) expect(typeof v).toBe("string");
+  });
+
+  it("does not launder a snowflake YAML already truncated", async () => {
+    // 1496407196106494055 unquoted parses as ...494000 — the precision is gone
+    // before we ever see it. String()-ing it would write a canonical-LOOKING
+    // but wrong id back to disk and erase the only clue (that it is a number,
+    // not a quoted string). Leave it, and say so.
+    const { m, dir } = await makeManager("defaults:\n  allowed_guilds: [1496407196106494055]\n");
+    expect(m.allowGuild("other")).toBe("added");
+
+    const raw = await read(dir);
+    expect(typeof raw.defaults.allowed_guilds[0]).toBe("number");   // not laundered
+    expect(raw.defaults.allowed_guilds).toContain("other");
   });
 
   it("is idempotent", async () => {
