@@ -3459,6 +3459,18 @@ export class Daemon extends EventEmitter {
     return formatted;
   }
 
+  /** Tell the fleet when an already-accepted cross-instance pane write failed. */
+  private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, error?: string): void {
+    if (!meta.from_instance) return;
+    this.ipcServer?.broadcast({
+      type: "cross_instance_delivery_failed",
+      senderSession: meta.from_instance,
+      targetInstance: this.name,
+      correlationId: meta.correlation_id ?? "unknown",
+      error: error ?? this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery",
+    });
+  }
+
   /**
    * /steer: interject into the CURRENT turn instead of queueing for idle.
    *
@@ -3480,7 +3492,7 @@ export class Daemon extends EventEmitter {
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = "[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]\n"
+    const formatted = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n"
       + this.formatInboundMessage(content, meta);
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
@@ -3494,9 +3506,14 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
         this.markTurnStarted(meta, formatted);
+      } else if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta);
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "steer delivery error");
+      if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+      }
     });
   }
 
@@ -3632,20 +3649,16 @@ export class Daemon extends EventEmitter {
         if (await this.deliverMessage(formatted, status, { deliveryEpoch })) {
           this.markTurnStarted(meta, formatted);
         } else if (meta.from_instance && this.isDeliveryEpochCurrent(deliveryEpoch)) {
-          const error = this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery";
-          this.ipcServer?.broadcast({
-            type: "cross_instance_delivery_failed",
-            senderSession: meta.from_instance,
-            targetInstance: this.name,
-            correlationId: meta.correlation_id ?? "unknown",
-            error,
-          });
+          this.reportCrossInstanceDeliveryFailure(meta);
         }
       } finally {
         this.pasteQueueDepth--;
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "pasteLock delivery error — chain continues");
+      if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+      }
     });
     this.logger.debug({ user: meta.user, text: content.slice(0, 100) }, "Queued channel message for delivery");
   }

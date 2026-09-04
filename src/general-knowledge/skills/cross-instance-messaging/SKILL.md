@@ -11,6 +11,7 @@ Use fleet tools only (`send_to_instance`, `delegate_task`, `request_information`
 - **Do not wait** for the target to go idle; **do not** treat 30s IPC timeout as failure to re-send.
 - **Error only if the target does not exist** (or similar hard reject) — then fix the name, don't spam.
 - **Never re-send because the reply said `queued`** — that means the message is already queued.
+- Supplement/correction to work you just sent → `steer: true`; a new task → normal send.
 
 ## requires_reply
 

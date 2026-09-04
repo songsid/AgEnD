@@ -11,6 +11,21 @@ describe("MCP tool schema", () => {
     expect(props).toHaveProperty("branch");
   });
 
+  it("teaches mid-turn supplements at the steer parameter use site", () => {
+    for (const name of ["send_to_instance", "delegate_task"]) {
+      const tool = TOOLS.find(t => t.name === name);
+      expect(tool).toBeDefined();
+      const props = (tool!.inputSchema as {
+        properties: Record<string, { description?: string }>;
+      }).properties;
+      expect(props).toHaveProperty("steer");
+      expect(props.steer.description).toContain("target's CURRENT turn");
+      expect(props.steer.description).toContain("Omit for a new task");
+      expect(props.steer.description).toContain("falls back to the idle queue");
+      expect(tool!.description).toContain("steer=true");
+    }
+  });
+
   it("send_to_instance requires instance_name and message", () => {
     const tool = TOOLS.find(t => t.name === "send_to_instance");
     const required = (tool!.inputSchema as { required: string[] }).required;

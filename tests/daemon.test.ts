@@ -931,13 +931,13 @@ describe("Daemon /steer delivery", () => {
     // visibility check confirms the text landed.
     const { control, daemon, tmux } = makeSteerDaemon(
       "claude-code", false,
-      "✻ thinking…\n[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]",
+      "✻ thinking…\n[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]",
     );
     const confirmed = vi.fn();
     daemon.on("message_confirmed", confirmed);
 
     const result = await (daemon as any).deliverMessage(
-      "[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]\n[user:han] focus",
+      "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n[user:han] focus",
       { chatId: "c", messageId: "m" },
       { steer: true },
     );
@@ -999,6 +999,34 @@ describe("Daemon /steer delivery", () => {
     expect(formatted).toContain("[user:han via discord, id:u1] focus on tests");
     expect(formatted).toContain("(message_id: msg-9)");
     expect(formatted).toContain("Reply using the reply tool");
+  });
+
+  it("reports a cross-instance steer that fails after queue acceptance", async () => {
+    const { daemon, tmux } = makeSteerDaemon("claude-code", true);
+    (daemon as any).deliverMessage = vi.fn().mockResolvedValue(false);
+    (daemon as any).wake = vi.fn(async () => {});
+    (tmux as any).getLastPasteError = vi.fn(() => "load-buffer failed: ENOSPC");
+    const broadcast = vi.fn();
+    (daemon as any).ipcServer = { broadcast };
+
+    (daemon as any).steerMessage("correct the task", {
+      from_instance: "sender-session",
+      correlation_id: "cid-steer",
+      chat_id: "",
+      message_id: "xmsg-steer",
+      user: "instance:sender-session",
+      user_id: "instance:sender-session",
+      thread_id: "",
+    });
+    await (daemon as any).steerLock;
+
+    expect(broadcast).toHaveBeenCalledWith({
+      type: "cross_instance_delivery_failed",
+      senderSession: "sender-session",
+      targetInstance: "claude-code-steer-test",
+      correlationId: "cid-steer",
+      error: "load-buffer failed: ENOSPC",
+    });
   });
 
   it("btwMessage submits a reply-capable side-question wrapper instead of native /btw", async () => {

@@ -132,6 +132,148 @@ describe("cross-instance tools are fire-and-queue", () => {
     expect(ctx.deliverToInstance).toHaveBeenCalledOnce();
   });
 
+  it.each(["claude-code", "codex", "grok"])(
+    "steers a supplement into a supported %s target without waiting for idle",
+    async backend => {
+      const ctx = makeContext({ deliver: neverSettles() });
+      ctx.fleetConfig.instances.target.backend = backend;
+
+      const { result, error } = await callTool("send_to_instance", ctx, {
+        instance_name: "target", message: "correction", steer: true,
+      });
+
+      expect(error).toBeUndefined();
+      expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "steer" });
+      expect(result).not.toHaveProperty("warning");
+      expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+        "target",
+        expect.objectContaining({
+          type: "steer",
+          targetSession: "target",
+          content: "correction",
+          meta: expect.objectContaining({ from_instance: "sender" }),
+        }),
+        { isCrossInstance: true, waitForIdle: false },
+      );
+    },
+  );
+
+  it.each(["kiro-cli", "antigravity", "opencode", "gemini-cli"])(
+    "safely queues a requested steer for unsupported %s and tells the sender",
+    async backend => {
+      const ctx = makeContext({ deliver: neverSettles() });
+      ctx.fleetConfig.instances.target.backend = backend;
+
+      const { result, error } = await callTool("send_to_instance", ctx, {
+        instance_name: "target", message: "correction", steer: true,
+      });
+
+      expect(error).toBeUndefined();
+      expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
+      expect(result.warning).toContain(`'${backend}' backend cannot accept mid-turn input`);
+      expect(result.warning).toContain("safely queued for idle delivery");
+      expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+        "target",
+        expect.objectContaining({ type: "fleet_inbound", content: "correction" }),
+      );
+    },
+  );
+
+  it("queues instead of guessing when the target backend cannot be confirmed", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig = null;
+
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "correction", steer: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
+    expect(result.warning).toContain("target backend could not be confirmed");
+    expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+      "target",
+      expect.objectContaining({ type: "fleet_inbound", content: "correction" }),
+    );
+  });
+
+  it("preserves both the steer fallback and target-state warnings", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.instances.target.backend = "kiro-cli";
+    ctx.lifecycle.daemons.set("target", {
+      isErrorState: true,
+      isCrashLoop: false,
+      lastErrorType: "auth_error",
+    });
+
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "target", message: "correction", steer: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(result.warning).toContain("cannot accept mid-turn input");
+    expect(result.warning).toContain("authentication error");
+  });
+
+  it("falls back for external sessions instead of steering the hosting pane", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.instances.target.backend = "claude-code";
+    ctx.sessionRegistry.set("teammate", "target");
+
+    const { result, error } = await callTool("send_to_instance", ctx, {
+      instance_name: "teammate", message: "correction", steer: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "idle_queue" });
+    expect(result.warning).toContain("external sessions cannot be targeted safely");
+    expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+      "target",
+      expect.objectContaining({
+        type: "fleet_inbound",
+        targetSession: "teammate",
+        content: "correction",
+      }),
+    );
+  });
+
+  it.each([undefined, false])("keeps ordinary delivery unchanged when steer is %s", async steer => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    const args: Record<string, unknown> = { instance_name: "target", message: "new task" };
+    if (steer !== undefined) args.steer = steer;
+
+    const { result, error } = await callTool("send_to_instance", ctx, args);
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true });
+    expect(result).not.toHaveProperty("delivery_mode");
+    expect(result).not.toHaveProperty("warning");
+    expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+      "target",
+      expect.objectContaining({ type: "fleet_inbound", content: "new task" }),
+    );
+  });
+
+  it("forwards delegate_task steer through the shared send path", async () => {
+    const ctx = makeContext({ deliver: neverSettles() });
+    ctx.fleetConfig.instances.target.backend = "claude-code";
+
+    const { result, error } = await callTool("delegate_task", ctx, {
+      target_instance: "target", task: "add this constraint", steer: true,
+    });
+
+    expect(error).toBeUndefined();
+    expect(result).toMatchObject({ sent: true, queued: true, delivery_mode: "steer" });
+    expect(ctx.deliverToInstance).toHaveBeenCalledWith(
+      "target",
+      expect.objectContaining({
+        type: "steer",
+        content: "add this constraint",
+        meta: expect.objectContaining({ request_kind: "task", requires_reply: "true" }),
+      }),
+      { isCrossInstance: true, waitForIdle: false },
+    );
+  });
+
   it("still errors when the target does not exist", async () => {
     const ctx = makeContext({ deliver: neverSettles(), connected: [] });
     const { result, error } = await callTool("send_to_instance", ctx, {
