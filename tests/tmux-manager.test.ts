@@ -144,7 +144,38 @@ describe("TmuxManager", () => {
       await tm.createWindow(`stty raw -echo; head -c 65536 > '${output}'`, "/tmp", "large-paste");
       const payload = "x".repeat(64 * 1024);
       expect(await tm.pasteBuffer(payload)).toBe(true);
-      await expect.poll(() => readFileSync(output, "utf8").length, { timeout: 5_000 }).toBe(payload.length);
+
+      // Wait for the transfer to finish OR to stall, rather than for a fixed
+      // 5s. That budget was flaky on CI: the assertion failed at 32768 with
+      // "Matcher did not succeed in time" — the bytes were still arriving when
+      // the clock ran out. Locally this completes in under half a second even
+      // with the CPU saturated, so the old budget was tuned to a fast machine.
+      //
+      // Deliberately NOT just a bigger timeout: that would also hide a genuine
+      // truncation behind a long wait. This separates the two — a size that
+      // stops changing is reported as a stall with the byte count, while a slow
+      // runner simply takes as long as it needs. Verified by pointing the pane
+      // at `head -c 32768`, which reports the stall rather than timing out.
+      const settled = await (async () => {
+        let last = -1;
+        let unchanged = 0;
+        for (let i = 0; i < 120; i++) {          // up to ~30s
+          const size = readFileSync(output, "utf8").length;
+          if (size >= payload.length) return { size, stalled: false };
+          unchanged = size === last ? unchanged + 1 : 0;
+          if (unchanged >= 20) return { size, stalled: true };   // ~5s of no progress
+          last = size;
+          await new Promise(r => setTimeout(r, 250));
+        }
+        return { size: readFileSync(output, "utf8").length, stalled: false };
+      })();
+
+      expect(
+        settled.size,
+        settled.stalled
+          ? `transfer stalled at ${settled.size} of ${payload.length} bytes — paste-buffer truncated, not merely slow`
+          : `transfer reached ${settled.size} of ${payload.length} bytes`,
+      ).toBe(payload.length);
     } finally {
       await tm.killWindow();
       rmSync(dir, { recursive: true, force: true });
