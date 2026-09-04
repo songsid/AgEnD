@@ -176,4 +176,27 @@ describe("persistent dashboard token", () => {
     await close(server);
     (fm as any).healthServer = null;
   });
+
+  it("returns 500 when getSysInfo throws (M2 regression)", async () => {
+    // #695 fix: /api/fleet must catch exceptions and return 500 instead of hanging
+    const fm = new FleetManager(tempDir());
+    (fm as any).fleetConfig = { defaults: {}, instances: {} };
+    (fm as any).classicChannels = { getAll: () => [] };
+    (fm as any).getSysInfo = () => { throw new Error("simulated failure"); };
+
+    (fm as any).initializeWebAuthTokens();
+    (fm as any).startHealthServer(0);
+    await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
+    const server = (fm as any).healthServer as Server;
+    const address = server.address();
+    expect(address && typeof address !== "string").toBe(true);
+
+    const response = await fetch(`http://127.0.0.1:${(address as { port: number }).port}/api/fleet`, {
+      headers: { "x-agend-token": fm.getDashboardAccess().token! },
+    });
+
+    expect(response.status).toBe(500);
+    await close(server);
+    (fm as any).healthServer = null;
+  });
 });
