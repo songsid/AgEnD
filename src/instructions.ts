@@ -19,6 +19,45 @@ export interface FleetInstructionsParams {
   cliInstructions?: string;
 }
 
+function isClassicInstance(params: FleetInstructionsParams): boolean {
+  return params.runtimeIdentity?.kind === "classic";
+}
+
+function mcpCrossInstanceReplyRule(classic: boolean): string {
+  if (!classic) {
+    return "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`.";
+  }
+  return "- `[from:instance-name]` → answer the sender with `send_to_instance`/`report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.";
+}
+
+function fullCrossInstanceMessageRule(classic: boolean): string {
+  if (!classic) {
+    return "- `[from:instance-name]` — from another fleet instance → use `send_to_instance` or `report_result`, NOT the `reply` tool.";
+  }
+  return "- `[from:instance-name]` — from another fleet instance → answer the sender with `send_to_instance` or `report_result`. Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.";
+}
+
+function fullCrossInstanceCollaborationRule(classic: boolean): string {
+  if (!classic) {
+    return "2. Cross-instance messages appear as `[from:instance-name]`. Reply via send_to_instance or report_result, NOT reply.";
+  }
+  return "2. Cross-instance messages appear as `[from:instance-name]`. Answer the sender via send_to_instance or report_result. Use reply only to carry out an explicit request to communicate with humans in your bound ClassicBot channel; when `requires_reply=true`, separately report the outcome to the sender.";
+}
+
+function cliCrossInstanceRule(classic: boolean): string {
+  if (!classic) {
+    return [
+      "## Runtime Cross-instance Rule",
+      "This is a fleet-topic instance. For `[from:INSTANCE]`, answer the sender with `agend-agent send` or `agend-agent report`; never use `agend-agent reply`.",
+    ].join("\n");
+  }
+  return [
+    "## Runtime Cross-instance Rule",
+    "This is a ClassicBot instance. For `[from:INSTANCE]`, answer the sender with `agend-agent send` or `agend-agent report`.",
+    "Only when the request explicitly asks you to communicate with humans in your bound ClassicBot channel (ask, notify, follow up, or mention someone), use `agend-agent reply` for that channel-facing action. With `requires_reply=true`, also report the outcome to the sender.",
+  ].join("\n");
+}
+
 /**
  * Compact contract for the MCP server's `instructions` field.
  *
@@ -32,6 +71,7 @@ export interface FleetInstructionsParams {
  */
 export function buildMcpCoreInstructions(params: FleetInstructionsParams): string {
   const { instanceName, workingDirectory, runtimeIdentity } = params;
+  const classic = isClassicInstance(params);
   const runtime = runtimeIdentity
     ? ` Runtime: kind=${runtimeIdentity.kind}, backend=${runtimeIdentity.backend}, model=${runtimeIdentity.model}.`
     : "";
@@ -40,7 +80,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "",
     "## Reply contract",
     "- `[user:name via platform, id:ID]` → answer with the `reply` tool. Never direct text.",
-    "- `[from:instance-name]` → answer with `send_to_instance`, or `report_result` with the correlation_id shown. Never `reply`.",
+    mcpCrossInstanceReplyRule(classic),
     "- A turn ends only after that tool call — post your conclusion, then close with a short line like `.`.",
     "- Nothing to add on a cross-instance message? Staying silent is valid.",
     "",
@@ -56,6 +96,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
 export function buildFleetInstructions(params: FleetInstructionsParams): string {
   const { instanceName, workingDirectory, runtimeIdentity, displayName, description, customPrompt } = params;
   const sections: string[] = [];
+  const classic = isClassicInstance(params);
 
   // ── Identity ──
   sections.push(`# AgEnD Fleet Context\nYou are **${instanceName}**, an instance in an AgEnD fleet.\nYour working directory is \`${workingDirectory}\`.`);
@@ -75,12 +116,13 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   if (params.cliInstructions) {
     // CLI mode: inject CLI quick reference
     sections.push(params.cliInstructions);
+    sections.push(cliCrossInstanceRule(classic));
   } else {
     // MCP mode: inject MCP tool usage instructions
     sections.push([
       "## Message Format",
       "- `[user:name via platform, id:USER_ID]` — from a Telegram/Discord user → reply with the `reply` tool.",
-      "- `[from:instance-name]` — from another fleet instance → use `send_to_instance` or `report_result`, NOT the `reply` tool.",
+      fullCrossInstanceMessageRule(classic),
       "",
       "A turn isn't finished until the channel has your conclusion — posted via `reply` (or",
       "`send_to_instance` / `report_result` for another instance). That call is the last step of",
@@ -105,7 +147,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "",
       "## Collaboration Rules",
       "1. Use fleet tools for cross-instance communication. Never assume direct file access to another instance's repo.",
-      "2. Cross-instance messages appear as `[from:instance-name]`. Reply via send_to_instance or report_result, NOT reply.",
+      fullCrossInstanceCollaborationRule(classic),
       "3. Use list_instances to discover available instances before sending messages.",
       "4. You only have direct access to files under your own working directory.",
       "5. Task flow: `delegate_task` → silent work → `report_result`. Zero messages in between. Never send ack/confirmation.",

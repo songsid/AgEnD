@@ -217,6 +217,11 @@ describe("reply IPC confirmation", () => {
         result: { messageId: "telegram-real-id", chatId: "telegram-chat" },
         error: undefined,
       }));
+      expect(sendText).toHaveBeenCalledWith("telegram-chat", "reply is already delivered", {
+        threadId: undefined,
+        replyTo: undefined,
+        format: undefined,
+      });
       await vi.waitFor(() => expect(notifyAlert).toHaveBeenCalledOnce());
     } finally {
       rmSync(dir, { recursive: true, force: true });
