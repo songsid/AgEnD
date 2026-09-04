@@ -1587,6 +1587,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
     const wasRunning = this.daemons.has(instanceName);
     this.classicChannels.reloadFromDisk();
+    this.reportClassicUnrecoverableIds();
     this.reregisterClassicChannels();
     const channel = this.classicChannels.getAll().find(item => item.instanceName === instanceName);
     if (!channel) throw new Error("Classic channel not found after reload");
@@ -2280,6 +2281,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger);
     const classicAdapters = fleet.channels?.length ? fleet.channels : (fleet.channel ? [fleet.channel] : []);
     this.classicChannels.configureAdapters(classicAdapters);
+    this.reportClassicUnrecoverableIds();
     // Restore the persisted bot binding so replies/cancel go through the right
     // bot after a restart (before this, inbound would re-bind lazily).
     for (const ch of this.classicChannels.getAll()) {
@@ -2301,6 +2303,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
         }
         if (!this.classicChannels.checkReload()) return;
+        // A reload can introduce a bad id (hand edit) or clear one; the
+        // throttle keeps a repeated report from flooding the topic.
+        this.reportClassicUnrecoverableIds();
         this.reregisterClassicChannels();
         for (const ch of this.classicChannels.getAll()) {
           const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
@@ -5593,6 +5598,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The log line is written by the caller regardless: if every adapter is down,
    * the only notification path is the one that is broken.
    */
+  /**
+   * Surface ids that can never match into the operator's General topic.
+   *
+   * The load-time log is still silence for anyone not reading daemon.log, and a
+   * chat that never gets in with nothing said anywhere is exactly the failure
+   * this line of work exists to remove. notifyFleetError throttles by message
+   * text for 10 minutes and resolves its target from config, so the 30s reload
+   * poll cannot flood the topic and a down General does not swallow it.
+   */
+  private reportClassicUnrecoverableIds(): void {
+    const bad = this.classicChannels?.getUnrecoverableIds?.() ?? [];
+    if (bad.length === 0) return;
+    const list = bad.map(e => `${e.field}: ${e.value}`).join(", ");
+    this.logger.error({ ids: bad }, "classicBot.yaml holds ids that can never match");
+    this.notifyFleetError(t("classic.unrecoverable_ids", list));
+  }
+
   notifyFleetError(text: string): void {
     const now = Date.now();
     const key = text.slice(0, 200);

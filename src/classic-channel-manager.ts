@@ -539,6 +539,21 @@ export class ClassicChannelManager {
   }
 
   /**
+   * Ids found unrecoverable at the last load. Recomputed on every load so a
+   * config the operator has fixed stops reporting.
+   */
+  private unrecoverableIds: Array<{ field: string; value: number }> = [];
+
+  /**
+   * Ids that can never match, for surfacing somewhere an operator will actually
+   * see. The load-time log alone is still silence for anyone not reading
+   * daemon.log — which is the failure this whole line of work set out to remove.
+   */
+  getUnrecoverableIds(): ReadonlyArray<{ field: string; value: number }> {
+    return this.unrecoverableIds;
+  }
+
+  /**
    * Report ids YAML has already truncated, at load rather than on first write.
    *
    * String comparison in the isAllowed checks recovers an unquoted id below
@@ -549,11 +564,13 @@ export class ClassicChannelManager {
    * error anywhere — which is the failure this change exists to remove.
    */
   private reportUnquotedIds(): void {
+    this.unrecoverableIds = [];
     for (const field of ["allowed_guilds", "allowed_groups", "allowed_users", "admin_users"] as const) {
       const list = this.defaults[field];
       if (!Array.isArray(list)) continue;
       for (const entry of list) {
         if (typeof entry === "number" && !Number.isSafeInteger(entry)) {
+          this.unrecoverableIds.push({ field, value: entry });
           this.logger.error({ field, value: entry, path: this.configPath },
             "classicBot.yaml holds an unquoted id too large for YAML — its precision was lost when the "
             + "file was parsed, so it can never match. Re-enter it as a QUOTED string taken from Discord "
