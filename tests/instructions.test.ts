@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { buildFleetInstructions } from "../src/instructions.js";
+import { buildFleetInstructions, buildMcpCoreInstructions } from "../src/instructions.js";
 import { buildInstructionReloadNotice } from "../src/daemon.js";
 
 describe("buildFleetInstructions", () => {
@@ -71,6 +71,45 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("`send_to_instance` or `report_result`, NOT the `reply` tool");
   });
 
+  it("keeps fleet-topic cross-instance replies off the human channel", () => {
+    const params = {
+      ...base,
+      runtimeIdentity: { kind: "fleet-topic" as const, backend: "codex", model: "gpt-5.6-sol" },
+      workflow: false,
+    };
+    const full = buildFleetInstructions(params);
+    const core = buildMcpCoreInstructions(params);
+
+    expect(full).toContain("`send_to_instance` or `report_result`, NOT the `reply` tool");
+    expect(full).toContain("Reply via send_to_instance or report_result, NOT reply");
+    expect(core).toContain("Never `reply`");
+    expect(full).not.toContain("bound ClassicBot channel");
+    expect(core).not.toContain("bound ClassicBot channel");
+  });
+
+  it("lets ClassicBot perform only explicitly requested human-facing channel work", () => {
+    const params = {
+      ...base,
+      runtimeIdentity: { kind: "classic" as const, backend: "codex", model: "gpt-5.6-sol" },
+      workflow: false,
+    };
+    const full = buildFleetInstructions(params);
+    const core = buildMcpCoreInstructions(params);
+
+    for (const instructions of [full, core]) {
+      expect(instructions).toContain("Only when the request explicitly asks");
+      expect(instructions).toContain("bound ClassicBot channel");
+      expect(instructions).toContain("ask, notify, follow up, or mention someone");
+      expect(instructions).toContain("With `requires_reply=true`, also report the outcome to the sender");
+    }
+    // The exception is keyed only by instance kind, not by request_kind, so
+    // send_to_instance and delegate_task can assign the same channel work.
+    expect(core).toContain("`delegate_task` → work silently → `report_result`");
+    expect(Buffer.byteLength(core, "utf8")).toBeLessThan(2048);
+    expect(full).not.toContain("NOT the `reply` tool");
+    expect(core).not.toContain("Never `reply`");
+  });
+
   it("gives CLI-mode agents equivalent delivery and final-text rules", () => {
     const cliInstructions = readFileSync(
       new URL("../src/agent-cli-instructions.md", import.meta.url),
@@ -81,6 +120,33 @@ describe("buildFleetInstructions", () => {
     expect(cliInstructions).toContain("end the turn with final text of exactly `.`");
     expect(cliInstructions).toContain("if the command fails, say so in the final text");
     expect(cliInstructions).toContain("After the command succeeds, likewise end the turn with exactly");
+  });
+
+  it("applies the same runtime-scoped exception in CLI mode", () => {
+    const cliInstructions = readFileSync(
+      new URL("../src/agent-cli-instructions.md", import.meta.url),
+      "utf8",
+    );
+    const classic = buildFleetInstructions({
+      ...base,
+      runtimeIdentity: { kind: "classic", backend: "grok", model: "grok-code-fast-1" },
+      cliInstructions,
+      workflow: false,
+    });
+    const fleetTopic = buildFleetInstructions({
+      ...base,
+      runtimeIdentity: { kind: "fleet-topic", backend: "grok", model: "grok-code-fast-1" },
+      cliInstructions,
+      workflow: false,
+    });
+
+    expect(classic).toContain("This is a ClassicBot instance");
+    expect(classic).toContain("Only when the request explicitly asks");
+    expect(classic).toContain("use `agend-agent reply` for that channel-facing action");
+    expect(classic).toContain("With `requires_reply=true`, also report the outcome to the sender");
+    expect(fleetTopic).toContain("This is a fleet-topic instance");
+    expect(fleetTopic).toContain("never use `agend-agent reply`");
+    expect(fleetTopic).not.toContain("bound ClassicBot channel");
   });
 
   it("does not tell backends to scan Kiro steering at startup", () => {

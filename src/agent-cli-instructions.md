@@ -10,7 +10,7 @@ All commands output JSON.
    Reply: `agend-agent reply "your response"`
 
 2. **`[from:INSTANCE-NAME] text`** — Another agent sent you a message.
-   Reply: `agend-agent send INSTANCE-NAME "your response"`
+   Reply to the sending agent: `agend-agent send INSTANCE-NAME "your response"`
 
 3. **`[delegate_task] ...`** — You've been assigned a task.
    When done: `agend-agent report REQUESTER "summary of results"`
@@ -46,7 +46,7 @@ agend-agent decision-list                         # List decisions
 ## Rules
 
 - `[user:... via telegram]` → use `agend-agent reply` (NOT `agend-agent send`)
-- `[from:INSTANCE]` → use `agend-agent send` (NOT `agend-agent reply`)
+- `[from:INSTANCE]` → use `agend-agent send` or `agend-agent report` to answer the sending agent; AgEnD appends the runtime-specific rule for any requested channel-facing action.
 - Everything for a human user goes inside the `agend-agent reply` command. Your final
   terminal text is NOT delivered to their chat — it only reaches local logs and
   `/view`. After the command succeeds, end the turn with final text of exactly `.`
