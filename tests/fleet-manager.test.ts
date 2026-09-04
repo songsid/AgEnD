@@ -859,7 +859,7 @@ describe("FleetManager", () => {
     expect(fm.getInstanceStatus("test")).toBe("paused");
   });
 
-  it("caches daemon execution-state snapshots for status surfaces", () => {
+  it("caches daemon execution-state snapshots for status surfaces", async () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = { defaults: {}, instances: { test: { working_directory: "/tmp" } } };
     vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(false);

@@ -130,6 +130,10 @@ describe("persistent dashboard token", () => {
     };
     (fm as any).getSysInfo = () => ({
       instances: [{ name: fleetName, status: "running", state: "idle", ipc: true }],
+      running_count: 1,
+      paused_count: 0,
+      fleet_mem_mb: null,
+      system_mem_gb: { used: 8.0, total: 16.0 },
     });
     vi.spyOn(fm, "resolveInstanceModel").mockImplementation((name: string) => name === classicName
       ? { model: "provider/model", display: "provider/model", source: "classic" }
