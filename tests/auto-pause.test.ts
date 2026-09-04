@@ -254,7 +254,7 @@ describe("paused status visibility", () => {
     expect(status).toContain("| classic-room-1234 | codex | - | - | $0.00 | 🟢 | 🟢 idle | ✓ |");
   });
 
-  it("/sysinfo is system-level only — the instance table moved to /status", () => {
+  it("/sysinfo is system-level only — the instance table moved to /status", async () => {
     const commands = new TopicCommands({
       fleetConfig: { defaults: {}, instances: {} },
       getSysInfo: () => ({
@@ -265,6 +265,10 @@ describe("paused status visibility", () => {
         ],
         fleet_cost_cents: 0,
         fleet_cost_limit_cents: 0,
+        running_count: 1,
+        paused_count: 0,
+        fleet_mem_mb: 512,
+        system_mem_gb: { used: 8.5, total: 16.0 },
       }),
       getInstanceStatus: () => "running",
       getInstanceExecutionState: () => "stuck",
@@ -281,10 +285,13 @@ describe("paused status visibility", () => {
     expect(sysinfo).toContain(`| Node | ${process.version} |`);
     expect(sysinfo).toContain("| OS |");
     expect(sysinfo).toContain("| tmux |");
+    // Fleet summary line
+    expect(sysinfo).toContain("Instances: 1 running, 0 paused");
+    expect(sysinfo).toContain("Fleet Mem: 0.5 GB");
+    expect(sysinfo).toContain("System Memory: 8.5 / 16 GB");
     // Instance information is /status's job now — even instances the sys-info
     // payload still carries must not be rendered here.
-    expect(sysinfo).not.toContain("Instances");
-    expect(sysinfo).not.toContain("busy");
+    expect(sysinfo).not.toContain("| busy |");
     expect(sysinfo).not.toContain("classic-lab-5678");
   });
 });

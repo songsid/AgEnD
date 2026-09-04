@@ -1091,6 +1091,12 @@ export class TopicCommands {
     const agendVersion = require("../package.json").version ?? "unknown";
     const tipsLang = getLocale() === "zh-TW" ? "zh" : "en";
 
+    // Fleet summary line (like agend ls bottom line)
+    const fleetMemPart = info.fleet_mem_mb !== null
+      ? ` | ${t("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`
+      : "";
+    const summaryLine = `${t("sysinfo.instances")}: ${info.running_count} ${t("sysinfo.running")}, ${info.paused_count} ${t("sysinfo.paused")}${fleetMemPart} | ${t("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`;
+
     return [
       `## ${t("sysinfo.title")}`,
       "",
@@ -1103,6 +1109,8 @@ export class TopicCommands {
       `| ${t("sysinfo.uptime")} | ${upHours}h ${upMins}m |`,
       `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
       `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
+      "",
+      summaryLine,
       "",
       `📚 **${t("sysinfo.resources")}**`,
       `- ${t("sysinfo.docs")}: https://songsid.github.io/AgEnD`,

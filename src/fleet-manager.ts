@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { freemem } from "node:os";
+import { freemem, totalmem } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -783,7 +783,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   getSysInfo(): import("./fleet-context.js").SysInfo {
     const mem = process.memoryUsage();
     const toMB = (b: number) => Math.round(b / 1024 / 1024 * 10) / 10;
-    const instances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({
+
+    // Fleet instances (fleet.yaml)
+    const fleetInstances = Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({
       name,
       status: this.getInstanceStatus(name),
       state: this.getInstanceExecutionState(name),
@@ -791,12 +793,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       costCents: this.costGuard?.getDailyCostCents(name) ?? 0,
       rateLimits: this.statuslineWatcher.getRateLimits(name) ?? null,
     }));
+
+    // Classic instances (classicBot.yaml) — dedupe against fleet
+    const fleetNames = new Set(fleetInstances.map(i => i.name));
+    const classicInstances = (this.classicChannels?.getAll() ?? [])
+      .filter(ch => !fleetNames.has(ch.instanceName))
+      .map(ch => ({
+        name: ch.instanceName,
+        status: this.getInstanceStatus(ch.instanceName),
+        state: this.getInstanceExecutionState(ch.instanceName),
+        ipc: this.instanceIpcClients.has(ch.instanceName),
+        costCents: this.costGuard?.getDailyCostCents(ch.instanceName) ?? 0,
+        rateLimits: this.statuslineWatcher.getRateLimits(ch.instanceName) ?? null,
+      }));
+
+    // Combined roster (matches /api/fleet and agend ls)
+    const allInstances = [...fleetInstances, ...classicInstances];
+
+    // Fleet summary counts (fleet + Classic combined)
+    const running_count = allInstances.filter(i => i.status === "running").length;
+    const paused_count = allInstances.filter(i => i.status === "paused").length;
+
+    // System memory (GB, 1 decimal)
+    const totalGB = totalmem() / (1024 ** 3);
+    const usedGB = (totalmem() - freemem()) / (1024 ** 3);
+    const system_mem_gb = {
+      used: Math.round(usedGB * 10) / 10,
+      total: Math.round(totalGB * 10) / 10,
+    };
+
+    // Fleet memory: O(1) cgroup read (includes entire service tree: fleet + CLIs + MCP servers)
+    // This avoids blocking the event loop with per-instance tree scans.
+    const fleetMem = readFleetMemory();
+    const fleet_mem_mb = fleetMem.cgroupAnonBytes != null
+      ? Math.round(fleetMem.cgroupAnonBytes / (1024 * 1024) * 10) / 10
+      : null;
+
     return {
       uptime_seconds: Math.floor((Date.now() - this.startedAt) / 1000),
       memory_mb: { rss: toMB(mem.rss), heapUsed: toMB(mem.heapUsed), heapTotal: toMB(mem.heapTotal) },
-      instances,
+      instances: fleetInstances, // SysInfo.instances is fleet-only; /api/fleet enriches with Classic
       fleet_cost_cents: this.costGuard?.getFleetTotalCents() ?? 0,
       fleet_cost_limit_cents: this.costGuard?.getLimitCents() ?? 0,
+      running_count,
+      paused_count,
+      fleet_mem_mb,
+      system_mem_gb,
     };
   }
 
@@ -10497,70 +10539,78 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
       // Fleet API (enriched for agent board)
       if (req.method === "GET" && req.url === "/api/fleet") {
-        const sysInfo = this.getSysInfo();
-        const fleetInstances = sysInfo.instances.map(inst => ({ ...inst, classic: false }));
-        const fleetNames = new Set(fleetInstances.map(inst => inst.name));
-        const classicInstances = (this.classicChannels?.getAll() ?? [])
-          .filter(channel => !fleetNames.has(channel.instanceName))
-          .map(channel => ({
-            name: channel.instanceName,
-            status: this.getInstanceStatus(channel.instanceName),
-            state: this.getInstanceExecutionState(channel.instanceName),
-            ipc: this.instanceIpcClients.has(channel.instanceName),
-            costCents: this.costGuard?.getDailyCostCents(channel.instanceName) ?? 0,
-            rateLimits: this.statuslineWatcher.getRateLimits(channel.instanceName) ?? null,
-            classic: true,
-            classicName: channel.name,
-            channelId: channel.channelId,
-            adapterId: channel.adapterId ?? null,
+        try {
+          const sysInfo = this.getSysInfo();
+          const fleetInstances = sysInfo.instances.map(inst => ({ ...inst, classic: false }));
+          const fleetNames = new Set(fleetInstances.map(inst => inst.name));
+          const classicInstances = (this.classicChannels?.getAll() ?? [])
+            .filter(channel => !fleetNames.has(channel.instanceName))
+            .map(channel => ({
+              name: channel.instanceName,
+              status: this.getInstanceStatus(channel.instanceName),
+              state: this.getInstanceExecutionState(channel.instanceName),
+              ipc: this.instanceIpcClients.has(channel.instanceName),
+              costCents: this.costGuard?.getDailyCostCents(channel.instanceName) ?? 0,
+              rateLimits: this.statuslineWatcher.getRateLimits(channel.instanceName) ?? null,
+              classic: true,
+              classicName: channel.name,
+              channelId: channel.channelId,
+              adapterId: channel.adapterId ?? null,
+            }));
+          const enriched = [...fleetInstances, ...classicInstances].map(inst => {
+            const config = this.fleetConfig?.instances[inst.name];
+            const persistedInboundAt = readLastInboundAt(this.getInstanceDir(inst.name));
+            const lastActivity = inst.classic
+              ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
+              : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
+            const backend = this.backendNameForInstance(inst.name);
+            const resolvedModel = this.resolveInstanceModel(inst.name);
+            const effortStrategy = this.effortStrategyFor(inst.name);
+            const resolvedEffort = this.resolveInstanceEffort(inst.name);
+            // Find claimed tasks for this instance
+            let currentTask: string | null = null;
+            try {
+              const tasks = this.scheduler?.db.listTasks({ assignee: inst.name, status: "claimed" });
+              if (tasks?.length) currentTask = tasks[0].title;
+            } catch (err) {
+              this.logger.debug({ err, name: inst.name }, "Scheduler listTasks failed (/api/fleet)");
+            }
+            return {
+              ...inst,
+              description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
+              backend,
+              // Settings renders these runtime-effective values rather than the
+              // sparse user-authored YAML. `auto` means the supported CLI is
+              // using its own effort default; null is reserved for unsupported.
+              model: resolvedModel.model,
+              model_display: resolvedModel.display,
+              model_source: resolvedModel.source,
+              effort: effortStrategy === "unsupported" ? null : (resolvedEffort.effort ?? "auto"),
+              effort_supported: effortStrategy !== "unsupported",
+              tool_set: config?.tool_set ?? "full",
+              general_topic: config?.general_topic ?? false,
+              // User activity is persisted by the daemon, so both the board and
+              // auto-pause retain an accurate age across fleet restarts.
+              lastActivity,
+              currentTask,
+              idle: this.getInstanceIdle(inst.name),
+              state: this.getInstanceExecutionState(inst.name),
+            };
+          });
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.writeHead(200);
+          res.end(JSON.stringify({
+            ...sysInfo,
+            version: this.currentVersion,
+            instances: enriched,
           }));
-        const enriched = [...fleetInstances, ...classicInstances].map(inst => {
-          const config = this.fleetConfig?.instances[inst.name];
-          const persistedInboundAt = readLastInboundAt(this.getInstanceDir(inst.name));
-          const lastActivity = inst.classic
-            ? Math.max(persistedInboundAt ?? 0, readClassicLastActivityAt(this.dataDir, inst.name) ?? 0) || null
-            : (persistedInboundAt ?? this.lastActivityMs(inst.name)) || null;
-          const backend = this.backendNameForInstance(inst.name);
-          const resolvedModel = this.resolveInstanceModel(inst.name);
-          const effortStrategy = this.effortStrategyFor(inst.name);
-          const resolvedEffort = this.resolveInstanceEffort(inst.name);
-          // Find claimed tasks for this instance
-          let currentTask: string | null = null;
-          try {
-            const tasks = this.scheduler?.db.listTasks({ assignee: inst.name, status: "claimed" });
-            if (tasks?.length) currentTask = tasks[0].title;
-          } catch (err) {
-            this.logger.debug({ err, name: inst.name }, "Scheduler listTasks failed (/api/fleet)");
+        } catch (err) {
+          this.logger.error({ err }, "/api/fleet failed");
+          if (!res.headersSent) {
+            res.writeHead(500);
+            res.end("Internal Server Error");
           }
-          return {
-            ...inst,
-            description: config?.description ?? ("classicName" in inst ? inst.classicName : null),
-            backend,
-            // Settings renders these runtime-effective values rather than the
-            // sparse user-authored YAML. `auto` means the supported CLI is
-            // using its own effort default; null is reserved for unsupported.
-            model: resolvedModel.model,
-            model_display: resolvedModel.display,
-            model_source: resolvedModel.source,
-            effort: effortStrategy === "unsupported" ? null : (resolvedEffort.effort ?? "auto"),
-            effort_supported: effortStrategy !== "unsupported",
-            tool_set: config?.tool_set ?? "full",
-            general_topic: config?.general_topic ?? false,
-            // User activity is persisted by the daemon, so both the board and
-            // auto-pause retain an accurate age across fleet restarts.
-            lastActivity,
-            currentTask,
-            idle: this.getInstanceIdle(inst.name),
-            state: this.getInstanceExecutionState(inst.name),
-          };
-        });
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.writeHead(200);
-        res.end(JSON.stringify({
-          ...sysInfo,
-          version: this.currentVersion,
-          instances: enriched,
-        }));
+        }
         return;
       }
 

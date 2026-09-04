@@ -17,6 +17,13 @@ export interface SysInfo {
   instances: { name: string; status: string; ipc: boolean; costCents: number; rateLimits: { five_hour_pct: number; seven_day_pct: number } | null }[];
   fleet_cost_cents: number;
   fleet_cost_limit_cents: number;
+  /** Counts for the fleet summary line */
+  running_count: number;
+  paused_count: number;
+  /** Sum of all running instance RSS in MB (null if unavailable) */
+  fleet_mem_mb: number | null;
+  /** System memory: used and total in GB */
+  system_mem_gb: { used: number; total: number };
 }
 
 export function isProbeableRouteTarget(target: RouteTarget): boolean {
