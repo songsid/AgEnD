@@ -3459,11 +3459,24 @@ export class Daemon extends EventEmitter {
     return formatted;
   }
 
+  /** Tell the fleet when an already-accepted cross-instance pane write failed. */
+  private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, error?: string): void {
+    if (!meta.from_instance) return;
+    this.ipcServer?.broadcast({
+      type: "cross_instance_delivery_failed",
+      senderSession: meta.from_instance,
+      targetInstance: this.name,
+      correlationId: meta.correlation_id ?? "unknown",
+      error: error ?? this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery",
+    });
+  }
+
   /**
    * /steer: interject into the CURRENT turn instead of queueing for idle.
    *
    * Differences from pushChannelMessage, and nothing else:
-   *  - serialized on steerLock, not pasteLock — it must overtake, not queue
+   *  - serialized on steerLock, not pasteLock — it may overtake current work,
+   *    but never an ordinary delivery already queued ahead of it
    *  - deliverMessage runs with { steer: true }, which takes the busy branch
    *    that pastes immediately (the codex native-queue transaction) instead of
    *    waiting for idle. Verification and silent-loss fallback are the ones
@@ -3476,11 +3489,19 @@ export class Daemon extends EventEmitter {
    */
   steerMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    // The fleet facade prevents a steer from overtaking an item still in its
+    // idle queue. Close the second race window here: an earlier item may already
+    // have reached this daemon's paste queue by the time the steer IPC arrives.
+    if (this.pasteQueueDepth > 0) {
+      this.logger.info("Steer queued behind an earlier pane delivery to preserve message order");
+      this.pushChannelMessage(content, meta, undefined, deliveryEpoch);
+      return;
+    }
     this.updateLastChat(meta.chat_id, meta.thread_id, meta.adapter_id);
     this.pendingWork.recordInbound();
     this.recordRecentUserMessage(content, meta);
 
-    const formatted = "[STEERING — mid-task course correction from the user. Fold this into the CURRENT work.]\n"
+    const formatted = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n"
       + this.formatInboundMessage(content, meta);
     const chatId = meta.chat_id;
     const messageId = meta.message_id;
@@ -3494,9 +3515,14 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
         this.markTurnStarted(meta, formatted);
+      } else if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta);
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "steer delivery error");
+      if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+      }
     });
   }
 
@@ -3632,20 +3658,16 @@ export class Daemon extends EventEmitter {
         if (await this.deliverMessage(formatted, status, { deliveryEpoch })) {
           this.markTurnStarted(meta, formatted);
         } else if (meta.from_instance && this.isDeliveryEpochCurrent(deliveryEpoch)) {
-          const error = this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery";
-          this.ipcServer?.broadcast({
-            type: "cross_instance_delivery_failed",
-            senderSession: meta.from_instance,
-            targetInstance: this.name,
-            correlationId: meta.correlation_id ?? "unknown",
-            error,
-          });
+          this.reportCrossInstanceDeliveryFailure(meta);
         }
       } finally {
         this.pasteQueueDepth--;
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "pasteLock delivery error — chain continues");
+      if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+      }
     });
     this.logger.debug({ user: meta.user, text: content.slice(0, 100) }, "Queued channel message for delivery");
   }

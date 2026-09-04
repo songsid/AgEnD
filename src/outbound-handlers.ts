@@ -12,6 +12,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES } from "./config.js";
 import { t } from "./locale.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
+import { backendSupportsSteer } from "./steer-capability.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -81,7 +82,13 @@ export interface OutboundContext {
   restartSingleInstance(name: string): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   /** FleetManager facade that wakes paused instances before delivery. */
-  deliverToInstance?(instanceName: string, payload: Record<string, unknown>): Promise<void>;
+  deliverToInstance?(
+    instanceName: string,
+    payload: Record<string, unknown>,
+    options?: OutboundDeliveryOptions,
+  ): Promise<void>;
+  /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
+  hasPendingIdleGatedDelivery?(instanceName: string): boolean;
   saveFleetConfig(): void;
   queueMirrorMessage?(text: string): void;
   getAdapterForInstance?(name: string): ChannelAdapter | null;
@@ -105,6 +112,12 @@ export interface OutboundContext {
     reason?: string;
   };
   listModelCatalog?(opts: { backend?: string; instanceName?: string }): Promise<import("./fleet-manager.js").ModelCatalog>;
+}
+
+interface OutboundDeliveryOptions {
+  isCrossInstance?: boolean;
+  waitForIdle?: boolean;
+  idleTimeoutMs?: number;
 }
 
 /** Metadata extracted from the raw outbound message. */
@@ -179,9 +192,11 @@ async function deliverToInstance(
   ctx: OutboundContext,
   instanceName: string,
   payload: Record<string, unknown>,
+  options?: OutboundDeliveryOptions,
 ): Promise<void> {
   if (ctx.deliverToInstance) {
-    await ctx.deliverToInstance(instanceName, payload);
+    if (options) await ctx.deliverToInstance(instanceName, payload, options);
+    else await ctx.deliverToInstance(instanceName, payload);
     return;
   }
   const ipc = ctx.instanceIpcClients.get(instanceName);
@@ -239,10 +254,11 @@ async function deliverCrossInstanceWithRetry(
   senderLabel: string,
   correlationId: string,
   payload: Record<string, unknown>,
+  deliveryOptions?: OutboundDeliveryOptions,
 ): Promise<void> {
   const attempt = async (): Promise<Error | null> => {
     try {
-      await deliverToInstance(ctx, targetInstanceName, payload);
+      await deliverToInstance(ctx, targetInstanceName, payload, deliveryOptions);
       return null;
     } catch (err) {
       return err instanceof Error ? err : new Error(String(err));
@@ -280,12 +296,29 @@ async function deliverCrossInstanceWithRetry(
   if (targetInstanceName !== senderLabel) ctx.notifyInstanceTopic?.(targetInstanceName, notice);
 }
 
+function effectiveBackendForTarget(ctx: OutboundContext, instanceName: string): string | undefined {
+  const configured = ctx.fleetConfig?.instances?.[instanceName]?.backend;
+  if (configured) return configured;
+  const classic = ctx.classicChannels?.getAll().find(channel => channel.instanceName === instanceName);
+  if (classic) {
+    if (classic.backend) return classic.backend;
+    return ctx.classicChannels?.getBackendByInstance?.(
+      instanceName,
+      ctx.fleetConfig?.defaults?.backend,
+    ) ?? (ctx.fleetConfig ? ctx.fleetConfig.defaults?.backend ?? "claude-code" : undefined);
+  }
+  if (ctx.fleetConfig?.instances?.[instanceName]) {
+    return ctx.fleetConfig.defaults?.backend ?? "claude-code";
+  }
+  return undefined;
+}
+
 // ── Handler implementations ─────────────────────────────────────────────
 
 const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(SendToInstanceArgs, rawArgs, "send_to_instance");
   if (!v.ok) { respond(null, v.error); return; }
-  const { instance_name: targetName, message, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
+  const { instance_name: targetName, message, steer, request_kind: reqKind, requires_reply, task_summary, working_directory, branch, correlation_id: parsedCorrelationId } = v.data;
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
   const isExternalSender = meta.senderSessionName != null && meta.senderSessionName !== meta.instanceName;
@@ -322,6 +355,34 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, `Instance '${targetName}' is stopped (target_state=stopped). Use start_instance('${targetName}') to start it first.`);
     return;
   }
+
+  // Pane steering can target only the hosting instance's own CLI. External MCP
+  // sessions share that daemon but are separate conversations, so steering the
+  // host pane would deliver to the wrong recipient; safely keep their ordinary
+  // targetSession-aware idle queue instead.
+  const isExternalSession = targetSession !== targetInstanceName;
+  const targetBackend = steer === true
+    ? effectiveBackendForTarget(ctx, targetInstanceName)
+    : undefined;
+  const steerCapable = steer === true
+    && !isExternalSession
+    && targetBackend !== undefined
+    && backendSupportsSteer(targetBackend);
+  // A supplement must not jump ahead of the work it is meant to amend. The
+  // facade publishes its idle-gated tail synchronously, so a send immediately
+  // followed by steer observes the predecessor and joins the same FIFO queue.
+  const queuedPredecessor = steerCapable
+    && ctx.hasPendingIdleGatedDelivery?.(targetInstanceName) === true;
+  const useSteer = steerCapable && !queuedPredecessor;
+  const steerFallbackWarning = steer === true && !useSteer
+    ? isExternalSession
+      ? "Steer was not applied because external sessions cannot be targeted safely at pane level. The message was safely queued for idle delivery instead."
+      : queuedPredecessor
+        ? "Steer was not applied because a previous message to this target is still queued and steering would overtake it. The supplement was safely queued behind it for idle delivery instead."
+      : targetBackend === undefined
+        ? "Steer was not applied because the target backend could not be confirmed. The message was safely queued for idle delivery instead."
+        : `Steer was not applied because the '${targetBackend}' backend cannot accept mid-turn input. The message was safely queued for idle delivery instead.`
+    : undefined;
 
   const correlationId = parsedCorrelationId || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const ipcMeta: Record<string, string> = {
@@ -360,7 +421,8 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     targetName,
     senderLabel,
     correlationId,
-    { type: "fleet_inbound", targetSession, content: message, meta: ipcMeta },
+    { type: useSteer ? "steer" : "fleet_inbound", targetSession, content: message, meta: ipcMeta },
+    useSteer ? { isCrossInstance: true, waitForIdle: false } : undefined,
   );
   // Show a cancel button on the target's topic so a watching user can interrupt
   // work started by another instance — but only for messages that actually put
@@ -422,18 +484,22 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const taskSummary = ipcMeta.task_summary || (message ?? "").slice(0, 200);
   ctx.eventLog?.logActivity("message", senderLabel, taskSummary, targetName, ipcMeta.request_kind);
   ctx.queueMirrorMessage?.(`${senderLabel} → ${targetName}: ${truncatePreview(message ?? "", 500)}`);
+  const targetDaemon = ctx.lifecycle.daemons.get(targetInstanceName);
+  const targetStateWarning = targetDaemon?.isErrorState
+    ? targetDaemon.isCrashLoop
+      ? `${targetName} is in a crash loop — restart or replace required. Message delivered but may not be processed.`
+      : targetDaemon.lastErrorType === "rate_limit" || targetDaemon.lastErrorType === "timeout"
+        ? `${targetName} is rate-limited by provider — paused. Message delivered but may be delayed.`
+        : targetDaemon.lastErrorType === "auth_error"
+          ? `${targetName} has an authentication error — paused. Check credentials. Message delivered but may not be processed.`
+          : `${targetName} is in an error state (paused due to repeated errors). Message delivered but may not be processed.`
+    : undefined;
+  const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
-    ...(ctx.lifecycle.daemons.get(targetInstanceName)?.isErrorState && {
-      warning: (() => {
-        const daemon = ctx.lifecycle.daemons.get(targetInstanceName)!;
-        if (daemon.isCrashLoop) return `${targetName} is in a crash loop — restart or replace required. Message delivered but may not be processed.`;
-        const errType = daemon.lastErrorType;
-        if (errType === "rate_limit" || errType === "timeout") return `${targetName} is rate-limited by provider — paused. Message delivered but may be delayed.`;
-        if (errType === "auth_error") return `${targetName} has an authentication error — paused. Check credentials. Message delivered but may not be processed.`;
-        return `${targetName} is in an error state (paused due to repeated errors). Message delivered but may not be processed.`;
-      })(),
-    }),
+    ...(useSteer ? { delivery_mode: "steer" } : {}),
+    ...(steerFallbackWarning ? { delivery_mode: "idle_queue" } : {}),
+    ...(warnings.length > 0 ? { warning: warnings.join(" ") } : {}),
   });
 };
 
@@ -848,6 +914,9 @@ function wrapAsSend<T>(
       ...extra,
       instance_name: targetName,
       message: body,
+      ...((v.data as { steer?: boolean }).steer !== undefined
+        ? { steer: (v.data as { steer?: boolean }).steer }
+        : {}),
       request_kind: kind,
       requires_reply: reply,
       task_summary: summary,

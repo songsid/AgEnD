@@ -20,6 +20,7 @@ import {
   type TokenContextRatio,
 } from "./context-percent.js";
 import { isGeneralInstance } from "./general-instance.js";
+import { backendSupportsSteer } from "./steer-capability.js";
 
 export { parseContextPercent, parseTokenContextRatio } from "./context-percent.js";
 export type { TokenContextRatio } from "./context-percent.js";
@@ -682,15 +683,13 @@ export class TopicCommands {
    * the user gets an honest "not supported" instead of a silent queue
    * fallback that looks like a steer but behaves like a normal message.
    */
-  private static STEER_SUPPORTED_BACKENDS = new Set(["claude-code", "codex", "grok", "mock"]);
-
   sendSteer(
     instanceName: string,
     content: string,
     msg: Pick<InboundMessage, "chatId" | "messageId" | "username" | "userId" | "threadId" | "adapterId" | "source">,
   ): string {
     const backend = this.effectiveBackend(instanceName);
-    if (!TopicCommands.STEER_SUPPORTED_BACKENDS.has(backend)) {
+    if (!backendSupportsSteer(backend)) {
       return t("steer.unsupported", backend);
     }
     const ipc = this.ctx.instanceIpcClients.get(instanceName);

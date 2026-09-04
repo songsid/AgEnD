@@ -291,6 +291,9 @@ export const SendToInstanceArgs = z.object({
     "Name of the target instance (e.g., 'ccplugin', 'blog-t1385'). Use list_instances to see available instances.",
   ),
   message: NonEmptyString.describe("The message to send to the target instance."),
+  steer: z.boolean().optional().describe(
+    "Inject as a supplement into the target's CURRENT turn — for correcting or adding to work you just sent. Omit for a new task. Safe: an idle target receives it normally; an unsupported backend falls back to the idle queue.",
+  ),
   request_kind: z.enum(["query", "task", "report", "update"]).optional().describe(
     "Categorizes the message intent. 'query' = asking a question, 'task' = delegating work, 'report' = returning results, 'update' = status notification.",
   ),
@@ -337,6 +340,9 @@ export const RequestInformationArgs = z.object({
 export const DelegateTaskArgs = z.object({
   target_instance: NonEmptyString.describe("Name of the instance to delegate to."),
   task: NonEmptyString.describe("Description of the task to perform."),
+  steer: z.boolean().optional().describe(
+    "Inject as a supplement into the target's CURRENT turn — for correcting or adding to work you just sent. Omit for a new task. Safe: an idle target receives it normally; an unsupported backend falls back to the idle queue.",
+  ),
   success_criteria: z.string().optional()
     .describe("How the recipient should judge if the task is complete."),
   context: z.string().optional().describe("Optional background context for the task."),
