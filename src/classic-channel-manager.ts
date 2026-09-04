@@ -529,6 +529,12 @@ export class ClassicChannelManager {
     // load. Logging here too would emit an error on every subsequent write for
     // a condition the operator has already been told about and cannot fix from
     // this side.
+    //
+    // Preserving it does NOT keep the original digits: save() re-dumps the
+    // truncated number, so after the first write the file itself shows the
+    // wrong id. Keeping it as a number is still worth doing — that is the only
+    // signal reportUnquotedIds has to find it by — but the file cannot be the
+    // source of the correct value, which is why the error says so.
     return value;
   }
 
@@ -550,7 +556,9 @@ export class ClassicChannelManager {
         if (typeof entry === "number" && !Number.isSafeInteger(entry)) {
           this.logger.error({ field, value: entry, path: this.configPath },
             "classicBot.yaml holds an unquoted id too large for YAML — its precision was lost when the "
-            + "file was parsed, so it can never match. Re-enter it as a quoted string.");
+            + "file was parsed, so it can never match. Re-enter it as a QUOTED string taken from Discord "
+            + "or Telegram: the digits currently in the file are themselves already wrong, because any "
+            + "save rewrites this entry from the truncated value. Do not copy it from the file.");
         }
       }
     }

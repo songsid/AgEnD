@@ -68,6 +68,10 @@ describe("allow-lists compare as strings", () => {
     const logged = JSON.stringify(logger.error.mock.calls);
     expect(logged).toContain("allowed_guilds");
     expect(logged).toMatch(/quoted string/i);
+    // The file cannot be used as the source: save() re-dumps the truncated
+    // number, so an operator who quotes what they see would enshrine the wrong
+    // id and believe it was fixed.
+    expect(logged).toMatch(/already wrong|do not copy it from the file/i);
   });
 
   it("adds the correct id alongside a broken one rather than repairing it", () => {
