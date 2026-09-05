@@ -3970,6 +3970,70 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Which adapter's access policy governs an inbound message.
+   *
+   * `authoritative` means the thread resolved to an owning instance, so that
+   * adapter's policy is the only one entitled to decide. A resolved owner whose
+   * policy cannot be read is NOT the same as having no owner: the owner's world
+   * may not exist yet (an adapter that fails its token check returns before its
+   * world and AccessManager are created) while sibling bots are already live and
+   * receiving copies. Falling back to a sibling's policy — or to the fleet-wide
+   * one — would let the owner's rules be decided by another adapter, so callers
+   * must refuse instead.
+   *
+   * Without an owner (classic channels, the no-thread Telegram path, unrouted
+   * threads, no adapter identity) the receiving adapter's policy applies, as
+   * before.
+   */
+  private governingAccess(
+    msg: InboundMessage,
+    threadId: string | undefined,
+  ): { adapterId: string | undefined; authoritative: boolean } {
+    if (threadId && !this.classicChannels?.hasChannel(threadId)) {
+      const target = this.routing.resolve(threadId);
+      if (target) {
+        const owner = this.getInstanceAdapterId(target.name);
+        if (owner) return { adapterId: owner, authoritative: true };
+      }
+    }
+    return { adapterId: msg.adapterId, authoritative: false };
+  }
+
+  /**
+   * Why this adapter should leave an inbound message to another adapter, or null
+   * to handle it.
+   *
+   * A fleet topic is served by exactly one instance, and that instance is
+   * answered by exactly one adapter. When several bots share a guild they each
+   * receive their own copy of every message, so the copy that is acted on must
+   * be chosen by ownership rather than by which inbound happened to fire first.
+   * Ownership is per-instance — the adapter the instance is bound to, falling
+   * back to channels[0] when it is not bound — so an instance answered by a
+   * non-default bot still receives its own traffic, and the access policy that
+   * applies is that instance's own adapter's.
+   *
+   * Callers must ask before claiming the shared dedup key: a copy that is going
+   * to be left alone must not consume the key, or the owner's copy would be
+   * discarded as a duplicate and the message lost.
+   *
+   * Exempt: classic channels (each bot owns its own agent there and handles its
+   * own copy, which is why their dedup key is adapter-scoped), the no-thread
+   * Telegram path (no thread to resolve an instance from), and messages with no
+   * adapter id (single-adapter fleets).
+   */
+  private topicOwnerDropReason(msg: InboundMessage, threadId: string | undefined): string | null {
+    if (!threadId || !msg.adapterId) return null;
+    if (this.classicChannels?.hasChannel(threadId)) return null;
+    const target = this.routing.resolve(threadId);
+    if (!target) return null;
+    const ownerAdapterId = this.getInstanceAdapterId(target.name);
+    if (ownerAdapterId && msg.adapterId !== ownerAdapterId) {
+      return `not the adapter bound to ${target.name} (that is ${ownerAdapterId})`;
+    }
+    return null;
+  }
+
+  /**
    * Why this adapter must ignore a bot/webhook message, or null to accept it.
    * Pure: callers rely on being able to ask before claiming the dedup key.
    */
@@ -3993,18 +4057,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const target = this.routing.resolve(threadId);
     if (!target) return "fleet topic: no instance routed for this thread";
-    // A fleet topic is served by exactly one instance, so exactly one bot should
-    // answer a webhook there. Several bots sharing the guild each receive their
-    // own copy; pick that instance's own adapter deterministically rather than
-    // letting whichever inbound fired first win. The primary is per-instance —
-    // the adapter the instance is bound to, falling back to channels[0] when it
-    // is not bound — so an instance answered by a non-default bot still receives
-    // its webhooks. (Classic channels are exempt above: there each bot owns its
-    // own agent and must handle its own copy.)
-    const ownerAdapterId = this.getInstanceAdapterId(target.name);
-    if (msg.adapterId && ownerAdapterId && msg.adapterId !== ownerAdapterId) {
-      return `fleet topic: not the adapter bound to ${target.name} (that is ${ownerAdapterId})`;
-    }
     // Fleet topic: allow if collab enabled OR access mode is open
     const isOpen = this.getChannelConfig(msg.adapterId)?.access?.mode === "open";
     if (!isOpen && !this.collabInstances.has(target.name)) {
@@ -4018,21 +4070,53 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
 
-    // Bot messages are filtered per-adapter, and the filter reads THIS adapter's
-    // access config. That has to happen before the dedup claim below: when two
-    // bots share a guild they both receive the same webhook, and a copy this
-    // adapter is going to drop must not consume the shared dedup key — otherwise
-    // the sibling adapter that would have accepted it sees a duplicate and the
-    // message is lost entirely. Claiming the key only on the copies that survive
-    // also keeps delivery single when several adapters would accept it.
-    if (msg.isBotMessage) {
-      const drop = this.botMessageDropReason(msg, threadId);
-      if (drop) {
-        this.logger.debug(
-          { adapterId: msg.adapterId, threadId: threadId ?? null, messageId: msg.messageId, reason: drop },
-          "Bot message dropped by adapter filter — dedup key not consumed",
-        );
-        return;
+    // Ownership and per-adapter filtering both run before the dedup claim below.
+    // When several bots share a guild they all receive the same message; a copy
+    // this adapter is going to leave alone must not consume the shared dedup key,
+    // or the owning adapter's copy would be discarded as a duplicate and the
+    // message lost entirely. Claiming the key only on surviving copies also keeps
+    // delivery single when more than one adapter would otherwise accept it.
+    // Only bot messages are settled by ownership: a bot answering in a fleet
+    // topic would speak as the wrong identity, whereas a human message is just
+    // input for the instance and its reply is canonicalized to the owning
+    // adapter downstream — so a topic only a non-owner bot can see still works.
+    const drop = msg.isBotMessage
+      ? (this.topicOwnerDropReason(msg, threadId) ?? this.botMessageDropReason(msg, threadId))
+      : null;
+    if (drop) {
+      this.logger.debug(
+        { adapterId: msg.adapterId, threadId: threadId ?? null, messageId: msg.messageId, reason: drop },
+        "Inbound message dropped before the dedup claim — key not consumed",
+      );
+      return;
+    }
+
+    // Access control — classic channels are open to all, others require an allowed
+    // user. This runs before the dedup claim, and is judged by the adapter that
+    // owns the topic rather than the one that happened to receive the message:
+    // otherwise a sibling bot could settle the message under its own policy —
+    // claiming the shared key and then refusing it, or admitting a user the
+    // owning adapter does not allow — purely by arriving first.
+    const governing = this.governingAccess(msg, threadId);
+    const ownerWorld = governing.adapterId ? this.worlds.get(governing.adapterId) : undefined;
+    if (governing.authoritative && !ownerWorld) {
+      this.logger.warn(
+        { adapterId: msg.adapterId, owner: governing.adapterId, threadId, messageId: msg.messageId },
+        "Refusing inbound: the owning adapter is not running, so its access policy cannot be applied",
+      );
+      return;
+    }
+    const am = governing.authoritative
+      ? ownerWorld?.accessManager
+      : (ownerWorld?.accessManager ?? this.accessManager);
+    if (am && !am.isAllowed(msg.userId)) {
+      const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
+      const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
+      if (!isTelegramClassicCandidate) {
+        // Classic channels are open to all; check per-bot ownership (or fleet topic).
+        const isClassic = !!(threadId && this.classicChannels?.hasChannel(threadId));
+        this.logger.info({ userId: msg.userId, threadId, isClassic, owner: governing.adapterId }, "Access DENIED for non-allowed user");
+        if (!isClassic) return;
       }
     }
 
@@ -4064,18 +4148,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
-    // Access control — classic channels are open to all, others require allowed user
-    const am = (msg.adapterId ? this.worlds.get(msg.adapterId)?.accessManager : undefined) ?? this.accessManager;
-    if (am && !am.isAllowed(msg.userId)) {
-      const adapterGroupId = String(this.getChannelConfig(msg.adapterId)?.group_id ?? "");
-      const isTelegramClassicCandidate = msg.source === "telegram" && msg.chatId !== adapterGroupId && !threadId;
-      if (!isTelegramClassicCandidate) {
-        // Classic channels are open to all; check per-bot ownership (or fleet topic).
-        const isClassic = !!(threadId && this.classicChannels?.hasChannel(threadId));
-        this.logger.info({ userId: msg.userId, threadId, isClassic }, "Access DENIED for non-allowed user");
-        if (!isClassic) return;
-      }
-    }
     if (threadId == null) {
       // ── Telegram Classic Mode ──
       // Messages from chats other than the primary forum group are classic mode candidates.
