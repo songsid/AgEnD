@@ -81,7 +81,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
       await feed(fm, order);
       expect(deliver, `order ${order}`).toHaveBeenCalledTimes(1);
       // The discarded copy must be the persona's, whichever arrived first.
-      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
       expect(drop, `order ${order}`).toBeDefined();
       expect((drop![0] as any).adapterId, `order ${order}`).toBe("grok-persona");
       expect(String((drop![0] as any).reason)).toContain("not the adapter bound to");
@@ -99,7 +99,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     expect(deliver).toHaveBeenCalledTimes(1);
     // meta.adapter_id is canonicalized to the primary either way, so assert on
     // which copy was DISCARDED — that is what the primary choice actually moves.
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(drop, "the persona copy must be the discarded one").toBeDefined();
     expect((drop![0] as any).adapterId).toBe("grok-persona");
   });
@@ -114,7 +114,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     await feed(fm, ["discord", "grok-persona"]);
     expect(deliver, "the bound adapter must serve it").toHaveBeenCalledTimes(1);
     // The discarded copy is the unbound one, even though it is channels[0].
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(drop).toBeDefined();
     expect((drop![0] as any).adapterId).toBe("discord");
     expect(String((drop![0] as any).reason)).toContain("bound to worker");
@@ -137,7 +137,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     await feed(fm, ["discord", "grok-persona"]);
     expect(deliver, "no adapter may deliver here").not.toHaveBeenCalled();
     const reasons = debug.mock.calls
-      .filter(c => String(c[1] ?? "").includes("Bot message dropped"))
+      .filter(c => String(c[1] ?? "").includes("dropped before the dedup claim"))
       .map(c => String((c[0] as any).reason));
     expect(reasons.some(r => r.includes("not the adapter bound to")), "the open sibling is dropped for not owning the topic").toBe(true);
   });
@@ -147,7 +147,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     const debug = vi.spyOn(fm.logger, "debug");
     await feed(fm, ["grok-persona", "discord"]);
     expect(deliver).toHaveBeenCalledTimes(1);
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect((drop![0] as any).adapterId).toBe("grok-persona");
   });
 
@@ -168,7 +168,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     const { fm } = setup();
     const debug = vi.spyOn(fm.logger, "debug");
     await feed(fm, ["grok-persona"]);
-    const dropped = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const dropped = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(dropped, "expected a drop log for the persona adapter").toBeDefined();
     expect((dropped![0] as any).adapterId).toBe("grok-persona");
     expect(String((dropped![0] as any).reason)).toContain("not the adapter bound to");
@@ -183,7 +183,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     fm.classicChannels = classic;                       // collab left OFF
     const debug = vi.spyOn(fm.logger, "debug");
     await feed(fm, ["discord"]);
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(drop, "collab off must drop the copy at the filter").toBeDefined();
     expect(String((drop![0] as any).reason)).toContain("collab off");
   });
@@ -197,7 +197,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     fm.classicChannels = classic;
     const debug = vi.spyOn(fm.logger, "debug");
     await feed(fm, ["discord"]);                        // the bot with no agent
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(drop, "a bot with no agent here must be dropped").toBeDefined();
     expect(String((drop![0] as any).reason)).toContain("owns no agent");
   });
@@ -206,7 +206,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     const { fm, deliver } = setup();
     const debug = vi.spyOn(fm.logger, "debug");
     await (fm as any).handleInboundMessage(msg("discord", { threadId: "unrouted-topic" }));
-    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+    const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
     expect(drop, "an unrouted thread must be dropped").toBeDefined();
     expect(String((drop![0] as any).reason)).toContain("no instance routed");
     expect(deliver).not.toHaveBeenCalled();
@@ -237,7 +237,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
       const fm = tgSetup();
       const debug = vi.spyOn(fm.logger, "debug");
       await (fm as any).handleInboundMessage(tgMsg("just chatting"));
-      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
       expect(drop, "should be dropped").toBeDefined();
       expect(String((drop![0] as any).reason)).toContain("does not mention us");
       // The core of the fix: a dropped copy must not consume the shared key.
@@ -248,7 +248,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
       const fm = tgSetup();
       const debug = vi.spyOn(fm.logger, "debug");
       await (fm as any).handleInboundMessage(tgMsg("hey @OurBot please look"));
-      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
       expect(drop, "a mention must pass the filter").toBeUndefined();
       // Surviving the filter means the copy went on to claim the dedup key.
       expect((fm as any).recentMessageIds.size, "accepted copy must claim the key").toBe(1);
@@ -258,7 +258,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
       const fm = tgSetup(OPEN);
       const debug = vi.spyOn(fm.logger, "debug");
       await (fm as any).handleInboundMessage(tgMsg("no mention here"));
-      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("Bot message dropped"));
+      const drop = debug.mock.calls.find(c => String(c[1] ?? "").includes("dropped before the dedup claim"));
       expect(drop, "open adapter must pass the filter").toBeUndefined();
       expect((fm as any).recentMessageIds.size, "accepted copy must claim the key").toBe(1);
     });
