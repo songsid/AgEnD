@@ -137,7 +137,12 @@ export interface LifecycleContext {
   removeInstance(name: string): Promise<void>;
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
-  notifyInstanceTopic(name: string, text: string): void;
+  /**
+   * Returns whether the notice was dispatched. Production (FleetManager) says
+   * `false` when there is no adapter/route (#693 semantics); `void` from
+   * legacy contexts and test doubles counts as dispatched.
+   */
+  notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
@@ -353,16 +358,35 @@ export class InstanceLifecycle {
    * suppresses the chat message, not the record. A crash outside a planned
    * restart notifies exactly as before.
    */
-  private notifyIncident(name: string, kind: string, text: string): void {
+  /** @returns whether the notice was actually dispatched (false when suppressed). */
+  private notifyIncident(name: string, kind: string, text: string): boolean {
     if (this.ctx.isPlannedRestart()) {
       this.ctx.logger.info({ name, kind }, "Incident notification suppressed — planned restart in progress");
-      return;
+      return false;
     }
     if (this.ctx.stormSuppressed?.(kind)) {
       this.ctx.logger.info({ name, kind }, "Incident notification suppressed — included in tmux storm summary");
-      return;
+      return false;
     }
-    this.ctx.notifyInstanceTopic(name, text);
+    // A production `false` (no adapter / no route) means nobody saw it — it
+    // must not count as dispatched, or a later retraction would be an orphan.
+    const dispatched = this.ctx.notifyInstanceTopic(name, text);
+    return dispatched !== false;
+  }
+
+  /**
+   * Per-instance MCP incident fence. The mcp_died handler awaits an auth probe
+   * (up to 5s) before it notifies; a recovery that lands inside that window
+   * bumps the generation so the late death handler sends nothing — otherwise
+   * the user would see "retracted" followed by the stale red alarm. The
+   * retraction itself is only sent when a death notice really reached the
+   * user (not when it was storm- or planned-restart-suppressed).
+   */
+  private mcpIncidents = new Map<string, { gen: number; deathNoticeSent: boolean }>();
+  private mcpIncident(name: string): { gen: number; deathNoticeSent: boolean } {
+    let s = this.mcpIncidents.get(name);
+    if (!s) { s = { gen: 0, deathNoticeSent: false }; this.mcpIncidents.set(name, s); }
+    return s;
   }
 
   /** Backend a running instance uses (config → fleet default). */
@@ -620,6 +644,9 @@ export class InstanceLifecycle {
 
     daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean }) => {
       const stormAtDetection = this.ctx.stormWindow?.isActive() === true;
+      const incident = this.mcpIncident(name);
+      const generation = ++incident.gen;
+      incident.deathNoticeSent = false;
       this.ctx.eventLog?.insert(name, "mcp_died", { pid: data.pid });
       this.ctx.logger.error({ name, pid: data.pid }, "MCP server died — instance cannot use agend tools");
       this.ctx.webhookEmit("mcp_died", name, { pid: data.pid });
@@ -629,6 +656,12 @@ export class InstanceLifecycle {
       // ask the cached token-free probe. Only a CONFIRMED invalid swaps the
       // message — valid or uncertain keeps the accurate MCP report below.
       const verdict = data.authSuspected ? "invalid" : await this.verifyAuthError(name);
+      if (incident.gen !== generation) {
+        // The server recovered (or a newer death superseded this one) while the
+        // probe ran. Anything we would say now is stale — say nothing.
+        this.ctx.logger.info({ name, pid: data.pid }, "MCP death report superseded during the auth probe — nothing sent");
+        return;
+      }
       if (verdict === "invalid") {
         this.notifyAuthErrorOnce(name,
           "Sign-in expired — the CLI cannot run its MCP server (agend tools are down) until it is re-authenticated.",
@@ -644,12 +677,28 @@ export class InstanceLifecycle {
       // restore its tools. With mcp_auto_restart (default) the daemon requests an
       // idle-gated restart itself — an immediate one would interrupt whatever the
       // agent is doing. With it off, tell the operator what to run, as before.
-      this.notifyIncident(name, "mcp_died",
+      incident.deathNoticeSent = this.notifyIncident(name, "mcp_died",
         `⚠️ \`${name}\` 的 MCP server 已終止 — 這個 instance 目前無法使用 agend 工具（無法 reply / 跨 instance 通訊）。\n`
         + (data.autoRestart
           ? "CLI 本身還在執行；等它閒置後會自動重啟以恢復工具（進行中的工作不會被打斷，session 會保留）。"
           : `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`));
     }, this.ctx.logger, `daemon.mcp_died[${name}]`));
+
+    daemon.on("mcp_recovered", safeHandler((data: { name: string; source: string; pid?: number }) => {
+      // Retract an earlier "MCP died" report: a live server for this instance
+      // is serving (seen at the IPC layer — a connection, mcp_ready, or a tool
+      // call — never inferred from the LLM). No restart will follow.
+      const incident = this.mcpIncident(name);
+      incident.gen++; // fences a death handler still waiting on its auth probe
+      this.ctx.eventLog?.insert(name, "mcp_recovered", { source: data.source, pid: data.pid });
+      this.ctx.logger.info({ name, source: data.source, pid: data.pid }, "MCP server recovered — earlier death report retracted");
+      if (!incident.deathNoticeSent) {
+        this.ctx.logger.info({ name }, "No MCP death notice reached the user — nothing to retract");
+        return;
+      }
+      incident.deathNoticeSent = false;
+      this.notifyIncident(name, "mcp_recovered", t("inst.mcp_recovered", name));
+    }, this.ctx.logger, `daemon.mcp_recovered[${name}]`));
 
     daemon.on("mcp_proxy_reply", safeHandler((data: { name: string; correlationId?: string }) => {
       // The message itself goes out through the daemon's fleet_outbound path;

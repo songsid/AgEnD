@@ -877,6 +877,10 @@ export class Daemon extends EventEmitter {
   private currentActivity: string | null = null;
   // Session identity: map IPC socket → sessionName (from mcp_ready)
   private socketSessionNames = new Map<import("node:net").Socket, string>();
+  /** pid each connected MCP server announced in mcp_ready (or pong); keyed like socketSessionNames. */
+  private socketPids = new Map<import("node:net").Socket, number>();
+  private mcpPingSeq = 0;
+  private mcpPingWaiters = new Map<number, (ok: boolean) => void>();
   // Crash recovery is fleet-owned; all daemon objects share the coordinators
   // injected by FleetManager below.
   private healthCheckTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1030,6 +1034,7 @@ export class Daemon extends EventEmitter {
   private readonly interactivePromptDetector = new InteractivePromptDetector();
   private readonly blockingProcessDetector = new BlockingProcessDetector();
   /** Same 5-min gate the error monitor uses, so a dead MCP server alerts once. */
+  private static readonly MCP_PING_TIMEOUT_MS = 2_000;
   private static readonly MCP_DEATH_COOLDOWN_MS = 5 * 60_000;
   private lastMcpDeathNotifiedAt = 0;
   private mcpDeathNotifiedForPid: number | null = null;
@@ -1237,6 +1242,8 @@ export class Daemon extends EventEmitter {
         this.handleToolCall(msg, socket);
       } else if (msg.type === "mcp_ready") {
         this.handleMcpReady(msg, socket);
+      } else if (msg.type === "pong") {
+        this.handleMcpPong(msg, socket);
       } else if (msg.type === "query_sessions") {
         // Fleet manager asks for all registered session names (catches sessions
         // that sent mcp_ready before fleet manager connected).
@@ -1476,10 +1483,12 @@ export class Daemon extends EventEmitter {
    */
   private handleMcpReady(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
     const sessionName = msg.sessionName as string | undefined;
+    if (typeof msg.pid === "number") this.socketPids.set(socket, msg.pid);
     if (sessionName) {
       this.socketSessionNames.set(socket, sessionName);
       socket.on("close", () => {
         this.socketSessionNames.delete(socket);
+        this.socketPids.delete(socket);
         // Notify fleet manager so it can clean up sessionRegistry
         if (sessionName !== this.name) {
           this.ipcServer?.broadcast({ type: "session_disconnected", sessionName });
@@ -1493,14 +1502,11 @@ export class Daemon extends EventEmitter {
     // Without the gate an unrelated session could stand down a restart armed
     // for THIS instance's genuinely dead server. The liveness re-read below is
     // a second guard, but ownership is the one that is semantically right.
-    if (sessionName === this.name && this.mcpRestartPending) {
-      const live = mcpServerState(this.instanceDir);
-      if (live.state === "alive") {
-        this.logger.info({ pid: live.pid }, "MCP server replaced — standing down the pending revival restart");
-        this.mcpDeathNotifiedForPid = null;
-        this.mcpDeathDeferredForPid = null;
-        this.clearMcpRestartRequest();
-      }
+    if (sessionName === this.name) {
+      // A server for THIS instance just connected: that is proof of life at
+      // the IPC layer, whatever channel.mcp.pid says (a replacement or a
+      // sub-agent's server may have left a dead pid in the slot).
+      this.noteMcpProofOfLife("mcp_ready", typeof msg.pid === "number" ? msg.pid : undefined);
     }
     this.ipcServer?.broadcast({ type: "mcp_ready", sessionName });
   }
@@ -1508,13 +1514,35 @@ export class Daemon extends EventEmitter {
     private checkMcpServerAlive(): void {
     if (this.isPaused) return;
     const status = mcpServerState(this.instanceDir);
-    if (status.state === "unknown") return;
     if (status.state === "alive") {
+      if (this.mcpDeathNotifiedForPid != null) this.emitMcpRecovered("pid", status.pid);
       this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
       this.mcpDeathDeferredForPid = null;
       this.clearMcpRestartRequest(); // tools are back — stand down a pending auto-restart
       return;
     }
+    // The pid slot does not name a live process — dead, or missing. It is a
+    // single last-writer slot shared by every mcp-server process of this
+    // instance (a CLI-driven replacement, a sub-agent's server), so "that pid
+    // is gone" is not "no server is serving", and "the last writer exited
+    // cleanly and unlinked its slot" is not "nothing ever started". Ask the
+    // IPC layer — the one thing every serving mcp-server must hold — before
+    // deciding. Reproduced deterministically: two servers, SIGKILL the last
+    // writer, the other keeps serving while the slot reads DEAD forever; or
+    // the last writer exits cleanly and the slot stays MISSING, so the
+    // survivor's later real death would never be seen.
+    const sockets = this.liveMcpSockets();
+    if (sockets.length > 0) {
+      const livePid = this.socketPids.get(sockets[sockets.length - 1]);
+      const stalePid = status.state === "dead" ? status.pid : undefined;
+      this.logger.info({ slot: status.state, stalePid, livePid, connections: sockets.length },
+        "channel.mcp.pid does not name a live process, but a live MCP connection still serves this instance — not an incident");
+      this.repairMcpPidSlot(livePid, status.state === "dead" ? "stale pid slot" : "missing pid slot");
+      this.pingMcpSockets(sockets);
+      this.noteMcpProofOfLife("connection", livePid);
+      return;
+    }
+    if (status.state === "unknown") return; // never started, or nothing left to watch — as before
     // Dead: report once per pid, and at most once per cooldown window.
     if (this.mcpDeathNotifiedForPid === status.pid) return;
     // An auth-broken CLI cannot keep an MCP server alive, and restarting it
@@ -1599,7 +1627,7 @@ export class Daemon extends EventEmitter {
 
     // Authoritative re-read — the CLI may have replaced the server since the
     // health tick that armed this.
-    if (mcpServerState(this.instanceDir).state === "alive") {
+    if (this.mcpServerAlive().alive) {
       this.logger.info({ trigger }, "MCP revival restart stood down — a live MCP server is already serving");
       this.clearMcpRestartRequest();
       return;
@@ -1621,7 +1649,7 @@ export class Daemon extends EventEmitter {
       this.mcpRestartGraceTrigger = null;
       if (!this.mcpRestartPending || this.runtimeMonitorsFrozen) return;
       if (this.mcpRestartCancelledByRecovery(committed)) return;
-      if (mcpServerState(this.instanceDir).state === "alive") {
+      if (this.mcpServerAlive().alive) {
         this.logger.info({ trigger: committed }, "MCP revival restart stood down — replacement came up during the grace window");
         this.clearMcpRestartRequest();
         return;
@@ -1677,6 +1705,11 @@ export class Daemon extends EventEmitter {
   private reportDeferredMcpDeath(): void {
     const pid = this.mcpDeathDeferredForPid;
     if (pid == null || this.mcpDeathNotifiedForPid === pid) return;
+    if (this.mcpServerAlive().alive) {
+      this.logger.info({ pid }, "Deferred MCP death not reported — a live MCP server is serving");
+      this.mcpDeathDeferredForPid = null;
+      return;
+    }
     const authSuspected = this.authFailureUnresolved;
     const autoRestart = this.config.mcp_auto_restart !== false && !authSuspected;
     this.mcpDeathNotifiedForPid = pid;
@@ -1684,6 +1717,94 @@ export class Daemon extends EventEmitter {
     this.logger.error({ pid, autoRestart, authSuspected },
       "MCP server process is gone — no replacement arrived, instance has no agend tools");
     this.emit("mcp_died", { name: this.name, pid, autoRestart, authSuspected });
+  }
+
+  /** Socket-layer answer to pingMcpSockets(); records the pid the server reports. */
+  private handleMcpPong(msg: Record<string, unknown>, socket: import("node:net").Socket): void {
+    const waiter = this.mcpPingWaiters.get(msg.requestId as number);
+    if (waiter) { this.mcpPingWaiters.delete(msg.requestId as number); waiter(true); }
+    if (typeof msg.pid === "number") this.socketPids.set(socket, msg.pid);
+  }
+
+  /** Live IPC sockets of mcp-server processes that announced THIS instance's session. */
+  private liveMcpSockets(): import("node:net").Socket[] {
+    const out: import("node:net").Socket[] = [];
+    for (const [socket, sessionName] of this.socketSessionNames) {
+      if (sessionName === this.name && !socket.destroyed) out.push(socket);
+    }
+    return out;
+  }
+
+  /**
+   * MCP liveness with the pid slot as the first opinion and the IPC layer as
+   * the authority: a live connection from a server announcing our session is
+   * proof that tools are being served, whatever channel.mcp.pid says.
+   */
+  private mcpServerAlive(): { alive: boolean; source: "pid" | "connection" | "none"; pid?: number } {
+    const status = mcpServerState(this.instanceDir);
+    if (status.state === "alive") return { alive: true, source: "pid", pid: status.pid };
+    const sockets = this.liveMcpSockets();
+    if (sockets.length > 0) return { alive: true, source: "connection", pid: this.socketPids.get(sockets[sockets.length - 1]) };
+    return { alive: false, source: "none", pid: status.state === "dead" ? status.pid : undefined };
+  }
+
+  /** Point the pid slot at the server that is actually serving, so pid-based readers agree with the IPC layer. */
+  private repairMcpPidSlot(pid: number | undefined, reason: string): void {
+    if (!pid) return;
+    try {
+      writeFileSync(join(this.instanceDir, "channel.mcp.pid"), String(pid));
+      this.logger.info({ pid, reason }, "channel.mcp.pid repaired to the live MCP server");
+    } catch (err) {
+      this.logger.debug({ err }, "could not repair channel.mcp.pid");
+    }
+  }
+
+  /**
+   * Active, LLM-free confirmation: ask each live socket to answer a ping at
+   * the socket layer. Only logged — the open connection is already the
+   * decision; a missing pong means an older mcp-server build or a wedged
+   * process, and a truly dead socket closes on its own and drops out of
+   * liveMcpSockets() by the next tick.
+   */
+  private pingMcpSockets(sockets: import("node:net").Socket[]): void {
+    for (const socket of sockets) {
+      const requestId = ++this.mcpPingSeq;
+      const timer = setTimeout(() => {
+        if (!this.mcpPingWaiters.delete(requestId)) return;
+        this.logger.warn({ pid: this.socketPids.get(socket) }, "connected MCP server did not answer ping within 2s (older mcp-server build, or wedged)");
+      }, Daemon.MCP_PING_TIMEOUT_MS);
+      timer.unref?.();
+      this.mcpPingWaiters.set(requestId, () => {
+        clearTimeout(timer);
+        this.logger.debug({ pid: this.socketPids.get(socket) }, "MCP server answered ping");
+      });
+      if (!this.ipcServer?.send(socket, { type: "ping", requestId })) {
+        this.mcpPingWaiters.delete(requestId);
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  /**
+   * Evidence that a server for this instance is serving (mcp_ready, a tool
+   * call, a live connection). Stands down any pending revival restart and,
+   * if an alarm had already gone out, retracts it.
+   */
+  private noteMcpProofOfLife(source: "mcp_ready" | "tool_call" | "connection", pid?: number): void {
+    const hadAlarm = this.mcpDeathNotifiedForPid != null;
+    const hadPending = this.mcpRestartPending || this.mcpDeathDeferredForPid != null;
+    if (!hadAlarm && !hadPending) return;
+    if (hadPending) this.logger.info({ source, pid }, "MCP server is serving again — standing down the pending revival restart");
+    if (hadAlarm) this.emitMcpRecovered(source, pid);
+    this.mcpDeathNotifiedForPid = null;
+    this.mcpDeathDeferredForPid = null;
+    this.clearMcpRestartRequest();
+    if (pid && mcpServerState(this.instanceDir).state !== "alive") this.repairMcpPidSlot(pid, source);
+  }
+
+  private emitMcpRecovered(source: string, pid?: number): void {
+    this.logger.info({ source, pid }, "MCP server recovered — retracting the earlier death report");
+    this.emit("mcp_recovered", { name: this.name, source, pid });
   }
 
   private clearMcpRestartRequest(): void {
@@ -4535,6 +4656,11 @@ export class Daemon extends EventEmitter {
     const requestId = msg.requestId as number;
 
     this.logger.debug({ tool, requestId }, "Tool call from MCP server");
+    // A tool call can only come from a live MCP server of ours — proof of life
+    // that outranks whatever the pid slot says.
+    if (this.socketSessionNames.get(socket) === this.name) {
+      this.noteMcpProofOfLife("tool_call", this.socketPids.get(socket));
+    }
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string) => {

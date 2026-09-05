@@ -27,6 +27,8 @@ import { mcpTimeoutMs } from "./ipc-timeouts.js";
 // ---------------------------------------------------------------------------
 
 const SOCKET_PATH = process.env.AGEND_SOCKET_PATH ?? "";
+/** The session name announced in mcp_ready; echoed in pong so the daemon can attribute the answer. */
+let announcedSessionName: string | undefined;
 
 // Per-tool ceilings come from the shared table so they stay strictly above the
 // daemon's own budget for the same tool — otherwise this timer pre-empts the
@@ -89,6 +91,15 @@ function setupIpcListeners(client: IpcClient): void {
       ipcConnected = false;
       return;
     }
+    // Liveness probe from the daemon: answered at the socket layer, never via
+    // the LLM. The daemon uses it to tell "this instance's tools are served"
+    // from "the pid in channel.mcp.pid is gone" — those differ whenever more
+    // than one mcp-server process exists for an instance (a replacement, a
+    // sub-agent's server), because the pid file is a single last-writer slot.
+    if (msg.type === "ping") {
+      client.send({ type: "pong", requestId: msg.requestId, sessionName: announcedSessionName, pid: process.pid });
+      return;
+    }
 
     if (typeof msg.requestId === "number" && pendingRequests.has(msg.requestId)) {
       const pending = pendingRequests.get(msg.requestId)!;
@@ -131,6 +142,7 @@ async function connectIpc(): Promise<void> {
     const sessionName = process.env.AGEND_INSTANCE_NAME
       ?? process.env.AGEND_SESSION_NAME
       ?? `external-${basename(process.cwd())}-${process.pid}`;
+    announcedSessionName = sessionName;
     // pid lets the daemon distinguish a replacement server from the one it just
     // saw die. Safe to trust on arrival: the pid file is written before
     // connectIpc() runs, so a re-read at this point already sees this process.
