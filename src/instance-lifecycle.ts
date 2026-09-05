@@ -708,6 +708,24 @@ export class InstanceLifecycle {
         this.ctx.logger.error({ err, name }, "MCP auto-restart failed"));
     }, this.ctx.logger, `daemon.mcp_restart_requested[${name}]`));
 
+    daemon.on("dialog_parked", safeHandler((data: { name: string; description: string; holdOnly: boolean }) => {
+      // A CLI dialog the daemon will NOT answer on its own. No assist buttons
+      // here on purpose: the General "Confirm" assist sends Enter, and Enter is
+      // exactly the destructive default for Claude's resume prompt. The text
+      // differs by case: a hold-only variant means we do not know the cursor
+      // position, so the human must LOOK and pick the option explicitly — no
+      // fixed key sequence; a known dialog whose auto-dismiss did not take gets
+      // the keys we would have pressed.
+      this.ctx.eventLog?.insert(name, "dialog_parked", { description: data.description, holdOnly: data.holdOnly });
+      this.ctx.logger.warn({ name, description: data.description, holdOnly: data.holdOnly }, "Instance is parked on a CLI dialog — not auto-answering");
+      if (this.ctx.isPlannedRestart()) return;
+      const text = data.holdOnly
+        ? t("inst.dialog_parked_hold", name, data.description)
+        : t("inst.dialog_parked_stuck", name, data.description);
+      this.notifyIncident(name, "dialog_parked", text);
+      this.ctx.notifyFleetError?.(t("fleet.dialog_parked", name, data.description));
+    }, this.ctx.logger, `daemon.dialog_parked[${name}]`));
+
     daemon.on("interactive_prompt", safeHandler(async (data: { name: string; kind: string; prompt: string }) => {
       this.ctx.eventLog?.insert(name, "interactive_prompt", { kind: data.kind });
       this.ctx.logger.warn({ name, kind: data.kind, prompt: data.prompt }, "Instance is waiting for interactive terminal input");

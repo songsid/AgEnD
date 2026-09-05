@@ -150,6 +150,100 @@ describe("claude-code resume-prompt patterns are structural, never prose", () =>
   });
 });
 
+describe("startup scan: the resume prompt painted AFTER the first quiet moment", () => {
+  it("keeps polling, dismisses the late dialog with Down+Enter, and reports ready only after two clean polls", async () => {
+    const { daemon, keys } = makeDaemon();
+    const frames = [LOADING, LOADING, LOADING, RESUME_DIALOG, READY, READY];
+    let i = 0;
+    daemon.tmux.capturePane = vi.fn(async () => { const f = frames[Math.min(i, frames.length - 1)]; i++; return f; });
+
+    expect(await daemon.dismissDialogsUntilReady(5_000, 0)).toBe(true);
+
+    expect(keys).toEqual(["Down", "Enter"]);          // the 4th capture saw it — the old 3-capture scan never did
+    expect(i).toBeGreaterThanOrEqual(6);               // ready needed two consecutive clean polls
+  });
+
+  it("paces its polls and stops at the wall-clock budget instead of bursting", async () => {
+    vi.useFakeTimers();
+    const { daemon, state } = makeDaemon();
+    state.pane = LOADING;
+    const scan = daemon.dismissDialogsUntilReady(5_000);        // default 500ms cadence
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(daemon.tmux.capturePane.mock.calls.length).toBeLessThanOrEqual(3); // ~1 capture per 500ms, not a burst
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(await scan).toBe(true);
+    expect(daemon.tmux.capturePane.mock.calls.length).toBeLessThanOrEqual(12);
+  });
+
+  it("never answers an unrecognised variant, logs the hold, and still reports the CLI alive", async () => {
+    const { daemon, state, keys, logger } = makeDaemon();
+    state.pane = RESUME_VARIANT;
+    expect(await daemon.dismissDialogsUntilReady(1_000, 0)).toBe(true);   // false would clear the session
+    expect(keys).toEqual([]);
+    expect(JSON.stringify(logger.warn.mock.calls)).toMatch(/not auto-answering|dialog still on screen/);
+  });
+
+  it("logs, rather than silently assumes, when the budget runs out on an unknown screen", async () => {
+    const { daemon, state, logger } = makeDaemon();
+    state.pane = LOADING;
+    expect(await daemon.dismissDialogsUntilReady(300, 0)).toBe(true);
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain("assuming ready");
+  });
+
+  it("a transient capture failure is retried, not turned into a startup failure that clears the session", async () => {
+    const { daemon, keys } = makeDaemon();
+    const frames: Array<string | Error> = [new Error("tmux hiccup"), new Error("tmux hiccup"), RESUME_DIALOG, READY, READY];
+    let i = 0;
+    daemon.tmux.capturePane = vi.fn(async () => { const f = frames[Math.min(i, frames.length - 1)]; i++; if (f instanceof Error) throw f; return f; });
+    expect(await daemon.dismissDialogsUntilReady(5_000, 0)).toBe(true);
+    expect(keys).toEqual(["Down", "Enter"]);
+  });
+
+  it("an unanswerable liveness query is not death: capture and liveness both fail → retry, session kept", async () => {
+    // Production isWindowAlive() folds every tmux error into false; the scan
+    // must not read that as "the CLI died" and let the caller clear the session.
+    const { daemon, logger } = makeDaemon();
+    daemon.tmux.capturePane = vi.fn(async () => { throw new Error("EAGAIN"); });
+    daemon.tmux.isWindowAlive = vi.fn(async () => { throw new Error("EAGAIN"); });
+    daemon.tmux.getPaneStatus = vi.fn(async () => null);   // ambiguous, like a failed list-panes
+    expect(await daemon.dismissDialogsUntilReady(800, 0)).toBe(true);
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain("assuming ready");
+  });
+
+  it("the pre-scan liveness gate is tri-state too: a failed tmux query does not fail the spawn", async () => {
+    // Production isWindowAlive() returns false on ANY list-windows error; the
+    // spawn used to return false right there and the caller cleared the session.
+    const { daemon, state } = makeDaemon();
+    state.pane = READY;
+    daemon.tmux.isWindowAlive = vi.fn(async () => false);              // query failed, folded to false
+    daemon.tmux.getPaneStatus = vi.fn(async () => null);               // ambiguous
+    expect(await daemon.finishStartupScan(1_000)).toBe(true);
+    daemon.tmux.getPaneStatus = vi.fn(async () => { throw new Error("EAGAIN"); });
+    expect(await daemon.finishStartupScan(1_000)).toBe(true);
+    daemon.tmux.getPaneStatus = vi.fn(async () => ({ alive: false, exitCode: 1 }));   // POSITIVE dead
+    expect(await daemon.finishStartupScan(1_000)).toBe(false);
+  });
+
+  it("a dead window is still a real failure", async () => {
+    const { daemon } = makeDaemon();
+    daemon.tmux.capturePane = vi.fn(async () => { throw new Error("no such pane"); });
+    daemon.tmux.getPaneStatus = vi.fn(async () => ({ alive: false, exitCode: 0 }));   // POSITIVE dead pane
+    expect(await daemon.dismissDialogsUntilReady(2_000, 0)).toBe(false);
+  });
+
+  it("counts key sends and render waits against the budget (wall clock, not attempts)", async () => {
+    vi.useFakeTimers();
+    const { daemon, state } = makeDaemon();
+    state.pane = RESUME_DIALOG;                          // dismissal keys never take effect
+    daemon.controlClient.waitForIdle = async () => { await new Promise(r => setTimeout(r, 10_000)); return true; };
+    let done: boolean | null = null;
+    daemon.dismissDialogsUntilReady(30_000).then((v: boolean) => { done = v; });
+    for (let t = 0; t < 36_000 && done === null; t += 1_000) await vi.advanceTimersByTimeAsync(1_000);
+    expect(done).toBe(true);                             // three 10s render waits could not stretch it past the budget
+    expect(daemon.tmux.sendSpecialKey.mock.calls.length).toBeLessThanOrEqual(8);
+  });
+});
+
 describe("delivery gate: a blocking dialog on screen is never a deliverable pane", () => {
   beforeEach(() => vi.useFakeTimers());
 
@@ -272,10 +366,47 @@ describe("delivery gate: a blocking dialog on screen is never a deliverable pane
   });
 });
 
-describe("key-sending paths respect the active-region predicate (standalone safety of this commit)", () => {
+describe("runtime scan: catches a dialog the startup scan moved past", () => {
   beforeEach(() => vi.useFakeTimers());
 
-  it("the runtime scanner never sends keys for a menu quoted in the transcript", async () => {
+  it("dismisses the known resume prompt on the next 5s tick", async () => {
+    const { daemon, state, keys, logger } = makeDaemon();
+    state.pane = RESUME_DIALOG;
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(5_600);            // tick at 5s, 200ms between keys
+    expect(keys).toEqual(["Down", "Enter"]);
+    expect(JSON.stringify(logger.info.mock.calls)).toContain("Auto-dismissing runtime dialog");
+    clearInterval(daemon.errorMonitorTimer);
+  });
+
+  it("holds the variant, and reports it once after a minute without pressing anything", async () => {
+    const { daemon, state, keys, events } = makeDaemon();
+    state.pane = RESUME_VARIANT;
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(70_000);
+    expect(keys).toEqual([]);
+    expect(events.filter(e => e === "dialog_parked")).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(events.filter(e => e === "dialog_parked")).toHaveLength(1);   // once per dialog
+    state.pane = READY;
+    await vi.advanceTimersByTimeAsync(5_100);
+    state.pane = RESUME_VARIANT;                        // a new occurrence reports again after its own minute
+    await vi.advanceTimersByTimeAsync(70_000);
+    expect(events.filter(e => e === "dialog_parked")).toHaveLength(2);
+    clearInterval(daemon.errorMonitorTimer);
+  });
+
+  it("the delivery gate polling and the runtime tick share one clock for the same dialog", async () => {
+    const { daemon, state, events } = makeDaemon();
+    state.pane = RESUME_VARIANT;
+    daemon.startErrorMonitor();
+    void daemon.deliverMessage("[from:leader] hello", { chatId: "c", messageId: "m" }, {}); // polls every 250ms
+    await vi.advanceTimersByTimeAsync(70_000);
+    expect(events.filter(e => e === "dialog_parked")).toHaveLength(1);   // interleaved observers did not keep resetting it
+    clearInterval(daemon.errorMonitorTimer);
+  });
+
+  it("never sends keys for a menu quoted in the transcript (the real prompt is below it)", async () => {
     const { daemon, state, keys } = makeDaemon();
     state.pane = QUOTED_MENU;
     daemon.startErrorMonitor();
@@ -284,20 +415,46 @@ describe("key-sending paths respect the active-region predicate (standalone safe
     clearInterval(daemon.errorMonitorTimer);
   });
 
-  it("the runtime scanner still dismisses the live prompt", async () => {
+  it("never sends keys for startup-only patterns (they are loose on purpose)", async () => {
     const { daemon, state, keys } = makeDaemon();
-    state.pane = RESUME_DIALOG;
+    state.pane = "❯ I trust this analysis is correct. Yes, continue with the implementation.";
     daemon.startErrorMonitor();
-    await vi.advanceTimersByTimeAsync(5_600);
-    expect(keys).toEqual(["Down", "Enter"]);
+    await vi.advanceTimersByTimeAsync(11_000);
+    expect(keys).toEqual([]);
     clearInterval(daemon.errorMonitorTimer);
   });
+});
 
-  it("the startup scan never sends keys for a quoted menu and treats the pane as ready", async () => {
-    vi.useRealTimers();
-    const { daemon, state, keys } = makeDaemon();
-    state.pane = QUOTED_MENU;                            // real `❯` input row is at the bottom
-    expect(await daemon.dismissDialogsUntilReady(3)).toBe(true);
-    expect(keys).toEqual([]);
+describe("wake never abandons an uncancellable spawn", () => {
+  function wakeable() {
+    vi.useFakeTimers();
+    const h = makeDaemon();
+    h.daemon.pauseWakeState = "paused";
+    h.daemon.autoPauseController = { wakeOnDeliver: (fn: () => Promise<void>) => fn() };
+    h.daemon.clearErrorRecoveryGate = vi.fn();
+    h.daemon.resumeRuntimeMonitors = vi.fn();
+    return h;
+  }
+
+  it("a spawn delayed far past any budget (gate queue + setup + full scan) still completes the wake", async () => {
+    const { daemon, logger } = wakeable();
+    // 90s of SpawnGate/storm queueing, then the budget, then the whole scan.
+    daemon.trySpawn = vi.fn(async (_reuse: boolean, budget: number) => { await new Promise(r => setTimeout(r, 90_000 + budget + 30_000)); return true; });
+    let settled: "ok" | "err" | null = null;
+    daemon.wake(30_000).then(() => { settled = "ok"; }, () => { settled = "err"; });
+    await vi.advanceTimersByTimeAsync(100_000);
+    expect(settled).toBeNull();                              // no timer gave up on it
+    expect(daemon.pauseWakeState).toBe("waking");           // and no state flip behind the spawn's back
+    expect(JSON.stringify(logger.warn.mock.calls)).toContain("exceeding its budget");
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe("ok");
+    expect(daemon.pauseWakeState).toBe("active");
+  });
+
+  it("a spawn that reports failure still fails the wake", async () => {
+    const { daemon } = wakeable();
+    daemon.trySpawn = vi.fn(async () => false);
+    await expect(daemon.wake(30_000)).rejects.toThrow(/did not become ready/);
+    expect(daemon.pauseWakeState).toBe("paused");
   });
 });

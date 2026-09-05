@@ -75,7 +75,9 @@ describe("pane write exclusion", () => {
       // here would have thrown away the pasted message.
       expect(writes).toEqual(["buffer:user message"]);
       expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
-      expect(logger.debug).toHaveBeenCalledWith(
+      // Promoted from debug to info: whether the runtime dismisser ever gets the
+      // lock is exactly what a "dialog was never auto-dismissed" report needs.
+      expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({ dialog: "rate limit model switch" }),
         expect.stringContaining("deferred"),
       );

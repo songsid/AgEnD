@@ -45,13 +45,13 @@ describe("startup login-screen detection", () => {
       const errors: any[] = [];
       daemon.on("pty_error", e => errors.push(e));
 
-      const ready = await (daemon as any).dismissDialogsUntilReady(3);
+      const ready = await (daemon as any).dismissDialogsUntilReady(3_000, 0);
       expect(ready).toBe(true); // spawn completes; recovery is /login, not a respawn loop
       expect(errors).toHaveLength(1);
       expect(errors[0]).toMatchObject({ type: "auth_error", action: "pause" });
       expect((daemon as any).authFailureUnresolved).toBe(true);
       // The screen persists — a later pass must not spam a second report.
-      await (daemon as any).dismissDialogsUntilReady(2);
+      await (daemon as any).dismissDialogsUntilReady(2_000, 0);
       expect(errors).toHaveLength(1);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
@@ -64,7 +64,7 @@ describe("startup login-screen detection", () => {
       (daemon as any).tmux = { capturePane: async () => "codex ready\n❯ ", isWindowAlive: async () => true };
       const errors: any[] = [];
       daemon.on("pty_error", e => errors.push(e));
-      expect(await (daemon as any).dismissDialogsUntilReady(3)).toBe(true);
+      expect(await (daemon as any).dismissDialogsUntilReady(3_000, 0)).toBe(true);
       expect(errors).toHaveLength(0);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
