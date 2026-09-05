@@ -44,6 +44,35 @@ _目前沒有未發佈的變更。_
 - **背景 session 恢復後健康檢查會繼續**（#541）。
 - **Agent instructions 修正** — 新增 `react` 與 `edit_message` 的呼叫方式說明、區分 CLI subagent 與 `create_instance`、避免使用 AgEnD 的投遞狀態表情。**instructions 類改動需要 fleet 重啟後才生效**，不會立即套用（#559、#562、#626）。
 - **文件** — Telegram 與 Discord bot 設定指南（中英文）、2026-08-13 稽核找到的指令／設定缺口、修正過時的 tool_set 數量、螢幕截圖去識別化、Gemini 停用標示（#523、#546、#547、#571、#574）。
+- **ClassicBot Yes/No 按鈕** — 存取請求現在會顯示行內「是／否」按鈕供審核，取代純文字流程（#690）。
+- **`/sysinfo` fleet 摘要** — 顯示 instance 數量（running/paused）、fleet 記憶體與系統記憶體。平台感知格式：Telegram 用 markdown 表格、Discord 用純文字。摘要分成多行以適合手機閱讀（#695、#696、#697）。
+- **`/install-cli` 後端選單** — 不帶參數的 `/install-cli` 現在顯示後端選單，而非報錯（#687）。
+- **跨 instance steer** — `delegate_task` 與 `send_to_instance` 可使用 `steer: true` 在目標 instance 的當前輪次中插入補充訊息（#701）。
+- **Antigravity 問卷與模型發現** — 處理問卷提示並解析 TSV 模型清單（#683）。
+- **`/sysinfo` 資源區塊** — 新增文件、提示與 GitHub 連結（#679）。
+- **Session 管理 skill** — 新 General skill 記錄跨後端 session 管理與 Kiro SQLite 恢復（#684、#685）。
+- **用量 i18n** — AI 用量顯示已在地化；zh-TW 時長／綁定／額度重置潤飾（#665、#675）。
+- **Codex 容量偵測** — 偵測並回報模型容量錯誤（#666）。
+- **跨 instance 訊息大小上限** — 超大訊息（預設 >12KB）會被清楚拒絕，而非被默默截斷（#671）。
+
+### 修正 (Fixed)（續，beta.36–57）
+- **ClassicBot 白名單比較** — ID 現在以字串比較，修正 JavaScript 數字精度在大型 Discord snowflake 上的誤判。無法匹配的 ID 會在啟動時通知管理員（#691、#692）。
+- **Fleet 錯誤通知** — 無法投遞的 fleet 錯誤不再讓通知佇列靜默十分鐘（#693）。
+- **tmux 貼上緩衝區 flake** — 大型貼上與截斷貼上的測試隔離（#694）。
+- **Discord code-fence 斷裂** — 跨 instance 預覽與分段發送不再產生懸空的 code fence（#698）。
+- **Classic 跨 instance 回覆** — Classic instance 現在可以回覆跨 instance 的工作請求（#699）。
+- **Kiro 投遞安全** — 停止向忙碌但安靜的 Kiro pane 貼上、驗證提交、恢復滯留文字。Enter-drop gate 不再有 fail-open 漏洞；空白／無法讀取的 pane 永遠不能證明就緒（#686、#688）。
+- **Kiro 啟動韌性** — 多輪強化：處置被拒絕的 daemon、序列化 outage 交接、wake 預算、unattended 啟動的延遲重試、20 分鐘 outage 記憶與正向清除（#689）。
+- **tmux storm 韌性** — 協調 tmux storm 期間的恢復；保留投遞與 window crash 分類（#674）。
+- **Discord gateway 自癒** — 偵測停滯的 gateway 並觸發重連；保留原生 resume 恢復；公開聚合心跳健康（#673、#676）。
+- **Tips 按鈕 Telegram** — 正規化 Telegram 按鈕 context 以正確路由（#682）。
+- **用量顯示精簡** — 隱藏未使用的 scoped limit（#681）。
+- **Kiro CLI 版本旗標** — 依 CLI 版本決定啟動旗標；記憶化相容性探測（#680）。
+- **MCP 替換恢復** — CLI 替換的 MCP server 不再重啟健康的 instance；替換寬限期結束時重新檢查閒置 gate（#663、#668）。
+- **網路 family timeout** — 保留較長的網路嘗試覆寫；修正 Telegram 過期 socket 處理（#658、#659、#660）。
+- **CLI help 一致性** — help 輸出現在一致且最新（#661）。
+- **Claude Code 信任/投遞強化** — 偵測畸形 tool-call 片段並嘗試回覆恢復；偵測模型 fallback 並在 `/ctx` 顯示 statusline 的即時模型；強化 claude.json 更新並偵測 corrupt-config modal；停在致命啟動畫面時阻擋投遞；收緊錯誤 pattern（#648、#650、#651、#652、#653、#654、#655、#656）。
+- **Codex 更新提示** — 阻止「Update available!」提示阻擋啟動（#657）。
 
 ## [2.1.3] - 2026-08-07
 

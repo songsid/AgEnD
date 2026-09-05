@@ -40,6 +40,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Health check resumes after background-session recovery** (#541).
 - **Agent instruction fixes** — instructions now explain how to call `react` and `edit_message`, distinguish a CLI subagent from `create_instance`, and avoid AgEnD's delivery-status emoji. **Instruction changes take effect after a fleet restart**, not immediately (#559, #562, #626).
 - **Documentation** — Telegram and Discord bot setup guides (EN + zh-TW), command/config gaps from the 2026-08-13 audit, corrected tool_set counts, de-identified screenshots, and Gemini deprecation labels (#523, #546, #547, #571, #574).
+- **ClassicBot Yes/No buttons** — access requests now show inline Yes/No buttons for approval, replacing the text-only workflow (#690).
+- **`/sysinfo` fleet summary** — shows instance counts (running/paused), fleet memory, and system memory. Platform-aware formatting: Telegram uses markdown tables, Discord uses plain lines. Summary split to multiple lines for mobile readability (#695, #696, #697).
+- **`/install-cli` backend chooser** — bare `/install-cli` (no argument) now shows a backend selection menu instead of an error (#687).
+- **Cross-instance steer** — `delegate_task` and `send_to_instance` can now use `steer: true` to inject a mid-turn supplement into a target instance's current turn (#701).
+- **Antigravity survey and model discovery** — handles survey prompts and parses TSV model lists (#683).
+- **`/sysinfo` resources section** — adds links to documentation, tips, and GitHub (#679).
+- **Session management skills** — new General skill documents cross-backend session management and Kiro SQLite recovery (#684, #685).
+- **Usage i18n** — AI usage displays are localized; zh-TW duration/binding/rate-limit polish (#665, #675).
+- **Codex capacity detection** — detects and reports model capacity errors (#666).
+- **Cross-instance message size cap** — oversized messages (>12KB default) are rejected with a clear error instead of being silently truncated (#671).
+
+### Fixed (continued, beta.36–57)
+- **ClassicBot allow-list comparison** — IDs are now compared as strings, fixing mismatches caused by JavaScript number precision loss on large Discord snowflakes. Unmatchable IDs are reported to the operator at startup (#691, #692).
+- **Fleet error notification** — a fleet error that couldn't be delivered no longer silences the notification queue for ten minutes (#693).
+- **tmux paste buffer flake** — test isolation for large pastes vs truncated ones (#694).
+- **Discord code-fence split** — cross-instance previews and chunked sends no longer emit a dangling code fence (#698).
+- **Classic cross-instance reply** — Classic instances can now reply to cross-instance work requests (#699).
+- **Kiro delivery safety** — stops pasting into a busy-but-quiet Kiro pane, verifies submission, and recovers stranded text. The Enter-drop gate no longer has fail-open holes; blank/unreadable panes never prove readiness (#686, #688).
+- **Kiro startup resilience** — multiple rounds of hardening: dispose rejected daemons, serialize outage hand-off, wake budget, delayed retries for unattended starts, 20-minute outage memory with positive clearing (#689).
+- **tmux storm resilience** — coordinates recovery during tmux storms; preserved deliveries and window crash classification (#674).
+- **Discord gateway self-heal** — detects stale gateways and triggers reconnect; preserves native resume recovery; exposes aggregate heartbeat health (#673, #676).
+- **Tips button Telegram** — canonicalizes Telegram button context for proper routing (#682).
+- **Usage display trim** — hides unused scoped limits from usage display (#681).
+- **Kiro CLI version flags** — gates launch flags by CLI version; memoizes compatibility probe (#680).
+- **MCP replacement recovery** — a CLI-replaced MCP server no longer restarts a healthy instance; re-checks the idle gate when replacement grace expires (#663, #668).
+- **Network family timeout** — preserves longer network attempt overrides; fixed stale Telegram socket handling (#658, #659, #660).
+- **CLI help consistency** — help output is now consistent and current (#661).
+- **Claude Code trust/delivery hardening** — detects malformed tool-call fragments and attempts reply recovery; detects model fallback and shows live model from statusline in `/ctx`; hardens claude.json updates and detects corrupt-config modal; blocks delivery while parked on a fatal startup screen; tightens error patterns (#648, #650, #651, #652, #653, #654, #655, #656).
+- **Codex update prompt** — prevents the "Update available!" prompt from blocking startup (#657).
 
 ## [2.1.3] - 2026-08-07
 
