@@ -2479,7 +2479,7 @@ program
     } catch { /* tmux not running */ }
 
     // Per-instance health
-    type HealthStatus = "ok" | "idle" | "degraded" | "no-ipc" | "crash" | "stopped";
+    type HealthStatus = "ok" | "idle" | "degraded" | "no-ipc" | "crash" | "stopped" | "paused";
     interface InstanceHealth {
       name: string;
       status: HealthStatus;
@@ -2503,6 +2503,10 @@ program
       }
       if (procStatus === "stopped") {
         return { name, status: "stopped" as HealthStatus, issues: ["Not running"], general: isGeneral };
+      }
+      // Paused instances have no tmux window by design — skip running-only checks
+      if (procStatus === "paused") {
+        return { name, status: "paused" as HealthStatus, issues: [], general: isGeneral };
       }
 
       // Tmux window alive?
@@ -2534,10 +2538,11 @@ program
 
     // Fleet classification
     const crashed = results.filter(r => r.status === "crash");
-    const problems = results.filter(r => r.status !== "ok" && r.status !== "idle" && r.status !== "stopped");
+    const problems = results.filter(r => r.status !== "ok" && r.status !== "idle" && r.status !== "stopped" && r.status !== "paused");
     const healthy = results.filter(r => r.status === "ok" || r.status === "idle");
     const stopped = results.filter(r => r.status === "stopped");
-    const generalDown = results.some(r => r.general && r.status !== "ok" && r.status !== "idle");
+    const paused = results.filter(r => r.status === "paused");
+    const generalDown = results.some(r => r.general && r.status !== "ok" && r.status !== "idle" && r.status !== "paused");
 
     let classification: "healthy" | "degraded" | "unhealthy";
     if (generalDown || crashed.length > 0) classification = "unhealthy";
@@ -2553,7 +2558,8 @@ program
 
     if (opts.quiet) {
       const icon = classification === "healthy" ? "✓" : classification === "degraded" ? "⚠" : "✗";
-      console.log(`${icon} ${classification}: ${healthy.length}/${names.length} healthy${problems.length > 0 ? `, ${problems.length} issues` : ""}`);
+      const pausedPart = paused.length > 0 ? `, ${paused.length} paused` : "";
+      console.log(`${icon} ${classification}: ${healthy.length}/${names.length} healthy${problems.length > 0 ? `, ${problems.length} issues` : ""}${pausedPart}`);
       process.exit(exitCode);
     }
 
@@ -2562,10 +2568,11 @@ program
     const upH = Math.floor(uptime / 3600);
     const upM = Math.floor((uptime % 3600) / 60);
     console.log(`Fleet: ${fleetIcon} ${fleetUp ? `running (uptime ${upH}h ${upM}m, PID ${fleetPid})` : "not running"}`);
-    console.log(`Instances: ${healthy.length} healthy, ${problems.length + crashed.length} issues, ${stopped.length} stopped\n`);
+    const pausedPart = paused.length > 0 ? `, ${paused.length} paused` : "";
+    console.log(`Instances: ${healthy.length} healthy, ${problems.length + crashed.length} issues, ${stopped.length} stopped${pausedPart}\n`);
 
-    // Only show instances with problems
-    const unhealthy = results.filter(r => r.issues.length > 0 && r.status !== "stopped");
+    // Only show instances with problems (paused is not a problem)
+    const unhealthy = results.filter(r => r.issues.length > 0 && r.status !== "stopped" && r.status !== "paused");
     if (unhealthy.length === 0) {
       console.log("\x1b[32m✓ All instances healthy\x1b[0m");
     } else {
