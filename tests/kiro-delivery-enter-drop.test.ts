@@ -387,7 +387,9 @@ describe("non-Kiro backends keep the silence-based delivery path", () => {
 
     expect(ok).toBe(true);
     expect(h.paste).toHaveBeenCalledTimes(1);
-    expect(h.capture).not.toHaveBeenCalled(); // no bottom-row gating, no residue checks
+    // Captures may now happen for every backend (the blocking-dialog probe), but
+    // there is no bottom-row gating: the busy-looking TOOL_RUNNING pane was
+    // pasted into on the silence decision alone, as before.
     expect(h.enter).toHaveBeenCalledTimes(1);   // no defensive retry for this backend
     expect(h.events).toContain("message_confirmed");
   });
