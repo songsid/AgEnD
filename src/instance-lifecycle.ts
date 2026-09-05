@@ -651,6 +651,16 @@ export class InstanceLifecycle {
           : `CLI 本身還在執行。工具只能由 CLI 自己重新啟動 MCP server，請用 \`restart_instance("${name}")\` 或 \`/restart\` 恢復。`));
     }, this.ctx.logger, `daemon.mcp_died[${name}]`));
 
+    daemon.on("mcp_recovered", safeHandler((data: { name: string; source: string; pid?: number }) => {
+      // Retract an earlier "MCP died" report: a live server for this instance
+      // is serving (seen at the IPC layer — a connection, mcp_ready, or a tool
+      // call — never inferred from the LLM). No restart will follow.
+      this.ctx.eventLog?.insert(name, "mcp_recovered", { source: data.source, pid: data.pid });
+      this.ctx.logger.info({ name, source: data.source, pid: data.pid }, "MCP server recovered — earlier death report retracted");
+      if (this.ctx.isPlannedRestart()) return;
+      this.notifyIncident(name, "mcp_recovered", t("inst.mcp_recovered", name));
+    }, this.ctx.logger, `daemon.mcp_recovered[${name}]`));
+
     daemon.on("mcp_proxy_reply", safeHandler((data: { name: string; correlationId?: string }) => {
       // The message itself goes out through the daemon's fleet_outbound path;
       // this is the audit trail that it happened (and why the channel saw a ⚠️).
