@@ -137,7 +137,12 @@ export interface LifecycleContext {
   removeInstance(name: string): Promise<void>;
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
-  notifyInstanceTopic(name: string, text: string): void;
+  /**
+   * Returns whether the notice was dispatched. Production (FleetManager) says
+   * `false` when there is no adapter/route (#693 semantics); `void` from
+   * legacy contexts and test doubles counts as dispatched.
+   */
+  notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
@@ -363,8 +368,10 @@ export class InstanceLifecycle {
       this.ctx.logger.info({ name, kind }, "Incident notification suppressed — included in tmux storm summary");
       return false;
     }
-    this.ctx.notifyInstanceTopic(name, text);
-    return true;
+    // A production `false` (no adapter / no route) means nobody saw it — it
+    // must not count as dispatched, or a later retraction would be an orphan.
+    const dispatched = this.ctx.notifyInstanceTopic(name, text);
+    return dispatched !== false;
   }
 
   /**

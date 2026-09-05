@@ -15,10 +15,12 @@ import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
  */
 afterEach(() => setAuthCheckRunnerForTests(null));
 
-function lifecycle(opts: { storm?: boolean; planned?: boolean } = {}) {
+function lifecycle(opts: { storm?: boolean; planned?: boolean; undeliverable?: boolean } = {}) {
   const notices: string[] = [];
   const events: string[] = [];
-  const notifyInstanceTopic = vi.fn((_n: string, text: string) => { notices.push(text); });
+  // Production notifyInstanceTopic returns false when no adapter/route can
+  // carry the notice (#693); `undeliverable` mimics that.
+  const notifyInstanceTopic = vi.fn((_n: string, text: string) => { notices.push(text); return opts.undeliverable ? false : undefined; });
   const ctx = {
     fleetConfig: { instances: { worker: { backend: "codex" } }, defaults: {} },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
@@ -112,6 +114,19 @@ describe("mcp_died / mcp_recovered ordering fence", () => {
     daemon.emit("mcp_recovered", { name: "worker", source: "mcp_ready", pid: 2 });
     await settle();
     expect(notices).toEqual([]);
+  });
+
+  it("5b. death notice attempted but NOT dispatched (no adapter/route → false) → no retraction", async () => {
+    const probe = deferredProbe();
+    const { daemon, notices } = lifecycle({ undeliverable: true });
+    daemon.emit("mcp_died", { name: "worker", pid: 1, autoRestart: true });
+    probe.valid();
+    await settle();
+    expect(notices).toHaveLength(1);                 // the attempt happened...
+    expect(notices[0]).toContain("MCP server 已終止");
+    daemon.emit("mcp_recovered", { name: "worker", source: "mcp_ready", pid: 2 });
+    await settle();
+    expect(notices).toHaveLength(1);                 // ...but nobody saw it, so nothing to retract
   });
 
   it("6. recovery with no prior death at all is silent", async () => {
