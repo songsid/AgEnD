@@ -3969,10 +3969,72 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
   }
 
+  /**
+   * Why this adapter must ignore a bot/webhook message, or null to accept it.
+   * Pure: callers rely on being able to ask before claiming the dedup key.
+   */
+  private botMessageDropReason(msg: InboundMessage, threadId: string | undefined): string | null {
+    if (!threadId) {
+      // TG classic: allow if the bot @mentions our bot or access mode is open
+      const world = this.worlds.get(msg.adapterId ?? "");
+      const botUser = world?.botUsername;
+      const isOpen = this.getChannelConfig(msg.adapterId)?.access?.mode === "open";
+      const mentionsUs = !!(botUser && msg.text?.toLowerCase().includes(`@${botUser.toLowerCase()}`));
+      return (!isOpen && !mentionsUs) ? "tg-classic: not open and does not mention us" : null;
+    }
+    if (this.classicChannels?.hasChannel(threadId)) {
+      // Classic channel (per-bot): bot messages only when THIS bot owns an
+      // agent here and collab is on for it.
+      if (!this.classicChannels.getInstanceByChannel(threadId, msg.adapterId)) {
+        return "classic: this bot owns no agent in the channel";
+      }
+      if (!this.classicChannels.isCollab(threadId, msg.adapterId)) return "classic: collab off";
+      return null;
+    }
+    const target = this.routing.resolve(threadId);
+    if (!target) return "fleet topic: no instance routed for this thread";
+    // A fleet topic is served by exactly one instance, so exactly one bot should
+    // answer a webhook there. Several bots sharing the guild each receive their
+    // own copy; pick that instance's own adapter deterministically rather than
+    // letting whichever inbound fired first win. The primary is per-instance —
+    // the adapter the instance is bound to, falling back to channels[0] when it
+    // is not bound — so an instance answered by a non-default bot still receives
+    // its webhooks. (Classic channels are exempt above: there each bot owns its
+    // own agent and must handle its own copy.)
+    const ownerAdapterId = this.getInstanceAdapterId(target.name);
+    if (msg.adapterId && ownerAdapterId && msg.adapterId !== ownerAdapterId) {
+      return `fleet topic: not the adapter bound to ${target.name} (that is ${ownerAdapterId})`;
+    }
+    // Fleet topic: allow if collab enabled OR access mode is open
+    const isOpen = this.getChannelConfig(msg.adapterId)?.access?.mode === "open";
+    if (!isOpen && !this.collabInstances.has(target.name)) {
+      return `fleet topic: adapter not open and collab off for ${target.name}`;
+    }
+    return null;
+  }
+
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     const threadId = msg.threadId || undefined;
 
     this.logger.debug({ source: msg.source, chatId: msg.chatId, threadId, userId: msg.userId, isBotMessage: msg.isBotMessage, textLen: (msg.text ?? "").length, text: (msg.text ?? "").slice(0, 80) }, "handleInboundMessage entry");
+
+    // Bot messages are filtered per-adapter, and the filter reads THIS adapter's
+    // access config. That has to happen before the dedup claim below: when two
+    // bots share a guild they both receive the same webhook, and a copy this
+    // adapter is going to drop must not consume the shared dedup key — otherwise
+    // the sibling adapter that would have accepted it sees a duplicate and the
+    // message is lost entirely. Claiming the key only on the copies that survive
+    // also keeps delivery single when several adapters would accept it.
+    if (msg.isBotMessage) {
+      const drop = this.botMessageDropReason(msg, threadId);
+      if (drop) {
+        this.logger.debug(
+          { adapterId: msg.adapterId, threadId: threadId ?? null, messageId: msg.messageId, reason: drop },
+          "Bot message dropped by adapter filter — dedup key not consumed",
+        );
+        return;
+      }
+    }
 
     // Multi-adapter dedup: when several bots share a guild, each adapter fires
     // its own "message" event for the same underlying message. Process it once.
@@ -3999,36 +4061,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Set preserves insertion order — drop the oldest key.
         const oldest = this.recentMessageIds.values().next().value;
         if (oldest !== undefined) this.recentMessageIds.delete(oldest);
-      }
-    }
-
-    // Bot messages: only allow in collab channels or TG classic with @mention
-    if (msg.isBotMessage) {
-      if (!threadId) {
-        // TG classic: allow if bot @mentions our bot or access mode is open
-        const world = this.worlds.get(msg.adapterId ?? "");
-        const botUser = world?.botUsername;
-        const channelCfg = this.getChannelConfig(msg.adapterId);
-        const isOpen = channelCfg?.access?.mode === "open";
-        const mentionsUs = !!(botUser && msg.text?.toLowerCase().includes(`@${botUser.toLowerCase()}`));
-        this.logger.debug({ botUser, mentionsUs, isOpen, isBotMessage: true, threadId: null }, "Bot message filter (no threadId path)");
-        if (!isOpen && !mentionsUs) return;
-        // Fall through to TG classic handling below
-      } else if (this.classicChannels?.hasChannel(threadId)) {
-        // Classic channel (per-bot): bot messages only when THIS bot owns an
-        // agent here and collab is on for it.
-        const classicName = this.classicChannels.getInstanceByChannel(threadId, msg.adapterId);
-        if (!classicName) return;
-        if (!this.classicChannels.isCollab(threadId, msg.adapterId)) return;
-        // Fall through to channel handling
-      } else {
-        const target = this.routing.resolve(threadId);
-        if (!target) return;
-        // Fleet topic: allow if collab enabled OR access mode is open
-        const channelCfg = this.getChannelConfig(msg.adapterId);
-        const isOpen = channelCfg?.access?.mode === "open";
-        if (!isOpen && !this.collabInstances.has(target.name)) return;
-        // Fall through to channel handling
       }
     }
 
