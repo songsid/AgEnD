@@ -17,7 +17,7 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
 import { shellQuote } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
@@ -405,6 +405,15 @@ export class PendingWorkTracker {
 const NORMAL_ENTER_SETTLE_MS = 500;
 /** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
 const BOTTOM_READY_POLL_MS = 250;
+/** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
+const DIALOG_PROBE_UNKNOWN_MAX = 40;
+/** Startup dialog scan: poll cadence and wall-clock budget (keys and waits included). */
+const STARTUP_DIALOG_POLL_MS = 500;
+const STARTUP_DIALOG_BUDGET_MS = 30_000;
+/** A blocking dialog still on screen this long after first being seen is reported for a human. */
+const DIALOG_PARKED_NOTIFY_MS = 60_000;
+/** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
+const LATE_DIALOG_WRITE_ROUNDS = 3;
 
 /**
  * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
@@ -891,6 +900,11 @@ export class Daemon extends EventEmitter {
   private spawnDepth = 0;
   private skipResume = false;
   private startupAborted = false;
+  /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
+  private dialogParkedSince = 0;
+  /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
+  private dialogParkedKey: string | null = null;
+  private dialogParkedReported = false;
   private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
   isNewSession = false;
@@ -2140,9 +2154,15 @@ export class Daemon extends EventEmitter {
           this.hangDetector?.emit("hang", { unchangedForMs: blockingProcess.blockedForMs });
         }
 
-        // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch)
+        // Auto-dismiss runtime dialogs (e.g. Codex rate limit model switch, or
+        // Claude's session-resume prompt painted after the startup scan moved
+        // on). Runtime table only: startup patterns are loose on purpose and
+        // must never send keys into an ordinary transcript.
+        let blockingSeen: RuntimeDialog | null = null;
         for (const dialog of dialogs) {
-          if (!dialog.pattern.test(pane)) continue;
+          if (!Daemon.dialogMatches(dialog, pane)) continue;
+          if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
+          if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
           // These keys go straight into the pane. Sent while a message delivery is
           // mid-transaction, an `Escape` wipes the pasted text and an `Enter`
           // submits it half-composed — the user sees a message that vanished. Skip
@@ -2161,10 +2181,13 @@ export class Daemon extends EventEmitter {
             }
           });
           if (!dismissed) {
-            this.logger.debug({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
+            this.logger.info({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
           }
+          this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
         }
+        this.trackDialogParked(blockingSeen);
+        if (blockingSeen) return; // held dialog: skip error checks this cycle
 
         this.evaluateErrorPatterns(pane, patterns, readyPattern, Date.now(), busyPattern);
       } catch {
@@ -2702,16 +2725,23 @@ export class Daemon extends EventEmitter {
     // before anything paints), never less than the caller's or the configured
     // startup_timeout_ms.
     const budgetMs = this.wakeBudgetMs(timeoutMs);
+    // No outer race. trySpawn cannot be cancelled: racing it against a timer
+    // and giving up left the daemon "paused" (monitors frozen) while the spawn
+    // went on to revive the window behind its back. Every phase inside is
+    // bounded on its own terms — the SpawnGate wait is deliberate storm /
+    // concurrency coordination, first output + idle is `budgetMs`, the dialog
+    // scan is STARTUP_DIALOG_BUDGET_MS — so the outcome is always trySpawn's
+    // own verdict. A soft timer only makes a slow wake visible in the log.
     const transition = this.autoPauseController.wakeOnDeliver(async () => {
-      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const slow = setTimeout(() => {
+        this.logger.warn({ budgetMs }, "Wake is exceeding its budget — still waiting for the spawn (it cannot be cancelled)");
+      }, budgetMs + STARTUP_DIALOG_BUDGET_MS);
+      slow.unref?.();
       try {
-        const ready = await Promise.race([
-          this.trySpawn(true, budgetMs),
-          new Promise<false>(resolve => { timeout = setTimeout(() => resolve(false), budgetMs); }),
-        ]);
-        if (!ready) throw new Error(`Wake timed out before CLI became ready (${budgetMs}ms)`);
+        const ready = await this.trySpawn(true, budgetMs);
+        if (!ready) throw new Error(`Wake failed: the CLI did not become ready (budget ${budgetMs}ms)`);
       } finally {
-        if (timeout) clearTimeout(timeout);
+        clearTimeout(slow);
       }
     });
     this.pauseWakeTransition = transition;
@@ -3725,9 +3755,20 @@ export class Daemon extends EventEmitter {
     // If the CLI is busy, either hand the complete submission to its native input
     // queue or wait for idle. Native queue support is an explicit backend capability:
     // normal Enter input has steering/interrupt semantics in several other CLIs.
-    if (windowId && this.controlClient && !(await this.isPaneReadyForDelivery(windowId))) {
+    let readiness: "ready" | "busy" | "dialog" | "unknown" = "ready";
+    const gateWindowId = windowId;
+    if (gateWindowId && this.controlClient) readiness = await this.paneReadinessForDelivery(gateWindowId);
+    if (readiness !== "ready") {
       if (status) this.emit("message_queued", status);
-      if (supportsQueuedInput || opts?.steer) {
+      // Only a pane that is busy AND verifiably free of a blocking dialog may
+      // be handed to the native input queue or steered — those paths paste and
+      // press Enter at once. A dialog painted a moment ago is still "busy" to
+      // the silence gate, so the probe is mandatory here; "dialog"/"unknown"
+      // fall through to the wait.
+      const canHandOff = (supportsQueuedInput || opts?.steer)
+        && readiness === "busy"
+        && (await this.probeBlockingDialog()).state === "clear";
+      if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
         // point — the user asked to interject, and the transaction's
@@ -3739,7 +3780,7 @@ export class Daemon extends EventEmitter {
         );
       } else {
         this.logger.debug("CLI busy — queuing message until idle");
-        const becameIdle = await this.waitForPaneReadyForDelivery(windowId);
+        const becameIdle = await this.waitForPaneReadyForDelivery(gateWindowId as string);
         if (cancelled()) return false;
         if (!becameIdle) {
           // The pane never freed up. Report the failure instead of pasting into a
@@ -3794,13 +3835,135 @@ export class Daemon extends EventEmitter {
     // held under the pane lock — holding it across the idle wait (up to 30 min)
     // would starve the runtime-dialog dismisser, which is often the very thing
     // that would let the pane go idle again.
-    return this.paneWriteLock.run(async () => {
+    for (let round = 0; ; round++) {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog"> => {
+        if (cancelled()) return false;
+        if (this.refuseFatalStartupDelivery(status)) return false;
+        // TOCTOU: the probes above ran outside this lock, and the CLI repaints
+        // whenever it likes — a resume prompt can be painted between "clear" and
+        // this critical section. Re-probe here, right before the write; a
+        // dialog or an unreadable pane means "not now", never "paste anyway".
+        if (this.deliveryBlockingDialogs().length > 0) {
+          const probe = await this.probeBlockingDialog();
+          if (probe.state !== "clear") return "dialog";
+        }
+        return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
+      });
+      if (outcome !== "dialog") return outcome;
+      // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
+      // then try the write again — bounded, so a dialog nobody answers ends in
+      // an honest failure rather than a message that never lands.
+      if (round + 1 >= LATE_DIALOG_WRITE_ROUNDS) {
+        this.logger.error({ rounds: round + 1 }, "A dialog kept appearing before the pane write — reporting delivery failure");
+        if (status) this.emit("message_failed", status); // ❌
+        return false;
+      }
+      this.logger.info("Dialog appeared before the pane write — waiting for it to clear");
+      const clear = gateWindowId ? await this.waitForPaneReadyForDelivery(gateWindowId) : false;
       if (cancelled()) return false;
-      // Re-checked here because the flag can be set during the waits above
-      // (a spawn's dialog scan runs concurrently with a queued delivery).
-      if (this.refuseFatalStartupDelivery(status)) return false;
-      return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
-    });
+      if (!clear) {
+        if (status) this.emit("message_failed", status); // ❌
+        return false;
+      }
+    }
+  }
+
+
+  /**
+   * The runtime dialogs that hold delivery while on screen (`blocksDelivery`
+   * or `holdOnly`). One canonical list and order, shared by the delivery gate
+   * and the runtime scanner, so both observers agree on which dialog they see.
+   * Startup-only patterns are deliberately excluded: several of them are loose
+   * on purpose ("I trust", "Yes, continue") and would match ordinary prose.
+   */
+  private deliveryBlockingDialogs(): RuntimeDialog[] {
+    return (this.backend?.getRuntimeDialogs?.() ?? []).filter(d => d.blocksDelivery || d.holdOnly);
+  }
+
+  private static dialogKey(dialog: RuntimeDialog): string {
+    return `${dialog.pattern.source}/${dialog.pattern.flags}`;
+  }
+
+  /** A dialog counts only when it is the CURRENT interactive region, if the backend can tell; else by pattern. */
+  private static dialogMatches(dialog: RuntimeDialog, pane: string): boolean {
+    return dialog.isActive ? dialog.isActive(pane) : dialog.pattern.test(pane);
+  }
+
+  /**
+   * Tri-state liveness. tmux's own isWindowAlive folds every query failure
+   * into `false`, so a transient tmux hiccup would read as "the CLI died" —
+   * and callers that clear the session on death must not act on that.
+   * getPaneStatus returns null on a failed/ambiguous query and a definite
+   * `{alive:false}` for a dead pane; only the latter is evidence.
+   */
+  private async paneLiveness(): Promise<"alive" | "dead" | "unknown"> {
+    if (!this.tmux) return "unknown";
+    const tmux = this.tmux as { getPaneStatus?: () => Promise<{ alive: boolean } | null>; isWindowAlive: () => Promise<boolean> };
+    if (typeof tmux.getPaneStatus === "function") {
+      try {
+        const status = await tmux.getPaneStatus();
+        if (status === null) return "unknown";
+        return status.alive ? "alive" : "dead";
+      } catch { return "unknown"; }
+    }
+    try { return (await tmux.isWindowAlive()) ? "alive" : "dead"; } catch { return "unknown"; }
+  }
+
+  /**
+   * Capture the pane and classify it. "unknown" (capture failed) is a distinct
+   * outcome on purpose: the resume dialog is silent, so silence cannot vouch
+   * for the pane, and treating an unreadable pane as clear is exactly the
+   * fail-open that answers a dialog with its default. Callers retry unknown
+   * within a bound and then fail loudly.
+   */
+  private async probeBlockingDialog(): Promise<{ state: "dialog"; dialog: RuntimeDialog } | { state: "clear" } | { state: "unknown" }> {
+    if (!this.tmux || !this.backend) return { state: "clear" };
+    const dialogs = this.deliveryBlockingDialogs();
+    if (dialogs.length === 0) return { state: "clear" };
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch (err) {
+      this.logger.debug({ err }, "capture-pane failed during the dialog probe — pane state unknown");
+      return { state: "unknown" };
+    }
+    for (const dialog of dialogs) {
+      if (Daemon.dialogMatches(dialog, pane)) {
+        this.trackDialogParked(dialog);
+        return { state: "dialog", dialog };
+      }
+    }
+    this.trackDialogParked(null);
+    return { state: "clear" };
+  }
+
+  /**
+   * Remember how long a blocking dialog has been on screen. Once it has
+   * outlived DIALOG_PARKED_NOTIFY_MS — the auto-dismiss did not take, or the
+   * dialog is a hold-only variant — report it ONCE so a human answers it.
+   * Never presses a key: the whole point is that we do not know which option
+   * is safe. Identity is the pattern, so the delivery gate and the runtime
+   * scanner (same canonical list) never reset each other's clock.
+   */
+  private trackDialogParked(dialog: RuntimeDialog | null): void {
+    if (!dialog) {
+      if (this.dialogParkedSince !== 0) this.logger.info({ dialog: this.dialogParkedKey }, "Blocking dialog is gone from the pane");
+      this.dialogParkedSince = 0;
+      this.dialogParkedKey = null;
+      this.dialogParkedReported = false;
+      return;
+    }
+    const key = Daemon.dialogKey(dialog);
+    if (this.dialogParkedSince === 0 || this.dialogParkedKey !== key) {
+      this.dialogParkedSince = Date.now();
+      this.dialogParkedKey = key;
+      this.dialogParkedReported = false;
+      return;
+    }
+    if (!this.dialogParkedReported && Date.now() - this.dialogParkedSince >= DIALOG_PARKED_NOTIFY_MS) {
+      this.dialogParkedReported = true;
+      this.logger.warn({ dialog: dialog.description, parkedForMs: Date.now() - this.dialogParkedSince },
+        "CLI dialog is still on screen — not auto-answering, reporting for a human");
+      this.emit("dialog_parked", { name: this.name, description: dialog.description, holdOnly: dialog.holdOnly === true });
+    }
   }
 
   /**
@@ -3813,14 +3976,27 @@ export class Daemon extends EventEmitter {
    * Other backends keep the silence-based gate byte-for-byte.
    */
   private async isPaneReadyForDelivery(windowId: string): Promise<boolean> {
-    if (!this.isPaneIdleForDelivery(windowId)) return false;
-    if (this.backend?.dropsEnterWhileBusy?.() !== true) return true;
+    return (await this.paneReadinessForDelivery(windowId)) === "ready";
+  }
+
+  /**
+   * Why a pane is not deliverable matters. "busy" may be handed to a native
+   * input queue or steered (after its own dialog probe); "dialog" and "unknown"
+   * must never be — a paste + Enter into a dialog answers it with its default,
+   * and an unreadable pane proves nothing. The silence gate comes first and
+   * costs no capture, so a CLI that is simply working never pays for the probe.
+   */
+  private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "unknown"> {
+    if (!this.isPaneIdleForDelivery(windowId)) return "busy";
+    const probe = await this.probeBlockingDialog();
+    if (probe.state !== "clear") return probe.state;
+    if (this.backend?.dropsEnterWhileBusy?.() !== true) return "ready";
     const prompt = this.backend.getBottomReadyPattern?.();
-    if (!prompt || !this.tmux) return true;
+    if (!prompt || !this.tmux) return "ready";
     try {
       const pane = await this.tmux.capturePane();
-      if (this.backend.getBusyPattern?.()?.test(pane)) return false;
-      if (bottomRowIsReady(pane, prompt)) return true;
+      if (this.backend.getBusyPattern?.()?.test(pane)) return "busy";
+      if (bottomRowIsReady(pane, prompt)) return "ready";
       // FAIL CLOSED on any non-blank screen without the prompt at the bottom.
       // The obvious "unknown layout → fall back to silence" shortcut re-opened
       // the bug: a long tool output scrolls the turn's own `N% !>` row out of
@@ -3833,13 +4009,13 @@ export class Daemon extends EventEmitter {
       // redraw / alternate-screen transition paints nothing for a frame, tmux
       // still accepts a paste, and "nothing visible" is not evidence the TUI is
       // idle. The next 250ms poll sees the prompt if it is coming.
-      return false;
+      return "busy";
     } catch (err) {
       // Same rule for a capture that fails: no positive proof, no paste. The
       // poll retries; a persistently unreadable pane ends in the bounded
       // timeout's ❌ rather than in a silently stranded message.
       this.logger.debug({ err }, "capture-pane failed during the readiness check — treating the pane as not ready");
-      return false;
+      return "busy";
     }
   }
 
@@ -3850,16 +4026,33 @@ export class Daemon extends EventEmitter {
    * costs a single capture.
    */
   private async waitForPaneReadyForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
-    if (this.backend?.dropsEnterWhileBusy?.() !== true) {
-      return this.waitForPaneIdleForDelivery(windowId, timeoutMs);
-    }
+    // Every backend polls: readiness now also means "no blocking dialog on
+    // screen", and a dialog disappears without any output edge the silence
+    // gate could see.
     const deadline = Date.now() + timeoutMs;
+    const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true;
+    let unknownStreak = 0;
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
       const idle = await this.waitForPaneIdleForDelivery(windowId, remaining);
       if (!idle) return false;
-      if (await this.isPaneReadyForDelivery(windowId)) return true;
+      // The idle wait just resolved, so re-reading the silence gate would only
+      // add a stale-cache race; ask the pane the remaining questions directly.
+      if (bottomGated) {
+        if (await this.isPaneReadyForDelivery(windowId)) return true;
+      } else {
+        const probe = await this.probeBlockingDialog();
+        if (probe.state === "clear") return true;
+        if (probe.state === "unknown") {
+          if (++unknownStreak >= DIALOG_PROBE_UNKNOWN_MAX) {
+            this.logger.error({ probes: unknownStreak }, "Pane stayed unreadable during the dialog probe — refusing to deliver blind");
+            return false;
+          }
+        } else {
+          unknownStreak = 0;
+        }
+      }
       await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
     }
   }
@@ -5110,8 +5303,21 @@ export class Daemon extends EventEmitter {
     // Dismiss confirmation dialogs and verify CLI reached prompt.
     // With remain-on-exit, isWindowAlive() returns true even for dead panes,
     // but a startup crash would already be caught by waitForOutput/waitForIdle above.
-    if (!await this.tmux!.isWindowAlive()) return false;
-    const ready = await this.dismissDialogsUntilReady(3);
+    return this.finishStartupScan(STARTUP_DIALOG_BUDGET_MS);
+  }
+
+  /**
+   * The last leg of a spawn: confirm the pane is not positively dead, then run
+   * the dialog scan. The old pre-check used tmux's isWindowAlive(), which folds
+   * every query failure into `false` — so one transient tmux error right here
+   * read as "the CLI died", the caller abandoned --resume and cleared the
+   * session, before the tri-state scanner ever got a look. Only a POSITIVE
+   * dead pane fails; an unknown liveness is the scanner's problem (bounded,
+   * session-preserving).
+   */
+  private async finishStartupScan(budgetMs: number): Promise<boolean> {
+    if ((await this.paneLiveness()) === "dead") return false;
+    const ready = await this.dismissDialogsUntilReady(budgetMs);
     // A fatal startup screen returns true (the spawn is over — respawning
     // would only re-show the same screen) but is NOT ready-for-delivery:
     // fatalStartupBlocked gates every pane write in deliverMessage.
@@ -5120,10 +5326,24 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * Repeatedly check pane content, dismiss any confirmation dialogs,
-   * and return true once CLI reaches a ready prompt.
+   * Poll the pane within a wall-clock budget, dismiss the confirmation dialogs
+   * the backend knows, and return true once the CLI shows a ready prompt with
+   * no dialog on screen for two consecutive polls.
+   *
+   * Polls are spaced by `pollMs` and every key sequence / render wait counts
+   * against the budget: Claude paints its session-resume prompt only after
+   * loading the session, i.e. AFTER the first quiet moment, and three
+   * back-to-back captures used to miss it — the scan then "assumed ok", the
+   * `❯` inside the dialog satisfied the ready pattern, and the instance sat on
+   * the dialog with deliveries free to press Enter into it.
+   *
+   * Only hard evidence returns false: a dead window or "command not found".
+   * A transient capture failure is logged and retried; exhausting the budget is
+   * logged at WARN and returns true — false makes the caller abandon --resume
+   * and clear the session, which is the loss this code exists to prevent. The
+   * delivery gate keeps refusing pastes while a blocking dialog is visible.
    */
-  private async dismissDialogsUntilReady(maxAttempts: number): Promise<boolean> {
+  private async dismissDialogsUntilReady(budgetMs: number, pollMs = STARTUP_DIALOG_POLL_MS): Promise<boolean> {
     // Backend-specific startup dialogs, with hardcoded fallback for backward compat
     const startupDialogs: StartupDialog[] = this.backend?.getStartupDialogs?.() ?? [
       { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Confirmation dialog — navigate past No" },
@@ -5132,14 +5352,43 @@ export class Daemon extends EventEmitter {
       { pattern: /Resume Session/i, keys: ["Escape"], description: "Resume session picker — start fresh" },
     ];
 
-    for (let i = 0; i < maxAttempts; i++) {
+    const deadline = Date.now() + budgetMs;
+    const remaining = () => deadline - Date.now();
+    const sleep = async () => { if (remaining() > 0) await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(remaining(), 0)))); };
+    let cleanReadyPolls = 0;
+    let lastDialog: StartupDialog | null = null;
+    let captureFailures = 0;
+    let attempts = 0;
+    do {
+      attempts++;
+      let pane: string;
       try {
-        const pane = await this.tmux!.capturePane();
-
+        pane = await this.tmux!.capturePane();
+      } catch (err) {
+        // Transient tmux trouble is not evidence about the CLI. Returning false
+        // here would clear the session; retry within the budget instead.
+        captureFailures++;
+        this.logger.warn({ err, captureFailures }, "capture-pane failed during the startup dialog scan — retrying");
+        // Only a POSITIVE dead pane ends the scan; an unanswerable liveness
+        // query is the same transient trouble and must not clear the session.
+        if ((await this.paneLiveness()) === "dead") return false;
+        await sleep();
+        continue;
+      }
+      try {
         // Try each startup dialog pattern before checking ready state
         let matched = false;
+        lastDialog = null;
         for (const dialog of startupDialogs) {
-          if (dialog.pattern.test(pane)) {
+          if (Daemon.dialogMatches(dialog, pane)) {
+            lastDialog = dialog;
+            cleanReadyPolls = 0;
+            // Start the parked clock for every delivery-blocking dialog, exact
+            // ones included: if the auto-dismiss keeps failing here, the human
+            // report should count from first sight, not from the runtime scan.
+            if (!dialog.fatal && this.deliveryBlockingDialogs().some(d => Daemon.dialogKey(d) === Daemon.dialogKey(dialog))) {
+              this.trackDialogParked(dialog);
+            }
             // A fatal startup screen cannot be dismissed by keypresses (e.g. a
             // corrupt claude.json modal offering only "exit" / "reset config").
             // It must be caught HERE and not fall through to the ready check:
@@ -5160,7 +5409,16 @@ export class Daemon extends EventEmitter {
               }
               return true;
             }
-            this.logger.debug(`Dismissing startup dialog: ${dialog.description}`);
+            if (dialog.holdOnly) {
+              // Recognised but deliberately not answered (see RuntimeDialog.holdOnly).
+              if (this.dialogParkedKey !== Daemon.dialogKey(dialog)) {
+                this.logger.warn({ description: dialog.description }, "Startup dialog held — not auto-answering, deliveries stay blocked");
+              }
+              this.trackDialogParked(dialog);
+              matched = true;
+              break;
+            }
+            this.logger.info(`Dismissing startup dialog: ${dialog.description}`);
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
@@ -5174,28 +5432,41 @@ export class Daemon extends EventEmitter {
                 await new Promise(r => setTimeout(r, 200));
               }
             });
-            // Wait for next screen to render
+            // Wait for next screen to render — bounded by what is left of the budget.
+            const renderWait = Math.max(0, Math.min(10_000, remaining()));
             if (this.controlClient) {
               const wid = readFileSync(join(this.instanceDir, "window-id"), "utf-8").trim();
-              await this.controlClient.waitForIdle(wid, 10_000);
+              await this.controlClient.waitForIdle(wid, renderWait);
             } else {
-              await new Promise(r => setTimeout(r, 3_000));
+              await new Promise(r => setTimeout(r, Math.min(3_000, renderWait)));
             }
-            if (!await this.tmux!.isWindowAlive()) return false;
+            if ((await this.paneLiveness()) === "dead") return false;
             matched = true;
             break;
           }
         }
-        if (matched) continue;
-
-        // CLI is ready (pattern defined by each backend)
-        if (this.backend!.getReadyPattern().test(pane)) {
-          // A real ready prompt (with no fatal dialog on screen — those are
-          // matched above, before this check) means the fatal screen is gone,
-          // e.g. the user fixed the config and the instance respawned.
-          this.fatalStartupBlocked = false;
-          return true;
+        if (matched) {
+          if (lastDialog?.holdOnly) await sleep();
+          continue;
         }
+        if (this.dialogParkedSince !== 0 && !this.deliveryBlockingDialogs().some(d => Daemon.dialogMatches(d, pane))) this.trackDialogParked(null);
+
+        // CLI is ready (pattern defined by each backend). Require it on two
+        // consecutive polls: the first ready frame is also the moment a late
+        // dialog is about to be painted over it.
+        if (this.backend!.getReadyPattern().test(pane)) {
+          cleanReadyPolls++;
+          if (cleanReadyPolls >= 2 || remaining() <= 0) {
+            // A real ready prompt (with no fatal dialog on screen — those are
+            // matched above, before this check) means the fatal screen is gone,
+            // e.g. the user fixed the config and the instance respawned.
+            this.fatalStartupBlocked = false;
+            return true;
+          }
+          await sleep();
+          continue;
+        }
+        cleanReadyPolls = 0;
 
         // A CLI parked at its own sign-in screen is an AUTH incident: no dialog
         // key can dismiss it and no ready pattern will ever appear. Report it as
@@ -5219,11 +5490,21 @@ export class Daemon extends EventEmitter {
         // Fatal: command not found (must match full phrase to avoid false positives
         // like Kiro's "agent X not found, using default")
         if (/command not found|: not found$/m.test(pane)) return false;
-      } catch {
-        return false;
+      } catch (err) {
+        // Key sends / isWindowAlive failing: same rule — log, retry within the budget.
+        this.logger.warn({ err }, "startup dialog scan step failed — retrying");
+        if ((await this.paneLiveness()) === "dead") return false;
       }
+      await sleep();
+    } while (remaining() > 0);
+    // Budget exhausted. Never silently: say which way it went.
+    if (lastDialog) {
+      this.logger.warn({ description: lastDialog.description, attempts, budgetMs },
+        "Startup scan exhausted with a dialog still on screen — reporting the CLI alive; deliveries stay blocked until it is answered");
+    } else {
+      this.logger.warn({ attempts, budgetMs, captureFailures },
+        "Startup scan exhausted without a ready prompt or a known dialog — assuming ready (unknown CLI screen)");
     }
-    // Exhausted attempts — assume ok for unknown CLI prompts
     return true;
   }
 

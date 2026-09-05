@@ -60,7 +60,7 @@ describe("fatal startup dialogs", () => {
       // Returns true to stop the spawn retry loop (like the sign-in screen
       // case): the pause action is what halts delivery, and a respawn would
       // only re-show the same modal.
-      expect(await (daemon as any).dismissDialogsUntilReady(3)).toBe(true);
+      expect(await (daemon as any).dismissDialogsUntilReady(3_000, 0)).toBe(true);
       expect(errors).toHaveLength(1);
       expect(errors[0]).toMatchObject({ type: "config_error", action: "pause" });
       // Never send keys into this modal: Enter would confirm "Exit and fix
@@ -69,7 +69,7 @@ describe("fatal startup dialogs", () => {
       expect(sendKeys).not.toHaveBeenCalled();
 
       // The modal persists — a later pass must not spam a second report.
-      await (daemon as any).dismissDialogsUntilReady(2);
+      await (daemon as any).dismissDialogsUntilReady(2_000, 0);
       expect(errors).toHaveLength(1);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
@@ -94,7 +94,7 @@ describe("fatal startup dialogs", () => {
       daemon.on("pty_error", () => { /* swallow — pause handler lives in the lifecycle, not here */ });
 
       // The startup scan parks on the fatal modal…
-      await (daemon as any).dismissDialogsUntilReady(2);
+      await (daemon as any).dismissDialogsUntilReady(2_000, 0);
 
       // …and a queued delivery racing the (async, not-yet-applied) pause must
       // be refused before any pane write, with ❌ so the sender knows.
@@ -116,12 +116,12 @@ describe("fatal startup dialogs", () => {
       let pane = CORRUPT_CONFIG_MODAL;
       (daemon as any).tmux = { capturePane: async () => pane, isWindowAlive: async () => true };
       daemon.on("pty_error", () => { /* swallow */ });
-      await (daemon as any).dismissDialogsUntilReady(2);
+      await (daemon as any).dismissDialogsUntilReady(2_000, 0);
       expect((daemon as any).fatalStartupBlocked).toBe(true);
 
       // User fixed claude.json; the respawned CLI reaches its prompt.
       pane = "claude ready\n❯ Try a prompt";
-      expect(await (daemon as any).dismissDialogsUntilReady(2)).toBe(true);
+      expect(await (daemon as any).dismissDialogsUntilReady(2_000, 0)).toBe(true);
       expect((daemon as any).fatalStartupBlocked).toBe(false);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
@@ -134,7 +134,7 @@ describe("fatal startup dialogs", () => {
       (daemon as any).tmux = { capturePane: async () => "claude ready\n❯ Try a prompt", isWindowAlive: async () => true };
       const errors: any[] = [];
       daemon.on("pty_error", e => errors.push(e));
-      expect(await (daemon as any).dismissDialogsUntilReady(3)).toBe(true);
+      expect(await (daemon as any).dismissDialogsUntilReady(3_000, 0)).toBe(true);
       expect(errors).toHaveLength(0);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });

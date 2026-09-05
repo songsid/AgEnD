@@ -418,7 +418,7 @@ describe("ClaudeCodeBackend", () => {
     it("selects the full session at startup instead of the summary", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const dialog = backend.getStartupDialogs().find(({ pattern }) =>
-        pattern.test("1. Resume from summary (recommended)"));
+        pattern.test("❯ 1. Resume from summary (recommended)"));
 
       expect(dialog?.keys).toEqual(["Down", "Enter"]);
       expect(dialog?.description).toContain("Resume full session as-is");
@@ -427,7 +427,7 @@ describe("ClaudeCodeBackend", () => {
     it("selects the full session when the prompt appears at runtime", () => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const dialog = backend.getRuntimeDialogs().find(({ pattern }) =>
-        pattern.test("1. Resume from summary (recommended)"));
+        pattern.test("❯ 1. Resume from summary (recommended)"));
 
       expect(dialog?.keys).toEqual(["Down", "Enter"]);
       expect(dialog?.description).toContain("Resume full session as-is");

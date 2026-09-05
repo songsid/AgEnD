@@ -130,6 +130,46 @@ function updateClaudeJson(mutate: (cfg: Record<string, unknown>) => boolean): vo
 }
 
 
+/**
+ * Claude's session-resume prompt with the cursor on the destructive default
+ * (captured from the 2.1.261 binary: "❯ 1. Resume from summary (recommended)" /
+ * "  2. Resume full session as-is"). Anchored to the selector + option number so
+ * transcript prose quoting the sentence never matches.
+ */
+export const CLAUDE_RESUME_PROMPT_DEFAULT = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \(recommended\)/m;
+/**
+ * The resume prompt's two-option menu in ANY arrangement: two consecutive
+ * numbered "Resume …" rows. Matches the default shape too, so it must be
+ * ordered AFTER the exact entry; on its own it means "a resume menu we do not
+ * know how to navigate" — hold, never press.
+ */
+export const CLAUDE_RESUME_PROMPT_MENU = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)[^\n]*\n[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/m;
+
+const RESUME_OPTION_ROW = /^[ \t]*[❯›]?[ \t]*\d\.[ \t]*Resume (?:full session as-is|from summary)/;
+const RESUME_DIALOG_FOOTER = /Enter to confirm|Esc to cancel|↑↓|to select|to navigate/i;
+
+/**
+ * Is the resume menu the CURRENT interactive region of the pane, and is the
+ * cursor on the destructive default? Bottom-anchored on purpose: the LAST pair
+ * of option rows must be followed only by the dialog's own footer (at most two
+ * rows) — a quoted capture of the menu in a transcript is followed by more
+ * transcript and, above all, by the real `❯` input row, so it is not active.
+ */
+export function claudeResumeMenuState(pane: string): { active: boolean; defaultCursor: boolean } {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let start = -1;
+  for (let i = rows.length - 2; i >= 0; i--) {
+    if (RESUME_OPTION_ROW.test(rows[i]) && RESUME_OPTION_ROW.test(rows[i + 1])) { start = i; break; }
+  }
+  if (start < 0) return { active: false, defaultCursor: false };
+  const trailing = rows.slice(start + 2).filter(r => r.trim().length > 0);
+  const active = trailing.length <= 2 && trailing.every(r => RESUME_DIALOG_FOOTER.test(r));
+  const defaultCursor = /^[ \t]*[❯›][ \t]*1\.[ \t]*Resume from summary \(recommended\)/.test(rows[start]);
+  return { active, defaultCursor };
+}
+const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeMenuState(pane); return s.active && s.defaultCursor; };
+const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).active;
+
 export class ClaudeCodeBackend implements CliBackend {
   readonly binaryName = "claude";
   readonly instructionsReloadedOnResume = true;
@@ -350,7 +390,15 @@ export class ClaudeCodeBackend implements CliBackend {
       },
       // Session resume prompt must be checked BEFORE ready pattern, because ❯ in
       // "❯ 1. Resume from summary" would falsely match the ready pattern /❯/.
-      { pattern: /Resume from summary \(recommended\)/, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'" },
+      // Only when the cursor is verifiably on option 1 ("❯ 1. Resume from
+      // summary (recommended)") do we know that Down+Enter lands on "Resume
+      // full session as-is". Any other shape is held by the guard below.
+      { pattern: CLAUDE_RESUME_PROMPT_DEFAULT, isActive: resumeDefaultActive, keys: ["Down", "Enter"], description: "Claude session resume prompt — select 'Resume full session as-is'", blocksDelivery: true },
+      // The same prompt in a shape we do not know how to navigate (cursor
+      // elsewhere, wording changed, options reordered): recognised by its
+      // two-option menu structure, never answered — a blind Enter would take
+      // the default and drop the full context. Hold the pane, report for a human.
+      { pattern: CLAUDE_RESUME_PROMPT_MENU, isActive: resumeMenuActive, keys: [], holdOnly: true, blocksDelivery: true, description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting" },
       { pattern: /[❯›]\s*\d+\.\s*No/m, keys: ["Down", "Enter"], description: "Claude 'No, exit' confirmation — navigate to Yes" },
       // The 2.1.250 workspace-trust dialog has no numbered options — the cursor
       // sits on "❯ No, exit" above "Yes, I trust this folder" (captured live).
@@ -368,11 +416,24 @@ export class ClaudeCodeBackend implements CliBackend {
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       {
-        // Claude Code shows a session resume prompt when session is old/large.
+        // Claude Code shows a session resume prompt when session is old/large —
+        // sometimes only after loading the session, i.e. after the startup scan
+        // has already moved on, which is why it is in the runtime table too.
         // Default cursor is on summary; move down to preserve the full context.
-        pattern: /Resume from summary \(recommended\)/,
+        pattern: CLAUDE_RESUME_PROMPT_DEFAULT,
+        isActive: resumeDefaultActive,
         keys: ["Down", "Enter"],
         description: "Claude session resume prompt — select 'Resume full session as-is'",
+        blocksDelivery: true,
+      },
+      // Same variant guard as getStartupDialogs: recognise, hold, report — never Enter.
+      {
+        pattern: CLAUDE_RESUME_PROMPT_MENU,
+        isActive: resumeMenuActive,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting",
       },
     ];
   }

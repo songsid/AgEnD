@@ -119,6 +119,35 @@ export interface RuntimeDialog {
   keys: string[];
   /** Human-readable description for logging. */
   description: string;
+  /**
+   * While this dialog is on screen the pane is NOT deliverable: no paste, no
+   * Enter, no native-queue or steer hand-off. Opt-in on purpose — the delivery
+   * gate runs on every ordinary message against the whole viewport, so only
+   * patterns that cannot match transcript prose belong here (require the
+   * dialog's structure: selector glyph, numbered options, exact wording).
+   * Absent means the runtime scanner may still auto-dismiss the dialog, but
+   * delivery is not held for it.
+   */
+  blocksDelivery?: boolean;
+  /**
+   * When present, decides whether the dialog is the CURRENT interactive region
+   * of the pane — typically bottom-anchored: the menu rows are the last thing
+   * on screen apart from the dialog's own footer, and no ready prompt follows
+   * them. Used instead of `pattern` wherever a match would block delivery or
+   * send keys; `pattern` stays the cheap identity/pre-filter. Without it a
+   * transcript that quotes the dialog verbatim (a pasted pane capture, this
+   * very bug being discussed) would count as a live dialog and receive keys.
+   */
+  isActive?(pane: string): boolean;
+  /**
+   * Recognise the dialog but NEVER answer it. Implies `blocksDelivery`. If it
+   * persists, the daemon reports it for a human. Use for dialogs whose default
+   * option is destructive when the exact shape is not the one we know how to
+   * navigate — e.g. a variant of Claude's session-resume prompt, where a blind
+   * Enter picks "Resume from summary" and drops the full context. `keys` is
+   * ignored.
+   */
+  holdOnly?: boolean;
 }
 
 /**
