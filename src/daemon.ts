@@ -1514,7 +1514,6 @@ export class Daemon extends EventEmitter {
     private checkMcpServerAlive(): void {
     if (this.isPaused) return;
     const status = mcpServerState(this.instanceDir);
-    if (status.state === "unknown") return;
     if (status.state === "alive") {
       if (this.mcpDeathNotifiedForPid != null) this.emitMcpRecovered("pid", status.pid);
       this.mcpDeathNotifiedForPid = null; // the CLI respawned it — re-arm
@@ -1522,23 +1521,28 @@ export class Daemon extends EventEmitter {
       this.clearMcpRestartRequest(); // tools are back — stand down a pending auto-restart
       return;
     }
-    // The pid slot says dead. It is a single last-writer slot shared by every
-    // mcp-server process of this instance (a CLI-driven replacement, a
-    // sub-agent's server), so "that pid is gone" is not "no server is
-    // serving". Ask the IPC layer — the one thing every serving mcp-server
-    // must hold — before treating this as an incident. Reproduced
-    // deterministically: two servers, SIGKILL the last writer, the other keeps
-    // serving while the slot reads DEAD forever.
+    // The pid slot does not name a live process — dead, or missing. It is a
+    // single last-writer slot shared by every mcp-server process of this
+    // instance (a CLI-driven replacement, a sub-agent's server), so "that pid
+    // is gone" is not "no server is serving", and "the last writer exited
+    // cleanly and unlinked its slot" is not "nothing ever started". Ask the
+    // IPC layer — the one thing every serving mcp-server must hold — before
+    // deciding. Reproduced deterministically: two servers, SIGKILL the last
+    // writer, the other keeps serving while the slot reads DEAD forever; or
+    // the last writer exits cleanly and the slot stays MISSING, so the
+    // survivor's later real death would never be seen.
     const sockets = this.liveMcpSockets();
     if (sockets.length > 0) {
       const livePid = this.socketPids.get(sockets[sockets.length - 1]);
-      this.logger.info({ stalePid: status.pid, livePid, connections: sockets.length },
-        "channel.mcp.pid points at a dead process, but a live MCP connection still serves this instance — not an incident");
-      this.repairMcpPidSlot(livePid, "stale pid slot");
+      const stalePid = status.state === "dead" ? status.pid : undefined;
+      this.logger.info({ slot: status.state, stalePid, livePid, connections: sockets.length },
+        "channel.mcp.pid does not name a live process, but a live MCP connection still serves this instance — not an incident");
+      this.repairMcpPidSlot(livePid, status.state === "dead" ? "stale pid slot" : "missing pid slot");
       this.pingMcpSockets(sockets);
       this.noteMcpProofOfLife("connection", livePid);
       return;
     }
+    if (status.state === "unknown") return; // never started, or nothing left to watch — as before
     // Dead: report once per pid, and at most once per cooldown window.
     if (this.mcpDeathNotifiedForPid === status.pid) return;
     // An auth-broken CLI cannot keep an MCP server alive, and restarting it

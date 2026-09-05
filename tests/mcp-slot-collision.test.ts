@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -280,6 +280,58 @@ describe("the restart chokepoint and the deferred report consult the IPC layer t
 });
 
 /**
+ * sol M1: the last writer exiting CLEANLY unlinks its own slot (guarded exit
+ * handler), so the slot goes MISSING while a sibling still serves. Missing
+ * must go through the same IPC reconciliation as dead — otherwise the slot is
+ * never repaired and the survivor's later real death is invisible forever.
+ */
+describe("missing pid slot with a live sibling (clean exit of the last writer)", () => {
+  /** A real process we can kill, so the repaired slot can later turn dead for real. */
+  const spawnSleeper = async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+    children.push(child);
+    await new Promise(r => setTimeout(r, 50));
+    return child;
+  };
+
+  it("17. missing slot + live same-session socket: repaired, pinged, no alarm; then the survivor really dies → alarm", async () => {
+    const { daemon, died, sent } = makeDaemon();
+    const survivor = await spawnSleeper();
+    const sock = connect(daemon, "img", survivor.pid!);
+    expect(existsSync(PID_FILE())).toBe(false);     // B exited cleanly and unlinked
+
+    tick(daemon); tick(daemon);
+    expect(died).toHaveLength(0);
+    expect(readFileSync(PID_FILE(), "utf8")).toBe(String(survivor.pid));
+    expect(sent.some(m => m.type === "ping")).toBe(true);
+
+    survivor.kill("SIGKILL");
+    await new Promise<void>(r => survivor.on("exit", () => r()));
+    sock.destroy();                                 // its IPC connection is gone too
+    tick(daemon); tick(daemon);                     // codex hold, then alarm
+    expect(died).toHaveLength(1);
+    expect(died[0].pid).toBe(survivor.pid);
+  });
+
+  it("18. missing slot + no connection stays silent (never started / nothing to watch), as before", () => {
+    const { daemon, died, sent } = makeDaemon("claude-code");
+    tick(daemon); tick(daemon);
+    expect(died).toHaveLength(0);
+    expect(daemon.mcpRestartPending).toBe(false);
+    expect(sent).toHaveLength(0);
+    expect(existsSync(PID_FILE())).toBe(false);
+  });
+
+  it("19. missing slot + only an external session's socket stays silent and is not repaired from it", () => {
+    const { daemon, died } = makeDaemon("claude-code");
+    connect(daemon, "external-other-1", LIVE_PID);
+    tick(daemon); tick(daemon);
+    expect(died).toHaveLength(0);
+    expect(existsSync(PID_FILE())).toBe(false);
+  });
+});
+
+/**
  * The reproduction with real processes: two real mcp-server processes for one
  * instance dir sharing one pid slot, connected to a real IpcServer that feeds
  * the daemon's handlers. Kill the last writer with SIGKILL (no unlink, no
@@ -343,5 +395,43 @@ describe("real mcp-server processes (integration)", () => {
     await until(() => daemon.liveMcpSockets().length === 0);
     tick(daemon); tick(daemon);
     expect(died).toHaveLength(1);
+  }, 30_000);
+
+  it("20. clean exit of the slot owner (stdin EOF → unlink): missing slot, live sibling, repaired; survivor's real death still alarms", async () => {
+    const shortDir = mkdtempSync("/tmp/agend-mcp-");
+    dirs.push(shortDir);
+    instanceDir = shortDir;
+    const { daemon, died, restarts } = makeDaemon();
+    const sockPath = join(shortDir, "channel.sock");
+    const server = new IpcServer(sockPath);
+    servers.push(server);
+    await server.listen();
+    daemon.ipcServer = server;
+    server.on("message", (msg: Record<string, unknown>, socket: any) => {
+      if (msg.type === "mcp_ready") daemon.handleMcpReady(msg, socket);
+      else if (msg.type === "pong") daemon.handleMcpPong(msg, socket);
+    });
+
+    const a = spawnMcp(sockPath);
+    await until(() => daemon.liveMcpSockets().length === 1);
+    const b = spawnMcp(sockPath);
+    await until(() => daemon.liveMcpSockets().length === 2);
+    await until(() => readFileSync(PID_FILE(), "utf8").trim() === String(b.pid));
+
+    b.stdin.end();                                  // the CLI closes B's pipe: clean exit path
+    await new Promise<void>(r => b.on("exit", () => r()));
+    await until(() => daemon.liveMcpSockets().length === 1);
+    await until(() => !existsSync(PID_FILE()));     // B unlinked its own slot → MISSING
+
+    tick(daemon); tick(daemon);
+    expect(died).toHaveLength(0);
+    expect(restarts).toHaveLength(0);
+    expect(readFileSync(PID_FILE(), "utf8").trim()).toBe(String(a.pid)); // repaired to the survivor
+
+    a.kill("SIGKILL");
+    await until(() => daemon.liveMcpSockets().length === 0);
+    tick(daemon); tick(daemon);
+    expect(died).toHaveLength(1);                   // the survivor's real death is visible again
+    expect(died[0].pid).toBe(a.pid);
   }, 30_000);
 });
