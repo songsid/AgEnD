@@ -130,12 +130,18 @@ describe("authorization gate", () => {
     for (const b of ["codex", "grok", "kiro-cli", "claude-code"]) expect(LOGIN_FLOWS[b].noShellEscape).toBe(true);
   });
 
-  it("B3 (round 3): Antigravity's bare `agy` is the full agent, not a login command — refused in web mode", async () => {
+  it("Antigravity: remote login is declared UNSUPPORTED — a clear reason, no session, no allowlist, no relay fallback", async () => {
     expect(LOGIN_FLOWS.antigravity.noShellEscape).toBeUndefined();
-    const { controller, sessions } = make();
-    expect(await controller.start("agy", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_flow_not_allowed", "antigravity"));
-    expect(await controller.start("antigravity", chat(adapterOf("discord")))).toBe(t("login.web_flow_not_allowed", "antigravity"));
+    expect(LOGIN_FLOWS.antigravity.remoteLogin).toBe("unsupported");
+    const { controller, sessions, buttons, events } = make();
+    const expected = t("login.remote_unsupported_agent_cli", "antigravity", "agy");
+    expect(expected).toContain("not supported");
+    expect(await controller.start("agy", chat(adapterOf("discord")), CONFIRMED)).toBe(expected);
+    expect(await controller.start("antigravity", chat(adapterOf("discord")))).toBe(expected);   // unconfirmed path too: no buttons
     expect(sessions).toHaveLength(0);
+    expect(buttons).toHaveLength(0);
+    expect(events.some(e => e[0] === "login_web_declined_unsupported")).toBe(true);
+    for (const b of ["codex", "grok", "kiro-cli", "claude-code"]) expect(LOGIN_FLOWS[b].remoteLogin).toBeUndefined();
   });
 
   it("rate limit: a requester gets at most 3 starts per 5 minutes; the window slides", async () => {
@@ -596,7 +602,8 @@ describe("session outcome", () => {
       "login.web_token_resent", "login.web_token_already_used", "login.web_disabled", "login.web_cleanup_failed",
       "login.web_suggest_relogin", "login.web_suggest_check_args", "login.web_code_not_needed", "login.still_valid_precommand",
       "login.web_confirm", "login.web_confirm_go", "login.web_confirm_failed", "login.web_rate_limited", "login.web_flow_not_allowed",
-      "login.web_link_failed", "login.web_token_failed", "login.web_token_resend_failed", "login.web_shutting_down"]) {
+      "login.web_link_failed", "login.web_token_failed", "login.web_token_resend_failed", "login.web_shutting_down",
+      "login.remote_unsupported_agent_cli"]) {
       expect(t(key as never, "a", "b", "c", "d")).not.toBe(key);
     }
   });

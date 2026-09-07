@@ -214,6 +214,14 @@ describe("/login mode dispatch and exclusivity", () => {
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 
+  it("Antigravity: relay mode declines too — no silent fallback, no relay session", async () => {
+    const { fm, chat } = setup("relay");
+    const text = await fm.startLoginSession("agy", chat);
+    expect(text).toBe(t("login.remote_unsupported_agent_cli", "antigravity", "agy"));
+    expect(relaySessions).toHaveLength(0);
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+
   it("N1: legacy windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {
     const { fm, chat, adapter } = setup("relay");
     await fm.startInstallSession("grok", chat);

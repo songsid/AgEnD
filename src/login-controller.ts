@@ -154,6 +154,10 @@ export class LoginController {
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
+    if (flow.remoteLogin === "unsupported") {
+      this.audit("declined_unsupported", { backend, requester: chat.userId ?? null });
+      return t("login.remote_unsupported_agent_cli", backend, flow.command);
+    }
 
     if (this.stopping) return t("login.web_shutting_down");
     const generation = this.shutdownGeneration;

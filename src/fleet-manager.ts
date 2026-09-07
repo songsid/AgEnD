@@ -7656,6 +7656,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
+    // Declined in every mode — never a silent relay fallback (e.g. Antigravity).
+    if (flow.remoteLogin === "unsupported") return t("login.remote_unsupported_agent_cli", backend, flow.command);
     // Reserve the window before the pre-check await. The claim is owned by this
     // region until it is transferred to launchLoginSession; any other exit
     // (buttons only, throw, shutdown) releases it.

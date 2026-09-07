@@ -84,6 +84,12 @@ export interface LoginFlow {
    * command, no shell" depends on it.
    */
   noShellEscape?: true;
+  /**
+   * Remote /login is declined outright for this backend (every mode), with a
+   * user-facing reason. Kept in LOGIN_FLOWS only for authCheck /
+   * loginScreenPattern, which the daemon still uses.
+   */
+  remoteLogin?: "unsupported";
 }
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -173,10 +179,14 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "antigravity": {
-    // NO noShellEscape: bare `agy` is the full agent CLI (tools, permissions,
-    // MCP) — after authentication the browser would control an agent, not a
-    // login prompt. Web-terminal login is refused until upstream offers a
-    // dedicated login command; relay mode still works.
+    // Remote login is UNSUPPORTED (user decision, v2.1.5): bare `agy` is the
+    // full agent CLI (tools, permission prompts, MCP) and has no isolated
+    // login sub-command — "logging in" means running the whole agent, which
+    // violates the web terminal's "one login command, no shell" boundary.
+    // /login agy is declined in every mode (no relay fallback) until upstream
+    // ships a dedicated login command. authCheck / loginScreenPattern stay for
+    // the daemon's own use.
+    remoteLogin: "unsupported",
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },
