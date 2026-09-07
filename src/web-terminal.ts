@@ -27,7 +27,7 @@
  * loses the first line; placeholder + respawn does not).
  */
 import { EventEmitter } from "node:events";
-import { execFile, execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, openSync, rmSync, readFileSync, constants as fsConstants } from "node:fs";
 import { Socket as NetSocket } from "node:net";
@@ -550,8 +550,16 @@ export class TmuxTerminalBackend implements TerminalBackend {
    * violated against an unrelated process.
    */
   private readonly servers = new Map<string, { pid: number; identity: string }>();
+  private readonly probe: (pid: number) => ProcessProbe;
 
-  constructor(private readonly tmuxBin = "tmux") {}
+  constructor(private readonly tmuxBin = "tmux", opts: { probeProcess?: (pid: number) => ProcessProbe } = {}) {
+    this.probe = opts.probeProcess ?? probeProcess;
+  }
+
+  /** Test seam: the recorded server identity, if a signal fallback was registered. */
+  serverRecordForTests(socket: string): { pid: number; identity: string } | undefined {
+    return this.servers.get(socket);
+  }
 
   /**
    * Run one tmux command. Errors are re-thrown SANITIZED: operation name,
@@ -594,8 +602,11 @@ export class TmuxTerminalBackend implements TerminalBackend {
     try {
       const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
       if (Number.isFinite(pid) && pid > 1) {
-        const identity = processIdentity(pid);
-        if (identity) this.servers.set(socket, { pid, identity });   // no fingerprint → no signal fallback, ever
+        const probe = this.probe(pid);
+        // Only a STRONG generation fingerprint may back a signal fallback. On
+        // platforms without one (no /proc start time) there is no fallback at
+        // all: kill-server or a loud cleanupFailed — never a guess.
+        if (probe.kind === "identified") this.servers.set(socket, { pid, identity: probe.identity });
       }
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
@@ -703,13 +714,17 @@ export class TmuxTerminalBackend implements TerminalBackend {
    */
   async serverState(socket: string): Promise<"alive" | "dead" | "unknown"> {
     const server = this.servers.get(socket);
+    // Tri-state PID evidence: true = still OUR process; false = positively
+    // dead (ESRCH, or a strong fingerprint mismatch = PID reused); null = the
+    // probe could not determine anything (never treated as dead).
     let pidAlive: boolean | null = null;
     if (server) {
-      // The PID is only evidence of life if it is still OUR process.
-      const now = processIdentity(server.pid);
-      if (now === null) pidAlive = false;                       // process gone
-      else if (now !== server.identity) { pidAlive = false; this.servers.delete(socket); }   // PID reused by someone else: our server is dead
-      else pidAlive = true;
+      const now = this.probe(server.pid);
+      if (now.kind === "gone") pidAlive = false;
+      else if (now.kind === "identified") {
+        if (now.identity === server.identity) pidAlive = true;
+        else { pidAlive = false; this.servers.delete(socket); }   // PID reused by someone else: our server is dead
+      }
     }
     const pid = server?.pid;
     const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
@@ -723,9 +738,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
       });
     });
     if (tmuxSays === "alive" || pidAlive === true) return "alive";   // any positive sign of life wins
-    if (pidAlive === false) return "dead";                             // the server process is positively gone
-    if (tmuxSays === "dead" && !pid) return "dead";                    // tmux's own no-server answer, nothing to contradict it
-    return "unknown";                                                  // probe could not execute → never "absent"
+    if (pidAlive === false) return "dead";                             // the server process is positively gone / reused
+    if (tmuxSays === "dead" && !pid) return "dead";                    // tmux's own no-server answer, nothing recorded to contradict it
+    return "unknown";                                                  // anything undeterminable → never "absent"
   }
 
   /**
@@ -747,9 +762,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
     if (state !== "dead" && server) {
       for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-        // Re-verify identity immediately before EVERY signal: never touch a
-        // process that is not (still) our tmux server.
-        if (processIdentity(server.pid) !== server.identity) break;
+        // Re-verify identity immediately before EVERY signal: only an
+        // identified process with the exact recorded fingerprint is ours.
+        const now = this.probe(server.pid);
+        if (now.kind !== "identified" || now.identity !== server.identity) break;
         try { process.kill(server.pid, signal); } catch { /* ESRCH: gone */ }
         await new Promise(r => setTimeout(r, 300));
         state = await this.serverState(socket);
@@ -769,36 +785,44 @@ export class TmuxTerminalBackend implements TerminalBackend {
   }
 }
 
+export type ProcessProbe =
+  | { kind: "identified"; identity: string }   // alive, with a strong generation fingerprint
+  | { kind: "gone" }                           // positively absent (ESRCH)
+  | { kind: "unknown" };                       // could not determine — never treated as gone
+
 /**
- * A process-generation fingerprint for `pid`, or null when the process does
- * not exist (or cannot be identified — treated the same: no signal). Linux:
- * /proc/<pid>/stat start time (field 22, in clock ticks since boot) plus the
- * command name; elsewhere `ps -o lstart=` (second resolution). Two different
- * processes that ever held the same PID differ in start time.
+ * Tri-state process probe. "gone" requires positive ESRCH evidence. A strong
+ * fingerprint (start time in clock ticks since boot + command name, from
+ * Linux /proc/<pid>/stat) is what makes a later signal safe under PID reuse.
+ * On platforms without /proc there is NO fingerprint: the probe can only say
+ * gone/unknown, and the backend registers no signal fallback.
  */
-export function processIdentity(pid: number): string | null {
-  if (!Number.isFinite(pid) || pid <= 1) return null;
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-    const close = stat.lastIndexOf(")");
-    if (close < 0) return null;
-    const comm = stat.slice(stat.indexOf("(") + 1, close);
-    const rest = stat.slice(close + 2).split(" ");           // rest[0] = field 3 (state) … rest[19] = field 22 (starttime)
-    const starttime = rest[19];
-    if (!starttime) return null;
-    return `linux:${starttime}:${comm}`;
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT" || (err as NodeJS.ErrnoException).code === "ESRCH") {
-      // No /proc entry: either the process is gone (Linux) or there is no procfs (other OS).
-      if (process.platform === "linux") return null;
+export function probeProcess(pid: number): ProcessProbe {
+  if (!Number.isFinite(pid) || pid <= 1) return { kind: "unknown" };
+  const exists = (): boolean | null => {
+    try { process.kill(pid, 0); return true; } catch (err) {
+      return (err as NodeJS.ErrnoException).code === "ESRCH" ? false : null;   // EPERM etc.: exists but not ours to know
     }
+  };
+  if (process.platform !== "linux") {
+    const e = exists();
+    return e === false ? { kind: "gone" } : { kind: "unknown" };
   }
+  let stat: string;
   try {
-    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2_000 }).trim();
-    return out ? `ps:${out}` : null;
-  } catch {
-    return null;
+    stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT" && exists() === false) return { kind: "gone" };
+    return { kind: "unknown" };                                    // transient read failure, EACCES, or a race
   }
+  const open = stat.indexOf("(");
+  const close = stat.lastIndexOf(")");
+  if (open < 0 || close < open) return { kind: "unknown" };
+  const comm = stat.slice(open + 1, close);
+  const rest = stat.slice(close + 2).split(" ");                  // rest[0] = field 3 (state) … rest[19] = field 22 (starttime)
+  const starttime = rest[19];
+  if (!starttime || !/^\d+$/.test(starttime)) return { kind: "unknown" };
+  return { kind: "identified", identity: `linux:${starttime}:${comm}` };
 }
 
 /**
