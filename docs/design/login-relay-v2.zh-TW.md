@@ -40,11 +40,11 @@ v1 設計要為每個 CLI 宣告 Menu/Prompt/Hint 規則並替使用者按鍵；
                                                     └─ TTL / exit 監看 → kill-server
                                                             ▲  WS
                                                   TerminalHttpServer（每 session 一個 127.0.0.1:0 listener）
-                                                    ├─ GET  /t/<sid>            靜態頁（vendored xterm.js，無 CDN，嚴格 CSP）
-                                                    ├─ POST /t/<sid>/open       {k, otp} → 消耗一次性 k、驗 OTP、發 HttpOnly cookie
+                                                    ├─ GET  /t/<sid>            靜態頁（vendored xterm.js，無 CDN，嚴格 CSP）；URL 不含任何秘密
+                                                    ├─ POST /t/<sid>/open       {token} → 驗一次性 access token（聊天私訊送達）→ 發 HttpOnly cookie
                                                     └─ WS   /t/<sid>/ws         cookie + Origin 驗證 → 雙向 bytes
                                                             ▲
-                                       admin 瀏覽器 ── http://<hostname>:<port>/t/<sid>?k=… ──（第三階段：tunnel provider）
+                                       admin 瀏覽器 ── http://<hostname>:<port>/t/<sid> ──（第三階段：tunnel provider，純轉送）
 ```
 
 **為什麼是 tmux + 自建 WS，而不是 ttyd？**（兩者都評估過）
@@ -80,7 +80,7 @@ export interface WebTerminalSpec {
 }
 
 export interface WebTerminalEvents {
-  onLink(link: { url: string; otp: string; expiresAt: number }): Promise<void>;   // 只給 requester（ephemeral / spoiler 私訊）
+  onLink(link: { url: string; accessToken: string; expiresAt: number }): Promise<void>;   // 兩則分開的訊息，只給 requester（ephemeral / spoiler 私訊）
   onHint(url: string, code: string | null): Promise<void>;                        // 既有 sendLoginSecret
   onDone(result: { ok: boolean; exitCode?: number; detail: string; suggest?: string }): Promise<void>;
   onAudit(event: string, fields: Record<string, unknown>): void;                  // eventLog
@@ -133,7 +133,7 @@ install-cli：`command` = 安裝指令（現有）、`observe.successPattern` �
 ### 2.4 終端頁面
 
 - vendored `@xterm/xterm` + `addon-fit` + `addon-web-links`（讓 device URL 可點），單一 HTML，`Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'`；無外部資源。
-- 頁面載入**不觸發任何副作用**（連結預覽機器人會 GET 這個 URL）。使用者輸入 OTP 後 JS `POST /open` 才消耗 `k`、設 cookie、開 WS。
+- 頁面載入**不觸發任何副作用**（連結預覽機器人會 GET 這個 URL），且 **URL 裡沒有任何秘密**。使用者貼上聊天收到的 access token 後，JS `POST /open` 才驗 token、設 cookie、開 WS。
 - 顯示：backend、剩餘 TTL 倒數、「此終端只連到 `<command>`，進程結束即關」、關閉按鈕（送 Ctrl-C 並結束 session）。
 - 手機：xterm.js 可用；OTP 輸入用一般表單。
 
@@ -141,25 +141,44 @@ install-cli：`command` = 安裝指令（現有）、`observe.successPattern` �
 
 ## 3. 安全模型（主路徑等級）
 
+### 3.0 硬需求：token-gated —— URL 洩漏 ≠ 存取
+
+使用者明確要求：**光有 tunnel/連結 URL 不足以存取**。設計上把「到達」與「授權」拆成兩個不同通道：
+
+| | 連結 URL | access token |
+|---|---|---|
+| 內容 | `http(s)://…/t/<sid>`，`sid` 為 16 bytes 亂數，**只是路徑，不是憑證** | 20 字元 base32（100 bits）亂數，與 `sid` 綁定 |
+| 送達 | 聊天私訊（ephemeral / spoiler） | **另一則**聊天私訊（ephemeral / spoiler），同一個已通過 `isFleetAdmin` 的 requester |
+| 拿到後能做什麼 | 只看到一個要求輸入 token 的靜態頁；GET 無副作用 | 無 URL 時什麼都做不了 |
+| 生命週期 | 到 session TTL | **一次性**：`POST /open` 驗證成功即消耗；之後只認 cookie。TTL 與 session 相同（≤ 20 分） |
+| 驗證 | — | 伺服端 `timingSafeEqual`；錯 **3 次**即 `kill-server`、關 listener、通知 requester「疑似連結外洩」 |
+| 落地 | 可出現在瀏覧歷史 / 代理日誌（無害） | **絕不**進 URL、query、log、eventLog；記憶體持有、消耗即清 |
+
+驗證成功後發的 cookie：`HttpOnly; SameSite=Strict; Path=/t/<sid>`，值為另一組 32 bytes 亂數並綁 `sid`，只在該 listener 存活期間有效；WS upgrade 必須帶該 cookie 且 `Origin === Host`。
+
+**tunnel 只是轉送**（第三階段）：cloudflared / ngrok / tailscale 都不參與授權；gate 在我們的 listener 上，tunnel 前後同一套規則。tailscale 自帶身分是**額外**一層，不取代 token。
+
+這一層疊在「scope 只跑 login/install 進程」「短 TTL」「admin-only」之上。四層各自獨立成立：URL 外洩 → 需 token；token + URL 同時外洩 → 只有一次機會、幾分鐘、且只拿到一個 login 進程的鍵盤；連 admin 帳號被盜 → 才等同 admin 本人操作。
+
 ### 3.1 威脅與控制
 
 | 威脅 | 控制 |
 |---|---|
-| 連結洩漏（聊天轉貼、截圖、連結預覽、代理日誌） | 連結 = `sid`（16 bytes）+ `k`（32 bytes）；**GET 無副作用**；`k` **一次性**，在 `POST /open` 消耗；`POST /open` 另需 **6 位 OTP**（與連結分開一則訊息、只給 requester、spoiler/ephemeral）；OTP 錯 3 次 → 整個 session 銷毀並通知 admin |
-| 連結被非 admin 拿到 | OTP + 一次性；連結只發給 `isFleetAdmin` 通過的 requester；不進 topic 廣播 |
+| 連結洩漏（聊天轉貼、截圖、連結預覽、代理日誌） | §3.0：URL 無秘密、GET 無副作用；存取需**另一通道送達的一次性 access token**；錯 3 次銷毀 session 並通知 |
+| 連結 + token 同時被非 admin 拿到 | token 一次性（第一個用掉的人贏，requester 立刻發現自己進不去 → 通知「token 已被使用」）；TTL 幾分鐘；拿到的只是單一 login 進程的鍵盤（§scope） |
 | 藉終端取得 shell | 瀏覽器**沒有** tmux client；WS 只做 `send-keys -H` 到單一 pane；pane 裡只有 `sh -c "<pre>; <cmd>"`，指令結束 → shell 結束 → pane 死（`remain-on-exit` 只留死畫面）。**只有宣告 `noShellEscape: true` 的 flow 才可開**（五個 backend 與 install 逐一審） |
 | 借 web terminal 的 listener 打到 dashboard | web terminal 用**獨立 listener**（`127.0.0.1:0`，每 session 一個），不掛在 health/dashboard server；tunnel（第三階段）只指向這個 listener |
 | CSRF / 跨站 WS | `POST /open` 與 WS 都驗 `Origin === Host`；cookie `HttpOnly; SameSite=Strict; Path=/t/<sid>`；WS 無 cookie 即拒 |
 | 長時間暴露 | TTL 預設 10 分、上限 20 分（config 夾住），到期 `kill-server`；進程 exit 後 5 秒收尾；瀏覽器關閉不延長 TTL |
 | 併發 / 濃縮攻擊面 | 全 fleet 同時至多 1 個 session；同 requester 5 分鐘內最多 3 次建立 |
 | 輸入濫用 | 每個 WS frame ≤ 4 KB、每秒 ≤ 64 frame；resize 夾在 20×5 … 250×100；byte 原樣進 pane（含 Ctrl-C = 結束登入） |
-| 明文傳輸（HTTP over LAN） | 與 /dashboard 相同前提：預設只綁 127.0.0.1，透過 SSH 轉發 / tailscale / 反向代理（TLS）到達。第三階段 tunnel provider 提供 HTTPS。文案明講「勿在不可信網路用純 HTTP」 |
-| 稽核 | eventLog：`web_terminal_created / link_sent / opened(ip, ua) / otp_failed / closed(reason, exitCode) / ttl_expired`，含 requester id、backend、kind；**不記** k/otp/cookie |
+| 明文傳輸（HTTP over LAN） | 與 /dashboard 相同前提：預設只綁 127.0.0.1，透過 SSH 轉發 / tailscale / 反向代理（TLS）到達。第三階段 tunnel provider 提供 HTTPS。token 一次性 + 短 TTL 把被動竊聽的價值壓到單次幾分鐘。文案明講「勿在不可信網路用純 HTTP」 |
+| 稽核 | eventLog：`web_terminal_created / link_sent / token_sent / opened(ip, ua) / token_failed(n) / token_lockout / closed(reason, exitCode) / ttl_expired`，含 requester id、backend、kind；**不記** token/cookie |
 | 憑證落地 | 登入成功寫的是 CLI 自己的憑證檔（與人在主機終端登入完全相同）；AgEnD 不經手 token |
 
 ### 3.2 使用者告知（開啟前的確認訊息，必按「我了解，開啟」）
 
-「將開一條 10 分鐘的瀏覽器終端，只連到 `kiro-cli login`（沒有 shell）。連結與一次性密碼只會私訊給你，請勿轉貼。目前透過 `http://<hostname>:<port>`（純 HTTP）到達，請確保你走的是 SSH 轉發 / tailscale / 內網。」kiro 另加 logout 提示。
+「將開一條 10 分鐘的瀏覽器終端，只連到 `kiro-cli login`（沒有 shell）。連結與一次性 access token 會**分兩則**私訊給你；光有連結進不去，請勿轉貼任何一則。目前透過 `http://<hostname>:<port>`（純 HTTP）到達，請確保你走的是 SSH 轉發 / tailscale / 內網。」kiro 另加 logout 提示。
 
 ### 3.3 設定
 
@@ -168,7 +187,7 @@ web_terminal:
   enabled: true              # v2.1.5 預設開（主路徑）
   bind: 127.0.0.1            # 可設 tailscale IP
   ttl_minutes: 10            # 1..20
-  otp: true                  # 建議永遠 true；設 false 只在 tunnel 有自帶身分驗證時（第三階段 tailscale）
+  # access token gate 沒有開關：永遠開（硬需求）
   tunnel:                    # 第三階段
     provider: none           # none | tailscale | cloudflared | ngrok
     allow_public: false      # cloudflared/ngrok 屬公網，需明確 true
@@ -182,7 +201,7 @@ login:
 
 | 階段 | 內容 | 規模 | Review |
 |---|---|---|---|
-| **1. 引擎 + /login 上線（v2.1.5 核心）** | `src/web-terminal.ts`（tmux server、pipe-pane/​send-keys 橋、TTL、exit 收尾、旁觀）、`src/web-terminal-http.ts`（listener、頁面、`/open`、WS、cookie/Origin/OTP/限流）、vendored xterm.js、`LoginFlow` 縮減 + 五個 backend 遷移（kiro 含 logout-first / failures）、`LoginController` 抽出 FleetManager（確認鈕、連結私訊、旁觀→spoiler、recover）、`login.mode` 開關、eventLog、locale。測試：假 tmux 重放（既有 harness）+ 真 tmux 整合（起真 server、真 WS client 打鍵、TTL 到期、OTP 三次失敗、Origin 拒絕）。 | 1–2 PR，~1500 行 | sol 安全嚴審（§3 逐項） |
+| **1. 引擎 + /login 上線（v2.1.5 核心）** | `src/web-terminal.ts`（tmux server、pipe-pane/​send-keys 橋、TTL、exit 收尾、旁觀）、`src/web-terminal-http.ts`（listener、頁面、`/open`、WS、cookie/Origin/token gate/限流）、vendored xterm.js、`LoginFlow` 縮減 + 五個 backend 遷移（kiro 含 logout-first / failures）、`LoginController` 抽出 FleetManager（確認鈕、連結私訊、旁觀→spoiler、recover）、`login.mode` 開關、eventLog、locale。測試：假 tmux 重放（既有 harness）+ 真 tmux 整合（起真 server、真 WS client 打鍵、TTL 到期、**只有 URL 沒 token 被拒、token 三次失敗銷毀、token 第二次使用被拒**、Origin 拒絕）。 | 1–2 PR，~1500 行 | sol 安全嚴審（§3 逐項） |
 | **2. /install-cli 遷移 + 舊路徑清理** | install 走同一 `WebTerminalSession`；刪 Menu/Prompt relay 與 `/login code`（保留在 `mode: relay` 直到 2.1.6）；`/login kiro startUrl= region=` 預填（可選）；docs/commands 更新。 | 1 PR，~500 行 | sol |
 | **3. tunnel provider** | `TunnelProvider { start(port) → url; stop() }`：tailscale serve（tailnet、HTTPS、**建議預設**）、cloudflared quick tunnel、ngrok；preflight（二進位、5s 拿 URL）；`allow_public` 門；tunnel 只指向該 session listener。 | 1 PR，~400 行 | sol 安全嚴審 |
 
@@ -195,7 +214,7 @@ login:
 | 風險 | 緩解 | 回退 |
 |---|---|---|
 | 主機只綁 127.0.0.1，遠端使用者到不了 | 與 /dashboard 同模型（`hostname` + SSH/tailscale）；文案明講；第三階段 tunnel | — |
-| 純 HTTP 洩漏 OTP/cookie | 一次性 k + OTP + 短 TTL；建議 tailscale/反向代理；第三階段 HTTPS tunnel | 設 `web_terminal.enabled: false` |
+| 純 HTTP 洩漏 token/cookie | token 一次性 + 短 TTL；建議 tailscale/反向代理；第三階段 HTTPS tunnel | 設 `web_terminal.enabled: false` |
 | 某 CLI 的 login TUI 有 shell 逃逸 | `noShellEscape` 白名單、逐一審；install 指令為 `sh` 腳本，屬已知：install 只跑我們的固定指令字串 | 對該 backend 拒開 |
 | tmux pipe-pane 對高頻 TUI 重繪的延遲/斷幀 | 36×120 預設、pipe-pane 直通不經 capture；整合測試量測 | 不可接受時改 B（ttyd）方案，介面不變 |
 | 瀏覽器手機鍵盤對 TUI 的方向鍵 | 頁面提供 ↑↓←→/Enter/Ctrl-C 軟鍵 | — |
