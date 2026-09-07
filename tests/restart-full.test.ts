@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { launchFullRestartHelper } from "../src/full-restart.js";
-import { selectSystemdRestartTarget } from "../src/service-restart-selection.js";
+import {
+  selectSystemdRestartTarget,
+  SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
+} from "../src/service-restart-selection.js";
 import { AccessManager } from "../src/channel/access-manager.js";
 import { DiscordAdapter } from "../src/channel/adapters/discord.js";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -244,6 +247,10 @@ describe("full-restart helper hand-off", () => {
       userServiceInstalled: true,
       userState: "running",
     })).toBeNull();
+    // A false return from restartSystemdService can be its Type=notify timeout
+    // while the systemd job remains alive. Preserve the update/full-restart
+    // marker so the replacement fleet, not the old CLI, decides the outcome.
+    expect(SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE).toBe(0);
   });
 
   it("spawns the environment-aware CLI wrapper and acknowledges only the spawn event", async () => {

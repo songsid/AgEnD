@@ -1,5 +1,13 @@
 import type { ServiceState } from "./service-installer.js";
 
+/**
+ * `restartSystemdService()` returns false for both a definitive command error
+ * and its five-minute Type=notify timeout. The latter can still finish and
+ * start a healthy replacement, so callers must leave the cross-process marker
+ * pending for that replacement instead of declaring failure.
+ */
+export const SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE = 0;
+
 export interface SystemdRestartSelectionInput {
   platform: "macos" | "linux";
   systemServiceInstalled: boolean;

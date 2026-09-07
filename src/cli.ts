@@ -36,7 +36,10 @@ import {
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
-import { selectSystemdRestartTarget } from "./service-restart-selection.js";
+import {
+  selectSystemdRestartTarget,
+  SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
+} from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 
@@ -1576,7 +1579,7 @@ program
       // fails. Falling through would create a second detached fleet.
       console.log(`  ⚠ ${scope} restart reported failure, but the service exists — systemd will auto-retry.`);
       console.log(`  Check: ${statusCommand}`);
-      process.exitCode = 1;
+      process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
       return;
     }
     // 3. launchd (macOS)
