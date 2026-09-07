@@ -4,9 +4,18 @@
  * Every command, menu label, prompt, and success string here was verified
  * against the installed CLI (`--help` output or strings extracted from the
  * release binary) rather than written from memory:
- *   - codex:  `codex login --device-auth`, success "Successfully logged in"
- *   - grok:   `grok login --device-auth`, success "Login successful!"
- *   - kiro:   `kiro-cli login --use-device-flow`; free/pro selector is the
+ *   - codex:  `codex login --device-auth`, success "Successfully logged in".
+ *             The flag is KEPT on purpose (live-verified codex 0.153.4,
+ *             headless): plain `codex login` starts a callback server on the
+ *             HOST's localhost:1455 and waits for a browser redirect the
+ *             admin's browser can never deliver; codex itself prints "On a
+ *             remote or headless machine? Use `codex login --device-auth`".
+ *             The flag is hidden from `--help` but still accepted.
+ *   - grok:   `grok login` — plain login already IS device-code on grok 1.0.5
+ *             (identical output to `--device-auth`), success "Login successful!"
+ *   - kiro:   `kiro-cli login` (plain, per user request): shows the four-way
+ *             selector incl. "Your Organization"; Identity Center is device-code
+ *             regardless of `--use-device-flow` (live-verified 2.21.1). The
  *             arrow-key menu "Select login method" with exactly the four
  *             options below; Identity Center then asks "Enter Start URL" /
  *             "Enter Region"; success "Logged in successfully"/"Logged in with"
@@ -107,6 +116,8 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
+    // Keep --device-auth: plain login needs a browser redirect to THIS host's
+    // localhost:1455, which a remote admin's browser cannot deliver (see header).
     command: "codex login --device-auth",
     authCheck: { argv: ["codex", "login", "status"] },
     loginScreenPattern: /Sign in with ChatGPT/,
@@ -117,7 +128,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "grok": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "grok",
-    command: "grok login --device-auth",
+    command: "grok login",
     authCheck: { argv: ["grok", "models"] },
     loginScreenPattern: /Run `grok login`/,
     // Binary template is "enter code: $CODE"; the standalone form is a fallback.
@@ -128,7 +139,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "kiro-cli": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "kiro-cli",
-    command: "kiro-cli login --use-device-flow",
+    command: "kiro-cli login",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
     loginScreenPattern: /Select login method/,
     menu: {

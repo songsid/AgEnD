@@ -203,11 +203,13 @@ describe("confirmation and kiro logout-first", () => {
 
   it("confirmed with tokenPresent prepends `kiro-cli logout;`; without it the plain command; codex never has a pre-command", async () => {
     const a = make(); await a.controller.start("kiro", chat(adapterOf("discord")), { skipAuthCheck: true, tokenPresent: true });
-    expect(a.sessions[0].spec.command).toBe("kiro-cli logout; kiro-cli login --use-device-flow");
+    expect(a.sessions[0].spec.command).toBe("kiro-cli logout; kiro-cli login");
     const b = make(); await b.controller.start("kiro", chat(adapterOf("discord")), CONFIRMED);
-    expect(b.sessions[0].spec.command).toBe("kiro-cli login --use-device-flow");
+    expect(b.sessions[0].spec.command).toBe("kiro-cli login");
     const c = make(); await c.controller.start("codex", chat(adapterOf("discord")), { skipAuthCheck: true, tokenPresent: true });
-    expect(c.sessions[0].spec.command).toBe("codex login --device-auth");
+    expect(c.sessions[0].spec.command).toBe("codex login --device-auth");     // headless needs device-auth (host-localhost callback otherwise)
+    expect(LOGIN_FLOWS.grok.command).toBe("grok login");                       // plain grok login already prints a device code
+    expect(LOGIN_FLOWS["claude-code"].command).toBe("claude auth login");      // paste-code fallback works headless
   });
 
   it("the spec carries the flow's observation patterns and failure mapping; TTL comes from config, clamped to the engine cap", async () => {

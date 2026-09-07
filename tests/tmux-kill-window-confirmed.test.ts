@@ -23,7 +23,10 @@ describe.skipIf(!have("tmux"))("TmuxManager.killWindowConfirmed", () => {
   it("kills a window known only by name and confirms it is gone", async () => {
     TmuxManager.setSocketName(SOCK);
     tmux("-f", "/dev/null", "new-session", "-d", "-s", "s", "-x", "80", "-y", "24", "sleep 100");
-    tmux("new-window", "-t", "s", "-n", "agend-login-codex", "sleep 100");   // the id is never captured
+    // `-a` (insert after current) as production createWindow does: a bare
+    // `new-window -t s` right after a fresh `new-session -d` races tmux's
+    // window indexing and fails with "index 0 in use" about 40% of the time.
+    tmux("new-window", "-a", "-t", "s", "-n", "agend-login-codex", "sleep 100");   // the id is never captured
     const tm = new TmuxManager("s", "");
     (tm as unknown as { pendingWindowName: string | null }).pendingWindowName = "agend-login-codex";
     expect(tmux("list-windows", "-t", "s", "-F", "#{window_name}")).toContain("agend-login-codex");
