@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.1.4] - 2026-08-25
+## [2.1.4] - 2026-09-07
+
+### Upgrade Notes
+- **fleet.yaml auto-slim is inheritance, not deletion** — fields stripped from instance configs now follow `defaults`. Changing a default later will change those instances too.
+- **Owner-adapter fail-closed** — when the adapter that owns a topic goes down, that topic's inbound access is fail-closed (warn log). Previously, another adapter might have accepted the message.
+- **`/login` Org SSO not yet supported** — the `/login` slash command is beta; organization SSO flows are a known limitation.
 
 ### Added
 - **`/login` slash command** — re-authenticate a CLI backend from Telegram/Discord without SSH-ing to the host. Runs a pre-check first and asks for confirmation if the existing auth is still valid, so a working login is never thrown away by accident. After a successful login, instances that were running are restarted so they pick up the new credentials (#611, #613, #614, #617).
@@ -69,6 +74,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **CLI help consistency** — help output is now consistent and current (#661).
 - **Claude Code trust/delivery hardening** — detects malformed tool-call fragments and attempts reply recovery; detects model fallback and shows live model from statusline in `/ctx`; hardens claude.json updates and detects corrupt-config modal; blocks delivery while parked on a fatal startup screen; tightens error patterns (#648, #650, #651, #652, #653, #654, #655, #656).
 - **Codex update prompt** — prevents the "Update available!" prompt from blocking startup (#657).
+
+### Fixed (continued, beta.60–63)
+- **`agend health` paused classification** — paused instances are no longer misreported as "Tmux window missing / degraded". Paused status now has its own count in output (`N healthy, M issues, K stopped, P paused`) and does not degrade fleet health (#704).
+- **Webhook delivery determinism** — webhooks are now picked up deterministically by the per-instance primary adapter, so multi-adapter setups no longer lose webhooks to the wrong adapter (#707).
+- **Inbound access by owner adapter** — access checks are performed by the adapter that owns the topic (before claim). **When the owner adapter is down, that topic's inbound is fail-closed** (warn log emitted). Prevents messages being accepted by the wrong adapter (#710).
+- **Claude resume dialog fail-safe** — the "Resume from summary" dialog is never delivered to during restart, preventing silent context loss from accidentally selecting resume (#711).
+- **MCP liveness fix** — multiple MCP processes (Codex sub-agents, Claude subagents) no longer cause false "MCP died" reports due to single-slot PID tracking. IPC-layer reachability is now used; recovery clears the notification (#712).
+- **`/login` and `/install-cli` beta label** — these commands are marked as beta in help and command menus (#713).
 
 ## [2.1.3] - 2026-08-07
 
