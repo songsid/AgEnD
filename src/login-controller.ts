@@ -44,8 +44,6 @@ export const DEFAULT_WEB_TERMINAL_TTL_MINUTES = 10;
 /** Design §3.1: a requester may create at most this many sessions per window. */
 export const START_RATE_LIMIT = 3;
 export const START_RATE_WINDOW_MS = 5 * 60_000;
-/** Covers a start still in flight: abort + one more tmux stage (≤10 s) + confirmed kill (≤5 s), with margin. */
-const SHUTDOWN_WAIT_MS = 45_000;
 
 export interface LoginChat {
   adapter: ChannelAdapter;
@@ -323,10 +321,11 @@ export class LoginController {
     const entry = this.active;
     if (!entry) return;
     entry.silent = true;
-    await Promise.race([
-      entry.session.cancel("fleet shutdown").catch(err => this.deps.logger.warn(safeErr(err), "web login shutdown failed")),
-      new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_WAIT_MS).unref?.()),
-    ]);
+    // No timer race here: cancel() is single-flight and bounded by the
+    // engine's own per-op timeouts (abort → ≤1 more 10 s stage → confirmed
+    // kill ≤31 s). Releasing ownership early would let the fleet exit while
+    // the dedicated tmux server is still being torn down.
+    await entry.session.cancel("fleet shutdown").catch(err => this.deps.logger.warn(safeErr(err), "web login shutdown failed"));
     await entry.http?.close().catch(() => { /* already closed on finish */ });
     this.releaseEntry(entry);
   }

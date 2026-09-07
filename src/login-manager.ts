@@ -68,12 +68,23 @@ export class LoginSession {
     // finish() waits for this before its one confirmed kill, so a cancel that
     // races createWindow still removes the window — and reports if it cannot.
     this.startInFlight = this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
-    await this.startInFlight;
-    // finish() owns the cleanup; start() must not return before it completes,
-    // or the caller would publish "started" for a window being torn down.
-    if (this.finishing) { await this.finishing; return; }
-    await this.tmux.setRemainOnExit();
-    if (this.finishing) { await this.finishing; return; }
+    try {
+      await this.startInFlight;
+      // finish() owns the cleanup; start() must not return before it completes,
+      // or the caller would publish "started" for a window being torn down.
+      if (this.finishing) { await this.finishing; return; }
+      await this.tmux.setRemainOnExit();
+      if (this.finishing) { await this.finishing; return; }
+    } catch (err) {
+      if (this.finishing) { await this.finishing; return; }
+      // Plain startup failure (no cancel in flight): new-window may have
+      // succeeded server-side before the client timed out, or setRemainOnExit
+      // failed after the window existed. Roll back — by id or by name — and
+      // say so if it cannot be confirmed.
+      const confirmed = await this.rollbackWindow();
+      if (!confirmed) (err as { cleanupFailed?: boolean }).cleanupFailed = true;
+      throw err;
+    }
     this.timeoutTimer = setTimeout(() => {
       void this.finish(false, "timeout");
     }, this.flow.timeoutMs);
@@ -165,6 +176,12 @@ export class LoginSession {
     }
 
     this.schedulePoll();
+  }
+
+  /** Remove whatever the startup may have created; true only when confirmed absent. */
+  private async rollbackWindow(): Promise<boolean> {
+    if (this.tmux.killWindowConfirmed) return this.tmux.killWindowConfirmed().catch(() => false);
+    return this.tmux.killWindow().then(() => true, () => false);
   }
 
   private finish(ok: boolean, detail: string): Promise<void> {

@@ -90,16 +90,37 @@ describe("LoginSession cancel racing createWindow", () => {
     expect(h.isAlive()).toBe(false);
   });
 
-  it("B1 (round 5): a createWindow that fails (timeout) after possibly creating the window still gets a confirmed cleanup", async () => {
+  it("B1 (round 5): a createWindow that fails (timeout) while a cancel is pending still gets ONE confirmed cleanup, owned by finish", async () => {
     const h = harness({ confirmable: true, createFails: true });
     const starting = h.session.start();
     const cancelling = h.session.cancel("cancelled");
     h.releaseCreate();
     await cancelling;
+    await starting;                                     // start joins the teardown and returns (the caller sees state "done")
+    expect(h.kills).toHaveLength(1);                    // finish's killWindowConfirmed (by name in production) — no second rollback
+    expect(h.isAlive()).toBe(false);
+    expect(h.session.state).toBe("done");
+    expect((h.done[0] as { cleanupFailed?: boolean }).cleanupFailed).toBeUndefined();
+  });
+
+  it("B2 (round 6): a createWindow rejection WITHOUT any cancel rolls the window back by confirmed kill", async () => {
+    const h = harness({ confirmable: true, createFails: true });
+    const starting = h.session.start();
+    h.releaseCreate();
     await expect(starting).rejects.toThrow(/exec timed out/);
     expect(h.kills).toHaveLength(1);                    // killWindowConfirmed ran (by name in production)
     expect(h.isAlive()).toBe(false);
-    expect((h.done[0] as { cleanupFailed?: boolean }).cleanupFailed).toBeUndefined();
+    expect(h.done).toHaveLength(0);                     // never published, so no completion event
+  });
+
+  it("B2 (round 6): when that rollback cannot be confirmed the error carries cleanupFailed for the caller to report", async () => {
+    const h = harness({ confirmable: true, createFails: true, killFails: true });
+    const starting = h.session.start();
+    h.releaseCreate();
+    let caught: unknown;
+    try { await starting; } catch (err) { caught = err; }
+    expect((caught as { cleanupFailed?: boolean }).cleanupFailed).toBe(true);
+    expect(h.isAlive()).toBe(true);
   });
 
   it("the normal path is unchanged: start completes, cancel kills once", async () => {

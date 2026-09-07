@@ -7772,7 +7772,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.activeLogin = null;
       this.loginWindow.release(claim);
-      return t("login.failed", backend, (err as Error).message);
+      const text = t("login.failed", backend, (err as Error).message);
+      return (err as { cleanupFailed?: boolean }).cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
     }
     if (session.state === "done") {
       // Cancelled (user or shutdown) while starting: start() joined the
@@ -7796,11 +7797,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
-    // 45 s covers an in-flight startup (abort + one bounded tmux stage + confirmed kill) — the
-    // session classes wait for their own startup to settle instead of racing a timer.
+    // Single deadline, proven larger than the full worst-case chain (startup
+    // abort ≤10 s + confirmed kill ≤31 s, twice for a late re-kill ≈ 82 s <
+    // 120 s). Reaching it is an ERROR condition: we log loudly and move on so
+    // the fleet can still stop, but nothing is released into a re-claimable
+    // state — the lock stays closed and the controller keeps its entry.
+    const SHUTDOWN_DEADLINE_MS = 120_000;
     const bounded = (p: Promise<unknown> | undefined, what: string) => p
-      ? Promise.race([p.catch(() => this.logger.warn({ what }, "login window shutdown failed")),
-        new Promise<void>(r => setTimeout(r, 45_000).unref?.())])
+      ? Promise.race([
+        p.catch(() => this.logger.warn({ what }, "login window shutdown failed")),
+        new Promise<void>(r => setTimeout(() => {
+          this.logger.error({ what, deadlineMs: SHUTDOWN_DEADLINE_MS }, "login window teardown still in flight at the shutdown deadline — a dedicated tmux server may survive; check `tmux -L agend-term-* ls`");
+          this.eventLog?.insert("login", "login_window_shutdown_deadline", { what });
+          r();
+        }, SHUTDOWN_DEADLINE_MS).unref?.()),
+      ])
       : Promise.resolve();
     // "cancelled" is the detail both legacy onDone handlers keep quiet about —
     // a stopping fleet must not announce "login failed — fleet shutdown".
@@ -8096,7 +8107,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.activeInstall = null;
       this.loginWindow.release(claim);
-      return t("install.failed", backend, (err as Error).message);
+      const text = t("install.failed", backend, (err as Error).message);
+      return (err as { cleanupFailed?: boolean }).cleanupFailed ? `${text}\n${t("login.web_cleanup_failed", backend)}` : text;
     }
     if (session.state === "done") {
       this.activeInstall = null;

@@ -133,6 +133,13 @@ export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
 const KILL_TIMEOUT_MS = 5_000;
+/**
+ * Per-op bound for the teardown path (kill-server / liveness probe). Worst
+ * case of one kill(): 2 × (kill-server + probe) + 2 × (signal + probe)
+ * = 2×(5+5) + 2×(0.3+5) ≈ 31 s. Startup abort adds at most one more 10 s
+ * stage plus that kill. Shutdown deadlines above must exceed this chain.
+ */
+const KILL_OP_TIMEOUT_MS = 5_000;
 /** Consecutive failed pane probes before the session is ended as unreachable. */
 export const MAX_PROBE_FAILURES = 3;
 const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
@@ -596,9 +603,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
    * socket and exit code only — never the argv, which for input would be the
    * user's keystrokes (B2), and never tmux's stderr, which echoes the command.
    */
-  private async tmux(socket: string, op: string, args: string[], input?: Buffer): Promise<string> {
+  private async tmux(socket: string, op: string, args: string[], input?: Buffer, timeoutMs = TMUX_EXEC_TIMEOUT_MS): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
         (error, stdout) => {
           if (error) {
             const code = (error as { code?: unknown }).code;
@@ -623,16 +630,15 @@ export class TmuxTerminalBackend implements TerminalBackend {
     const aborted = () => { const e = new Error("web terminal startup aborted") as Error & { name: string }; e.name = "AbortError"; return e; };
     if (signal?.aborted) throw aborted();
     // Placeholder first, pipe second, real command third — so no byte is lost.
-    await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
-      "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
-      err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
-
-    // From here on the server exists: every later failure must tear it down
-    // (B5) — set-option, mkdtemp, mkfifo, open, pipe-pane, respawn alike — and
-    // an abort observed after ANY stage counts as a failure (the catch kills).
+    // new-session is the FIRST command that can create a resource, so it is
+    // already inside the rollback: a client-side timeout/reject may leave a
+    // server that exists — kill it (confirmed) before reporting failure.
     let dir: string | null = null;
     let stream: NetSocket | null = null;
     try {
+      await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
+        "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
+        err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
       if (signal?.aborted) throw aborted();
       const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
       if (Number.isFinite(pid) && pid > 1) {
@@ -643,7 +649,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
         if (probe.kind === "identified") this.servers.set(socket, { pid, identity: probe.identity });
       }
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
       if (signal?.aborted) throw aborted();
 
@@ -766,7 +774,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
     const pid = server?.pid;
     const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
-      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS }, (error, _stdout, stderr) => {
+      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: KILL_OP_TIMEOUT_MS }, (error, _stdout, stderr) => {
         if (!error) { resolve("alive"); return; }
         const code = (error as { code?: unknown }).code;
         const text = String(stderr ?? "");
@@ -795,7 +803,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     const server = this.servers.get(socket);
     let state: "alive" | "dead" | "unknown" = "unknown";
     for (let attempt = 0; attempt < 2 && state !== "dead"; attempt++) {
-      await this.tmux(socket, "kill-server", []).catch(() => { /* judged by the probe */ });
+      await this.tmux(socket, "kill-server", [], undefined, KILL_OP_TIMEOUT_MS).catch(() => { /* judged by the probe */ });
       state = await this.serverState(socket);
     }
     if (state !== "dead" && server) {

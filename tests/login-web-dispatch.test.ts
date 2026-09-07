@@ -178,6 +178,42 @@ describe("/login mode dispatch and exclusivity", () => {
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 
+  it("B1 (round 6): the shutdown deadline is loud and releases nothing — a teardown still running at 60 s is still awaited, at 120 s it is reported", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm } = setup("relay");
+      let release!: () => void;
+      vi.spyOn(LoginController.prototype, "shutdown").mockImplementation(() => new Promise<void>(r => { release = r; }));
+      (fm as any).webLogin;
+      const errors: string[] = [];
+      vi.spyOn((fm as any).logger, "error").mockImplementation(((_o: unknown, msg?: string) => { errors.push(String(msg)); }) as never);
+      const inserted: string[] = [];
+      (fm as any).eventLog = { insert: (_i: string, type: string) => { inserted.push(type); } };
+      let settled = false;
+      const p = (fm as any).shutdownLoginWindows().then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(settled).toBe(false);                                            // no early "done"
+      await vi.advanceTimersByTimeAsync(60_001);
+      await p;
+      expect(errors.some(m => m.includes("shutdown deadline"))).toBe(true);
+      expect(inserted).toContain("login_window_shutdown_deadline");
+      expect((fm as any).loginWindow.isClosed).toBe(true);                   // still closed: nothing re-claimable
+      release();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("B2 (round 6): a relay start that fails after possibly creating a window reports the cleanup failure to the chat", async () => {
+    const { fm, chat } = setup("relay");
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    onRelayStart = async () => { throw Object.assign(new Error("new-window timed out"), { cleanupFailed: true }); };
+    const text = await fm.startLoginSession("codex", chat);
+    expect(text).toContain("new-window timed out");
+    expect(text).toContain("could not be confirmed dead");
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+
   it("N1: legacy windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {
     const { fm, chat, adapter } = setup("relay");
     await fm.startInstallSession("grok", chat);

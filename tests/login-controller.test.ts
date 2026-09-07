@@ -555,6 +555,34 @@ describe("session outcome", () => {
     await controller.shutdown();                                        // idempotent
   });
 
+  it("B1 (round 6): shutdown() waits for the whole teardown — a 60 s cancel is still awaited, ownership is not released early", async () => {
+    vi.useFakeTimers();
+    try {
+      let releaseCancel!: () => void;
+      const gate = new Promise<void>(r => { releaseCancel = r; });
+      const { controller, lock } = make({
+        createSession: (spec, ev) => {
+          const s = new FakeSession(spec, ev);
+          s.cancel = async (detail = "cancelled") => { s.cancelled.push(detail); await gate; await s.finish({ ok: false, reason: "cancel", detail }); };
+          return s as never;
+        },
+      });
+      await controller.start("codex", chat(adapterOf("discord")), CONFIRMED);
+      let settled = false;
+      const shutting = controller.shutdown().then(() => { settled = true; });
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(settled).toBe(false);
+      expect(controller.isActive()).toBe(true);                        // ownership kept while cleanup is in flight
+      expect(lock.isHeld).toBe(true);
+      releaseCancel();
+      await shutting;
+      expect(controller.isActive()).toBe(false);
+      expect(lock.isHeld).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("engine audits are forwarded to the event log under the login_web_ prefix", async () => {
     const { controller, sessions, events } = make();
     await controller.start("codex", chat(adapterOf("discord")), CONFIRMED);

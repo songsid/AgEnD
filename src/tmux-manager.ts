@@ -54,6 +54,9 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
   };
 }
 
+/** Hard bound for tmux operations on the remote login/install path: a wedged tmux must never hold a teardown open. */
+const LOGIN_TMUX_OP_TIMEOUT_MS = 10_000;
+
 export class TmuxManager {
   private static ensureSessionInFlight = new Map<string, Promise<void>>();
   private windowId: string;
@@ -91,7 +94,7 @@ export class TmuxManager {
     const operation = (async () => {
       if (!(await TmuxManager.sessionExists(name))) {
         try {
-          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
+          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
         } catch (err) {
           if (!String(err).includes("duplicate session")) throw err;
         }
@@ -101,7 +104,7 @@ export class TmuxManager {
       // global default would also change tmux sessions that AgEnD does not own.
       await exec("tmux", TmuxManager.tmuxArgs([
         "set-option", "-t", name, "mouse", "on",
-      ]));
+      ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     })().finally(() => {
       if (TmuxManager.ensureSessionInFlight.get(name) === operation) {
         TmuxManager.ensureSessionInFlight.delete(name);
@@ -187,7 +190,7 @@ export class TmuxManager {
         await exec("tmux", TmuxManager.tmuxArgs([
           "set-window-option", "-t", `${this.sessionName}:${this.windowId}`,
           "allow-rename", "off",
-        ])).catch(() => {});
+        ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
         return this.windowId;
       }
     }
@@ -204,7 +207,7 @@ export class TmuxManager {
       // what makes `window-size latest` safe here (see applyLogicalSize).
       await this.applyLogicalSize();
       if (windowName) {
-        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"])).catch(() => {});
+        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
       }
     } catch (err) {
       // Do not leave a live instance in an unpinned geometry if setup fails.
@@ -223,7 +226,7 @@ export class TmuxManager {
     await exec("tmux", TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", `${this.sessionName}:${this.windowId}`,
       "-c", cwd, command,
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   /**
@@ -247,16 +250,16 @@ export class TmuxManager {
       "resize-window", "-t", target,
       "-x", String(this.logicalSize.columns),
       "-y", String(this.logicalSize.rows),
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     await exec("tmux", TmuxManager.tmuxArgs([
       "set-window-option", "-t", target, "window-size", "latest",
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   async killWindow(): Promise<void> {
     if (!this.windowId) return;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${this.windowId}`]));
+      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${this.windowId}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     } catch {
       // Expected if window already exited
     }
@@ -307,7 +310,7 @@ export class TmuxManager {
     await exec("tmux", TmuxManager.tmuxArgs([
       "set-option", "-t", `${this.sessionName}:${this.windowId}`,
       "remain-on-exit", "on",
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   /**
