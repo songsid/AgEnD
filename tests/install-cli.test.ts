@@ -32,6 +32,7 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
 });
 
 import { FleetManager } from "../src/fleet-manager.js";
+import { setLocale, t } from "../src/locale.js";
 
 describe("/install-cli", () => {
   let tmpDir: string;
@@ -41,7 +42,10 @@ describe("/install-cli", () => {
     fakeSessions.length = 0;
     installedBinaries.clear();
   });
-  afterEach(() => rmSync(tmpDir, { recursive: true, force: true }));
+  afterEach(() => {
+    setLocale("en");
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   function setup() {
     const fm = new FleetManager(tmpDir);
@@ -194,5 +198,18 @@ describe("discord registration includes the new commands", () => {
     expect(src).toContain('name: "login", description: "🔒 " + t("slash.login")');
     expect(src).toContain('name: "install-cli", description: "🔒 " + t("slash.install_cli")');
     expect(src).toContain('{ name: "opencode", value: "opencode" }');
+  });
+
+  it("sources the Beta marker from the shared locale descriptions", () => {
+    try {
+      setLocale("en");
+      expect(t("slash.login")).toBe("Re-login a CLI backend remotely (beta)");
+      expect(t("slash.install_cli")).toBe("Install a CLI backend remotely (beta)");
+      setLocale("zh-TW");
+      expect(t("slash.login")).toBe("遠端重新登入 CLI Backend（Beta）");
+      expect(t("slash.install_cli")).toBe("遠端安裝 CLI Backend（Beta）");
+    } finally {
+      setLocale("en");
+    }
   });
 });
