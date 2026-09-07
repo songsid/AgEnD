@@ -6,3 +6,12 @@ useDefault = true
 [[allowlists]]
 description = "Known fake JWT used to verify progress-log redaction"
 paths = ['''^tests/tool-progress\.test\.ts$''']
+
+[[allowlists]]
+description = "Sec-WebSocket-Key is a public protocol field (base64 nonce in HTTP header), not a secret"
+regexTarget = "line"
+regexes = ['''Sec-WebSocket-Key''']
+
+[[allowlists]]
+description = "Vendored third-party xterm.js (minified high-entropy strings, not secrets)"
+paths = ['''^src/ui/web-terminal/vendor/.*\.js$''']
