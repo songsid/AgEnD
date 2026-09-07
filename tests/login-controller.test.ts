@@ -80,6 +80,7 @@ function make(over: Partial<LoginControllerDeps> & { config?: Record<string, unk
     postButtons: async o => { buttons.push(o); },
     claimWindow: backend => lock.tryClaim("web", backend),
     releaseWindow: c => { lock.release(c); },
+    isClaimCurrent: c => lock.isCurrent(c),
     windowBusyMessage: () => lock.busyMessage(),
     checkAuth: async () => "invalid",
     createSession: (spec, ev) => { const s = new FakeSession(spec, ev); sessions.push(s); return s as never; },
@@ -271,13 +272,87 @@ describe("two messages: link to the chat, token only privately", () => {
     for (const call of adapter.sendText.mock.calls) expect(String(call[1])).not.toContain(TOKEN);
   });
 
-  it("B2: a provider error that echoes the payload never reaches the logger or the event log", async () => {
-    const adapter = adapterOf("discord", { directFails: text => new Error(`provider rejected payload ${text}`) });
+  it("B2/B3: a provider error that echoes the payload in message, name, code or a nested code never reaches the logger or the event log", async () => {
+    const poison = (text: string) => {
+      const e = new Error(`provider rejected payload ${text}`) as Error & { code?: unknown };
+      e.name = text;                                                  // attacker-controlled name
+      e.code = { body: text, nested: { again: text } };               // arbitrary code object
+      return e;
+    };
+    const adapter = adapterOf("discord", { directFails: poison });
     const { controller, logger, events } = make();
     await controller.start("codex", chat(adapter), CONFIRMED);
-    const logged = allText(logger.warn) + allText(logger.info) + allText(logger.error) + JSON.stringify(events);
+    const logged = allText(logger.warn) + allText(logger.info) + allText(logger.error) + allText(logger.debug) + JSON.stringify(events);
     expect(logged).not.toContain(TOKEN);
     expect(logged).toContain("web terminal token DM failed");
+    // A string code is only kept when it is errno-shaped; a token-shaped one is dropped too.
+    const adapter2 = adapterOf("discord", { directFails: text => Object.assign(new Error("x"), { code: text }) });
+    const { controller: c2, logger: l2, events: e2 } = make();
+    await c2.start("codex", chat(adapter2), CONFIRMED);
+    expect(allText(l2.warn) + JSON.stringify(e2)).not.toContain(TOKEN);
+    const adapter3 = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code: "EPIPE" }) });
+    const { controller: c3, logger: l3 } = make();
+    await c3.start("codex", chat(adapter3), CONFIRMED);
+    expect(allText(l3.warn)).toContain("EPIPE");                     // bounded errno-like codes stay useful
+  });
+
+  it("M1 (round 2): a failed resend closes the session instead of leaving a token-less window holding the lock", async () => {
+    const adapter = adapterOf("discord", { directFails: true });
+    const { controller, sessions, lock } = make();
+    await controller.start("codex", chat(adapter), CONFIRMED);       // DM failed → resend button
+    const text = await controller.resendToken("admin-1");            // DMs still off
+    expect(text).toBe(t("login.web_token_resend_failed", "codex"));
+    expect(sessions[0].cancelled).toEqual(["token resend failed"]);
+    expect(controller.isActive()).toBe(false);
+    expect(lock.isHeld).toBe(false);
+    for (const call of adapter.sendText.mock.calls) expect(String(call[1])).not.toContain(TOKEN);
+  });
+
+  it("B1 (round 2): a throwing session factory releases the claim — the next start can claim", async () => {
+    let boom = true;
+    const { controller, lock } = make({ createSession: (spec, ev) => { if (boom) throw new Error("factory exploded"); return new FakeSession(spec, ev) as never; } });
+    await expect(controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).rejects.toThrow(/factory exploded/);
+    expect(lock.isHeld).toBe(false);
+    expect(controller.isActive()).toBe(false);
+    boom = false;
+    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+  });
+
+  it("B2 (round 2): shutdown while a start is parked in its pre-check — no buttons, no session, nothing held", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => { release = r; });
+    const { controller, lock, buttons, sessions } = make({ checkAuth: async () => { await gate; return "invalid"; } });
+    const pending = controller.start("codex", chat(adapterOf("discord")));      // claim held, awaiting the probe
+    expect(lock.isHeld).toBe(true);
+    lock.close();                                                              // FleetManager.shutdownLoginWindows does this first
+    await controller.shutdown();
+    release();
+    expect(await pending).toBe(t("login.web_shutting_down"));
+    expect(buttons).toHaveLength(0);
+    expect(sessions).toHaveLength(0);
+    expect(lock.isHeld).toBe(false);
+    // and no new window can be claimed while closed
+    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    lock.reopen();
+    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
+  });
+
+  it("B2 (round 2): shutdown between session.start and listen aborts quietly instead of publishing a window", async () => {
+    const made: FakeSession[] = [];
+    const { controller, lock } = make({
+      createSession: (spec, ev) => {
+        const s = new FakeSession(spec, ev);
+        s.start = async () => { s.state = "running"; lock.close(); };   // the fleet begins stopping mid-start
+        made.push(s);
+        return s as never;
+      },
+    });
+    const adapter = adapterOf("discord");
+    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    expect(made[0].cancelled).toEqual(["fleet shutdown"]);
+    expect(adapter.sendText).not.toHaveBeenCalled();
+    expect(adapter.sendDirect!).not.toHaveBeenCalled();
+    expect(controller.isActive()).toBe(false);
   });
 
   it("B2: a hint delivery error carrying the device code is logged without its message", async () => {
@@ -413,7 +488,7 @@ describe("session outcome", () => {
       "login.web_token_resent", "login.web_token_already_used", "login.web_disabled", "login.web_cleanup_failed",
       "login.web_suggest_relogin", "login.web_suggest_check_args", "login.web_code_not_needed", "login.still_valid_precommand",
       "login.web_confirm", "login.web_confirm_go", "login.web_confirm_failed", "login.web_rate_limited", "login.web_flow_not_allowed",
-      "login.web_link_failed", "login.web_token_failed"]) {
+      "login.web_link_failed", "login.web_token_failed", "login.web_token_resend_failed", "login.web_shutting_down"]) {
       expect(t(key as never, "a", "b", "c", "d")).not.toBe(key);
     }
   });

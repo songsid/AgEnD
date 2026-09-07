@@ -82,6 +82,8 @@ export interface LoginControllerDeps {
   /** Fleet-wide window reservation (shared with relay login and install). */
   claimWindow(backend: string): LoginWindowClaim | null;
   releaseWindow(claim: LoginWindowClaim): void;
+  /** False once the fleet is shutting down or the claim was superseded — continuations must stop. */
+  isClaimCurrent(claim: LoginWindowClaim): boolean;
   windowBusyMessage(): string;
   // Injection seams (tests): default to the real engine.
   checkAuth?: (check: AuthCheck) => Promise<AuthCheckResult>;
@@ -103,10 +105,17 @@ interface ActiveLogin {
   silent: boolean;
 }
 
-/** Log an error from a secret-bearing operation without its message (sol B2: providers may echo the payload). */
-function safeErr(err: unknown): { name: string; code?: unknown } {
-  const e = err as { name?: unknown; code?: unknown };
-  return { name: typeof e?.name === "string" ? e.name : "Error", code: e?.code };
+/**
+ * Describe an error from a secret-bearing operation WITHOUT trusting anything
+ * the error carries (sol B2/B3): message, name and code are all
+ * provider-controlled and any of them may echo the payload (the token). Only
+ * a bounded, errno-like code survives; everything else is a constant.
+ */
+function safeErr(err: unknown): { errorKind: "error"; errno?: number | string } {
+  const code = (err as { code?: unknown } | null)?.code;
+  if (typeof code === "number" && Number.isFinite(code)) return { errorKind: "error", errno: code };
+  if (typeof code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(code)) return { errorKind: "error", errno: code };
+  return { errorKind: "error" };
 }
 
 export class LoginController {
@@ -150,20 +159,33 @@ export class LoginController {
       return t("login.web_rate_limited", String(START_RATE_LIMIT), String(START_RATE_WINDOW_MS / 60_000));
     }
 
-    // Reserve the fleet-wide window NOW, before any await (sol B1).
+    // Reserve the fleet-wide window NOW, before any await (sol B1). From here
+    // on the claim is owned by this region: every exit releases it unless it
+    // was transferred to a published session (`transferred`), and every
+    // resumption after an await re-checks that the claim is still current —
+    // a fleet shutdown in between must stop us (sol round 2 B1/B2).
     const claim = this.deps.claimWindow(backend);
     if (!claim) return this.deps.windowBusyMessage();
+    let transferred = false;
+    try {
+      return await this.startClaimed(flow, backend, chat, opts, cfg, claim, () => { transferred = true; });
+    } finally {
+      if (!transferred) this.deps.releaseWindow(claim);
+    }
+  }
 
+  private async startClaimed(
+    flow: LoginFlow, backend: string, chat: LoginChat, opts: LoginStartOptions, cfg: FleetConfig | null,
+    claim: LoginWindowClaim, markTransferred: () => void,
+  ): Promise<string | null> {
     if (!opts.skipAuthCheck) {
       // First pass: find out whether the CLI still holds a token, then ask for
       // the explicit go-ahead (design §3.2). The button re-enters with the
-      // answer; the window is released meanwhile.
+      // answer; the window is released (by the caller's finally) meanwhile.
       let tokenPresent = false;
-      try {
-        if (flow.authCheck) tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
-      } finally {
-        this.deps.releaseWindow(claim);
-      }
+      if (flow.authCheck) tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
+      if (!this.deps.isClaimCurrent(claim)) return t("login.web_shutting_down");
+      this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
       try {
         await this.deps.postButtons({
@@ -186,6 +208,7 @@ export class LoginController {
       return null;
     }
 
+    const userId = chat.userId as string;
     const command = this.buildCommand(flow, opts.tokenPresent === true);
     const ttlMs = this.ttlMs(cfg);
     const spec: WebTerminalSpec = {
@@ -200,13 +223,13 @@ export class LoginController {
         successPattern: flow.successPattern,
         failures: flow.failures,
       },
-      requester: { adapterId: chat.adapterId, userId: chat.userId, chatId: chat.chatId, threadId: chat.threadId },
+      requester: { adapterId: chat.adapterId, userId, chatId: chat.chatId, threadId: chat.threadId },
     };
 
     const logger = this.deps.logger;
     const entry: ActiveLogin = {
       claim, session: null as unknown as WebTerminalSession, http: null, backend, chat,
-      requesterUserId: chat.userId, url: "", tokenDelivered: false, silent: false,
+      requesterUserId: userId, url: "", tokenDelivered: false, silent: false,
     };
     const events: WebTerminalEvents = {
       onHint: (url, code) => this.sendHint(chat, backend, url, code),
@@ -216,18 +239,23 @@ export class LoginController {
       },
       onAudit: (event, fields) => this.audit(event.replace(/^web_terminal_/, ""), fields),
     };
+    // A throwing factory must not leak the claim: the caller's finally covers
+    // it because `markTransferred` is only called once the entry is published.
     entry.session = (this.deps.createSession ?? ((s, e, l) => new WebTerminalSession(s, e, this.backendFactory, l)))(spec, events, logger);
     this.active = entry;
-    this.noteStart(chat.userId);
+    markTransferred();                                      // from here the entry owns the claim (onDone/abort/shutdown release it)
+    this.noteStart(userId);
 
     try {
       await entry.session.start();
+      if (!this.deps.isClaimCurrent(claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       const http = (this.deps.createHttp ?? ((s, l, o) => new WebTerminalHttpServer(s, l, o)))(entry.session, logger, {
         bind: cfg?.web_terminal?.bind,
         hostname: cfg?.hostname || "localhost",
       });
       entry.http = http;
       entry.url = (await http.listen()).url;
+      if (!this.deps.isClaimCurrent(claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     } catch (err) {
       return this.abort(entry, t("login.failed", backend, (err as Error).message), "startup failed");
     }
@@ -252,7 +280,12 @@ export class LoginController {
     return t("login.cancelled", backend);
   }
 
-  /** Fleet shutdown: end the active session and wait for the confirmed tmux kill (sol B3). */
+  /**
+   * Fleet shutdown: end the active session and wait for the confirmed tmux
+   * kill (sol B3). Pre-active continuations (a start parked in its pre-check)
+   * are fenced by the lock being closed by FleetManager before this call —
+   * they observe !isClaimCurrent and stop without posting or starting.
+   */
   async shutdown(): Promise<void> {
     const entry = this.active;
     if (!entry) return;
@@ -275,7 +308,10 @@ export class LoginController {
     }
     if (entry.session.peekAccessToken() === null) return t("login.web_token_already_used");
     const ok = await this.sendToken(entry, { offerResend: false, isResend: true });
-    return ok ? t("login.web_token_resent") : t("login.web_token_dm_failed");
+    if (ok) return t("login.web_token_resent");
+    // The one recovery route failed too: do not leave a token-less session
+    // holding the fleet-wide window until TTL (sol M1). Close it now.
+    return this.abort(entry, t("login.web_token_resend_failed", entry.backend), "token resend failed");
   }
 
   // ── Internals ──

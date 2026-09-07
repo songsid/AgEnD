@@ -23,6 +23,7 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
 });
 import { FleetManager } from "../src/fleet-manager.js";
 import { LoginController } from "../src/login-controller.js";
+import { TmuxManager } from "../src/tmux-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 import { t } from "../src/locale.js";
 
@@ -123,6 +124,45 @@ describe("/login mode dispatch and exclusivity", () => {
     expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
   });
 
+  it("B1 (round 2): a rejected ensureSession releases the relay and install claims — the next start can claim", async () => {
+    const { fm, chat } = setup("relay");
+    const ensure = vi.spyOn(TmuxManager, "ensureSession").mockRejectedValueOnce(new Error("tmux server unavailable"));
+    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.failed", "codex", "tmux server unavailable"));
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+    ensure.mockRejectedValueOnce(new Error("tmux server unavailable"));
+    expect(await fm.startInstallSession("grok", chat)).toBe(t("install.failed", "grok", "tmux server unavailable"));
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+    ensure.mockResolvedValue(undefined);
+    expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
+  });
+
+  it("B2 (round 2): a relay start parked in its pre-check does not launch after shutdown", async () => {
+    const { fm, chat, adapter } = setup("relay");
+    let releaseAuth!: (v: { code: number; output: string }) => void;
+    setAuthCheckRunnerForTests(() => new Promise(r => { releaseAuth = r; }));
+    const ensure = vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    const pending = fm.startLoginSession("codex", chat);                    // claim held, awaiting the probe
+    await (fm as any).shutdownLoginWindows();                                // fleet stops meanwhile
+    releaseAuth({ code: 1, output: "logged out" });
+    expect(await pending).toBe(t("login.web_shutting_down"));
+    expect(ensure).not.toHaveBeenCalled();
+    expect(relaySessions).toHaveLength(0);
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+    expect(adapter.notifyAlert).not.toHaveBeenCalled();                      // no confirmation buttons either
+    // closed lock refuses new windows until reopened by start()
+    expect(await fm.startInstallSession("grok", chat)).toBe(t("login.web_shutting_down"));
+    (fm as any).loginWindow.reopen();
+    expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
+  });
+
+  it("N1: legacy windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {
+    const { fm, chat, adapter } = setup("relay");
+    await fm.startInstallSession("grok", chat);
+    const before = adapter.sendText.mock.calls.length;
+    await (fm as any).shutdownLoginWindows();
+    expect(adapter.sendText.mock.calls.length).toBe(before);
+  });
+
   it("B3: stopAll shuts the web login controller down and cancels relay/install windows before adapters go", async () => {
     const { fm, chat } = setup("relay");
     const shutdown = vi.spyOn(LoginController.prototype, "shutdown").mockResolvedValue(undefined);
@@ -133,6 +173,7 @@ describe("/login mode dispatch and exclusivity", () => {
     inst.session.cancel = async (why: string) => { cancelled.push(why); };
     await (fm as any).shutdownLoginWindows();
     expect(shutdown).toHaveBeenCalledTimes(1);
-    expect(cancelled).toEqual(["fleet shutdown"]);
+    expect(cancelled).toEqual(["cancelled"]);                                 // the silent detail both legacy onDone handlers respect
+    expect((fm as any).loginWindow.isClosed).toBe(true);
   });
 });

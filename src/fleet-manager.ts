@@ -2244,6 +2244,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
+    this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
     this.startupComplete = false;
@@ -7415,6 +7416,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         recoverBackendInstances: backend => this.recoverBackendInstances(backend),
         claimWindow: backend => this.loginWindow.tryClaim("web", backend),
         releaseWindow: claim => { this.loginWindow.release(claim); },
+        isClaimCurrent: claim => this.loginWindow.isCurrent(claim),
         windowBusyMessage: () => this.loginWindow.busyMessage(),
         postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
           await this.postNonceButtonPrompt({
@@ -7653,19 +7655,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
-    // Reserve the window before the pre-check await; released again if we only post buttons.
+    // Reserve the window before the pre-check await. The claim is owned by this
+    // region until it is transferred to launchLoginSession; any other exit
+    // (buttons only, throw, shutdown) releases it.
     const claim = this.loginWindow.tryClaim("relay", backend);
     if (!claim) return this.loginWindow.busyMessage();
+    let transferred = false;
+    try {
+      return await this.startRelayClaimed(flow, backend, chat, opts, claim, () => { transferred = true; });
+    } finally {
+      if (!transferred) this.loginWindow.release(claim);
+    }
+  }
 
+  private async startRelayClaimed(flow: LoginFlow, backend: string, chat: {
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean }, claim: LoginWindowClaim, markTransferred: () => void): Promise<string | null> {
     // Token-free pre-check (5s cap): re-login while auth still works is
     // usually a mistake, so it needs a confirmed click. An invalid OR
     // uncertain result (timeout, missing binary) proceeds straight to login —
     // an unreliable probe must never block the re-login the admin asked for.
     if (!opts.skipAuthCheck && flow.authCheck) {
-      let status: AuthCheckResult;
-      try { status = await checkAuthStatus(flow.authCheck); } catch { this.loginWindow.release(claim); throw new Error("auth pre-check failed"); }
+      const status = await checkAuthStatus(flow.authCheck);
+      if (!this.loginWindow.isCurrent(claim)) return t("login.web_shutting_down");   // fleet shut down while we probed
       if (status === "valid") {
-        this.loginWindow.release(claim);
         await this.postNonceButtonPrompt({
           prefix: LOGIN_CONFIRM_CALLBACK_PREFIX,
           alertType: "login",
@@ -7684,6 +7697,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return null;
       }
     }
+    markTransferred();                                   // launchLoginSession owns the claim from here
     return this.launchLoginSession(flow, backend, chat, claim);
   }
 
@@ -7691,9 +7705,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async launchLoginSession(flow: LoginFlow, backend: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
   }, claim: LoginWindowClaim): Promise<string> {
-    const sessionName = getTmuxSession();
-    await TmuxManager.ensureSession(sessionName);
-    const tmux = new TmuxManager(sessionName, "");
+    // Owns `claim`: released on any failure before the session is published,
+    // and by onDone afterwards. A shutdown during ensureSession stops us.
+    let tmux: TmuxManager;
+    try {
+      const sessionName = getTmuxSession();
+      await TmuxManager.ensureSession(sessionName);
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return t("login.web_shutting_down"); }
+      tmux = new TmuxManager(sessionName, "");
+    } catch (err) {
+      this.loginWindow.release(claim);
+      return t("login.failed", backend, (err as Error).message);
+    }
     const session = new LoginSession(flow, tmux, {
       onMenu: async (options) => {
         await this.postNonceButtonPrompt({
@@ -7752,14 +7775,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Fleet shutdown: end any web/relay login or install window and wait for its confirmed teardown. */
   private async shutdownLoginWindows(): Promise<void> {
+    // Close the lock FIRST: in-flight starts parked in a pre-check or
+    // ensureSession observe !isCurrent when they resume and stop; no new
+    // window can be claimed while we stop.
+    this.loginWindow.close();
     const bounded = (p: Promise<unknown> | undefined, what: string) => p
-      ? Promise.race([p.catch(err => this.logger.warn({ err: (err as Error).name, what }, "login window shutdown failed")),
+      ? Promise.race([p.catch(() => this.logger.warn({ what }, "login window shutdown failed")),
         new Promise<void>(r => setTimeout(r, 10_000).unref?.())])
       : Promise.resolve();
+    // "cancelled" is the detail both legacy onDone handlers keep quiet about —
+    // a stopping fleet must not announce "login failed — fleet shutdown".
     await Promise.all([
       bounded(this.loginController?.shutdown(), "web-login"),
-      bounded(this.activeLogin?.session.cancel("fleet shutdown"), "relay-login"),
-      bounded(this.activeInstall?.session.cancel("fleet shutdown"), "install"),
+      bounded(this.activeLogin?.session.cancel("cancelled"), "relay-login"),
+      bounded(this.activeInstall?.session.cancel("cancelled"), "install"),
     ]);
   }
 
@@ -7968,13 +7997,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
     if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
-    // Reserve the fleet-wide window before the first await (shared with web/relay login).
+    // Reserve the fleet-wide window before the first await (shared with web/relay
+    // login). Owned by this method until the session is published.
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return this.loginWindow.busyMessage();
 
-    const sessionName = getTmuxSession();
-    await TmuxManager.ensureSession(sessionName);
-    const tmux = new TmuxManager(sessionName, "");
+    let tmux: TmuxManager;
+    try {
+      const sessionName = getTmuxSession();
+      await TmuxManager.ensureSession(sessionName);
+      if (!this.loginWindow.isCurrent(claim)) { this.loginWindow.release(claim); return t("login.web_shutting_down"); }
+      tmux = new TmuxManager(sessionName, "");
+    } catch (err) {
+      this.loginWindow.release(claim);
+      return t("install.failed", backend, (err as Error).message);
+    }
     // A synthetic login flow: success is decided by the installer's exit code
     // (LoginSession treats a clean exit as success), never by pane text — and
     // installer output that happens to contain a URL must not be forwarded as
