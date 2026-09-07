@@ -782,8 +782,7 @@ export class TopicCommands {
     const chatId = msg.chatId;
     const threadId = msg.threadId;
 
-    const allowed = this.ctx.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length > 0 && !allowed.some(u => String(u) === String(msg.userId))) {
+    if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
       await adapter.sendText(chatId, t("not_authorized"), { threadId });
       return;
     }

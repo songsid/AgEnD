@@ -1036,8 +1036,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private async handleRestartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
-    const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-    if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
+    if (!this.isFleetAdmin(data.userId, adapterId)) {
       await data.respond(t("not_authorized"));
       return;
     }
@@ -2314,11 +2313,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.startUpdateProgressMonitor(adapter);
   }
 
-  /**
-   * Persist the public response before starting the detached reload wrapper.
-   * The wrapper owns SIGUSR1 and runtime detection; signalling this process
-   * directly would permanently stop a detached fleet with no service manager.
-   */
+  /** Persist the public response, wait for idle, then start the canonical service restart. */
   async requestFullRestart(
     adapter: ChannelAdapter,
     chatId: string,
@@ -2331,9 +2326,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...(threadId ? { threadId } : {}),
       messageId,
     };
+    // This check is synchronous with the marker write below. A second command
+    // cannot slip through between them on Node's event loop and replace the
+    // first command's delivery target or launch a competing restart helper.
+    if (this.shuttingDown || isUpdateInProgress(this.dataDir)) {
+      this.logger.warn({ adapterId: adapter.id }, "Full restart refused because another planned restart is active");
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      return false;
+    }
     if (!persistFullRestartProgress(this.dataDir, target)) {
       this.logger.error({ adapterId: adapter.id }, "Full restart marker could not be persisted — reload refused");
-      await this.reportFullRestartLaunchFailure(adapter, chatId, threadId, messageId);
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      return false;
+    }
+
+    const ownedMarker = readUpdateProgress(this.dataDir);
+    if (!ownedMarker) {
+      this.logger.error({ adapterId: adapter.id }, "Full restart marker disappeared after persistence — reload refused");
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      return false;
+    }
+
+    this.lastUpdateProgressText = null;
+    this.updateCompletionTipText = null;
+    this.startUpdateProgressMonitor(adapter);
+    await this.waitForFullRestartIdleGrace();
+
+    // An update can begin while the idle wait yields. Never launch a second
+    // process replacement against a marker we no longer own.
+    if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) {
+      this.logger.warn({ adapterId: adapter.id }, "Full restart superseded during idle wait — reload refused");
+      if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
       return false;
     }
 
@@ -2342,19 +2366,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       helper = await this.fullRestartLauncher();
     } catch (err) {
       this.logger.error({ err }, "Full restart helper failed to spawn — reload refused");
-      await this.reportFullRestartLaunchFailure(adapter, chatId, threadId, messageId);
-      clearUpdateMarker(this.dataDir);
+      if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
       return false;
     }
 
-    this.lastUpdateProgressText = null;
-    this.updateCompletionTipText = null;
-    this.startUpdateProgressMonitor(adapter);
     void helper.completion.then(result => {
-      // A successful wrapper cannot complete inside the old process: it waits
-      // for this PID to exit before taking over (or for a supervisor replacement).
-      // If we can observe completion, the hand-off failed before replacement.
-      if (this.shuttingDown) return;
+      // A successful service restart cannot complete while this process stays
+      // alive. If we can observe completion, environment detection or the
+      // hand-off failed before a replacement took ownership.
+      if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) return;
       const detail = result.error
         ? "reload helper failed after launch"
         : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;
@@ -2364,13 +2385,53 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return true;
   }
 
-  private async reportFullRestartLaunchFailure(
+  private isOwnedFullRestartMarker(
+    startedAt: number,
+    target: { adapterId: string; chatId: string; threadId?: string; messageId: string },
+  ): boolean {
+    const marker = readUpdateProgress(this.dataDir);
+    if (!marker || marker.startedAt !== startedAt) return false;
+    if (updateProgressOperation(marker.progress) !== "full-restart") return false;
+    const current = marker.progress.target;
+    return current.adapterId === target.adapterId
+      && current.chatId === target.chatId
+      && current.threadId === target.threadId
+      && current.messageId === target.messageId;
+  }
+
+  /** Give current work the same bounded idle grace used by graceful reload. */
+  private async waitForFullRestartIdleGrace(): Promise<void> {
+    const instanceNames = [...this.daemons.keys()];
+    if (instanceNames.length === 0) return;
+    const IDLE_TIMEOUT_MS = 5 * 60_000;
+    let timeoutHandle: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("Idle wait timed out after 5 minutes")), IDLE_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([
+        Promise.all(instanceNames.map(async name => {
+          const daemon = this.daemons.get(name);
+          if (!daemon) return;
+          this.logger.info(`Full restart: waiting for ${name} to idle...`);
+          await daemon.waitForIdle(10_000);
+        })),
+        deadline,
+      ]);
+    } catch (err) {
+      this.logger.warn({ err }, "Full restart idle wait timed out — continuing with service restart");
+    } finally {
+      clearTimeout(timeoutHandle!);
+    }
+  }
+
+  private async reportFullRestartFailure(
     adapter: ChannelAdapter,
     chatId: string,
     threadId: string | undefined,
     messageId: string,
+    text: string,
   ): Promise<void> {
-    const text = t("restart.full_launch_failed");
     try {
       await adapter.editMessage(chatId, messageId, text, threadId);
       return;

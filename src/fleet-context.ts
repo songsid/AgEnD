@@ -81,7 +81,7 @@ export interface FleetContext {
   /** Persist and edit one `/update` message across the fleet process restart. */
   beginUpdateProgress?(adapter: import("./channel/types.js").ChannelAdapter, chatId: string, threadId: string | undefined, messageId: string): void;
   failUpdateProgress?(message: string): void;
-  /** Persist `/restart full`, then launch the environment-aware reload helper. */
+  /** Persist `/restart full`, wait for idle, then launch the environment-aware service restart. */
   requestFullRestart?(
     adapter: import("./channel/types.js").ChannelAdapter,
     chatId: string,

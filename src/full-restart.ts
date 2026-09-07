@@ -15,10 +15,12 @@ export interface FullRestartHelperHandle {
 type SpawnProcess = (command: string, args: readonly string[], options: SpawnOptions) => ChildProcess;
 
 /**
- * Start the existing environment-aware reload wrapper and wait until the OS has
- * actually spawned it. The helper, not the chat-facing fleet process, owns
- * SIGUSR1 plus the systemd/launchd/detached hand-off. This matters for detached
- * fleets: a direct SIGUSR1 would stop the only process without replacing it.
+ * Start the canonical environment-aware service restart and wait until the OS
+ * has actually spawned it. The top-level `agend restart` command selects
+ * systemd, launchd, or the detached-process hand-off. Do not use
+ * `fleet restart --reload` here: its SIGUSR1 path exits successfully, so a
+ * systemd unit with Restart=on-failure would stay down and kill this helper as
+ * part of the old service cgroup.
  */
 export function launchFullRestartHelper(
   spawnProcess: SpawnProcess = spawn,
@@ -29,7 +31,7 @@ export function launchFullRestartHelper(
     try {
       child = spawnProcess(
         process.execPath,
-        [cliEntry, "fleet", "restart", "--reload"],
+        [cliEntry, "restart"],
         { detached: true, stdio: "ignore" },
       );
     } catch (err) {
@@ -41,7 +43,8 @@ export function launchFullRestartHelper(
       child.once("exit", (code, signal) => complete({ code, signal }));
       // Keep a post-spawn error from becoming an unhandled EventEmitter error.
       // The old fleet can turn it into a visible failed progress state if it is
-      // still alive; after SIGUSR1, the new fleet owns the persisted marker.
+      // still alive; after the service restart begins, the new fleet owns the
+      // persisted marker.
       child.once("error", error => complete({ code: null, signal: null, error }));
     });
 
