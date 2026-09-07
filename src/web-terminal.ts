@@ -543,11 +543,12 @@ export class TmuxTerminalBackend implements TerminalBackend {
   private readonly streams = new Map<string, { dir: string; stop: () => void }>();
   /**
    * Identity of each dedicated server, captured right after new-session: the
-   * PID plus a process-generation fingerprint (Linux: /proc start time;
-   * fallback: `ps lstart`). A bare PID may be reused by the OS once the server
-   * dies outside our control; a signal must NEVER be sent unless the
-   * fingerprint still matches — otherwise the "one command" scope would be
-   * violated against an unrelated process.
+   * PID plus an immutable process-generation fingerprint (Linux /proc start
+   * time). There is no weaker fallback: on platforms without /proc no
+   * identity is recorded and no signal is ever sent. A bare PID may be reused
+   * by the OS once the server dies outside our control; a signal must NEVER
+   * be sent unless the fingerprint still matches — otherwise the "one
+   * command" scope would be violated against an unrelated process.
    */
   private readonly servers = new Map<string, { pid: number; identity: string }>();
   private readonly probe: (pid: number) => ProcessProbe;
@@ -786,14 +787,17 @@ export class TmuxTerminalBackend implements TerminalBackend {
 }
 
 export type ProcessProbe =
-  | { kind: "identified"; identity: string }   // alive, with a strong generation fingerprint
-  | { kind: "gone" }                           // positively absent (ESRCH)
-  | { kind: "unknown" };                       // could not determine — never treated as gone
+  | { kind: "identified"; identity: string; comm?: string }   // alive; identity = immutable generation fingerprint, comm = diagnostics only
+  | { kind: "gone" }                                          // positively absent (ESRCH)
+  | { kind: "unknown" };                                      // could not determine — never treated as gone
 
 /**
- * Tri-state process probe. "gone" requires positive ESRCH evidence. A strong
- * fingerprint (start time in clock ticks since boot + command name, from
- * Linux /proc/<pid>/stat) is what makes a later signal safe under PID reuse.
+ * Tri-state process probe. "gone" requires positive ESRCH evidence. The
+ * identity is the process start time in clock ticks since boot (Linux
+ * /proc/<pid>/stat field 22) and NOTHING else: it is fixed for the life of
+ * the process, so a mismatch is proof of PID reuse. The command name is
+ * returned separately for diagnostics only — a live process can rename
+ * itself (prctl / /proc/self/comm), so it must never take part in equality.
  * On platforms without /proc there is NO fingerprint: the probe can only say
  * gone/unknown, and the backend registers no signal fallback.
  */
@@ -822,7 +826,7 @@ export function probeProcess(pid: number): ProcessProbe {
   const rest = stat.slice(close + 2).split(" ");                  // rest[0] = field 3 (state) … rest[19] = field 22 (starttime)
   const starttime = rest[19];
   if (!starttime || !/^\d+$/.test(starttime)) return { kind: "unknown" };
-  return { kind: "identified", identity: `linux:${starttime}:${comm}` };
+  return { kind: "identified", identity: `linux:${starttime}`, comm };
 }
 
 /**

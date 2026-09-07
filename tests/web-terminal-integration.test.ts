@@ -469,12 +469,36 @@ exit 75
     await new Promise(r => setTimeout(r, 50));
     const idA = probeProcess(a.pid!);
     expect(idA.kind).toBe("identified");
-    expect((idA as { identity: string }).identity).toMatch(/^linux:\d+:sleep$/);
-    expect(probeProcess(process.pid)).not.toEqual(idA);
+    expect((idA as { identity: string }).identity).toMatch(/^linux:\d+$/);       // start time only — nothing mutable
+    expect((idA as { comm?: string }).comm).toBe("sleep");                          // diagnostics, not identity
+    expect((probeProcess(process.pid) as { identity: string }).identity).not.toBe((idA as { identity: string }).identity);
     a.kill("SIGKILL");
     await new Promise<void>(r => a.on("exit", () => r()));
     expect(probeProcess(a.pid!)).toEqual({ kind: "gone" });               // ESRCH: positive evidence
     expect(probeProcess(0)).toEqual({ kind: "unknown" });                  // nothing can be said
+  });
+
+  it("M1 (round 6): a live process renaming itself keeps the same identity — comm is not part of the fingerprint", async () => {
+    // A child that renames itself via /proc/self/comm while keeping its PID and start time.
+    const child = spawn("sh", ["-c", "sleep 0.3; printf renamed > /proc/self/comm; sleep 30"], { stdio: "ignore" });
+    await new Promise(r => setTimeout(r, 80));
+    const before = probeProcess(child.pid!) as { kind: string; identity: string; comm?: string };
+    expect(before.kind).toBe("identified");
+    await new Promise(r => setTimeout(r, 600));
+    const after = probeProcess(child.pid!) as { kind: string; identity: string; comm?: string };
+    try {
+      expect(after.kind).toBe("identified");
+      expect(after.identity).toBe(before.identity);                                 // same generation
+      expect(after.comm).not.toBe(before.comm);                                     // the rename really happened
+      // And the backend therefore still treats it as OUR live process, not as PID reuse.
+      const backend = new TmuxTerminalBackend("tmux");
+      const socket = `agend-term-rename-${process.pid}`;
+      backend.rememberServerForTests(socket, child.pid!, before.identity);
+      expect(await backend.serverState(socket)).toBe("alive");
+      expect(backend.serverRecordForTests(socket)).toBeDefined();
+    } finally {
+      child.kill("SIGKILL");
+    }
   });
 
   it("B1 (round 5): identity probe UNKNOWN + tmux probe unknown ⇒ serverState unknown, kill REJECTS — never 'dead' by default", async () => {
