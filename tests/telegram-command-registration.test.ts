@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TopicCommands } from "../src/topic-commands.js";
+import { setLocale } from "../src/locale.js";
 
 const TOKEN_ENV = "AGEND_TEST_TELEGRAM_TOKEN";
 
@@ -32,6 +33,7 @@ function telegramOk(): Response {
 
 afterEach(() => {
   delete process.env[TOKEN_ENV];
+  setLocale("en");
   vi.unstubAllGlobals();
 });
 
@@ -52,6 +54,10 @@ describe("Telegram command-menu registration", () => {
         "status", "sysinfo", "dashboard", "ctx", "compact", "steer", "btw", "clear", "model", "effort",
         "pause", "wake", "restart", "collab", "update", "doctor", "login", "install_cli", "usage", "tips",
       ]);
+      expect(payload.commands.find((c: { command: string }) => c.command === "login")?.description)
+        .toBe("🔒 Re-login a CLI backend remotely (beta)");
+      expect(payload.commands.find((c: { command: string }) => c.command === "install_cli")?.description)
+        .toBe("🔒 Install a CLI backend remotely (beta)");
     }
     expect(payloads.find(p => p.scope.type === "default").commands.map((c: { command: string }) => c.command))
       .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "effort", "pause", "wake", "ctx"]);
@@ -60,6 +66,22 @@ describe("Telegram command-menu registration", () => {
       expect.stringContaining("Registered Telegram bot commands"),
     );
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("registers localized Beta labels for the experimental remote commands", async () => {
+    setLocale("zh-TW");
+    const fetchMock = vi.fn().mockImplementation(async () => telegramOk());
+    vi.stubGlobal("fetch", fetchMock);
+    const { commands } = setup();
+
+    await commands.registerBotCommands();
+
+    const payloads = fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)));
+    const fleetCommands = payloads.find(p => p.scope.type === "chat").commands;
+    expect(fleetCommands.find((c: { command: string }) => c.command === "login")?.description)
+      .toBe("🔒 遠端重新登入 CLI Backend（Beta）");
+    expect(fleetCommands.find((c: { command: string }) => c.command === "install_cli")?.description)
+      .toBe("🔒 遠端安裝 CLI Backend（Beta）");
   });
 
   it("does not report success when Telegram rejects setMyCommands", async () => {
