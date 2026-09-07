@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
 /** Mirror Claude Code's ~/.claude/projects key for a working directory. */
 function claudeProjectKey(cwd: string): string {
@@ -480,7 +480,7 @@ export class ClaudeCodeBackend implements CliBackend {
       const token = await getClaudeOAuthToken();
       if (!token) return [];
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8_000);
+      const timer = setTimeout(() => controller.abort(), CLI_PROBE_LONGEST_LEAF_MS);
       timer.unref?.();
       const res = await fetch("https://api.anthropic.com/v1/models?limit=100", {
         headers: {

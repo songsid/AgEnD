@@ -424,7 +424,39 @@ const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
-const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // /model reads cached CLI env within 24h
+const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // hard validity bound for the cached CLI env
+/**
+ * How old the cached CLI env may be before `/model` re-probes it live.
+ *
+ * The cache is a file under AGEND_HOME, so it outlives the process, and the only
+ * thing that refreshed it was the startup probe. That is why a newly released
+ * model showed up only after `agend stop` + `agend start`: a bare `agend restart`
+ * signals SIGUSR2 and restarts the instances inside the *same* manager process,
+ * so nothing re-probed and `/model` kept serving a list up to 24h old.
+ */
+const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
+/**
+ * Upper bound on a live probe driven by `/model`.
+ *
+ * A probe chains bounded leaves but is not itself bounded: claude-code runs
+ * `--version` (5s) then listModels then listApiModels (an 8s AbortController
+ * against api.anthropic.com), and several backends' probes carry no explicit
+ * timeout at all. Awaiting that inline would make `/model` the next thing to
+ * hang, so it races this deadline and falls back to the cached list.
+ *
+ * Must stay above CLI_PROBE_LONGEST_CHAIN_MS — the probe's bounded steps run
+ * back to back, so clearing only the longest single leaf would be false
+ * confidence: a deadline above 8s but below the 13s chain still truncates a
+ * probe that would have succeeded. Bounding the chain rather than the leaf is
+ * the lesson from the usage hang, and the tests assert against the derived
+ * chain constant so raising either step cannot silently break it.
+ *
+ * The deadline exists to stop a probe hanging forever, not to cut short one that
+ * would have finished: truncating a legitimate probe serves the previous list
+ * and hides exactly the newly released model the user opened `/model` to find.
+ * The wait is announced before it starts, so it reads as progress, not a stall.
+ */
+export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
@@ -9125,6 +9157,34 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return null;
   }
 
+  /** True when a cached CLI env is old enough that `/model` should re-probe. */
+  private cliEnvNeedsRefresh(env: import("./backend/types.js").CliEnv | null): boolean {
+    return !env || typeof env.probedAt !== "number" || Date.now() - env.probedAt >= CLI_ENV_FRESH_MS;
+  }
+
+  /**
+   * Run a live probe under a deadline, falling back to whatever the cache holds.
+   * A model list is an aid: a vendor that stops answering must degrade to the
+   * previous list, never stall the command that asked for it.
+   */
+  private async probeBackendBounded(backend: string): Promise<import("./backend/types.js").CliEnv | null> {
+    const work = this.probeBackend(backend);
+    work.catch(() => { /* surfaced through the race, or already too late to matter */ });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<null>(resolve => {
+      timer = setTimeout(() => {
+        this.logger.warn({ backend, deadlineMs: CLI_ENV_PROBE_DEADLINE_MS },
+          "CLI env live probe exceeded its deadline — serving the cached model list");
+        resolve(null);
+      }, CLI_ENV_PROBE_DEADLINE_MS);
+    });
+    try {
+      return await Promise.race([work, deadline]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /**
    * Resolve the effective model for a fleet or ClassicBot instance, plus where it
    * came from. Single source of truth for `/model` and `/ctx` — precedence:
@@ -9226,15 +9286,25 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
-  private async getModelOptions(instanceName: string, refresh = false): Promise<import("./backend/types.js").ModelOption[]> {
+  private async getModelOptions(
+    instanceName: string,
+    refresh = false,
+    onLiveProbe?: () => void,
+  ): Promise<import("./backend/types.js").ModelOption[]> {
     const backendName = this.backendNameForInstance(instanceName);
-    if (!refresh) {
-      const cached = this.readCliEnv(backendName);
-      if (cached && cached.models.length) return cached.models;
-    }
-    // Cache miss / stale / forced refresh → probe live (also refreshes the cache).
-    const env = await this.probeBackend(backendName);
-    return env?.models ?? [];
+    const cached = this.readCliEnv(backendName);
+    if (!refresh && cached?.models.length && !this.cliEnvNeedsRefresh(cached)) return cached.models;
+    // About to go to the vendor: let the caller say so. A silent 1–10s pause on
+    // an interactive command reads as another hang, which is the wrong lesson to
+    // teach a user who has just been bitten by one.
+    onLiveProbe?.();
+    // Stale, missing, or a forced refresh → probe live (also refreshes the cache).
+    // A newly released model is invisible until this runs, which is why staleness
+    // triggers it rather than waiting for the 24h hard expiry or a cold start.
+    const env = await this.probeBackendBounded(backendName);
+    if (env?.models.length) return env.models;
+    // Probe failed or timed out: the previous list is still the best answer.
+    return cached?.models ?? [];
   }
 
   /**
@@ -9517,7 +9587,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     // No arg (or --refresh) → menu. Menu is DC-only this round (respondChoices); TG uses `/model <name>`.
     if (!data.respondChoices) { await data.respond(t("model.usage")); return; }
-    const options = await this.getModelOptions(name, isRefresh);
+    const options = await this.getModelOptions(name, isRefresh, () => {
+      void data.respond(t("model.refreshing")).catch(() => { /* the menu still follows */ });
+    });
     if (options.length === 0) { await data.respond(t("model.list_unavailable", name)); return; }
 
     // Raw id for ✓-matching options; display resolves an inherited CLI default.
@@ -10563,6 +10635,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.error("Cannot restart: no config path (was startAll called?)");
       return;
     }
+    // A graceful restart keeps this manager process, so the startup probe does
+    // not run again. Without this, `agend restart` left the cached CLI env
+    // untouched and `/model` kept serving an old list until a cold start —
+    // exactly the "only stop+start works" report. Background, never blocking:
+    // /model re-probes on staleness anyway, this just makes a restart do the
+    // refreshing a user expects of it.
+    this.probeCliEnvs();
     const instanceNames = [...this.daemons.keys()];
     if (instanceNames.length === 0) {
       this.logger.info("No instances to restart");

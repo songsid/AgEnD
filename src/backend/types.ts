@@ -103,10 +103,35 @@ export interface CliEnv {
   probedAt: number;
 }
 
+/** Timeout on the `<binary> --version` step of a CLI env probe. */
+export const CLI_PROBE_VERSION_TIMEOUT_MS = 5_000;
+
+/**
+ * Longest timeout carried by any single leaf operation inside a CLI env probe —
+ * the catalog fetch in the claude-code probe, which uses this constant.
+ */
+export const CLI_PROBE_LONGEST_LEAF_MS = 8_000;
+
+/**
+ * Longest chain of bounded steps a CLI env probe runs back to back: the version
+ * check followed by the catalog fetch.
+ *
+ * Derived from the two constants above rather than written out, so raising
+ * either step raises this automatically. A caller that imposes its own deadline
+ * must clear THIS, not merely the longest single leaf: a deadline above 8s but
+ * below 13s still truncates a probe that would have succeeded, which is the
+ * "bound the chain, not the leaf" lesson from the usage hang.
+ *
+ * Note this covers the bounded steps only — `listModels` carries no explicit
+ * timeout of its own, so a probe can still exceed this. That is what the
+ * caller's deadline is a backstop for.
+ */
+export const CLI_PROBE_LONGEST_CHAIN_MS = CLI_PROBE_VERSION_TIMEOUT_MS + CLI_PROBE_LONGEST_LEAF_MS;
+
 /** Best-effort `<binary> --version` (first line, trimmed). Never throws. */
 export function probeCliVersion(binaryPath: string): string | undefined {
   try {
-    const out = execFileSync(binaryPath, ["--version"], { encoding: "utf-8", timeout: 5000, stdio: ["ignore", "pipe", "ignore"] });
+    const out = execFileSync(binaryPath, ["--version"], { encoding: "utf-8", timeout: CLI_PROBE_VERSION_TIMEOUT_MS, stdio: ["ignore", "pipe", "ignore"] });
     return out.trim().split("\n")[0].slice(0, 80) || undefined;
   } catch { return undefined; }
 }
