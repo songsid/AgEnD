@@ -12,6 +12,7 @@ import { extractLoginHint, type LoginFlow } from "./login-flows.js";
 
 /** The slice of TmuxManager a login session drives (injectable for tests). */
 export interface LoginTmux {
+  /** Must complete or fail within a hard bound; a window it may have created is reachable by `windowName` even if the id was never learned. */
   createWindow(command: string, cwd: string, windowName?: string): Promise<string>;
   setRemainOnExit(): Promise<void>;
   capturePaneJoined(lines?: number): Promise<string>;
@@ -46,6 +47,8 @@ export class LoginSession {
   private sentUrl: string | null = null;
   private lastInputPrompt: string | null = null;
   private finished = false;
+  /** Single-flight teardown: every cancel/finish caller — and start() — joins this one promise. */
+  private finishing: Promise<void> | null = null;
   /** The createWindow() in flight, so finish() can wait for the window to exist before killing it. */
   private startInFlight: Promise<unknown> | null = null;
 
@@ -66,9 +69,11 @@ export class LoginSession {
     // races createWindow still removes the window — and reports if it cannot.
     this.startInFlight = this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
     await this.startInFlight;
-    if (this.finished) return;                       // finish() owns the cleanup
+    // finish() owns the cleanup; start() must not return before it completes,
+    // or the caller would publish "started" for a window being torn down.
+    if (this.finishing) { await this.finishing; return; }
     await this.tmux.setRemainOnExit();
-    if (this.finished) return;
+    if (this.finishing) { await this.finishing; return; }
     this.timeoutTimer = setTimeout(() => {
       void this.finish(false, "timeout");
     }, this.flow.timeoutMs);
@@ -162,18 +167,21 @@ export class LoginSession {
     this.schedulePoll();
   }
 
-  private async finish(ok: boolean, detail: string): Promise<void> {
-    if (this.finished) return;
+  private finish(ok: boolean, detail: string): Promise<void> {
+    if (this.finishing) return this.finishing;       // second cancel / shutdown joins the same teardown
+    this.finishing = this.doFinish(ok, detail);
+    return this.finishing;
+  }
+
+  private async doFinish(ok: boolean, detail: string): Promise<void> {
     this.finished = true;
     this.state = "done";
     if (this.pollTimer) clearTimeout(this.pollTimer);
     if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
-    if (this.startInFlight) {
-      await Promise.race([
-        this.startInFlight.catch(() => { /* window never came up */ }),
-        new Promise<void>(resolve => setTimeout(resolve, 25_000).unref?.()),
-      ]);
-    }
+    // Wait for an in-flight createWindow to settle — no timer race: the
+    // primitive itself is bounded (TmuxManager gives the exec a hard timeout),
+    // and a window it created without reporting its id is still found by name.
+    if (this.startInFlight) await this.startInFlight.catch(() => { /* window never came up, or timed out */ });
     let cleanupFailed = false;
     if (this.tmux.killWindowConfirmed) {
       cleanupFailed = !(await this.tmux.killWindowConfirmed().catch(() => false));

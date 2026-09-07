@@ -7774,10 +7774,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return t("login.failed", backend, (err as Error).message);
     }
+    if (session.state === "done") {
+      // Cancelled (user or shutdown) while starting: start() joined the
+      // teardown, so nothing is left. onDone already released the claim.
+      this.activeLogin = null;
+      this.loginWindow.release(claim);
+      return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("login.cancelled", backend);
+    }
     if (!this.loginWindow.isCurrent(claim)) {
-      // Shutdown landed during start: the session's own start() already removed
-      // a window created after cancel; make sure nothing is left published.
-      if (session.state !== "done") await session.cancel("cancelled").catch(() => { /* already finished */ });
+      await session.cancel("cancelled").catch(() => { /* already finished */ });
       this.activeLogin = null;
       this.loginWindow.release(claim);
       return t("login.web_shutting_down");
@@ -7791,9 +7796,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
+    // 45 s covers an in-flight startup (abort + one bounded tmux stage + confirmed kill) — the
+    // session classes wait for their own startup to settle instead of racing a timer.
     const bounded = (p: Promise<unknown> | undefined, what: string) => p
       ? Promise.race([p.catch(() => this.logger.warn({ what }, "login window shutdown failed")),
-        new Promise<void>(r => setTimeout(r, 10_000).unref?.())])
+        new Promise<void>(r => setTimeout(r, 45_000).unref?.())])
       : Promise.resolve();
     // "cancelled" is the detail both legacy onDone handlers keep quiet about —
     // a stopping fleet must not announce "login failed — fleet shutdown".
@@ -8091,8 +8098,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return t("install.failed", backend, (err as Error).message);
     }
+    if (session.state === "done") {
+      this.activeInstall = null;
+      this.loginWindow.release(claim);
+      return this.loginWindow.isClosed ? t("login.web_shutting_down") : t("install.cancelled", backend);
+    }
     if (!this.loginWindow.isCurrent(claim)) {
-      if (session.state !== "done") await session.cancel("cancelled").catch(() => { /* already finished */ });
+      await session.cancel("cancelled").catch(() => { /* already finished */ });
       this.activeInstall = null;
       this.loginWindow.release(claim);
       return t("login.web_shutting_down");

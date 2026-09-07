@@ -44,7 +44,8 @@ export const DEFAULT_WEB_TERMINAL_TTL_MINUTES = 10;
 /** Design §3.1: a requester may create at most this many sessions per window. */
 export const START_RATE_LIMIT = 3;
 export const START_RATE_WINDOW_MS = 5 * 60_000;
-const SHUTDOWN_WAIT_MS = 10_000;
+/** Covers a start still in flight: abort + one more tmux stage (≤10 s) + confirmed kill (≤5 s), with margin. */
+const SHUTDOWN_WAIT_MS = 45_000;
 
 export interface LoginChat {
   adapter: ChannelAdapter;

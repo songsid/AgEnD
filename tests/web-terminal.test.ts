@@ -28,11 +28,18 @@ class FakeBackend implements TerminalBackend {
   /** When set, start() parks here until released (cancel-during-start races). */
   startGate: Promise<void> | null = null;
   serverAlive = false;
-  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
+  signals: AbortSignal[] = [];
+  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void; signal?: AbortSignal }): Promise<void> {
     if (this.failStart) throw new Error("tmux missing");
-    if (this.startGate) await this.startGate;
+    if (opts.signal) this.signals.push(opts.signal);
+    if (this.startGate) await this.startGate;                  // the `new-session` exec: the server exists once it returns
+    this.serverAlive = true;
+    if (opts.signal?.aborted) {
+      // Like the real backend: an abort observed after a stage tears down what that stage created.
+      try { await this.kill(opts.socket); } catch { /* reported by the caller's confirmed kill */ }
+      throw Object.assign(new Error("web terminal startup aborted"), { name: "AbortError" });
+    }
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
-    this.serverAlive = true;                                   // the dedicated server now exists
     this.emit = opts.onOutput;
   }
   /** Every input/resize in arrival order, for FIFO assertions. */
@@ -197,24 +204,25 @@ describe("token gate", () => {
 });
 
 describe("cancel racing start (sol PR-B rounds 3–4 B1/B2)", () => {
-  it("cancel() does NOT settle while backend.start() is in flight; the one kill happens after the server exists; start rejects", async () => {
+  it("cancel() aborts the startup and does NOT settle while backend.start() is in flight — however long that takes; nothing survives", async () => {
     vi.useRealTimers();
     const { session, backend, done } = make();
     let release!: () => void;
     backend.startGate = new Promise<void>(r => { release = r; });
-    const starting = session.start();                          // parked inside backend.start
+    const starting = session.start();                          // parked inside the `new-session` exec
     let cancelSettled = false;
     const cancelling = session.cancel("fleet shutdown").then(() => { cancelSettled = true; });
-    await new Promise(r => setTimeout(r, 30));
-    expect(cancelSettled).toBe(false);                         // teardown is not "done" before the server can exist
+    await new Promise(r => setTimeout(r, 60));                 // stands in for "well past any former settle timer"
+    expect(backend.signals[0].aborted).toBe(true);             // startup told to stop creating things
+    expect(cancelSettled).toBe(false);                         // teardown is not "done" while a server may still appear
     expect(backend.killed).toHaveLength(0);                    // no premature kill of a server that is not there yet
-    expect(done).toHaveLength(0);                              // and no completion reported yet
+    expect(done).toHaveLength(0);
     expect(session.peekAccessToken()).toBeNull();              // but the token is already withdrawn
-    release();                                                 // tmux now creates the server
+    release();                                                 // the exec returns: the server now exists
     await cancelling;
     await expect(starting).rejects.toThrow(/cancelled during startup/);
-    expect(backend.killed).toHaveLength(1);                    // exactly one confirmed kill, after creation
-    expect(backend.serverAlive).toBe(false);
+    expect(backend.serverAlive).toBe(false);                   // torn down by the aborted stage, confirmed by finish
+    expect(backend.killed.length).toBeGreaterThanOrEqual(1);
     expect(done).toHaveLength(1);
     expect(done[0].cleanupFailed).toBeUndefined();
     expect(session.state).toBe("finished");
@@ -228,6 +236,7 @@ describe("cancel racing start (sol PR-B rounds 3–4 B1/B2)", () => {
     const starting = session.start();
     const cancelling = session.cancel("fleet shutdown");
     backend.killRejects = true;                                // the server that appears late cannot be confirmed dead
+    backend.serverAlive = false;
     release();
     await cancelling;
     await expect(starting).rejects.toThrow(/cancelled during startup/);

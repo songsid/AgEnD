@@ -163,7 +163,11 @@ export class TmuxManager {
 
   // === Instance window methods ===
 
+  /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
+  private pendingWindowName: string | null = null;
+
   async createWindow(command: string, cwd: string, windowName?: string): Promise<string> {
+    this.pendingWindowName = windowName ?? null;
     if (windowName) {
       const sameName = (await TmuxManager.listWindows(this.sessionName))
         .filter(window => window.name === windowName);
@@ -191,7 +195,8 @@ export class TmuxManager {
     const args = ["new-window", "-a", "-t", this.sessionName, "-c", cwd];
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args));
+    // Hard bound: a wedged tmux must not hold a login/install teardown open forever.
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args), { timeout: 15_000 });
     this.windowId = stdout.trim();
     try {
       // Apply the configured geometry and hand sizing to real terminals. The
@@ -263,13 +268,22 @@ export class TmuxManager {
    * callers never report a cleanup as done on a guess.
    */
   async killWindowConfirmed(): Promise<boolean> {
-    if (!this.windowId) return true;
-    await this.killWindow();
+    const name = this.pendingWindowName;
+    if (!this.windowId && !name) return true;          // nothing was ever asked for
+    const mine = (w: { id: string; name: string }) => (this.windowId ? w.id === this.windowId : w.name === name);
+    const list = async () => {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}|||#{window_name}"]), { timeout: 10_000 });
+      return stdout.trim().split("\n").filter(Boolean).map(line => { const [id, n] = line.split("|||"); return { id, name: n ?? "" }; });
+    };
     try {
-      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}"]));
-      return !stdout.split("\n").map(l => l.trim()).includes(this.windowId);
+      // Kill by id when known; otherwise every window carrying the name we
+      // asked for (a createWindow that timed out may still have made one).
+      for (const w of (await list()).filter(mine)) {
+        await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: 10_000 }).catch(() => { /* judged by the re-list */ });
+      }
+      return !(await list()).some(mine);
     } catch (err) {
-      // No such session at all ⇒ no window either; anything else is unknown.
+      // No such session at all ⇒ no window either; anything else is unknown → not confirmed.
       const text = String((err as { stderr?: unknown })?.stderr ?? (err as Error).message ?? "");
       return /can't find session|no server running/.test(text);
     }
