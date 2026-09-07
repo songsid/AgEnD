@@ -2372,10 +2372,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     void helper.completion.then(result => {
-      // A successful service restart cannot complete while this process stays
-      // alive. If we can observe completion, environment detection or the
-      // hand-off failed before a replacement took ownership.
+      // A zero exit means the service manager accepted the restart. launchd
+      // may report that before its SIGTERM reaches us, so only an explicit
+      // helper error/non-zero exit is evidence of failure. A signal is also
+      // ambiguous under systemd because this helper shares the old cgroup.
       if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) return;
+      if (!result.error && (result.code === 0 || result.code === null)) return;
       const detail = result.error
         ? "reload helper failed after launch"
         : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;

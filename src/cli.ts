@@ -1576,6 +1576,7 @@ program
       // fails. Falling through would create a second detached fleet.
       console.log(`  ⚠ ${scope} restart reported failure, but the service exists — systemd will auto-retry.`);
       console.log(`  Check: ${statusCommand}`);
+      process.exitCode = 1;
       return;
     }
     // 3. launchd (macOS)
@@ -1611,6 +1612,7 @@ program
     }
     // 5. Nothing running anywhere
     console.log("Fleet not running. Start with: agend start");
+    process.exitCode = 1;
   });
 
 program

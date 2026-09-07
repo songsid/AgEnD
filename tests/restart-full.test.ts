@@ -355,6 +355,26 @@ describe("full-restart cross-process progress", () => {
     if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);
   });
 
+  it("does not mistake a service manager's accepted zero exit for a failed hand-off", async () => {
+    const dir = tempDir();
+    const fleet = new FleetManager(dir);
+    let complete!: (value: { code: number | null; signal: NodeJS.Signals | null }) => void;
+    const completion = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => { complete = resolve; });
+    (fleet as any).fullRestartLauncher = vi.fn().mockResolvedValue({ completion });
+    const adapter = {
+      id: "discord-main",
+      type: "discord",
+      editMessage: vi.fn().mockResolvedValue(undefined),
+      sendText: vi.fn(),
+    } as unknown as ChannelAdapter;
+
+    expect(await fleet.requestFullRestart(adapter, "guild", "channel", "progress")).toBe(true);
+    complete({ code: 0, signal: null });
+    await Promise.resolve();
+    expect(readUpdateProgress(dir)?.progress.stage).toBe("stopping");
+    if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);
+  });
+
   it("waits for current work before spawning the environment-aware restart", async () => {
     const dir = tempDir();
     const fleet = new FleetManager(dir);
