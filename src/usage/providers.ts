@@ -1213,7 +1213,9 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-const PROVIDERS: { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> }[] = [
+type UsageProvider = { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> };
+
+const DEFAULT_PROVIDERS: UsageProvider[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
   { id: "grok", name: "Grok", fetch: fetchGrokUsage },
@@ -1221,12 +1223,86 @@ const PROVIDERS: { id: string; name: string; fetch: () => Promise<Omit<ProviderU
   { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
 ];
 
+let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;
+
+/** Test seam: a provider that hangs cannot be simulated with real vendors. */
+export function setUsageProvidersForTests(providers: UsageProvider[] | null): void {
+  PROVIDERS = providers ?? DEFAULT_PROVIDERS;
+}
+
+/**
+ * Upper bound on one provider's whole chain.
+ *
+ * Every individual fetch already carries an AbortSignal timeout, but several
+ * providers chain them and nothing bounded the total: grok can refresh, query,
+ * re-refresh on a 401 and query again (up to ~50s), and antigravity refreshes
+ * its token then tries each Cloud Code base in turn (up to ~45s). Since
+ * fetchAllUsage waits for the slowest provider, and usage-api.ts shares a single
+ * in-flight promise across /api/ai-usage, the /usage command and the get_usage
+ * tool, one slow vendor stalled every surface at once — and a provider that
+ * never settled left that in-flight promise uncleared, so the stall persisted
+ * and retries simply joined the same dead promise.
+ *
+ * This deadline is what guarantees the snapshot always settles.
+ *
+ * It is set just above the longest *legitimate* single operation — a token
+ * refresh carries a 15s AbortSignal timeout — so a refresh that is slow but
+ * would have succeeded is not cut short and reported as unreachable. The hangs
+ * this bounds are 45–50s and come from *chains* of such operations, and since
+ * the deadline wraps a provider's whole chain, 16s still cuts those down
+ * drastically. A tighter value (8s was tried) bounds the snapshot harder but
+ * manufactures false "could not be reached" rows for slow-but-healthy refreshes.
+ */
+export const DEFAULT_PROVIDER_DEADLINE_MS = 16_000;
+
+/**
+ * The longest AbortSignal timeout any single legitimate operation carries (the
+ * token refreshes). The deadline above must stay greater than this, or a slow
+ * refresh that would have succeeded gets reported as unreachable.
+ */
+export const LONGEST_SINGLE_FETCH_MS = 15_000;
+
+let providerDeadlineMs: number = DEFAULT_PROVIDER_DEADLINE_MS;
+
+/** Test seam: keeps the deadline regression fast. */
+export function setUsageProviderDeadlineForTests(ms: number | null): void {
+  providerDeadlineMs = ms ?? DEFAULT_PROVIDER_DEADLINE_MS;
+}
+
+const DEADLINE_EXCEEDED = Symbol("usage-provider-deadline");
+
+async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | typeof DEADLINE_EXCEEDED> {
+  // Once the deadline wins the race, a late rejection from the abandoned chain
+  // would otherwise surface as an unhandled rejection.
+  work.catch(() => { /* reported through the race, or already too late to matter */ });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof DEADLINE_EXCEEDED>(resolve => {
+    timer = setTimeout(() => resolve(DEADLINE_EXCEEDED), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Fetch every provider in parallel. Providers without local credentials are
  * skipped (per the panel's contract: absent CLIs simply don't show). */
 export async function fetchAllUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
   const results = await Promise.all(PROVIDERS.map(async (p): Promise<ProviderUsage> => {
     try {
-      return { id: p.id, name: p.name, ...(await p.fetch()) };
+      const outcome = await withDeadline(p.fetch(), providerDeadlineMs);
+      if (outcome === DEADLINE_EXCEEDED) {
+        // Fail soft: this row says it could not be read, the rest still answer,
+        // and the snapshot returns in bounded time.
+        return {
+          id: p.id, name: p.name, status: "error",
+          error: `Could not reach ${p.name}.`,
+          errorI18n: i18n("usage.error.unreachable", p.name),
+          metrics: [],
+        };
+      }
+      return { id: p.id, name: p.name, ...outcome };
     } catch (err) {
       return { id: p.id, name: p.name, status: "error", error: String((err as Error)?.message ?? err), metrics: [] };
     }
