@@ -23,6 +23,8 @@ function have(bin: string): boolean {
   try { execFileSync(bin, ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
 }
 const tmuxAvailable = have("tmux");
+/** Cases that need the Linux /proc strong fingerprint (production deliberately has NONE elsewhere). */
+const linuxOnly = process.platform === "linux";
 
 const ASSETS = join(process.cwd(), "src", "ui", "web-terminal");
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
@@ -402,7 +404,7 @@ exec tmux "$@"
     }
   });
 
-  it("B1 (round 3): with the PID captured, an unexecutable tmux probe does not block a real kill — the dead process is positive evidence", async () => {
+  it.skipIf(!linuxOnly)("B1 (round 3): with the PID captured, an unexecutable tmux probe does not block a real kill — the dead process is positive evidence", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
     const bin = join(dir, "tmux");
     writeFileSync(bin, `#!/bin/sh
@@ -423,7 +425,7 @@ exec tmux "$@"
     }
   });
 
-  it("B1 (round 4): a cached PID that now belongs to a DIFFERENT process is never signalled — identity mismatch means our server is dead", async () => {
+  it.skipIf(!linuxOnly)("B1 (round 4): a cached PID that now belongs to a DIFFERENT process is never signalled — identity mismatch means our server is dead", async () => {
     // Simulate PID reuse: our "server" record points at a live unrelated process with a fingerprint that does not match.
     const bystander = spawn("sleep", ["30"], { stdio: "ignore" });
     await new Promise(r => setTimeout(r, 50));
@@ -443,7 +445,7 @@ exec tmux "$@"
     }
   });
 
-  it("B1 (round 4): a matching fingerprint is required before EVERY signal; a live unrelated process on a cached PID survives even when tmux probes cannot run", async () => {
+  it.skipIf(!linuxOnly)("B1 (round 4): a matching fingerprint is required before EVERY signal; a live unrelated process on a cached PID survives even when tmux probes cannot run", async () => {
     const bystander = spawn("sleep", ["30"], { stdio: "ignore" });
     await new Promise(r => setTimeout(r, 50));
     const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
@@ -464,7 +466,7 @@ exit 75
     }
   });
 
-  it("B1 (round 4/5): probeProcess is tri-state — identified with a strong fingerprint, positively gone, or unknown", async () => {
+  it.skipIf(!linuxOnly)("B1 (round 4/5): probeProcess is tri-state — identified with a strong fingerprint, positively gone, or unknown", async () => {
     const a = spawn("sleep", ["30"], { stdio: "ignore" });
     await new Promise(r => setTimeout(r, 50));
     const idA = probeProcess(a.pid!);
@@ -478,7 +480,7 @@ exit 75
     expect(probeProcess(0)).toEqual({ kind: "unknown" });                  // nothing can be said
   });
 
-  it("M1 (round 6): a live process renaming itself keeps the same identity — comm is not part of the fingerprint", async () => {
+  it.skipIf(!linuxOnly)("M1 (round 6): a live process renaming itself keeps the same identity — comm is not part of the fingerprint", async () => {
     // A child that renames itself via /proc/self/comm while keeping its PID and start time.
     const child = spawn("sh", ["-c", "sleep 0.3; printf renamed > /proc/self/comm; sleep 30"], { stdio: "ignore" });
     await new Promise(r => setTimeout(r, 80));

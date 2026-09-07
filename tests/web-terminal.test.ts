@@ -167,7 +167,8 @@ describe("token gate", () => {
     expect(session.peekAccessToken()).toBeNull();
     expect(session.redeemToken(token)).toEqual({ result: "used" });
     expect(session.checkCookie(cookie)).toBe(true);
-    expect(session.checkCookie(cookie.slice(0, 63) + "0")).toBe(false);
+    const wrongLast = cookie.at(-1) === "0" ? "1" : "0";        // guaranteed to differ (the flake sol caught: 1/16 runs)
+    expect(session.checkCookie(cookie.slice(0, 63) + wrongLast)).toBe(false);
     expect(session.checkCookie(cookie + "0")).toBe(false);
     expect(session.checkCookie(undefined)).toBe(false);
   });
