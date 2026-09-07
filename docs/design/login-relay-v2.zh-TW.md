@@ -17,7 +17,7 @@ v1 設計要為每個 CLI 宣告 Menu/Prompt/Hint 規則並替使用者按鍵；
 
 | 保留（今天就有、不動） | 移除 | 新增 |
 |---|---|---|
-| 獨立於 instance pane；auth precheck（exit 0 = valid、5s、unknown 不阻擋）；成功後 `recoverBackendInstances`；URL/code spoiler；nonce 按鈕；admin-only | Menu 按鈕→Down×N、`inputPrompt`/`/login code <text>`、`submitInput`、任何對 pane 的 `pasteText` | web terminal 引擎、一次性連結 + OTP、TTL、事件稽核、kiro logout-first、失敗人話映射、（第三階段）tunnel provider |
+| 獨立於 instance pane；auth precheck（exit 0 = valid、5s、unknown 不阻擋）；成功後 `recoverBackendInstances`；URL/code spoiler；nonce 按鈕；admin-only | Menu 按鈕→Down×N、`inputPrompt`/`/login code <text>`、`submitInput`、任何對 pane 的 `pasteText` | web terminal 引擎、URL 無秘密 + 一次性 access token gate、TTL、事件稽核、kiro logout-first、失敗人話映射、（第三階段）tunnel provider |
 
 **是否保留 chat relay 當備選？** 建議**不保留互動 relay**（Menu/Prompt），只保留**被動旁觀**：device URL/code 仍貼到聊天（手機使用者可直接點 SSO 連結）、成功/失敗通知、instance 重啟。理由：使用者一定有瀏覽器（他就在 Discord/Telegram 裡）；保留兩套互動路徑等於維護兩套 per-CLI 取證。舊 relay 程式碼在 v2.1.5 以 `login.mode: web|relay`（預設 `web`）保留一版當 rollback 槓桿，v2.1.6 刪除。
 
@@ -87,7 +87,7 @@ export interface WebTerminalEvents {
 }
 ```
 
-生命週期：`create()`（起 tmux server + listener + 產 sid/k/otp）→ `onLink` → 等連線（未連線也照 TTL）→ 進程 exit（`remain-on-exit` 保留死 pane 取 exit code 與**非空尾行**）→ `onDone` → `kill-server` + 關 listener。TTL 到 → 同樣收尾，`detail:"ttl"`。fleet 同時**至多一個** session（沿用 `activeLogin`/`activeInstall` 互斥）。
+生命週期：`create()`（起 tmux server + listener + 產 sid 與一次性 access token）→ `onLink` → 等連線（未連線也照 TTL）→ 進程 exit（`remain-on-exit` 保留死 pane 取 exit code 與**非空尾行**）→ `onDone` → `kill-server` + 關 listener。TTL 到 → 同樣收尾，`detail:"ttl"`。fleet 同時**至多一個** session（沿用 `activeLogin`/`activeInstall` 互斥）。
 
 ### 2.3 Backend 宣告（`LoginFlow` 縮減版）
 
@@ -135,7 +135,7 @@ install-cli：`command` = 安裝指令（現有）、`observe.successPattern` �
 - vendored `@xterm/xterm` + `addon-fit` + `addon-web-links`（讓 device URL 可點），單一 HTML，`Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'`；無外部資源。
 - 頁面載入**不觸發任何副作用**（連結預覽機器人會 GET 這個 URL），且 **URL 裡沒有任何秘密**。使用者貼上聊天收到的 access token 後，JS `POST /open` 才驗 token、設 cookie、開 WS。
 - 顯示：backend、剩餘 TTL 倒數、「此終端只連到 `<command>`，進程結束即關」、關閉按鈕（送 Ctrl-C 並結束 session）。
-- 手機：xterm.js 可用；OTP 輸入用一般表單。
+- 手機：xterm.js 可用；access token 輸入用一般表單（可貼上）。
 
 ---
 
