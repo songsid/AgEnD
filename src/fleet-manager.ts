@@ -65,9 +65,10 @@ import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
-import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow } from "./login-flows.js";
+import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX } from "./login-controller.js";
+import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -7399,6 +7400,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * release as the rollback lever and removed in 2.1.6.
    */
   private loginController: LoginController | null = null;
+  /**
+   * One login/install window fleet-wide. Claimed synchronously before the
+   * first await by web login, relay login and install alike (sol B1).
+   */
+  private readonly loginWindow = new LoginWindowLock();
   private get webLogin(): LoginController {
     if (!this.loginController) {
       this.loginController = new LoginController({
@@ -7407,7 +7413,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         isFleetAdmin: (userId, adapterId) => this.isFleetAdmin(userId, adapterId),
         eventLog: () => this.eventLog,
         recoverBackendInstances: backend => this.recoverBackendInstances(backend),
-        otherWindowActive: () => this.activeLogin !== null || this.activeInstall !== null,
+        claimWindow: backend => this.loginWindow.tryClaim("web", backend),
+        releaseWindow: claim => { this.loginWindow.release(claim); },
+        windowBusyMessage: () => this.loginWindow.busyMessage(),
         postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
           await this.postNonceButtonPrompt({
             prefix, alertType: "login", instanceName,
@@ -7639,23 +7647,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   async startLoginSession(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
-  }, opts: { skipAuthCheck?: boolean } = {}): Promise<string | null> {
+  }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean } = {}): Promise<string | null> {
     if (this.webLogin.mode() === "web") return this.webLogin.start(backendArg, chat, opts);
     // ── legacy relay mode (login.mode: relay) — removed in 2.1.6 ──
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
-    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
-    // Install sessions share the window namespace — never run both at once.
-    if (this.activeInstall) return t("install.busy");
+    // Reserve the window before the pre-check await; released again if we only post buttons.
+    const claim = this.loginWindow.tryClaim("relay", backend);
+    if (!claim) return this.loginWindow.busyMessage();
 
     // Token-free pre-check (5s cap): re-login while auth still works is
     // usually a mistake, so it needs a confirmed click. An invalid OR
     // uncertain result (timeout, missing binary) proceeds straight to login —
     // an unreliable probe must never block the re-login the admin asked for.
     if (!opts.skipAuthCheck && flow.authCheck) {
-      const status = await checkAuthStatus(flow.authCheck);
+      let status: AuthCheckResult;
+      try { status = await checkAuthStatus(flow.authCheck); } catch { this.loginWindow.release(claim); throw new Error("auth pre-check failed"); }
       if (status === "valid") {
+        this.loginWindow.release(claim);
         await this.postNonceButtonPrompt({
           prefix: LOGIN_CONFIRM_CALLBACK_PREFIX,
           alertType: "login",
@@ -7674,17 +7684,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return null;
       }
     }
-    return this.launchLoginSession(flow, backend, chat);
+    return this.launchLoginSession(flow, backend, chat, claim);
   }
 
   /** Create the login window and session (pre-check already settled). */
   private async launchLoginSession(flow: LoginFlow, backend: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
-  }): Promise<string> {
-    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
-    if (this.loginController?.isActive()) return t("login.busy", this.loginController.activeBackend ?? "web");
-    // Install sessions share the window namespace — never run both at once.
-    if (this.activeInstall) return t("install.busy");
+  }, claim: LoginWindowClaim): Promise<string> {
     const sessionName = getTmuxSession();
     await TmuxManager.ensureSession(sessionName);
     const tmux = new TmuxManager(sessionName, "");
@@ -7712,6 +7718,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       },
       onDone: async ({ ok, detail }) => {
         this.activeLogin = null;
+        this.loginWindow.release(claim);
         let text: string;
         if (ok) {
           const { woken, restarted } = await this.recoverBackendInstances(backend);
@@ -7737,9 +7744,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await session.start();
     } catch (err) {
       this.activeLogin = null;
+      this.loginWindow.release(claim);
       return t("login.failed", backend, (err as Error).message);
     }
     return t("login.started", backend);
+  }
+
+  /** Fleet shutdown: end any web/relay login or install window and wait for its confirmed teardown. */
+  private async shutdownLoginWindows(): Promise<void> {
+    const bounded = (p: Promise<unknown> | undefined, what: string) => p
+      ? Promise.race([p.catch(err => this.logger.warn({ err: (err as Error).name, what }, "login window shutdown failed")),
+        new Promise<void>(r => setTimeout(r, 10_000).unref?.())])
+      : Promise.resolve();
+    await Promise.all([
+      bounded(this.loginController?.shutdown(), "web-login"),
+      bounded(this.activeLogin?.session.cancel("fleet shutdown"), "relay-login"),
+      bounded(this.activeInstall?.session.cancel("fleet shutdown"), "install"),
+    ]);
   }
 
   /** `/login code <text>` — paste admin-supplied text into the login window. */
@@ -7857,7 +7878,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   ): Promise<boolean> {
     const claimed = this.consumeNonceCallback(
       LOGIN_CONFIRM_CALLBACK_PREFIX,
-      /^login-confirm:([0-9a-f]+):(go|cancel)$/,
+      /^login-confirm:([0-9a-f]+):(go|go-relogin|cancel)$/,
       data,
       callbackAdapterId,
       receivingAdapter,
@@ -7877,7 +7898,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       chatId: entry.chatId,
       threadId: entry.threadId,
       userId: data.userId,
-    }, { skipAuthCheck: true });
+    }, { skipAuthCheck: true, tokenPresent: action === "go-relogin" });
     if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
     return true;
   }
@@ -7947,9 +7968,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const info = BACKEND_INSTALLATION_INFO[backend];
     if (!info) return t("install.unsupported", backendArg);
     if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
-    if (this.activeInstall) return t("install.busy");
-    if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
-    if (this.loginController?.isActive()) return t("login.busy", this.loginController.activeBackend ?? "web");
+    // Reserve the fleet-wide window before the first await (shared with web/relay login).
+    const claim = this.loginWindow.tryClaim("install", backend);
+    if (!claim) return this.loginWindow.busyMessage();
 
     const sessionName = getTmuxSession();
     await TmuxManager.ensureSession(sessionName);
@@ -7970,6 +7991,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       onNeedInput: () => {},
       onDone: async ({ ok, detail }) => {
         this.activeInstall = null;
+        this.loginWindow.release(claim);
         if (!ok) {
           // A cancel is user-initiated — the cancel command's own reply already
           // said so; a second message here would be a duplicate.
@@ -8014,6 +8036,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await session.start();
     } catch (err) {
       this.activeInstall = null;
+      this.loginWindow.release(claim);
       return t("install.failed", backend, (err as Error).message);
     }
     return t("install.started", backend);
@@ -10028,6 +10051,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     sdNotifyBlocking("STOPPING=1");
     if (this.watchdogTimer) { clearInterval(this.watchdogTimer); this.watchdogTimer = null; }
+    // A login/install window is a dedicated tmux server with its own TTL
+    // timer and HTTP listener living in THIS process: without an explicit
+    // shutdown it would outlive us as an owner-less login CLI (sol B3).
+    await this.shutdownLoginWindows();
     // Cancel adapter retry timers
     for (const state of this.adapterState.values()) {
       if (state.retryTimer) { clearTimeout(state.retryTimer); state.retryTimer = undefined; }

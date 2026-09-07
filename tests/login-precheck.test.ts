@@ -71,8 +71,10 @@ describe("/login auth pre-check", () => {
     // skipAuthCheck path: the runner ran once (for the original command), not twice.
     expect(runner).toHaveBeenCalledTimes(1);
 
-    // Cancel path on a fresh prompt.
+    // Cancel path on a fresh prompt. The mocked launcher never ends its
+    // session, so hand the fleet-wide window back first (what onDone does).
     launch.mockClear();
+    (fm as any).loginWindow.release((fm as any).loginWindow.current);
     await fm.startLoginSession("codex", chat);
     const cancelId = notifyAlert.mock.calls[1][1].choices[1].id as string;
     expect(await (fm as any).handleLoginConfirm({ ...click, callbackData: cancelId }, "discord", adapter)).toBe(true);

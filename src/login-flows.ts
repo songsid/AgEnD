@@ -68,6 +68,13 @@ export interface LoginFlow {
   preCommand?: { command: string; when: "always" | "token-present" };
   /** Known failure strings in the dead pane → human wording + suggested next step (web mode). */
   failures?: Array<{ pattern: RegExp; message: string; suggest?: "relogin" | "check-args" | "retry" }>;
+  /**
+   * Explicit allowlist for the web terminal (design §2.3/§3): set only after a
+   * human reviewed that this CLI's login TUI offers no shell escape. A flow
+   * without it never gets a browser terminal — the scope guarantee "one
+   * command, no shell" depends on it.
+   */
+  noShellEscape?: true;
 }
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -98,6 +105,7 @@ const STANDALONE_DEVICE_CODE = /^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/m;
 
 export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
     command: "codex login --device-auth",
     authCheck: { argv: ["codex", "login", "status"] },
@@ -107,6 +115,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "grok": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "grok",
     command: "grok login --device-auth",
     authCheck: { argv: ["grok", "models"] },
@@ -117,6 +126,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "kiro-cli": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "kiro-cli",
     command: "kiro-cli login --use-device-flow",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
@@ -142,6 +152,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     ],
   },
   "claude-code": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
@@ -151,6 +162,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "antigravity": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },

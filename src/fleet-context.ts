@@ -115,7 +115,7 @@ export interface FleetContext {
     threadId?: string;
     /** The requesting human — required by web mode (admin re-check, private token delivery). */
     userId?: string;
-  }, opts?: { skipAuthCheck?: boolean }): Promise<string | null>;
+  }, opts?: { skipAuthCheck?: boolean; tokenPresent?: boolean }): Promise<string | null>;
   /** Paste admin-supplied text (auth code / start URL) into the login window. */
   loginSubmitInput?(text: string): Promise<string>;
   /** Abort the active login session. */

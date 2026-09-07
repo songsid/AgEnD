@@ -46,6 +46,17 @@ web_terminal:
     expect(load("defaults: {}\ninstances: {}\nweb_terminal:\n  ttl_minutes: 7.9\n").web_terminal?.ttl_minutes).toBe(7);
   });
 
+  it("M2: a quoted or numeric `enabled` is rejected — a security gate must be a real boolean", () => {
+    expect(() => load("defaults: {}\ninstances: {}\nweb_terminal:\n  enabled: \"false\"\n")).toThrow(/web_terminal\.enabled/);
+    expect(() => load("defaults: {}\ninstances: {}\nweb_terminal:\n  enabled: 0\n")).toThrow(/web_terminal\.enabled/);
+    expect(load("defaults: {}\ninstances: {}\nweb_terminal:\n  enabled: false\n").web_terminal?.enabled).toBe(false);
+  });
+
+  it("M2: login / web_terminal must be mappings", () => {
+    expect(() => load("defaults: {}\ninstances: {}\nlogin: web\n")).toThrow(/login: expected a mapping/);
+    expect(() => load("defaults: {}\ninstances: {}\nweb_terminal: true\n")).toThrow(/web_terminal: expected a mapping/);
+  });
+
   it("rejects an unknown login.mode and a non-numeric ttl or empty bind", () => {
     expect(() => load("defaults: {}\ninstances: {}\nlogin:\n  mode: tunnel\n")).toThrow(/login\.mode/);
     expect(() => load("defaults: {}\ninstances: {}\nweb_terminal:\n  ttl_minutes: soon\n")).toThrow(/ttl_minutes/);
