@@ -184,8 +184,12 @@ export class WebTerminalSession extends EventEmitter {
   private pendingJobCount = 0;
   /** Input bytes not yet handed to a running job: consecutive frames coalesce into one tmux paste. */
   private pendingBatch: Buffer[] | null = null;
-  /** Latest requested geometry while a resize job is queued (only the newest is applied). */
-  private pendingResize: { cols: number; rows: number } | null = null;
+  /**
+   * The resize job at the TAIL of the queue, still open for coalescing. Only
+   * while no input has been queued after it may a newer resize update it;
+   * input freezes it (a resize is a barrier and must stay in its FIFO slot).
+   */
+  private tailResize: { cols: number; rows: number } | null = null;
   private cols: number;
   private rows: number;
 
@@ -314,6 +318,7 @@ export class WebTerminalSession extends EventEmitter {
       return false;
     }
     this.pendingInputBytes += bytes.length;
+    this.tailResize = null;                                     // input after a resize freezes that resize in place
     if (this.pendingBatch) {
       this.pendingBatch.push(Buffer.from(bytes));
       return true;
@@ -341,17 +346,17 @@ export class WebTerminalSession extends EventEmitter {
     if (this.state !== "running") return;
     const c = clamp(Math.floor(cols), MIN_COLS, MAX_COLS);
     const r = clamp(Math.floor(rows), MIN_ROWS, MAX_ROWS);
-    if (c === this.cols && r === this.rows && !this.pendingResize) return;
-    if (this.pendingResize) { this.pendingResize = { cols: c, rows: r }; return; }   // only the newest geometry matters
-    this.pendingResize = { cols: c, rows: r };
-    this.pendingBatch = null;                                                        // a resize is an ordering barrier for input
+    if (c === this.cols && r === this.rows && !this.tailResize) return;
+    if (this.tailResize) { this.tailResize.cols = c; this.tailResize.rows = r; return; }   // newest geometry wins — same FIFO slot
+    const target = { cols: c, rows: r };
+    this.tailResize = target;
+    this.pendingBatch = null;                                                             // a resize is an ordering barrier for input
     this.enqueue(async () => {
-      const want = this.pendingResize;
-      this.pendingResize = null;
-      if (!want || this.state !== "running") return;
+      if (this.tailResize === target) this.tailResize = null;
+      if (this.state !== "running") return;
       try {
-        await this.backend.resize(this.socketName, want.cols, want.rows);
-        this.cols = want.cols; this.rows = want.rows;                                // committed only on success (retry stays possible)
+        await this.backend.resize(this.socketName, target.cols, target.rows);
+        this.cols = target.cols; this.rows = target.rows;                                 // committed only on success (retry stays possible)
       } catch (err) {
         this.logger.warn({ sid: this.sid, op: "resize", code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
       }
@@ -656,39 +661,65 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
   }
 
-  /** True when a tmux server still answers on this socket. */
-  private async serverAlive(socket: string): Promise<boolean> {
-    try { await this.tmux(socket, "list-sessions", []); return true; } catch { return false; }
+  /**
+   * Tri-state liveness of the dedicated server. "dead" is asserted only on
+   * POSITIVE evidence of absence (tmux's own no-server answer, and — when a
+   * PID is known — the process gone); a probe that could not execute
+   * (spawn failure, timeout, unexpected exit) is "unknown", never "dead".
+   * stderr is inspected in memory only and never logged.
+   */
+  async serverState(socket: string): Promise<"alive" | "dead" | "unknown"> {
+    const pid = this.serverPids.get(socket);
+    let pidAlive: boolean | null = null;
+    if (pid) {
+      try { process.kill(pid, 0); pidAlive = true; } catch (err) { pidAlive = (err as NodeJS.ErrnoException).code === "ESRCH" ? false : null; }
+    }
+    const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
+      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS }, (error, _stdout, stderr) => {
+        if (!error) { resolve("alive"); return; }
+        const code = (error as { code?: unknown }).code;
+        const text = String(stderr ?? "");
+        // tmux 3.x: "no server running on <path>" / "error connecting to <path> (No such file or directory)"
+        if (code === 1 && /no server running|error connecting to .*No such file or directory/.test(text)) { resolve("dead"); return; }
+        resolve("unknown");
+      });
+    });
+    if (tmuxSays === "alive" || pidAlive === true) return "alive";   // any positive sign of life wins
+    if (pidAlive === false) return "dead";                             // the server process is positively gone
+    if (tmuxSays === "dead" && !pid) return "dead";                    // tmux's own no-server answer, nothing to contradict it
+    return "unknown";                                                  // probe could not execute → never "absent"
   }
 
   /**
    * Kill the dedicated server and CONFIRM it is gone (B2). `kill-server` is
-   * tried twice; if the server still answers, the PID captured at start is
-   * sent SIGTERM then SIGKILL. Resolves only on confirmed absence; rejects
-   * otherwise so the caller can report a cleanup failure instead of claiming
-   * the boundary held. "Already gone" is success.
+   * tried twice; if the server is not positively dead, the PID captured at
+   * start is sent SIGTERM then SIGKILL. The FINAL probe decides: resolves
+   * only on "dead"; "alive" and "unknown" both reject so the caller reports
+   * a cleanup failure instead of claiming the boundary held. "Already gone"
+   * (positively) is success.
    */
   async kill(socket: string): Promise<void> {
     const s = this.streams.get(socket);
     if (s) { s.stop(); this.streams.delete(socket); }
     const pid = this.serverPids.get(socket);
-    try {
-      for (let attempt = 0; attempt < 2; attempt++) {
-        await this.tmux(socket, "kill-server", []).catch(() => { /* judged by liveness below */ });
-        if (!(await this.serverAlive(socket))) return;
-      }
-      if (pid) {
-        for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-          try { process.kill(pid, signal); } catch { /* ESRCH: gone */ }
-          await new Promise(r => setTimeout(r, 300));
-          if (!(await this.serverAlive(socket))) return;
-        }
-      }
-      throw new Error(`tmux server on socket ${socket} could not be confirmed dead`);
-    } finally {
-      // Keep the pid until the server is confirmed dead so a retry can still reach it.
-      if (!(await this.serverAlive(socket))) this.serverPids.delete(socket);
+    let state: "alive" | "dead" | "unknown" = "unknown";
+    for (let attempt = 0; attempt < 2 && state !== "dead"; attempt++) {
+      await this.tmux(socket, "kill-server", []).catch(() => { /* judged by the probe */ });
+      state = await this.serverState(socket);
     }
+    if (state !== "dead" && pid) {
+      for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+        try { process.kill(pid, signal); } catch { /* ESRCH: gone */ }
+        await new Promise(r => setTimeout(r, 300));
+        state = await this.serverState(socket);
+        if (state === "dead") break;
+      }
+    }
+    if (state !== "dead") {
+      // Keep the pid so a later retry can still reach the process.
+      throw new Error(`tmux server on socket ${socket} could not be confirmed dead (${state})`);
+    }
+    this.serverPids.delete(socket);
   }
 }
 

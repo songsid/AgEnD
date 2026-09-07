@@ -355,6 +355,73 @@ exec tmux "$@"
     }
   });
 
+  it("B1 (round 3): probes that cannot execute are 'unknown', never 'absent' — kill REJECTS while the real server lives", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    // kill-server fails; list-sessions cannot execute (exit 75, e.g. EAGAIN-class failure).
+    writeFileSync(bin, `#!/bin/sh
+for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; if [ "$a" = list-sessions ]; then exit 75; fi; done
+exec tmux "$@"
+`);
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-b1a-${process.pid}`;
+    try {
+      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      const backend = new TmuxTerminalBackend(bin);           // no PID captured: nothing can prove death
+      await expect(backend.kill(socket)).rejects.toThrow(/could not be confirmed dead \(unknown\)/);
+      expect(tmuxServerAlive(socket)).toBe(true);
+      expect(await backend.serverState(socket)).toBe("unknown");
+    } finally {
+      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("B1 (round 3): a transient probe error followed by a live final probe still REJECTS (the final probe decides)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    const counter = join(dir, "n");
+    // kill-server is a silent no-op; the FIRST list-sessions fails to execute, later ones are real.
+    writeFileSync(bin, `#!/bin/sh
+for a in "$@"; do
+  if [ "$a" = kill-server ]; then exit 0; fi
+  if [ "$a" = list-sessions ]; then if [ ! -f "${counter}" ]; then : > "${counter}"; exit 75; fi; fi
+done
+exec tmux "$@"
+`);
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-b1b-${process.pid}`;
+    try {
+      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead \(alive\)/);
+      expect(tmuxServerAlive(socket)).toBe(true);
+    } finally {
+      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("B1 (round 3): with the PID captured, an unexecutable tmux probe does not block a real kill — the dead process is positive evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    writeFileSync(bin, `#!/bin/sh
+for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; if [ "$a" = list-sessions ]; then exit 75; fi; done
+exec tmux "$@"
+`);
+    chmodSync(bin, 0o755);
+    const backend = new TmuxTerminalBackend(bin);
+    const socket = `agend-term-b1c-${process.pid}`;
+    try {
+      await backend.start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} });
+      expect(tmuxServerAlive(socket)).toBe(true);
+      await expect(backend.kill(socket)).resolves.toBeUndefined();   // SIGTERM to the captured PID, ESRCH afterwards
+      expect(tmuxServerAlive(socket)).toBe(false);
+    } finally {
+      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("M3: assets are served from memory and the listener refuses more than MAX_CONNECTIONS sockets", async () => {
     const { MAX_CONNECTIONS } = await import("../src/web-terminal-http.js");
     const { base, port } = await launch("sleep 30");

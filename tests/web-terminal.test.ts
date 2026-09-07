@@ -30,15 +30,19 @@ class FakeBackend implements TerminalBackend {
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
     this.emit = opts.onOutput;
   }
+  /** Every input/resize in arrival order, for FIFO assertions. */
+  ops: string[] = [];
   async sendInput(_s: string, bytes: Buffer): Promise<void> {
     const wait = this.inputDelayMs(bytes);
     if (wait > 0) await new Promise(r => setTimeout(r, wait));
     if (this.failInput) throw this.failInput;
     this.inputs.push(Buffer.from(bytes));
+    this.ops.push(`input:${bytes.toString()}`);
   }
   async resize(_s: string, cols: number, rows: number): Promise<void> {
     if (this.resizeRejects) throw new Error("tmux resize-window failed");
     this.resizes.push([cols, rows]);
+    this.ops.push(`resize:${cols}x${rows}`);
   }
   async capture(): Promise<string> { return this.pane; }
   async paneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> { return this.status; }
@@ -325,24 +329,40 @@ describe("browser I/O", () => {
     expect(backend.inputs.length).toBeLessThanOrEqual(1);        // the queue stopped touching tmux once finished
   });
 
-  it("M1: consecutive frames coalesce into one paste and resizes keep only the newest — jobs stay bounded under alternating floods", async () => {
+  it("M1: a keystroke flood coalesces into one paste and a resize storm into one resize — jobs stay tiny", async () => {
     vi.useRealTimers();
     const { session, backend } = make();
     await session.start();
     backend.inputDelayMs = () => 30;                            // the first job is in flight; everything else queues
     session.input(Buffer.from("a"));
-    for (let i = 0; i < 1000; i++) {
-      session.input(Buffer.from("k"));                          // 1-byte frames
-      session.resize(100 + (i % 2), 30);                        // alternating resize JSON
-    }
-    expect(session.pendingJobs).toBeLessThan(MAX_PENDING_JOBS);
-    expect(session.pendingJobs).toBeLessThanOrEqual(3);
+    await new Promise(r => setTimeout(r, 5));
+    for (let i = 0; i < 1000; i++) session.input(Buffer.from("k"));      // 1-byte frames → one batch
+    for (let i = 0; i < 1000; i++) session.resize(100 + (i % 2), 30);    // window drag → one tail resize (newest wins)
+    expect(session.pendingJobs).toBeLessThanOrEqual(2);
     expect(session.state).toBe("running");
     await session.drain();
-    // input arrived (first frame alone, then the coalesced rest), the final geometry is the last requested
     expect(Buffer.concat(backend.inputs).toString()).toBe("a" + "k".repeat(1000));
-    expect(backend.resizes.at(-1)).toEqual([101, 30]);           // i=999 → 100 + 1
-    expect(backend.resizes.length).toBeLessThanOrEqual(3);
+    expect(backend.resizes).toEqual([[101, 30]]);                          // i=999 → 100 + 1
+  });
+
+  it("M1: input between every resize is a barrier each time — the job cap then ends the session as wedged (fail closed)", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    await session.start();
+    backend.inputDelayMs = () => 30;
+    session.input(Buffer.from("a"));
+    await new Promise(r => setTimeout(r, 5));
+    for (let i = 0; i < 1000 && session.state === "running"; i++) {
+      session.input(Buffer.from("k"));
+      session.resize(100 + (i % 2), 30);
+    }
+    expect(session.pendingJobs).toBeLessThanOrEqual(MAX_PENDING_JOBS);
+    expect(session.state).toBe("finished");                                 // synchronous fail-closed
+    await new Promise(r => setTimeout(r, 20));                              // onDone fires after the (fake) kill resolves
+    expect(done[0]).toMatchObject({ ok: false, reason: "error" });
+    expect(done[0].detail).toMatch(/backlog/);
+    await session.drain();
+    expect(backend.ops.length).toBeLessThanOrEqual(MAX_PENDING_JOBS + 1);   // nothing queued after finish reaches tmux
   });
 
   it("M1: input before a resize is pasted before it, input after is pasted after (resize is a barrier)", async () => {
@@ -357,6 +377,35 @@ describe("browser I/O", () => {
     await session.drain();
     expect(backend.inputs.map(String)).toEqual(["xA", "B"]);
     expect(backend.resizes).toEqual([[90, 25]]);
+  });
+
+  it("M1 (round 3): input A → resize 90×25 → input B → resize 100×30 keeps every barrier in its FIFO slot", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.inputDelayMs = () => 20;                            // first job in flight; the four events queue up
+    session.input(Buffer.from("x"));
+    await new Promise(r => setTimeout(r, 5));                   // x has started; the batch is closed
+    session.input(Buffer.from("A"));
+    session.resize(90, 25);
+    session.input(Buffer.from("B"));                            // freezes the first resize
+    session.resize(100, 30);                                    // a NEW tail job, after B — must not overtake it
+    await session.drain();
+    expect(backend.ops).toEqual(["input:x", "input:A", "resize:90x25", "input:B", "resize:100x30"]);
+  });
+
+  it("M1 (round 3): two resizes with no input between still coalesce into the newer one", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.inputDelayMs = () => 20;
+    session.input(Buffer.from("x"));
+    await new Promise(r => setTimeout(r, 5));
+    session.resize(90, 25);
+    session.resize(100, 30);
+    session.input(Buffer.from("B"));
+    await session.drain();
+    expect(backend.ops).toEqual(["input:x", "resize:100x30", "input:B"]);
   });
 
   it("B1: a failed tmux input FAILS CLOSED — session ends once, client told, later queued input never reaches tmux, secret never logged", async () => {

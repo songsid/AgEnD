@@ -95,21 +95,22 @@
     };
     conn.onclose = function (ev) {
       if (ws !== conn || finished) return;
-      if (!opened) {                          // refused (403: no/expired cookie) → show the token gate
-        if (probe) { gate.hidden = false; return; }
-        finish(false, "Connection refused.");
-        return;
-      }
-      if (ev.code === 4000) { finish(false, "Replaced by a newer connection."); return; }
-      if (ev.code === 1000 || ev.code === 1001 || ev.code === 1008) { finish(false, "Connection closed (" + (ev.reason || ev.code) + ")."); return; }
-      // Transient drop: the process is still running; reconnect within the TTL.
-      if (reconnectAttempts < 5 && Date.now() < expiresAt) {
-        reconnectAttempts++;
-        setTimeout(function () { connect(false); }, 500 * reconnectAttempts);
-        return;
-      }
-      finish(false, "Connection lost.");
+      if (!opened && probe) { gate.hidden = false; return; }   // initial cookie probe refused → token gate
+      if (opened && ev.code === 4000) { finish(false, "Replaced by a newer connection."); return; }
+      if (opened && (ev.code === 1000 || ev.code === 1001 || ev.code === 1008)) { finish(false, "Connection closed (" + (ev.reason || ev.code) + ")."); return; }
+      // Transient drop, or a reconnect attempt that failed before opening: the
+      // process is still running; keep trying within the TTL and the budget.
+      scheduleReconnect();
     };
+  }
+
+  function scheduleReconnect() {
+    if (reconnectAttempts < 5 && Date.now() < expiresAt) {
+      reconnectAttempts++;
+      setTimeout(function () { if (!finished) connect(false); }, 500 * reconnectAttempts);
+      return;
+    }
+    finish(false, "Connection lost.");
   }
 
   function send(bytes) { if (ws && ws.readyState === 1 && bytes.length) ws.send(bytes); }
