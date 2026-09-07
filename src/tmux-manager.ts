@@ -258,6 +258,24 @@ export class TmuxManager {
   }
 
   /**
+   * killWindow() then verify by listing: true only when the window is
+   * positively absent. A tmux error while listing is "unknown" → false, so
+   * callers never report a cleanup as done on a guess.
+   */
+  async killWindowConfirmed(): Promise<boolean> {
+    if (!this.windowId) return true;
+    await this.killWindow();
+    try {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}"]));
+      return !stdout.split("\n").map(l => l.trim()).includes(this.windowId);
+    } catch (err) {
+      // No such session at all ⇒ no window either; anything else is unknown.
+      const text = String((err as { stderr?: unknown })?.stderr ?? (err as Error).message ?? "");
+      return /can't find session|no server running/.test(text);
+    }
+  }
+
+  /**
    * Check if the tmux window still exists in the session.
    * Note: with remain-on-exit enabled, a window with a dead pane still
    * returns true. Use getPaneStatus() to distinguish alive vs dead pane.

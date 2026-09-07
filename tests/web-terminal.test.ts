@@ -196,23 +196,59 @@ describe("token gate", () => {
   });
 });
 
-describe("cancel racing start (sol PR-B round 3 B1)", () => {
-  it("a server created after cancel() is killed again by start() itself and start() rejects — nothing stays alive", async () => {
+describe("cancel racing start (sol PR-B rounds 3–4 B1/B2)", () => {
+  it("cancel() does NOT settle while backend.start() is in flight; the one kill happens after the server exists; start rejects", async () => {
     vi.useRealTimers();
     const { session, backend, done } = make();
     let release!: () => void;
     backend.startGate = new Promise<void>(r => { release = r; });
     const starting = session.start();                          // parked inside backend.start
-    await session.cancel("fleet shutdown");                    // kill #1 finds no server yet
-    expect(backend.killed).toHaveLength(1);
+    let cancelSettled = false;
+    const cancelling = session.cancel("fleet shutdown").then(() => { cancelSettled = true; });
+    await new Promise(r => setTimeout(r, 30));
+    expect(cancelSettled).toBe(false);                         // teardown is not "done" before the server can exist
+    expect(backend.killed).toHaveLength(0);                    // no premature kill of a server that is not there yet
+    expect(done).toHaveLength(0);                              // and no completion reported yet
+    expect(session.peekAccessToken()).toBeNull();              // but the token is already withdrawn
+    release();                                                 // tmux now creates the server
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(backend.killed).toHaveLength(1);                    // exactly one confirmed kill, after creation
     expect(backend.serverAlive).toBe(false);
     expect(done).toHaveLength(1);
-    release();                                                 // tmux now creates the server
-    await expect(starting).rejects.toThrow(/cancelled during startup/);
-    expect(backend.killed).toHaveLength(2);                    // start() re-killed at the resource boundary
-    expect(backend.serverAlive).toBe(false);
+    expect(done[0].cleanupFailed).toBeUndefined();
     expect(session.state).toBe("finished");
-    expect(session.peekAccessToken()).toBeNull();
+  });
+
+  it("B2: a late kill that fails is reported in the ONE completion result (cleanupFailed) — never a silent success", async () => {
+    vi.useRealTimers();
+    const { session, backend, done, audits } = make();
+    let release!: () => void;
+    backend.startGate = new Promise<void>(r => { release = r; });
+    const starting = session.start();
+    const cancelling = session.cancel("fleet shutdown");
+    backend.killRejects = true;                                // the server that appears late cannot be confirmed dead
+    release();
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ reason: "cancel", cleanupFailed: true });
+    expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: true });
+    expect(audits.some(a => a[0] === "web_terminal_cleanup_failed")).toBe(true);
+  });
+
+  it("a backend.start() that FAILS while cancel is pending settles cancel with a clean completion", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    let reject!: (e: Error) => void;
+    backend.startGate = new Promise<void>((_r, rj) => { reject = rj; });
+    const starting = session.start();
+    const cancelling = session.cancel("fleet shutdown");
+    reject(new Error("tmux exploded"));
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(done).toHaveLength(1);
+    expect(session.state).toBe("finished");
   });
 });
 

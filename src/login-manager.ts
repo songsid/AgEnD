@@ -17,6 +17,8 @@ export interface LoginTmux {
   capturePaneJoined(lines?: number): Promise<string>;
   getPaneStatus(): Promise<{ alive: boolean; exitCode?: number } | null>;
   killWindow(): Promise<void>;
+  /** Kill the window and CONFIRM it is gone; false when it may still exist. TmuxManager.killWindow() alone swallows errors. */
+  killWindowConfirmed?(): Promise<boolean>;
   sendSpecialKey(key: "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q"): Promise<boolean>;
   pasteText(text: string, opts?: { retryEnter?: boolean }): Promise<boolean>;
 }
@@ -28,8 +30,8 @@ export interface LoginSessionEvents {
   onAuthHint(url: string, code: string | null): void | Promise<void>;
   /** The CLI is waiting for admin-supplied text (`/login code <text>`). */
   onNeedInput(promptExcerpt: string): void | Promise<void>;
-  /** Terminal state — exactly once per session. */
-  onDone(result: { ok: boolean; detail: string }): void | Promise<void>;
+  /** Terminal state — exactly once per session. cleanupFailed: the window could not be confirmed removed. */
+  onDone(result: { ok: boolean; detail: string; cleanupFailed?: boolean }): void | Promise<void>;
 }
 
 export type LoginSessionState = "starting" | "menu" | "waiting" | "input" | "done";
@@ -44,6 +46,8 @@ export class LoginSession {
   private sentUrl: string | null = null;
   private lastInputPrompt: string | null = null;
   private finished = false;
+  /** The createWindow() in flight, so finish() can wait for the window to exist before killing it. */
+  private startInFlight: Promise<unknown> | null = null;
 
   constructor(
     readonly flow: LoginFlow,
@@ -58,19 +62,13 @@ export class LoginSession {
     // prints "Successfully logged in" and exits is still observable; without it
     // the window vanishes between polls and success is indistinguishable from a
     // crash.
-    await this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
-    if (this.finished) {
-      // cancel() ran while createWindow was in flight: its killWindow found
-      // nothing. The window we just created must not survive the session.
-      await this.tmux.killWindow().catch(err =>
-        this.logger.warn({ err: (err as Error).message }, "login window created after cancel could not be removed"));
-      return;
-    }
+    // finish() waits for this before its one confirmed kill, so a cancel that
+    // races createWindow still removes the window — and reports if it cannot.
+    this.startInFlight = this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
+    await this.startInFlight;
+    if (this.finished) return;                       // finish() owns the cleanup
     await this.tmux.setRemainOnExit();
-    if (this.finished) {
-      await this.tmux.killWindow().catch(() => { /* best effort */ });
-      return;
-    }
+    if (this.finished) return;
     this.timeoutTimer = setTimeout(() => {
       void this.finish(false, "timeout");
     }, this.flow.timeoutMs);
@@ -170,9 +168,21 @@ export class LoginSession {
     this.state = "done";
     if (this.pollTimer) clearTimeout(this.pollTimer);
     if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
-    await this.tmux.killWindow().catch(err =>
-      this.logger.warn({ err: (err as Error).message }, "login window cleanup failed"));
-    await this.events.onDone({ ok, detail });
+    if (this.startInFlight) {
+      await Promise.race([
+        this.startInFlight.catch(() => { /* window never came up */ }),
+        new Promise<void>(resolve => setTimeout(resolve, 25_000).unref?.()),
+      ]);
+    }
+    let cleanupFailed = false;
+    if (this.tmux.killWindowConfirmed) {
+      cleanupFailed = !(await this.tmux.killWindowConfirmed().catch(() => false));
+    } else {
+      await this.tmux.killWindow().catch(() => { cleanupFailed = true; });
+    }
+    if (cleanupFailed) this.logger.warn({ backend: this.flow.backend }, "login window could not be confirmed removed");
+    // Present only when true: existing consumers compare the payload exactly.
+    await this.events.onDone(cleanupFailed ? { ok, detail, cleanupFailed: true } : { ok, detail });
   }
 }
 

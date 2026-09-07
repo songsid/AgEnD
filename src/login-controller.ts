@@ -125,8 +125,14 @@ function safeErr(err: unknown): { errorKind: "error"; errno?: number | string } 
 
 export class LoginController {
   private active: ActiveLogin | null = null;
-  /** Set by shutdown(): fences every continuation that resumes after an await, independent of claim ownership. */
+  /** True between shutdown() and reopen(): no new work is accepted. */
   private stopping = false;
+  /**
+   * Monotonic: incremented by every shutdown(), never rolled back by reopen().
+   * A continuation captures it at start and treats any change as "the world
+   * I started in is gone" — so a stopAll→startAll cannot resurrect old work.
+   */
+  private shutdownGeneration = 0;
   private readonly backendFactory = new TmuxTerminalBackend();
   private readonly startTimes = new Map<string, number[]>();
 
@@ -151,6 +157,7 @@ export class LoginController {
     if (!flow) return t("login.unsupported", backendArg);
 
     if (this.stopping) return t("login.web_shutting_down");
+    const generation = this.shutdownGeneration;
     // Authorization is decided HERE, not by whoever called us.
     if (!chat.userId || !this.deps.isFleetAdmin(chat.userId, chat.adapterId)) {
       this.audit("denied", { backend, requester: chat.userId ?? null, adapterId: chat.adapterId });
@@ -176,15 +183,20 @@ export class LoginController {
     if (!claim) return this.deps.windowBusyMessage();
     let transferred = false;
     try {
-      return await this.startClaimed(flow, backend, chat, opts, cfg, claim, () => { transferred = true; });
+      return await this.startClaimed(flow, backend, chat, opts, cfg, claim, generation, () => { transferred = true; });
     } finally {
       if (!transferred) this.deps.releaseWindow(claim);
     }
   }
 
+  /** The fence every continuation applies after an await: stopping, a newer shutdown generation, or a lost claim. */
+  private stale(generation: number, claim: LoginWindowClaim | null): boolean {
+    return this.stopping || this.shutdownGeneration !== generation || (claim !== null && !this.deps.isClaimCurrent(claim));
+  }
+
   private async startClaimed(
     flow: LoginFlow, backend: string, chat: LoginChat, opts: LoginStartOptions, cfg: FleetConfig | null,
-    claim: LoginWindowClaim, markTransferred: () => void,
+    claim: LoginWindowClaim, generation: number, markTransferred: () => void,
   ): Promise<string | null> {
     if (!opts.skipAuthCheck) {
       // First pass: find out whether the CLI still holds a token, then ask for
@@ -192,7 +204,7 @@ export class LoginController {
       // answer; the window is released (by the caller's finally) meanwhile.
       let tokenPresent = false;
       if (flow.authCheck) tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
-      if (this.stopping || !this.deps.isClaimCurrent(claim)) return t("login.web_shutting_down");
+      if (this.stale(generation, claim)) return t("login.web_shutting_down");
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
       try {
@@ -213,7 +225,12 @@ export class LoginController {
         this.deps.logger.warn({ ...safeErr(err), backend }, "Failed to post login confirmation");
         return t("login.failed", backend, t("login.web_confirm_failed"));
       }
-      if (this.stopping) this.audit("stale_confirmation", { backend, requester: chat.userId });   // posted as we stopped; it will simply not be honoured
+      if (this.stale(generation, null)) {
+        // The prompt went out while (or after) we stopped. It cannot be
+        // withdrawn from here; a click on it starts a FRESH start() that runs
+        // every check again (admin, allowlist, rate, claim, generation).
+        this.audit("stale_confirmation", { backend, requester: chat.userId });
+      }
       return null;
     }
 
@@ -257,14 +274,14 @@ export class LoginController {
 
     try {
       await entry.session.start();
-      if (!this.deps.isClaimCurrent(claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
       const http = (this.deps.createHttp ?? ((s, l, o) => new WebTerminalHttpServer(s, l, o)))(entry.session, logger, {
         bind: cfg?.web_terminal?.bind,
         hostname: cfg?.hostname || "localhost",
       });
       entry.http = http;
       entry.url = (await http.listen()).url;
-      if (!this.deps.isClaimCurrent(claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+      if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     } catch (err) {
       return this.abort(entry, t("login.failed", backend, (err as Error).message), "startup failed");
     }
@@ -273,15 +290,15 @@ export class LoginController {
     // reached neither the requester nor a resend button, means the session
     // must not stay open (sol M1). A shutdown landing during any of these
     // awaits aborts instead of announcing a terminal that no longer exists.
-    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+    if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     if (!(await this.sendLink(entry, Math.round(ttlMs / 60_000), command))) {
       return this.abort(entry, t("login.failed", backend, t("login.web_link_failed")), "link delivery failed");
     }
-    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+    if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     if (!(await this.sendToken(entry, { offerResend: true }))) {
       return this.abort(entry, t("login.failed", backend, t("login.web_token_failed")), "token delivery failed");
     }
-    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
+    if (this.stale(generation, claim)) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     return t("login.web_started", backend);
   }
 
@@ -301,6 +318,7 @@ export class LoginController {
    */
   async shutdown(): Promise<void> {
     this.stopping = true;
+    this.shutdownGeneration++;
     const entry = this.active;
     if (!entry) return;
     entry.silent = true;

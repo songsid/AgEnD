@@ -8,7 +8,7 @@ import type { LoginFlow } from "../src/login-flows.js";
  * created — an owner-less login window after the session was "done".
  * start() must re-check at the resource boundary and remove it.
  */
-function harness() {
+function harness(opts: { confirmable?: boolean; killFails?: boolean } = {}) {
   let releaseCreate!: () => void;
   const created = new Promise<void>(r => { releaseCreate = r; });
   let alive = false;
@@ -18,9 +18,10 @@ function harness() {
     async setRemainOnExit() {},
     async capturePaneJoined() { return ""; },
     async getPaneStatus() { return { alive }; },
-    async killWindow() { kills.push(Date.now()); alive = false; },
+    async killWindow() { kills.push(Date.now()); if (!opts.killFails) alive = false; },   // production killWindow swallows errors
     async sendSpecialKey() { return true; },
     async pasteText() { return true; },
+    ...(opts.confirmable ? { async killWindowConfirmed() { kills.push(Date.now()); if (!opts.killFails) alive = false; return !alive; } } : {}),
   };
   const flow: LoginFlow = { backend: "codex", command: "codex login --device-auth", successPattern: /never/, timeoutMs: 60_000 };
   const done: unknown[] = [];
@@ -32,17 +33,33 @@ function harness() {
 }
 
 describe("LoginSession cancel racing createWindow", () => {
-  it("a window created after cancel() is removed by start() itself; no live window remains", async () => {
+  it("cancel() waits for the in-flight createWindow, then kills once; no live window remains and start arms nothing", async () => {
     const h = harness();
     const starting = h.session.start();                 // parked inside createWindow
-    await h.session.cancel("cancelled");                // kills nothing yet — the window does not exist
-    expect(h.kills).toHaveLength(1);
-    expect(h.done).toHaveLength(1);
+    let settled = false;
+    const cancelling = h.session.cancel("cancelled").then(() => { settled = true; });
+    await new Promise(r => setTimeout(r, 30));
+    expect(settled).toBe(false);                        // not "done" while the window may still appear
+    expect(h.kills).toHaveLength(0);
     h.releaseCreate();                                  // tmux now creates the window
+    await cancelling;
     await starting;
-    expect(h.kills).toHaveLength(2);                    // start() noticed `finished` and killed the late window
+    expect(h.kills).toHaveLength(1);                    // one kill, after the window exists
     expect(h.isAlive()).toBe(false);
+    expect(h.done).toHaveLength(1);
+    expect((h.done[0] as { cleanupFailed?: boolean }).cleanupFailed).toBeUndefined();
     expect(h.session.state).toBe("done");
+  });
+
+  it("M1: with a confirmable kill, a window that cannot be removed is reported as cleanupFailed — not silent success", async () => {
+    const h = harness({ confirmable: true, killFails: true });
+    const starting = h.session.start();
+    const cancelling = h.session.cancel("cancelled");
+    h.releaseCreate();
+    await cancelling;
+    await starting;
+    expect(h.isAlive()).toBe(true);
+    expect((h.done[0] as { cleanupFailed?: boolean }).cleanupFailed).toBe(true);
   });
 
   it("the normal path is unchanged: start completes, cancel kills once", async () => {

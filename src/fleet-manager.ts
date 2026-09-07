@@ -7740,9 +7740,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         await chat.adapter.sendText(chat.chatId, t("login.need_input", backend, promptExcerpt),
           { threadId: chat.threadId }).catch(() => {});
       },
-      onDone: async ({ ok, detail }) => {
+      onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeLogin = null;
         this.loginWindow.release(claim);
+        if (cleanupFailed) {
+          await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
+        }
         let text: string;
         if (ok) {
           const { woken, restarted } = await this.recoverBackendInstances(backend);
@@ -8035,9 +8038,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       onMenu: () => {},
       onAuthHint: () => {},
       onNeedInput: () => {},
-      onDone: async ({ ok, detail }) => {
+      onDone: async ({ ok, detail, cleanupFailed }) => {
         this.activeInstall = null;
         this.loginWindow.release(claim);
+        if (cleanupFailed) {
+          await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
+        }
         if (!ok) {
           // A cancel is user-initiated — the cancel command's own reply already
           // said so; a second message here would be a duplicate.

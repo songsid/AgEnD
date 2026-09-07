@@ -4,14 +4,14 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // Legacy relay sessions must never touch a real tmux server in unit tests.
-const relaySessions: Array<{ flow: any; cancelled: string[] }> = [];
+const relaySessions: Array<{ flow: any; cancelled: string[]; events?: any }> = [];
 let onRelayStart: (() => Promise<void>) | null = null;
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
   class FakeLoginSession {
     state = "starting";
-    record: { flow: any; cancelled: string[] };
-    constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [] }; relaySessions.push(this.record); }
+    record: { flow: any; cancelled: string[]; events?: any };
+    constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [], events }; relaySessions.push(this.record); }
     async start() { if (onRelayStart) await onRelayStart(); }
     async cancel(detail = "cancelled") { this.state = "done"; this.record.cancelled.push(detail); await this.events.onDone({ ok: false, detail }); }
     async submitInput() { return true; }
@@ -165,6 +165,16 @@ describe("/login mode dispatch and exclusivity", () => {
     expect(await fm.startLoginSession("codex", chat)).toBe(t("login.web_shutting_down"));
     expect(relaySessions[0].cancelled).toEqual(["cancelled"]);
     expect((fm as any).activeLogin).toBeNull();
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+
+  it("M1 (round 4): a legacy window whose late kill could not be confirmed tells the operator instead of a silent success", async () => {
+    const { fm, chat, adapter } = setup("relay");
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    await fm.startLoginSession("codex", chat);
+    await relaySessions[0].events.onDone({ ok: false, detail: "cancelled", cleanupFailed: true });
+    const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
+    expect(texts.some((x: string) => x.includes("could not be confirmed dead"))).toBe(true);
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 

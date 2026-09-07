@@ -131,6 +131,8 @@ export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
 const KILL_TIMEOUT_MS = 5_000;
+/** How long finish() waits for an in-flight backend.start() to settle before killing (tmux execs are capped at 10 s each). */
+const START_SETTLE_TIMEOUT_MS = 25_000;
 /** Consecutive failed pane probes before the session is ended as unreachable. */
 export const MAX_PROBE_FAILURES = 3;
 const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
@@ -178,6 +180,8 @@ export class WebTerminalSession extends EventEmitter {
   private pollTimer: NodeJS.Timeout | null = null;
   private polling = false;
   private finishing: Promise<void> | null = null;
+  /** The backend.start() in flight, so finish() can wait for the server to exist before killing it. */
+  private startInFlight: Promise<void> | null = null;
   private sentUrls = new Set<string>();
   private successSeenAt: number | null = null;
   /** Consecutive polls where tmux could not even be asked — a vanished server must not idle until TTL. */
@@ -225,32 +229,32 @@ export class WebTerminalSession extends EventEmitter {
     if (this.state !== "created") throw new Error("session already started");
     this.state = "running";
     this.expiresAt = this.now() + this.spec.ttlMs;
+    // finish() may run concurrently (cancel/shutdown during startup). It waits
+    // for THIS promise to settle before its one confirmed kill, so the kill
+    // always sees the server if one was created, and the completion result
+    // (cleanupFailed) is computed once, by finish, after that kill.
+    this.startInFlight = this.backend.start({
+      socket: this.socketName,
+      command: this.spec.command,
+      cwd: this.spec.cwd,
+      cols: this.cols,
+      rows: this.rows,
+      onOutput: chunk => this.onOutput(chunk),
+    });
     try {
-      await this.backend.start({
-        socket: this.socketName,
-        command: this.spec.command,
-        cwd: this.spec.cwd,
-        cols: this.cols,
-        rows: this.rows,
-        onOutput: chunk => this.onOutput(chunk),
-      });
+      await this.startInFlight;
     } catch (err) {
+      if (this.finishing) { await this.finishing.catch(() => { /* reported by finish */ }); throw new Error("session cancelled during startup"); }
       this.state = "finished";
       this.accessToken = null;
       this.audit("web_terminal_start_failed", { error: (err as Error).message, cleanupFailed: (err as { cleanupFailed?: boolean }).cleanupFailed === true });
       throw err;
     }
     if (this.finishing) {
-      // cancel()/TTL/shutdown ran while backend.start() was in flight: its kill
-      // happened BEFORE the server existed. The server we just created would
-      // outlive the session — kill it again now, at the resource boundary.
-      await this.finishing.catch(() => { /* already reported */ });
-      const killed = await Promise.race([
-        this.backend.kill(this.socketName).then(() => true, () => false),
-        new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
-      ]);
-      this.audit("web_terminal_start_after_finish", { cleanupFailed: !killed });
-      if (!killed) this.logger.warn({ sid: this.sid, socket: this.socketName }, "web terminal server created after cancel could not be confirmed dead");
+      // cancel()/TTL/shutdown ran while backend.start() was in flight. finish()
+      // is waiting on startInFlight and will kill the server we just created,
+      // then report — we only wait for it and refuse to arm anything.
+      await this.finishing.catch(() => { /* reported by finish */ });
       throw new Error("session cancelled during startup");
     }
     this.audit("web_terminal_created", { ttlMs: this.spec.ttlMs, cols: this.cols, rows: this.rows });
@@ -511,6 +515,15 @@ export class WebTerminalSession extends EventEmitter {
       try { this.client?.send(JSON.stringify({ t: "exit", ok: result.ok, reason: result.reason, exitCode: result.exitCode, detail: result.detail })); } catch { /* gone */ }
       try { this.client?.close(1000, result.reason); } catch { /* gone */ }
       this.client = null;
+      // A startup still in flight must settle first: otherwise the kill runs
+      // before the server exists and the server outlives the session (sol
+      // PR-B round 4 B1). Bounded — a wedged tmux must not block shutdown.
+      if (this.startInFlight) {
+        await Promise.race([
+          this.startInFlight.catch(() => { /* start's own failure path reports */ }),
+          new Promise<void>(resolve => setTimeout(resolve, START_SETTLE_TIMEOUT_MS).unref?.()),
+        ]);
+      }
       // kill() resolves only when the dedicated server is CONFIRMED gone (B2).
       // A rejection or a timeout means the command may still be running: say so
       // loudly (audit + result flag) rather than pretending the boundary held.

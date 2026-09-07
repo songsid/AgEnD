@@ -329,6 +329,39 @@ describe("two messages: link to the chat, token only privately", () => {
     expect(lock.isHeld).toBe(false);
   });
 
+  it("B3 (round 4): a shutdown AND reopen landing during link delivery cannot resurrect the old start — generation is monotonic", async () => {
+    const { lock } = make();
+    let controllerRef!: LoginController;
+    const adapter = adapterOf("discord");
+    adapter.sendText.mockImplementation(async () => {
+      lock.close(); await controllerRef.shutdown();               // stopAll…
+      lock.reopen(); controllerRef.reopen();                       // …then startAll, all while the old sendLink is in flight
+      return { messageId: "m1", chatId: "chat" };
+    });
+    const { controller, sessions } = make({ lock });
+    controllerRef = controller;
+    const text = await controller.start("codex", chat(adapter), CONFIRMED);
+    expect(text).toBe(t("login.web_shutting_down"));
+    expect(adapter.sendDirect!).not.toHaveBeenCalled();
+    expect(sessions[0].state).toBe("finished");
+    expect(controller.isActive()).toBe(false);
+    expect(lock.isHeld).toBe(false);
+    // the NEW generation works normally
+    adapter.sendText.mockImplementation(async () => ({ messageId: "m2", chatId: "chat" }));
+    expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "codex"));
+  });
+
+  it("B3 (round 4): a shutdown+reopen while the confirmation is being posted is detected as stale even though stopping is false again", async () => {
+    const { lock } = make();
+    let controllerRef!: LoginController;
+    const { controller, events } = make({ lock, postButtons: async () => {
+      lock.close(); await controllerRef.shutdown(); lock.reopen(); controllerRef.reopen();
+    } });
+    controllerRef = controller;
+    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(events.some(e => e[0] === "login_web_stale_confirmation")).toBe(true);
+  });
+
   it("M1 (round 3): a shutdown landing while the confirmation is being posted returns shutting-down and audits the stale prompt", async () => {
     const { lock } = make();
     let controllerRef!: LoginController;
