@@ -36,6 +36,10 @@ const MAX_OPEN_BODY = 1024;
 const MAX_WS_FRAME = 4096;
 const MAX_FRAMES_PER_SECOND = 64;
 const MAX_OUTBOUND_BUFFERED = 1024 * 1024;
+/** One admin browser needs a handful of sockets; anything beyond this is refused (M3: URL holders must not exhaust the fleet process). */
+export const MAX_CONNECTIONS = 8;
+const MAX_REQUESTS_PER_SOCKET = 100;
+const RESPONSE_TIMEOUT_MS = 15_000;
 
 const ASSETS: Record<string, { file: string; type: string }> = {
   "terminal.js": { file: "terminal.js", type: "text/javascript; charset=utf-8" },
@@ -61,7 +65,8 @@ export interface WebTerminalHttpOptions {
  * to us — all of that is a 400, never an exception (B1).
  */
 export function safeRequestPath(rawUrl: string | undefined): string | null {
-  if (!rawUrl || rawUrl.length > 2048 || !rawUrl.startsWith("/")) return null;
+  // origin-form only: starts with a single "/" ("//host/x" is scheme-relative, not a path)
+  if (!rawUrl || rawUrl.length > 2048 || !rawUrl.startsWith("/") || rawUrl.startsWith("//")) return null;
   try {
     return new URL(rawUrl, "http://localhost").pathname;
   } catch {
@@ -78,6 +83,8 @@ export class WebTerminalHttpServer {
   private readonly bind: string;
   private readonly hostname: string;
   private unsubscribeFinished: (() => void) | null = null;
+  /** Immutable assets, read once at listen() — no per-request disk I/O (M3). */
+  private readonly assetCache = new Map<string, Buffer>();
 
   constructor(
     private readonly session: WebTerminalSession,
@@ -94,6 +101,7 @@ export class WebTerminalHttpServer {
   /** Start listening; returns the URL to hand the admin (it contains no secret). */
   async listen(): Promise<{ port: number; url: string }> {
     if (this.server) throw new Error("already listening");
+    this.preloadAssets();
     const server = createServer((req, res) => {
       // Error boundary: nothing thrown by a request may escape to the process.
       Promise.resolve().then(() => this.handle(req, res)).catch(err => {
@@ -114,12 +122,21 @@ export class WebTerminalHttpServer {
       if (!(socket as Socket).destroyed) (socket as Socket).end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
     });
     server.on("connection", socket => {
+      if (this.sockets.size >= MAX_CONNECTIONS) {
+        // More sockets than one browser could need: refuse before any parsing.
+        socket.destroy();
+        return;
+      }
       this.sockets.add(socket);
       socket.on("error", () => { /* peer reset; nothing to do */ });
       socket.on("close", () => this.sockets.delete(socket));
     });
     server.headersTimeout = 10_000;
     server.requestTimeout = 15_000;
+    server.maxRequestsPerSocket = MAX_REQUESTS_PER_SOCKET;
+    // A peer that stops reading a response (slow-loris on a 489 KB asset) is cut off.
+    server.timeout = RESPONSE_TIMEOUT_MS;
+    server.on("timeout", socket => socket.destroy());
     this.server = server;
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -195,10 +212,16 @@ export class WebTerminalHttpServer {
     res.end(body);
   }
 
+  private preloadAssets(): void {
+    for (const rel of ["terminal.html", ...Object.values(ASSETS).map(a => a.file)]) {
+      const p = join(this.assetsDir, rel);
+      if (!existsSync(p)) continue;
+      try { this.assetCache.set(rel, readFileSync(p)); } catch { /* served as 404/500 */ }
+    }
+  }
+
   private readAsset(rel: string): Buffer | null {
-    const p = join(this.assetsDir, rel);
-    if (!existsSync(p)) return null;
-    try { return readFileSync(p); } catch { return null; }
+    return this.assetCache.get(rel) ?? null;
   }
 
   private open(req: IncomingMessage, res: ServerResponse): void {

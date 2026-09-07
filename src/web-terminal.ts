@@ -69,6 +69,8 @@ export interface WebTerminalResult {
   /** Last non-empty pane lines (evidence), or the failure mapping's message. */
   detail: string;
   suggest?: "relogin" | "check-args" | "retry";
+  /** The dedicated tmux server could NOT be confirmed dead — operator attention needed. */
+  cleanupFailed?: boolean;
 }
 
 export interface WebTerminalEvents {
@@ -107,6 +109,7 @@ export interface TerminalBackend {
   /** Plain-text pane content (joined wrapped lines), for observation and evidence. */
   capture(socket: string): Promise<string>;
   paneStatus(socket: string): Promise<{ alive: boolean; exitCode?: number } | null>;
+  /** Resolves only when the server is confirmed gone; rejects when it may still be alive. */
   kill(socket: string): Promise<void>;
 }
 
@@ -121,8 +124,10 @@ export const MIN_COLS = 20, MAX_COLS = 250, MIN_ROWS = 5, MAX_ROWS = 100;
 const REPLAY_BUFFER_LIMIT = 256 * 1024;
 const POLL_INTERVAL_MS = 1_000;
 const SUCCESS_EXIT_GRACE_MS = 15_000;
-/** Bytes of browser input allowed to wait for tmux before the client is dropped (B4). */
+/** Bytes of browser input allowed to wait for tmux before the session is ended as wedged (B4). */
 export const MAX_PENDING_INPUT_BYTES = 64 * 1024;
+/** Queued tmux operations allowed to wait (input batches + at most one resize); more means tmux is stuck. */
+export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
 const KILL_TIMEOUT_MS = 5_000;
@@ -176,6 +181,11 @@ export class WebTerminalSession extends EventEmitter {
   /** Single FIFO for input + resize: browser order is pane order (B4). */
   private ioQueue: Promise<void> = Promise.resolve();
   private pendingInputBytes = 0;
+  private pendingJobCount = 0;
+  /** Input bytes not yet handed to a running job: consecutive frames coalesce into one tmux paste. */
+  private pendingBatch: Buffer[] | null = null;
+  /** Latest requested geometry while a resize job is queued (only the newest is applied). */
+  private pendingResize: { cols: number; rows: number } | null = null;
   private cols: number;
   private rows: number;
 
@@ -217,7 +227,7 @@ export class WebTerminalSession extends EventEmitter {
     } catch (err) {
       this.state = "finished";
       this.accessToken = null;
-      this.audit("web_terminal_start_failed", { error: (err as Error).message });
+      this.audit("web_terminal_start_failed", { error: (err as Error).message, cleanupFailed: (err as { cleanupFailed?: boolean }).cleanupFailed === true });
       throw err;
     }
     this.audit("web_terminal_created", { ttlMs: this.spec.ttlMs, cols: this.cols, rows: this.rows });
@@ -282,24 +292,46 @@ export class WebTerminalSession extends EventEmitter {
     return () => { if (this.client === client) this.client = null; };
   }
 
-  /** Bytes queued for the pane but not yet delivered (for the transport layer's overflow check). */
+  /** Bytes queued for the pane but not yet delivered. */
   get pendingInput(): number { return this.pendingInputBytes; }
+  /** Queued tmux operations not yet started (tests: must stay small under any input pattern). */
+  get pendingJobs(): number { return this.pendingJobCount; }
 
   /**
-   * Queue browser input for the pane. Strictly ordered with resize. Returns
-   * false (and drops the bytes) when more than MAX_PENDING_INPUT_BYTES are
-   * already waiting — the caller must then cut the client off.
+   * Queue browser input for the pane. Strictly ordered with resize.
+   * Consecutive input frames coalesce into ONE paste (a resize is a barrier),
+   * so the number of tmux operations is bounded by the number of barriers,
+   * not by the number of keystrokes. Returns false when the session is not
+   * running. A backlog beyond MAX_PENDING_INPUT_BYTES / MAX_PENDING_JOBS
+   * means tmux is wedged: the session ENDS (fail closed) rather than letting
+   * queued keystrokes reach a credential prompt unattended.
    */
   input(bytes: Buffer): boolean {
-    if (this.state !== "running" || bytes.length === 0) return this.state === "running";
-    if (this.pendingInputBytes + bytes.length > MAX_PENDING_INPUT_BYTES) return false;
+    if (this.state !== "running") return false;
+    if (bytes.length === 0) return true;
+    if (this.pendingInputBytes + bytes.length > MAX_PENDING_INPUT_BYTES) {
+      void this.finish({ ok: false, reason: "error", detail: "terminal input backlog — tmux not accepting input" });
+      return false;
+    }
     this.pendingInputBytes += bytes.length;
-    const copy = Buffer.from(bytes);
+    if (this.pendingBatch) {
+      this.pendingBatch.push(Buffer.from(bytes));
+      return true;
+    }
+    const batch: Buffer[] = [Buffer.from(bytes)];
+    this.pendingBatch = batch;
     this.enqueue(async () => {
+      if (this.pendingBatch === batch) this.pendingBatch = null;   // later frames start a new batch
+      const payload = Buffer.concat(batch);
       try {
-        if (this.state === "running") await this.backend.sendInput(this.socketName, copy);
+        if (this.state === "running") await this.backend.sendInput(this.socketName, payload);
+      } catch (err) {
+        // Fail closed (B1): a partially delivered keystroke sequence must not
+        // leave the admin typing into an unknown state. Sanitized detail only.
+        this.logger.warn({ sid: this.sid, op: "input", code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
+        void this.finish({ ok: false, reason: "error", detail: "terminal input failed — session ended" });
       } finally {
-        this.pendingInputBytes -= copy.length;
+        this.pendingInputBytes -= payload.length;
       }
     }, "input");
     return true;
@@ -309,10 +341,20 @@ export class WebTerminalSession extends EventEmitter {
     if (this.state !== "running") return;
     const c = clamp(Math.floor(cols), MIN_COLS, MAX_COLS);
     const r = clamp(Math.floor(rows), MIN_ROWS, MAX_ROWS);
-    if (c === this.cols && r === this.rows) return;
-    this.cols = c; this.rows = r;
+    if (c === this.cols && r === this.rows && !this.pendingResize) return;
+    if (this.pendingResize) { this.pendingResize = { cols: c, rows: r }; return; }   // only the newest geometry matters
+    this.pendingResize = { cols: c, rows: r };
+    this.pendingBatch = null;                                                        // a resize is an ordering barrier for input
     this.enqueue(async () => {
-      if (this.state === "running") await this.backend.resize(this.socketName, c, r);
+      const want = this.pendingResize;
+      this.pendingResize = null;
+      if (!want || this.state !== "running") return;
+      try {
+        await this.backend.resize(this.socketName, want.cols, want.rows);
+        this.cols = want.cols; this.rows = want.rows;                                // committed only on success (retry stays possible)
+      } catch (err) {
+        this.logger.warn({ sid: this.sid, op: "resize", code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
+      }
     }, "resize");
   }
 
@@ -320,11 +362,18 @@ export class WebTerminalSession extends EventEmitter {
   drain(): Promise<void> { return this.ioQueue; }
 
   private enqueue(job: () => Promise<void>, what: string): void {
-    this.ioQueue = this.ioQueue.then(job).catch(err => {
-      // Never log the error text: a failed tmux invocation must not leak what
-      // was being typed (B2). Operation name only.
-      this.logger.warn({ sid: this.sid, op: what, code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
-    });
+    if (this.pendingJobCount >= MAX_PENDING_JOBS) {
+      void this.finish({ ok: false, reason: "error", detail: `terminal ${what} backlog — tmux not responding` });
+      return;
+    }
+    this.pendingJobCount++;
+    this.ioQueue = this.ioQueue
+      .then(() => { this.pendingJobCount--; return job(); })
+      .catch(err => {
+        // Never log the error text: a failed tmux invocation must not leak what
+        // was being typed. Operation name only.
+        this.logger.warn({ sid: this.sid, op: what, code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
+      });
   }
 
   cancel(detail = "cancelled"): Promise<void> {
@@ -421,12 +470,19 @@ export class WebTerminalSession extends EventEmitter {
       try { this.client?.send(JSON.stringify({ t: "exit", ok: result.ok, reason: result.reason, exitCode: result.exitCode, detail: result.detail })); } catch { /* gone */ }
       try { this.client?.close(1000, result.reason); } catch { /* gone */ }
       this.client = null;
+      // kill() resolves only when the dedicated server is CONFIRMED gone (B2).
+      // A rejection or a timeout means the command may still be running: say so
+      // loudly (audit + result flag) rather than pretending the boundary held.
       const killed = await Promise.race([
         this.backend.kill(this.socketName).then(() => true, () => false),
         new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
       ]);
-      if (!killed) this.logger.warn({ sid: this.sid }, "web terminal tmux cleanup failed");
-      this.audit("web_terminal_closed", { reason: result.reason, ok: result.ok, exitCode: result.exitCode });
+      if (!killed) {
+        result.cleanupFailed = true;
+        this.logger.warn({ sid: this.sid, socket: this.socketName }, "web terminal tmux cleanup failed — server may still be alive");
+        this.audit("web_terminal_cleanup_failed", { socket: this.socketName });
+      }
+      this.audit("web_terminal_closed", { reason: result.reason, ok: result.ok, exitCode: result.exitCode, cleanupFailed: result.cleanupFailed === true });
       this.emit("finished", result);
       await Promise.resolve(this.events.onDone(result)).catch(err =>
         this.logger.warn({ err: (err as Error).message }, "web terminal done handler failed"));
@@ -457,6 +513,8 @@ function safeHost(url: string): string {
  */
 export class TmuxTerminalBackend implements TerminalBackend {
   private readonly streams = new Map<string, { dir: string; stop: () => void }>();
+  /** PID of each dedicated server, captured right after new-session, for the signal fallback in kill(). */
+  private readonly serverPids = new Map<string, number>();
 
   constructor(private readonly tmuxBin = "tmux") {}
 
@@ -499,6 +557,8 @@ export class TmuxTerminalBackend implements TerminalBackend {
     let dir: string | null = null;
     let stream: NetSocket | null = null;
     try {
+      const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
+      if (Number.isFinite(pid) && pid > 1) this.serverPids.set(socket, pid);
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
       await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
@@ -531,7 +591,12 @@ export class TmuxTerminalBackend implements TerminalBackend {
       stream?.destroy();
       if (dir) rmSync(dir, { recursive: true, force: true });
       this.streams.delete(socket);
-      await this.kill(socket);
+      try {
+        await this.kill(socket);
+      } catch {
+        (err as { cleanupFailed?: boolean }).cleanupFailed = true;
+        (err as Error).message += " (cleanup failed: the tmux server may still be running)";
+      }
       throw err;
     }
   }
@@ -591,10 +656,39 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
   }
 
+  /** True when a tmux server still answers on this socket. */
+  private async serverAlive(socket: string): Promise<boolean> {
+    try { await this.tmux(socket, "list-sessions", []); return true; } catch { return false; }
+  }
+
+  /**
+   * Kill the dedicated server and CONFIRM it is gone (B2). `kill-server` is
+   * tried twice; if the server still answers, the PID captured at start is
+   * sent SIGTERM then SIGKILL. Resolves only on confirmed absence; rejects
+   * otherwise so the caller can report a cleanup failure instead of claiming
+   * the boundary held. "Already gone" is success.
+   */
   async kill(socket: string): Promise<void> {
     const s = this.streams.get(socket);
     if (s) { s.stop(); this.streams.delete(socket); }
-    await this.tmux(socket, "kill-server", []).catch(() => { /* already gone */ });
+    const pid = this.serverPids.get(socket);
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await this.tmux(socket, "kill-server", []).catch(() => { /* judged by liveness below */ });
+        if (!(await this.serverAlive(socket))) return;
+      }
+      if (pid) {
+        for (const signal of ["SIGTERM", "SIGKILL"] as const) {
+          try { process.kill(pid, signal); } catch { /* ESRCH: gone */ }
+          await new Promise(r => setTimeout(r, 300));
+          if (!(await this.serverAlive(socket))) return;
+        }
+      }
+      throw new Error(`tmux server on socket ${socket} could not be confirmed dead`);
+    } finally {
+      // Keep the pid until the server is confirmed dead so a retry can still reach it.
+      if (!(await this.serverAlive(socket))) this.serverPids.delete(socket);
+    }
   }
 }
 

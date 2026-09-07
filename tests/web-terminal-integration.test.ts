@@ -305,6 +305,78 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     }
   });
 
+  it("B2: kill-server failing is not 'already gone' — the PID fallback still confirms the server dead", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    // Real tmux except kill-server, which fails (simulates a wedged/misbehaving server command).
+    writeFileSync(bin, `#!/bin/sh
+for a in "$@"; do if [ "$a" = kill-server ]; then exit 1; fi; done
+exec tmux "$@"
+`);
+    chmodSync(bin, 0o755);
+    const done: WebTerminalResult[] = [];
+    const audits: string[] = [];
+    const session = new WebTerminalSession({
+      kind: "login", backend: "test", command: "sleep 30", cwd: "/tmp", ttlMs: 30_000,
+      requester: { adapterId: "t", userId: "admin", chatId: "c" },
+    }, { onDone: r => { done.push(r); }, onAudit: e => { audits.push(e); } }, new TmuxTerminalBackend(bin), logger);
+    sessions.push(session);
+    try {
+      await session.start();
+      expect(tmuxServerAlive(session.socketName)).toBe(true);
+      await session.cancel("test");
+      expect(done[0].cleanupFailed).toBeUndefined();              // confirmed dead via SIGTERM/SIGKILL fallback
+      expect(audits).not.toContain("web_terminal_cleanup_failed");
+      expect(tmuxServerAlive(session.socketName)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("B2: killing an already-gone server is success; a server that cannot be reached at all is reported, not swallowed", async () => {
+    const backend = new TmuxTerminalBackend();
+    await expect(backend.kill("agend-term-never-existed")).resolves.toBeUndefined();
+    // A backend that lost its pid and whose kill-server is a no-op cannot confirm death → rejects.
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    writeFileSync(bin, `#!/bin/sh
+for a in "$@"; do if [ "$a" = kill-server ]; then exit 0; fi; done
+exec tmux "$@"
+`);
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-b2c-${process.pid}`;
+    try {
+      execFileSync("tmux", ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main", "sleep 30"]);
+      await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead/);
+      expect(tmuxServerAlive(socket)).toBe(true);
+    } finally {
+      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("M3: assets are served from memory and the listener refuses more than MAX_CONNECTIONS sockets", async () => {
+    const { MAX_CONNECTIONS } = await import("../src/web-terminal-http.js");
+    const { base, port } = await launch("sleep 30");
+    const held: import("node:net").Socket[] = [];
+    try {
+      for (let i = 0; i < MAX_CONNECTIONS; i++) {
+        const s = netConnect(port, "127.0.0.1");
+        await new Promise<void>(r => s.once("connect", () => r()));
+        held.push(s);
+      }
+      const extra = netConnect(port, "127.0.0.1");
+      const closedEarly = await new Promise<boolean>(r => { extra.once("close", () => r(true)); setTimeout(() => r(false), 800); });
+      expect(closedEarly).toBe(true);
+    } finally {
+      for (const s of held) s.destroy();
+    }
+    await new Promise(r => setTimeout(r, 50));
+    const asset = await fetch(`${base}/assets/xterm.js`);
+    expect(asset.status).toBe(200);
+    expect((await asset.arrayBuffer()).byteLength).toBeGreaterThan(100_000);
+  });
+
   it("Stop button = real cancel: the browser's cancel message ends the session and kills tmux", async () => {
     const { base, origin, session, done } = await launch("sleep 30");
     const opened = await open(base, origin, session.peekAccessToken()!);

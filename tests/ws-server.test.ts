@@ -232,15 +232,15 @@ describe("ws-server: malformed frames a browser never sends", () => {
     expect(conns[0].pendingInboundBytes).toBeLessThanOrEqual(14 + 125);
   });
 
-  it("B3: after WE close (replacement), the peer's frames are ignored and a non-Close flood destroys the socket", async () => {
+  it("B3: after WE close (replacement), the peer's frames are ignored and a non-Close flood destroys the socket with nothing retained", async () => {
     const { port, conns, received } = await startEcho();
     const { socket } = await rawClient(port);
     conns[0].close(4000, "replaced");
     await new Promise(r => setTimeout(r, 20));
-    socket.write(frame(0x2, Buffer.from("late input")));
+    socket.write(frame(0x2, Buffer.alloc(3000, 1)));            // one late oversized chunk
     await new Promise(r => setTimeout(r, 50));
     expect(received).toHaveLength(0);
-    expect(conns[0].pendingInboundBytes).toBeLessThanOrEqual(14 + 125);
+    expect(conns[0].pendingInboundBytes).toBe(0);
   });
 
   it("B4: a ping flood counts against the frame rate and is closed with 1008", async () => {

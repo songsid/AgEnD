@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote, segmentInput,
-  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES,
+  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES, MAX_PENDING_JOBS,
   type TerminalBackend, type WebTerminalResult, type WebTerminalSpec,
 } from "../src/web-terminal.js";
 
@@ -23,6 +23,8 @@ class FakeBackend implements TerminalBackend {
   inputDelayMs: (bytes: Buffer) => number = () => 0;
   failInput: Error | null = null;
   killHangs = false;
+  killRejects = false;
+  resizeRejects = false;
   async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
     if (this.failStart) throw new Error("tmux missing");
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
@@ -34,12 +36,16 @@ class FakeBackend implements TerminalBackend {
     if (this.failInput) throw this.failInput;
     this.inputs.push(Buffer.from(bytes));
   }
-  async resize(_s: string, cols: number, rows: number): Promise<void> { this.resizes.push([cols, rows]); }
+  async resize(_s: string, cols: number, rows: number): Promise<void> {
+    if (this.resizeRejects) throw new Error("tmux resize-window failed");
+    this.resizes.push([cols, rows]);
+  }
   async capture(): Promise<string> { return this.pane; }
   async paneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> { return this.status; }
   async kill(socket: string): Promise<void> {
     this.killed.push(socket);
     if (this.killHangs) await new Promise(() => { /* never */ });
+    if (this.killRejects) throw new Error("tmux server on socket could not be confirmed dead");
   }
 }
 
@@ -273,63 +279,149 @@ describe("browser I/O", () => {
     backend.emit!(Buffer.from("more"));
     expect(b.sent.at(-1)!.toString()).toBe("more");
   });
-  it("input goes to tmux as one buffer per frame (never argv-chunked); resize is clamped and deduplicated", async () => {
+  it("input goes to tmux as one buffer (never argv-chunked); resize is clamped and only the newest queued geometry is applied", async () => {
     const { session, backend } = make();
     await session.start();
     expect(session.input(Buffer.alloc(600, 0x41))).toBe(true);
     await session.drain();
     expect(backend.inputs.map(b => b.length)).toEqual([600]);
+    session.resize(9999, 0);                                    // queued as 250×5…
     session.resize(9999, 0);
-    session.resize(9999, 0);
-    session.resize(80.7, 24.2);
+    session.resize(80.7, 24.2);                                 // …superseded before it ran
     await session.drain();
-    expect(backend.resizes).toEqual([[250, 5], [80, 24]]);
+    expect(backend.resizes).toEqual([[80, 24]]);
   });
 
   it("B4: input and resize are one FIFO — a slow first frame still lands before a fast second one", async () => {
     vi.useRealTimers();
     const { session, backend } = make();
     await session.start();
-    backend.inputDelayMs = b => (b[0] === 0x41 ? 60 : 0);     // 'A…' is slow, 'B' is instant
+    backend.inputDelayMs = b => (b[0] === 0x41 ? 60 : 0);     // 'A…' is slow, the rest instant
     session.input(Buffer.alloc(300, 0x41));
-    session.input(Buffer.from("B"));
-    session.resize(100, 30);
+    session.input(Buffer.from("B"));                            // coalesces into A's batch (not started yet)
+    session.resize(100, 30);                                    // barrier
     session.input(Buffer.from("C"));
     await session.drain();
-    expect(backend.inputs.map(b => `${String.fromCharCode(b[0])}:${b.length}`)).toEqual(["A:300", "B:1", "C:1"]);
+    // Byte order is browser order; the resize sits between the two batches.
+    expect(Buffer.concat(backend.inputs).toString()).toBe("A".repeat(300) + "B" + "C");
+    expect(backend.inputs.map(b => b.length)).toEqual([301, 1]);
     expect(backend.resizes).toEqual([[100, 30]]);
-    // resize was applied after B and before C (single queue)
   });
 
-  it("B4: more than MAX_PENDING_INPUT_BYTES waiting for tmux is refused (caller cuts the client off)", async () => {
+  it("B4: a backlog beyond MAX_PENDING_INPUT_BYTES means tmux is wedged — the session ENDS instead of queueing keystrokes unattended", async () => {
     vi.useRealTimers();
-    const { session, backend } = make();
+    const { session, backend, done } = make();
     await session.start();
     backend.inputDelayMs = () => 50;                            // everything stalls behind the first frame
     expect(session.input(Buffer.alloc(4096, 1))).toBe(true);
     let accepted = 1;
     while (session.input(Buffer.alloc(4096, 1))) accepted++;
-    expect(accepted).toBe(MAX_PENDING_INPUT_BYTES / 4096);      // exactly the cap, then refused
-    expect(session.pendingInput).toBe(MAX_PENDING_INPUT_BYTES);
+    expect(accepted).toBe(MAX_PENDING_INPUT_BYTES / 4096);      // exactly the cap, then the session ends
+    await new Promise(r => setTimeout(r, 20));
+    expect(session.state).toBe("finished");
+    expect(done[0]).toMatchObject({ ok: false, reason: "error" });
+    expect(done[0].detail).toMatch(/backlog/);
     await session.drain();
-    expect(session.pendingInput).toBe(0);
-    expect(backend.inputs).toHaveLength(accepted);
+    expect(backend.inputs.length).toBeLessThanOrEqual(1);        // the queue stopped touching tmux once finished
   });
 
-  it("B2: a failed tmux input is logged as an operation, never with the error text or the bytes", async () => {
+  it("M1: consecutive frames coalesce into one paste and resizes keep only the newest — jobs stay bounded under alternating floods", async () => {
     vi.useRealTimers();
     const { session, backend } = make();
     await session.start();
-    backend.failInput = new Error("tmux load-buffer failed: 53 55 50 45 52 SUPER-SECRET");
-    session.input(Buffer.from("SUPER-SECRET"));
+    backend.inputDelayMs = () => 30;                            // the first job is in flight; everything else queues
+    session.input(Buffer.from("a"));
+    for (let i = 0; i < 1000; i++) {
+      session.input(Buffer.from("k"));                          // 1-byte frames
+      session.resize(100 + (i % 2), 30);                        // alternating resize JSON
+    }
+    expect(session.pendingJobs).toBeLessThan(MAX_PENDING_JOBS);
+    expect(session.pendingJobs).toBeLessThanOrEqual(3);
+    expect(session.state).toBe("running");
     await session.drain();
-    const warns = JSON.stringify(logger.warn.mock.calls);
-    expect(warns).toContain("input");
-    expect(warns).not.toContain("SUPER-SECRET");
-    expect(warns).not.toContain("53 55 50");
+    // input arrived (first frame alone, then the coalesced rest), the final geometry is the last requested
+    expect(Buffer.concat(backend.inputs).toString()).toBe("a" + "k".repeat(1000));
+    expect(backend.resizes.at(-1)).toEqual([101, 30]);           // i=999 → 100 + 1
+    expect(backend.resizes.length).toBeLessThanOrEqual(3);
   });
 
-  it("B5: a tmux kill that never returns does not hang finish (TTL/cancel/listener close stay responsive)", async () => {
+  it("M1: input before a resize is pasted before it, input after is pasted after (resize is a barrier)", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.inputDelayMs = () => 20;
+    session.input(Buffer.from("x"));
+    session.input(Buffer.from("A"));                             // same batch as x (neither started yet)
+    session.resize(90, 25);                                      // barrier
+    session.input(Buffer.from("B"));                             // new batch, after the resize
+    await session.drain();
+    expect(backend.inputs.map(String)).toEqual(["xA", "B"]);
+    expect(backend.resizes).toEqual([[90, 25]]);
+  });
+
+  it("B1: a failed tmux input FAILS CLOSED — session ends once, client told, later queued input never reaches tmux, secret never logged", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    await session.start();
+    const c = { sent: [] as Array<Buffer | string>, send(d: Buffer | string) { this.sent.push(d); }, close: vi.fn() };
+    session.attachClient(c);
+    backend.inputDelayMs = () => 20;
+    backend.failInput = new Error("tmux load-buffer failed: 53 55 50 45 52 SUPER-SECRET");
+    expect(session.input(Buffer.from("SUPER-SECRET"))).toBe(true);
+    session.resize(100, 30);                                     // barrier so the next frame is a second job
+    expect(session.input(Buffer.from("LATER-KEYS"))).toBe(true);
+    await session.drain();
+    await new Promise(r => setTimeout(r, 10));
+    expect(session.state).toBe("finished");
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ ok: false, reason: "error" });
+    expect(done[0].detail).toMatch(/input failed/);
+    expect(c.close).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(c.sent.at(-1) as string)).toMatchObject({ t: "exit", reason: "error" });
+    expect(backend.inputs).toHaveLength(0);                      // nothing delivered, before or after
+    expect(session.input(Buffer.from("more"))).toBe(false);
+    const logs = JSON.stringify(logger.warn.mock.calls) + JSON.stringify(logger.info.mock.calls);
+    expect(logs).not.toContain("SUPER-SECRET");
+    expect(logs).not.toContain("53 55 50");
+    expect(logs).not.toContain("LATER-KEYS");
+  });
+
+  it("B1: a failed resize does not end the session and does not commit the geometry, so the next resize retries", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.resizeRejects = true;
+    session.resize(100, 30);
+    await session.drain();
+    expect(session.state).toBe("running");
+    backend.resizeRejects = false;
+    session.resize(100, 30);                                     // same geometry: must NOT be deduplicated away
+    await session.drain();
+    expect(backend.resizes).toEqual([[100, 30]]);
+  });
+
+  it("B2: a kill that rejects (server may still be alive) is reported: cleanupFailed on the result + audit, never silent", async () => {
+    vi.useRealTimers();
+    const { session, backend, done, audits } = make();
+    await session.start();
+    backend.killRejects = true;
+    await session.cancel("test");
+    expect(done).toHaveLength(1);
+    expect(done[0].cleanupFailed).toBe(true);
+    expect(audits.some(a => a[0] === "web_terminal_cleanup_failed")).toBe(true);
+    expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: true });
+    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/cleanup failed/));
+  });
+
+  it("B2: a clean kill reports cleanupFailed false", async () => {
+    const { session, done, audits } = make();
+    await session.start();
+    await session.cancel("test");
+    expect(done[0].cleanupFailed).toBeUndefined();
+    expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: false });
+  });
+
+  it("B5: a tmux kill that never returns does not hang finish, and is reported as a cleanup failure", async () => {
     const { session, backend, done } = make();
     await session.start();
     backend.killHangs = true;
@@ -337,7 +429,8 @@ describe("browser I/O", () => {
     await vi.advanceTimersByTimeAsync(5_100);
     await finished;
     expect(done).toHaveLength(1);
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), "web terminal tmux cleanup failed");
+    expect(done[0].cleanupFailed).toBe(true);
+    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/cleanup failed/));
   });
   it("after finish, input and resize are ignored and the client gets exit + close", async () => {
     const { session, backend } = make();

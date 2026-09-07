@@ -48,9 +48,16 @@
   function connect(probe) {
     var proto = location.protocol === "https:" ? "wss://" : "ws://";
     var opened = false;
-    ws = new WebSocket(proto + location.host + base + "/ws");
-    ws.binaryType = "arraybuffer";
-    ws.onopen = function () {
+    // One live connection at a time: a new connect() supersedes the previous
+    // one, and every callback below is fenced on `conn` so a stale socket's
+    // events can never touch the current state (a pending cookie probe while
+    // the user submits a token, or an old socket closing after a reconnect).
+    if (ws && ws.readyState <= 1) { try { ws.close(); } catch (e) { /* ignore */ } }
+    var conn = new WebSocket(proto + location.host + base + "/ws");
+    ws = conn;
+    conn.binaryType = "arraybuffer";
+    conn.onopen = function () {
+      if (ws !== conn) return;
       opened = true; reconnectAttempts = 0;
       gate.hidden = true; termEl.hidden = false; keys.hidden = false; closeBtn.hidden = false;
       if (!term) {
@@ -69,12 +76,14 @@
       fit.fit();
       term.focus();
     };
-    ws.onmessage = function (ev) {
+    conn.onmessage = function (ev) {
+      if (ws !== conn) return;
       if (typeof ev.data === "string") {
         var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
         if (msg.t === "hello") {
           document.getElementById("title").textContent = "AgEnD · " + msg.kind + " · " + msg.backend;
           expiresAt = Date.now() + msg.ttlRemainingMs;
+          if (ttlTimer) clearInterval(ttlTimer);   // exactly one countdown, however many reconnects
           ttlEl.hidden = false; tick(); ttlTimer = setInterval(tick, 1000);
           if (msg.truncated && term) term.writeln("\x1b[33m[earlier output truncated]\x1b[0m");
         } else if (msg.t === "exit") {
@@ -84,8 +93,8 @@
       }
       if (term) term.write(new Uint8Array(ev.data));
     };
-    ws.onclose = function (ev) {
-      if (finished) return;
+    conn.onclose = function (ev) {
+      if (ws !== conn || finished) return;
       if (!opened) {                          // refused (403: no/expired cookie) → show the token gate
         if (probe) { gate.hidden = false; return; }
         finish(false, "Connection refused.");

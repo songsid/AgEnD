@@ -111,7 +111,8 @@ export function acceptWebSocket(
 function isValidCloseCode(code: number): boolean {
   if (code >= 3000 && code <= 4999) return true;
   return code === 1000 || code === 1001 || code === 1002 || code === 1003 || code === 1007
-    || code === 1008 || code === 1009 || code === 1010 || code === 1011;
+    || code === 1008 || code === 1009 || code === 1010 || code === 1011
+    || code === 1012 || code === 1013 || code === 1014;
 }
 
 export class WsConnection extends EventEmitter {
@@ -226,7 +227,7 @@ export class WsConnection extends EventEmitter {
       // Read-only: only the peer's Close is of interest, and it is small. A
       // peer that keeps sending anything else after we closed is cut off.
       this.buffer = Buffer.concat([this.buffer, chunk]);
-      if (this.buffer.length > MAX_HEADER + 125) { this.socket.destroy(); return; }
+      if (this.buffer.length > MAX_HEADER + 125) { this.buffer = Buffer.alloc(0); this.socket.destroy(); return; }
       this.parsePeerCloseOnly();
       return;
     }
@@ -346,7 +347,7 @@ export class WsConnection extends EventEmitter {
     const opcode = buf[0] & 0x0f;
     const masked = (buf[1] & 0x80) !== 0;
     const length = buf[1] & 0x7f;
-    if (opcode !== Opcode.Close || !masked || length > 125) { this.socket.destroy(); return; }
+    if (opcode !== Opcode.Close || !masked || length > 125) { this.buffer = Buffer.alloc(0); this.socket.destroy(); return; }
     const total = 2 + 4 + length;
     if (buf.length < total) return;
     this.closeReceived = true;
