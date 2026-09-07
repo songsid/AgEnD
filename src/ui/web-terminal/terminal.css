@@ -1,0 +1,17 @@
+html, body { margin: 0; height: 100%; background: #111; color: #ddd; font: 14px system-ui, sans-serif; }
+body { display: flex; flex-direction: column; }
+#bar { display: flex; align-items: center; gap: 12px; padding: 6px 10px; background: #1c1c1c; border-bottom: 1px solid #333; }
+#bar #title { font-weight: 600; }
+#bar #ttl { margin-left: auto; font-variant-numeric: tabular-nums; color: #9ad; }
+#bar button { background: #402; color: #fbb; border: 1px solid #733; border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+#gate { max-width: 560px; margin: 40px auto; padding: 0 16px; line-height: 1.5; }
+#gate form { display: flex; gap: 8px; margin-top: 12px; }
+#gate input { flex: 1; font: 16px ui-monospace, monospace; letter-spacing: 1px; padding: 8px; background: #000; color: #fff; border: 1px solid #555; border-radius: 4px; }
+#gate button { padding: 8px 16px; background: #246; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+#gate-msg { color: #f88; min-height: 1.5em; }
+#term { flex: 1; min-height: 0; padding: 4px; }
+#keys { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: #1c1c1c; border-top: 1px solid #333; }
+#keys button { background: #222; color: #ddd; border: 1px solid #444; border-radius: 4px; padding: 6px 10px; font: 14px ui-monospace, monospace; cursor: pointer; }
+#done { padding: 10px; background: #1c1c1c; border-top: 1px solid #333; }
+#done.ok { color: #8d8; } #done.bad { color: #f88; }
+@media (min-width: 900px) { #keys { display: none; } }

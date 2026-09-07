@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>AgEnD terminal</title>
+<link rel="stylesheet" href="assets/xterm.css">
+<link rel="stylesheet" href="assets/terminal.css">
+</head>
+<body>
+<header id="bar">
+  <span id="title">AgEnD terminal</span>
+  <span id="ttl" hidden></span>
+  <button id="btn-close" type="button" hidden title="Send Ctrl-C and close">Stop</button>
+</header>
+<section id="gate">
+  <p>This terminal is connected to <strong>one command only</strong> and closes when it exits or when the time limit lapses. There is no shell behind it.</p>
+  <p>Paste the <strong>access token</strong> you received in chat. It is separate from this link; the link alone grants nothing.</p>
+  <form id="gate-form" autocomplete="off">
+    <input id="token" type="text" inputmode="text" autocapitalize="characters" spellcheck="false" placeholder="access token" maxlength="40" required>
+    <button type="submit">Open</button>
+  </form>
+  <p id="gate-msg" role="alert"></p>
+</section>
+<main id="term" hidden></main>
+<footer id="keys" hidden>
+  <button data-seq="\u001b" type="button">Esc</button>
+  <button data-seq="\t" type="button">Tab</button>
+  <button data-seq="\u001b[A" type="button">&uarr;</button>
+  <button data-seq="\u001b[B" type="button">&darr;</button>
+  <button data-seq="\u001b[D" type="button">&larr;</button>
+  <button data-seq="\u001b[C" type="button">&rarr;</button>
+  <button data-seq="\r" type="button">Enter</button>
+  <button data-seq="\u0003" type="button">Ctrl-C</button>
+</footer>
+<div id="done" hidden></div>
+<script src="assets/xterm.js"></script>
+<script src="assets/addon-fit.js"></script>
+<script src="assets/addon-web-links.js"></script>
+<script src="assets/terminal.js"></script>
+</body>
+</html>
