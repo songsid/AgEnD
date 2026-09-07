@@ -7799,22 +7799,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ensureSession observe !isCurrent when they resume and stop; no new
     // window can be claimed while we stop.
     this.loginWindow.close();
-    // Single deadline, proven larger than the full worst-case chain (startup
-    // abort ≤10 s + confirmed kill ≤31 s, twice for a late re-kill ≈ 82 s <
-    // 120 s). Reaching it is an ERROR condition: we log loudly and move on so
-    // the fleet can still stop, but nothing is released into a re-claimable
-    // state — the lock stays closed and the controller keeps its entry.
+    // Completion semantics live INSIDE the sessions: each awaits its own
+    // confirmed cleanup, every tmux op on that path has a hard per-op bound
+    // (web: abort ≤10 s + kill ≤31 s; legacy: create/list/kill ≤10 s each,
+    // duplicates killed in parallel). This outer deadline is only a loud last
+    // resort so `agend stop` cannot hang forever on a wedged tmux; reaching it
+    // is an ERROR, logged and recorded, and it releases nothing re-claimable
+    // (the lock stays closed, the controller keeps its entry). The timer is
+    // cleared on success so a long-lived process never fires it spuriously.
     const SHUTDOWN_DEADLINE_MS = 120_000;
-    const bounded = (p: Promise<unknown> | undefined, what: string) => p
-      ? Promise.race([
-        p.catch(() => this.logger.warn({ what }, "login window shutdown failed")),
-        new Promise<void>(r => setTimeout(() => {
+    const bounded = (p: Promise<unknown> | undefined, what: string): Promise<void> => {
+      if (!p) return Promise.resolve();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<void>(r => {
+        timer = setTimeout(() => {
           this.logger.error({ what, deadlineMs: SHUTDOWN_DEADLINE_MS }, "login window teardown still in flight at the shutdown deadline — a dedicated tmux server may survive; check `tmux -L agend-term-* ls`");
           this.eventLog?.insert("login", "login_window_shutdown_deadline", { what });
           r();
-        }, SHUTDOWN_DEADLINE_MS).unref?.()),
-      ])
-      : Promise.resolve();
+        }, SHUTDOWN_DEADLINE_MS);
+        timer.unref?.();
+      });
+      return Promise.race([p.then(() => undefined, () => this.logger.warn({ what }, "login window shutdown failed")), deadline])
+        .finally(() => { if (timer) clearTimeout(timer); });
+    };
     // "cancelled" is the detail both legacy onDone handlers keep quiet about —
     // a stopping fleet must not announce "login failed — fleet shutdown".
     await Promise.all([

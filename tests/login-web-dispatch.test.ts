@@ -204,6 +204,25 @@ describe("/login mode dispatch and exclusivity", () => {
     }
   });
 
+  it("M1 (round 7): a teardown that completes quickly leaves no armed deadline — 130 s later there is no error and no event", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm } = setup("relay");
+      vi.spyOn(LoginController.prototype, "shutdown").mockResolvedValue(undefined);
+      (fm as any).webLogin;
+      const errors: string[] = [];
+      vi.spyOn((fm as any).logger, "error").mockImplementation(((_o: unknown, msg?: string) => { errors.push(String(msg)); }) as never);
+      const inserted: string[] = [];
+      (fm as any).eventLog = { insert: (_i: string, type: string) => { inserted.push(type); } };
+      await (fm as any).shutdownLoginWindows();
+      await vi.advanceTimersByTimeAsync(130_000);
+      expect(errors).toEqual([]);
+      expect(inserted).not.toContain("login_window_shutdown_deadline");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("B2 (round 6): a relay start that fails after possibly creating a window reports the cleanup failure to the chat", async () => {
     const { fm, chat } = setup("relay");
     vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);

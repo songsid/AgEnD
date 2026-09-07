@@ -24,6 +24,8 @@ class FakeBackend implements TerminalBackend {
   failInput: Error | null = null;
   killHangs = false;
   killRejects = false;
+  /** Resolve kill() only after this many (fake-timer) ms — models a slow but bounded tmux teardown. */
+  killDelayMs = 0;
   resizeRejects = false;
   /** When set, start() parks here until released (cancel-during-start races). */
   startGate: Promise<void> | null = null;
@@ -61,6 +63,7 @@ class FakeBackend implements TerminalBackend {
   async kill(socket: string): Promise<void> {
     this.killed.push(socket);
     if (this.killHangs) await new Promise(() => { /* never */ });
+    if (this.killDelayMs > 0) await new Promise(r => setTimeout(r, this.killDelayMs));
     if (this.killRejects) throw new Error("tmux server on socket could not be confirmed dead");
     this.serverAlive = false;
   }
@@ -574,16 +577,31 @@ describe("browser I/O", () => {
     expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: false });
   });
 
-  it("B5: a tmux kill that never returns does not hang finish, and is reported as a cleanup failure", async () => {
+  it("B1 (PR-B round 7): finish waits for the bounded kill — a 6 s kill is not reported done at 5 s, and succeeds at 6 s", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.killDelayMs = 6_000;
+    let settled = false;
+    const finished = session.cancel("test").then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(settled).toBe(false);                        // the old 5 s race would have reported cleanupFailed here
+    expect(done).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await finished;
+    expect(done).toHaveLength(1);
+    expect(done[0].cleanupFailed).toBeUndefined();
+    expect(backend.serverAlive).toBe(false);
+  });
+
+  it("a kill that has not returned keeps finish pending — termination is the backend's per-op bound, not a timer here", async () => {
     const { session, backend, done } = make();
     await session.start();
     backend.killHangs = true;
-    const finished = session.cancel("test");
-    await vi.advanceTimersByTimeAsync(5_100);
-    await finished;
-    expect(done).toHaveLength(1);
-    expect(done[0].cleanupFailed).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/cleanup failed/));
+    let settled = false;
+    void session.cancel("test").then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    expect(done).toHaveLength(0);
   });
   it("after finish, input and resize are ignored and the client gets exit + close", async () => {
     const { session, backend } = make();

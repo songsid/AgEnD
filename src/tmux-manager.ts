@@ -92,7 +92,9 @@ export class TmuxManager {
     const existing = TmuxManager.ensureSessionInFlight.get(name);
     if (existing) return existing;
     const operation = (async () => {
-      if (!(await TmuxManager.sessionExists(name))) {
+      // Strict: only a POSITIVE "no such session" leads to creating one. A
+      // timeout or spawn failure rejects instead of being read as "absent".
+      if (!(await TmuxManager.sessionExistsStrict(name))) {
         try {
           await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
         } catch (err) {
@@ -134,6 +136,23 @@ export class TmuxManager {
     } catch { return false; }
   }
 
+  /**
+   * Bounded, tri-state-safe variant for the login/install path: true = exists,
+   * false = tmux positively says the session is absent, anything else
+   * (timeout, spawn failure, unexpected exit) REJECTS — never "absent".
+   */
+  static async sessionExistsStrict(name: string): Promise<boolean> {
+    try {
+      await exec("tmux", TmuxManager.tmuxArgs(["has-session", "-t", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      return true;
+    } catch (err) {
+      const e = err as { code?: unknown; killed?: boolean; stderr?: unknown };
+      const text = String(e.stderr ?? "");
+      if (e.code === 1 && !e.killed && /can't find session|no server running|error connecting to .*No such file/.test(text)) return false;
+      throw new Error(`tmux has-session could not be determined for ${name}`);
+    }
+  }
+
   static async killSession(name: string): Promise<void> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["kill-session", "-t", name]));
@@ -154,6 +173,17 @@ export class TmuxManager {
     } catch { return []; }
   }
 
+  /** Bounded, failing variant for the login/install path: a timeout or tmux error REJECTS instead of reading as "no windows". */
+  static async listWindowsStrict(sessionName: string): Promise<Array<{ id: string; name: string }>> {
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+    return stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [id, name] = line.split("|||");
+      return { id, name };
+    });
+  }
+
   static async getPanePid(sessionName: string, windowId: string): Promise<number | null> {
     try {
       const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
@@ -172,7 +202,9 @@ export class TmuxManager {
   async createWindow(command: string, cwd: string, windowName?: string): Promise<string> {
     this.pendingWindowName = windowName ?? null;
     if (windowName) {
-      const sameName = (await TmuxManager.listWindows(this.sessionName))
+      // Strict listing: a tmux that cannot answer must not be read as "no
+      // duplicates" — that would create a second window (fail-closed).
+      const sameName = (await TmuxManager.listWindowsStrict(this.sessionName))
         .filter(window => window.name === windowName);
       if (sameName.length > 0) {
         // Reuse one exact window id instead of creating another window with the
@@ -281,9 +313,11 @@ export class TmuxManager {
     try {
       // Kill by id when known; otherwise every window carrying the name we
       // asked for (a createWindow that timed out may still have made one).
-      for (const w of (await list()).filter(mine)) {
-        await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: 10_000 }).catch(() => { /* judged by the re-list */ });
-      }
+      // Kills run in PARALLEL so the total stays bounded regardless of how
+      // many duplicates exist: list (10 s) + kills (10 s) + list (10 s) ≤ 30 s.
+      const targets = (await list()).filter(mine);
+      await Promise.all(targets.map(w =>
+        exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => { /* judged by the re-list */ })));
       return !(await list()).some(mine);
     } catch (err) {
       // No such session at all ⇒ no window either; anything else is unknown → not confirmed.

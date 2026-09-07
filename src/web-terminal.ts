@@ -132,7 +132,6 @@ export const MAX_PENDING_INPUT_BYTES = 64 * 1024;
 export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
-const KILL_TIMEOUT_MS = 5_000;
 /**
  * Per-op bound for the teardown path (kill-server / liveness probe). Worst
  * case of one kill(): 2 × (kill-server + probe) + 2 × (signal + probe)
@@ -537,10 +536,10 @@ export class WebTerminalSession extends EventEmitter {
       // kill() resolves only when the dedicated server is CONFIRMED gone (B2).
       // A rejection or a timeout means the command may still be running: say so
       // loudly (audit + result flag) rather than pretending the boundary held.
-      const killed = await Promise.race([
-        this.backend.kill(this.socketName).then(() => true, () => false),
-        new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
-      ]);
+      // No timer race: kill() is bounded by its own per-op timeouts (≤31 s
+      // worst case). Racing it with a shorter timer reported "done" while the
+      // kill was still running — and released the fleet-wide window early.
+      const killed = await this.backend.kill(this.socketName).then(() => true, () => false);
       if (!killed) {
         result.cleanupFailed = true;
         this.logger.warn({ sid: this.sid, socket: this.socketName }, "web terminal tmux cleanup failed — server may still be alive");
