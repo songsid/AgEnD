@@ -8,7 +8,12 @@
 
 _目前沒有未發佈的變更。_
 
-## [2.1.4] - 2026-08-25
+## [2.1.4] - 2026-09-07
+
+### 升級注意事項 (Upgrade Notes)
+- **fleet.yaml 自動精簡是「繼承」而非「刪除」** — 從 instance config 移除的欄位現在會跟著 `defaults` 走。日後改預設值也會改到這些 instance。
+- **Owner-adapter fail-closed** — 當擁有某 topic 的 adapter 停止服務時，該 topic 的 inbound 存取會 fail-closed（會記 warn log）。以前其他 adapter 可能會接走這則訊息。
+- **`/login` 尚未支援 Org SSO** — `/login` 指令是 beta；organization SSO 流程是已知限制。
 
 ### 新增 (Added)
 - **`/login` 指令** — 直接從 Telegram／Discord 重新登入 CLI 後端，不必再 SSH 進主機。執行前會先檢查現有登入，若仍有效會要求確認，避免誤把還能用的登入洗掉。登入成功後，原本在執行的 instance 會自動重啟以套用新憑證（#611、#613、#614、#617）。
@@ -73,6 +78,14 @@ _目前沒有未發佈的變更。_
 - **CLI help 一致性** — help 輸出現在一致且最新（#661）。
 - **Claude Code 信任/投遞強化** — 偵測畸形 tool-call 片段並嘗試回覆恢復；偵測模型 fallback 並在 `/ctx` 顯示 statusline 的即時模型；強化 claude.json 更新並偵測 corrupt-config modal；停在致命啟動畫面時阻擋投遞；收緊錯誤 pattern（#648、#650、#651、#652、#653、#654、#655、#656）。
 - **Codex 更新提示** — 阻止「Update available!」提示阻擋啟動（#657）。
+
+### 修正 (Fixed)（續，beta.60–63）
+- **`agend health` paused 分類** — paused instance 不再被誤報為「Tmux window missing / degraded」。Paused 狀態現在有獨立計數（`N healthy, M issues, K stopped, P paused`），不會讓 fleet 進入 degraded（#704）。
+- **Webhook 投遞確定性** — webhook 現在由 per-instance 的 primary adapter 決定性接走，多 adapter 設定不再因搶走 webhook 而遺失（#707）。
+- **Inbound 存取由 owner adapter 判定** — 存取檢查由擁有該 topic 的 adapter 執行（在認領前）。**當 owner adapter 停止服務時，該 topic 的 inbound 會 fail-closed**（會記 warn log）。避免訊息被錯誤的 adapter 接受（#710）。
+- **Claude resume 對話框 fail-safe** — 重啟時「Resume from summary」對話框永不被投遞訊息，杜絕誤選 resume 造成的靜默 context 丟失（#711）。
+- **MCP 假死修正** — 多 MCP 進程（Codex 子 agent／Claude subagent）不再因單槽 PID 追蹤導致假 "MCP died" 報告。改用 IPC 層可達性判定；恢復時清除通知（#712）。
+- **`/login` 與 `/install-cli` 標記 beta** — 這些指令在 help 與指令選單中標示為 beta（#713）。
 
 ## [2.1.3] - 2026-08-07
 
