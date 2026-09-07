@@ -27,9 +27,9 @@
  * loses the first line; placeholder + respawn does not).
  */
 import { EventEmitter } from "node:events";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, openSync, rmSync, constants as fsConstants } from "node:fs";
+import { mkdtempSync, openSync, rmSync, readFileSync, constants as fsConstants } from "node:fs";
 import { Socket as NetSocket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -131,6 +131,8 @@ export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
 const KILL_TIMEOUT_MS = 5_000;
+/** Consecutive failed pane probes before the session is ended as unreachable. */
+export const MAX_PROBE_FAILURES = 3;
 const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
 /** RFC 4648 base32 alphabet without padding — unambiguous when typed on a phone. */
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -178,6 +180,10 @@ export class WebTerminalSession extends EventEmitter {
   private finishing: Promise<void> | null = null;
   private sentUrls = new Set<string>();
   private successSeenAt: number | null = null;
+  /** Consecutive polls where tmux could not even be asked — a vanished server must not idle until TTL. */
+  private probeFailures = 0;
+  /** Geometry most recently requested by the browser (queued, frozen or applied) — the only dedupe key. */
+  private lastRequested: { cols: number; rows: number } | null = null;
   /** Single FIFO for input + resize: browser order is pane order (B4). */
   private ioQueue: Promise<void> = Promise.resolve();
   private pendingInputBytes = 0;
@@ -346,7 +352,11 @@ export class WebTerminalSession extends EventEmitter {
     if (this.state !== "running") return;
     const c = clamp(Math.floor(cols), MIN_COLS, MAX_COLS);
     const r = clamp(Math.floor(rows), MIN_ROWS, MAX_ROWS);
-    if (c === this.cols && r === this.rows && !this.tailResize) return;
+    // Dedupe only against what the browser LAST asked for (queued, frozen or
+    // applied) — never against the committed size, which may be stale while
+    // an earlier resize is still waiting in the queue.
+    if (this.lastRequested && this.lastRequested.cols === c && this.lastRequested.rows === r) return;
+    this.lastRequested = { cols: c, rows: r };
     if (this.tailResize) { this.tailResize.cols = c; this.tailResize.rows = r; return; }   // newest geometry wins — same FIFO slot
     const target = { cols: c, rows: r };
     this.tailResize = target;
@@ -359,6 +369,8 @@ export class WebTerminalSession extends EventEmitter {
         this.cols = target.cols; this.rows = target.rows;                                 // committed only on success (retry stays possible)
       } catch (err) {
         this.logger.warn({ sid: this.sid, op: "resize", code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
+        // Not applied: forget it as "last requested" so the same size can be retried.
+        if (this.lastRequested && this.lastRequested.cols === target.cols && this.lastRequested.rows === target.rows) this.lastRequested = null;
       }
     }, "resize");
   }
@@ -411,6 +423,17 @@ export class WebTerminalSession extends EventEmitter {
       const status = await this.backend.paneStatus(this.socketName).catch(() => null);
       const pane = await this.backend.capture(this.socketName).catch(() => "");
       this.observe(pane);
+      if (status === null) {
+        // tmux did not answer. One miss can be load; three in a row means the
+        // dedicated server is gone or wedged — end now, fail closed, rather
+        // than keep a token-gated terminal "running" on nothing until TTL.
+        if (++this.probeFailures >= MAX_PROBE_FAILURES) {
+          await this.finish({ ok: false, reason: "error", detail: "terminal backend unreachable — session ended" });
+          return;
+        }
+      } else {
+        this.probeFailures = 0;
+      }
       if (status && !status.alive) {
         await this.finishFromExit(status.exitCode, pane);
         return;
@@ -518,8 +541,15 @@ function safeHost(url: string): string {
  */
 export class TmuxTerminalBackend implements TerminalBackend {
   private readonly streams = new Map<string, { dir: string; stop: () => void }>();
-  /** PID of each dedicated server, captured right after new-session, for the signal fallback in kill(). */
-  private readonly serverPids = new Map<string, number>();
+  /**
+   * Identity of each dedicated server, captured right after new-session: the
+   * PID plus a process-generation fingerprint (Linux: /proc start time;
+   * fallback: `ps lstart`). A bare PID may be reused by the OS once the server
+   * dies outside our control; a signal must NEVER be sent unless the
+   * fingerprint still matches — otherwise the "one command" scope would be
+   * violated against an unrelated process.
+   */
+  private readonly servers = new Map<string, { pid: number; identity: string }>();
 
   constructor(private readonly tmuxBin = "tmux") {}
 
@@ -563,7 +593,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
     let stream: NetSocket | null = null;
     try {
       const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
-      if (Number.isFinite(pid) && pid > 1) this.serverPids.set(socket, pid);
+      if (Number.isFinite(pid) && pid > 1) {
+        const identity = processIdentity(pid);
+        if (identity) this.servers.set(socket, { pid, identity });   // no fingerprint → no signal fallback, ever
+      }
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
       await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
@@ -669,11 +702,16 @@ export class TmuxTerminalBackend implements TerminalBackend {
    * stderr is inspected in memory only and never logged.
    */
   async serverState(socket: string): Promise<"alive" | "dead" | "unknown"> {
-    const pid = this.serverPids.get(socket);
+    const server = this.servers.get(socket);
     let pidAlive: boolean | null = null;
-    if (pid) {
-      try { process.kill(pid, 0); pidAlive = true; } catch (err) { pidAlive = (err as NodeJS.ErrnoException).code === "ESRCH" ? false : null; }
+    if (server) {
+      // The PID is only evidence of life if it is still OUR process.
+      const now = processIdentity(server.pid);
+      if (now === null) pidAlive = false;                       // process gone
+      else if (now !== server.identity) { pidAlive = false; this.servers.delete(socket); }   // PID reused by someone else: our server is dead
+      else pidAlive = true;
     }
+    const pid = server?.pid;
     const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
       execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS }, (error, _stdout, stderr) => {
         if (!error) { resolve("alive"); return; }
@@ -701,25 +739,65 @@ export class TmuxTerminalBackend implements TerminalBackend {
   async kill(socket: string): Promise<void> {
     const s = this.streams.get(socket);
     if (s) { s.stop(); this.streams.delete(socket); }
-    const pid = this.serverPids.get(socket);
+    const server = this.servers.get(socket);
     let state: "alive" | "dead" | "unknown" = "unknown";
     for (let attempt = 0; attempt < 2 && state !== "dead"; attempt++) {
       await this.tmux(socket, "kill-server", []).catch(() => { /* judged by the probe */ });
       state = await this.serverState(socket);
     }
-    if (state !== "dead" && pid) {
+    if (state !== "dead" && server) {
       for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-        try { process.kill(pid, signal); } catch { /* ESRCH: gone */ }
+        // Re-verify identity immediately before EVERY signal: never touch a
+        // process that is not (still) our tmux server.
+        if (processIdentity(server.pid) !== server.identity) break;
+        try { process.kill(server.pid, signal); } catch { /* ESRCH: gone */ }
         await new Promise(r => setTimeout(r, 300));
         state = await this.serverState(socket);
         if (state === "dead") break;
       }
     }
     if (state !== "dead") {
-      // Keep the pid so a later retry can still reach the process.
+      // Keep the identity so a later retry can still reach the process.
       throw new Error(`tmux server on socket ${socket} could not be confirmed dead (${state})`);
     }
-    this.serverPids.delete(socket);
+    this.servers.delete(socket);
+  }
+
+  /** Test seam: adopt a server identity as if captured at start. */
+  rememberServerForTests(socket: string, pid: number, identity: string): void {
+    this.servers.set(socket, { pid, identity });
+  }
+}
+
+/**
+ * A process-generation fingerprint for `pid`, or null when the process does
+ * not exist (or cannot be identified — treated the same: no signal). Linux:
+ * /proc/<pid>/stat start time (field 22, in clock ticks since boot) plus the
+ * command name; elsewhere `ps -o lstart=` (second resolution). Two different
+ * processes that ever held the same PID differ in start time.
+ */
+export function processIdentity(pid: number): string | null {
+  if (!Number.isFinite(pid) || pid <= 1) return null;
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    const close = stat.lastIndexOf(")");
+    if (close < 0) return null;
+    const comm = stat.slice(stat.indexOf("(") + 1, close);
+    const rest = stat.slice(close + 2).split(" ");           // rest[0] = field 3 (state) … rest[19] = field 22 (starttime)
+    const starttime = rest[19];
+    if (!starttime) return null;
+    return `linux:${starttime}:${comm}`;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT" || (err as NodeJS.ErrnoException).code === "ESRCH") {
+      // No /proc entry: either the process is gone (Linux) or there is no procfs (other OS).
+      if (process.platform === "linux") return null;
+    }
+  }
+  try {
+    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", timeout: 2_000 }).trim();
+    return out ? `ps:${out}` : null;
+  } catch {
+    return null;
   }
 }
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote, segmentInput,
-  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES, MAX_PENDING_JOBS,
+  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES, MAX_PENDING_JOBS, MAX_PROBE_FAILURES,
   type TerminalBackend, type WebTerminalResult, type WebTerminalSpec,
 } from "../src/web-terminal.js";
 
@@ -406,6 +406,38 @@ describe("browser I/O", () => {
     session.input(Buffer.from("B"));
     await session.drain();
     expect(backend.ops).toEqual(["input:x", "resize:100x30", "input:B"]);
+  });
+
+  it("M1 (round 4): returning to the committed geometry after a frozen resize is still a new barrier, not a dedupe", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();                        // committed 120×36
+    await session.start();
+    backend.inputDelayMs = () => 20;
+    session.input(Buffer.from("x"));
+    await new Promise(r => setTimeout(r, 5));
+    session.resize(90, 25);
+    session.input(Buffer.from("A"));                            // freezes the 90×25 resize
+    session.resize(120, 36);                                    // equals the COMMITTED size, but the browser's latest request
+    await session.drain();
+    expect(backend.ops).toEqual(["input:x", "resize:90x25", "input:A", "resize:120x36"]);
+    session.resize(120, 36);                                    // now a true duplicate of the last request
+    await session.drain();
+    expect(backend.resizes).toHaveLength(2);
+  });
+
+  it("a vanished tmux server (probe answers nothing 3× in a row) ends the session instead of idling until TTL", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.status = null;
+    for (let i = 0; i < MAX_PROBE_FAILURES - 1; i++) await session.poll();
+    expect(session.state).toBe("running");                     // transient misses are tolerated
+    backend.status = { alive: true };
+    await session.poll();                                       // one good answer resets the count
+    backend.status = null;
+    for (let i = 0; i < MAX_PROBE_FAILURES; i++) await session.poll();
+    expect(session.state).toBe("finished");
+    expect(done[0]).toMatchObject({ ok: false, reason: "error" });
+    expect(done[0].detail).toMatch(/unreachable/);
   });
 
   it("B1: a failed tmux input FAILS CLOSED — session ends once, client told, later queued input never reaches tmux, secret never logged", async () => {

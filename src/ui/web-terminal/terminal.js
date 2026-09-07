@@ -30,7 +30,15 @@
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token: token })
     }).then(function (res) {
-      if (res.status === 204) { tokenInput.value = ""; connect(); return; }
+      if (res.status === 204) {
+        tokenInput.value = "";
+        // The one-time token is now consumed: the first connection MUST get the
+        // full retry budget even though the server's TTL is not yet known.
+        if (!expiresAt) expiresAt = Date.now() + 60000;
+        reconnectAttempts = 0;
+        connect(false);
+        return;
+      }
       return res.json().catch(function () { return {}; }).then(function (body) {
         if (res.status === 403 && typeof body.remaining === "number") {
           gateMsg.textContent = "Invalid token. " + body.remaining + " attempt" + (body.remaining === 1 ? "" : "s") + " left before this session is destroyed.";
@@ -105,7 +113,7 @@
   }
 
   function scheduleReconnect() {
-    if (reconnectAttempts < 5 && Date.now() < expiresAt) {
+    if (reconnectAttempts < 5 && (expiresAt === 0 || Date.now() < expiresAt)) {
       reconnectAttempts++;
       setTimeout(function () { if (!finished) connect(false); }, 500 * reconnectAttempts);
       return;

@@ -4,7 +4,8 @@ import { connect as netConnect } from "node:net";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { TmuxTerminalBackend, WebTerminalSession, type WebTerminalResult, type WebTerminalSpec } from "../src/web-terminal.js";
+import { spawn } from "node:child_process";
+import { TmuxTerminalBackend, WebTerminalSession, processIdentity, type WebTerminalResult, type WebTerminalSpec } from "../src/web-terminal.js";
 import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
 
 /**
@@ -420,6 +421,59 @@ exec tmux "$@"
       try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("B1 (round 4): a cached PID that now belongs to a DIFFERENT process is never signalled — identity mismatch means our server is dead", async () => {
+    // Simulate PID reuse: our "server" record points at a live unrelated process with a fingerprint that does not match.
+    const bystander = spawn("sleep", ["30"], { stdio: "ignore" });
+    await new Promise(r => setTimeout(r, 50));
+    const bystanderIdentity = processIdentity(bystander.pid!);
+    expect(bystanderIdentity).not.toBeNull();
+    const socket = `agend-term-reuse-${process.pid}`;                   // no tmux server on it: our server "died outside kill()"
+    const backend = new TmuxTerminalBackend();
+    backend.rememberServerForTests(socket, bystander.pid!, "linux:1:tmux: server");   // stale identity of the dead server
+    try {
+      expect(await backend.serverState(socket)).toBe("dead");            // PID reused ⇒ positively not our process
+      await expect(backend.kill(socket)).resolves.toBeUndefined();
+      await new Promise(r => setTimeout(r, 100));
+      expect(bystander.exitCode).toBeNull();                              // still running: no TERM, no KILL
+      expect(processIdentity(bystander.pid!)).toBe(bystanderIdentity);
+    } finally {
+      bystander.kill("SIGKILL");
+    }
+  });
+
+  it("B1 (round 4): a matching fingerprint is required before EVERY signal; a live unrelated process on a cached PID survives even when tmux probes cannot run", async () => {
+    const bystander = spawn("sleep", ["30"], { stdio: "ignore" });
+    await new Promise(r => setTimeout(r, 50));
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    writeFileSync(bin, `#!/bin/sh
+exit 75
+`);                            // every tmux probe fails to execute
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-reuse2-${process.pid}`;
+    const backend = new TmuxTerminalBackend(bin);
+    backend.rememberServerForTests(socket, bystander.pid!, "linux:1:tmux: server");
+    try {
+      await expect(backend.kill(socket)).resolves.toBeUndefined();       // identity mismatch ⇒ dead, no signal
+      expect(bystander.exitCode).toBeNull();
+    } finally {
+      bystander.kill("SIGKILL");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("B1 (round 4): processIdentity distinguishes processes and reports gone ones as null", async () => {
+    const a = spawn("sleep", ["30"], { stdio: "ignore" });
+    await new Promise(r => setTimeout(r, 50));
+    const idA = processIdentity(a.pid!);
+    expect(idA).toMatch(/^(linux:\d+:|ps:)/);
+    expect(processIdentity(process.pid)).not.toBe(idA);
+    a.kill("SIGKILL");
+    await new Promise<void>(r => a.on("exit", () => r()));
+    expect(processIdentity(a.pid!)).toBeNull();
+    expect(processIdentity(0)).toBeNull();
   });
 
   it("M3: assets are served from memory and the listener refuses more than MAX_CONNECTIONS sockets", async () => {
