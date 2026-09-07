@@ -1115,12 +1115,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch (err) {
       // Do not turn an edit failure into a new send. A timeout can happen
       // after Discord applied the edit, and retrying as a fresh message would
-      // duplicate the status/reply with no way to identify the accepted copy.
+      // duplicate an ordinary status/reply with no way to identify the accepted
+      // copy. Still reject: callers such as terminal update progress explicitly
+      // own the policy decision to prefer a possible duplicate over a permanent
+      // stale X/N status.
       console.warn(
         `[discord] editMessage failed; refusing new-message fallback because delivery outcome may be unknown: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
+      throw err;
     }
   }
 
@@ -1474,5 +1478,4 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
 
