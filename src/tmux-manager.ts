@@ -54,6 +54,9 @@ export function resolveTmuxLogicalSize(config?: TerminalConfig): TmuxLogicalSize
   };
 }
 
+/** Hard bound for tmux operations on the remote login/install path: a wedged tmux must never hold a teardown open. */
+const LOGIN_TMUX_OP_TIMEOUT_MS = 10_000;
+
 export class TmuxManager {
   private static ensureSessionInFlight = new Map<string, Promise<void>>();
   private windowId: string;
@@ -89,9 +92,11 @@ export class TmuxManager {
     const existing = TmuxManager.ensureSessionInFlight.get(name);
     if (existing) return existing;
     const operation = (async () => {
-      if (!(await TmuxManager.sessionExists(name))) {
+      // Strict: only a POSITIVE "no such session" leads to creating one. A
+      // timeout or spawn failure rejects instead of being read as "absent".
+      if (!(await TmuxManager.sessionExistsStrict(name))) {
         try {
-          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]));
+          await exec("tmux", TmuxManager.tmuxArgs(["new-session", "-d", "-s", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
         } catch (err) {
           if (!String(err).includes("duplicate session")) throw err;
         }
@@ -101,7 +106,7 @@ export class TmuxManager {
       // global default would also change tmux sessions that AgEnD does not own.
       await exec("tmux", TmuxManager.tmuxArgs([
         "set-option", "-t", name, "mouse", "on",
-      ]));
+      ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     })().finally(() => {
       if (TmuxManager.ensureSessionInFlight.get(name) === operation) {
         TmuxManager.ensureSessionInFlight.delete(name);
@@ -131,6 +136,23 @@ export class TmuxManager {
     } catch { return false; }
   }
 
+  /**
+   * Bounded, tri-state-safe variant for the login/install path: true = exists,
+   * false = tmux positively says the session is absent, anything else
+   * (timeout, spawn failure, unexpected exit) REJECTS — never "absent".
+   */
+  static async sessionExistsStrict(name: string): Promise<boolean> {
+    try {
+      await exec("tmux", TmuxManager.tmuxArgs(["has-session", "-t", name]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+      return true;
+    } catch (err) {
+      const e = err as { code?: unknown; killed?: boolean; stderr?: unknown };
+      const text = String(e.stderr ?? "");
+      if (e.code === 1 && !e.killed && /can't find session|no server running|error connecting to .*No such file/.test(text)) return false;
+      throw new Error(`tmux has-session could not be determined for ${name}`);
+    }
+  }
+
   static async killSession(name: string): Promise<void> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["kill-session", "-t", name]));
@@ -151,6 +173,17 @@ export class TmuxManager {
     } catch { return []; }
   }
 
+  /** Bounded, failing variant for the login/install path: a timeout or tmux error REJECTS instead of reading as "no windows". */
+  static async listWindowsStrict(sessionName: string): Promise<Array<{ id: string; name: string }>> {
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+      "list-windows", "-t", sessionName, "-F", "#{window_id}|||#{window_name}"
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
+    return stdout.trim().split("\n").filter(Boolean).map(line => {
+      const [id, name] = line.split("|||");
+      return { id, name };
+    });
+  }
+
   static async getPanePid(sessionName: string, windowId: string): Promise<number | null> {
     try {
       const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
@@ -163,9 +196,15 @@ export class TmuxManager {
 
   // === Instance window methods ===
 
+  /** Window name handed to createWindow(), kept so a cleanup can find a window whose id we never learned. */
+  private pendingWindowName: string | null = null;
+
   async createWindow(command: string, cwd: string, windowName?: string): Promise<string> {
+    this.pendingWindowName = windowName ?? null;
     if (windowName) {
-      const sameName = (await TmuxManager.listWindows(this.sessionName))
+      // Strict listing: a tmux that cannot answer must not be read as "no
+      // duplicates" — that would create a second window (fail-closed).
+      const sameName = (await TmuxManager.listWindowsStrict(this.sessionName))
         .filter(window => window.name === windowName);
       if (sameName.length > 0) {
         // Reuse one exact window id instead of creating another window with the
@@ -183,7 +222,7 @@ export class TmuxManager {
         await exec("tmux", TmuxManager.tmuxArgs([
           "set-window-option", "-t", `${this.sessionName}:${this.windowId}`,
           "allow-rename", "off",
-        ])).catch(() => {});
+        ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
         return this.windowId;
       }
     }
@@ -191,7 +230,8 @@ export class TmuxManager {
     const args = ["new-window", "-a", "-t", this.sessionName, "-c", cwd];
     if (windowName) args.push("-n", windowName);
     args.push("-P", "-F", "#{window_id}", command);
-    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args));
+    // Hard bound: a wedged tmux must not hold a login/install teardown open forever.
+    const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(args), { timeout: 15_000 });
     this.windowId = stdout.trim();
     try {
       // Apply the configured geometry and hand sizing to real terminals. The
@@ -199,7 +239,7 @@ export class TmuxManager {
       // what makes `window-size latest` safe here (see applyLogicalSize).
       await this.applyLogicalSize();
       if (windowName) {
-        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"])).catch(() => {});
+        await exec("tmux", TmuxManager.tmuxArgs(["set-window-option", "-t", `${this.sessionName}:${this.windowId}`, "allow-rename", "off"]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => {});
       }
     } catch (err) {
       // Do not leave a live instance in an unpinned geometry if setup fails.
@@ -218,7 +258,7 @@ export class TmuxManager {
     await exec("tmux", TmuxManager.tmuxArgs([
       "respawn-window", "-k", "-t", `${this.sessionName}:${this.windowId}`,
       "-c", cwd, command,
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   /**
@@ -242,18 +282,47 @@ export class TmuxManager {
       "resize-window", "-t", target,
       "-x", String(this.logicalSize.columns),
       "-y", String(this.logicalSize.rows),
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     await exec("tmux", TmuxManager.tmuxArgs([
       "set-window-option", "-t", target, "window-size", "latest",
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   async killWindow(): Promise<void> {
     if (!this.windowId) return;
     try {
-      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${this.windowId}`]));
+      await exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${this.windowId}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
     } catch {
       // Expected if window already exited
+    }
+  }
+
+  /**
+   * killWindow() then verify by listing: true only when the window is
+   * positively absent. A tmux error while listing is "unknown" → false, so
+   * callers never report a cleanup as done on a guess.
+   */
+  async killWindowConfirmed(): Promise<boolean> {
+    const name = this.pendingWindowName;
+    if (!this.windowId && !name) return true;          // nothing was ever asked for
+    const mine = (w: { id: string; name: string }) => (this.windowId ? w.id === this.windowId : w.name === name);
+    const list = async () => {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs(["list-windows", "-t", this.sessionName, "-F", "#{window_id}|||#{window_name}"]), { timeout: 10_000 });
+      return stdout.trim().split("\n").filter(Boolean).map(line => { const [id, n] = line.split("|||"); return { id, name: n ?? "" }; });
+    };
+    try {
+      // Kill by id when known; otherwise every window carrying the name we
+      // asked for (a createWindow that timed out may still have made one).
+      // Kills run in PARALLEL so the total stays bounded regardless of how
+      // many duplicates exist: list (10 s) + kills (10 s) + list (10 s) ≤ 30 s.
+      const targets = (await list()).filter(mine);
+      await Promise.all(targets.map(w =>
+        exec("tmux", TmuxManager.tmuxArgs(["kill-window", "-t", `${this.sessionName}:${w.id}`]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS }).catch(() => { /* judged by the re-list */ })));
+      return !(await list()).some(mine);
+    } catch (err) {
+      // No such session at all ⇒ no window either; anything else is unknown → not confirmed.
+      const text = String((err as { stderr?: unknown })?.stderr ?? (err as Error).message ?? "");
+      return /can't find session|no server running/.test(text);
     }
   }
 
@@ -275,7 +344,7 @@ export class TmuxManager {
     await exec("tmux", TmuxManager.tmuxArgs([
       "set-option", "-t", `${this.sessionName}:${this.windowId}`,
       "remain-on-exit", "on",
-    ]));
+    ]), { timeout: LOGIN_TMUX_OP_TIMEOUT_MS });
   }
 
   /**

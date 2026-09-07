@@ -103,6 +103,8 @@ export interface TerminalBackend {
     cols: number;
     rows: number;
     onOutput: (chunk: Buffer) => void;
+    /** Aborted by finish(): no stage may leave a resource behind once this fires. */
+    signal?: AbortSignal;
   }): Promise<void>;
   sendInput(socket: string, bytes: Buffer): Promise<void>;
   resize(socket: string, cols: number, rows: number): Promise<void>;
@@ -130,7 +132,13 @@ export const MAX_PENDING_INPUT_BYTES = 64 * 1024;
 export const MAX_PENDING_JOBS = 64;
 /** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
 const TMUX_EXEC_TIMEOUT_MS = 10_000;
-const KILL_TIMEOUT_MS = 5_000;
+/**
+ * Per-op bound for the teardown path (kill-server / liveness probe). Worst
+ * case of one kill(): 2 × (kill-server + probe) + 2 × (signal + probe)
+ * = 2×(5+5) + 2×(0.3+5) ≈ 31 s. Startup abort adds at most one more 10 s
+ * stage plus that kill. Shutdown deadlines above must exceed this chain.
+ */
+const KILL_OP_TIMEOUT_MS = 5_000;
 /** Consecutive failed pane probes before the session is ended as unreachable. */
 export const MAX_PROBE_FAILURES = 3;
 const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
@@ -178,6 +186,10 @@ export class WebTerminalSession extends EventEmitter {
   private pollTimer: NodeJS.Timeout | null = null;
   private polling = false;
   private finishing: Promise<void> | null = null;
+  /** The backend.start() in flight, so finish() can wait for it to settle before its one confirmed kill. */
+  private startInFlight: Promise<void> | null = null;
+  /** Aborted by finish(): the backend checks it after every stage and tears down anything it created. */
+  private readonly startAbort = new AbortController();
   private sentUrls = new Set<string>();
   private successSeenAt: number | null = null;
   /** Consecutive polls where tmux could not even be asked — a vanished server must not idle until TTL. */
@@ -225,20 +237,34 @@ export class WebTerminalSession extends EventEmitter {
     if (this.state !== "created") throw new Error("session already started");
     this.state = "running";
     this.expiresAt = this.now() + this.spec.ttlMs;
+    // finish() may run concurrently (cancel/shutdown during startup). It waits
+    // for THIS promise to settle before its one confirmed kill, so the kill
+    // always sees the server if one was created, and the completion result
+    // (cleanupFailed) is computed once, by finish, after that kill.
+    this.startInFlight = this.backend.start({
+      socket: this.socketName,
+      command: this.spec.command,
+      cwd: this.spec.cwd,
+      cols: this.cols,
+      rows: this.rows,
+      onOutput: chunk => this.onOutput(chunk),
+      signal: this.startAbort.signal,
+    });
     try {
-      await this.backend.start({
-        socket: this.socketName,
-        command: this.spec.command,
-        cwd: this.spec.cwd,
-        cols: this.cols,
-        rows: this.rows,
-        onOutput: chunk => this.onOutput(chunk),
-      });
+      await this.startInFlight;
     } catch (err) {
+      if (this.finishing) { await this.finishing.catch(() => { /* reported by finish */ }); throw new Error("session cancelled during startup"); }
       this.state = "finished";
       this.accessToken = null;
       this.audit("web_terminal_start_failed", { error: (err as Error).message, cleanupFailed: (err as { cleanupFailed?: boolean }).cleanupFailed === true });
       throw err;
+    }
+    if (this.finishing) {
+      // cancel()/TTL/shutdown ran while backend.start() was in flight. finish()
+      // is waiting on startInFlight and will kill the server we just created,
+      // then report — we only wait for it and refuse to arm anything.
+      await this.finishing.catch(() => { /* reported by finish */ });
+      throw new Error("session cancelled during startup");
     }
     this.audit("web_terminal_created", { ttlMs: this.spec.ttlMs, cols: this.cols, rows: this.rows });
     this.ttlTimer = setTimeout(() => { void this.finish({ ok: false, reason: "ttl", detail: "time limit reached" }); }, this.spec.ttlMs);
@@ -498,13 +524,22 @@ export class WebTerminalSession extends EventEmitter {
       try { this.client?.send(JSON.stringify({ t: "exit", ok: result.ok, reason: result.reason, exitCode: result.exitCode, detail: result.detail })); } catch { /* gone */ }
       try { this.client?.close(1000, result.reason); } catch { /* gone */ }
       this.client = null;
+      // A startup still in flight must settle first: otherwise the kill runs
+      // before the server exists and the server outlives the session. Abort
+      // it — every backend stage checks the signal after its await and tears
+      // down what it created — and WAIT for it, with no timer race: a timer
+      // that "declares it settled" would let the start keep creating resources
+      // after we reported clean. The wait is bounded by the backend's own
+      // per-exec timeouts, and abort means at most one more stage runs.
+      this.startAbort.abort();
+      if (this.startInFlight) await this.startInFlight.catch(() => { /* start's own failure path reports */ });
       // kill() resolves only when the dedicated server is CONFIRMED gone (B2).
       // A rejection or a timeout means the command may still be running: say so
       // loudly (audit + result flag) rather than pretending the boundary held.
-      const killed = await Promise.race([
-        this.backend.kill(this.socketName).then(() => true, () => false),
-        new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
-      ]);
+      // No timer race: kill() is bounded by its own per-op timeouts (≤31 s
+      // worst case). Racing it with a shorter timer reported "done" while the
+      // kill was still running — and released the fleet-wide window early.
+      const killed = await this.backend.kill(this.socketName).then(() => true, () => false);
       if (!killed) {
         result.cleanupFailed = true;
         this.logger.warn({ sid: this.sid, socket: this.socketName }, "web terminal tmux cleanup failed — server may still be alive");
@@ -567,9 +602,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
    * socket and exit code only — never the argv, which for input would be the
    * user's keystrokes (B2), and never tmux's stderr, which echoes the command.
    */
-  private async tmux(socket: string, op: string, args: string[], input?: Buffer): Promise<string> {
+  private async tmux(socket: string, op: string, args: string[], input?: Buffer, timeoutMs = TMUX_EXEC_TIMEOUT_MS): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024 },
         (error, stdout) => {
           if (error) {
             const code = (error as { code?: unknown }).code;
@@ -589,18 +624,21 @@ export class TmuxTerminalBackend implements TerminalBackend {
     });
   }
 
-  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
-    const { socket } = opts;
+  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void; signal?: AbortSignal }): Promise<void> {
+    const { socket, signal } = opts;
+    const aborted = () => { const e = new Error("web terminal startup aborted") as Error & { name: string }; e.name = "AbortError"; return e; };
+    if (signal?.aborted) throw aborted();
     // Placeholder first, pipe second, real command third — so no byte is lost.
-    await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
-      "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
-      err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
-
-    // From here on the server exists: every later failure must tear it down
-    // (B5) — set-option, mkdtemp, mkfifo, open, pipe-pane, respawn alike.
+    // new-session is the FIRST command that can create a resource, so it is
+    // already inside the rollback: a client-side timeout/reject may leave a
+    // server that exists — kill it (confirmed) before reporting failure.
     let dir: string | null = null;
     let stream: NetSocket | null = null;
     try {
+      await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
+        "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
+        err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
+      if (signal?.aborted) throw aborted();
       const pid = Number.parseInt((await this.tmux(socket, "display-message", ["-p", "#{pid}"])).trim(), 10);
       if (Number.isFinite(pid) && pid > 1) {
         const probe = this.probe(pid);
@@ -610,8 +648,11 @@ export class TmuxTerminalBackend implements TerminalBackend {
         if (probe.kind === "identified") this.servers.set(socket, { pid, identity: probe.identity });
       }
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
+      if (signal?.aborted) throw aborted();
 
       dir = mkdtempSync(join(tmpdir(), "agend-term-"));
       const fifo = join(dir, "out");
@@ -635,8 +676,11 @@ export class TmuxTerminalBackend implements TerminalBackend {
       };
       this.streams.set(socket, { dir, stop });
 
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "pipe-pane", ["-o", "-t", "main", `cat >> ${shellQuote(fifo)}`]);
+      if (signal?.aborted) throw aborted();
       await this.tmux(socket, "respawn-pane", ["-k", "-t", "main", "-c", opts.cwd, `sh -c ${shellQuote(opts.command)}`]);
+      if (signal?.aborted) throw aborted();
     } catch (err) {
       stream?.destroy();
       if (dir) rmSync(dir, { recursive: true, force: true });
@@ -729,7 +773,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     }
     const pid = server?.pid;
     const tmuxSays = await new Promise<"alive" | "dead" | "unknown">(resolve => {
-      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS }, (error, _stdout, stderr) => {
+      execFile(this.tmuxBin, ["-L", socket, "list-sessions"], { encoding: "utf8", timeout: KILL_OP_TIMEOUT_MS }, (error, _stdout, stderr) => {
         if (!error) { resolve("alive"); return; }
         const code = (error as { code?: unknown }).code;
         const text = String(stderr ?? "");
@@ -758,7 +802,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
     const server = this.servers.get(socket);
     let state: "alive" | "dead" | "unknown" = "unknown";
     for (let attempt = 0; attempt < 2 && state !== "dead"; attempt++) {
-      await this.tmux(socket, "kill-server", []).catch(() => { /* judged by the probe */ });
+      await this.tmux(socket, "kill-server", [], undefined, KILL_OP_TIMEOUT_MS).catch(() => { /* judged by the probe */ });
       state = await this.serverState(socket);
     }
     if (state !== "dead" && server) {

@@ -24,9 +24,23 @@ class FakeBackend implements TerminalBackend {
   failInput: Error | null = null;
   killHangs = false;
   killRejects = false;
+  /** Resolve kill() only after this many (fake-timer) ms — models a slow but bounded tmux teardown. */
+  killDelayMs = 0;
   resizeRejects = false;
-  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
+  /** When set, start() parks here until released (cancel-during-start races). */
+  startGate: Promise<void> | null = null;
+  serverAlive = false;
+  signals: AbortSignal[] = [];
+  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void; signal?: AbortSignal }): Promise<void> {
     if (this.failStart) throw new Error("tmux missing");
+    if (opts.signal) this.signals.push(opts.signal);
+    if (this.startGate) await this.startGate;                  // the `new-session` exec: the server exists once it returns
+    this.serverAlive = true;
+    if (opts.signal?.aborted) {
+      // Like the real backend: an abort observed after a stage tears down what that stage created.
+      try { await this.kill(opts.socket); } catch { /* reported by the caller's confirmed kill */ }
+      throw Object.assign(new Error("web terminal startup aborted"), { name: "AbortError" });
+    }
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
     this.emit = opts.onOutput;
   }
@@ -49,7 +63,9 @@ class FakeBackend implements TerminalBackend {
   async kill(socket: string): Promise<void> {
     this.killed.push(socket);
     if (this.killHangs) await new Promise(() => { /* never */ });
+    if (this.killDelayMs > 0) await new Promise(r => setTimeout(r, this.killDelayMs));
     if (this.killRejects) throw new Error("tmux server on socket could not be confirmed dead");
+    this.serverAlive = false;
   }
 }
 
@@ -187,6 +203,64 @@ describe("token gate", () => {
     await session.cancel();
     expect(session.redeemToken(token)).toEqual({ result: "finished" });
     expect(session.checkCookie(ok.cookie)).toBe(false);
+  });
+});
+
+describe("cancel racing start (sol PR-B rounds 3–4 B1/B2)", () => {
+  it("cancel() aborts the startup and does NOT settle while backend.start() is in flight — however long that takes; nothing survives", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    let release!: () => void;
+    backend.startGate = new Promise<void>(r => { release = r; });
+    const starting = session.start();                          // parked inside the `new-session` exec
+    let cancelSettled = false;
+    const cancelling = session.cancel("fleet shutdown").then(() => { cancelSettled = true; });
+    await new Promise(r => setTimeout(r, 60));                 // stands in for "well past any former settle timer"
+    expect(backend.signals[0].aborted).toBe(true);             // startup told to stop creating things
+    expect(cancelSettled).toBe(false);                         // teardown is not "done" while a server may still appear
+    expect(backend.killed).toHaveLength(0);                    // no premature kill of a server that is not there yet
+    expect(done).toHaveLength(0);
+    expect(session.peekAccessToken()).toBeNull();              // but the token is already withdrawn
+    release();                                                 // the exec returns: the server now exists
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(backend.serverAlive).toBe(false);                   // torn down by the aborted stage, confirmed by finish
+    expect(backend.killed.length).toBeGreaterThanOrEqual(1);
+    expect(done).toHaveLength(1);
+    expect(done[0].cleanupFailed).toBeUndefined();
+    expect(session.state).toBe("finished");
+  });
+
+  it("B2: a late kill that fails is reported in the ONE completion result (cleanupFailed) — never a silent success", async () => {
+    vi.useRealTimers();
+    const { session, backend, done, audits } = make();
+    let release!: () => void;
+    backend.startGate = new Promise<void>(r => { release = r; });
+    const starting = session.start();
+    const cancelling = session.cancel("fleet shutdown");
+    backend.killRejects = true;                                // the server that appears late cannot be confirmed dead
+    backend.serverAlive = false;
+    release();
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(done).toHaveLength(1);
+    expect(done[0]).toMatchObject({ reason: "cancel", cleanupFailed: true });
+    expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: true });
+    expect(audits.some(a => a[0] === "web_terminal_cleanup_failed")).toBe(true);
+  });
+
+  it("a backend.start() that FAILS while cancel is pending settles cancel with a clean completion", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    let reject!: (e: Error) => void;
+    backend.startGate = new Promise<void>((_r, rj) => { reject = rj; });
+    const starting = session.start();
+    const cancelling = session.cancel("fleet shutdown");
+    reject(new Error("tmux exploded"));
+    await cancelling;
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(done).toHaveLength(1);
+    expect(session.state).toBe("finished");
   });
 });
 
@@ -503,16 +577,31 @@ describe("browser I/O", () => {
     expect(audits.find(a => a[0] === "web_terminal_closed")![1]).toMatchObject({ cleanupFailed: false });
   });
 
-  it("B5: a tmux kill that never returns does not hang finish, and is reported as a cleanup failure", async () => {
+  it("B1 (PR-B round 7): finish waits for the bounded kill — a 6 s kill is not reported done at 5 s, and succeeds at 6 s", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.killDelayMs = 6_000;
+    let settled = false;
+    const finished = session.cancel("test").then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(5_100);
+    expect(settled).toBe(false);                        // the old 5 s race would have reported cleanupFailed here
+    expect(done).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await finished;
+    expect(done).toHaveLength(1);
+    expect(done[0].cleanupFailed).toBeUndefined();
+    expect(backend.serverAlive).toBe(false);
+  });
+
+  it("a kill that has not returned keeps finish pending — termination is the backend's per-op bound, not a timer here", async () => {
     const { session, backend, done } = make();
     await session.start();
     backend.killHangs = true;
-    const finished = session.cancel("test");
-    await vi.advanceTimersByTimeAsync(5_100);
-    await finished;
-    expect(done).toHaveLength(1);
-    expect(done[0].cleanupFailed).toBe(true);
-    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/cleanup failed/));
+    let settled = false;
+    void session.cancel("test").then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(settled).toBe(false);
+    expect(done).toHaveLength(0);
   });
   it("after finish, input and resize are ignored and the client gets exit + close", async () => {
     const { session, backend } = make();

@@ -839,6 +839,7 @@ export class TopicCommands {
       adapterId: msg.adapterId ?? adapter.id,
       chatId: msg.chatId,
       threadId: msg.threadId,
+      userId: msg.userId,
     };
     if (!arg) {
       await this.ctx.promptLoginBackends(chat);

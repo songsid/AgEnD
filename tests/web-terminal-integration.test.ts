@@ -293,6 +293,22 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     expect(tmuxServerAlive(socket)).toBe(false);
   });
 
+  it("B2 (PR-B round 6): new-session that creates the server but reports failure to the client is rolled back — no server, no cancel needed", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    // Real tmux for everything; new-session REALLY runs (server exists) but the client exits 1 (timeout/reject shape).
+    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = new-session ]; then tmux "$@"; exit 1; fi; done\nexec tmux "$@"\n`);
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-b2ns-${process.pid}`;
+    try {
+      await expect(new TmuxTerminalBackend(bin).start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} })).rejects.toThrow(/new-session failed/);
+      expect(tmuxServerAlive(socket)).toBe(false);
+    } finally {
+      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("B5: a failure in a later stage (set-option) also leaves no tmux server behind", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
     const bin = join(dir, "tmux");

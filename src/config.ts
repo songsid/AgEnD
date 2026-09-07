@@ -126,6 +126,9 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     profiles?: FleetConfig["profiles"];
     health_port?: number;
     web?: FleetConfig["web"];
+    hostname?: string;
+    login?: FleetConfig["login"];
+    web_terminal?: FleetConfig["web_terminal"];
   } | null;
 
   if (!parsed) {
@@ -185,7 +188,44 @@ export function loadFleetConfig(configPath: string): FleetConfig {
     profiles: parsed.profiles,
     health_port: parsed.health_port,
     web: parsed.web,
+    hostname: parsed.hostname,
+    login: validateLoginConfig(parsed.login),
+    web_terminal: validateWebTerminalConfig(parsed.web_terminal),
   };
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function validateLoginConfig(raw: unknown): FleetConfig["login"] {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) throw new Error(`login: expected a mapping, got ${JSON.stringify(raw)}`);
+  if (raw.mode !== undefined && raw.mode !== "web" && raw.mode !== "relay") {
+    throw new Error(`login.mode: expected "web" or "relay", got ${JSON.stringify(raw.mode)}`);
+  }
+  return raw as FleetConfig["login"];
+}
+
+function validateWebTerminalConfig(raw: unknown): FleetConfig["web_terminal"] {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) throw new Error(`web_terminal: expected a mapping, got ${JSON.stringify(raw)}`);
+  const out = { ...raw } as NonNullable<FleetConfig["web_terminal"]> & Record<string, unknown>;
+  // A security feature gate must be a real boolean: YAML `enabled: "false"` is
+  // the string "false", which would read as "not disabled" (sol M2).
+  if (out.enabled !== undefined && typeof out.enabled !== "boolean") {
+    throw new Error(`web_terminal.enabled: expected true or false (unquoted), got ${JSON.stringify(out.enabled)}`);
+  }
+  if (out.ttl_minutes !== undefined) {
+    if (typeof out.ttl_minutes !== "number" || !Number.isFinite(out.ttl_minutes)) {
+      throw new Error(`web_terminal.ttl_minutes: expected a number 1..20, got ${JSON.stringify(out.ttl_minutes)}`);
+    }
+    out.ttl_minutes = Math.min(20, Math.max(1, Math.floor(out.ttl_minutes)));   // engine hard cap
+  }
+  if (out.bind !== undefined && (typeof out.bind !== "string" || !out.bind.trim())) {
+    throw new Error("web_terminal.bind: expected a non-empty host/IP string");
+  }
+  return out;
 }
 
 /** Read the user-authored config without applying defaults or normalization. */

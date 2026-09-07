@@ -4,9 +4,18 @@
  * Every command, menu label, prompt, and success string here was verified
  * against the installed CLI (`--help` output or strings extracted from the
  * release binary) rather than written from memory:
- *   - codex:  `codex login --device-auth`, success "Successfully logged in"
- *   - grok:   `grok login --device-auth`, success "Login successful!"
- *   - kiro:   `kiro-cli login --use-device-flow`; free/pro selector is the
+ *   - codex:  `codex login --device-auth`, success "Successfully logged in".
+ *             The flag is KEPT on purpose (live-verified codex 0.153.4,
+ *             headless): plain `codex login` starts a callback server on the
+ *             HOST's localhost:1455 and waits for a browser redirect the
+ *             admin's browser can never deliver; codex itself prints "On a
+ *             remote or headless machine? Use `codex login --device-auth`".
+ *             The flag is hidden from `--help` but still accepted.
+ *   - grok:   `grok login` — plain login already IS device-code on grok 1.0.5
+ *             (identical output to `--device-auth`), success "Login successful!"
+ *   - kiro:   `kiro-cli login` (plain, per user request): shows the four-way
+ *             selector incl. "Your Organization"; Identity Center is device-code
+ *             regardless of `--use-device-flow` (live-verified 2.21.1). The
  *             arrow-key menu "Select login method" with exactly the four
  *             options below; Identity Center then asks "Enter Start URL" /
  *             "Enter Region"; success "Logged in successfully"/"Logged in with"
@@ -59,6 +68,28 @@ export interface LoginFlow {
   successPattern: RegExp;
   /** Hard cap for the whole login session. */
   timeoutMs: number;
+  /**
+   * Deterministic shell command run in the same window right before `command`
+   * (`pre; command`). `token-present`: only when the auth pre-check said the
+   * CLI still holds a token and the admin confirmed a re-login — kiro refuses
+   * `login` outright while any token record exists (live-verified 2.21.1).
+   */
+  preCommand?: { command: string; when: "always" | "token-present" };
+  /** Known failure strings in the dead pane → human wording + suggested next step (web mode). */
+  failures?: Array<{ pattern: RegExp; message: string; suggest?: "relogin" | "check-args" | "retry" }>;
+  /**
+   * Explicit allowlist for the web terminal (design §2.3/§3): set only after a
+   * human reviewed that this CLI's login TUI offers no shell escape. A flow
+   * without it never gets a browser terminal — the scope guarantee "one
+   * command, no shell" depends on it.
+   */
+  noShellEscape?: true;
+  /**
+   * Remote /login is declined outright for this backend (every mode), with a
+   * user-facing reason. Kept in LOGIN_FLOWS only for authCheck /
+   * loginScreenPattern, which the daemon still uses.
+   */
+  remoteLogin?: "unsupported";
 }
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -89,7 +120,10 @@ const STANDALONE_DEVICE_CODE = /^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/m;
 
 export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "codex",
+    // Keep --device-auth: plain login needs a browser redirect to THIS host's
+    // localhost:1455, which a remote admin's browser cannot deliver (see header).
     command: "codex login --device-auth",
     authCheck: { argv: ["codex", "login", "status"] },
     loginScreenPattern: /Sign in with ChatGPT/,
@@ -98,8 +132,9 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "grok": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "grok",
-    command: "grok login --device-auth",
+    command: "grok login",
     authCheck: { argv: ["grok", "models"] },
     loginScreenPattern: /Run `grok login`/,
     // Binary template is "enter code: $CODE"; the standalone form is a fallback.
@@ -108,8 +143,9 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "kiro-cli": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "kiro-cli",
-    command: "kiro-cli login --use-device-flow",
+    command: "kiro-cli login",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
     loginScreenPattern: /Select login method/,
     menu: {
@@ -122,8 +158,18 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     codePattern: /Code:\s*([A-Z0-9][A-Z0-9-]{3,})/,
     successPattern: /Logged in successfully|Logged in with /,
     timeoutMs: LOGIN_TIMEOUT_MS,
+    // kiro-cli 2.21.1 (live-verified): any stored token record — even an
+    // expired one with a refresh token — makes `login` exit 1 with "Already
+    // logged in"; only `logout` clears it. The saved Identity Center start
+    // URL/region survive logout and pre-fill the prompts in the terminal.
+    preCommand: { command: "kiro-cli logout", when: "token-present" },
+    failures: [
+      { pattern: /Already logged in, please logout/, message: "kiro-cli still holds a token — use Re-login (it logs out first)", suggest: "relogin" },
+      { pattern: /error: dispatch failure/, message: "Identity Center rejected the request — check the Start URL and Region", suggest: "check-args" },
+    ],
   },
   "claude-code": {
+    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
@@ -133,6 +179,14 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "antigravity": {
+    // Remote login is UNSUPPORTED (user decision, v2.1.5): bare `agy` is the
+    // full agent CLI (tools, permission prompts, MCP) and has no isolated
+    // login sub-command — "logging in" means running the whole agent, which
+    // violates the web terminal's "one login command, no shell" boundary.
+    // /login agy is declined in every mode (no relay fallback) until upstream
+    // ships a dedicated login command. authCheck / loginScreenPattern stay for
+    // the daemon's own use.
+    remoteLogin: "unsupported",
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },

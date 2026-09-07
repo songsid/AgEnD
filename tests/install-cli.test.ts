@@ -57,7 +57,7 @@ describe("/install-cli", () => {
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
     const adapter = { id: "discord", type: "discord", notifyAlert, sendText, editMessageRemoveButtons } as any;
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
-    const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic" };
+    const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic", userId: "admin" };
     return { fm, adapter, notifyAlert, sendText, chat };
   }
 
@@ -102,9 +102,10 @@ describe("/install-cli", () => {
     expect(await fm.startInstallSession("claude", chat)).toContain("already");
     expect(await fm.startInstallSession("notreal", chat)).toContain("notreal");
 
-    (fm as any).activeLogin = { backend: "codex" };
+    // A login (web or relay) holds the fleet-wide window; install must yield.
+    const loginClaim = (fm as any).loginWindow.tryClaim("relay", "codex");
     expect(await fm.startInstallSession("grok", chat)).toContain("codex");
-    (fm as any).activeLogin = null;
+    (fm as any).loginWindow.release(loginClaim);
 
     await fm.startInstallSession("grok", chat);
     expect(await fm.startInstallSession("codex", chat)).toBe((await import("../src/locale.js")).t("install.busy"));
