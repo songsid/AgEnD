@@ -12,8 +12,14 @@
  *   GET  /t/<sid>/ws (upgrade)   cookie + Origin → WebSocket to the pane
  *
  * Origin must equal Host on /open and /ws (CSRF/cross-site WS). Cookie is
- * HttpOnly; SameSite=Strict; Path=/t/<sid>. Payload/rate limits: 4 KB frames,
- * 64 frames/s, 1 KB /open body; resize clamped by the session.
+ * HttpOnly; SameSite=Strict; Path=/t/<sid>. Limits: 4 KB frames, 64 inbound
+ * frames/s (control frames included, enforced in the parser), 1 KB /open
+ * body, 64 KB of input waiting for tmux, 1 MB of output waiting for the
+ * browser; resize clamped by the session.
+ *
+ * Every entry point has an error boundary: a malformed request target or an
+ * unexpected throw answers 400/500 and never becomes an unhandled rejection
+ * or uncaught exception in the fleet process.
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Socket } from "node:net";
@@ -29,6 +35,7 @@ const DEFAULT_ASSETS_DIR = join(__dirname, "ui", "web-terminal");
 const MAX_OPEN_BODY = 1024;
 const MAX_WS_FRAME = 4096;
 const MAX_FRAMES_PER_SECOND = 64;
+const MAX_OUTBOUND_BUFFERED = 1024 * 1024;
 
 const ASSETS: Record<string, { file: string; type: string }> = {
   "terminal.js": { file: "terminal.js", type: "text/javascript; charset=utf-8" },
@@ -45,6 +52,21 @@ export interface WebTerminalHttpOptions {
   /** Host name used in the URL handed to the admin (fleet `hostname`, default "localhost"). */
   hostname?: string;
   assetsDir?: string;
+}
+
+/**
+ * The request target as a plain path, or null when it is not a valid
+ * origin-form target. `new URL` throws on `GET http://%` and friends, and
+ * absolute-form / authority-form targets are not something a browser sends
+ * to us — all of that is a 400, never an exception (B1).
+ */
+export function safeRequestPath(rawUrl: string | undefined): string | null {
+  if (!rawUrl || rawUrl.length > 2048 || !rawUrl.startsWith("/")) return null;
+  try {
+    return new URL(rawUrl, "http://localhost").pathname;
+  } catch {
+    return null;
+  }
 }
 
 export class WebTerminalHttpServer {
@@ -72,10 +94,28 @@ export class WebTerminalHttpServer {
   /** Start listening; returns the URL to hand the admin (it contains no secret). */
   async listen(): Promise<{ port: number; url: string }> {
     if (this.server) throw new Error("already listening");
-    const server = createServer((req, res) => { void this.handle(req, res); });
-    server.on("upgrade", (req, socket, head) => this.handleUpgrade(req, socket as Socket, head));
+    const server = createServer((req, res) => {
+      // Error boundary: nothing thrown by a request may escape to the process.
+      Promise.resolve().then(() => this.handle(req, res)).catch(err => {
+        this.logger.warn({ sid: this.session.sid, err: (err as Error).message }, "web terminal request failed");
+        try { this.text(res, 500, "internal error"); } catch { res.destroy(); }
+      });
+    });
+    server.on("upgrade", (req, socket, head) => {
+      try {
+        this.handleUpgrade(req, socket as Socket, head);
+      } catch (err) {
+        this.logger.warn({ sid: this.session.sid, err: (err as Error).message }, "web terminal upgrade failed");
+        rejectUpgrade(socket as Socket, 500, "Internal Server Error");
+      }
+    });
+    server.on("clientError", (_err, socket) => {
+      // Node's own HTTP parser rejected the request (malformed request line/headers).
+      if (!(socket as Socket).destroyed) (socket as Socket).end("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+    });
     server.on("connection", socket => {
       this.sockets.add(socket);
+      socket.on("error", () => { /* peer reset; nothing to do */ });
       socket.on("close", () => this.sockets.delete(socket));
     });
     server.headersTimeout = 10_000;
@@ -111,14 +151,14 @@ export class WebTerminalHttpServer {
 
   // ── HTTP ──
 
-  private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const url = new URL(req.url ?? "/", "http://localhost");
-    const path = url.pathname;
-    const base = this.pagePath;
+  private handle(req: IncomingMessage, res: ServerResponse): void {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
+    const path = safeRequestPath(req.url);
+    if (path === null) return this.text(res, 400, "bad request");
+    const base = this.pagePath;
 
     if (path === base || path === `${base}/`) {
       if (req.method !== "GET") return this.text(res, 405, "method not allowed");
@@ -176,25 +216,30 @@ export class WebTerminalHttpServer {
     });
     req.on("end", () => {
       if (tooLarge) return;
-      let token = "";
       try {
-        const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { token?: unknown };
-        token = typeof parsed.token === "string" ? parsed.token : "";
-      } catch {
-        return this.json(res, 400, { error: "bad json" });
-      }
-      if (!token) return this.json(res, 400, { error: "token required" });
-      const outcome = this.session.redeemToken(token);
-      switch (outcome.result) {
-        case "ok": {
-          const secure = this.isHttps(req) ? "; Secure" : "";
-          res.setHeader("Set-Cookie", `${this.cookieName}=${outcome.cookie}; HttpOnly; SameSite=Strict; Path=${this.pagePath}${secure}`);
-          return this.json(res, 204, null);
+        let token = "";
+        try {
+          const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as { token?: unknown };
+          token = typeof parsed.token === "string" ? parsed.token : "";
+        } catch {
+          return this.json(res, 400, { error: "bad json" });
         }
-        case "bad": return this.json(res, 403, { error: "invalid token", remaining: outcome.remaining });
-        case "used": return this.json(res, 409, { error: "token already used" });
-        case "locked": return this.json(res, 410, { error: "session destroyed after repeated failures" });
-        case "finished": return this.json(res, 410, { error: "session ended" });
+        if (!token) return this.json(res, 400, { error: "token required" });
+        const outcome = this.session.redeemToken(token);
+        switch (outcome.result) {
+          case "ok": {
+            const secure = this.isHttps(req) ? "; Secure" : "";
+            res.setHeader("Set-Cookie", `${this.cookieName}=${outcome.cookie}; HttpOnly; SameSite=Strict; Path=${this.pagePath}${secure}`);
+            return this.json(res, 204, null);
+          }
+          case "bad": return this.json(res, 403, { error: "invalid token", remaining: outcome.remaining });
+          case "used": return this.json(res, 409, { error: "token already used" });
+          case "locked": return this.json(res, 410, { error: "session destroyed after repeated failures" });
+          case "finished": return this.json(res, 410, { error: "session ended" });
+        }
+      } catch (err) {
+        this.logger.warn({ sid: this.session.sid, err: (err as Error).message }, "web terminal /open failed");
+        this.json(res, 500, { error: "internal error" });
       }
     });
     req.on("error", () => { /* client went away */ });
@@ -204,40 +249,52 @@ export class WebTerminalHttpServer {
 
   private handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer): void {
     this.sockets.add(socket);
+    socket.on("error", () => { /* peer reset */ });
     socket.on("close", () => this.sockets.delete(socket));
-    const url = new URL(req.url ?? "/", "http://localhost");
-    if (url.pathname !== `${this.pagePath}/ws`) return rejectUpgrade(socket, 404, "Not Found");
+    const path = safeRequestPath(req.url);
+    if (path === null) return rejectUpgrade(socket, 400, "Bad Request");
+    if (path !== `${this.pagePath}/ws`) return rejectUpgrade(socket, 404, "Not Found");
     if (!this.originMatchesHost(req)) return rejectUpgrade(socket, 403, "Forbidden");
     if (!this.session.checkCookie(this.cookie(req))) return rejectUpgrade(socket, 403, "Forbidden");
     if (this.session.state !== "running") return rejectUpgrade(socket, 410, "Gone");
 
-    const ws = acceptWebSocket(req, socket, head, { maxPayload: MAX_WS_FRAME });
+    const ws = acceptWebSocket(req, socket, head, {
+      maxPayload: MAX_WS_FRAME,
+      maxFramesPerSecond: MAX_FRAMES_PER_SECOND,
+      maxBufferedBytes: MAX_OUTBOUND_BUFFERED,
+    });
     if (!ws) return;
-    if (this.ws && this.ws !== ws) { try { this.ws.close(4000, "replaced"); } catch { /* gone */ } }
+    const previous = this.ws;
     this.ws = ws;
+    if (previous && previous !== ws) { try { previous.close(4000, "replaced"); } catch { /* gone */ } }
 
-    let windowStart = Date.now();
-    let frames = 0;
     const detach = this.session.attachClient({
-      send: data => { ws.send(data); },
+      send: data => { ws.send(data); },              // a slow browser is dropped inside send() (1008)
       close: (code, reason) => { ws.close(code, reason); },
     });
     ws.on("message", (data: Buffer | string, isBinary: boolean) => {
-      const now = Date.now();
-      if (now - windowStart >= 1000) { windowStart = now; frames = 0; }
-      if (++frames > MAX_FRAMES_PER_SECOND) { ws.close(1008, "too many frames"); return; }
+      // Fence: only the CURRENT browser may type. A replaced or closing
+      // socket cannot inject even if a frame was already in flight (B3).
+      if (this.ws !== ws || ws.closed) return;
       if (isBinary) {
-        void this.session.input(data as Buffer).catch(err =>
-          this.logger.warn({ err: (err as Error).message }, "web terminal input failed"));
+        if (!this.session.input(data as Buffer)) {
+          ws.close(1008, "input backlog");            // > MAX_PENDING_INPUT_BYTES waiting for tmux (B4)
+        }
         return;
       }
       let msg: { t?: unknown; cols?: unknown; rows?: unknown };
       try { msg = JSON.parse(data as string); } catch { return; }
       if (msg.t === "resize" && typeof msg.cols === "number" && typeof msg.rows === "number") {
-        void this.session.resize(msg.cols, msg.rows).catch(() => { /* pane gone */ });
+        this.session.resize(msg.cols, msg.rows);
+      } else if (msg.t === "cancel") {
+        // The authenticated browser's Stop button: end the session for real,
+        // not merely a Ctrl-C the CLI might ignore.
+        void this.session.cancel("stopped from the browser");
       }
     });
     ws.on("close", () => { detach(); if (this.ws === ws) this.ws = null; });
+    ws.on("protocolError", (e: { code: number; reason: string }) =>
+      this.logger.info({ sid: this.session.sid, code: e.code, reason: e.reason }, "web terminal ws closed by policy"));
     ws.on("error", () => { /* surfaced via close */ });
     this.logger.info({ sid: this.session.sid, ip: req.socket.remoteAddress, ua: String(req.headers["user-agent"] ?? "").slice(0, 120) }, "web_terminal_ws_connected");
   }
@@ -269,6 +326,7 @@ export class WebTerminalHttpServer {
   }
 
   private text(res: ServerResponse, status: number, body: string): void {
+    if (res.headersSent) { res.end(); return; }
     res.writeHead(status, { "Content-Type": "text/plain; charset=utf-8" });
     res.end(`${body}\n`);
   }

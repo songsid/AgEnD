@@ -9,6 +9,10 @@
  *   - no fragmentation: a continuation frame or a data frame without FIN → 1003
  *   - payload above `maxPayload` → 1009; invalid UTF-8 in a text frame → 1007
  *   - ping answered with pong; close answered with close, then the socket ends
+ *   - inbound frame rate (control frames included) above `maxFramesPerSecond` → 1008
+ *   - once WE start closing (protocol failure, replacement, session end) the
+ *     connection is read-only for application data: nothing is emitted, the
+ *     inbound buffer is dropped, only the peer's Close is still parsed
  *   - no extension or subprotocol is ever negotiated (headers are ignored)
  *
  * Verified against Node's built-in (undici) WebSocket client in the tests.
@@ -20,7 +24,11 @@ import type { Socket } from "node:net";
 
 const GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 const DEFAULT_MAX_PAYLOAD = 4096;
+const DEFAULT_MAX_FRAMES_PER_SECOND = 64;
+const DEFAULT_MAX_BUFFERED_BYTES = 1024 * 1024;
 const CLOSE_GRACE_MS = 1_000;
+/** Longest possible frame header: 2 + 8 (64-bit length) + 4 (mask). */
+const MAX_HEADER = 14;
 
 export const enum Opcode {
   Continuation = 0x0,
@@ -34,6 +42,10 @@ export const enum Opcode {
 export interface WsServerOptions {
   /** Largest accepted client payload in bytes (control frames are capped at 125 by the RFC). */
   maxPayload?: number;
+  /** Inbound frames per second, control frames included. */
+  maxFramesPerSecond?: number;
+  /** Outbound bytes allowed to queue on the socket before the peer is dropped as a slow consumer. */
+  maxBufferedBytes?: number;
 }
 
 /** True when the request is a syntactically valid WebSocket upgrade for version 13. */
@@ -54,14 +66,18 @@ export function isWebSocketUpgrade(req: IncomingMessage): boolean {
 export function rejectUpgrade(socket: Socket, status: number, reason: string): void {
   if (socket.destroyed) return;
   const body = `${reason}\n`;
-  socket.end(
-    `HTTP/1.1 ${status} ${reason}\r\n`
-    + "Connection: close\r\n"
-    + "Content-Type: text/plain; charset=utf-8\r\n"
-    + `Content-Length: ${Buffer.byteLength(body)}\r\n`
-    + "\r\n"
-    + body,
-  );
+  try {
+    socket.end(
+      `HTTP/1.1 ${status} ${reason}\r\n`
+      + "Connection: close\r\n"
+      + "Content-Type: text/plain; charset=utf-8\r\n"
+      + `Content-Length: ${Buffer.byteLength(body)}\r\n`
+      + "\r\n"
+      + body,
+    );
+  } catch {
+    socket.destroy();
+  }
 }
 
 /**
@@ -91,18 +107,31 @@ export function acceptWebSocket(
   return new WsConnection(socket, head, opts);
 }
 
+/** RFC 6455 §7.4: status codes a peer may legitimately send in a Close frame. */
+function isValidCloseCode(code: number): boolean {
+  if (code >= 3000 && code <= 4999) return true;
+  return code === 1000 || code === 1001 || code === 1002 || code === 1003 || code === 1007
+    || code === 1008 || code === 1009 || code === 1010 || code === 1011;
+}
+
 export class WsConnection extends EventEmitter {
   private buffer: Buffer = Buffer.alloc(0);
   private readonly maxPayload: number;
+  private readonly maxFramesPerSecond: number;
+  private readonly maxBufferedBytes: number;
   private closeSent = false;
   private closeReceived = false;
   private closedEmitted = false;
   private closeTimer: NodeJS.Timeout | null = null;
+  private rateWindowStart = 0;
+  private rateCount = 0;
   private readonly utf8 = new TextDecoder("utf-8", { fatal: true });
 
   constructor(private readonly socket: Socket, head: Buffer, opts: WsServerOptions) {
     super();
     this.maxPayload = opts.maxPayload ?? DEFAULT_MAX_PAYLOAD;
+    this.maxFramesPerSecond = opts.maxFramesPerSecond ?? DEFAULT_MAX_FRAMES_PER_SECOND;
+    this.maxBufferedBytes = opts.maxBufferedBytes ?? DEFAULT_MAX_BUFFERED_BYTES;
     socket.setNoDelay(true);
     socket.on("data", chunk => this.onData(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
     socket.on("error", err => this.emit("error", err));
@@ -114,14 +143,29 @@ export class WsConnection extends EventEmitter {
     if (head.length > 0) this.onData(head);
   }
 
+  /** True once either side has started closing — no application data flows after this. */
   get closed(): boolean { return this.closeSent || this.closeReceived || this.socket.destroyed; }
 
-  /** Send a text (string) or binary (Buffer) message. Returns false once closing. */
+  /** Bytes queued on the socket but not yet flushed (outbound backpressure). */
+  get bufferedAmount(): number { return this.socket.writableLength; }
+
+  /** Inbound bytes held for an incomplete frame (for tests: must stay bounded). */
+  get pendingInboundBytes(): number { return this.buffer.length; }
+
+  /**
+   * Send a text (string) or binary (Buffer) message. Returns false once
+   * closing, or when the peer is too slow: a browser that stops reading gets
+   * dropped (1008) rather than letting the socket queue grow without bound.
+   */
   send(data: string | Buffer): boolean {
     if (this.closed) return false;
-    const opcode = Buffer.isBuffer(data) ? Opcode.Binary : Opcode.Text;
     const payload: Buffer = Buffer.isBuffer(data) ? data : Buffer.from(String(data), "utf8");
-    return this.writeFrame(opcode, payload);
+    if (this.socket.writableLength + payload.length > this.maxBufferedBytes) {
+      this.emit("protocolError", { code: 1008, reason: "slow consumer" });
+      this.close(1008, "slow consumer");
+      return false;
+    }
+    return this.writeFrame(Buffer.isBuffer(data) ? Opcode.Binary : Opcode.Text, payload);
   }
 
   ping(payload: Buffer = Buffer.alloc(0)): boolean {
@@ -133,6 +177,7 @@ export class WsConnection extends EventEmitter {
   close(code = 1000, reason = ""): void {
     if (this.closeSent) return;
     this.closeSent = true;
+    this.buffer = Buffer.alloc(0);                  // nothing pending is ever processed after this
     const reasonBuf = Buffer.from(reason, "utf8").subarray(0, 123);
     const payload = Buffer.alloc(2 + reasonBuf.length);
     payload.writeUInt16BE(code, 0);
@@ -147,7 +192,7 @@ export class WsConnection extends EventEmitter {
   }
 
   private writeFrame(opcode: Opcode, payload: Buffer): boolean {
-    if (this.socket.destroyed) return false;
+    if (this.socket.destroyed || !this.socket.writable) return false;
     let header: Buffer;
     if (payload.length < 126) {
       header = Buffer.from([0x80 | opcode, payload.length]);
@@ -163,7 +208,11 @@ export class WsConnection extends EventEmitter {
       header.writeUInt32BE(0, 2);
       header.writeUInt32BE(payload.length, 6);
     }
-    return this.socket.write(Buffer.concat([header, payload]));
+    try {
+      return this.socket.write(Buffer.concat([header, payload]));
+    } catch {
+      return false;
+    }
   }
 
   private fail(code: number, reason: string): void {
@@ -173,18 +222,31 @@ export class WsConnection extends EventEmitter {
 
   private onData(chunk: Buffer): void {
     if (this.closeReceived) return;
-    this.buffer = this.buffer.length === 0 ? chunk : Buffer.concat([this.buffer, chunk]);
-    // A peer that keeps sending without ever completing a frame is bounded by
-    // the payload cap plus the largest header.
-    if (this.buffer.length > this.maxPayload + 14) {
-      this.fail(1009, "frame too large");
+    if (this.closeSent) {
+      // Read-only: only the peer's Close is of interest, and it is small. A
+      // peer that keeps sending anything else after we closed is cut off.
+      this.buffer = Buffer.concat([this.buffer, chunk]);
+      if (this.buffer.length > MAX_HEADER + 125) { this.socket.destroy(); return; }
+      this.parsePeerCloseOnly();
       return;
     }
+    this.buffer = this.buffer.length === 0 ? chunk : Buffer.concat([this.buffer, chunk]);
     for (;;) {
       const parsed = this.parseFrame();
-      if (parsed === null) return;                 // need more bytes
-      if (parsed === false) return;                // protocol error already handled
+      if (parsed === null) break;                  // need more bytes
+      if (parsed === false) return;                // protocol error already handled (buffer cleared)
     }
+    // Whatever remains is one incomplete frame whose declared length already
+    // passed the cap (or whose header is not complete yet): bounded by design.
+    if (this.buffer.length > this.maxPayload + MAX_HEADER) this.fail(1009, "frame too large");
+  }
+
+  /** Inbound frame rate — every complete frame counts, control frames included, so ping floods cannot bypass it. */
+  private countFrame(): boolean {
+    const now = Date.now();
+    if (now - this.rateWindowStart >= 1000) { this.rateWindowStart = now; this.rateCount = 0; }
+    if (++this.rateCount > this.maxFramesPerSecond) { this.fail(1008, "too many frames"); return false; }
+    return true;
   }
 
   /** @returns null = incomplete, false = failed (connection closing), true = one frame consumed */
@@ -232,6 +294,7 @@ export class WsConnection extends EventEmitter {
     const payload = Buffer.from(buf.subarray(offset + 4, total));   // copy: the buffer is about to be sliced
     for (let i = 0; i < payload.length; i++) payload[i] ^= mask[i & 3];
     this.buffer = buf.subarray(total);
+    if (!this.countFrame()) return false;
 
     switch (opcode) {
       case Opcode.Text: {
@@ -248,22 +311,49 @@ export class WsConnection extends EventEmitter {
         return true;
       case Opcode.Pong:
         return true;
-      case Opcode.Close: {
-        this.closeReceived = true;
-        const code = payload.length >= 2 ? payload.readUInt16BE(0) : 1005;
-        const reason = payload.length > 2 ? payload.subarray(2).toString("utf8") : "";
-        if (!this.closeSent) {
-          this.closeSent = true;
-          this.writeFrame(Opcode.Close, payload.subarray(0, 125));
-        }
-        if (this.closeTimer) clearTimeout(this.closeTimer);
-        this.socket.end();
-        this.emitClosed(code, reason);
-        return true;
-      }
+      case Opcode.Close:
+        return this.handlePeerClose(payload);
       default:
         return true;
     }
+  }
+
+  private handlePeerClose(payload: Buffer): boolean {
+    if (payload.length === 1) { this.fail(1002, "bad close payload"); return false; }
+    let code = 1005;
+    let reason = "";
+    if (payload.length >= 2) {
+      code = payload.readUInt16BE(0);
+      if (!isValidCloseCode(code)) { this.fail(1002, "bad close code"); return false; }
+      try { reason = this.utf8.decode(payload.subarray(2)); } catch { this.fail(1007, "invalid utf-8 in close reason"); return false; }
+    }
+    this.closeReceived = true;
+    this.buffer = Buffer.alloc(0);
+    if (!this.closeSent) {
+      this.closeSent = true;
+      this.writeFrame(Opcode.Close, payload.subarray(0, 125));
+    }
+    if (this.closeTimer) clearTimeout(this.closeTimer);
+    this.socket.end();
+    this.emitClosed(code, reason);
+    return true;
+  }
+
+  /** After our own Close: accept only the peer's echo; anything else just waits for the grace timer. */
+  private parsePeerCloseOnly(): void {
+    const buf = this.buffer;
+    if (buf.length < 2) return;
+    const opcode = buf[0] & 0x0f;
+    const masked = (buf[1] & 0x80) !== 0;
+    const length = buf[1] & 0x7f;
+    if (opcode !== Opcode.Close || !masked || length > 125) { this.socket.destroy(); return; }
+    const total = 2 + 4 + length;
+    if (buf.length < total) return;
+    this.closeReceived = true;
+    this.buffer = Buffer.alloc(0);
+    if (this.closeTimer) clearTimeout(this.closeTimer);
+    this.socket.end();
+    this.emitClosed(length >= 2 ? buf.readUInt16BE(6) ^ ((buf[2] << 8) | buf[3]) : 1005, "");
   }
 
   private emitClosed(code: number, reason: string): void {

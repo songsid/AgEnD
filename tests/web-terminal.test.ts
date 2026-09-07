@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote,
-  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS,
+  WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote, segmentInput,
+  ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES,
   type TerminalBackend, type WebTerminalResult, type WebTerminalSpec,
 } from "../src/web-terminal.js";
 
@@ -19,16 +19,28 @@ class FakeBackend implements TerminalBackend {
   pane = "";
   status: { alive: boolean; exitCode?: number } | null = { alive: true };
   failStart = false;
+  /** Per-call latency for sendInput, keyed by first byte (ordering tests). */
+  inputDelayMs: (bytes: Buffer) => number = () => 0;
+  failInput: Error | null = null;
+  killHangs = false;
   async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
     if (this.failStart) throw new Error("tmux missing");
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
     this.emit = opts.onOutput;
   }
-  async sendInput(_s: string, bytes: Buffer): Promise<void> { this.inputs.push(Buffer.from(bytes)); }
+  async sendInput(_s: string, bytes: Buffer): Promise<void> {
+    const wait = this.inputDelayMs(bytes);
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    if (this.failInput) throw this.failInput;
+    this.inputs.push(Buffer.from(bytes));
+  }
   async resize(_s: string, cols: number, rows: number): Promise<void> { this.resizes.push([cols, rows]); }
   async capture(): Promise<string> { return this.pane; }
   async paneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> { return this.status; }
-  async kill(socket: string): Promise<void> { this.killed.push(socket); }
+  async kill(socket: string): Promise<void> {
+    this.killed.push(socket);
+    if (this.killHangs) await new Promise(() => { /* never */ });
+  }
 }
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn() };
@@ -56,7 +68,7 @@ function make(over: Partial<WebTerminalSpec> = {}) {
   return { session, backend, done, hints, audits };
 }
 
-beforeEach(() => { vi.useFakeTimers(); now = 1_000_000; });
+beforeEach(() => { vi.useFakeTimers(); now = 1_000_000; logger.warn.mockClear(); });
 afterEach(() => { vi.useRealTimers(); });
 
 describe("helpers", () => {
@@ -74,6 +86,21 @@ describe("helpers", () => {
   it("shellQuote survives single quotes and metacharacters", () => {
     expect(shellQuote("it's $HOME `x` ; rm -rf /")).toBe(`'it'\\''s $HOME \`x\` ; rm -rf /'`);
   });
+  it("segmentInput: typed text is a text run, control bytes and whole ESC sequences are control runs", () => {
+    const seg = (str: string) => segmentInput(Buffer.from(str, "latin1")).map(r => `${r.kind}:${JSON.stringify(r.bytes.toString("latin1"))}`);
+    const t = (str: string) => `text:${JSON.stringify(str)}`;
+    const c = (str: string) => `control:${JSON.stringify(str)}`;
+    expect(seg("hunter2")).toEqual([t("hunter2")]);
+    expect(seg("hunter2\r")).toEqual([t("hunter2"), c("\r")]);
+    expect(seg("\x03")).toEqual([c("\x03")]);
+    expect(seg("\x1b[A")).toEqual([c("\x1b[A")]);                       // arrow: the whole CSI is control
+    expect(seg("\x1b[1;5Cx")).toEqual([c("\x1b[1;5C"), t("x")]);        // parameters stay inside the sequence
+    expect(seg("\x1bOP")).toEqual([c("\x1bOP")]);                       // SS3 (F1)
+    expect(seg("a\tb\x7f")).toEqual([t("a"), c("\t"), t("b"), c("\x7f")]);
+    expect(seg("\x1b")).toEqual([c("\x1b")]);                           // lone ESC
+    expect(seg("")).toEqual([]);
+  });
+
   it("rejects a TTL above the hard cap or non-positive", () => {
     expect(() => make({ ttlMs: MAX_TTL_MS + 1 })).toThrow(/ttlMs/);
     expect(() => make({ ttlMs: 0 })).toThrow(/ttlMs/);
@@ -246,15 +273,71 @@ describe("browser I/O", () => {
     backend.emit!(Buffer.from("more"));
     expect(b.sent.at(-1)!.toString()).toBe("more");
   });
-  it("input is chunked to 256 bytes per send-keys call; resize is clamped and deduplicated", async () => {
+  it("input goes to tmux as one buffer per frame (never argv-chunked); resize is clamped and deduplicated", async () => {
     const { session, backend } = make();
     await session.start();
-    await session.input(Buffer.alloc(600, 0x41));
-    expect(backend.inputs.map(b => b.length)).toEqual([256, 256, 88]);
-    await session.resize(9999, 0);
-    await session.resize(9999, 0);
-    await session.resize(80.7, 24.2);
+    expect(session.input(Buffer.alloc(600, 0x41))).toBe(true);
+    await session.drain();
+    expect(backend.inputs.map(b => b.length)).toEqual([600]);
+    session.resize(9999, 0);
+    session.resize(9999, 0);
+    session.resize(80.7, 24.2);
+    await session.drain();
     expect(backend.resizes).toEqual([[250, 5], [80, 24]]);
+  });
+
+  it("B4: input and resize are one FIFO — a slow first frame still lands before a fast second one", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.inputDelayMs = b => (b[0] === 0x41 ? 60 : 0);     // 'A…' is slow, 'B' is instant
+    session.input(Buffer.alloc(300, 0x41));
+    session.input(Buffer.from("B"));
+    session.resize(100, 30);
+    session.input(Buffer.from("C"));
+    await session.drain();
+    expect(backend.inputs.map(b => `${String.fromCharCode(b[0])}:${b.length}`)).toEqual(["A:300", "B:1", "C:1"]);
+    expect(backend.resizes).toEqual([[100, 30]]);
+    // resize was applied after B and before C (single queue)
+  });
+
+  it("B4: more than MAX_PENDING_INPUT_BYTES waiting for tmux is refused (caller cuts the client off)", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.inputDelayMs = () => 50;                            // everything stalls behind the first frame
+    expect(session.input(Buffer.alloc(4096, 1))).toBe(true);
+    let accepted = 1;
+    while (session.input(Buffer.alloc(4096, 1))) accepted++;
+    expect(accepted).toBe(MAX_PENDING_INPUT_BYTES / 4096);      // exactly the cap, then refused
+    expect(session.pendingInput).toBe(MAX_PENDING_INPUT_BYTES);
+    await session.drain();
+    expect(session.pendingInput).toBe(0);
+    expect(backend.inputs).toHaveLength(accepted);
+  });
+
+  it("B2: a failed tmux input is logged as an operation, never with the error text or the bytes", async () => {
+    vi.useRealTimers();
+    const { session, backend } = make();
+    await session.start();
+    backend.failInput = new Error("tmux load-buffer failed: 53 55 50 45 52 SUPER-SECRET");
+    session.input(Buffer.from("SUPER-SECRET"));
+    await session.drain();
+    const warns = JSON.stringify(logger.warn.mock.calls);
+    expect(warns).toContain("input");
+    expect(warns).not.toContain("SUPER-SECRET");
+    expect(warns).not.toContain("53 55 50");
+  });
+
+  it("B5: a tmux kill that never returns does not hang finish (TTL/cancel/listener close stay responsive)", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.killHangs = true;
+    const finished = session.cancel("test");
+    await vi.advanceTimersByTimeAsync(5_100);
+    await finished;
+    expect(done).toHaveLength(1);
+    expect(logger.warn).toHaveBeenCalledWith(expect.anything(), "web terminal tmux cleanup failed");
   });
   it("after finish, input and resize are ignored and the client gets exit + close", async () => {
     const { session, backend } = make();
@@ -264,8 +347,9 @@ describe("browser I/O", () => {
     await session.cancel("admin cancelled");
     expect(JSON.parse(c.sent.at(-1) as string)).toMatchObject({ t: "exit", ok: false, reason: "cancel" });
     expect(c.close).toHaveBeenCalledWith(1000, "cancel");
-    await session.input(Buffer.from("x"));
-    await session.resize(100, 30);
+    expect(session.input(Buffer.from("x"))).toBe(false);
+    session.resize(100, 30);
+    await session.drain();
     expect(backend.inputs).toHaveLength(0);
     expect(backend.resizes).toHaveLength(0);
   });

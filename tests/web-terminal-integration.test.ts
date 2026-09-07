@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { connect as netConnect } from "node:net";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TmuxTerminalBackend, WebTerminalSession, type WebTerminalResult, type WebTerminalSpec } from "../src/web-terminal.js";
 import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
@@ -11,7 +14,9 @@ import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
  * Every security property from the design (§3) has a case here:
  *   URL alone grants nothing · wrong token ×3 destroys the session ·
  *   token is single-use · Origin must match Host · WS needs the cookie ·
- *   the pane runs only our command and dies with it · TTL kills the tmux server.
+ *   the pane runs only our command and dies with it · TTL kills the tmux server ·
+ *   malformed requests never escape as exceptions · keystrokes never touch argv/logs ·
+ *   a replaced browser cannot type · startup failures leave no tmux server behind.
  */
 function have(bin: string): boolean {
   try { execFileSync(bin, ["-V"], { stdio: "ignore" }); return true; } catch { return false; }
@@ -88,6 +93,24 @@ async function until(pred: () => boolean, ms = 8_000): Promise<void> {
     await new Promise(r => setTimeout(r, 50));
   }
 }
+
+/** Send one raw HTTP request and return whatever comes back (for malformed targets a fetch client cannot produce). */
+async function rawRequest(port: number, request: string): Promise<string> {
+  const sock = netConnect(port, "127.0.0.1");
+  await new Promise<void>(r => sock.once("connect", () => r()));
+  sock.write(request);
+  const reply = await new Promise<string>(r => {
+    let s = "";
+    sock.on("data", d => { s += d.toString(); });
+    sock.on("end", () => r(s));
+    sock.on("close", () => r(s));
+    setTimeout(() => r(s), 800);
+  });
+  sock.destroy();
+  return reply;
+}
+
+const CRLF = "\r\n";
 
 describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real WebSocket client", { timeout: 20_000 }, () => {
   it("the URL alone grants nothing: page is static, /ws without cookie is 403, unknown paths 404", async () => {
@@ -195,6 +218,101 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
     await until(() => done.length === 1, 5_000);
     expect(done[0]).toMatchObject({ ok: false, reason: "ttl" });
     await until(() => !tmuxServerAlive(socket));
+  });
+
+  it("B1: malformed request targets get 400 with NO unhandled rejection / uncaught exception, and the listener keeps serving", async () => {
+    const { base, port, origin, session } = await launch("sleep 30");
+    const unhandled: unknown[] = [];
+    const onRej = (r: unknown) => unhandled.push(r);
+    const onExc = (e: unknown) => unhandled.push(e);
+    process.on("unhandledRejection", onRej);
+    process.on("uncaughtException", onExc);
+    try {
+      // absolute-form with an invalid host → `new URL` would throw
+      expect(await rawRequest(port, `GET http://% HTTP/1.1${CRLF}Host: 127.0.0.1${CRLF}Connection: close${CRLF}${CRLF}`)).toMatch(/^HTTP\/1\.1 400/);
+      // same on the upgrade path
+      expect(await rawRequest(port, `GET http://% HTTP/1.1${CRLF}Host: 127.0.0.1${CRLF}Upgrade: websocket${CRLF}Connection: Upgrade${CRLF}Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==${CRLF}Sec-WebSocket-Version: 13${CRLF}${CRLF}`)).toMatch(/^HTTP\/1\.1 400/);
+      // authority-form target
+      expect(await rawRequest(port, `GET 127.0.0.1:80 HTTP/1.1${CRLF}Host: 127.0.0.1${CRLF}Connection: close${CRLF}${CRLF}`)).toMatch(/^HTTP\/1\.1 400/);
+      await new Promise(r => setTimeout(r, 50));
+      expect(unhandled).toEqual([]);
+      // still alive and side-effect free
+      expect((await fetch(base)).status).toBe(200);
+      expect(session.peekAccessToken()).not.toBeNull();
+      const opened = await open(base, origin, session.peekAccessToken()!);
+      expect(opened.status).toBe(204);
+    } finally {
+      process.off("unhandledRejection", onRej);
+      process.off("uncaughtException", onExc);
+    }
+  });
+
+  it("B2: keystrokes never appear in a tmux argv or in any error/log text (sentinel secret), and still reach the pane", async () => {
+    const backend = new TmuxTerminalBackend();
+    const secret = "SUPER-SECRET-PASSWORD";
+    let message = "";
+    try { await backend.sendInput("agend-term-does-not-exist", Buffer.from(secret)); } catch (err) { message = String((err as Error).message) + JSON.stringify(err); }
+    expect(message).toMatch(/tmux load-buffer failed/);
+    expect(message).not.toContain(secret);
+    expect(message).not.toContain(Buffer.from(secret).toString("hex").slice(0, 8));
+    expect(message).not.toMatch(/53 55 50/);
+
+    const { base, origin, session } = await launch(`sh -c 'while read -r l; do echo "got:$l"; done'`);
+    const opened = await open(base, origin, session.peekAccessToken()!);
+    const { ws, messages } = await wsConnect(base, origin, opened.cookie);
+    ws.send(new TextEncoder().encode(`${secret}\r`));
+    await until(() => text(messages).includes(`got:${secret}`));   // paste-buffer transport works end to end
+    expect(JSON.stringify(logger.warn.mock.calls) + JSON.stringify(logger.info.mock.calls)).not.toContain(secret);
+  });
+
+  it("B3: a replaced browser cannot type any more — its late frames never reach the pane", async () => {
+    const { base, origin, session } = await launch(`sh -c 'while read -r l; do echo "got:$l"; done'`);
+    const opened = await open(base, origin, session.peekAccessToken()!);
+    const a = await wsConnect(base, origin, opened.cookie);
+    const b = await wsConnect(base, origin, opened.cookie);
+    expect(await a.closedWith).toBe(4000);
+    try { a.ws.send(new TextEncoder().encode("FROM-OLD\r")); } catch { /* the browser API refuses on a closing socket */ }
+    b.ws.send(new TextEncoder().encode("FROM-NEW\r"));
+    await until(() => text(b.messages).includes("got:FROM-NEW"));
+    await new Promise(r => setTimeout(r, 300));
+    expect(text(b.messages)).not.toContain("got:FROM-OLD");
+  });
+
+  it("B5: a failure after new-session (mkdtemp) leaves no tmux server behind", async () => {
+    const prevTmp = process.env.TMPDIR;
+    process.env.TMPDIR = "/nonexistent/agend-term-tmp";
+    const socket = `agend-term-b5-${process.pid}`;
+    try {
+      await expect(new TmuxTerminalBackend().start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} })).rejects.toThrow();
+    } finally {
+      if (prevTmp === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = prevTmp;
+    }
+    expect(tmuxServerAlive(socket)).toBe(false);
+  });
+
+  it("B5: a failure in a later stage (set-option) also leaves no tmux server behind", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-fake-tmux-"));
+    const bin = join(dir, "tmux");
+    // Real tmux for everything except set-option, which fails.
+    writeFileSync(bin, `#!/bin/sh\nfor a in "$@"; do if [ "$a" = set-option ]; then exit 1; fi; done\nexec tmux "$@"\n`);
+    chmodSync(bin, 0o755);
+    const socket = `agend-term-b5b-${process.pid}`;
+    try {
+      await expect(new TmuxTerminalBackend(bin).start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} })).rejects.toThrow(/tmux set-option failed/);
+      expect(tmuxServerAlive(socket)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("Stop button = real cancel: the browser's cancel message ends the session and kills tmux", async () => {
+    const { base, origin, session, done } = await launch("sleep 30");
+    const opened = await open(base, origin, session.peekAccessToken()!);
+    const { ws } = await wsConnect(base, origin, opened.cookie);
+    ws.send(JSON.stringify({ t: "cancel" }));
+    await until(() => done.length === 1);
+    expect(done[0]).toMatchObject({ ok: false, reason: "cancel" });
+    await until(() => !tmuxServerAlive(session.socketName));
   });
 
   it("a second browser replaces the first (4000) and receives the replayed output; resize reaches tmux", async () => {

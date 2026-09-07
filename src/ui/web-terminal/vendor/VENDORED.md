@@ -12,7 +12,7 @@ the fleet must ship them. All three packages are MIT licensed (see LICENSE.*).
 | addon-web-links.js | @xterm/addon-web-links | 0.12.0 | sha512-4Smom3RPyVp7ZMYOYDoC/9eGJJJqYhnPLGGqJ6wOBfB8VxPViJNSKdgRYb8NpaM6YSelEKbA2SStD7lGyqaobw== |
 
 The only local edit: the trailing `//# sourceMappingURL=…` line was removed
-from xterm.js (no source map is shipped). To refresh:
+from all three .js files (no source maps are shipped). To refresh:
 
 ```
 npm pack @xterm/xterm@<v> @xterm/addon-fit@<v> @xterm/addon-web-links@<v>

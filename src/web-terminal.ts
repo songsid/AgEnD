@@ -28,14 +28,11 @@
  */
 import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdtempSync, openSync, rmSync, constants as fsConstants } from "node:fs";
 import { Socket as NetSocket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const exec = promisify(execFile);
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -124,11 +121,16 @@ export const MIN_COLS = 20, MAX_COLS = 250, MIN_ROWS = 5, MAX_ROWS = 100;
 const REPLAY_BUFFER_LIMIT = 256 * 1024;
 const POLL_INTERVAL_MS = 1_000;
 const SUCCESS_EXIT_GRACE_MS = 15_000;
-const INPUT_CHUNK = 256;
+/** Bytes of browser input allowed to wait for tmux before the client is dropped (B4). */
+export const MAX_PENDING_INPUT_BYTES = 64 * 1024;
+/** Upper bound on any single tmux invocation (B5: a wedged tmux must not hang the session forever). */
+const TMUX_EXEC_TIMEOUT_MS = 10_000;
+const KILL_TIMEOUT_MS = 5_000;
 const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
 /** RFC 4648 base32 alphabet without padding — unambiguous when typed on a phone. */
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
+/** 20 base32 chars = 100 bits of entropy (13 random bytes, the last 4 bits truncated). */
 export function generateAccessToken(bytes: Buffer = randomBytes(13)): string {
   let bits = 0, value = 0, out = "";
   for (const byte of bytes) {
@@ -171,6 +173,9 @@ export class WebTerminalSession extends EventEmitter {
   private finishing: Promise<void> | null = null;
   private sentUrls = new Set<string>();
   private successSeenAt: number | null = null;
+  /** Single FIFO for input + resize: browser order is pane order (B4). */
+  private ioQueue: Promise<void> = Promise.resolve();
+  private pendingInputBytes = 0;
   private cols: number;
   private rows: number;
 
@@ -277,20 +282,49 @@ export class WebTerminalSession extends EventEmitter {
     return () => { if (this.client === client) this.client = null; };
   }
 
-  async input(bytes: Buffer): Promise<void> {
-    if (this.state !== "running") return;
-    for (let i = 0; i < bytes.length; i += INPUT_CHUNK) {
-      await this.backend.sendInput(this.socketName, bytes.subarray(i, i + INPUT_CHUNK));
-    }
+  /** Bytes queued for the pane but not yet delivered (for the transport layer's overflow check). */
+  get pendingInput(): number { return this.pendingInputBytes; }
+
+  /**
+   * Queue browser input for the pane. Strictly ordered with resize. Returns
+   * false (and drops the bytes) when more than MAX_PENDING_INPUT_BYTES are
+   * already waiting — the caller must then cut the client off.
+   */
+  input(bytes: Buffer): boolean {
+    if (this.state !== "running" || bytes.length === 0) return this.state === "running";
+    if (this.pendingInputBytes + bytes.length > MAX_PENDING_INPUT_BYTES) return false;
+    this.pendingInputBytes += bytes.length;
+    const copy = Buffer.from(bytes);
+    this.enqueue(async () => {
+      try {
+        if (this.state === "running") await this.backend.sendInput(this.socketName, copy);
+      } finally {
+        this.pendingInputBytes -= copy.length;
+      }
+    }, "input");
+    return true;
   }
 
-  async resize(cols: number, rows: number): Promise<void> {
+  resize(cols: number, rows: number): void {
     if (this.state !== "running") return;
     const c = clamp(Math.floor(cols), MIN_COLS, MAX_COLS);
     const r = clamp(Math.floor(rows), MIN_ROWS, MAX_ROWS);
     if (c === this.cols && r === this.rows) return;
     this.cols = c; this.rows = r;
-    await this.backend.resize(this.socketName, c, r);
+    this.enqueue(async () => {
+      if (this.state === "running") await this.backend.resize(this.socketName, c, r);
+    }, "resize");
+  }
+
+  /** Everything queued before the returned promise settles has reached tmux (tests). */
+  drain(): Promise<void> { return this.ioQueue; }
+
+  private enqueue(job: () => Promise<void>, what: string): void {
+    this.ioQueue = this.ioQueue.then(job).catch(err => {
+      // Never log the error text: a failed tmux invocation must not leak what
+      // was being typed (B2). Operation name only.
+      this.logger.warn({ sid: this.sid, op: what, code: (err as { code?: unknown })?.code }, "web terminal tmux operation failed");
+    });
   }
 
   cancel(detail = "cancelled"): Promise<void> {
@@ -387,8 +421,11 @@ export class WebTerminalSession extends EventEmitter {
       try { this.client?.send(JSON.stringify({ t: "exit", ok: result.ok, reason: result.reason, exitCode: result.exitCode, detail: result.detail })); } catch { /* gone */ }
       try { this.client?.close(1000, result.reason); } catch { /* gone */ }
       this.client = null;
-      await this.backend.kill(this.socketName).catch(err =>
-        this.logger.warn({ err: (err as Error).message }, "web terminal tmux cleanup failed"));
+      const killed = await Promise.race([
+        this.backend.kill(this.socketName).then(() => true, () => false),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
+      ]);
+      if (!killed) this.logger.warn({ sid: this.sid }, "web terminal tmux cleanup failed");
       this.audit("web_terminal_closed", { reason: result.reason, ok: result.ok, exitCode: result.exitCode });
       this.emit("finished", result);
       await Promise.resolve(this.events.onDone(result)).catch(err =>
@@ -423,68 +460,126 @@ export class TmuxTerminalBackend implements TerminalBackend {
 
   constructor(private readonly tmuxBin = "tmux") {}
 
-  private tmux(socket: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-    return exec(this.tmuxBin, ["-L", socket, ...args], { encoding: "utf8" });
+  /**
+   * Run one tmux command. Errors are re-thrown SANITIZED: operation name,
+   * socket and exit code only — never the argv, which for input would be the
+   * user's keystrokes (B2), and never tmux's stderr, which echoes the command.
+   */
+  private async tmux(socket: string, op: string, args: string[], input?: Buffer): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const child = execFile(this.tmuxBin, ["-L", socket, op, ...args], { encoding: "utf8", timeout: TMUX_EXEC_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024 },
+        (error, stdout) => {
+          if (error) {
+            const code = (error as { code?: unknown }).code;
+            const e = new Error(`tmux ${op} failed (socket ${socket}${typeof code === "number" || typeof code === "string" ? `, ${code}` : ""})`) as Error & { code?: unknown };
+            e.code = code;
+            reject(e);
+            return;
+          }
+          resolve(typeof stdout === "string" ? stdout : String(stdout));
+        });
+      if (input) {
+        child.stdin?.on("error", () => { /* surfaces as the exec error */ });
+        child.stdin?.end(input);
+      } else {
+        child.stdin?.end();
+      }
+    });
   }
 
   async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
     const { socket } = opts;
     // Placeholder first, pipe second, real command third — so no byte is lost.
-    await exec(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
-      "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"]);
-    await this.tmux(socket, ["set-option", "-g", "window-size", "manual"]);
-    await this.tmux(socket, ["set-option", "-g", "remain-on-exit", "on"]);
-    await this.tmux(socket, ["set-option", "-g", "history-limit", "2000"]);
+    await new Promise<void>((resolve, reject) => execFile(this.tmuxBin, ["-L", socket, "-f", "/dev/null", "new-session", "-d", "-s", "main",
+      "-x", String(opts.cols), "-y", String(opts.rows), "-c", opts.cwd, "sleep 86400"], { timeout: TMUX_EXEC_TIMEOUT_MS },
+      err => err ? reject(new Error(`tmux new-session failed (socket ${socket})`)) : resolve()));
 
-    const dir = mkdtempSync(join(tmpdir(), "agend-term-"));
-    const fifo = join(dir, "out");
-    await exec("mkfifo", ["-m", "600", fifo]);
-    // O_RDWR: we are always a writer too, so the FIFO never reports EOF when
-    // tmux's `cat` closes. A net.Socket over the fd gives event-driven reads
-    // (fs.ReadStream would abort with EAGAIN on a non-blocking pipe).
-    const fd = openSync(fifo, fsConstants.O_RDWR | fsConstants.O_NONBLOCK);
-    const stream = new NetSocket({ fd, readable: true, writable: false });
-    stream.on("data", (chunk: Buffer | string) => opts.onOutput(typeof chunk === "string" ? Buffer.from(chunk) : chunk));
-    stream.on("error", () => { /* pane gone */ });
-    let stopped = false;
-    const stop = () => {
-      if (stopped) return;
-      stopped = true;
-      stream.destroy();                     // closes fd
-      rmSync(dir, { recursive: true, force: true });
-    };
-    this.streams.set(socket, { dir, stop });
-
+    // From here on the server exists: every later failure must tear it down
+    // (B5) — set-option, mkdtemp, mkfifo, open, pipe-pane, respawn alike.
+    let dir: string | null = null;
+    let stream: NetSocket | null = null;
     try {
-      await this.tmux(socket, ["pipe-pane", "-o", "-t", "main", `cat >> ${shellQuote(fifo)}`]);
-      await this.tmux(socket, ["respawn-pane", "-k", "-t", "main", "-c", opts.cwd, `sh -c ${shellQuote(opts.command)}`]);
+      await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
+      await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
+      await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
+
+      dir = mkdtempSync(join(tmpdir(), "agend-term-"));
+      const fifo = join(dir, "out");
+      await new Promise<void>((resolve, reject) => execFile("mkfifo", ["-m", "600", fifo], { timeout: TMUX_EXEC_TIMEOUT_MS },
+        err => err ? reject(new Error("mkfifo failed")) : resolve()));
+      // O_RDWR: we are always a writer too, so the FIFO never reports EOF when
+      // tmux's `cat` closes. A net.Socket over the fd gives event-driven reads
+      // (fs.ReadStream would abort with EAGAIN on a non-blocking pipe).
+      const fd = openSync(fifo, fsConstants.O_RDWR | fsConstants.O_NONBLOCK);
+      stream = new NetSocket({ fd, readable: true, writable: false });
+      stream.on("data", (chunk: Buffer | string) => opts.onOutput(typeof chunk === "string" ? Buffer.from(chunk) : chunk));
+      stream.on("error", () => { /* pane gone */ });
+      const theStream = stream;
+      const theDir = dir;
+      let stopped = false;
+      const stop = () => {
+        if (stopped) return;
+        stopped = true;
+        theStream.destroy();                 // closes fd
+        rmSync(theDir, { recursive: true, force: true });
+      };
+      this.streams.set(socket, { dir, stop });
+
+      await this.tmux(socket, "pipe-pane", ["-o", "-t", "main", `cat >> ${shellQuote(fifo)}`]);
+      await this.tmux(socket, "respawn-pane", ["-k", "-t", "main", "-c", opts.cwd, `sh -c ${shellQuote(opts.command)}`]);
     } catch (err) {
-      stop();
+      stream?.destroy();
+      if (dir) rmSync(dir, { recursive: true, force: true });
       this.streams.delete(socket);
       await this.kill(socket);
       throw err;
     }
   }
 
+  /**
+   * Deliver bytes to the pane WITHOUT putting typed text in any argv (B2).
+   *
+   * Two transports, chosen per run of bytes (see segmentInput):
+   *   - text runs (anything a user could be typing as a secret) go to tmux
+   *     over stdin into a named buffer and are pasted with `paste-buffer -r`
+   *     (raw: bytes unchanged), `-d` deleting the buffer;
+   *   - control runs (0x00–0x1f, 0x7f and complete ESC sequences: arrows,
+   *     Enter, Tab, Ctrl-C…) go through `send-keys -H`. They carry no
+   *     secret, and this is the only path on which the pane's tty performs
+   *     signal handling: a pasted 0x03 is echoed but does NOT raise SIGINT
+   *     (verified live), a sent one does.
+   */
   async sendInput(socket: string, bytes: Buffer): Promise<void> {
     if (bytes.length === 0) return;
-    const hex: string[] = [];
-    for (const b of bytes) hex.push(b.toString(16).padStart(2, "0"));
-    await this.tmux(socket, ["send-keys", "-H", "-t", "main", ...hex]);
+    const name = `agend-in-${socket.slice(-12)}`;
+    for (const run of segmentInput(bytes)) {
+      if (run.kind === "control") {
+        const hex: string[] = [];
+        for (const b of run.bytes) hex.push(b.toString(16).padStart(2, "0"));
+        await this.tmux(socket, "send-keys", ["-H", "-t", "main", ...hex]);
+        continue;
+      }
+      try {
+        await this.tmux(socket, "load-buffer", ["-b", name, "-"], run.bytes);
+        await this.tmux(socket, "paste-buffer", ["-d", "-r", "-b", name, "-t", "main"]);
+      } catch (err) {
+        await this.tmux(socket, "delete-buffer", ["-b", name]).catch(() => { /* best effort */ });
+        throw err;
+      }
+    }
   }
 
   async resize(socket: string, cols: number, rows: number): Promise<void> {
-    await this.tmux(socket, ["resize-window", "-t", "main", "-x", String(cols), "-y", String(rows)]);
+    await this.tmux(socket, "resize-window", ["-t", "main", "-x", String(cols), "-y", String(rows)]);
   }
 
   async capture(socket: string): Promise<string> {
-    const { stdout } = await this.tmux(socket, ["capture-pane", "-p", "-J", "-t", "main", "-S", "-200"]);
-    return stdout;
+    return this.tmux(socket, "capture-pane", ["-p", "-J", "-t", "main", "-S", "-200"]);
   }
 
   async paneStatus(socket: string): Promise<{ alive: boolean; exitCode?: number } | null> {
     try {
-      const { stdout } = await this.tmux(socket, ["display-message", "-p", "-t", "main", "#{pane_dead} #{pane_dead_status}"]);
+      const stdout = await this.tmux(socket, "display-message", ["-p", "-t", "main", "#{pane_dead} #{pane_dead_status}"]);
       const [dead, status] = stdout.trim().split(/\s+/);
       if (dead === "1") {
         const code = Number.parseInt(status ?? "", 10);
@@ -499,8 +594,45 @@ export class TmuxTerminalBackend implements TerminalBackend {
   async kill(socket: string): Promise<void> {
     const s = this.streams.get(socket);
     if (s) { s.stop(); this.streams.delete(socket); }
-    await this.tmux(socket, ["kill-server"]).catch(() => { /* already gone */ });
+    await this.tmux(socket, "kill-server", []).catch(() => { /* already gone */ });
   }
+}
+
+/**
+ * Split browser input into runs: "control" (C0 bytes, DEL, and complete ESC
+ * sequences — never secrets) vs "text" (everything else — possibly a
+ * password). Control runs may travel in argv; text runs must not.
+ */
+export function segmentInput(bytes: Buffer): Array<{ kind: "control" | "text"; bytes: Buffer }> {
+  const runs: Array<{ kind: "control" | "text"; bytes: Buffer }> = [];
+  let i = 0;
+  const isControl = (b: number) => b < 0x20 || b === 0x7f;
+  while (i < bytes.length) {
+    const start = i;
+    if (isControl(bytes[i])) {
+      while (i < bytes.length && isControl(bytes[i])) {
+        if (bytes[i] === 0x1b) {
+          // ESC sequence: ESC [ params… final  |  ESC O final  |  ESC <single>
+          let j = i + 1;
+          if (j < bytes.length && (bytes[j] === 0x5b || bytes[j] === 0x4f)) {   // '[' or 'O'
+            j++;
+            while (j < bytes.length && bytes[j] >= 0x20 && bytes[j] <= 0x3f) j++;   // parameters/intermediates
+            if (j < bytes.length && bytes[j] >= 0x40 && bytes[j] <= 0x7e) j++;      // final byte
+          } else if (j < bytes.length && bytes[j] >= 0x20 && bytes[j] <= 0x7e) {
+            j++;                                                                  // ESC + one char (alt-key)
+          }
+          i = j;
+        } else {
+          i++;
+        }
+      }
+      runs.push({ kind: "control", bytes: Buffer.from(bytes.subarray(start, i)) });
+    } else {
+      while (i < bytes.length && !isControl(bytes[i])) i++;
+      runs.push({ kind: "text", bytes: Buffer.from(bytes.subarray(start, i)) });
+    }
+  }
+  return runs;
 }
 
 /** Single-quote for `sh`: the only quoting that survives any content. */

@@ -12,6 +12,12 @@
   var doneEl = document.getElementById("done");
   var closeBtn = document.getElementById("btn-close");
   var ws = null, term = null, fit = null, ttlTimer = null, expiresAt = 0;
+  var finished = false, reconnectAttempts = 0;
+
+  // A reload or a second tab within the TTL still holds the HttpOnly cookie:
+  // try the WebSocket first and only fall back to the token gate on refusal.
+  // This GET-free probe keeps the page itself side-effect free.
+  connect(true);
 
   gateForm.addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -39,23 +45,29 @@
     }).catch(function () { gateMsg.textContent = "Network error."; });
   });
 
-  function connect() {
+  function connect(probe) {
     var proto = location.protocol === "https:" ? "wss://" : "ws://";
+    var opened = false;
     ws = new WebSocket(proto + location.host + base + "/ws");
     ws.binaryType = "arraybuffer";
     ws.onopen = function () {
+      opened = true; reconnectAttempts = 0;
       gate.hidden = true; termEl.hidden = false; keys.hidden = false; closeBtn.hidden = false;
-      term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 2000, theme: { background: "#111" } });
-      fit = new FitAddon.FitAddon();
-      term.loadAddon(fit);
-      term.loadAddon(new WebLinksAddon.WebLinksAddon());
-      term.open(termEl);
+      if (!term) {
+        term = new Terminal({ cursorBlink: true, fontSize: 14, scrollback: 2000, theme: { background: "#111" } });
+        fit = new FitAddon.FitAddon();
+        term.loadAddon(fit);
+        term.loadAddon(new WebLinksAddon.WebLinksAddon());
+        term.open(termEl);
+        term.onData(function (s) { send(new TextEncoder().encode(s)); });
+        term.onBinary(function (s) { var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 255; send(b); });
+        term.onResize(function (size) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows })); });
+        window.addEventListener("resize", function () { if (fit) fit.fit(); });
+      } else {
+        term.reset();                        // the server replays its buffer on (re)connect
+      }
       fit.fit();
       term.focus();
-      term.onData(function (s) { send(new TextEncoder().encode(s)); });
-      term.onBinary(function (s) { var b = new Uint8Array(s.length); for (var i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 255; send(b); });
-      term.onResize(function (size) { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "resize", cols: size.cols, rows: size.rows })); });
-      window.addEventListener("resize", function () { if (fit) fit.fit(); });
     };
     ws.onmessage = function (ev) {
       if (typeof ev.data === "string") {
@@ -73,7 +85,21 @@
       if (term) term.write(new Uint8Array(ev.data));
     };
     ws.onclose = function (ev) {
-      if (!doneEl.textContent) finish(false, ev.code === 4000 ? "Replaced by a newer connection." : "Connection closed.");
+      if (finished) return;
+      if (!opened) {                          // refused (403: no/expired cookie) → show the token gate
+        if (probe) { gate.hidden = false; return; }
+        finish(false, "Connection refused.");
+        return;
+      }
+      if (ev.code === 4000) { finish(false, "Replaced by a newer connection."); return; }
+      if (ev.code === 1000 || ev.code === 1001 || ev.code === 1008) { finish(false, "Connection closed (" + (ev.reason || ev.code) + ")."); return; }
+      // Transient drop: the process is still running; reconnect within the TTL.
+      if (reconnectAttempts < 5 && Date.now() < expiresAt) {
+        reconnectAttempts++;
+        setTimeout(function () { connect(false); }, 500 * reconnectAttempts);
+        return;
+      }
+      finish(false, "Connection lost.");
     };
   }
 
@@ -86,6 +112,7 @@
   }
 
   function finish(ok, text) {
+    finished = true;
     if (ttlTimer) clearInterval(ttlTimer);
     doneEl.hidden = false; doneEl.className = ok ? "ok" : "bad"; doneEl.textContent = text;
     keys.hidden = true; closeBtn.hidden = true;
@@ -98,5 +125,6 @@
     send(new TextEncoder().encode(JSON.parse('"' + b.getAttribute("data-seq") + '"')));
     if (term) term.focus();
   });
-  closeBtn.addEventListener("click", function () { send(new Uint8Array([3])); });
+  // Stop = end the session for real (server-side cancel), not just a Ctrl-C the CLI may ignore.
+  closeBtn.addEventListener("click", function () { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: "cancel" })); });
 })();

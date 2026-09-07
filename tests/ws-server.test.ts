@@ -18,22 +18,23 @@ afterEach(async () => {
   }
 });
 
-async function startEcho(maxPayload?: number): Promise<{ port: number; conns: WsConnection[]; errors: Array<{ code: number; reason: string }> }> {
+async function startEcho(maxPayload?: number, extra: { maxFramesPerSecond?: number; maxBufferedBytes?: number } = {}): Promise<{ port: number; conns: WsConnection[]; errors: Array<{ code: number; reason: string }>; received: Array<string | Buffer> }> {
   const conns: WsConnection[] = [];
   const errors: Array<{ code: number; reason: string }> = [];
+  const received: Array<string | Buffer> = [];
   const server = createServer((_req, res) => { res.writeHead(404); res.end(); });
   server.on("upgrade", (req, socket, head) => {
-    const ws = acceptWebSocket(req, socket as Socket, head, { maxPayload });
+    const ws = acceptWebSocket(req, socket as Socket, head, { maxPayload, ...extra });
     if (!ws) return;
     conns.push(ws);
     ws.on("protocolError", (e: { code: number; reason: string }) => errors.push(e));
-    ws.on("message", (data: Buffer | string, isBinary: boolean) => { ws.send(isBinary ? (data as Buffer) : `echo:${data as string}`); });
+    ws.on("message", (data: Buffer | string, isBinary: boolean) => { received.push(data); ws.send(isBinary ? (data as Buffer) : `echo:${data as string}`); });
     ws.on("error", () => { /* raw-socket tests tear down abruptly */ });
   });
   servers.push(server);
   await new Promise<void>(r => server.listen(0, "127.0.0.1", () => r()));
   const port = (server.address() as { port: number }).port;
-  return { port, conns, errors };
+  return { port, conns, errors, received };
 }
 
 function client(port: number): Promise<WebSocket> {
@@ -76,12 +77,22 @@ async function rawClient(port: number): Promise<{ socket: Socket; closeCode: () 
   const head = await new Promise<Buffer>(r => socket.once("data", (d: Buffer | string) => r(Buffer.isBuffer(d) ? d : Buffer.from(d))));
   expect(head.toString()).toMatch(/^HTTP\/1\.1 101/);
   expect(head.toString()).toContain("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");   // RFC 6455 §1.3 sample key
+  // Walk the (unmasked, <126-byte) server frames — pongs may precede the Close.
   const closeCode = () => new Promise<number>(resolve => {
     const chunks: Buffer[] = [];
     const onData = (d: Buffer) => {
       chunks.push(d);
       const buf = Buffer.concat(chunks);
-      if (buf.length >= 4 && (buf[0] & 0x0f) === 0x8) { socket.off("data", onData); resolve(buf.readUInt16BE(2)); }
+      let i = 0;
+      while (i + 2 <= buf.length) {
+        const opcode = buf[i] & 0x0f;
+        const len = buf[i + 1] & 0x7f;
+        if (opcode === 0x8) {
+          if (i + 4 <= buf.length) { socket.off("data", onData); resolve(buf.readUInt16BE(i + 2)); }
+          return;
+        }
+        i += 2 + len;
+      }
     };
     socket.on("data", onData);
   });
@@ -209,6 +220,85 @@ describe("ws-server: malformed frames a browser never sends", () => {
     socket.write(frame(0x1, Buffer.from([0xff, 0xfe, 0x41])));
     expect(await code).toBe(1007);
   });
+  it("B3: after a protocol failure nothing more is delivered, and the inbound buffer stays bounded under a flood", async () => {
+    const { port, conns, received } = await startEcho();
+    const { socket } = await rawClient(port);
+    socket.write(frame(0x1, Buffer.from([0xff, 0xfe])));       // invalid UTF-8 → 1007, closing
+    await new Promise(r => setTimeout(r, 50));
+    expect(conns[0].closed).toBe(true);
+    for (let i = 0; i < 50; i++) socket.write(frame(0x2, Buffer.from("STILL-ACCEPTED?")));
+    await new Promise(r => setTimeout(r, 100));
+    expect(received).toHaveLength(0);
+    expect(conns[0].pendingInboundBytes).toBeLessThanOrEqual(14 + 125);
+  });
+
+  it("B3: after WE close (replacement), the peer's frames are ignored and a non-Close flood destroys the socket", async () => {
+    const { port, conns, received } = await startEcho();
+    const { socket } = await rawClient(port);
+    conns[0].close(4000, "replaced");
+    await new Promise(r => setTimeout(r, 20));
+    socket.write(frame(0x2, Buffer.from("late input")));
+    await new Promise(r => setTimeout(r, 50));
+    expect(received).toHaveLength(0);
+    expect(conns[0].pendingInboundBytes).toBeLessThanOrEqual(14 + 125);
+  });
+
+  it("B4: a ping flood counts against the frame rate and is closed with 1008", async () => {
+    const { port } = await startEcho(undefined, { maxFramesPerSecond: 10 });
+    const { socket, closeCode } = await rawClient(port);
+    const code = closeCode();
+    for (let i = 0; i < 20; i++) socket.write(frame(0x9, Buffer.from("p")));
+    expect(await code).toBe(1008);
+  });
+
+  it("M3: two legitimate frames coalesced in one TCP chunk above maxPayload are NOT misjudged as too large", async () => {
+    const { port, received } = await startEcho(4096);
+    const { socket } = await rawClient(port);
+    const a = frame(0x2, Buffer.alloc(3000, 0x61));
+    const b = frame(0x2, Buffer.alloc(3000, 0x62));
+    socket.write(Buffer.concat([a, b]));
+    await new Promise(r => setTimeout(r, 100));
+    expect(received).toHaveLength(2);
+  });
+
+  it("M3: Close frame conformance — 1-byte payload and invalid status codes are 1002, bad UTF-8 reason is 1007", async () => {
+    for (const [payload, expected] of [
+      [Buffer.from([0x03]), 1002],
+      [Buffer.from([0x03, 0xed]), 1002],                     // 1005 may not be sent on the wire
+      [Buffer.from([0x00, 0x64]), 1002],                     // 100
+      [Buffer.from([0x03, 0xe8, 0xff, 0xfe]), 1007],         // 1000 + invalid UTF-8 reason
+    ] as Array<[Buffer, number]>) {
+      const { port } = await startEcho();
+      const { socket, closeCode } = await rawClient(port);
+      const code = closeCode();
+      socket.write(frame(0x8, payload));
+      expect(await code).toBe(expected);
+    }
+  });
+
+  it("M2: a slow consumer is dropped with 1008 instead of growing the socket queue without bound", async () => {
+    // Deterministic: a fake socket whose writable queue never drains.
+    const { EventEmitter } = await import("node:events");
+    const { WsConnection } = await import("../src/ws-server.js");
+    const fake = Object.assign(new EventEmitter(), {
+      writableLength: 0, destroyed: false, writable: true,
+      setNoDelay() {},
+      write(buf: Buffer) { this.writableLength += buf.length; return this.writableLength < 16_384; },
+      end() { this.destroyed = true; },
+      destroy() { this.destroyed = true; },
+    });
+    const conn = new WsConnection(fake as never, Buffer.alloc(0), { maxBufferedBytes: 10_000 });
+    const errors: Array<{ code: number }> = [];
+    conn.on("protocolError", (e: { code: number }) => errors.push(e));
+    let sent = 0;
+    for (let i = 0; i < 200 && conn.send(Buffer.alloc(1000, 1)); i++) sent++;
+    expect(sent).toBe(9);                                       // 9 KB queued, the 10th would cross 10 KB
+    expect(conn.closed).toBe(true);
+    expect(errors[0]).toMatchObject({ code: 1008 });
+    expect(fake.writableLength).toBeLessThan(10_000 + 200);     // 9 frames + the Close frame, nothing more
+    expect(conn.send("after")).toBe(false);
+  });
+
   it("a peer that vanishes (half-close) is reported as 1006 and the server side is released", async () => {
     const { port, conns } = await startEcho();
     const { socket } = await rawClient(port);
