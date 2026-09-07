@@ -88,6 +88,20 @@ describe("Discord outbound text confirmation", () => {
     await expect(adapter.sendText("channel", "abcdefgh", { chunkLimit: 4 }))
       .rejects.toThrow("second chunk rejected");
   });
+
+  it("rejects an edit failure so a terminal-status caller can use its fallback", async () => {
+    const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;
+    Object.assign(adapter as any, {
+      _fetchTextChannel: vi.fn().mockRejectedValue(new Error("topic unavailable")),
+      readyClient: vi.fn().mockRejectedValue(new Error("gateway rebuilding")),
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(adapter.editMessage("guild", "message", "complete", "topic"))
+      .rejects.toThrow("gateway rebuilding");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("editMessage failed"));
+    warn.mockRestore();
+  });
 });
 
 describe("Discord inbound reaction listener", () => {

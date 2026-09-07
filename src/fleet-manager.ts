@@ -80,7 +80,11 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
-import { RestartProgress, type RestartProgressTarget } from "./restart-progress.js";
+import {
+  RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
+  RestartProgress,
+  type RestartProgressTarget,
+} from "./restart-progress.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
 import { SpawnGate } from "./spawn-gate.js";
@@ -2032,14 +2036,69 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const generalName = this.findGeneralInstance();
     if (!generalName) return null;
     const adapter = this.getAdapterForInstance(generalName);
+    const adapterId = this.getInstanceAdapterId(generalName);
     const chatId = this.getGroupIdForInstance(generalName);
     if (!adapter || !chatId) return null;
     const topicId = this.fleetConfig?.instances[generalName]?.topic_id;
     return {
       adapter,
+      resolveAdapter: adapterId ? () => this.readyProgressAdapter(adapterId) : undefined,
       chatId,
       threadId: topicId != null ? String(topicId) : undefined,
     };
+  }
+
+  /** Resolve only an adapter generation that can accept progress delivery.
+   * Discord exposes direct gateway readiness; adapters without a health
+   * snapshot use the fleet startup/retry state. */
+  private readyProgressAdapter(adapterId: string): ChannelAdapter | undefined {
+    const adapter = this.adapters.get(adapterId);
+    if (!adapter) return undefined;
+    const health = adapter.getHealthSnapshot?.();
+    if (health) return health.isReady ? adapter : undefined;
+    return this.adapterState.get(adapterId)?.status === "connected" ? adapter : undefined;
+  }
+
+  /** Last-resort completion after RestartProgress could not deliver to its
+   * adopted target. It stays bounded and never wakes a not-ready gateway. */
+  private async sendFleetStartCompletionFallback(
+    chatId: string,
+    text: string,
+    threadId?: string,
+  ): Promise<boolean> {
+    const adapterId = this.getPrimaryAdapterId();
+    const adapter = adapterId ? this.readyProgressAdapter(adapterId) : undefined;
+    if (!adapter) {
+      this.logger.error({ adapterId }, "Fleet start completion fallback skipped because the primary adapter is not ready");
+      return false;
+    }
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<{ status: "timeout" }>(resolve => {
+      timer = setTimeout(
+        () => resolve({ status: "timeout" }),
+        RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
+      );
+      timer.unref?.();
+    });
+    const delivery = Promise.resolve()
+      .then(() => adapter.sendText(chatId, text, { threadId }))
+      .then<{ status: "sent" }, { status: "failed"; err: unknown }>(
+        () => ({ status: "sent" }),
+        err => ({ status: "failed", err }),
+      );
+    const result = await Promise.race([delivery, timeout]);
+    if (timer) clearTimeout(timer);
+    if (result.status === "sent") return true;
+    if (result.status === "failed") {
+      this.logger.error({ err: result.err }, "Failed to send fleet start completion fallback");
+    } else {
+      this.logger.error(
+        { timeout_ms: RESTART_PROGRESS_TERMINAL_TIMEOUT_MS },
+        "Timed out sending fleet start completion fallback",
+      );
+    }
+    return false;
   }
 
   async stopInstance(name: string): Promise<void> {
@@ -2632,12 +2691,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       progressStart = adapterStartup.then(() => {
         if (pendingUpdateProgress) {
           const saved = pendingUpdateProgress.progress.target;
-          const adapter = this.adapters.get(saved.adapterId);
-          const target = adapter ? {
-            adapter,
+          const target: RestartProgressTarget = {
+            adapter: this.adapters.get(saved.adapterId),
+            // Adapter retries replace the failed object in this map. Resolve at
+            // every progress delivery so the adopted update message follows the
+            // live, ready generation instead of remaining pinned to a stopped
+            // client. This also waits when the first generation failed before
+            // any adapter object was registered.
+            resolveAdapter: () => this.readyProgressAdapter(saved.adapterId),
             chatId: saved.chatId,
             threadId: saved.threadId,
-          } : null;
+          };
           return startupProgress.resume(target, saved.messageId);
         }
         return startupProgress.start(this.restartProgressTarget());
@@ -2763,7 +2827,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             })()
           : undefined,
       });
-      if (!progressCompleted && this.adapter && fleet.channel?.group_id) {
+      if (!progressCompleted && fleet.channel?.group_id) {
         let text: string;
         if (failedNames.length === 0 && pausedNames.length === 0) {
           text = t("fleet.ready", started, total, agendVersion);
@@ -2773,9 +2837,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           text = t("fleet.ready_with_failed", started, total, agendVersion, failedNames.join(", "))
             + (pausedNames.length > 0 ? `\n⏸ Paused: ${pausedNames.join(", ")}` : "");
         }
-        this.adapter.sendText(String(fleet.channel.group_id), text, {
-          threadId: generalThreadId != null ? String(generalThreadId) : undefined,
-        }).catch(e => this.logger.warn({ err: e }, "Failed to send fleet start notification"));
+        await this.sendFleetStartCompletionFallback(
+          String(fleet.channel.group_id),
+          text,
+          generalThreadId != null ? String(generalThreadId) : undefined,
+        );
       }
     }
 
