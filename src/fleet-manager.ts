@@ -2392,7 +2392,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     target: { adapterId: string; chatId: string; threadId?: string; messageId: string },
   ): boolean {
     const marker = readUpdateProgress(this.dataDir);
-    if (!marker || marker.startedAt !== startedAt) return false;
+    if (!marker || marker.startedAt !== startedAt || marker.pid !== process.pid) return false;
     if (updateProgressOperation(marker.progress) !== "full-restart") return false;
     const current = marker.progress.target;
     return current.adapterId === target.adapterId

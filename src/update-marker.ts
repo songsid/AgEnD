@@ -145,11 +145,11 @@ export function setUpdateProgressStage(
 }
 
 /** Called by `agend update` before it touches anything. */
-export function markUpdateInProgress(dataDir: string, now = Date.now()): void {
+export function markUpdateInProgress(dataDir: string, now = Date.now(), pid = process.pid): void {
   const existing = readMarker(dataDir);
   writeMarker(dataDir, {
     startedAt: existing?.startedAt ?? now,
-    pid: process.pid,
+    pid,
     ...(existing?.progress ? { progress: existing.progress } : {}),
   });
 }

@@ -14,6 +14,7 @@ import { TmuxManager } from "../src/tmux-manager.js";
 import {
   beginUpdateProgress,
   beginFullRestartProgress,
+  markUpdateInProgress,
   readUpdateProgress,
   updateProgressOperation,
 } from "../src/update-marker.js";
@@ -432,6 +433,33 @@ describe("full-restart cross-process progress", () => {
     expect(readUpdateProgress(dir)).toMatchObject({
       progress: { operation: "update", target: { messageId: "update-progress" } },
     });
+    if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);
+  });
+
+  it("does not launch if a standalone update process claims its marker during the idle wait", async () => {
+    const dir = tempDir();
+    const fleet = new FleetManager(dir);
+    let releaseIdle!: () => void;
+    fleet.daemons.set("working", {
+      waitForIdle: vi.fn(() => new Promise<void>(resolve => { releaseIdle = resolve; })),
+    } as any);
+    const launch = vi.fn();
+    (fleet as any).fullRestartLauncher = launch;
+    const adapter = {
+      id: "discord-main",
+      type: "discord",
+      editMessage: vi.fn().mockResolvedValue(undefined),
+      sendText: vi.fn(),
+    } as unknown as ChannelAdapter;
+
+    const requested = fleet.requestFullRestart(adapter, "guild", "channel", "restart-progress");
+    await vi.waitFor(() => expect(releaseIdle).toBeTypeOf("function"));
+    markUpdateInProgress(dir, Date.now(), process.pid + 1);
+    releaseIdle();
+
+    await expect(requested).resolves.toBe(false);
+    expect(launch).not.toHaveBeenCalled();
+    expect(readUpdateProgress(dir)?.pid).toBe(process.pid + 1);
     if ((fleet as any).updateProgressTimer) clearInterval((fleet as any).updateProgressTimer);
   });
 
