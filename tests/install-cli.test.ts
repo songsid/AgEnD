@@ -57,7 +57,7 @@ describe("/install-cli", () => {
     const editMessageRemoveButtons = vi.fn().mockResolvedValue(undefined);
     const adapter = { id: "discord", type: "discord", notifyAlert, sendText, editMessageRemoveButtons } as any;
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
-    const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic" };
+    const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic", userId: "admin" };
     return { fm, adapter, notifyAlert, sendText, chat };
   }
 

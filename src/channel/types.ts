@@ -58,6 +58,13 @@ export interface ChannelAdapter extends EventEmitter {
   getHealthSnapshot?(): AdapterHealthSnapshot;
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
+  /**
+   * Deliver a message to ONE user privately (Discord DM, Telegram private
+   * chat). Used for secrets that must never appear in a channel (the web
+   * terminal access token). Rejects when the platform refuses (DMs disabled,
+   * user never talked to the bot) — callers must not fall back to the channel.
+   */
+  sendDirect?(userId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   sendFile(chatId: string, filePath: string, opts?: SendOpts): Promise<SentMessage>;
   /** threadId locates the message when it lives in a topic/thread (Discord forum
    * topics are their own channel and won't be found by a guild text-channel scan). */

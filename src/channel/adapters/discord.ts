@@ -1045,6 +1045,14 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     return message.id;
   }
 
+  /** Private delivery: a DM to the user (fails if the user disallows DMs from this server). */
+  async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    const user = await this.client.users.fetch(userId);
+    const dm = await user.createDM();
+    const sent = await dm.send(opts?.disablePreview ? { content: text, flags: MessageFlags.SuppressEmbeds } : text);
+    return { messageId: sent.id, chatId: dm.id };
+  }
+
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     const channelId = opts?.threadId ?? chatId;
     const channel = await this._fetchTextChannel(channelId);

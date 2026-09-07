@@ -59,6 +59,15 @@ export interface LoginFlow {
   successPattern: RegExp;
   /** Hard cap for the whole login session. */
   timeoutMs: number;
+  /**
+   * Deterministic shell command run in the same window right before `command`
+   * (`pre; command`). `token-present`: only when the auth pre-check said the
+   * CLI still holds a token and the admin confirmed a re-login — kiro refuses
+   * `login` outright while any token record exists (live-verified 2.21.1).
+   */
+  preCommand?: { command: string; when: "always" | "token-present" };
+  /** Known failure strings in the dead pane → human wording + suggested next step (web mode). */
+  failures?: Array<{ pattern: RegExp; message: string; suggest?: "relogin" | "check-args" | "retry" }>;
 }
 
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
@@ -122,6 +131,15 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     codePattern: /Code:\s*([A-Z0-9][A-Z0-9-]{3,})/,
     successPattern: /Logged in successfully|Logged in with /,
     timeoutMs: LOGIN_TIMEOUT_MS,
+    // kiro-cli 2.21.1 (live-verified): any stored token record — even an
+    // expired one with a refresh token — makes `login` exit 1 with "Already
+    // logged in"; only `logout` clears it. The saved Identity Center start
+    // URL/region survive logout and pre-fill the prompts in the terminal.
+    preCommand: { command: "kiro-cli logout", when: "token-present" },
+    failures: [
+      { pattern: /Already logged in, please logout/, message: "kiro-cli still holds a token — use Re-login (it logs out first)", suggest: "relogin" },
+      { pattern: /error: dispatch failure/, message: "Identity Center rejected the request — check the Start URL and Region", suggest: "check-args" },
+    ],
   },
   "claude-code": {
     backend: "claude-code",

@@ -18,7 +18,7 @@ describe("/login auth pre-check", () => {
 
   function setup() {
     const fm = new FleetManager(tmpDir);
-    fm.fleetConfig = { defaults: {}, instances: {} } as any;
+    fm.fleetConfig = { ...{ defaults: {}, instances: {} }, login: { mode: "relay" } } as any;   // legacy relay path under test; web mode is covered by login-controller.test.ts
     const notifyAlert = vi.fn(async (chatId: string, _alert: unknown, opts?: { threadId?: string }) => ({
       messageId: "prompt-1", chatId, threadId: opts?.threadId,
     }));

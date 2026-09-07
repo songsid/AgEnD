@@ -274,6 +274,22 @@ export interface WebConfig {
   usage_panel?: boolean;
 }
 
+/** `login:` section — remote /login behaviour. */
+export interface LoginConfig {
+  /** web (default): token-gated browser terminal. relay: the pre-2.1.5 chat relay, kept for rollback in 2.1.5 only. */
+  mode?: "web" | "relay";
+}
+
+/** `web_terminal:` section — the browser terminal behind /login and /install-cli. */
+export interface WebTerminalConfig {
+  /** Default true. false makes /login refuse in web mode. */
+  enabled?: boolean;
+  /** Interface to bind the per-session listener to. Default 127.0.0.1 (reach it like /dashboard: SSH/tailscale/reverse proxy). */
+  bind?: string;
+  /** Session time limit. 1..20 (engine hard cap 20), default 10. */
+  ttl_minutes?: number;
+}
+
 export interface FleetConfig {
   channel?: ChannelConfig;
   channels?: ChannelConfig[];
@@ -285,6 +301,10 @@ export interface FleetConfig {
   profiles?: Record<string, ProfileConfig>;
   health_port?: number;
   web?: WebConfig;
+  /** Host name used when building URLs handed to users (/dashboard, web terminal). Default "localhost". */
+  hostname?: string;
+  login?: LoginConfig;
+  web_terminal?: WebTerminalConfig;
 }
 
 /**

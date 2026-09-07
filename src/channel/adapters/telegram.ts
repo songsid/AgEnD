@@ -712,6 +712,18 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     return /\n\|.+\|.+\|/m.test(text) || /```[\s\S]+?```/.test(text) || /^#{1,6}\s/m.test(text) || /^---$/m.test(text) || /<details/i.test(text);
   }
 
+  /**
+   * Private delivery: the user's private chat with the bot (chat id == user
+   * id). Telegram rejects this until the user has messaged the bot once.
+   */
+  async sendDirect(userId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
+    const msg = await this.bot.api.sendMessage(Number(userId), text, {
+      ...(opts?.format === "html" ? { parse_mode: "HTML" as const } : {}),
+      ...(opts?.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+    });
+    return { messageId: String(msg.message_id), chatId: String(userId) };
+  }
+
   async sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage> {
     // Try rich message for content with tables, code blocks, headings, etc.
     if (this.needsRichMessage(text)) {

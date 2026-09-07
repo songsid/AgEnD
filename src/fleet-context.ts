@@ -113,6 +113,8 @@ export interface FleetContext {
     adapterId: string;
     chatId: string;
     threadId?: string;
+    /** The requesting human — required by web mode (admin re-check, private token delivery). */
+    userId?: string;
   }, opts?: { skipAuthCheck?: boolean }): Promise<string | null>;
   /** Paste admin-supplied text (auth code / start URL) into the login window. */
   loginSubmitInput?(text: string): Promise<string>;

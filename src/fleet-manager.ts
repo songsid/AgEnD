@@ -67,6 +67,7 @@ import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
+import { LoginController, LOGIN_TOKEN_RESEND_PREFIX } from "./login-controller.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
@@ -3077,6 +3078,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleClassicApproval(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
+      if (await this.handleLoginTokenResend(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleClearConfirmation(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, this.adapter ?? undefined)) return;
@@ -3403,6 +3405,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (await this.handleClassicApproval(data, adapterId, adapter)) return;
       if (await this.handleLoginMenuSelect(data, adapterId, adapter)) return;
       if (await this.handleLoginConfirm(data, adapterId, adapter)) return;
+      if (await this.handleLoginTokenResend(data, adapterId, adapter)) return;
       if (await this.handleInstallLoginConfirm(data, adapterId, adapter)) return;
       if (await this.handleClearConfirmation(data, adapterId, adapter)) return;
       if (await this.handleExitRestartPrompt(data, adapterId, adapter)) return;
@@ -7390,6 +7393,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     chat: { adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string };
   } | null = null;
 
+  /**
+   * Web-terminal login (v2.1.5 default, `login.mode: web`). The relay code
+   * below (activeLogin/LoginSession) is `login.mode: relay`, kept for one
+   * release as the rollback lever and removed in 2.1.6.
+   */
+  private loginController: LoginController | null = null;
+  private get webLogin(): LoginController {
+    if (!this.loginController) {
+      this.loginController = new LoginController({
+        logger: this.logger,
+        fleetConfig: () => this.fleetConfig,
+        isFleetAdmin: (userId, adapterId) => this.isFleetAdmin(userId, adapterId),
+        eventLog: () => this.eventLog,
+        recoverBackendInstances: backend => this.recoverBackendInstances(backend),
+        otherWindowActive: () => this.activeLogin !== null || this.activeInstall !== null,
+        postButtons: async ({ prefix, instanceName, chat, message, choices, expiredText }) => {
+          await this.postNonceButtonPrompt({
+            prefix, alertType: "login", instanceName,
+            adapter: chat.adapter, adapterId: chat.adapterId, chatId: chat.chatId, threadId: chat.threadId,
+            message, choices, expiredText,
+          });
+        },
+      });
+    }
+    return this.loginController;
+  }
+
   /** Post the backend chooser for a bare `/login`. Caller enforces admin. */
   async promptLoginBackends(chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
@@ -7608,8 +7638,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * posted instead (auth still valid — see the pre-check below).
    */
   async startLoginSession(backendArg: string, chat: {
-    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
+    adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
   }, opts: { skipAuthCheck?: boolean } = {}): Promise<string | null> {
+    if (this.webLogin.mode() === "web") return this.webLogin.start(backendArg, chat, opts);
+    // ── legacy relay mode (login.mode: relay) — removed in 2.1.6 ──
     const backend = LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()] ?? backendArg.toLowerCase();
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
@@ -7650,6 +7682,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
   }): Promise<string> {
     if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+    if (this.loginController?.isActive()) return t("login.busy", this.loginController.activeBackend ?? "web");
     // Install sessions share the window namespace — never run both at once.
     if (this.activeInstall) return t("install.busy");
     const sessionName = getTmuxSession();
@@ -7711,6 +7744,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** `/login code <text>` — paste admin-supplied text into the login window. */
   async loginSubmitInput(text: string): Promise<string> {
+    if (this.loginController?.isActive()) return t("login.web_code_not_needed");
     if (!this.activeLogin) return t("login.no_session");
     const ok = await this.activeLogin.session.submitInput(text);
     return ok ? t("login.input_sent") : t("login.input_failed");
@@ -7718,6 +7752,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** `/login cancel` — abort the active session and remove its window. */
   async cancelLoginSession(): Promise<string> {
+    if (this.loginController?.isActive()) return this.loginController.cancel();
     if (!this.activeLogin) return t("login.no_session");
     const backend = this.activeLogin.backend;
     await this.activeLogin.session.cancel();
@@ -7808,6 +7843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: entry.adapterId,
       chatId: entry.chatId,
       threadId: entry.threadId,
+      userId: data.userId,
     });
     if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
     return true;
@@ -7840,8 +7876,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: entry.adapterId,
       chatId: entry.chatId,
       threadId: entry.threadId,
+      userId: data.userId,
     }, { skipAuthCheck: true });
     if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
+    return true;
+  }
+
+  /** "Resend token" button (web login): only the requester may press it; the token never enters the channel. */
+  private async handleLoginTokenResend(
+    data: AdapterCallbackData,
+    callbackAdapterId: string,
+    receivingAdapter?: ChannelAdapter,
+  ): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(
+      LOGIN_TOKEN_RESEND_PREFIX,
+      /^login-token:([0-9a-f]+):(resend)$/,
+      data,
+      callbackAdapterId,
+      receivingAdapter,
+    );
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry } = claimed;
+    const text = await this.webLogin.resendToken(data.userId);
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
     return true;
   }
 
@@ -7891,6 +7949,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (checkBinaryInstalled(info.binary)) return t("install.already", backend, info.binary);
     if (this.activeInstall) return t("install.busy");
     if (this.activeLogin) return t("login.busy", this.activeLogin.backend);
+    if (this.loginController?.isActive()) return t("login.busy", this.loginController.activeBackend ?? "web");
 
     const sessionName = getTmuxSession();
     await TmuxManager.ensureSession(sessionName);
@@ -8005,6 +8064,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: entry.adapterId,
       chatId: entry.chatId,
       threadId: entry.threadId,
+      userId: data.userId,
     });
     if (text) await entry.adapter.sendText(entry.chatId, text, { threadId: entry.threadId }).catch(() => {});
     return true;
@@ -8020,7 +8080,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(t("permission.denied"));
       return;
     }
-    const chat = { adapter, adapterId, chatId: data.channelId };
+    const chat = { adapter, adapterId, chatId: data.channelId, userId: data.userId };
     if (data.options?.cancel === true) { await data.respond(await this.cancelLoginSession()); return; }
     const code = String(data.options?.code ?? "").trim();
     if (code) { await data.respond(await this.loginSubmitInput(code)); return; }
