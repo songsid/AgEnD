@@ -2245,6 +2245,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Start all instances from fleet config */
   async startAll(configPath: string): Promise<void> {
     this.loginWindow.reopen();                          // a stopAll → startAll restart must accept login windows again
+    this.loginController?.reopen();
     const startupStartedAt = Date.now();
     FleetManager.signalTarget = this;
     this.startupComplete = false;
@@ -7770,6 +7771,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.loginWindow.release(claim);
       return t("login.failed", backend, (err as Error).message);
     }
+    if (!this.loginWindow.isCurrent(claim)) {
+      // Shutdown landed during start: the session's own start() already removed
+      // a window created after cancel; make sure nothing is left published.
+      if (session.state !== "done") await session.cancel("cancelled").catch(() => { /* already finished */ });
+      this.activeLogin = null;
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
+    }
     return t("login.started", backend);
   }
 
@@ -8075,6 +8084,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.activeInstall = null;
       this.loginWindow.release(claim);
       return t("install.failed", backend, (err as Error).message);
+    }
+    if (!this.loginWindow.isCurrent(claim)) {
+      if (session.state !== "done") await session.cancel("cancelled").catch(() => { /* already finished */ });
+      this.activeInstall = null;
+      this.loginWindow.release(claim);
+      return t("login.web_shutting_down");
     }
     return t("install.started", backend);
   }

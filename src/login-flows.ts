@@ -162,7 +162,10 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     timeoutMs: LOGIN_TIMEOUT_MS,
   },
   "antigravity": {
-    noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
+    // NO noShellEscape: bare `agy` is the full agent CLI (tools, permissions,
+    // MCP) — after authentication the browser would control an agent, not a
+    // login prompt. Web-terminal login is refused until upstream offers a
+    // dedicated login command; relay mode still works.
     backend: "antigravity",
     command: "agy",
     authCheck: { argv: ["agy", "models"] },

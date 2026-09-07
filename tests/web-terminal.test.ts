@@ -25,9 +25,14 @@ class FakeBackend implements TerminalBackend {
   killHangs = false;
   killRejects = false;
   resizeRejects = false;
+  /** When set, start() parks here until released (cancel-during-start races). */
+  startGate: Promise<void> | null = null;
+  serverAlive = false;
   async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void }): Promise<void> {
     if (this.failStart) throw new Error("tmux missing");
+    if (this.startGate) await this.startGate;
     this.started.push({ socket: opts.socket, command: opts.command, cwd: opts.cwd, cols: opts.cols, rows: opts.rows });
+    this.serverAlive = true;                                   // the dedicated server now exists
     this.emit = opts.onOutput;
   }
   /** Every input/resize in arrival order, for FIFO assertions. */
@@ -50,6 +55,7 @@ class FakeBackend implements TerminalBackend {
     this.killed.push(socket);
     if (this.killHangs) await new Promise(() => { /* never */ });
     if (this.killRejects) throw new Error("tmux server on socket could not be confirmed dead");
+    this.serverAlive = false;
   }
 }
 
@@ -187,6 +193,26 @@ describe("token gate", () => {
     await session.cancel();
     expect(session.redeemToken(token)).toEqual({ result: "finished" });
     expect(session.checkCookie(ok.cookie)).toBe(false);
+  });
+});
+
+describe("cancel racing start (sol PR-B round 3 B1)", () => {
+  it("a server created after cancel() is killed again by start() itself and start() rejects — nothing stays alive", async () => {
+    vi.useRealTimers();
+    const { session, backend, done } = make();
+    let release!: () => void;
+    backend.startGate = new Promise<void>(r => { release = r; });
+    const starting = session.start();                          // parked inside backend.start
+    await session.cancel("fleet shutdown");                    // kill #1 finds no server yet
+    expect(backend.killed).toHaveLength(1);
+    expect(backend.serverAlive).toBe(false);
+    expect(done).toHaveLength(1);
+    release();                                                 // tmux now creates the server
+    await expect(starting).rejects.toThrow(/cancelled during startup/);
+    expect(backend.killed).toHaveLength(2);                    // start() re-killed at the resource boundary
+    expect(backend.serverAlive).toBe(false);
+    expect(session.state).toBe("finished");
+    expect(session.peekAccessToken()).toBeNull();
   });
 });
 

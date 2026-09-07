@@ -127,7 +127,15 @@ describe("authorization gate", () => {
     } finally {
       delete (LOGIN_FLOWS as Record<string, unknown>)["testonly"];
     }
-    for (const b of ["codex", "grok", "kiro-cli", "claude-code", "antigravity"]) expect(LOGIN_FLOWS[b].noShellEscape).toBe(true);
+    for (const b of ["codex", "grok", "kiro-cli", "claude-code"]) expect(LOGIN_FLOWS[b].noShellEscape).toBe(true);
+  });
+
+  it("B3 (round 3): Antigravity's bare `agy` is the full agent, not a login command — refused in web mode", async () => {
+    expect(LOGIN_FLOWS.antigravity.noShellEscape).toBeUndefined();
+    const { controller, sessions } = make();
+    expect(await controller.start("agy", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_flow_not_allowed", "antigravity"));
+    expect(await controller.start("antigravity", chat(adapterOf("discord")))).toBe(t("login.web_flow_not_allowed", "antigravity"));
+    expect(sessions).toHaveLength(0);
   });
 
   it("rate limit: a requester gets at most 3 starts per 5 minutes; the window slides", async () => {
@@ -285,15 +293,52 @@ describe("two messages: link to the chat, token only privately", () => {
     const logged = allText(logger.warn) + allText(logger.info) + allText(logger.error) + allText(logger.debug) + JSON.stringify(events);
     expect(logged).not.toContain(TOKEN);
     expect(logged).toContain("web terminal token DM failed");
-    // A string code is only kept when it is errno-shaped; a token-shaped one is dropped too.
-    const adapter2 = adapterOf("discord", { directFails: text => Object.assign(new Error("x"), { code: text }) });
-    const { controller: c2, logger: l2, events: e2 } = make();
-    await c2.start("codex", chat(adapter2), CONFIRMED);
-    expect(allText(l2.warn) + JSON.stringify(e2)).not.toContain(TOKEN);
+    // Only an EXACT known errno string survives: the bare token, and an
+    // errno-LOOKING token (starts with E), are both dropped (round 3 B2).
+    for (const code of [TOKEN, `E${TOKEN.slice(1)}`, "E_" + TOKEN, "ENOTREAL"]) {
+      const a = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code }) });
+      const { controller: c, logger: l, events: e } = make();
+      await c.start("codex", chat(a), CONFIRMED);
+      const out = allText(l.warn) + allText(l.info) + JSON.stringify(e);
+      expect(out).not.toContain(TOKEN);
+      expect(out).not.toContain(TOKEN.slice(1));
+      expect(out).not.toContain("ENOTREAL");
+    }
     const adapter3 = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code: "EPIPE" }) });
     const { controller: c3, logger: l3 } = make();
     await c3.start("codex", chat(adapter3), CONFIRMED);
-    expect(allText(l3.warn)).toContain("EPIPE");                     // bounded errno-like codes stay useful
+    expect(allText(l3.warn)).toContain("EPIPE");                     // exact known errno stays useful
+    const adapter4 = adapterOf("discord", { directFails: () => Object.assign(new Error("x"), { code: 429 }) });
+    const { controller: c4, logger: l4 } = make();
+    await c4.start("codex", chat(adapter4), CONFIRMED);
+    expect(allText(l4.warn)).toContain("429");
+  });
+
+  it("M1 (round 3): a shutdown landing during link delivery aborts — no token is DM'd, no 'started' is announced", async () => {
+    const { lock } = make();
+    let controllerRef!: LoginController;
+    const adapter = adapterOf("discord");
+    adapter.sendText.mockImplementation(async () => { lock.close(); await controllerRef.shutdown(); return { messageId: "m1", chatId: "chat" }; });
+    const { controller, sessions } = make({ lock });
+    controllerRef = controller;
+    const text = await controller.start("codex", chat(adapter), CONFIRMED);
+    expect(text).toBe(t("login.web_shutting_down"));
+    expect(adapter.sendDirect!).not.toHaveBeenCalled();
+    expect(sessions[0].state).toBe("finished");
+    expect(controller.isActive()).toBe(false);
+    expect(lock.isHeld).toBe(false);
+  });
+
+  it("M1 (round 3): a shutdown landing while the confirmation is being posted returns shutting-down and audits the stale prompt", async () => {
+    const { lock } = make();
+    let controllerRef!: LoginController;
+    const { controller, events } = make({ lock, postButtons: async () => { lock.close(); await controllerRef.shutdown(); } });
+    controllerRef = controller;
+    expect(await controller.start("codex", chat(adapterOf("discord")))).toBeNull();
+    expect(events.some(e => e[0] === "login_web_stale_confirmation")).toBe(true);
+    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
+    controller.reopen(); lock.reopen();
+    expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
   });
 
   it("M1 (round 2): a failed resend closes the session instead of leaving a token-less window holding the lock", async () => {
@@ -333,7 +378,7 @@ describe("two messages: link to the chat, token only privately", () => {
     expect(lock.isHeld).toBe(false);
     // and no new window can be claimed while closed
     expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_shutting_down"));
-    lock.reopen();
+    lock.reopen(); controller.reopen();                                        // what startAll does on an in-process restart
     expect(await controller.start("codex", chat(adapterOf("discord")), CONFIRMED)).toBe(t("login.web_started", "codex"));
   });
 

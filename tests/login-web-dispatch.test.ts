@@ -4,14 +4,16 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 // Legacy relay sessions must never touch a real tmux server in unit tests.
-const relaySessions: Array<{ flow: any }> = [];
+const relaySessions: Array<{ flow: any; cancelled: string[] }> = [];
+let onRelayStart: (() => Promise<void>) | null = null;
 vi.mock("../src/login-manager.js", async (importOriginal) => {
   const real = await importOriginal<typeof import("../src/login-manager.js")>();
   class FakeLoginSession {
     state = "starting";
-    constructor(readonly flow: any, _tmux: any, readonly events: any) { relaySessions.push({ flow }); }
-    async start() {}
-    async cancel() { await this.events.onDone({ ok: false, detail: "cancelled" }); }
+    record: { flow: any; cancelled: string[] };
+    constructor(readonly flow: any, _tmux: any, readonly events: any) { this.record = { flow, cancelled: [] }; relaySessions.push(this.record); }
+    async start() { if (onRelayStart) await onRelayStart(); }
+    async cancel(detail = "cancelled") { this.state = "done"; this.record.cancelled.push(detail); await this.events.onDone({ ok: false, detail }); }
     async submitInput() { return true; }
     async selectMenuOption() { return true; }
   }
@@ -37,6 +39,7 @@ describe("/login mode dispatch and exclusivity", () => {
     tmpDir = join(tmpdir(), `login-web-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(tmpDir, { recursive: true });
     relaySessions.length = 0;
+    onRelayStart = null;
     setAuthCheckRunnerForTests(async () => ({ code: 1, output: "logged out" }));   // pre-check: invalid → straight to login
   });
   afterEach(() => {
@@ -153,6 +156,16 @@ describe("/login mode dispatch and exclusivity", () => {
     expect(await fm.startInstallSession("grok", chat)).toBe(t("login.web_shutting_down"));
     (fm as any).loginWindow.reopen();
     expect(await fm.startInstallSession("grok", chat)).toBe(t("install.started", "grok"));
+  });
+
+  it("B1 (round 3): shutdown landing during a relay session.start cancels it and frees the window", async () => {
+    const { fm, chat } = setup("relay");
+    vi.spyOn(TmuxManager, "ensureSession").mockResolvedValue(undefined);
+    onRelayStart = async () => { await (fm as any).shutdownLoginWindows(); };
+    expect(await fm.startLoginSession("codex", chat)).toBe(t("login.web_shutting_down"));
+    expect(relaySessions[0].cancelled).toEqual(["cancelled"]);
+    expect((fm as any).activeLogin).toBeNull();
+    expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 
   it("N1: legacy windows cancelled by shutdown stay quiet — no 'failed — fleet shutdown' message", async () => {

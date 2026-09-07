@@ -59,7 +59,18 @@ export class LoginSession {
     // the window vanishes between polls and success is indistinguishable from a
     // crash.
     await this.tmux.createWindow(this.flow.command, process.env.HOME ?? "/", `agend-login-${this.flow.backend}`);
+    if (this.finished) {
+      // cancel() ran while createWindow was in flight: its killWindow found
+      // nothing. The window we just created must not survive the session.
+      await this.tmux.killWindow().catch(err =>
+        this.logger.warn({ err: (err as Error).message }, "login window created after cancel could not be removed"));
+      return;
+    }
     await this.tmux.setRemainOnExit();
+    if (this.finished) {
+      await this.tmux.killWindow().catch(() => { /* best effort */ });
+      return;
+    }
     this.timeoutTimer = setTimeout(() => {
       void this.finish(false, "timeout");
     }, this.flow.timeoutMs);

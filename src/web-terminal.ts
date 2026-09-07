@@ -240,6 +240,19 @@ export class WebTerminalSession extends EventEmitter {
       this.audit("web_terminal_start_failed", { error: (err as Error).message, cleanupFailed: (err as { cleanupFailed?: boolean }).cleanupFailed === true });
       throw err;
     }
+    if (this.finishing) {
+      // cancel()/TTL/shutdown ran while backend.start() was in flight: its kill
+      // happened BEFORE the server existed. The server we just created would
+      // outlive the session — kill it again now, at the resource boundary.
+      await this.finishing.catch(() => { /* already reported */ });
+      const killed = await Promise.race([
+        this.backend.kill(this.socketName).then(() => true, () => false),
+        new Promise<boolean>(resolve => setTimeout(() => resolve(false), KILL_TIMEOUT_MS).unref?.()),
+      ]);
+      this.audit("web_terminal_start_after_finish", { cleanupFailed: !killed });
+      if (!killed) this.logger.warn({ sid: this.sid, socket: this.socketName }, "web terminal server created after cancel could not be confirmed dead");
+      throw new Error("session cancelled during startup");
+    }
     this.audit("web_terminal_created", { ttlMs: this.spec.ttlMs, cols: this.cols, rows: this.rows });
     this.ttlTimer = setTimeout(() => { void this.finish({ ok: false, reason: "ttl", detail: "time limit reached" }); }, this.spec.ttlMs);
     this.ttlTimer.unref?.();

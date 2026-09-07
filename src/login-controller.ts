@@ -111,15 +111,22 @@ interface ActiveLogin {
  * provider-controlled and any of them may echo the payload (the token). Only
  * a bounded, errno-like code survives; everything else is a constant.
  */
+const KNOWN_ERRNO = new Set([
+  "EPIPE", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN", "ENETUNREACH", "EHOSTUNREACH",
+  "EACCES", "EPERM", "ENOENT", "ECONNABORTED", "ERR_NETWORK", "ABORT_ERR", "ETELEGRAM", "UND_ERR_CONNECT_TIMEOUT",
+]);
 function safeErr(err: unknown): { errorKind: "error"; errno?: number | string } {
   const code = (err as { code?: unknown } | null)?.code;
   if (typeof code === "number" && Number.isFinite(code)) return { errorKind: "error", errno: code };
-  if (typeof code === "string" && /^[A-Z][A-Z0-9_]{1,31}$/.test(code)) return { errorKind: "error", errno: code };
+  // Exact set only — a shape-based allowlist overlaps the token's own shape (sol round 3 B2).
+  if (typeof code === "string" && KNOWN_ERRNO.has(code)) return { errorKind: "error", errno: code };
   return { errorKind: "error" };
 }
 
 export class LoginController {
   private active: ActiveLogin | null = null;
+  /** Set by shutdown(): fences every continuation that resumes after an await, independent of claim ownership. */
+  private stopping = false;
   private readonly backendFactory = new TmuxTerminalBackend();
   private readonly startTimes = new Map<string, number[]>();
 
@@ -143,6 +150,7 @@ export class LoginController {
     const flow = LOGIN_FLOWS[backend];
     if (!flow) return t("login.unsupported", backendArg);
 
+    if (this.stopping) return t("login.web_shutting_down");
     // Authorization is decided HERE, not by whoever called us.
     if (!chat.userId || !this.deps.isFleetAdmin(chat.userId, chat.adapterId)) {
       this.audit("denied", { backend, requester: chat.userId ?? null, adapterId: chat.adapterId });
@@ -184,7 +192,7 @@ export class LoginController {
       // answer; the window is released (by the caller's finally) meanwhile.
       let tokenPresent = false;
       if (flow.authCheck) tokenPresent = (await (this.deps.checkAuth ?? checkAuthStatus)(flow.authCheck)) === "valid";
-      if (!this.deps.isClaimCurrent(claim)) return t("login.web_shutting_down");
+      if (this.stopping || !this.deps.isClaimCurrent(claim)) return t("login.web_shutting_down");
       this.deps.releaseWindow(claim);                       // nothing runs until the button is pressed
       const logoutFirst = tokenPresent && flow.preCommand?.when === "token-present";
       try {
@@ -205,6 +213,7 @@ export class LoginController {
         this.deps.logger.warn({ ...safeErr(err), backend }, "Failed to post login confirmation");
         return t("login.failed", backend, t("login.web_confirm_failed"));
       }
+      if (this.stopping) this.audit("stale_confirmation", { backend, requester: chat.userId });   // posted as we stopped; it will simply not be honoured
       return null;
     }
 
@@ -262,13 +271,17 @@ export class LoginController {
 
     // Delivery is part of starting: a link nobody received, or a token that
     // reached neither the requester nor a resend button, means the session
-    // must not stay open (sol M1).
+    // must not stay open (sol M1). A shutdown landing during any of these
+    // awaits aborts instead of announcing a terminal that no longer exists.
+    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     if (!(await this.sendLink(entry, Math.round(ttlMs / 60_000), command))) {
       return this.abort(entry, t("login.failed", backend, t("login.web_link_failed")), "link delivery failed");
     }
+    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     if (!(await this.sendToken(entry, { offerResend: true }))) {
       return this.abort(entry, t("login.failed", backend, t("login.web_token_failed")), "token delivery failed");
     }
+    if (this.stopping) return this.abort(entry, t("login.web_shutting_down"), "fleet shutdown");
     return t("login.web_started", backend);
   }
 
@@ -287,6 +300,7 @@ export class LoginController {
    * they observe !isClaimCurrent and stop without posting or starting.
    */
   async shutdown(): Promise<void> {
+    this.stopping = true;
     const entry = this.active;
     if (!entry) return;
     entry.silent = true;
@@ -297,6 +311,9 @@ export class LoginController {
     await entry.http?.close().catch(() => { /* already closed on finish */ });
     this.releaseEntry(entry);
   }
+
+  /** In-process restart after shutdown(): accept work again. */
+  reopen(): void { this.stopping = false; }
 
   /** The "resend token" button: only the requester, only while the token is unredeemed. */
   async resendToken(requesterUserId: string | undefined): Promise<string> {
