@@ -156,7 +156,7 @@ install-cli：`command` = 安裝指令（現有）、`observe.successPattern` �
 
 驗證成功後發的 cookie：`HttpOnly; SameSite=Strict; Path=/t/<sid>`，值為另一組 32 bytes 亂數並綁 `sid`，只在該 listener 存活期間有效；WS upgrade 必須帶該 cookie 且 `Origin === Host`。
 
-**tunnel 只是轉送**（第三階段）：cloudflared / ngrok / tailscale 都不參與授權；gate 在我們的 listener 上，tunnel 前後同一套規則。tailscale 自帶身分是**額外**一層，不取代 token。
+**tunnel 只是轉送**（第三階段，預設 cloudflared quick tunnel = 公網）：cloudflared / ngrok / tailscale 都不參與授權；gate 在我們的 listener 上，tunnel 前後同一套規則。公網 tunnel 下 token gate 就是唯一防線，這套設計正是為此自洽。tailscale 自帶身分是**額外**一層（進階選項），不取代 token。
 
 這一層疊在「scope 只跑 login/install 進程」「短 TTL」「admin-only」之上。四層各自獨立成立：URL 外洩 → 需 token；token + URL 同時外洩 → 只有一次機會、幾分鐘、且只拿到一個 login 進程的鍵盤；連 admin 帳號被盜 → 才等同 admin 本人操作。
 
@@ -172,7 +172,8 @@ install-cli：`command` = 安裝指令（現有）、`observe.successPattern` �
 | 長時間暴露 | TTL 預設 10 分、上限 20 分（config 夾住），到期 `kill-server`；進程 exit 後 5 秒收尾；瀏覽器關閉不延長 TTL |
 | 併發 / 濃縮攻擊面 | 全 fleet 同時至多 1 個 session；同 requester 5 分鐘內最多 3 次建立 |
 | 輸入濫用 | 每個 WS frame ≤ 4 KB、每秒 ≤ 64 frame；resize 夾在 20×5 … 250×100；byte 原樣進 pane（含 Ctrl-C = 結束登入） |
-| 明文傳輸（HTTP over LAN） | 與 /dashboard 相同前提：預設只綁 127.0.0.1，透過 SSH 轉發 / tailscale / 反向代理（TLS）到達。第三階段 tunnel provider 提供 HTTPS。token 一次性 + 短 TTL 把被動竊聽的價值壓到單次幾分鐘。文案明講「勿在不可信網路用純 HTTP」 |
+| 明文傳輸（HTTP over LAN） | 階段 1–2 與 /dashboard 相同前提：預設只綁 127.0.0.1，透過 SSH 轉發 / tailscale / 反向代理（TLS）到達。階段 3 預設 cloudflared quick tunnel 提供 HTTPS。token 一次性 + 短 TTL 把被動竊聽的價值壓到單次幾分鐘。文案明講「勿在不可信網路用純 HTTP」 |
+| 公網 tunnel（階段 3 預設） | URL 公網可達是**刻意的**（手機在通訊軟體點連結、手機瀏覽器完成登入，該裝置不在 tailnet、到不了 localhost）。防線 = §3.0 token gate 整套：URL 零秘密、GET 無副作用、一次性 token 另一通道送達、timing-safe、3-strike 銷毀、TTL、單 session listener（tunnel 打不到 dashboard）。tunnel 純轉送不參與授權 |
 | 稽核 | eventLog：`web_terminal_created / link_sent / token_sent / opened(ip, ua) / token_failed(n) / token_lockout / closed(reason, exitCode) / ttl_expired`，含 requester id、backend、kind；**不記** token/cookie |
 | 憑證落地 | 登入成功寫的是 CLI 自己的憑證檔（與人在主機終端登入完全相同）；AgEnD 不經手 token |
 
@@ -189,8 +190,8 @@ web_terminal:
   ttl_minutes: 10            # 1..20
   # access token gate 沒有開關：永遠開（硬需求）
   tunnel:                    # 第三階段
-    provider: none           # none | tailscale | cloudflared | ngrok
-    allow_public: false      # cloudflared/ngrok 屬公網，需明確 true
+    provider: cloudflared    # cloudflared（預設，公網、免帳號、HTTPS、手機可開）| tailscale | ngrok | none（localhost-only，SSH 轉發）
+    allow_public: true       # 公網 provider（cloudflared/ngrok）需為 true；設 false 則只允許 tailscale/none
 login:
   mode: web                  # web | relay（relay = 舊路徑，僅供 2.1.5 回退，2.1.6 移除）
 ```
@@ -203,7 +204,7 @@ login:
 |---|---|---|---|
 | **1. 引擎 + /login 上線（v2.1.5 核心）** | `src/web-terminal.ts`（tmux server、pipe-pane/​send-keys 橋、TTL、exit 收尾、旁觀）、`src/web-terminal-http.ts`（listener、頁面、`/open`、WS、cookie/Origin/token gate/限流）、vendored xterm.js、`LoginFlow` 縮減 + 五個 backend 遷移（kiro 含 logout-first / failures）、`LoginController` 抽出 FleetManager（確認鈕、連結私訊、旁觀→spoiler、recover）、`login.mode` 開關、eventLog、locale。測試：假 tmux 重放（既有 harness）+ 真 tmux 整合（起真 server、真 WS client 打鍵、TTL 到期、**只有 URL 沒 token 被拒、token 三次失敗銷毀、token 第二次使用被拒**、Origin 拒絕）。 | 1–2 PR，~1500 行 | sol 安全嚴審（§3 逐項） |
 | **2. /install-cli 遷移 + 舊路徑清理** | install 走同一 `WebTerminalSession`；刪 Menu/Prompt relay 與 `/login code`（保留在 `mode: relay` 直到 2.1.6）；`/login kiro startUrl= region=` 預填（可選）；docs/commands 更新。 | 1 PR，~500 行 | sol |
-| **3. tunnel provider** | `TunnelProvider { start(port) → url; stop() }`：tailscale serve（tailnet、HTTPS、**建議預設**）、cloudflared quick tunnel、ngrok；preflight（二進位、5s 拿 URL）；`allow_public` 門；tunnel 只指向該 session listener。 | 1 PR，~400 行 | sol 安全嚴審 |
+| **3. tunnel provider** | `TunnelProvider { start(port) → url; stop() }`。**預設 `cloudflared` quick tunnel**（公網、免帳號、隨機 `*.trycloudflare.com`、HTTPS、手機瀏覽器可開 —— 核心情境「在通訊軟體點連結、手機完成登入」需要公網可達）；進階：`tailscale serve`（裝置在 tailnet 者更私密）、`none`（localhost-only，SSH 轉發）、`ngrok`。preflight：binary 存在、10s 內拿到 URL；**沒裝 cloudflared → 不開 tunnel、回覆安裝指引**（`brew install cloudflared` / apt repo / GitHub release）**並提供 localhost-only fallback 連結**。`allow_public` 明確開關（預設 true 因為預設 provider 就是公網；設 false 時 cloudflared/ngrok 拒開）。開公網 tunnel 前的風險文案：「即將開一條公網可達的臨時連結（N 分鐘）；安全依賴另一則私訊的 access token，請勿外傳任何一則。」tunnel 只指向該 session 的 listener、純轉送、不參與授權。 | 1 PR，~400 行 | sol 安全嚴審 |
 
 依賴：2、3 都依賴 1。1 可再拆「引擎 + 測試（不接指令）」與「/login 接線 + kiro」兩個 PR 以便 review。
 
@@ -213,7 +214,8 @@ login:
 
 | 風險 | 緩解 | 回退 |
 |---|---|---|
-| 主機只綁 127.0.0.1，遠端使用者到不了 | 與 /dashboard 同模型（`hostname` + SSH/tailscale）；文案明講；第三階段 tunnel | — |
+| 主機只綁 127.0.0.1，遠端使用者到不了 | 階段 1–2：與 /dashboard 同模型（`hostname` + SSH/tailscale）；階段 3 預設 cloudflared 公網 tunnel 直接解 | — |
+| 公網 tunnel 擴大暴露面 | 防線全在 token gate（§3.0）+ 單 session listener + TTL；cloudflared 未安裝時不開、給指引；`allow_public: false` 可整體禁用公網 | 設 `tunnel.provider: none` |
 | 純 HTTP 洩漏 token/cookie | token 一次性 + 短 TTL；建議 tailscale/反向代理；第三階段 HTTPS tunnel | 設 `web_terminal.enabled: false` |
 | 某 CLI 的 login TUI 有 shell 逃逸 | `noShellEscape` 白名單、逐一審；install 指令為 `sh` 腳本，屬已知：install 只跑我們的固定指令字串 | 對該 backend 拒開 |
 | tmux pipe-pane 對高頻 TUI 重繪的延遲/斷幀 | 36×120 預設、pipe-pane 直通不經 capture；整合測試量測 | 不可接受時改 B（ttyd）方案，介面不變 |
