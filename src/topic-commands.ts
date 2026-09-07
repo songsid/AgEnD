@@ -313,8 +313,10 @@ export class TopicCommands {
       return true;
     }
 
-    if (text === "/restart" || text === "/restart@" || text.startsWith("/restart@")) {
-      await this.handleRestartCommand(msg);
+    const restart = text.match(/^\/restart(?:@[A-Za-z0-9_]*)?(?:\s+(.*))?$/i);
+    if (restart) {
+      const mode = restart[1]?.trim().toLowerCase();
+      await this.handleRestartCommand(msg, mode);
       return true;
     }
 
@@ -774,7 +776,7 @@ export class TopicCommands {
     return t("save.not_connected");
   }
 
-  private async handleRestartCommand(msg: InboundMessage): Promise<void> {
+  private async handleRestartCommand(msg: InboundMessage, mode?: string): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter) return;
     const chatId = msg.chatId;
@@ -786,8 +788,24 @@ export class TopicCommands {
       return;
     }
 
-    await adapter.sendText(chatId, t("restart.graceful"), { threadId });
-    process.kill(process.pid, "SIGUSR2");
+    if (mode && mode !== "full") {
+      await adapter.sendText(chatId, t("restart.usage"), { threadId });
+      return;
+    }
+
+    if (mode !== "full") {
+      await adapter.sendText(chatId, t("restart.graceful"), { threadId });
+      process.kill(process.pid, "SIGUSR2");
+      return;
+    }
+
+    const sent = await adapter.sendText(chatId, t("restart.full_preparing"), { threadId });
+    if (!this.ctx.requestFullRestart) {
+      await adapter.editMessage(sent.chatId, sent.messageId, t("restart.full_launch_failed"), sent.threadId)
+        .catch(() => { /* production FleetManager always supplies the reload bridge */ });
+      return;
+    }
+    await this.ctx.requestFullRestart(adapter, sent.chatId, sent.threadId, sent.messageId);
   }
 
   /**

@@ -20,7 +20,7 @@ Registered via `setMyCommands` with `scope: chat` (forum group only).
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
-| 🔒 `/restart` | Graceful restart all instances | Admin |
+| 🔒 `/restart [full]` | Restart all instances in-process; `full` reloads the entire Fleet process and adapters, independent of version | Admin |
 | 🔒 `/update` | Update AgEnD to latest | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend\|cancel\|code <text>]` | **(beta)** Remote CLI re-authentication without SSH — `codex`, `grok`, `kiro`, `claude`, `antigravity` (not `opencode`, API-key only). No arg shows a backend picker; device-flow backends (codex/grok) post a URL+code, paste-back backends (claude/kiro) prompt for `/login code <pasted-code>`. Opens a temporary tmux window (instance panes untouched), warns if auth is already valid, 10-minute timeout, `/login cancel` anytime. Credentials are per-backend shared — one login fixes every instance on that backend, and running instances restart afterward to pick up the new credential. Also on Discord (`/login backend:… code:… cancel:…`); not on TG Classic. | Admin |
@@ -82,7 +82,7 @@ Registered globally via `client.application.commands.set()`.
 | 🔒 `/status` | Show fleet status and costs | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
 | 🔒 `/wake [instance]` | Wake a paused instance | Admin |
-| 🔒 `/restart` | Graceful restart all instances | Admin |
+| 🔒 `/restart [mode:full]` | Restart all instances in-process; `mode:full` reloads the entire Fleet process and adapters | Admin |
 | 🔒 `/update` | Update AgEnD to latest version | Admin |
 | 🔒 `/doctor` | Run health diagnostics | Admin |
 | 🔒 `/login [backend] [code] [cancel]` | **(beta)** Remote CLI re-authentication (`claude-code`/`codex`/`kiro-cli`/`grok`/`antigravity`) | Admin |

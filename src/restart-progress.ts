@@ -32,8 +32,10 @@ type ProgressLogger = {
 };
 
 export interface RestartProgressOptions {
-  mode?: "restart" | "update";
+  mode?: RestartProgressMode;
 }
+
+export type RestartProgressMode = "restart" | "update" | "reload";
 
 const TERMINAL_DELIVERY_RETRY_MS = 1_000;
 export const RESTART_PROGRESS_TERMINAL_TIMEOUT_MS = 30_000;
@@ -50,6 +52,29 @@ function formatElapsed(ms: number): string {
   return minutes > 0 ? `${minutes}m ${remainder}s` : `${seconds}s`;
 }
 
+/** One terminal text shared by the in-place edit and FleetManager fallback. */
+export function formatRestartProgressCompletion(
+  mode: RestartProgressMode,
+  summary: RestartProgressSummary,
+  startedAt: number,
+  now = Date.now(),
+): string {
+  const elapsed = formatElapsed(now - startedAt);
+  const lines = mode === "update"
+    ? [t("update.progress.complete", summary.version, summary.running, summary.total, updateElapsedSeconds(startedAt, now))]
+    : mode === "reload"
+      ? [t("restart.progress.complete_summary", summary.version, summary.running, summary.total, updateElapsedSeconds(startedAt, now))]
+      : [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`];
+  if (summary.pausedNames.length) {
+    lines.push(`⏸ Paused (${summary.pausedNames.length}): ${summary.pausedNames.join(", ")}`);
+  }
+  if (summary.failedNames?.length) {
+    lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
+  }
+  if (mode === "update" && summary.tipText) lines.push("", summary.tipText);
+  return lines.join("\n");
+}
+
 /** One General-topic message that is edited throughout a fleet startup. */
 export class RestartProgress {
   readonly enabled: boolean;
@@ -63,7 +88,7 @@ export class RestartProgress {
   private progressEditWorker: Promise<void> | null = null;
   private pendingProgressText: string | null = null;
   private finished = false;
-  private readonly mode: "restart" | "update";
+  private readonly mode: RestartProgressMode;
 
   constructor(
     readonly total: number,
@@ -72,7 +97,7 @@ export class RestartProgress {
     options: RestartProgressOptions = {},
   ) {
     this.mode = options.mode ?? "restart";
-    this.enabled = this.mode === "update" || total > 5;
+    this.enabled = this.mode === "update" || this.mode === "reload" || total > 5;
   }
 
   /** May be called before the channel adapter is ready; progress is retained. */
@@ -110,13 +135,15 @@ export class RestartProgress {
 
   /** Adopt the pre-update message after the new fleet process reconnects. */
   async resume(target: RestartProgressTarget | null, messageId: string): Promise<boolean> {
-    if (!this.enabled || this.mode !== "update" || !target || !messageId || this.finished) return false;
+    if (!this.enabled || this.mode === "restart" || !target || !messageId || this.finished) return false;
     if (!target.adapter && !target.resolveAdapter) return false;
     this.target = target;
     this.messageId = messageId;
     // Do not let a stuck provider call hold fleet startup. The coalescing worker
     // owns this best-effort progress frame; finish() has its own hard deadline.
-    this.scheduleProgressEdit(t("update.progress.starting", updateElapsedSeconds(this.startedAt)));
+    this.scheduleProgressEdit(this.mode === "reload"
+      ? t("restart.progress.starting", updateElapsedSeconds(this.startedAt))
+      : t("update.progress.starting", updateElapsedSeconds(this.startedAt)));
     this.updateTimer = setInterval(() => this.queueProgressEdit(), 1_000);
     this.updateTimer.unref?.();
     return true;
@@ -136,22 +163,10 @@ export class RestartProgress {
       this.updateTimer = null;
     }
     if (!this.target || !this.messageId) return false;
-    const elapsed = formatElapsed(Date.now() - this.startedAt);
-    const lines = this.mode === "update" && summary
-      ? [t("update.progress.complete", summary.version, summary.running, summary.total, updateElapsedSeconds(this.startedAt))]
-      : summary
-        ? [`✅ Fleet ready — ${summary.running}/${summary.total} instances running (${elapsed}) · v${summary.version}`]
-        : [`✅ Fleet ready — ${this.ready}/${this.total} instances started (${elapsed})`];
-    if (summary?.pausedNames.length) {
-      lines.push(`⏸ Paused (${summary.pausedNames.length}): ${summary.pausedNames.join(", ")}`);
-    }
-    if (summary?.failedNames?.length) {
-      lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
-    }
-    if (this.mode === "update" && summary?.tipText) {
-      lines.push("", summary.tipText);
-    }
-    return this.deliverTerminal(lines.join("\n"), progressEditWorker);
+    const text = summary
+      ? formatRestartProgressCompletion(this.mode, summary, this.startedAt)
+      : `✅ Fleet ready — ${this.ready}/${this.total} instances started (${formatElapsed(Date.now() - this.startedAt)})`;
+    return this.deliverTerminal(text, progressEditWorker);
   }
 
   get readyCount(): number { return this.ready; }
@@ -161,7 +176,9 @@ export class RestartProgress {
     this.lastReportedReady = this.ready;
     const text = this.mode === "update"
       ? t("update.progress.instances", this.ready, this.total, updateElapsedSeconds(this.startedAt))
-      : `🔄 Fleet restarting — ${this.ready}/${this.total} ready...`;
+      : this.mode === "reload"
+        ? t("restart.progress.instances", this.ready, this.total, updateElapsedSeconds(this.startedAt))
+        : `🔄 Fleet restarting — ${this.ready}/${this.total} ready...`;
     this.scheduleProgressEdit(text);
   }
 

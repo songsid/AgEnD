@@ -177,6 +177,17 @@ describe("RestartProgress", () => {
     );
   });
 
+  it("keeps a full process reload enabled for a small fleet", async () => {
+    vi.useFakeTimers();
+    const sendText = vi.fn().mockResolvedValue({ messageId: "restart-full", chatId: "fleet" });
+    const adapter = { sendText, editMessage: vi.fn().mockResolvedValue(undefined) } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(1, 0, { warn: vi.fn() }, { mode: "reload" });
+
+    expect(await progress.start({ adapter, chatId: "fleet" })).toBe(true);
+    expect(sendText).toHaveBeenCalledOnce();
+    await progress.finish({ running: 1, total: 1, version: "2.1.5", pausedNames: [] });
+  });
+
   it("posts a fresh terminal update when the adopted message edit fails after 7/8", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

@@ -550,7 +550,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
             // /update progress must survive the fleet process restart. A public
             // bot message can be re-fetched and edited by the new process;
             // Discord ephemeral interaction replies cannot.
-            await interaction.deferReply({ ephemeral: interaction.commandName !== "update" });
+            const fullRestart = interaction.commandName === "restart"
+              && interaction.options.getString("mode") === "full";
+            await interaction.deferReply({ ephemeral: interaction.commandName !== "update" && !fullRestart });
             // Extract options as key-value pairs for fleet-manager
             const options: Record<string, string | boolean> = {};
             for (const opt of interaction.options.data) {
@@ -886,7 +888,16 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
           { name: "sysinfo", description: t("slash.sysinfo") },
           { name: "dashboard", description: t("slash.dashboard") },
           { name: "ctx", description: t("slash.ctx") },
-          { name: "restart", description: "🔒 " + t("slash.restart") },
+          {
+            name: "restart", description: "🔒 " + t("slash.restart"),
+            options: [{
+              name: "mode",
+              description: t("slash.option.restart_mode"),
+              type: ApplicationCommandOptionType.String,
+              required: false,
+              choices: [{ name: "full", value: "full" }],
+            }],
+          },
           { name: "update", description: "🔒 " + t("slash.update") },
           { name: "doctor", description: "🔒 " + t("slash.doctor") },
           { name: "usage", description: t("slash.usage") },
@@ -1478,4 +1489,3 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-

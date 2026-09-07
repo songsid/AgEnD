@@ -58,6 +58,8 @@ describe("Telegram command-menu registration", () => {
         .toBe("🔒 Re-login a CLI backend remotely (beta)");
       expect(payload.commands.find((c: { command: string }) => c.command === "install_cli")?.description)
         .toBe("🔒 Install a CLI backend remotely (beta)");
+      expect(payload.commands.find((c: { command: string }) => c.command === "restart")?.description)
+        .toContain("full");
     }
     expect(payloads.find(p => p.scope.type === "default").commands.map((c: { command: string }) => c.command))
       .toEqual(["start", "stop", "compact", "steer", "btw", "clear", "model", "effort", "pause", "wake", "ctx"]);
