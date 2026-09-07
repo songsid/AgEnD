@@ -9,11 +9,13 @@ import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import {
+  beginFullRestartProgress as persistFullRestartProgress,
   beginUpdateProgress as persistUpdateProgress,
   clearUpdateMarker,
   isUpdateInProgress,
   readUpdateProgress,
   setUpdateProgressStage,
+  updateProgressOperation,
 } from "./update-marker.js";
 import { formatUpdateProgress } from "./update-progress.js";
 import { sdNotify, sdNotifyBlocking } from "./sd-notify.js";
@@ -81,10 +83,12 @@ import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import {
+  formatRestartProgressCompletion,
   RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
   RestartProgress,
   type RestartProgressTarget,
 } from "./restart-progress.js";
+import { launchFullRestartHelper, type FullRestartHelperHandle } from "./full-restart.js";
 import { collectRedundantInstanceDefaultPaths } from "./fleet-yaml-slim.js";
 import { StormWindow, type StormSnapshot } from "./storm-window.js";
 import { SpawnGate } from "./spawn-gate.js";
@@ -615,6 +619,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private updateProgressEditRunning = false;
   private lastUpdateProgressText: string | null = null;
   private updateCompletionTipText: string | null = null;
+  /** Injectable only to keep the chat→CLI reload hand-off deterministic in tests. */
+  private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   /** Days of event/activity history to keep. */
@@ -1027,6 +1033,32 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const child = spawn("sh", ["-c", `sleep 2 && ${command}`], { detached: true, stdio: "ignore" });
     child.once("error", err => this.failUpdateProgress(err.message));
     child.unref();
+  }
+
+  private async handleRestartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
+    if (!this.isFleetAdmin(data.userId, adapterId)) {
+      await data.respond(t("not_authorized"));
+      return;
+    }
+
+    if (data.options?.mode !== "full") {
+      await data.respond(t("restart.graceful"));
+      process.kill(process.pid, "SIGUSR2");
+      return;
+    }
+
+    // Discord exposes only `full` as a choice. Keep a runtime check anyway: a
+    // briefly stale command schema must never turn an unknown value into SIGUSR1.
+    const messageId = await data.respond(t("restart.full_preparing"));
+    const adapter = this.adapters.get(adapterId) ?? this.adapter;
+    if (!messageId || !adapter) {
+      this.logger.error({ adapterId, hasMessageId: !!messageId },
+        "Full restart response could not be persisted — reload refused");
+      await data.respond(t("restart.full_launch_failed"));
+      return;
+    }
+    const chatId = String(this.getChannelConfig(adapterId)?.group_id ?? data.channelId);
+    await this.requestFullRestart(adapter, chatId, data.channelId, messageId);
   }
 
   private async handleTipsSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
@@ -2281,6 +2313,140 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.startUpdateProgressMonitor(adapter);
   }
 
+  /** Persist the public response, wait for idle, then start the canonical service restart. */
+  async requestFullRestart(
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId: string | undefined,
+    messageId: string,
+  ): Promise<boolean> {
+    const target = {
+      adapterId: adapter.id,
+      chatId,
+      ...(threadId ? { threadId } : {}),
+      messageId,
+    };
+    // This check is synchronous with the marker write below. A second command
+    // cannot slip through between them on Node's event loop and replace the
+    // first command's delivery target or launch a competing restart helper.
+    if (this.shuttingDown || isUpdateInProgress(this.dataDir)) {
+      this.logger.warn({ adapterId: adapter.id }, "Full restart refused because another planned restart is active");
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      return false;
+    }
+    if (!persistFullRestartProgress(this.dataDir, target)) {
+      this.logger.error({ adapterId: adapter.id }, "Full restart marker could not be persisted — reload refused");
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      return false;
+    }
+
+    const ownedMarker = readUpdateProgress(this.dataDir);
+    if (!ownedMarker) {
+      this.logger.error({ adapterId: adapter.id }, "Full restart marker disappeared after persistence — reload refused");
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      return false;
+    }
+
+    this.lastUpdateProgressText = null;
+    this.updateCompletionTipText = null;
+    this.startUpdateProgressMonitor(adapter);
+    await this.waitForFullRestartIdleGrace();
+
+    // An update can begin while the idle wait yields. Never launch a second
+    // process replacement against a marker we no longer own.
+    if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) {
+      this.logger.warn({ adapterId: adapter.id }, "Full restart superseded during idle wait — reload refused");
+      if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_busy"));
+      return false;
+    }
+
+    let helper: FullRestartHelperHandle;
+    try {
+      helper = await this.fullRestartLauncher();
+    } catch (err) {
+      this.logger.error({ err }, "Full restart helper failed to spawn — reload refused");
+      if (this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) clearUpdateMarker(this.dataDir);
+      await this.reportFullRestartFailure(adapter, chatId, threadId, messageId, t("restart.full_launch_failed"));
+      return false;
+    }
+
+    void helper.completion.then(result => {
+      // A zero exit means the service manager accepted the restart. launchd
+      // may report that before its SIGTERM reaches us, so only an explicit
+      // helper error/non-zero exit is evidence of failure. A signal is also
+      // ambiguous under systemd because this helper shares the old cgroup.
+      if (this.shuttingDown || !this.isOwnedFullRestartMarker(ownedMarker.startedAt, target)) return;
+      if (!result.error && (result.code === 0 || result.code === null)) return;
+      const detail = result.error
+        ? "reload helper failed after launch"
+        : `reload helper exited before process hand-off (code ${result.code ?? "null"}, signal ${result.signal ?? "none"})`;
+      this.logger.error({ result }, "Full restart helper exited before the fleet began shutting down");
+      setUpdateProgressStage(this.dataDir, "failed", { error: detail });
+    });
+    return true;
+  }
+
+  private isOwnedFullRestartMarker(
+    startedAt: number,
+    target: { adapterId: string; chatId: string; threadId?: string; messageId: string },
+  ): boolean {
+    const marker = readUpdateProgress(this.dataDir);
+    if (!marker || marker.startedAt !== startedAt || marker.pid !== process.pid) return false;
+    if (updateProgressOperation(marker.progress) !== "full-restart") return false;
+    const current = marker.progress.target;
+    return current.adapterId === target.adapterId
+      && current.chatId === target.chatId
+      && current.threadId === target.threadId
+      && current.messageId === target.messageId;
+  }
+
+  /** Give current work the same bounded idle grace used by graceful reload. */
+  private async waitForFullRestartIdleGrace(): Promise<void> {
+    const instanceNames = [...this.daemons.keys()];
+    if (instanceNames.length === 0) return;
+    const IDLE_TIMEOUT_MS = 5 * 60_000;
+    let timeoutHandle: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error("Idle wait timed out after 5 minutes")), IDLE_TIMEOUT_MS);
+    });
+    try {
+      await Promise.race([
+        Promise.all(instanceNames.map(async name => {
+          const daemon = this.daemons.get(name);
+          if (!daemon) return;
+          this.logger.info(`Full restart: waiting for ${name} to idle...`);
+          await daemon.waitForIdle(10_000);
+        })),
+        deadline,
+      ]);
+    } catch (err) {
+      this.logger.warn({ err }, "Full restart idle wait timed out — continuing with service restart");
+    } finally {
+      clearTimeout(timeoutHandle!);
+    }
+  }
+
+  private async reportFullRestartFailure(
+    adapter: ChannelAdapter,
+    chatId: string,
+    threadId: string | undefined,
+    messageId: string,
+    text: string,
+  ): Promise<void> {
+    try {
+      await adapter.editMessage(chatId, messageId, text, threadId);
+      return;
+    } catch (err) {
+      this.logger.warn({ err, adapterId: adapter.id }, "Failed to edit rejected full-restart request; posting a fresh notice");
+    }
+    try {
+      await adapter.sendText(chatId, text, { threadId });
+    } catch (err) {
+      this.logger.error({ err, adapterId: adapter.id }, "Failed to deliver full-restart rejection");
+    }
+  }
+
   failUpdateProgress(message: string): void {
     setUpdateProgressStage(this.dataDir, "failed", { error: message });
   }
@@ -2357,6 +2523,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && savedUpdateProgress.progress.stage !== "failed"
       && savedUpdateProgress.progress.stage !== "complete"
       ? savedUpdateProgress
+      : null;
+    const pendingProgressOperation = pendingUpdateProgress
+      ? updateProgressOperation(pendingUpdateProgress.progress)
       : null;
     if (pendingUpdateProgress) {
       setUpdateProgressStage(this.dataDir, "starting", { version: pendingUpdateProgress.progress.version });
@@ -2674,7 +2843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.runnableStartupCount(fleet, topicMode),
       pendingUpdateProgress?.startedAt ?? startupStartedAt,
       this.logger,
-      { mode: pendingUpdateProgress ? "update" : "restart" },
+      { mode: pendingProgressOperation === "full-restart" ? "reload" : pendingUpdateProgress ? "update" : "restart" },
     );
 
     if (generals.length > 0) {
@@ -2852,7 +3021,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         version: agendVersion,
         pausedNames,
         failedNames,
-        tipText: pendingUpdateProgress && this.tipsEnabled()
+        tipText: pendingProgressOperation === "update" && this.tipsEnabled()
           ? (() => {
               const tip = this.pickAvailableTip();
               return tip ? this.formatTip(tip) : undefined;
@@ -2861,7 +3030,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       });
       if (!progressCompleted && fleet.channel?.group_id) {
         let text: string;
-        if (failedNames.length === 0 && pausedNames.length === 0) {
+        if (pendingProgressOperation === "full-restart") {
+          text = formatRestartProgressCompletion("reload", {
+            running: started,
+            total,
+            version: agendVersion,
+            pausedNames,
+            failedNames,
+          }, pendingUpdateProgress!.startedAt);
+        } else if (failedNames.length === 0 && pausedNames.length === 0) {
           text = t("fleet.ready", started, total, agendVersion);
         } else if (failedNames.length === 0) {
           text = t("fleet.ready", started, total, agendVersion) + `\n⏸ Paused: ${pausedNames.join(", ")}`;
@@ -3366,13 +3543,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(t("restart.graceful"));
-        process.kill(process.pid, "SIGUSR2");
+        await this.handleRestartSlash(data, adapterId);
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -3657,13 +3828,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!allowed.some(u => String(u) === String(data.userId))) { await data.respond(t("not_authorized")); return; }
         await data.respond(this.topicCommands.getDashboardText());
       } else if (data.command === "restart") {
-        const allowed = this.fleetConfig?.channel?.access?.allowed_users ?? [];
-        if (allowed.length > 0 && !allowed.some(u => String(u) === String(data.userId))) {
-          await data.respond(t("not_authorized"));
-          return;
-        }
-        await data.respond(t("restart.graceful"));
-        process.kill(process.pid, "SIGUSR2");
+        await this.handleRestartSlash(data, adapterId);
       } else if (data.command === "compact") {
         const name = this.resolveSlashTarget(data.channelId, adapterId);
         if (!name) { await data.respond(t("classic.no_agent")); return; }
@@ -10447,8 +10612,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     this.logger.info(`Full restart: waiting for ${instanceNames.length} instances to idle...`);
 
+    const trackedProgress = readUpdateProgress(this.dataDir);
+    const trackedFullRestart = trackedProgress
+      && updateProgressOperation(trackedProgress.progress) === "full-restart"
+      && trackedProgress.progress.stage !== "failed"
+      && trackedProgress.progress.stage !== "complete";
+    if (trackedFullRestart) {
+      // `/restart full` already posted and persisted one public progress message.
+      // Keep that single message; the new process will adopt and finish it.
+      setUpdateProgressStage(this.dataDir, "stopping");
+    }
+
     const groupId = this.fleetConfig?.channel?.group_id;
-    if (groupId && this.adapter) {
+    if (!trackedFullRestart && groupId && this.adapter) {
       await this.adapter.sendText(String(groupId), t("restart.full_initiated"))
         .catch(e => this.logger.warn({ err: e }, "Failed to post full restart notification"));
     }

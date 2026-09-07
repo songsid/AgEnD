@@ -36,6 +36,10 @@ import {
 import { clearUpdateMarker, markUpdateInProgress, setUpdateProgressStage } from "./update-marker.js";
 import { acquireFleetLock, releaseProcessFleetLock, setProcessFleetLock } from "./fleet-lock.js";
 import { SYSTEMD_RESTART_TIMEOUT_MS } from "./service-installer.js";
+import {
+  selectSystemdRestartTarget,
+  SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE,
+} from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
 
@@ -1537,41 +1541,45 @@ program
       catch { return false; }
     };
 
-    // 1. System-level systemd service "agend"
+    // 1–2. Installed systemd service. Selection is centralized and tested so
+    // a service-owned fleet can never fall through to a detached duplicate.
     const systemServiceInstalled = plat !== "macos" && getSystemServicePath() !== null;
     const systemState = plat !== "macos" ? getSystemdServiceState("agend", false) : "stopped";
-    if (systemServiceInstalled && systemState === "unavailable") {
-      console.error("Cannot reach the system service manager; refusing a detached restart that could duplicate the fleet.");
-      console.error("Check: systemctl status agend");
-      process.exitCode = 1;
-      return;
-    }
-    if (systemServiceInstalled && (systemState === "running" || systemState === "stopped")) {
-      run("systemctl daemon-reload");
-      if (restartSystemdService("agend", false)) { console.log("Service restarted (system)."); return; }
-      // Service exists → systemd will auto-retry via Restart=on-failure. Don't spawn fallback.
-      console.log("  ⚠ systemd restart reported failure, but the service exists — systemd will auto-retry.");
-      console.log("  Check: systemctl status agend");
-      return;
-    }
-    // 2. User-level systemd service "com.agend.fleet"
-    const userServiceInstalled = plat !== "macos" && getServicePath() !== null;
-    const userState = plat !== "macos"
+    const userServiceInstalled = plat !== "macos" && !systemServiceInstalled && getServicePath() !== null;
+    const userState = plat !== "macos" && !systemServiceInstalled
       ? getSystemdServiceState("com.agend.fleet", true)
       : "stopped";
-    if (userServiceInstalled && userState === "unavailable") {
-      console.error("Cannot reach the user service manager; refusing a detached restart that could duplicate the fleet.");
-      console.error("Check: systemctl --user status com.agend.fleet");
-      process.exitCode = 1;
-      return;
-    }
-    if (userServiceInstalled && (userState === "running" || userState === "stopped")) {
-      run("systemctl --user daemon-reload");
-      try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
-      if (restartSystemdService("com.agend.fleet", true)) { console.log("Service restarted (user)."); return; }
-      // Service exists → systemd will auto-retry. Don't fall through to detached spawn.
-      console.log("  ⚠ systemd user service restart reported failure, but the service exists — systemd will auto-retry.");
-      console.log("  Check: systemctl --user status com.agend.fleet");
+    const systemdTarget = selectSystemdRestartTarget({
+      platform: plat,
+      systemServiceInstalled,
+      systemState,
+      userServiceInstalled,
+      userState,
+    });
+    if (systemdTarget) {
+      const scope = systemdTarget.user ? "user service" : "system service";
+      const statusCommand = systemdTarget.user
+        ? "systemctl --user status com.agend.fleet"
+        : "systemctl status agend";
+      if (systemdTarget.state === "unavailable") {
+        console.error(`Cannot reach the ${scope} manager; refusing a detached restart that could duplicate the fleet.`);
+        console.error(`Check: ${statusCommand}`);
+        process.exitCode = 1;
+        return;
+      }
+      run(systemdTarget.user ? "systemctl --user daemon-reload" : "systemctl daemon-reload");
+      if (systemdTarget.user) {
+        try { execSync("systemctl --user reset-failed com.agend.fleet", { stdio: "pipe", timeout: 5000 }); } catch { /* best effort */ }
+      }
+      if (restartSystemdService(systemdTarget.unit, systemdTarget.user)) {
+        console.log(systemdTarget.user ? "Service restarted (user)." : "Service restarted (system).");
+        return;
+      }
+      // An installed service remains authoritative even when this invocation
+      // fails. Falling through would create a second detached fleet.
+      console.log(`  ⚠ ${scope} restart reported failure, but the service exists — systemd will auto-retry.`);
+      console.log(`  Check: ${statusCommand}`);
+      process.exitCode = SYSTEMD_RESTART_INDETERMINATE_EXIT_CODE;
       return;
     }
     // 3. launchd (macOS)
@@ -1607,6 +1615,7 @@ program
     }
     // 5. Nothing running anywhere
     console.log("Fleet not running. Start with: agend start");
+    process.exitCode = 1;
   });
 
 program

@@ -1,5 +1,5 @@
 /**
- * A cross-process marker saying "an `agend update` is running right now".
+ * A cross-process marker saying "a planned fleet replacement is running".
  *
  * Why a file and not a boolean: the noise this suppresses spans three
  * processes. `agend update` runs `npm install -g`, which replaces the package
@@ -34,6 +34,9 @@ export type UpdateProgressStage =
   | "complete"
   | "failed";
 
+/** Missing on markers written before `/restart full`; those are updates. */
+export type UpdateProgressOperation = "update" | "full-restart";
+
 export interface UpdateProgressTarget {
   adapterId: string;
   chatId: string;
@@ -42,6 +45,7 @@ export interface UpdateProgressTarget {
 }
 
 export interface UpdateProgressState {
+  operation?: UpdateProgressOperation;
   stage: UpdateProgressStage;
   target: UpdateProgressTarget;
   version?: string;
@@ -88,8 +92,29 @@ export function beginUpdateProgress(dataDir: string, target: UpdateProgressTarge
   writeMarker(dataDir, {
     startedAt: now,
     pid: process.pid,
-    progress: { stage: "preparing", target },
+    progress: { operation: "update", stage: "preparing", target },
   });
+}
+
+/**
+ * Persist `/restart full` before launching the reload helper. Unlike update,
+ * failure is returned to the caller: an untracked process reload must not start.
+ */
+export function beginFullRestartProgress(
+  dataDir: string,
+  target: UpdateProgressTarget,
+  now = Date.now(),
+): boolean {
+  return writeMarker(dataDir, {
+    startedAt: now,
+    pid: process.pid,
+    progress: { operation: "full-restart", stage: "stopping", target },
+  });
+}
+
+/** Backward-compatible: old markers had no operation and always meant update. */
+export function updateProgressOperation(progress: UpdateProgressState): UpdateProgressOperation {
+  return progress.operation === "full-restart" ? "full-restart" : "update";
 }
 
 /** Read the live progress contract shared by the old CLI and the new fleet. */
@@ -120,11 +145,11 @@ export function setUpdateProgressStage(
 }
 
 /** Called by `agend update` before it touches anything. */
-export function markUpdateInProgress(dataDir: string, now = Date.now()): void {
+export function markUpdateInProgress(dataDir: string, now = Date.now(), pid = process.pid): void {
   const existing = readMarker(dataDir);
   writeMarker(dataDir, {
     startedAt: existing?.startedAt ?? now,
-    pid: process.pid,
+    pid,
     ...(existing?.progress ? { progress: existing.progress } : {}),
   });
 }
