@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+  <title id="title">AgEnD v2.1.4 — 更穩定，也更好用</title>
+  <desc id="desc">AgEnD v2.1.4 穩定版更新宣傳圖，介紹四項重大穩定性修復與四項新功能。</desc>
+  <defs>
+    <linearGradient id="title-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2155E8"/>
+      <stop offset="0.52" stop-color="#4E46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="new-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F9F86"/>
+      <stop offset="1" stop-color="#0A7BD8"/>
+    </linearGradient>
+    <linearGradient id="footer-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#EFF5FF"/>
+      <stop offset="0.5" stop-color="#F3F0FF"/>
+      <stop offset="1" stop-color="#ECFBF7"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#22335F" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sans { font-family: "Microsoft YaHei Mono", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; }
+      .section-title { font-size: 31px; font-weight: 700; letter-spacing: 0.015em; }
+      .card-title { fill: #10182D; font-size: 23px; font-weight: 700; letter-spacing: -0.015em; }
+      .card-copy { fill: #58657B; font-size: 17px; font-weight: 400; }
+      .icon-line { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1200" fill="#FFFFFF"/>
+
+  <!-- Quiet decorative geometry -->
+  <g fill="none" stroke="#DCE7FF" stroke-width="1.5" opacity="0.65">
+    <path d="M0 78H292M0 130H238M0 182H180"/>
+    <path d="M52 0V224M104 0V185M156 0V137"/>
+    <path d="M1800 960H1640M1800 1012H1586M1800 1064H1532"/>
+    <path d="M1748 1200V940M1696 1200V980M1644 1200V1020"/>
+  </g>
+  <circle cx="1650" cy="104" r="72" fill="#F5F3FF"/>
+  <circle cx="1650" cy="104" r="43" fill="none" stroke="#D9D2FF" stroke-width="2"/>
+  <path d="M1650 72v64M1618 104h64" stroke="#6857E8" stroke-width="3" stroke-linecap="round" opacity="0.78"/>
+
+  <!-- Header -->
+  <g class="sans">
+    <rect x="96" y="68" width="142" height="38" rx="19" fill="#EEF3FF"/>
+    <circle cx="119" cy="87" r="5" fill="#315CE8"/>
+    <text x="135" y="94" fill="#3151B7" font-size="16" font-weight="700">穩定版更新</text>
+
+    <text x="96" y="184" fill="#0A1022" font-size="67" font-weight="800" letter-spacing="-0.045em">AgEnD <tspan fill="url(#title-gradient)">v2.1.4</tspan></text>
+    <text x="96" y="244" fill="#202B45" font-size="34" font-weight="700">更穩定，也更好用</text>
+    <text x="96" y="286" fill="#6A768B" font-size="20">重大穩定性修復與實用新功能，一次到位。</text>
+  </g>
+
+  <path d="M96 326H1704" stroke="#E6EAF2" stroke-width="2"/>
+
+  <!-- Section panels -->
+  <rect x="72" y="354" width="810" height="714" rx="30" fill="#F7F9FE" stroke="#E4E9F4" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="918" y="354" width="810" height="714" rx="30" fill="#F5FBFA" stroke="#DDEEEA" stroke-width="2" filter="url(#soft-shadow)"/>
+
+  <!-- Left section header -->
+  <g class="sans">
+    <rect x="104" y="389" width="50" height="50" rx="15" fill="#E9EFFF"/>
+    <path d="M118 414h22M129 403v22" stroke="#315CE8" stroke-width="3" stroke-linecap="round"/>
+    <text x="173" y="424" class="section-title" fill="#203B96">重大穩定性修復</text>
+  </g>
+
+  <!-- Right section header -->
+  <g class="sans">
+    <rect x="950" y="389" width="50" height="50" rx="15" fill="#E2F6F1"/>
+    <path d="M965 418l10-17 10 17h-7v10h-6v-10z" fill="url(#new-gradient)"/>
+    <text x="1019" y="424" class="section-title" fill="#087B6C">新功能</text>
+  </g>
+
+  <!-- Left cards -->
+  <g class="sans">
+    <g transform="translate(104 466)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 42)" color="#315CE8">
+        <rect class="icon-line" x="0" y="3" width="30" height="24" rx="4"/>
+        <circle class="icon-line" cx="10" cy="11" r="3"/>
+        <path class="icon-line" d="M4 23l7-7 5 5 4-4 6 6"/>
+        <path class="icon-line" d="M25 0v7M21.5 3.5h7"/>
+      </g>
+      <text x="104" y="48" class="card-title">Codex 讀圖不再卡住</text>
+      <text x="104" y="79" class="card-copy">處理圖片時不會再因誤判而重啟，</text>
+      <text x="104" y="105" class="card-copy">工作可順利繼續。</text>
+    </g>
+
+    <g transform="translate(104 614)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(37 42)" color="#315CE8">
+        <path class="icon-line" d="M8 0v9M22 0v9M4 9h22v4c0 7-5 12-11 12S4 20 4 13z"/>
+        <path class="icon-line" d="M15 25v6M11 31h8"/>
+        <path class="icon-line" d="M10 15l4 4 7-8"/>
+      </g>
+      <text x="104" y="48" class="card-title">工具連線不再誤判</text>
+      <text x="104" y="79" class="card-copy">連線異常會先確認再處理，</text>
+      <text x="104" y="105" class="card-copy">避免不必要的重啟。</text>
+    </g>
+
+    <g transform="translate(104 762)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 42)" color="#315CE8">
+        <path class="icon-line" d="M2 2h28v20H13l-8 7v-7H2z"/>
+        <path class="icon-line" d="M8 9h16M8 15h11"/>
+      </g>
+      <text x="104" y="48" class="card-title">Kiro 訊息不再被吞</text>
+      <text x="104" y="79" class="card-copy">忙碌時送出的工作也會按順序接住，</text>
+      <text x="104" y="105" class="card-copy">不再留在輸入框裡。</text>
+    </g>
+
+    <g transform="translate(104 910)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 41)" color="#315CE8">
+        <path class="icon-line" d="M27 8A13 13 0 1 0 28 23"/>
+        <path class="icon-line" d="M27 1v8h-8"/>
+        <path class="icon-line" d="M9 16l5 5 9-10"/>
+      </g>
+      <text x="104" y="48" class="card-title">重啟與斷線後接得上</text>
+      <text x="104" y="79" class="card-copy">Claude 的對話脈絡會被保留；啟動失敗或</text>
+      <text x="104" y="105" class="card-copy">Discord 斷線後也能自動恢復。</text>
+    </g>
+  </g>
+
+  <!-- Right cards -->
+  <g class="sans">
+    <g transform="translate(950 466)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M2 7h17a9 9 0 0 1 9 9v11"/>
+        <path class="icon-line" d="M22 21l6 6 6-6"/>
+        <path class="icon-line" d="M9 0v14M2 7h14"/>
+      </g>
+      <text x="104" y="48" class="card-title">即時補話給進行中的任務</text>
+      <text x="104" y="79" class="card-copy">用 /steer 在任務進行時插入補充，</text>
+      <text x="104" y="105" class="card-copy">不必等它結束再重講。</text>
+    </g>
+
+    <g transform="translate(950 614)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M2 3h28v20H13l-8 7v-7H2z"/>
+        <path class="icon-line" d="M13 9a4 4 0 1 1 4 4c-2 0-3 1-3 3"/>
+        <path class="icon-line" d="M14 21h.01"/>
+      </g>
+      <text x="104" y="48" class="card-title">不打斷任務問旁支問題</text>
+      <text x="104" y="79" class="card-copy">用 /btw 順手問個小問題，手上的任務照常進行。</text>
+      <text x="104" y="105" class="card-copy">目前支援 Claude Code。</text>
+    </g>
+
+    <g transform="translate(950 762)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M1 15s5-9 15-9 15 9 15 9-5 9-15 9S1 15 1 15z"/>
+        <circle class="icon-line" cx="16" cy="15" r="4"/>
+        <path class="icon-line" d="M25 1l2 2M5 1L3 3"/>
+      </g>
+      <text x="104" y="48" class="card-title">看得見代理正在用的工具</text>
+      <text x="104" y="79" class="card-copy">工作泡泡會即時列出正在執行的工具，</text>
+      <text x="104" y="105" class="card-copy">過程一目了然，也可自行開啟。</text>
+    </g>
+
+    <g transform="translate(950 910)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <rect class="icon-line" x="2" y="3" width="29" height="24" rx="5"/>
+        <path class="icon-line" d="M8 15l4 4 7-8"/>
+        <path class="icon-line" d="M24 10h2M24 16h2M24 22h2"/>
+      </g>
+      <text x="104" y="48" class="card-title">確認步驟直接在聊天處理</text>
+      <text x="104" y="79" class="card-copy">需要系統授權或確認時，直接按下確認或取消，</text>
+      <text x="104" y="105" class="card-copy">不必連進主機。</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <g class="sans">
+    <rect x="445" y="1100" width="910" height="58" rx="29" fill="url(#footer-gradient)" stroke="#E2E7F1"/>
+    <circle cx="492" cy="1129" r="8" fill="#315CE8"/>
+    <text x="516" y="1137" fill="#25324B" font-size="20" font-weight="700">完整繁體中文介面</text>
+    <circle cx="885" cy="1129" r="3.5" fill="#9AA5B5"/>
+    <text x="920" y="1137" fill="#25324B" font-size="20" font-weight="700">穩定版現已推出</text>
+    <circle cx="1308" cy="1129" r="8" fill="#0B9B82"/>
+  </g>
+</svg>
