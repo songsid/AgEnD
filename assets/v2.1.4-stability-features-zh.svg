@@ -139,8 +139,9 @@
         <path class="icon-line" d="M9 0v14M2 7h14"/>
       </g>
       <text x="104" y="48" class="card-title">即時補話給進行中的任務</text>
-      <text x="104" y="79" class="card-copy">用 /steer 在任務進行時插入補充，</text>
-      <text x="104" y="105" class="card-copy">不必等它結束再重講。</text>
+      <text x="104" y="76" class="card-copy" font-size="15.5">用 /steer 在任務進行時插入補充，</text>
+      <text x="104" y="98" class="card-copy" font-size="15.5">不必等它結束再重講。</text>
+      <text x="104" y="120" class="card-copy" font-size="15.5">目前支援 Claude Code、Codex 與 Grok。</text>
     </g>
 
     <g transform="translate(950 614)">
@@ -165,8 +166,9 @@
         <path class="icon-line" d="M25 1l2 2M5 1L3 3"/>
       </g>
       <text x="104" y="48" class="card-title">看得見代理正在用的工具</text>
-      <text x="104" y="79" class="card-copy">工作泡泡會即時列出正在執行的工具，</text>
-      <text x="104" y="105" class="card-copy">過程一目了然，也可自行開啟。</text>
+      <text x="104" y="76" class="card-copy" font-size="15.5">工作時泡泡可即時列出正在執行的工具。</text>
+      <text x="104" y="98" class="card-copy" font-size="15.5">預設關閉，於 Settings 把 tool_progress</text>
+      <text x="104" y="120" class="card-copy" font-size="15.5">設為 standard 開啟。</text>
     </g>
 
     <g transform="translate(950 910)">
