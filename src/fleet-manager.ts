@@ -2694,9 +2694,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ...fleet.defaults.daily_summary,
     };
     this.dailySummary = new DailySummary(summaryConfig, costGuardConfig.timezone, (text) => {
-      if (!this.adapter || !this.fleetConfig?.channel?.group_id) return;
-      this.adapter.sendText(String(this.fleetConfig.channel.group_id), text)
-        .catch(e => this.logger.warn({ err: e }, "Failed to send daily summary"));
+      this.postDailySummary(text);
       // Rotate classic channel chat logs daily
       this.classicChannels?.rotateLogs();
       this.rotateInboxes();
@@ -5186,9 +5184,56 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.notifyScheduleFailure(schedule);
   }
 
+  /**
+   * The adapter that can actually post into a chat, found by its group.
+   *
+   * A schedule records where it was created (reply_chat_id) separately from
+   * what it triggers (target). Those need not share a platform: a Telegram
+   * group can schedule a Discord-topic instance. Picking the adapter from the
+   * target then sends a Telegram chat id through the Discord bot, which fails
+   * with Unknown Channel — the source topic never hears that its schedule ran.
+   *
+   * When several bots share one guild, the primary wins: a persona should not
+   * be the voice announcing fleet scheduling.
+   */
+  private adapterForChat(chatId: string): ChannelAdapter | undefined {
+    const id = String(chatId);
+    const matches = [...this.worlds.values()].filter(world => String(world.groupId) === id);
+    if (matches.length === 0) return undefined;
+    const primaryId = this.getPrimaryAdapterId();
+    return (matches.find(world => world.id === primaryId) ?? matches[0]).adapter;
+  }
+
+  /**
+   * The adapter that can answer a schedule in the chat it was created from.
+   *
+   * A schedule records its creator (source) and its trigger (target) separately,
+   * and they need not share a platform — the live fleet has a Telegram group
+   * scheduling a Discord-topic instance. Routing by target sends a Telegram chat
+   * id through the Discord bot, which is one half of the Unknown Channel errors.
+   *
+   * The creator's own adapter comes first, and only when its world actually owns
+   * that chat. Classic keeps its own identity, so a schedule made from a
+   * persona-bound Classic channel is answered by that persona: the primary bot
+   * may not even have access there, and would be the wrong voice if it did.
+   * Falling back to the target's adapter is deliberately NOT an option — that is
+   * the misroute itself; callers say why they stayed silent instead.
+   */
+  private scheduleSourceAdapter(schedule: Schedule): ChannelAdapter | undefined {
+    const chatId = String(schedule.reply_chat_id);
+    const sourceAdapterId = schedule.source ? this.getInstanceAdapterId(schedule.source) : undefined;
+    const sourceWorld = sourceAdapterId ? this.worlds.get(sourceAdapterId) : undefined;
+    if (sourceWorld && String(sourceWorld.groupId) === chatId) return sourceWorld.adapter;
+    return this.adapterForChat(chatId);
+  }
+
   private notifySourceTopic(schedule: Schedule): void {
-    const adapter = this.getAdapterForInstance(schedule.target) ?? this.adapter;
-    if (!adapter) return;
+    const adapter = this.scheduleSourceAdapter(schedule);
+    if (!adapter) {
+      this.logger.warn({ scheduleId: schedule.id, chatId: schedule.reply_chat_id, source: schedule.source },
+        "No adapter can reach the schedule's source chat — trigger notice not sent");
+      return;
+    }
     const text = `⏰ Schedule "${schedule.label ?? schedule.id}" triggered, target: ${schedule.target}`;
     adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
@@ -5196,8 +5241,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private notifyScheduleFailure(schedule: Schedule): void {
-    const adapter = this.getAdapterForInstance(schedule.target) ?? this.adapter;
-    if (!adapter) return;
+    // Same resolver as the success path: a failure notice was still being sent
+    // through the target's adapter, so a Telegram-created schedule for a
+    // Discord target announced its failure into the wrong platform.
+    const adapter = this.scheduleSourceAdapter(schedule);
+    if (!adapter) {
+      this.logger.warn({ scheduleId: schedule.id, chatId: schedule.reply_chat_id, source: schedule.source },
+        "No adapter can reach the schedule's source chat — failure notice not sent");
+      return;
+    }
     const text = `⏰ Schedule "${schedule.label ?? schedule.id}" trigger failed: instance ${schedule.target} is offline.`;
     adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
@@ -6070,6 +6122,67 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.notifyFleetError(t("classic.unrecoverable_ids", list));
   }
 
+  /**
+   * Where a fleet-wide notice can actually be posted, or null if nowhere.
+   *
+   * On Telegram a group id is itself a chat, so posting straight to it is
+   * right. On Discord it is a *guild* id, and sending there makes the adapter
+   * fetch a channel that does not exist — DiscordAPIError 10003 Unknown
+   * Channel. That is why the daily summary never arrived on a Discord fleet:
+   * it had been posting to the guild every night and only the catch handler
+   * ever saw it.
+   *
+   * Discord therefore needs a real channel: the General topic (resolved from
+   * config rather than findGeneralInstance, so a fleet-level fault can still be
+   * reported while the General daemon is down), else the adapter's configured
+   * general_channel_id. With neither, there is no safe target and the caller
+   * should say so rather than send into a guaranteed failure.
+   */
+  private fleetNoticeTarget(adapterId?: string): { chatId: string; opts: import("./channel/types.js").SendOpts } | null {
+    const cfg = this.getChannelConfig(adapterId);
+    const groupId = cfg?.group_id;
+    if (groupId == null) return null;
+    const chatId = String(groupId);
+
+    // The General must belong to the SAME adapter as the group above. Taking
+    // whichever General comes first in the instance map produced a mixed target
+    // on a dual-platform fleet — a Telegram group id carrying a Discord channel
+    // as its thread — and made the result depend on map insertion order.
+    // Resolved from config, not from a live daemon, so a fleet-level fault is
+    // still reportable while the General itself is down.
+    const ownerId = cfg?.id ?? cfg?.type;
+    const generalTopic = Object.entries(this.fleetConfig?.instances ?? {})
+      .find(([name, instance]) => instance.general_topic === true
+        && this.getInstanceAdapterId(name) === ownerId)?.[1]?.topic_id;
+    if (generalTopic != null) return { chatId, opts: { threadId: String(generalTopic) } };
+
+    if (cfg?.type === "discord") {
+      const configured = cfg.options?.general_channel_id;
+      if (configured != null && String(configured)) {
+        return { chatId, opts: { threadId: String(configured) } };
+      }
+      return null;   // a guild id is not a channel; sending would always fail
+    }
+    return { chatId, opts: {} };
+  }
+
+  /**
+   * Post the daily summary where fleet-wide notices go.
+   *
+   * A named method rather than an inline closure so a test can drive the real
+   * thing: asserting on fleetNoticeTarget alone leaves the call site free to go
+   * back to posting at the bare group id, which is the defect this replaced.
+   */
+  private postDailySummary(text: string): void {
+    const target = this.fleetNoticeTarget();
+    if (!this.adapter || !target) {
+      this.logger.warn("Daily summary has no postable target — set a General topic or channel.options.general_channel_id");
+      return;
+    }
+    this.adapter.sendText(target.chatId, text, target.opts)
+      .catch(e => this.logger.warn({ err: e }, "Failed to send daily summary"));
+  }
+
   notifyFleetError(text: string): void {
     const now = Date.now();
     const key = text.slice(0, 200);
@@ -6097,10 +6210,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (general) {
       dispatched = this.notifyInstanceTopic(general, body);
     } else {
-      // No General instance — fall back to the primary channel's group.
-      const groupId = this.getChannelConfig()?.group_id;
-      if (this.adapter && groupId) {
-        this.adapter.sendText(String(groupId), body)
+      // No General instance — fall back to the primary channel's own notice
+      // target. Posting to the bare group id looked right but is a guild id on
+      // Discord, so every such fallback failed inside the catch handler.
+      const target = this.fleetNoticeTarget();
+      if (this.adapter && target) {
+        this.adapter.sendText(target.chatId, body, target.opts)
           .catch(err => this.logger.warn({ err }, "Failed to send fleet error notification"));
         dispatched = true;
       }
@@ -6166,13 +6281,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return true;
     }
 
-    // Fallback: send to group without threadId
-    if (groupId) {
-      adapter.sendText(String(groupId), text, extraOpts)
+    // Fallback: the instance has neither a topic nor a classic channel, so post
+    // where fleet-wide notices go. Not the bare group id: on Discord that is a
+    // guild, and the send fails inside the catch handler.
+    const target = this.fleetNoticeTarget(this.getInstanceAdapterId(instanceName));
+    if (target) {
+      adapter.sendText(target.chatId, text, { ...target.opts, ...extraOpts })
         .catch(e => this.logger.warn({ err: e, instanceName }, "Failed to send notification (no topic)"));
       return true;
     }
-    this.logger.warn({ instanceName }, "No group id — instance topic notification not sent");
+    this.logger.warn({ instanceName }, "No postable target — instance topic notification not sent");
     return false;
   }
 
@@ -10638,10 +10756,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       setUpdateProgressStage(this.dataDir, "stopping");
     }
 
-    const groupId = this.fleetConfig?.channel?.group_id;
-    if (!trackedFullRestart && groupId && this.adapter) {
-      await this.adapter.sendText(String(groupId), t("restart.full_initiated"))
-        .catch(e => this.logger.warn({ err: e }, "Failed to post full restart notification"));
+    const restartTarget = this.fleetNoticeTarget();
+    if (!trackedFullRestart && this.adapter) {
+      if (restartTarget) {
+        await this.adapter.sendText(restartTarget.chatId, t("restart.full_initiated"), restartTarget.opts)
+          .catch(e => this.logger.warn({ err: e }, "Failed to post full restart notification"));
+      } else {
+        // Say why nothing was posted. A restart that announces itself nowhere,
+        // for a reason nobody logged, is the harder version of this bug.
+        this.logger.warn("Full restart notice has no postable target — set a General topic or channel.options.general_channel_id");
+      }
     }
 
     // Wait for idle with 5-minute timeout
