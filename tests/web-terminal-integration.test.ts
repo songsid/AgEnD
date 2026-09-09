@@ -5,6 +5,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { TmuxTerminalBackend, WebTerminalSession, probeProcess, type ProcessProbe, type WebTerminalResult, type WebTerminalSpec } from "../src/web-terminal.js";
 import { WebTerminalHttpServer } from "../src/web-terminal-http.js";
 
@@ -624,5 +625,55 @@ exit 75
     await until(() => {
       try { return execFileSync("tmux", ["-L", session.socketName, "display", "-p", "-t", "main", "#{window_width}x#{window_height}"]).toString().trim() === "90x25"; } catch { return false; }
     });
+  });
+});
+
+/**
+ * Regression for the first real-browser acceptance: the link handed out was
+ * `/t/<sid>` (no trailing slash) while terminal.html loads `assets/…`
+ * relatively, so every asset resolved to `/t/assets/…` → 404 text/plain (no
+ * xterm, CSS refused by MIME, and with terminal.js missing the token form fell
+ * back to a native submit that CSP form-action 'none' blocks). Absolute-path
+ * asset fetches in the cases above never exercised that resolution step, and
+ * this needs no tmux: a fake session is enough to serve the page.
+ */
+describe("web terminal — the page's relative asset references resolve against the handed-out URL", () => {
+  function fakeSession(): WebTerminalSession {
+    const s = new EventEmitter();
+    return Object.assign(s, {
+      sid: "ab".repeat(16), state: "running",
+      redeemToken: () => ({ result: "bad", remaining: 2 }),
+      checkCookie: () => false,
+      attachClient: () => () => {},
+      cancel: async () => {},
+    }) as unknown as WebTerminalSession;
+  }
+
+  it("hands out a URL ending in '/', serves every href/src the browser would derive from it, and redirects the bare path", async () => {
+    const http = new WebTerminalHttpServer(fakeSession(), logger, { assetsDir: ASSETS, hostname: "127.0.0.1" });
+    servers.push(http);
+    const { url } = await http.listen();
+    expect(url).toMatch(/\/t\/[0-9a-f]{32}\/$/);
+
+    const page = await fetch(url);
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    const refs = [...html.matchAll(/(?:href|src)="([^"]+)"/g)].map(m => m[1]);
+    expect(refs.length).toBeGreaterThanOrEqual(6);                 // xterm.css, terminal.css, xterm.js, 2 addons, terminal.js
+    for (const ref of refs) {
+      const res = await fetch(new URL(ref, url));                  // exactly what the browser does with a relative URL
+      expect(res.status, ref).toBe(200);
+      const type = res.headers.get("content-type") ?? "";
+      expect(/^text\/(javascript|css); charset=utf-8$/.test(type), `${ref} → ${type}`).toBe(true);
+    }
+
+    // A link pasted without the trailing slash lands on the same page.
+    const bare = url.replace(/\/$/, "");
+    const redirect = await fetch(bare, { redirect: "manual" });
+    expect(redirect.status).toBe(302);
+    expect(redirect.headers.get("location")).toBe(new URL(url).pathname);
+    expect(redirect.headers.get("cache-control")).toBe("no-store");
+    expect((await fetch(bare)).status).toBe(200);                  // followed by default, as a browser would
+    expect((await fetch(bare, { method: "POST", redirect: "manual" })).status).toBe(405);
   });
 });

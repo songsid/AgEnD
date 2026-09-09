@@ -5,8 +5,11 @@
  * the dashboard/health server, so a tunnel pointed at it (phase 3) can reach
  * nothing else. Routes (sid must match exactly, everything else is 404):
  *
- *   GET  /t/<sid>                static page — NO side effects (link-preview
+ *   GET  /t/<sid>/               static page — NO side effects (link-preview
  *                                bots fetch it), NO secret in the URL
+ *   GET  /t/<sid>                302 → /t/<sid>/ (the page references its
+ *                                assets relatively; without the trailing
+ *                                slash a browser resolves them under /t/)
  *   GET  /t/<sid>/assets/<file>  vendored xterm.js + page script/style
  *   POST /t/<sid>/open           {token} → token gate → HttpOnly cookie
  *   GET  /t/<sid>/ws (upgrade)   cookie + Origin → WebSocket to the pane
@@ -98,6 +101,14 @@ export class WebTerminalHttpServer {
 
   get pagePath(): string { return `/t/${this.session.sid}`; }
 
+  /**
+   * The URL handed to the admin ends with "/" on purpose: terminal.html loads
+   * `assets/…` relative to the document, and relative resolution drops the last
+   * path segment of a slash-less URL (`/t/<sid>` → `/t/assets/…`, a 404 that
+   * left the first real-browser acceptance with no xterm and a blocked form).
+   */
+  get pageUrl(): string { return `http://${this.hostname}:${this.port}${this.pagePath}/`; }
+
   /** Start listening; returns the URL to hand the admin (it contains no secret). */
   async listen(): Promise<{ port: number; url: string }> {
     if (this.server) throw new Error("already listening");
@@ -147,7 +158,7 @@ export class WebTerminalHttpServer {
     const onFinished = () => { void this.close(); };
     this.session.once("finished", onFinished);
     this.unsubscribeFinished = () => this.session.off("finished", onFinished);
-    return { port: this.port, url: `http://${this.hostname}:${this.port}${this.pagePath}` };
+    return { port: this.port, url: this.pageUrl };
   }
 
   async close(): Promise<void> {
@@ -177,7 +188,13 @@ export class WebTerminalHttpServer {
     if (path === null) return this.text(res, 400, "bad request");
     const base = this.pagePath;
 
-    if (path === base || path === `${base}/`) {
+    if (path === base) {
+      // A pasted or hand-typed link without the trailing slash: send the
+      // browser to the canonical form so its relative asset URLs resolve.
+      if (req.method !== "GET") return this.text(res, 405, "method not allowed");
+      return this.redirect(res, `${base}/`);
+    }
+    if (path === `${base}/`) {
       if (req.method !== "GET") return this.text(res, 405, "method not allowed");
       return this.page(res);
     }
@@ -346,6 +363,13 @@ export class WebTerminalHttpServer {
   private isHttps(req: IncomingMessage): boolean {
     const proto = String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim().toLowerCase();
     return proto === "https" || Boolean((req.socket as Socket & { encrypted?: boolean }).encrypted);
+  }
+
+  private redirect(res: ServerResponse, location: string): void {
+    if (res.headersSent) { res.end(); return; }
+    // 302 (not 301): nothing about this session-scoped path is worth caching.
+    res.writeHead(302, { Location: location, "Content-Type": "text/plain; charset=utf-8" });
+    res.end(`see ${location}\n`);
   }
 
   private text(res: ServerResponse, status: number, body: string): void {
