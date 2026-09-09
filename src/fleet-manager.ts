@@ -2041,13 +2041,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private backendNameOf(name: string): string {
     const fleetDefault = this.fleetConfig?.defaults?.backend;
-    const configured = this.fleetConfig?.instances[name]?.backend;
-    if (configured) return configured;
+    const fleetInstance = this.fleetConfig?.instances[name];
+    // A malformed/manual config can give a fleet and Classic entry the same
+    // instance name. Fleet ownership wins, including its inherited default;
+    // otherwise a Classic override could make backend-scoped recovery restart
+    // the shared process under the wrong login result.
+    if (fleetInstance) return fleetInstance.backend ?? fleetDefault ?? "claude-code";
     // ClassicBot channels pick their own backend; the fleet default is only the fallback.
     if (this.classicChannels?.getAll().some(channel => channel.instanceName === name)) {
       return this.classicChannels.getBackendByInstance(name, fleetDefault);
     }
     return fleetDefault ?? "claude-code";
+  }
+
+  /**
+   * Every configured instance whose backend may share credentials. ClassicBot
+   * rows live only in classicBot.yaml, so backend-wide operations must not use
+   * fleetConfig.instances as their roster. Set keeps a malformed name collision
+   * from restarting the same process twice; backendNameOf defines ownership.
+   */
+  private configuredBackendInstanceNames(): string[] {
+    const names = new Set(Object.keys(this.fleetConfig?.instances ?? {}));
+    for (const channel of this.classicChannels?.getAll() ?? []) names.add(channel.instanceName);
+    return [...names];
   }
 
   /**
@@ -7699,8 +7715,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string;
   }): Promise<void> {
     const configured = new Set<string>();
-    for (const [, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      configured.add(config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+    for (const name of this.configuredBackendInstanceNames()) {
+      configured.add(this.backendNameOf(name));
     }
     const choices = Object.keys(LOGIN_FLOWS)
       .filter(backend => configured.size === 0 || configured.has(backend))
@@ -8152,9 +8168,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async recoverBackendInstances(backend: string): Promise<{ woken: string[]; restarted: string[] }> {
     const woken: string[] = [];
     const restarted: string[] = [];
-    for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
-      const effective = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
-      if (effective !== backend) continue;
+    for (const name of this.configuredBackendInstanceNames()) {
+      if (this.backendNameOf(name) !== backend) continue;
       const status = this.getInstanceStatus(name);
       try {
         if (status === "paused") {
