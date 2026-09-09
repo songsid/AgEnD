@@ -40,7 +40,7 @@ class FakeHttp {
   constructor(readonly session: FakeSession, readonly opts: { hostname?: string; bind?: string }) {}
   async listen(): Promise<{ port: number; url: string }> {
     if (FakeHttp.failListen) throw new Error("EADDRINUSE");
-    return { port: 40001, url: `http://${this.opts.hostname ?? "localhost"}:40001/t/${"ab".repeat(16)}` };
+    return { port: 40001, url: `http://${this.opts.hostname ?? "localhost"}:40001/t/${"ab".repeat(16)}/` };
   }
   async close(): Promise<void> { this.closed = true; }
 }
