@@ -65,6 +65,21 @@ const STRANDED_WRAPPED = `
 使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。
 `;
 
+/**
+ * A submitted turn while the spinner is absent: the last visible prompt is
+ * historical, followed by the user envelope and agent/tool transcript. This is
+ * the shape that used to be mistaken for unsent input and produce a false ❌.
+ */
+const SUBMITTED_WITH_AGENT_OUTPUT = `
+ ▸ Time: 9s
+32% λ !>
+[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進
+(message_id: 1547447698142138419)
+我會繼續確認目前的進度。
+Running tool: list_instances
+已取得 instance 清單，正在整理結果。
+`;
+
 describe("pane-input-residue: bottom-anchored readiness", () => {
   it("is NOT ready while a silent tool runs (bottom row is the tool banner)", () => {
     expect(lastNonBlankRow(TOOL_RUNNING)).toContain("Purpose:");
@@ -135,9 +150,14 @@ describe("pane-input-residue: did our paste get submitted?", () => {
   });
 
   it("survives the TUI re-wrapping the pasted text", () => {
-    const long = "[from:agend-leader-t1503382358143799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報…";
+    const long = "[from:agend-leader-t1503382358143799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。\n(message_id: 2)";
     expect(pasteLeftInInput(STRANDED_WRAPPED, PROMPT, long)).toBe(true);
     expect(pastedTextSignature(long)).toHaveLength(24);
+  });
+
+  it("does not mistake a submitted transcript followed by agent output for active input", () => {
+    const submitted = "[user:hanhanv via discord, id:368442276000694273] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
+    expect(pasteLeftInInput(SUBMITTED_WITH_AGENT_OUTPUT, PROMPT, submitted)).toBe(false);
   });
 
   it("is a whitespace-insensitive prefix match, so a different message is not mistaken for ours", () => {

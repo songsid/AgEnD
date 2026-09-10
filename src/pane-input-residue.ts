@@ -77,15 +77,21 @@ export function pastedTextSignature(formatted: string): string {
 
 /**
  * True when the text we just pasted is still sitting in the input area — i.e.
- * the Enter did not submit it. Compares whitespace-insensitively because the
- * TUI re-wraps pasted text to the pane width.
+ * the Enter did not submit it. Positive evidence requires the CURRENT prompt
+ * input to consist only of the payload (or its visible prefix). Merely finding
+ * the payload somewhere below a historical prompt is not enough: after a
+ * successful submit Kiro keeps the user message in the transcript, followed by
+ * agent/tool output. Compares whitespace-insensitively because the TUI re-wraps
+ * pasted text to the pane width.
  */
 export function pasteLeftInInput(pane: string, promptPattern: RegExp, formatted: string): boolean {
   const input = inputAreaText(pane, promptPattern);
   if (!input) return false;
   const signature = pastedTextSignature(formatted);
   if (!signature) return false;
-  return input.replace(/\s+/g, "").includes(signature);
+  const visibleInput = input.replace(/\s+/g, "");
+  const payload = formatted.replace(/\s+/g, "");
+  return visibleInput.includes(signature) && payload.startsWith(visibleInput);
 }
 
 /**
