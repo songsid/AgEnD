@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { freemem, totalmem } from "node:os";
+import { freemem, totalmem, cpus } from "node:os";
 import { access } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join, dirname, basename } from "node:path";
@@ -462,6 +462,19 @@ const CLI_ENV_FRESH_MS = 60 * 60 * 1000;
  */
 export const CLI_ENV_PROBE_DEADLINE_MS = 16_000;
 
+/**
+ * How many CLIs may cold-start at once, from BOTH memory and cores.
+ *
+ * Memory alone said 10 on any host with roughly 3GB free, so a three-core box
+ * started ten CLIs together, saturated the CPU, and healthy starts then missed
+ * their startup budget — which used to cost the user their conversation. Cores
+ * bound how many can actually make progress; memory bounds how many fit.
+ */
+export function deriveSpawnConcurrency(freeMemMB: number, cores: number): number {
+  const byMemory = Math.floor(freeMemMB / 300);
+  return Math.max(2, Math.min(10, byMemory, Math.max(1, cores)));
+}
+
 export class FleetManager implements FleetContext, LifecycleContext, ArchiverContext, StatuslineWatcherContext, OutboundContext, AgentEndpointContext {
   private static signalTarget: FleetManager | null = null;
   private static sighupHandlerInstalled = false;
@@ -661,8 +674,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private spawnConcurrency(): number {
     const explicit = this.fleetConfig?.defaults?.startup?.concurrency;
     if (explicit != null) return Math.max(1, Math.min(20, explicit));
-    const freeMemMB = Math.round(freemem() / (1024 * 1024));
-    return Math.max(2, Math.min(10, Math.floor(freeMemMB / 300)));
+    return deriveSpawnConcurrency(Math.round(freemem() / (1024 * 1024)), cpus().length);
   }
 
   /** Wire the one fleet-wide storm into notification and recovery surfaces. */

@@ -256,6 +256,14 @@ export interface CliBackend {
    * being corrupt — and dropping to a fresh session loses the conversation.
    * The daemon bounds this to one extra attempt. Absent means false.
    */
+  /**
+   * Whether a failed resume is retried once before the session is given up.
+   *
+   * Defaults to TRUE for every backend: a first miss is usually slowness, not a
+   * broken session. It was per-backend opt-in and only kiro implemented it, so
+   * claude-code gave up its session on the first timeout — the footgun that
+   * cost users their history. Backends override to false only with a reason.
+   */
   retriesResumeOnStartupFailure?(): boolean;
 
   /**

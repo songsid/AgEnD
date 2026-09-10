@@ -1,5 +1,5 @@
 import { join, dirname, basename, resolve } from "node:path";
-import { mkdirSync, writeFileSync, readFileSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { createHash, randomBytes } from "node:crypto";
@@ -2018,9 +2018,8 @@ export class Daemon extends EventEmitter {
           // --continue again and crash in the same way → loop. Clear the session id
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
-          if (lastOutput && /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)|--continue/i.test(lastOutput)) {
-            this.logger.warn("Detected --continue/resume failure — clearing session-id; next spawn starts fresh");
-            try { unlinkSync(join(this.instanceDir, "session-id")); } catch { /* may not exist */ }
+          if (this.paneSaysNoConversation(lastOutput)) {
+            this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
 
@@ -5110,6 +5109,63 @@ export class Daemon extends EventEmitter {
   }
 
   /** Spawn a CLI window. Returns true if --resume was used successfully. */
+  /**
+   * Positive proof from the CLI that there is no conversation left to resume.
+   *
+   * Only this may justify abandoning a session. A startup that merely ran out of
+   * budget proves nothing: a healthy cold start on a loaded host looks exactly
+   * the same, which is how 9 instances silently lost their history.
+   *
+   * Deliberately does NOT match a bare "--continue": the pane text can mention
+   * the flag (a usage error, an echoed invocation) without the CLI ever saying
+   * the conversation is gone.
+   */
+  private paneSaysNoConversation(paneText: string | undefined): boolean {
+    if (!paneText) return false;
+    return /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i
+      .test(paneText);
+  }
+
+  /** How many consecutive startups have failed without proving the session is gone. */
+  private unprovenResumeFailures = 0;
+  /** After this many, start fresh anyway — loudly — so a truly broken session still recovers. */
+  private static readonly MAX_UNPROVEN_RESUME_FAILURES = 3;
+
+  /**
+   * Set the session aside instead of deleting it.
+   *
+   * The whole defect being fixed here is silent, irreversible loss of a user's
+   * conversation. Renaming costs nothing and turns a wrong call into something
+   * recoverable: the id is still on disk under a dated name.
+   */
+  private setSessionAside(reason: string): void {
+    const sidFile = join(this.instanceDir, "session-id");
+    try {
+      if (!existsSync(sidFile)) return;
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      renameSync(sidFile, join(this.instanceDir, `session-id.abandoned-${stamp}`));
+      this.logger.warn({ reason }, "Session set aside (kept on disk as session-id.abandoned-*), starting fresh");
+      this.pruneAbandonedSessions();
+    } catch (err) {
+      // Never let bookkeeping block a spawn; falling back to the old behaviour
+      // is still better than not starting.
+      this.logger.warn({ err: (err as Error).message }, "Could not set session aside");
+      try { unlinkSync(sidFile); } catch { /* may not exist */ }
+    }
+  }
+
+  /** Keep the newest few set-aside sessions; they are insurance, not an archive. */
+  private pruneAbandonedSessions(keep = 5): void {
+    try {
+      const files = readdirSync(this.instanceDir)
+        .filter((f: string) => f.startsWith("session-id.abandoned-"))
+        .sort();
+      for (const f of files.slice(0, Math.max(0, files.length - keep))) {
+        try { unlinkSync(join(this.instanceDir, f)); } catch { /* best effort */ }
+      }
+    } catch { /* best effort */ }
+  }
+
   private async spawnClaudeWindow(): Promise<boolean> {
     this.beginSpawn();
     let resumedSuccessfully = false;
@@ -5135,7 +5191,7 @@ export class Daemon extends EventEmitter {
       //     first miss is usually slowness, not a broken session.
       await this.noteStartupPaneForBackendOutage();
       await this.failStartupIfBackendUnreachable();
-      if (this.backend.retriesResumeOnStartupFailure?.() === true) {
+      if (this.backend.retriesResumeOnStartupFailure?.() !== false) {
         this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
         await this.killProcessTree();
         await this.tmux!.killWindow();
@@ -5148,13 +5204,41 @@ export class Daemon extends EventEmitter {
     }
 
     if (!alive) {
-      // Resume (or a fresh start) failed for a reason we do not recognise as an
-      // outage (stale --resume, crash, rate limit, etc.).
-      // Clean slate: clear session-id, skip resume, and retry once.
-      this.logger.warn("CLI startup failed — clearing session-id and retrying without resume");
-      const sidFile = join(this.instanceDir, "session-id");
-      try { unlinkSync(sidFile); } catch { /* may not exist */ }
+      // The session may only be abandoned on positive proof that there is
+      // nothing to resume. Running out of budget is not proof: on a loaded host
+      // a healthy cold start misses the same deadline as a broken session, and
+      // treating the two alike is what silently discarded users' conversations.
+      if (attemptedResume) {
+      let paneText: string | undefined;
+      try { paneText = await this.tmux?.capturePaneWithHistory(50); } catch { /* pane may be gone */ }
+      const proven = this.paneSaysNoConversation(paneText);
+      if (!proven) {
+        this.unprovenResumeFailures++;
+        if (this.unprovenResumeFailures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
+          // Keep the session and fail this attempt; the fleet retries with
+          // backoff, which is also how the backend-outage path behaves.
+          await this.killProcessTree();
+          await this.tmux!.killWindow();
+          throw new Error(
+            `CLI startup failed with a session to resume (attempt ${this.unprovenResumeFailures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
+            + "— session kept, will retry",
+          );
+        }
+        // Escape hatch: a genuinely broken session must still recover. Say so
+        // out loud — this start does NOT continue the previous conversation.
+        this.logger.error(
+          { attempts: this.unprovenResumeFailures },
+          "Giving up on resuming after repeated startup failures — starting fresh. "
+          + "The previous conversation is NOT continued; its context is lost to this session.",
+        );
+        this.emit("context_lost", this.name, "resume_repeatedly_failed");
+      }
+      this.setSessionAside(proven ? "cli_reported_no_conversation" : "resume_failed_repeatedly");
       this.skipResume = true;
+      }
+      // A fresh start that also failed retries once, as before. It never clears
+      // a session: nothing about a failed fresh launch says the stored
+      // conversation is unusable.
       await this.killProcessTree();
       await this.tmux!.killWindow();
 

@@ -170,9 +170,22 @@ export function claudeResumeMenuState(pane: string): { active: boolean; defaultC
 const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeMenuState(pane); return s.active && s.defaultCursor; };
 const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).active;
 
+/** Startup budget for a resuming claude-code launch (fresh starts keep the default). */
+export const CLAUDE_RESUME_STARTUP_BUDGET_MS = 60_000;
+
 export class ClaudeCodeBackend implements CliBackend {
   readonly binaryName = "claude";
   readonly instructionsReloadedOnResume = true;
+
+  /**
+   * Resuming needs the conversation back from the backend before anything
+   * paints, so it needs more room than a fresh prompt — the same reason kiro
+   * carries an override. Without one, claude-code used the 25s default (15s to
+   * first output) and a cold start on a busy host missed it routinely.
+   */
+  getStartupBudgetMs(ctx: { resume: boolean }): number | undefined {
+    return ctx.resume ? CLAUDE_RESUME_STARTUP_BUDGET_MS : undefined;
+  }
   private binaryPath: string;
 
   constructor(private instanceDir: string) {
