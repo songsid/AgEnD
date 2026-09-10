@@ -29,6 +29,14 @@ const MESSAGE = "[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted 
 const STRANDED = ` ▸ Time: 15s\n2% !> ${MESSAGE.split("\n")[0]}`;
 const GENERATING = `2% !> ${MESSAGE.split("\n")[0]}\n⠇ Thinking...`;
 const OLD_STRANDED = " ▸ Time: 9s\n7% !> [from:agend-leader-t1503382358143799511] an earlier message whose Enter was dropped";
+const SUBMITTED_WITHOUT_SPINNER = [
+  " ▸ Time: 9s",
+  "32% λ !>",
+  MESSAGE,
+  "I will inspect the fleet now.",
+  "Running tool: list_instances",
+  "The instance list is ready; I am preparing the reply.",
+].join("\n");
 
 const KIRO_COMPAT = {
   version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version" as const,
@@ -278,6 +286,23 @@ describe("kiro delivery: the Enter-drop gate is legacy-UI only", () => {
 });
 
 describe("kiro delivery: submission verification (F2)", () => {
+  it("confirms promptly when a historical prompt is followed by the submitted turn and agent output", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = true;
+    h.paste.mockImplementation(async () => {
+      h.state.pane = SUBMITTED_WITHOUT_SPINNER;
+      h.state.silent = false;
+      return true;
+    });
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, {}), 5_000);
+
+    expect(ok).toBe(true);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+    expect(h.enter).toHaveBeenCalledTimes(2); // initial + queue-less defensive Enter
+  });
+
   it("re-sends Enter once the prompt is back when the first Enters were dropped, and only then confirms", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     // Paste lands, but both Enters are dropped: the text stays in the input row.
