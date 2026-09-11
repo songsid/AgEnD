@@ -54,6 +54,12 @@ export const DEFAULT_DAILY_SUMMARY: DailySummaryConfig = {
 /** Product-level context protection for cross-instance message bodies (12 KiB). */
 export const DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES = 12 * 1024;
 
+/** Output size budget for list_instances progressive disclosure (8 KiB). */
+export const DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET = 8 * 1024;
+
+/** Maximum lines for get_instance_logs to prevent context flooding. */
+export const MAX_INSTANCE_LOG_LINES = 200;
+
 export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> = {
   auto_pause_after: 0, // minutes; 0 = disabled (opt-in)
   mcp_auto_restart: true, // restart (idle-gated) when the MCP server dies

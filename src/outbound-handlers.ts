@@ -9,10 +9,11 @@ import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycl
 import type { EventLog } from "./event-log.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
-import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES } from "./config.js";
+import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES } from "./config.js";
 import { t } from "./locale.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
+import { readStatuslineModel } from "./topic-commands.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -53,6 +54,7 @@ import {
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
+  readonly dataDir: string;
   readonly fleetConfig: FleetConfig | null;
   readonly adapter: ChannelAdapter | null;
   readonly adapters?: Map<string, ChannelAdapter>;
@@ -503,62 +505,184 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   });
 };
 
+/**
+ * Resolve model for an instance, with statusline fallback for claude-code.
+ * Only used in full/compact tiers (summary tier doesn't need per-instance model).
+ */
+function resolveModelWithStatuslineFallback(
+  ctx: OutboundContext,
+  name: string,
+  backend: string,
+  configModel: string | undefined,
+): string {
+  const resolved = ctx.resolveInstanceModel?.(name);
+  const model = resolved?.model ?? configModel ?? "default";
+  // Statusline fallback only for claude-code when we got "default" (unresolved)
+  if (backend === "claude-code" && model === "default") {
+    const statuslineModel = readStatuslineModel(ctx.dataDir, name);
+    if (statuslineModel) return statuslineModel;
+  }
+  return model;
+}
+
 const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(ListInstancesArgs, rawArgs, "list_instances");
   if (!v.ok) { respond(null, v.error); return; }
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
-  const filterTags = v.data.tags;
-  let allInstances = Object.entries(ctx.fleetConfig?.instances ?? {})
+  const { tags: filterTags, name: filterName, backend: filterBackend, status: filterStatus } = v.data;
+
+  // Build full instance list (fleet + classic)
+  type FullInstance = {
+    name: string;
+    type: "instance";
+    status: "running" | "paused" | "stopped";
+    instance_state: "idle" | "working" | "stuck" | "paused" | null;
+    working_directory: string;
+    topic_id: string | number | null;
+    display_name: string | null;
+    description: string | null;
+    backend: string;
+    model: string;
+    kind: "fleet-topic" | "classic";
+    tags: string[];
+    last_activity: string | null;
+  };
+
+  let allInstances: FullInstance[] = Object.entries(ctx.fleetConfig?.instances ?? {})
     .filter(([name]) => name !== meta.instanceName && name !== senderLabel)
-    .map(([name, config]) => ({
-      name,
-      type: "instance" as const,
-      status: ctx.lifecycle.isPaused(name) ? "paused" : ctx.lifecycle.daemons.has(name) ? "running" : "stopped",
-      instance_state: ctx.getInstanceExecutionState?.(name) ?? null,
-      working_directory: config.working_directory,
-      topic_id: config.topic_id ?? null,
-      display_name: config.display_name ?? null,
-      description: config.description ?? null,
-      backend: config.backend ?? "claude-code",
-      model: ctx.resolveInstanceModel?.(name).model ?? config.model ?? "default",
-      kind: "fleet-topic" as "fleet-topic" | "classic",
-      tags: config.tags ?? [],
-      last_activity: ctx.lastActivityMs(name) ? new Date(ctx.lastActivityMs(name)).toISOString() : null,
-    }));
-  if (filterTags?.length) {
-    allInstances = allInstances.filter(i => i.tags.some(t => filterTags.includes(t)));
-  }
+    .map(([name, config]) => {
+      const backend = config.backend ?? "claude-code";
+      const status = ctx.lifecycle.isPaused(name) ? "paused" as const
+        : ctx.lifecycle.daemons.has(name) ? "running" as const : "stopped" as const;
+      return {
+        name,
+        type: "instance" as const,
+        status,
+        instance_state: ctx.getInstanceExecutionState?.(name) ?? null,
+        working_directory: config.working_directory,
+        topic_id: config.topic_id ?? null,
+        display_name: config.display_name ?? null,
+        description: config.description ?? null,
+        backend,
+        model: "default", // placeholder, resolved later if needed
+        kind: "fleet-topic" as const,
+        tags: config.tags ?? [],
+        last_activity: ctx.lastActivityMs(name) ? new Date(ctx.lastActivityMs(name)).toISOString() : null,
+      };
+    });
+
   // Append classic bot instances
-  if (ctx.classicChannels && !filterTags?.length) {
+  if (ctx.classicChannels) {
     const fleetNames = new Set(Object.keys(ctx.fleetConfig?.instances ?? {}));
     for (const ch of ctx.classicChannels.getAll()) {
       if (ch.instanceName === meta.instanceName || fleetNames.has(ch.instanceName)) continue;
+      const backend = ctx.classicChannels.getBackendByInstance?.(
+        ch.instanceName,
+        ctx.fleetConfig?.defaults?.backend,
+      ) ?? ch.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code";
       allInstances.push({
         name: ch.instanceName,
         type: "instance" as const,
-        status: ctx.lifecycle.daemons.has(ch.instanceName) ? "running" : "stopped",
+        status: ctx.lifecycle.daemons.has(ch.instanceName) ? "running" as const : "stopped" as const,
         instance_state: ctx.getInstanceExecutionState?.(ch.instanceName) ?? null,
         working_directory: "",
         topic_id: ch.channelId as any,
         display_name: ch.displayName ?? `classic: ${ch.name}`,
         description: ch.description ?? `ClassicBot channel (${ch.name})`,
-        backend: ctx.classicChannels.getBackendByInstance?.(
-          ch.instanceName,
-          ctx.fleetConfig?.defaults?.backend,
-        ) ?? ch.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code",
-        model: ctx.resolveInstanceModel?.(ch.instanceName).model
-          ?? ctx.classicChannels.getModel?.(ch.channelId, ch.adapterId, ctx.fleetConfig?.defaults?.model)
-          ?? "default",
+        backend,
+        model: "default", // placeholder
         kind: "classic" as const,
         tags: ["classic"],
         last_activity: ctx.lastActivityMs(ch.instanceName) ? new Date(ctx.lastActivityMs(ch.instanceName)).toISOString() : null,
       });
     }
   }
+
+  // Apply filters BEFORE measuring size (focused queries get more detail)
+  if (filterTags?.length) {
+    allInstances = allInstances.filter(i => i.tags.some(t => filterTags.includes(t)));
+  }
+  if (filterName) {
+    const lowerName = filterName.toLowerCase();
+    allInstances = allInstances.filter(i => i.name.toLowerCase().includes(lowerName));
+  }
+  if (filterBackend) {
+    allInstances = allInstances.filter(i => i.backend === filterBackend);
+  }
+  if (filterStatus) {
+    allInstances = allInstances.filter(i => i.status === filterStatus);
+  }
+
   const externalSessions = [...ctx.sessionRegistry.entries()]
     .filter(([sessName]) => sessName !== senderLabel)
     .map(([sessName, hostInstance]) => ({ name: sessName, type: "session" as const, host: hostInstance }));
-  respond({ instances: allInstances, external_sessions: externalSessions });
+
+  const budget = DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET;
+
+  // Helper to resolve models for full/compact tiers
+  const resolveModels = (instances: FullInstance[]) => {
+    for (const inst of instances) {
+      const config = ctx.fleetConfig?.instances[inst.name];
+      inst.model = resolveModelWithStatuslineFallback(ctx, inst.name, inst.backend, config?.model);
+    }
+  };
+
+  // Tier 1: Try full output with descriptions
+  resolveModels(allInstances);
+  const fullOutput = { instances: allInstances, external_sessions: externalSessions };
+  const fullSize = Buffer.byteLength(JSON.stringify(fullOutput), "utf8");
+  if (fullSize <= budget) {
+    respond(fullOutput);
+    return;
+  }
+
+  // Tier 2: Compact output (no description, no working_directory, no topic_id, no instance_state)
+  type CompactInstance = {
+    name: string;
+    status: "running" | "paused" | "stopped";
+    backend: string;
+    model: string;
+    kind: "fleet-topic" | "classic";
+    tags: string[];
+  };
+  const compactInstances: CompactInstance[] = allInstances.map(i => ({
+    name: i.name,
+    status: i.status,
+    backend: i.backend,
+    model: i.model,
+    kind: i.kind,
+    tags: i.tags,
+  }));
+  const compactOutput = {
+    instances: compactInstances,
+    external_sessions: externalSessions,
+    _guidance: "Use describe_instance(name) for full details including description.",
+  };
+  const compactSize = Buffer.byteLength(JSON.stringify(compactOutput), "utf8");
+  if (compactSize <= budget) {
+    respond(compactOutput);
+    return;
+  }
+
+  // Tier 3: Summary output (counts only, no per-instance model resolution)
+  const byBackend: Record<string, number> = {};
+  const byStatus: Record<string, number> = {};
+  const byTag: Record<string, number> = {};
+  for (const inst of allInstances) {
+    byBackend[inst.backend] = (byBackend[inst.backend] ?? 0) + 1;
+    byStatus[inst.status] = (byStatus[inst.status] ?? 0) + 1;
+    for (const tag of inst.tags) {
+      byTag[tag] = (byTag[tag] ?? 0) + 1;
+    }
+  }
+  respond({
+    total: allInstances.length,
+    by_backend: byBackend,
+    by_status: byStatus,
+    by_tag: byTag,
+    external_sessions: externalSessions.length,
+    _guidance: "Use list_instances({tags, backend, status, name}) to filter for a subset, or describe_instance(name) for a specific instance.",
+  });
 };
 
 const describeInstance: Handler = (ctx, rawArgs, respond) => {
@@ -820,15 +944,21 @@ const listModels: Handler = async (ctx, rawArgs, respond) => {
 const getInstanceLogs: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(GetInstanceLogsArgs, rawArgs, "get_instance_logs");
   if (!v.ok) { respond(null, v.error); return; }
-  const lines = v.data.lines ?? 50;
+  const requestedLines = v.data.lines ?? 50;
+  const lines = Math.min(requestedLines, MAX_INSTANCE_LOG_LINES);
+  const capped = requestedLines > MAX_INSTANCE_LOG_LINES;
   try {
     const { readFileSync } = await import("node:fs");
     const { join: joinPath } = await import("node:path");
-    const instanceDir = joinPath((ctx as any).dataDir ?? "", "instances", v.data.name);
+    const instanceDir = joinPath(ctx.dataDir, "instances", v.data.name);
     const file = joinPath(instanceDir, "output.log");
     const content = readFileSync(file, "utf-8");
     const allLines = content.split("\n");
-    respond({ lines: allLines.slice(-lines).join("\n"), total_lines: allLines.length });
+    respond({
+      lines: allLines.slice(-lines).join("\n"),
+      total_lines: allLines.length,
+      ...(capped ? { _note: `Capped at ${MAX_INSTANCE_LOG_LINES} lines. Use 'agend attach ${v.data.name}' for full history.` } : {}),
+    });
   } catch (err) {
     respond(null, `Cannot read logs for '${v.data.name}': ${(err as Error).message}`);
   }

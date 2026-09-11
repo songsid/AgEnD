@@ -8800,7 +8800,7 @@ You CAN write code snippets, explain code, and answer technical questions direct
 - **Delegate to 1 instance**: scoped to one project/repo, needs file access or execution.
 - **Coordinate multiple**: spans repos, outputs feed each other, or parallel helps (max 3 per task).
 
-Instance discovery order: list_teams() → list_instances() → describe_instance() → create_instance() only if nothing fits. Prefer reuse; never duplicate a running instance.
+Instance discovery: start with list_instances(); follow the guidance in its response. Prefer reuse; never duplicate a running instance.
 
 ## Reply Contract
 
