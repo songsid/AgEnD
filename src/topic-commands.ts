@@ -645,9 +645,36 @@ export class TopicCommands {
         ?? this.ctx.modelDisplayForInstance?.(instanceName)
       : this.ctx.modelDisplayForInstance?.(instanceName);
     const modelLine = modelDisplay ? `\n${t("ctx.model", modelDisplay)}` : "";
+    const effortLine = this.effortLineFor(instanceName, backend);
     return context != null
-      ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}\n${t("ctx.instance", instanceName)}`
-      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}${modelLine}\n${t("ctx.instance", instanceName)}`;
+      ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}${effortLine}\n${t("ctx.instance", instanceName)}`
+      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}${modelLine}${effortLine}\n${t("ctx.instance", instanceName)}`;
+  }
+
+  /**
+   * The `/ctx` effort line, or "" when there is nothing honest to say.
+   *
+   * Unlike the model, effort has no file the CLI writes back, so all we can show
+   * is what we configured. That shapes every rule here:
+   *
+   * - Backends that take no effort setting say nothing.
+   * - antigravity carries its effort in the model name itself, which `/ctx`
+   *   already prints on the model line — repeating it would look like two
+   *   separate settings.
+   * - With no effort configured we print nothing rather than a placeholder, the
+   *   same way an unknown model omits its line instead of showing a dash.
+   * - A `runtime` backend (claude, grok) can be re-tuned inside its own TUI
+   *   without telling us, so the value is labelled as the configured one. For a
+   *   `restart` backend (kiro, codex) effort is a launch flag, so what we
+   *   configured is what is running and no caveat is needed.
+   */
+  private effortLineFor(instanceName: string, backend: string): string {
+    const strategy = this.ctx.effortStrategyFor?.(instanceName) ?? "unsupported";
+    if (strategy === "unsupported") return "";
+    if (backend === "antigravity" || backend === "agy") return "";
+    const effort = this.ctx.resolveInstanceEffort?.(instanceName)?.effort;
+    if (!effort) return "";
+    return `\n${t(strategy === "runtime" ? "ctx.effort_configured" : "ctx.effort", effort)}`;
   }
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */
