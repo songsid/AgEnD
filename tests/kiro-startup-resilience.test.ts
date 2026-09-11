@@ -145,12 +145,25 @@ const sessionKept = (h: SpawnHarness) => existsSync(join(h.dir, "session-id"));
 const budgets = (h: SpawnHarness) => h.trySpawn.mock.calls.map((c: any[]) => c[1]);
 
 describe("#1 resume-aware startup budget", () => {
-  it("gives kiro --resume the long budget and the fresh fallback the default one", async () => {
+  it("gives kiro --resume the long budget on both resume attempts", async () => {
+    // The fresh fallback no longer happens in the same call: an unproven resume
+    // failure now keeps the session and fails the attempt, so the fleet retries.
+    // See tests/resume-timeout-keeps-session.test.ts for that contract.
     const h = makeSpawnHarness(kiro());
-    h.trySpawn.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    expect(await h.daemon.spawnClaudeWindow()).toBe(false);
-    // resume, resume retry (#2), then fresh
-    expect(budgets(h)).toEqual([KIRO_RESUME_STARTUP_BUDGET_MS, KIRO_RESUME_STARTUP_BUDGET_MS, undefined]);
+    h.trySpawn.mockResolvedValue(false);
+    await expect(h.daemon.spawnClaudeWindow()).rejects.toThrow(/session kept/);
+    expect(budgets(h)).toEqual([KIRO_RESUME_STARTUP_BUDGET_MS, KIRO_RESUME_STARTUP_BUDGET_MS]);
+  });
+
+  it("gives claude-code --resume a longer budget than a fresh start", async () => {
+    // It had no override at all, so a resume ran on the 25s default (15s to
+    // first output) — which a cold start on a saturated host misses routinely,
+    // and missing it used to cost the conversation.
+    const { ClaudeCodeBackend, CLAUDE_RESUME_STARTUP_BUDGET_MS } = await import("../src/backend/claude-code.js");
+    const be = new (ClaudeCodeBackend as any)("/tmp/probe-claude");
+    expect(be.getStartupBudgetMs({ resume: true })).toBe(CLAUDE_RESUME_STARTUP_BUDGET_MS);
+    expect(be.getStartupBudgetMs({ resume: false }), "a fresh prompt is local; keep the default").toBeUndefined();
+    expect(CLAUDE_RESUME_STARTUP_BUDGET_MS).toBeGreaterThan(25_000);
   });
 
   it("never lowers a user-configured startup_timeout_ms", async () => {
@@ -160,13 +173,17 @@ describe("#1 resume-aware startup budget", () => {
     expect(budgets(h)).toEqual([90_000]);
   });
 
-  it("leaves backends without the capability on the default budget and the old two-attempt path", async () => {
+  it("retries resume for a backend that declares nothing, and keeps its session", async () => {
+    // Was: "the old two-attempt path … cleared after the first miss". Retrying
+    // is now the default rather than per-backend opt-in — that opt-in is why
+    // claude-code discarded its session on the first timeout — and an unproven
+    // failure keeps the session instead of clearing it.
     const plain = { binaryName: "claude", getReadyPattern: () => /❯/, getErrorPatterns: () => [] };
     const h = makeSpawnHarness(plain, { backendName: "claude-code" });
     h.trySpawn.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    expect(await h.daemon.spawnClaudeWindow()).toBe(false);
+    expect(await h.daemon.spawnClaudeWindow()).toBe(true);
     expect(budgets(h)).toEqual([undefined, undefined]);
-    expect(sessionKept(h)).toBe(false); // old behaviour: cleared after the first miss
+    expect(sessionKept(h)).toBe(true);
   });
 });
 
@@ -181,19 +198,23 @@ describe("#2 retry resume once before abandoning the session", () => {
     expect(h.daemon.skipResume).toBe(false);
   });
 
-  it("resume fails twice → clears the session and starts fresh (bounded: 2 resume + 1 fresh)", async () => {
-    const h = makeSpawnHarness(kiro());
-    h.trySpawn.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    expect(await h.daemon.spawnClaudeWindow()).toBe(false);
-    expect(h.trySpawn).toHaveBeenCalledTimes(3);
-    expect(sessionKept(h)).toBe(false);
-  });
-
-  it("all three attempts fail → startup error, exactly three attempts", async () => {
+  it("resume fails twice → KEEPS the session and fails the attempt (bounded: 2 resume)", async () => {
+    // Reversed deliberately. Clearing here is what cost users their history: a
+    // healthy cold start on a loaded host misses the same budget as a broken
+    // session, so a timeout is not evidence the session is unusable.
     const h = makeSpawnHarness(kiro());
     h.trySpawn.mockResolvedValue(false);
-    await expect(h.daemon.spawnClaudeWindow()).rejects.toThrow("CLI failed to start after retry");
-    expect(h.trySpawn).toHaveBeenCalledTimes(3);
+    await expect(h.daemon.spawnClaudeWindow()).rejects.toThrow(/session kept/);
+    expect(h.trySpawn).toHaveBeenCalledTimes(2);
+    expect(sessionKept(h)).toBe(true);
+  });
+
+  it("both resume attempts fail → startup error, session kept, exactly two attempts", async () => {
+    const h = makeSpawnHarness(kiro());
+    h.trySpawn.mockResolvedValue(false);
+    await expect(h.daemon.spawnClaudeWindow()).rejects.toThrow(/session kept/);
+    expect(h.trySpawn).toHaveBeenCalledTimes(2);
+    expect(sessionKept(h)).toBe(true);
   });
 });
 
