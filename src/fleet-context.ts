@@ -138,6 +138,10 @@ export interface FleetContext {
   cancelInstallSession?(): Promise<string>;
   /** Human-readable effective model for an instance (resolves inherited defaults). */
   modelDisplayForInstance?(name: string): string;
+  /** How this instance's backend takes a reasoning-effort setting, if at all. */
+  effortStrategyFor?(name: string): "runtime" | "restart" | "unsupported";
+  /** Configured effort for an instance: per-instance, else fleet default, else none. */
+  resolveInstanceEffort?(name: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
   /**
    * Show a model-selection inline keyboard for the given instance in a TG topic.
    * Returns a fallback text message if no model list is available (caller should send it).
