@@ -1,0 +1,24 @@
+  package manager. See the sandbox prerequisites:
+  https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex
+  will use the bundled bubblewrap in the meantime.
+
+╭──────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.153.4)                       │
+│                                                  │
+│ model:     gpt-5.6-luna xhigh   /model to change │
+│ directory: /tmp                                  │
+╰──────────────────────────────────────────────────╯
+
+  Tip: This is GPT-6, a new generation of intelligence. Astra is state-of-the-
+  art in coding, computer use, science, and professional work. Give it a hard
+  problem, a half-formed idea, or anything you've been meaning to build. See
+  where it takes you.
+
+• You have 1 usage limit reset available. Run /usage to use one.
+
+
+› [from:agend-dev-claude-t1519896892392083558] 減法設計驗證用的投遞測試訊息，請
+  忽略不要回覆。
+
+  Context 100% left
+

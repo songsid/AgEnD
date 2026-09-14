@@ -95,6 +95,25 @@ export function pasteLeftInInput(pane: string, promptPattern: RegExp, formatted:
 }
 
 /**
+ * True when our pasted text appears in the input area AT ALL — unlike
+ * pasteLeftInInput, which requires the input to be our paste and nothing else.
+ *
+ * That stricter rule is right for deciding a retry on a TUI that keeps the
+ * transcript under a historical prompt row, and wrong for deciding whether a
+ * submission may be confirmed: when an EARLIER delivery is already stranded,
+ * the input row holds "previous message + ours", our payload is no longer a
+ * prefix of it, and the strict rule reports "not in the input" — which is how
+ * the reported failure looked in the field (two messages stacked in one codex
+ * input row). Whitespace is removed on both sides because the TUI re-wraps a
+ * pasted line at the pane width.
+ */
+export function inputShowsPastedText(input: string, formatted: string): boolean {
+  const signature = pastedTextSignature(formatted);
+  if (!input || !signature) return false;
+  return input.replace(/\s+/g, "").includes(signature);
+}
+
+/**
  * True when the input area holds an AgEnD message left behind by an earlier
  * delivery whose Enter was dropped (e.g. before a daemon restart, when the exact
  * text is no longer known). Placeholder hints Kiro prints in the prompt row

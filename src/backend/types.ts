@@ -239,6 +239,16 @@ export interface CliBackend {
   getBottomReadyPattern?(): RegExp | null;
 
   /**
+   * Marker the CLI paints when it has accepted input into its own pending
+   * queue rather than starting a turn (codex: the `↳` row under "Messages to
+   * be submitted after next tool call"). Only meaningful for
+   * `supportsQueuedInput()` backends, and only used as corroboration when the
+   * input row itself cannot be located — the primary proof of submission is
+   * that the pasted text has LEFT the input row.
+   */
+  getQueuedInputMarker?(): RegExp | null;
+
+  /**
    * Startup budget override, in ms, for reaching first output + ready state.
    * `ctx.resume` is true when the CLI is launched with session resume. Return
    * undefined to use `startup_timeout_ms` / the 25s default. Kiro's `--resume`

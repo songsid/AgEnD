@@ -136,6 +136,35 @@ export class CodexBackend implements CliBackend {
     return true;
   }
 
+  /**
+   * Codex's input row, from live captures on codex-cli 0.153.4: `› Ask Codex to
+   * do anything` when empty, `› <text>` once something is typed or pasted, and
+   * the text wraps onto unprefixed continuation rows.
+   *
+   * NOT bottom-anchored, unlike Kiro's: `Context 63% left` is painted under it.
+   * Codex also echoes each submitted message into
+   * the transcript with the same `›` prefix, which is why every caller takes
+   * the LAST matching row — the transcript echo is always above the input row.
+   *
+   * The marker alone is deliberately not treated as "ready to accept a paste":
+   * the startup update picker highlights its selected option the same way
+   * (`› 1. Update now (runs … curl … | sh)`), and pressing Enter there would
+   * run an installer. That screen is caught by the dialog probe
+   * (updatePickerDialog) before any delivery path reads this pattern.
+   */
+  getBottomReadyPattern(): RegExp | null {
+    return /^\s*›\s?/;
+  }
+
+  /**
+   * The row codex paints for input it has taken into its own queue instead of
+   * submitting: `↳ <message>` under "Messages to be submitted after next tool
+   * call (press esc to interrupt and send immediately)".
+   */
+  getQueuedInputMarker(): RegExp | null {
+    return /↳/;
+  }
+
   buildCommand(config: CliBackendConfig): string {
     this.lastKnownModel = config.model?.trim() || null;
     const approvalFlag = config.skipPermissions !== false
