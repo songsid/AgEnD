@@ -1178,6 +1178,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return channels[0];
   }
 
+  /**
+   * The configured world that owns `chatId`, when that is provably NOT the
+   * world `target` lives in. Returns undefined when they agree, when there is
+   * nothing to check, or when no configured channel claims the id.
+   *
+   * Deliberately one-sided: only a POSITIVE match against another channel's
+   * group id counts as foreign. A chat id that matches nothing may still be
+   * legitimate for this world (a classic channel, a DM), and treating
+   * "unrecognised" as "wrong" would stop seeding for cases that work today.
+   *
+   * Read from config rather than the live worlds map on purpose: a channel
+   * whose adapter failed to start still owns its group id, and the coordinates
+   * are just as unusable by the target's adapter either way.
+   *
+   * This is the other half of what scheduleSourceAdapter fixed. That one stops
+   * the trigger NOTICE being sent through the wrong bot; this one stops the
+   * same coordinates being planted as the target instance's reply context,
+   * which is what made its own replies fail until someone spoke to it (#752).
+   */
+  private scheduleChatWorldMismatch(target: string, chatId?: string): string | undefined {
+    if (!chatId) return undefined;
+    const targetWorld = this.getInstanceAdapterId(target);
+    if (!targetWorld) return undefined;
+    const channels = this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    // ALL owners, not the first: a persona bot shares the primary's guild
+    // (quickstart writes `group_id: primary.group_id`), so one group id is
+    // legitimately claimed by two channels. Taking the first match called a
+    // persona instance's own guild "another world" and stopped seeding a
+    // context it can address perfectly well.
+    const owners = channels.filter(ch => ch.group_id != null && String(ch.group_id) === String(chatId));
+    if (owners.length === 0) return undefined;
+    if (owners.some(ch => (ch.id ?? ch.type) === targetWorld)) return undefined;
+    return owners[0].id ?? owners[0].type;
+  }
+
   /** Get the group_id for an instance's bound adapter */
   getGroupIdForInstance(name: string): string {
     const adapterId = this.getInstanceAdapterId(name);
@@ -5161,12 +5197,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // the target instance's configured world so replies use its persona
         // after a fresh start instead of falling back to channels[0].
         const adapterId = this.getInstanceAdapterId(target);
+        // ...but the stored reply coordinates belong to the chat the schedule
+        // was CREATED in, which is not always the target's world. Pairing them
+        // with the target's adapter hands one platform's ids to another's API:
+        // a Telegram group + forum topic delivered to a Discord instance made
+        // every reply on that turn fetch `/channels/<telegram topic>` and fail
+        // with Unknown Channel, and because the seeding repeats on each trigger
+        // it stayed broken until a real inbound overwrote the context (#752).
+        const foreignWorld = this.scheduleChatWorldMismatch(target, reply_chat_id);
+        if (foreignWorld) {
+          this.logger.warn({ scheduleId: id, target, foreignWorld, targetWorld: adapterId, chatId: reply_chat_id },
+            "Schedule reply target belongs to another channel world — not seeding chat context; the instance keeps its own last known chat");
+        }
         await this.deliverToInstance(target, {
           type: "fleet_schedule_trigger",
           payload: { schedule_id: id, message: `[Scheduled] ${message}`, label },
           meta: {
-            chat_id: reply_chat_id,
-            thread_id: reply_thread_id,
+            // Omitted on a mismatch: the daemon then keeps its persisted
+            // last-chat, which is in the right world, instead of being
+            // overwritten with coordinates the target's adapter cannot address.
+            ...(foreignWorld ? {} : { chat_id: reply_chat_id, thread_id: reply_thread_id }),
             user: "scheduler",
             ...(adapterId ? { adapter_id: adapterId } : {}),
           },
