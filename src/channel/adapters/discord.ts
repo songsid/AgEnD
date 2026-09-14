@@ -170,7 +170,34 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     });
   }
 
+  /**
+   * An id that is positively another platform's, not merely "not a snowflake".
+   *
+   * Discord ids are 17-20 digit snowflakes, so a NUMERIC id outside that range
+   * cannot name anything here — a Telegram group id (negative) or a Telegram
+   * chat/forum-topic id (short) are the two shapes seen live. Sending either
+   * produces DiscordAPIError 10003 "Unknown Channel", which says nothing about
+   * the real mistake: an id from another channel world reached this adapter.
+   *
+   * Deliberately NOT "reject everything that is not a snowflake". Only a
+   * positive identification is evidence; a non-numeric id proves nothing about
+   * which world it came from, and rejecting those would change this adapter's
+   * contract for ids that already behave correctly today.
+   */
+  private static foreignWorldId(id: string): string | null {
+    if (/^-\d+$/.test(id)) return "a Telegram group id (negative numbers are not Discord snowflakes)";
+    if (/^\d{1,16}$/.test(id)) return "a Telegram chat or forum topic id (too short for a Discord snowflake)";
+    return null;
+  }
+
   private async _fetchTextChannel(channelId: string): Promise<TextChannel> {
+    const foreign = DiscordAdapter.foreignWorldId(channelId);
+    if (foreign) {
+      throw new Error(
+        `Cannot send to Discord channel ${JSON.stringify(channelId)}: it is ${foreign}. `
+        + "A chat id from another channel world was routed to the Discord adapter.",
+      );
+    }
     const client = await this.readyClient();
     const channel = await client.channels.fetch(channelId);
     if (!channel?.isTextBased()) {

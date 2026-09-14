@@ -3331,9 +3331,15 @@ export class Daemon extends EventEmitter {
     }
     const adapters = this.messageBus.getAllAdapters();
     if (adapters.length > 0) {
-      const adapter = adapterId ? this.messageBus.getAdapter(adapterId) : adapters[0];
+      // With one adapter there is nothing to choose and adapters[0] is exact.
+      // With several, "no adapter named" is a routing failure, not a default:
+      // picking the first sends one world's chat id through another world's bot.
+      const adapter = adapterId
+        ? this.messageBus.getAdapter(adapterId)
+        : (adapters.length === 1 ? adapters[0] : undefined);
       if (!adapter) {
-        this.logger.error({ adapterId }, `${logLabel} failed — target adapter is unavailable`);
+        this.logger.error({ adapterId, adapterCount: adapters.length },
+          `${logLabel} failed — ${adapterId ? "target adapter is unavailable" : "no adapter bound to this chat context"}`);
         return Promise.resolve(false);
       }
       return new Promise(resolve => {
@@ -5384,7 +5390,15 @@ export class Daemon extends EventEmitter {
       return;
     }
 
-    const adapter = adapters[0];
+    // Same rule as deliverDaemonReply: one adapter is unambiguous, several with
+    // no bound world is a routing failure rather than a first-wins guess.
+    const adapter = this.lastAdapterId
+      ? this.messageBus.getAdapter(this.lastAdapterId) ?? (adapters.length === 1 ? adapters[0] : undefined)
+      : (adapters.length === 1 ? adapters[0] : undefined);
+    if (!adapter) {
+      respond(null, "No channel world bound to this chat context — awaiting an inbound message to establish it");
+      return;
+    }
 
     if (!routeToolCall(adapter, tool, args, this.lastThreadId, respond)) {
       respond(null, `Unknown tool: ${tool}`);
@@ -6324,11 +6338,20 @@ export class Daemon extends EventEmitter {
    */
   private updateLastChat(chatId?: string, threadId?: string, adapterId?: string): void {
     if (!chatId) return;
+    const chatChanged = this.lastChatId !== chatId;
     this.lastChatId = chatId;
     // An unthreaded inbound must clear a previous topic rather than leaking it
     // into the next reply target.
     this.lastThreadId = threadId || undefined;
     if (adapterId) this.lastAdapterId = adapterId;
+    else if (chatChanged) {
+      // A NEW chat with no adapter named alongside it: the old adapter belonged
+      // to the old chat, and keeping it asserts a pairing nobody supplied. That
+      // is how one platform's chat id ends up being sent through another
+      // platform's bot. Unknown is recoverable (a single-adapter fleet is
+      // unambiguous anyway); a confidently wrong world is not.
+      this.lastAdapterId = undefined;
+    }
     try {
       writeFileSync(join(this.instanceDir, "last-chat.json"),
         JSON.stringify({ chatId: this.lastChatId, threadId: this.lastThreadId, adapterId: this.lastAdapterId }));
