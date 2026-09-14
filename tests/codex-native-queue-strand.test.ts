@@ -425,6 +425,53 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.events).toContain("message_confirmed");
   });
 
+  /**
+   * The wake case, from the field (beta.16): an instance auto-paused at 22:04,
+   * a message arrived at 00:43 and auto-woke it, and the turn ended with
+   * historyPreserved:false and nothing in the transcript — the text was pasted
+   * and never submitted, while the delivery reported success.
+   *
+   * What makes it different from the strands above is the CLI's final redraw.
+   * It lands right as the Enter goes out, so the pane IS producing output while
+   * the Enter is being swallowed. Anything that treats "the pane printed
+   * something" as proof confirms a message that never entered a turn — output
+   * is corroboration, text still in the input row is disqualifying, and the
+   * disqualifying evidence has to win.
+   */
+  it("does not confirm a woken instance's first delivery when both Enters are swallowed but the pane is redrawing", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;                         // idle path, not the native queue
+    h.state.outputSince = true;                  // the wake redraw keeps printing
+    h.state.afterPaste = STRANDED_MULTILINE;     // every Enter is swallowed
+    h.state.afterEnter = STRANDED_MULTILINE;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(h.events, "a redraw is not a turn").not.toContain("message_confirmed");
+    expect(h.events).toContain("message_failed");
+    expect(ok).toBe(false);
+  });
+
+  /**
+   * The same rule one layer down, in the native-queue recovery. That branch only
+   * runs because the text was found in the input row; if its recovery Enter is
+   * swallowed as well, the pane is busy with something else and must not be
+   * read as proof that this message went out.
+   */
+  it("does not let unrelated output confirm a native-queue strand whose recovery Enter was also swallowed", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;                        // busy → native-queue handoff
+    h.state.outputSince = true;                  // unrelated output throughout
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.afterEnter = STRANDED_MULTILINE;     // the recovery Enter is swallowed too
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).toContain("message_failed");
+    expect(ok).toBe(false);
+  });
+
   // The same trap in the transcript: an older message that opens the same way
   // must not vouch for this one. The routing envelope's message_id is what
   // separates them.
