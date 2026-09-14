@@ -193,6 +193,14 @@ export interface CliBackend {
   readonly binaryName: string;
 
   /**
+   * Opt in to the human-turn reply completion guard.  The guard treats a
+   * busy→idle edge with no adapter-confirmed `reply` as a delivery incident and
+   * may ask the model once to send the missing conclusion.  Absent means false;
+   * enable only after the backend's turn-end signal has been replay-tested.
+   */
+  readonly replyCompletionGuard?: boolean;
+
+  /**
    * Whether the CLI accepts Enter-submitted input while it is busy and queues
    * that input for a later turn. When true, the daemon may hand a complete
    * paste+Enter transaction to the CLI without first waiting for an idle pane.

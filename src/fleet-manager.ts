@@ -5046,7 +5046,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // The adapter resolves only after the platform POST returns. Keep
         // outward-facing logs/cancel state on the same confirmation boundary:
         // a routed-but-failed reply is not a delivered reply.
-        if (!error && result != null) {
+        // `statusOnly` is daemon-owned envelope metadata, not an MCP argument:
+        // an agent cannot invent it to suppress the normal completion marker.
+        if (!error && result != null && msg.statusOnly !== true) {
           try {
             this.afterReplyRouted(instanceName, args, senderSessionName);
           } catch (err) {

@@ -187,6 +187,76 @@ describe("reply IPC confirmation", () => {
     }
   });
 
+  it("delivers a daemon status notice without falsely completing the user's turn", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-reply-status-only-"));
+    const fm = new FleetManager(dir);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "notice-1", chatId: "discord-channel" });
+    const adapter = { id: "discord", type: "discord", sendText } as any;
+    const ipcSend = vi.fn(() => true);
+    fm.adapter = adapter;
+    fm.worlds.set("discord", { adapter } as any);
+    fm.instanceIpcClients.set("worker", { send: ipcSend } as any);
+    const afterReply = vi.spyOn(fm as any, "afterReplyRouted");
+
+    try {
+      await (fm as any).handleOutboundFromInstance("worker", {
+        type: "fleet_outbound",
+        tool: "reply",
+        args: {
+          chat_id: "guild-1",
+          thread_id: "discord-channel",
+          text: "the agent did not reply; retrying once",
+        },
+        fleetRequestId: "replydrop_1",
+        adapterId: "discord",
+        statusOnly: true,
+      });
+
+      await vi.waitFor(() => expect(ipcSend).toHaveBeenCalledWith(expect.objectContaining({
+        type: "fleet_outbound_response",
+        fleetRequestId: "replydrop_1",
+        result: { messageId: "notice-1", chatId: "discord-channel" },
+      })));
+      expect(sendText).toHaveBeenCalledOnce();
+      expect(afterReply).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("does not let an agent suppress completion bookkeeping with a tool argument", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-reply-status-arg-"));
+    const fm = new FleetManager(dir);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "reply-1", chatId: "discord-channel" });
+    const adapter = { id: "discord", type: "discord", sendText } as any;
+    const ipcSend = vi.fn(() => true);
+    fm.adapter = adapter;
+    fm.worlds.set("discord", { adapter } as any);
+    fm.instanceIpcClients.set("worker", { send: ipcSend } as any);
+    const afterReply = vi.spyOn(fm as any, "afterReplyRouted");
+
+    try {
+      await (fm as any).handleOutboundFromInstance("worker", {
+        type: "fleet_outbound",
+        tool: "reply",
+        args: {
+          chat_id: "guild-1",
+          thread_id: "discord-channel",
+          text: "done",
+          statusOnly: true,
+        },
+        fleetRequestId: "reply_status_arg_1",
+        adapterId: "discord",
+      });
+
+      await vi.waitFor(() => expect(ipcSend).toHaveBeenCalled());
+      expect(sendText).toHaveBeenCalledOnce();
+      expect(afterReply).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps a confirmed reply successful when the follow-up cancel bubble fails", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-reply-cancel-fail-"));
     const fm = new FleetManager(dir);

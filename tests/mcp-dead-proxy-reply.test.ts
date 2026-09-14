@@ -124,7 +124,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("relays the pane text via fleet_outbound reply, with ⚠️ marker, correlation id and the daemon's chat context", () => {
+  it("relays the pane text via fleet_outbound reply and reports it only after the platform acknowledges delivery", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
@@ -147,6 +147,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     expect(msg.args.text).toContain("(correlation_id: cid-42)");
     // The inbound echo was cut — only the agent's own output is relayed.
     expect(msg.args.text).not.toContain("[user:han");
+    expect(proxied).not.toHaveBeenCalled();
+    daemon.pendingIpcRequests.get(msg.fleetRequestId)!({ result: { messageId: "proxy-1" } });
+    await vi.waitFor(() => expect(proxied).toHaveBeenCalledOnce());
     expect(proxied).toHaveBeenCalledWith({ name: "proxy-test", correlationId: "cid-42" });
   });
 

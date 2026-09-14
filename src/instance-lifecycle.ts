@@ -719,17 +719,64 @@ export class InstanceLifecycle {
         "MCP dead at turn end with no reply — daemon relayed the pane text to the channel");
     }, this.ctx.logger, `daemon.mcp_proxy_reply[${name}]`));
 
-    daemon.on("malformed_tool_call", safeHandler((data: { name: string; correlationId?: string; recovered: boolean }) => {
+    daemon.on("malformed_tool_call", safeHandler((data: { name: string; correlationId?: string; recovered: boolean; recoveryStarted?: boolean }) => {
       this.ctx.eventLog?.insert(name, "malformed_tool_call", {
         correlationId: data.correlationId,
         recovered: data.recovered,
+        ...(data.recoveryStarted ? { recoveryStarted: true } : {}),
       });
+      // The reply guard posts its own immediate, exact-target status before
+      // asking for one recovery turn. Do not duplicate that with the older
+      // instance-topic malformed-call notice.
+      if (data.recoveryStarted) return;
       const notificationTarget = this.ptyErrorNotificationTarget(name);
       if (notificationTarget) {
         this.notifyIncident(notificationTarget, "malformed_tool_call",
           t(data.recovered ? "inst.malformed_tool_call_recovered" : "inst.malformed_tool_call_unrecoverable", name));
       }
     }, this.ctx.logger, `daemon.malformed_tool_call[${name}]`));
+
+    daemon.on("reply_drop_detected", safeHandler((data: {
+      name: string;
+      correlationId?: string;
+      generation: number;
+      reason: string;
+      recoveryStarted: boolean;
+    }) => {
+      this.ctx.eventLog?.insert(name, "reply_drop_detected", {
+        correlationId: data.correlationId,
+        generation: data.generation,
+        reason: data.reason,
+        recoveryStarted: data.recoveryStarted,
+      });
+      this.ctx.logger.warn(data, "Turn ended without an adapter-confirmed reply");
+    }, this.ctx.logger, `daemon.reply_drop_detected[${name}]`));
+
+    daemon.on("reply_drop_recovered", safeHandler((data: {
+      name: string;
+      correlationId?: string;
+      generation: number;
+    }) => {
+      this.ctx.eventLog?.insert(name, "reply_drop_recovered", {
+        correlationId: data.correlationId,
+        generation: data.generation,
+      });
+      this.ctx.logger.info(data, "Reply-drop recovery delivered a reply");
+    }, this.ctx.logger, `daemon.reply_drop_recovered[${name}]`));
+
+    daemon.on("reply_drop_unrecovered", safeHandler((data: {
+      name: string;
+      correlationId?: string;
+      generation: number;
+      reason: string;
+    }) => {
+      this.ctx.eventLog?.insert(name, "reply_drop_unrecovered", {
+        correlationId: data.correlationId,
+        generation: data.generation,
+        reason: data.reason,
+      });
+      this.ctx.logger.error(data, "Reply-drop recovery ended without a delivered reply");
+    }, this.ctx.logger, `daemon.reply_drop_unrecovered[${name}]`));
 
     daemon.on("mcp_restart_requested", safeHandler((data: { name: string; trigger: string }) => {
       if (this.ctx.stormWindow?.isActive()) {
