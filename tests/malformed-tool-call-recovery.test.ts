@@ -94,7 +94,7 @@ describe("detectMalformedClaudeToolCall", () => {
 });
 
 describe("Claude malformed tool-call idle-edge recovery", () => {
-  it("relays extracted reply text once and emits an operator audit event", () => {
+  it("relays extracted reply text once and emits an operator audit event only after delivery is acknowledged", async () => {
     const { daemon, broadcast } = makeDaemon();
     const warning = vi.fn();
     daemon.on("malformed_tool_call", warning);
@@ -113,6 +113,9 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
         text: "Recovered **answer** 🎉\nwith a second line.",
       },
     });
+    const requestId = recoveryCalls(broadcast)[0].fleetRequestId as string;
+    daemon.pendingIpcRequests.get(requestId)!({ result: { messageId: "recovered-1" } });
+    await daemon.pasteLock;
     expect(warning).toHaveBeenCalledWith({ name: "worker", correlationId: "cid-648", recovered: true });
   });
 
@@ -191,5 +194,53 @@ describe("malformed tool-call lifecycle notification", () => {
       recovered: true,
     });
     expect(notifyInstanceTopic).toHaveBeenCalledWith("worker", expect.stringContaining("malformed Claude tool call"));
+  });
+
+  it("records reply-drop detection, recovery, and terminal failure without another channel notice", () => {
+    const insert = vi.fn();
+    const notifyInstanceTopic = vi.fn();
+    const context = {
+      fleetConfig: { defaults: {}, instances: { worker: { backend: "claude-code" } } },
+      logger: { info() {}, warn() {}, error() {}, debug() {} },
+      eventLog: { insert },
+      isClassicInstance: () => false,
+      isPlannedRestart: () => false,
+      notifyInstanceTopic,
+      webhookEmit() {},
+      clearCancelButton() {},
+      checkModelFailover() {},
+      setTopicIcon() {},
+      restartSingleInstance: async () => {},
+    } as unknown as LifecycleContext;
+    const lifecycle = new InstanceLifecycle(context);
+    const source = Object.assign(new EventEmitter(), { requestPauseWhenIdle() {} }) as IncidentEventSource & EventEmitter;
+    lifecycle.attachIncidentHandlers("worker", source);
+
+    source.emit("reply_drop_detected", {
+      name: "worker", correlationId: "cid-drop", generation: 4,
+      reason: "no_valid_call", recoveryStarted: true,
+    });
+    source.emit("reply_drop_recovered", {
+      name: "worker", correlationId: "cid-drop", generation: 4,
+    });
+    source.emit("reply_drop_unrecovered", {
+      name: "worker", correlationId: "cid-drop", generation: 5,
+      reason: "recovery_turn_missing_reply",
+    });
+
+    expect(insert.mock.calls).toEqual(expect.arrayContaining([
+      ["worker", "reply_drop_detected", {
+        correlationId: "cid-drop", generation: 4,
+        reason: "no_valid_call", recoveryStarted: true,
+      }],
+      ["worker", "reply_drop_recovered", {
+        correlationId: "cid-drop", generation: 4,
+      }],
+      ["worker", "reply_drop_unrecovered", {
+        correlationId: "cid-drop", generation: 5,
+        reason: "recovery_turn_missing_reply",
+      }],
+    ]));
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();
   });
 });

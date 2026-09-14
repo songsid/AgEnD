@@ -36,6 +36,8 @@ import type { SpawnGate } from "./spawn-gate.js";
 import { bottomRowIsReady, inputAreaText, inputShowsPastedText, lastNonBlankRow, pastedTextSignature, pasteLeftInInput, strandedAgendMessageInInput } from "./pane-input-residue.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
+import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
+import { t } from "./locale.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,6 +50,8 @@ const TASK_TOOL = "task";
 // Tools whose success proves the agent got a message out this turn. While any
 // of these succeeded, a dead-MCP proxy reply would double-post — suppress it.
 const TURN_REPLY_TOOLS = new Set(["reply", "send_to_instance", "report_result", "request_information", "delegate_task", "broadcast"]);
+const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
+const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. Use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, send a brief acknowledgement. Do not reply to this system instruction except through the reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
@@ -422,12 +426,13 @@ export class PendingWorkTracker {
     this.lastInboundOrder = ++this.sequence;
   }
 
-  recordIdle(now = Date.now()): void {
+  recordIdle(now = Date.now()): boolean {
     // An async pane poll can finish after a newer inbound. Do not let its stale
     // observation clear work which had not arrived when the pane was captured.
-    if (now < this.lastInboundAt) return;
+    if (now < this.lastInboundAt) return false;
     this.lastIdleAt = now;
     this.lastIdleOrder = ++this.sequence;
+    return true;
   }
 
   hasPendingWork(): boolean {
@@ -1021,19 +1026,14 @@ export class Daemon extends EventEmitter {
   private instanceStateMonitorActive = false;
   private sessionCheckpointWarningEmitted = false;
   private statePollInFlight = false;
-  // ── Dead-MCP proxy reply: per-turn evidence ─────────────────────────────
-  // Set when an inbound message lands in the CLI; cleared on the idle edge that
-  // ends the turn. With a dead MCP server and no successful channel tool call in
-  // between, the agent's answer exists only on screen — the daemon relays it.
-  private turnHadInbound = false;
-  private turnOutboundDelivered = false;
-  /** Successful `reply` specifically; cross-instance tools do not satisfy #648. */
-  private turnReplyDelivered = false;
-  private turnCorrelationId: string | undefined;
-  private turnInboundMarker: string | undefined;
+  // One generation-scoped source of truth for human-turn reply completion.
+  // It also supplies the older dead-MCP/malformed-call recovery paths, so those
+  // paths cannot disagree about whether the turn already spoke to the channel.
+  private turnReplyGuard = new TurnReplyGuard();
   /** Prevent a visible stale XML fragment from being recovered on later turns. */
   private lastMalformedToolCallSignature: string | undefined;
   private proxyReplySeq = 0;
+  private lastReplyDropWarningAt = 0;
   private autoPauseController: AutoPauseController;
   private pauseRequested = false;
   /**
@@ -2704,6 +2704,7 @@ export class Daemon extends EventEmitter {
 
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
+    this.turnReplyGuard.reset();
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
     if (this.adapter) await this.adapter.stop();
@@ -2985,7 +2986,7 @@ export class Daemon extends EventEmitter {
     // Only a transition back to idle completes pending work. Repeated idle
     // observations between enqueue and paste must not clear a newer inbound.
     if (snapshot.state === "idle" && previous !== "idle") {
-      this.pendingWork.recordIdle(snapshot.observedAt);
+      const acceptedIdle = this.pendingWork.recordIdle(snapshot.observedAt);
       // The turn is over. A transcript can end on a tool_use with no matching
       // tool_result (interrupted, crashed, cancelled), which would otherwise leave
       // the last tool pinned to the progress line for the rest of the session.
@@ -2993,7 +2994,7 @@ export class Daemon extends EventEmitter {
       this.resetToolProgress();
       // Must run before the mcpRestartPending branch below: the pane text is the
       // only copy of the answer, and the revival restart is about to clear it.
-      this.maybeProxyReplyOnTurnEnd(pane);
+      if (acceptedIdle) this.maybeProxyReplyOnTurnEnd(pane);
     }
 
     if (snapshot.state !== previous) {
@@ -3045,13 +3046,17 @@ export class Daemon extends EventEmitter {
     // whatever USER topic spoke to this instance last — the wrong audience for
     // a task result, and a stale one (sol's review of #515).
     if (meta.from_instance || !meta.chat_id) return;
-    this.turnHadInbound = true;
-    this.turnOutboundDelivered = false;
-    this.turnReplyDelivered = false;
-    this.turnCorrelationId = meta.correlation_id || undefined;
     // The last non-empty line of what we pasted: everything on screen after it
     // is the agent's own output.
-    this.turnInboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+    const inboundMarker = deliveredText.split(/\r?\n/).map(l => l.trim()).filter(Boolean).pop();
+    this.turnReplyGuard.arm({
+      adapterId: meta.adapter_id || undefined,
+      chatId: meta.chat_id,
+      threadId: meta.thread_id || undefined,
+      messageId: meta.message_id || undefined,
+      correlationId: meta.correlation_id || undefined,
+      inboundMarker,
+    });
   }
 
   /**
@@ -3062,45 +3067,92 @@ export class Daemon extends EventEmitter {
    * here (edge-triggered, then reset) is what makes it at most once per turn.
    */
   private maybeProxyReplyOnTurnEnd(pane?: string): void {
-    const hadInbound = this.turnHadInbound;
-    const delivered = this.turnOutboundDelivered;
-    const replyDelivered = this.turnReplyDelivered;
-    const correlationId = this.turnCorrelationId;
-    const inboundMarker = this.turnInboundMarker;
-    this.turnHadInbound = false;
-    this.turnOutboundDelivered = false;
-    this.turnReplyDelivered = false;
-    this.turnCorrelationId = undefined;
-    this.turnInboundMarker = undefined;
-    if (!hadInbound || this.isPaused) return;
+    const turn = this.turnReplyGuard.snapshot();
+    if (!turn || this.isPaused) return;
+
+    if (turn.replyDelivered) {
+      if (turn.phase === "recovering") {
+        this.emit("reply_drop_recovered", {
+          name: this.name,
+          correlationId: turn.target.correlationId,
+          generation: turn.generation,
+        });
+      }
+      this.turnReplyGuard.complete(turn.generation);
+      return;
+    }
+
+    // A second idle edge ends the one permitted recovery turn. Never create a
+    // third turn or guess at terminal text; make the failure visible instead.
+    if (turn.phase === "recovering") {
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportUnrecoveredReplyDrop(turn);
+      return;
+    }
 
     // Claude sometimes prints a broken XML tool call as plain text and returns
     // idle without ever invoking `reply`. This is independent of MCP liveness:
     // the model malformed the call before the server could receive it.
-    if (!replyDelivered && this.isClaudeCodeBackend() && pane) {
-      const malformed = detectMalformedClaudeToolCall(pane, { inboundMarker });
+    if (this.isClaudeCodeBackend() && pane) {
+      const malformed = detectMalformedClaudeToolCall(pane, { inboundMarker: turn.target.inboundMarker });
       if (malformed) {
         const stale = malformed.signature === this.lastMalformedToolCallSignature;
         this.lastMalformedToolCallSignature = malformed.signature;
         if (!stale) {
-          const recovered = malformed.text != null;
-          this.logger.warn({ correlationId, recovered },
-            recovered
+          this.logger.warn({ correlationId: turn.target.correlationId, extractable: malformed.text != null },
+            malformed.text
               ? "Malformed Claude tool call detected — attempting to recover reply text"
               : "Malformed Claude tool call detected — reply text could not be extracted");
-          this.emit("malformed_tool_call", { name: this.name, correlationId, recovered });
-          if (malformed.text) this.sendRecoveredMalformedReply(malformed.text, correlationId);
+          if (malformed.text) {
+            this.queueMalformedReplyRecovery(turn, malformed.text);
+          } else if (this.replyCompletionGuardEnabled() && this.mcpServerAlive().alive) {
+            this.emit("malformed_tool_call", {
+              name: this.name,
+              correlationId: turn.target.correlationId,
+              recovered: false,
+              recoveryStarted: true,
+            });
+            this.startReplyRecovery(turn, "malformed_call");
+          } else {
+            this.emit("malformed_tool_call", {
+              name: this.name,
+              correlationId: turn.target.correlationId,
+              recovered: false,
+            });
+            this.turnReplyGuard.complete(turn.generation);
+          }
+        } else {
+          this.turnReplyGuard.complete(turn.generation);
         }
         // Never let the broader dead-MCP fallback relay the XML/chrome too.
         return;
       }
     }
-    if (delivered) return;
-    // Opt-in: raw pane text can carry secrets past the regex redaction.
-    if (this.config.mcp_proxy_reply !== true) return;
-    // "dead" only: unknown means not started or exited cleanly — never proxy on it.
-    if (mcpServerState(this.instanceDir).state !== "dead") return;
-    void this.sendProxyReply(pane, inboundMarker, correlationId);
+
+    // Preserve the dead-MCP proxy path and its explicit opt-in. Other outbound
+    // tools still suppress that proxy, but only a delivered `reply` satisfies
+    // the human-facing completion guard below.
+    if (!turn.outboundDelivered && this.config.mcp_proxy_reply === true
+      && mcpServerState(this.instanceDir).state === "dead") {
+      this.turnReplyGuard.complete(turn.generation);
+      void this.sendProxyReply(pane, turn.target);
+      return;
+    }
+
+    if (!this.replyCompletionGuardEnabled() || !this.mcpServerAlive().alive) {
+      this.turnReplyGuard.complete(turn.generation);
+      return;
+    }
+
+    if (turn.replyAttempted) {
+      // A provider timeout can be "applied, then timed out". Retrying it would
+      // risk a duplicate; report the unknown result and stop here.
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      return;
+    }
+
+    this.startReplyRecovery(turn, "no_valid_call");
   }
 
   private isClaudeCodeBackend(): boolean {
@@ -3109,75 +3161,238 @@ export class Daemon extends EventEmitter {
       || this.backend?.binaryName === "claude";
   }
 
+  private replyCompletionGuardEnabled(): boolean {
+    return this.backend?.replyCompletionGuard === true;
+  }
+
+  private startReplyRecovery(turn: TurnReplySnapshot, reason: "no_valid_call" | "malformed_call"): void {
+    if (!this.turnReplyGuard.beginRecovery(turn.generation)) return;
+    this.emit("reply_drop_detected", {
+      name: this.name,
+      correlationId: turn.target.correlationId,
+      generation: turn.generation,
+      reason,
+      recoveryStarted: true,
+    });
+    void this.deliverDaemonReply(
+      t("inst.reply_drop_retrying"),
+      "replydrop",
+      "Reply-drop status",
+      turn.target,
+      true,
+    );
+    this.queueReplyRecoveryPrompt(turn);
+  }
+
+  private reportReplyDropWithoutRetry(
+    turn: TurnReplySnapshot,
+    reason: "reply_failed_or_unknown",
+  ): void {
+    this.emit("reply_drop_detected", {
+      name: this.name,
+      correlationId: turn.target.correlationId,
+      generation: turn.generation,
+      reason,
+      recoveryStarted: false,
+    });
+    void this.deliverDaemonReply(
+      t("inst.reply_drop_unknown"),
+      "replydrop",
+      "Unconfirmed reply status",
+      turn.target,
+      true,
+    );
+  }
+
+  private queueReplyRecoveryPrompt(turn: TurnReplySnapshot): void {
+    const deliveryEpoch = this.deliveryEpoch;
+    this.pasteQueueDepth++;
+    this.pasteLock = this.pasteLock.then(async () => {
+      try {
+        const current = this.turnReplyGuard.snapshot();
+        if (!current || current.generation !== turn.generation || current.phase !== "recovering") return;
+        if (current.replyDelivered) {
+          this.turnReplyGuard.complete(turn.generation);
+          this.emit("reply_drop_recovered", {
+            name: this.name,
+            correlationId: current.target.correlationId,
+            generation: current.generation,
+          });
+          return;
+        }
+        const delivered = await this.deliverMessage(REPLY_RECOVERY_PROMPT, undefined, {
+          deliveryEpoch,
+        });
+        if (!delivered) {
+          this.turnReplyGuard.complete(turn.generation);
+          this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
+        }
+      } finally {
+        this.pasteQueueDepth--;
+      }
+    }).catch(err => {
+      this.logger.error({ err: (err as Error).message }, "Reply-drop recovery prompt failed");
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportUnrecoveredReplyDrop(turn, "recovery_prompt_delivery_failed");
+    });
+  }
+
+  private queueMalformedReplyRecovery(turn: TurnReplySnapshot, text: string): void {
+    // Serialize the delivery decision ahead of any new pane input. If direct
+    // delivery is positively acknowledged, there is no recovery turn. If its
+    // outcome is unknown, do not ask the model to duplicate it.
+    const delivery = this.deliverDaemonReply(
+      text,
+      "malformedreply",
+      "Malformed tool-call recovery",
+      turn.target,
+    );
+    this.pasteQueueDepth++;
+    this.pasteLock = this.pasteLock.then(async () => {
+      try {
+        const delivered = await delivery;
+        this.emit("malformed_tool_call", {
+          name: this.name,
+          correlationId: turn.target.correlationId,
+          recovered: delivered,
+        });
+        this.turnReplyGuard.complete(turn.generation);
+        if (!delivered) this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+      } finally {
+        this.pasteQueueDepth--;
+      }
+    }).catch(err => {
+      this.logger.error({ err: (err as Error).message }, "Malformed tool-call recovery attempt failed");
+      this.turnReplyGuard.complete(turn.generation);
+      this.reportReplyDropWithoutRetry(turn, "reply_failed_or_unknown");
+    });
+  }
+
+  private reportUnrecoveredReplyDrop(
+    turn: TurnReplySnapshot,
+    reason = "recovery_turn_missing_reply",
+  ): void {
+    this.emit("reply_drop_unrecovered", {
+      name: this.name,
+      correlationId: turn.target.correlationId,
+      generation: turn.generation,
+      reason,
+    });
+    const now = Date.now();
+    if (this.lastReplyDropWarningAt !== 0
+      && now - this.lastReplyDropWarningAt < REPLY_DROP_WARNING_COOLDOWN_MS) return;
+    this.lastReplyDropWarningAt = now;
+    void this.deliverDaemonReply(
+      t("inst.reply_drop_unrecovered"),
+      "replydropwarn",
+      "Reply-drop recovery warning",
+      turn.target,
+      true,
+    );
+  }
+
   /** Relay the pane's final text to the channel, marked as a daemon proxy reply. */
-  private async sendProxyReply(pane: string | undefined, inboundMarker: string | undefined, correlationId: string | undefined): Promise<void> {
+  private async sendProxyReply(pane: string | undefined, target: TurnReplyTarget): Promise<void> {
     try {
       // The idle capture normally hands its pane in; fall back only when the
       // edge came from a path without one.
       if (pane === undefined) pane = await this.tmux?.capturePane();
       if (!pane) return;
-      const text = extractProxyReplyText(pane, { inboundMarker, readyPattern: this.instanceStateReadyPattern });
+      const text = extractProxyReplyText(pane, { inboundMarker: target.inboundMarker, readyPattern: this.instanceStateReadyPattern });
       if (!text) {
         this.logger.debug("Dead-MCP proxy reply skipped — pane tail is trivial");
         return;
       }
       let body = `⚠️ [MCP unavailable — proxy reply]\n\n${text}`;
-      if (correlationId) body += `\n\n(correlation_id: ${correlationId})`;
-      this.logger.warn({ correlationId }, "MCP server dead and the turn sent no reply — relaying the pane text as a proxy reply");
-      this.emit("mcp_proxy_reply", { name: this.name, correlationId });
-      this.deliverDaemonReply(body, "proxyreply", "Dead-MCP proxy reply");
+      if (target.correlationId) body += `\n\n(correlation_id: ${target.correlationId})`;
+      this.logger.warn({ correlationId: target.correlationId }, "MCP server dead and the turn sent no reply — attempting a pane-text proxy reply");
+      const delivered = await this.deliverDaemonReply(body, "proxyreply", "Dead-MCP proxy reply", target);
+      if (delivered) this.emit("mcp_proxy_reply", { name: this.name, correlationId: target.correlationId });
     } catch (err) {
       this.logger.error({ err: (err as Error).message }, "Dead-MCP proxy reply attempt failed");
     }
   }
 
-  /** Send a narrowly extracted #648 reply; operator notification is a separate event. */
-  private sendRecoveredMalformedReply(text: string, correlationId: string | undefined): void {
-    try {
-      this.deliverDaemonReply(text, "malformedreply", "Malformed tool-call recovery");
-    } catch (err) {
-      this.logger.error({ err: (err as Error).message, correlationId }, "Malformed tool-call recovery attempt failed");
-    }
-  }
-
   /** Context-bound reply path shared by dead-MCP and malformed-call recovery. */
-  private deliverDaemonReply(body: string, requestPrefix: string, logLabel: string): void {
+  private deliverDaemonReply(
+    body: string,
+    requestPrefix: string,
+    logLabel: string,
+    target?: TurnReplyTarget,
+    statusOnly = false,
+  ): Promise<boolean> {
     const args: Record<string, unknown> = { text: body };
-    if (this.lastChatId) {
-      args.chat_id = this.lastChatId;
-      if (this.lastThreadId) args.thread_id = this.lastThreadId;
+    const chatId = target?.chatId ?? this.lastChatId;
+    const threadId = target?.threadId ?? this.lastThreadId;
+    const adapterId = target?.adapterId ?? this.lastAdapterId;
+    if (chatId) {
+      args.chat_id = chatId;
+      if (threadId) args.thread_id = threadId;
     }
     const adapters = this.messageBus.getAllAdapters();
     if (adapters.length > 0) {
-      routeToolCall(adapters[0], "reply", args, this.lastThreadId, (_result, error) => {
-        if (error) this.logger.error({ error }, `${logLabel} failed`);
-        else this.logger.info(`${logLabel} delivered`);
+      const adapter = adapterId ? this.messageBus.getAdapter(adapterId) : adapters[0];
+      if (!adapter) {
+        this.logger.error({ adapterId }, `${logLabel} failed — target adapter is unavailable`);
+        return Promise.resolve(false);
+      }
+      return new Promise(resolve => {
+        let settled = false;
+        const finish = (delivered: boolean, error?: string) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (delivered) this.logger.info(`${logLabel} delivered`);
+          else this.logger.error({ error }, `${logLabel} failed`);
+          resolve(delivered);
+        };
+        const timeout = setTimeout(() => finish(false, "adapter reply timed out"), daemonBudgetMs("reply"));
+        timeout.unref?.();
+        try {
+          if (!routeToolCall(adapter, "reply", args, threadId, (result, error) => finish(!error && result != null, error))) {
+            finish(false, "reply route unavailable");
+          }
+        } catch {
+          finish(false, "adapter reply threw before returning a promise");
+        }
       });
-      return;
     }
     if (!this.ipcServer) {
       this.logger.error(`${logLabel} failed — no adapter or fleet IPC route`);
-      return;
+      return Promise.resolve(false);
     }
-    const fleetReqId = `${requestPrefix}_${++this.proxyReplySeq}`;
-    const timeout = setTimeout(() => {
-      this.pendingIpcRequests.delete(fleetReqId);
-      this.logger.error(`${logLabel} timed out waiting for the fleet manager`);
-    }, daemonBudgetMs("reply"));
-    timeout.unref?.();
-    // Register before broadcast: an in-process/fast adapter can answer in the
-    // same tick, and a waiter installed afterwards would miss that response.
-    this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
-      clearTimeout(timeout);
-      if (respMsg.error) this.logger.error({ error: respMsg.error }, `${logLabel} failed`);
-      else this.logger.info(`${logLabel} delivered`);
-    });
-    this.ipcServer.broadcast({
-      type: "fleet_outbound",
-      tool: "reply",
-      args,
-      fleetRequestId: fleetReqId,
-      adapterId: this.lastAdapterId,
+    return new Promise(resolve => {
+      const fleetReqId = `${requestPrefix}_${++this.proxyReplySeq}`;
+      const timeout = setTimeout(() => {
+        this.pendingIpcRequests.delete(fleetReqId);
+        this.logger.error(`${logLabel} timed out waiting for the fleet manager`);
+        resolve(false);
+      }, daemonBudgetMs("reply"));
+      timeout.unref?.();
+      // Register before broadcast: an in-process/fast adapter can answer in the
+      // same tick, and a waiter installed afterwards would miss that response.
+      this.pendingIpcRequests.set(fleetReqId, (respMsg) => {
+        clearTimeout(timeout);
+        const delivered = !respMsg.error && respMsg.result != null;
+        if (!delivered) this.logger.error({ error: respMsg.error }, `${logLabel} failed`);
+        else this.logger.info(`${logLabel} delivered`);
+        resolve(delivered);
+      });
+      try {
+        this.ipcServer!.broadcast({
+          type: "fleet_outbound",
+          tool: "reply",
+          args,
+          fleetRequestId: fleetReqId,
+          adapterId,
+          statusOnly,
+        });
+      } catch {
+        clearTimeout(timeout);
+        this.pendingIpcRequests.delete(fleetReqId);
+        this.logger.error(`${logLabel} failed — fleet IPC broadcast threw`);
+        resolve(false);
+      }
     });
   }
 
@@ -3835,7 +4050,7 @@ export class Daemon extends EventEmitter {
       this.logger.info({ user }, "Raw paste from topic mode user");
       this.pasteLock = this.pasteLock.then(async () => {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-        if (await this.deliverMessage(rawText, undefined, { deliveryEpoch })) this.markTurnStarted(meta, rawText);
+        await this.deliverMessage(rawText, undefined, { deliveryEpoch });
       }).catch(err => {
         this.logger.warn({ err: (err as Error).message }, "pasteLock raw delivery error");
       });
@@ -4954,13 +5169,22 @@ export class Daemon extends EventEmitter {
       this.noteMcpProofOfLife("tool_call", this.socketPids.get(socket));
     }
 
+    // A tool invocation is not delivery evidence. Capture which obligation it
+    // belongs to now, then settle it only after the adapter/fleet responds.
+    // Explicitly mapped sibling sessions must not satisfy this instance's turn;
+    // an unmapped socket is retained for legacy/tests where mcp_ready was not
+    // observed before the first tool call.
+    const sourceSession = this.socketSessionNames.get(socket);
+    const replyAttempt = TURN_REPLY_TOOLS.has(tool) && (!sourceSession || sourceSession === this.name)
+      ? this.turnReplyGuard.beginToolAttempt(tool === "reply")
+      : null;
+
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string) => {
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
       if (!error && result != null && TURN_REPLY_TOOLS.has(tool)) {
-        this.turnOutboundDelivered = true;
-        if (tool === "reply") this.turnReplyDelivered = true;
+        this.turnReplyGuard.settleToolAttempt(replyAttempt, true);
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error }) ?? false;
       if (!sent) {
@@ -5361,6 +5585,11 @@ export class Daemon extends EventEmitter {
    * into exactly the window this exists to close.
    */
   private beginSpawn(): void {
+    // A restarted CLI has no trustworthy turn edge for the process it replaced.
+    // v1 deliberately does not persist obligations across restarts: missing one
+    // warning is safer than treating the replacement's startup idle as the old
+    // turn ending and injecting a stale recovery prompt.
+    this.turnReplyGuard.reset();
     this.spawnDepth++;
     this.spawning = true;
     if (!this.spawnSettled) {

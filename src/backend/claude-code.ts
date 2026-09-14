@@ -176,6 +176,7 @@ export const CLAUDE_RESUME_STARTUP_BUDGET_MS = 60_000;
 export class ClaudeCodeBackend implements CliBackend {
   readonly binaryName = "claude";
   readonly instructionsReloadedOnResume = true;
+  readonly replyCompletionGuard = true;
 
   /**
    * Resuming needs the conversation back from the backend before anything
