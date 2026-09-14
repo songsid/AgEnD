@@ -108,11 +108,46 @@ describe("/login auth pre-check", () => {
     const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
 
     const result = await (fm as any).recoverBackendInstances("codex");
-    expect(result).toEqual({ woken: ["codex-paused-live", "codex-paused-marker"], restarted: ["codex-running"] });
+    expect(result).toEqual({ woken: ["codex-paused-live", "codex-paused-marker"], restarted: ["codex-running"], pending: [] });
     expect(wake).toHaveBeenCalledWith("codex-paused-live", 30_000);
     expect(startPersisted).toHaveBeenCalledWith("codex-paused-marker");
     expect(restart).toHaveBeenCalledTimes(1);
     expect(restart).toHaveBeenCalledWith("codex-running");
+  });
+
+  // The recovery loop had no wall-clock bound, and the caller only built its
+  // "login completed" message after it returned — so one instance that never
+  // came back suppressed the news of a login that had already succeeded.
+  it("post-login recovery gives up WAITING on a hung instance and reports it as pending", async () => {
+    const { fm } = setup();
+    fm.fleetConfig = {
+      defaults: { backend: "codex" },
+      instances: {
+        "codex-hangs": { working_directory: "/tmp/hangs" },
+        "codex-after": { working_directory: "/tmp/after" },
+      },
+    } as any;
+    vi.spyOn(fm, "getInstanceStatus").mockImplementation(() => "running" as any);
+    let hungSettled = false;
+    const restart = vi.spyOn(fm, "restartSingleInstance").mockImplementation(async (name: string) => {
+      if (name === "codex-hangs") {
+        await new Promise(r => setTimeout(r, 5_000));
+        hungSettled = true;
+      }
+    });
+
+    const started = Date.now();
+    const result = await (fm as any).recoverBackendInstances("codex", 50);
+
+    expect(Date.now() - started, "the whole batch must not wait on one instance").toBeLessThan(4_000);
+    expect(result.pending).toContain("codex-hangs");
+    expect(result.restarted).not.toContain("codex-hangs");
+    // Every instance is still accounted for: the ones after the deadline are
+    // reported as pending too, rather than silently dropped from the report.
+    expect([...result.restarted, ...result.pending].sort()).toEqual(["codex-after", "codex-hangs"]);
+    // Not cancelled — it is still coming back on its own.
+    expect(hungSettled).toBe(false);
+    expect(restart).toHaveBeenCalled();
   });
 
   it("post-login recovery includes ClassicBot instances of the same backend without reviving stopped or crashed ones", async () => {
@@ -164,6 +199,7 @@ describe("/login auth pre-check", () => {
     expect(result).toEqual({
       woken: ["classic-paused-live", "classic-paused-marker"],
       restarted: ["fleet-kiro", "duplicate-kiro", "classic-running"],
+      pending: [],
     });
     expect(wake).toHaveBeenCalledExactlyOnceWith("classic-paused-live", 30_000);
     expect(startPersisted).toHaveBeenCalledExactlyOnceWith("classic-paused-marker");
@@ -188,9 +224,9 @@ describe("/login auth pre-check", () => {
     const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
 
     expect(await (fm as any).recoverBackendInstances("kiro-cli"))
-      .toEqual({ woken: [], restarted: [] });
+      .toEqual({ woken: [], restarted: [], pending: [] });
     expect(await (fm as any).recoverBackendInstances("codex"))
-      .toEqual({ woken: [], restarted: ["shared"] });
+      .toEqual({ woken: [], restarted: ["shared"], pending: [] });
     expect(restart).toHaveBeenCalledExactlyOnceWith("shared");
   });
 

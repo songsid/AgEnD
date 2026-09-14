@@ -1,6 +1,7 @@
 import type { ChannelAdapter } from "./channel/types.js";
 import { t } from "./locale.js";
 import { updateElapsedSeconds } from "./update-progress.js";
+import { runBeforeDeadline, type DeadlineResult } from "./deadline.js";
 
 export interface RestartProgressTarget {
   /** Initial adapter generation, when one already exists. Update recovery may
@@ -40,10 +41,6 @@ export type RestartProgressMode = "restart" | "update" | "reload";
 const TERMINAL_DELIVERY_RETRY_MS = 1_000;
 export const RESTART_PROGRESS_TERMINAL_TIMEOUT_MS = 30_000;
 
-type DeadlineResult<T> =
-  | { status: "fulfilled"; value: T }
-  | { status: "rejected"; reason: unknown }
-  | { status: "timeout" };
 
 function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
@@ -298,27 +295,8 @@ export class RestartProgress {
     }
   }
 
-  private async beforeDeadline<T>(start: () => Promise<T>, deadline: number): Promise<DeadlineResult<T>> {
-    const remaining = deadline - Date.now();
-    if (remaining <= 0) return { status: "timeout" };
-    let work: Promise<T>;
-    try {
-      work = start();
-    } catch (reason) {
-      return { status: "rejected", reason };
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeout = new Promise<DeadlineResult<T>>(resolve => {
-      timer = setTimeout(() => resolve({ status: "timeout" }), remaining);
-      timer.unref?.();
-    });
-    const settled = work.then<DeadlineResult<T>, DeadlineResult<T>>(
-      value => ({ status: "fulfilled", value }),
-      reason => ({ status: "rejected", reason }),
-    );
-    const result = await Promise.race([settled, timeout]);
-    if (timer) clearTimeout(timer);
-    return result;
+  private beforeDeadline<T>(start: () => Promise<T>, deadline: number): Promise<DeadlineResult<T>> {
+    return runBeforeDeadline(start, deadline);
   }
 
   private terminalDeliveryFailed(): false {

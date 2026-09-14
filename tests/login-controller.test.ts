@@ -67,7 +67,7 @@ function make(over: Partial<LoginControllerDeps> & { config?: Record<string, unk
   const sessions: FakeSession[] = [];
   const buttons: Array<Parameters<LoginControllerDeps["postButtons"]>[0]> = [];
   const events: Array<[string, Record<string, unknown> | undefined]> = [];
-  const recover = vi.fn(async () => ({ woken: ["kiro-a"], restarted: ["kiro-b"] }));
+  const recover = vi.fn(async () => ({ woken: ["kiro-a"], restarted: ["kiro-b"], pending: [] as string[] }));
   const lock = over.lock ?? new LoginWindowLock();
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const { config: _c, admin: _a, lock: _l, ...rest } = over;
@@ -494,7 +494,12 @@ describe("session outcome", () => {
     await controller.start("codex", chat(adapter), CONFIRMED);
     await sessions[0].finish({ ok: true, reason: "exit", exitCode: 0, detail: "clean exit" });
     expect(recover).toHaveBeenCalledWith("codex");
-    expect(String(adapter.sendText.mock.calls.at(-1)![1])).toBe(t("login.success", "codex", "kiro-a", "kiro-b"));
+    // Two messages, in this order. The login result must not wait for the
+    // recovery: it used to be built only after recoverBackendInstances
+    // returned, so a slow restart left the user with nothing to read at all.
+    const texts = adapter.sendText.mock.calls.map((c: unknown[]) => String(c[1]));
+    expect(texts.at(-2)).toBe(t("login.completed", "codex"));
+    expect(texts.at(-1)).toBe(t("login.recovered", "codex", "kiro-a", "kiro-b"));
     expect(controller.isActive()).toBe(false);
     expect(lock.isHeld).toBe(false);
     expect(await controller.start("codex", chat(adapter), CONFIRMED)).toBe(t("login.web_started", "codex"));
