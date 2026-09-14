@@ -852,6 +852,11 @@ export class InstanceLifecycle {
         if (verdict === "valid") {
           this.ctx.logger.info({ name, backend: this.backendOf(name) },
             "auth-error pattern ignored — token-free auth check passed (likely conversation text)");
+          // Dropping the incident is not enough: the daemon armed its auth
+          // suspicion and recovery gate before emitting, and leaving those set
+          // would silently suppress hang notifications and MCP auto-restart for
+          // an instance whose credentials are demonstrably fine.
+          this.daemons.get(name)?.clearSuspectedAuthFailure();
           return;
         }
       }
