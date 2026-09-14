@@ -282,6 +282,79 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.events).toContain("message_confirmed");
   });
 
+  // An older message from the SAME sender, opening with the same body, is
+  // already stranded in the input row when ours is swallowed. Reading that as
+  // "our message is stranded" and pressing Enter submits the OLD one — and the
+  // turn it starts then vouches for a message that never reached the pane.
+  it("does not attribute an older stranded message to this delivery", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    const olderStranded = [
+      "• Working (9s • esc to interrupt)",
+      `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+      "  (message_id: m-0 | correlation_id: cid-older-delivery)",
+      "  Context 63% left",
+    ].join("\n");
+    h.state.pane = olderStranded;
+    h.state.afterPaste = olderStranded;  // ours was swallowed by a redraw
+    h.state.afterEnter = olderStranded;  // and the old one is what any Enter submits
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+
+    // Ours is nowhere on screen, so the recovery is to paste it — not to press
+    // Enter on someone else's text and call this delivery done.
+    expect(h.paste, "our message must actually be sent, not assumed sent").toHaveBeenCalledTimes(2);
+    expect(ok).toBe(true);
+  });
+
+  // A momentary failure to read the pane BEFORE pasting must not turn a
+  // delivered message into a second copy: this message's envelope id is proof
+  // on its own, because no earlier message can carry it.
+  it("does not re-paste when the baseline capture failed but the message is clearly there", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    // The dialog probes read the pane first; every capture after those fails
+    // until the paste happens, so all three baseline attempts come back empty
+    // and this delivery has no "before" picture at all.
+    let captures = 0;
+    let pasted = false;
+    h.daemon.tmux.capturePane = async () => {
+      captures++;
+      if (!pasted && captures > 2) throw new Error("no server running");
+      return h.state.pane;
+    };
+    const origPaste = h.paste.getMockImplementation()!;
+    h.paste.mockImplementation(async (...args: unknown[]) => { pasted = true; return origPaste(...args as []); });
+    h.state.afterPaste = SUBMITTED; // m-1 echoed into the transcript, input row clear
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+
+    expect(h.paste, "a message the pane clearly shows must not be pasted twice").toHaveBeenCalledTimes(1);
+    expect(ok).toBe(true);
+    expect(h.events).toContain("message_confirmed");
+  });
+
+  // Without an envelope id (a raw paste, a system notice) the body is all there
+  // is, and an older identical message stranded in the input row looks exactly
+  // like ours. The pane as it was BEFORE the paste is what separates them.
+  it("does not claim an identical older strand when this message has no envelope id", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    const identicalOlderStrand = [
+      "• Working (9s • esc to interrupt)",
+      `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+      "  Context 63% left",
+    ].join("\n");
+    h.state.pane = identicalOlderStrand;
+    h.state.afterPaste = identicalOlderStrand; // ours was swallowed
+    h.state.afterEnter = identicalOlderStrand;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
+
+    expect(h.paste, "the older strand is not ours to claim as delivered").toHaveBeenCalledTimes(2);
+    expect(ok).toBe(true);
+  });
+
   // The same trap in the transcript: an older message that opens the same way
   // must not vouch for this one. The routing envelope's message_id is what
   // separates them.

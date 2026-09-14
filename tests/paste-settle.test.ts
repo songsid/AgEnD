@@ -242,6 +242,7 @@ describe("writeMessageToPane settle routing", () => {
       pasteBuffer: async () => true,
       sendSpecialKey: async () => false,
       getLastSendSpecialKeyError: () => "client is read-only",
+      capturePane: async () => "",
     };
     try {
       const pending = (daemon as any).writeMessageToPane(

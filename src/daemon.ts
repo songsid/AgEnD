@@ -436,6 +436,9 @@ export class PendingWorkTracker {
 }
 
 const NORMAL_ENTER_SETTLE_MS = 500;
+/** Attempts to read the pre-paste pane before a delivery gives up on a baseline. */
+const BASELINE_CAPTURE_ATTEMPTS = 3;
+const BASELINE_CAPTURE_RETRY_MS = 150;
 
 /**
  * What the pane proves about a paste we just pressed Enter on.
@@ -465,6 +468,18 @@ interface PaneEvidence {
   queued: number;
   /** Occurrences of this message's identifying signature. */
   payload: number;
+  /** Whether the input area ALREADY showed that signature. */
+  strandedInput: boolean;
+}
+
+/**
+ * How this message can be recognised on screen, and whether that mark could
+ * belong to any other message. `unique` is what lets evidence be attributed to
+ * THIS delivery with no baseline to compare against.
+ */
+interface SubmissionSignature {
+  value: string;
+  unique: boolean;
 }
 
 /** Occurrences of `needle` in `haystack` (plain text, no regex semantics). */
@@ -4472,12 +4487,12 @@ export class Daemon extends EventEmitter {
           return true;
         }
         if (proof === "unverifiable") {
-          // Our text reached the pane but this backend exposes no input row, so
-          // "submitted" and "stranded" look identical from here. Only /steer
-          // reaches this path on such a backend, and re-pasting an interjection
-          // the CLI may already have taken would deliver it twice — accept, as
-          // this path always has, and say in the log that it is unproven.
-          this.logger.warn("Steer paste reached the pane but cannot be verified as submitted on this backend");
+          // Our text is on the pane but cannot be shown to have left the input
+          // row — either the backend exposes no input row (only /steer reaches
+          // this path on such a backend) or the pre-paste pane was unreadable.
+          // Re-pasting on that would deliver the message twice, so accept as
+          // this path always has, and record that it is unproven.
+          this.logger.warn("Paste reached the pane but could not be verified as submitted — accepting without proof");
           if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
           return true;
         }
@@ -4650,31 +4665,53 @@ export class Daemon extends EventEmitter {
     // for the first and recovers on the second, which is what it did before —
     // the fix here is for backends that CAN be read, not a new guess for those
     // that cannot.
+    const signature = this.submissionSignature(formatted);
     const prompt = this.backend?.getBottomReadyPattern?.();
     if (!prompt) {
       const seen = this.paneEvidence(pane, formatted);
+      if (signature.unique && seen.payload > 0) return "unverifiable";
       return seen.payload > (baseline?.payload ?? Infinity) || seen.queued > (baseline?.queued ?? Infinity)
         ? "unverifiable"
         : "unproven";
     }
+    const after = this.paneEvidence(pane, formatted);
 
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
     //    it was not submitted — whatever else is on screen.
-    const input = inputAreaText(pane, prompt);
-    if (input != null && inputShowsPastedText(input, formatted)) return "stranded";
+    //
+    //    It must be OUR text. A unique signature settles that on its own; a
+    //    body-derived one cannot, so it is only attributed to this delivery
+    //    when the input row did not already show it before we pasted.
+    //    Otherwise an older stranded message with the same opening would be
+    //    read as ours, we would press Enter to "recover" it, and the turn IT
+    //    starts would confirm a message that never reached the pane.
+    if (after.strandedInput && (signature.unique || baseline?.strandedInput === false)) return "stranded";
 
-    // 2/3. Positive evidence, and it must be NEW. Counting against a baseline
-    //    taken before the paste is what ties the evidence to THIS delivery: a
-    //    queue marker left by an earlier message, or an older transcript entry
-    //    that opens the same way, are on screen either way and would otherwise
-    //    confirm a paste that never landed.
-    const after = this.paneEvidence(pane, formatted);
-    if (after.queued > (baseline?.queued ?? Infinity)) return "submitted";
-    if (after.payload > (baseline?.payload ?? Infinity)) return "submitted";
+    // 2. Positive evidence. A unique signature needs no baseline: no earlier
+    //    message can carry this delivery's message_id, so finding it outside
+    //    the input row is proof in itself — which also means a momentary
+    //    failure to read the pane BEFORE pasting cannot turn a delivered
+    //    message into a re-paste.
+    if (signature.unique && after.payload > 0) return "submitted";
 
-    // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
-    return "unproven";
+    // 3. Otherwise the evidence must be NEW relative to the pane as it was
+    //    before we pasted: a queue marker left by an earlier message, or an
+    //    older transcript entry that opens the same way, are on screen either
+    //    way and would otherwise confirm a paste that never landed.
+    if (baseline) {
+      if (after.queued > baseline.queued) return "submitted";
+      if (after.payload > baseline.payload) return "submitted";
+      // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
+      return "unproven";
+    }
+
+    // No baseline and nothing that identifies this delivery on its own. "The
+    // paste was lost" is a guess, not a finding, and acting on it re-pastes a
+    // message that may well have been submitted — so say the evidence is
+    // missing instead of inventing a verdict.
+    this.logger.warn("Could not read the pane before pasting — this delivery cannot be verified either way");
+    return "unverifiable";
   }
 
   /**
@@ -4684,21 +4721,39 @@ export class Daemon extends EventEmitter {
    */
   private async capturePaneEvidence(formatted: string): Promise<PaneEvidence | null> {
     if (!this.tmux) return null;
-    try {
-      return this.paneEvidence(await this.tmux.capturePane(), formatted);
-    } catch {
-      // No baseline means nothing can be proven NEW; confirmSubmitted then
-      // reports "unproven" rather than trusting what is already on screen.
-      return null;
+    // Bounded re-probe: a capture that fails here costs the delivery its only
+    // "before" picture, and a momentary failure should not decide anything.
+    for (let attempt = 1; attempt <= BASELINE_CAPTURE_ATTEMPTS; attempt++) {
+      try {
+        const pane = await this.tmux.capturePane();
+        const evidence = this.paneEvidence(pane, formatted);
+        const prompt = this.backend?.getBottomReadyPattern?.();
+        if (prompt && strandedAgendMessageInInput(pane, prompt)) {
+          // Whatever we paste now lands after it, and one Enter submits both as
+          // a single message. Nothing here can undo that; saying so beats
+          // letting two messages silently merge.
+          this.logger.warn("An unsubmitted message is already in the input row — this delivery will be appended to it");
+        }
+        return evidence;
+      } catch {
+        if (attempt < BASELINE_CAPTURE_ATTEMPTS) await new Promise(r => setTimeout(r, BASELINE_CAPTURE_RETRY_MS));
+      }
     }
+    // Still unreadable: confirmSubmitted falls back to evidence that stands on
+    // its own (a unique message_id) and refuses to guess without it.
+    this.logger.warn("Could not read the pane before pasting — no baseline for this delivery");
+    return null;
   }
 
   private paneEvidence(pane: string, formatted: string): PaneEvidence {
     const marker = this.backend?.getQueuedInputMarker?.();
     const signature = this.submissionSignature(formatted);
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    const input = prompt ? inputAreaText(pane, prompt) : null;
     return {
       queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
-      payload: countOccurrences(pane.replace(/\s+/g, ""), signature),
+      payload: countOccurrences(pane.replace(/\s+/g, ""), signature.value),
+      strandedInput: input != null && inputShowsPastedText(input, signature.value),
     };
   }
 
@@ -4710,10 +4765,10 @@ export class Daemon extends EventEmitter {
    * paste that never landed. System pastes carry no envelope and fall back to
    * the body signature, which the baseline comparison still ties to this paste.
    */
-  private submissionSignature(formatted: string): string {
+  private submissionSignature(formatted: string): SubmissionSignature {
     const id = formatted.match(/message_id:\s*([^\s|)\]]+)/);
-    if (id) return `message_id:${id[1]}`;
-    return pastedTextSignature(formatted);
+    if (id) return { value: `message_id:${id[1]}`, unique: true };
+    return { value: pastedTextSignature(formatted), unique: false };
   }
 
   /**
