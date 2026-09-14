@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
 import { PIE_CLASS } from "../tui-glyphs.js";
+import { KIRO_EXPIRED_LOGIN_SCREEN } from "../login-flows.js";
 
 // Kiro CLI feature gates. These are deliberately separate: the flags shipped
 // in different releases, so one broad "old Kiro" check would still crash some
@@ -429,7 +430,32 @@ export class KiroBackend implements CliBackend {
         // list (`   2: dispatch failure (other): No token`) rather than matched as
         // a bare keyword, because this fleet maintains AgEnD and an agent quoting
         // this very error must not pause itself.
-        pattern: /You are not logged in|ExpiredTokenException|no device registration found for token|Access denied:.*bearer token.*invalid|^\s*\d+:\s*(?:dispatch failure[^\n]*?)?No token\s*$/im,
+        // The last alternative is the sign-in screen kiro-cli drops to BY
+        // ITSELF when the stored token expires (kiro-cli 2.14.2). It prints no
+        // error at all — the prompt is simply replaced — so none of the strings
+        // above appear, nothing matches, and the pane then sits unchanged until
+        // the hang detector reports "no screen change for 10 minutes, no ready
+        // prompt": a whole fleet of kiro instances showing "working / possibly
+        // stuck" with deliveries failing, when the real answer was "log in
+        // again" (reported by an external user on AgEnD beta.13).
+        //
+        // It lives in THIS entry rather than a new one on purpose: same cause,
+        // same remedy, same action, so one message covers both and the
+        // first-match ordering above stays intact.
+        //
+        // Both of its lines are required together (the binary contains
+        // ", let's get you signed in!" — the product name is runtime-filled),
+        // so a transcript quoting one of them is not a sign-in screen. Any
+        // match here is still only a TRIGGER: the lifecycle confirms every
+        // auth_error with the token-free `kiro-cli whoami` probe before pausing
+        // anything, and drops it when the credentials turn out to be fine.
+        pattern: new RegExp(
+          "You are not logged in|ExpiredTokenException|no device registration found for token"
+          + "|Access denied:.*bearer token.*invalid"
+          + "|^\\s*\\d+:\\s*(?:dispatch failure[^\\n]*?)?No token\\s*$"
+          + `|${KIRO_EXPIRED_LOGIN_SCREEN.source}`,
+          "im",
+        ),
         type: "auth_error",
         action: "pause",
         message: "Kiro login is missing or expired — run `kiro-cli login` to restore all kiro instances",

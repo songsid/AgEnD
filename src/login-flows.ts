@@ -118,6 +118,40 @@ const GENERIC_URL = /https:\/\/[^\s"'<>\])]+/;
  */
 const STANDALONE_DEVICE_CODE = /^\s*([A-Z0-9]{4,10}-[A-Z0-9]{4,10})\s*$/m;
 
+/**
+ * The sign-in screen kiro-cli falls back to ON ITS OWN once a stored token has
+ * expired (kiro-cli 2.14.2), as opposed to the menu `kiro-cli login` opens.
+ *
+ * This matches a LIVE screen, not the words anywhere on the pane. Both lines
+ * must be complete rows, close together, and nothing but blank space may follow
+ * the "Press enter …" instruction — because while that screen is up, waiting
+ * for the key, it is the last thing drawn.
+ *
+ * Requiring the two phrases somewhere within 200 characters was not enough:
+ * this fleet maintains AgEnD, so the whole screen gets pasted into ordinary
+ * conversation while people discuss this very bug, and a quoted copy followed
+ * by prose matched exactly like the real thing. That is not a harmless false
+ * positive — the startup scanner sets authFailureUnresolved on a hit, which
+ * suppresses hang notifications and holds MCP auto-restart, and nothing clears
+ * it when the auth probe later says the credentials are fine.
+ *
+ * The welcome line is matched without the product name because that is all the
+ * binary contains (", let's get you signed in!" — the name is filled in at
+ * runtime). No `^`/`$` and no reliance on flags: the same source is reused in a
+ * pattern compiled with different flags, and this must mean the same thing in
+ * both.
+ *
+ * Exported because the same screen has to be recognised from two places at two
+ * different moments — the startup scan (via loginScreenPattern below) and the
+ * runtime output monitor (via kiro's auth error pattern) — and two copies of
+ * this would drift.
+ */
+export const KIRO_EXPIRED_LOGIN_SCREEN =
+  /(?:^|\n)[^\n]*, let's get you signed in![ \t]*\n(?:[^\n]*\n){0,8}?[ \t]*Press enter to continue to the browser or esc to cancel[ \t]*(?![\s\S]*\S)/;
+
+/** Either kiro sign-in screen: the deliberate login menu, or the expiry fallback. */
+const KIRO_LOGIN_SCREEN = new RegExp(`Select login method|${KIRO_EXPIRED_LOGIN_SCREEN.source}`);
+
 export const LOGIN_FLOWS: Record<string, LoginFlow> = {
   "codex": {
     noShellEscape: true,   // login TUI reviewed: menu/prompts/device code only, no shell
@@ -147,8 +181,24 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = {
     backend: "kiro-cli",
     command: "kiro-cli login",
     authCheck: { argv: ["kiro-cli", "whoami", "--format", "json"] },
-    loginScreenPattern: /Select login method/,
+    // Two DIFFERENT sign-in screens, and only the first was covered:
+    //
+    //   "Select login method"  — the menu `kiro-cli login` opens deliberately.
+    //   "…, let's get you signed in!" / "Press enter to continue to the
+    //     browser or esc to cancel" — where kiro-cli DROPS BY ITSELF once the
+    //     stored token expires (seen on kiro-cli 2.14.2). No ready prompt will
+    //     ever appear on it, so without this the startup scan waited out its
+    //     budget and the instance was reported as working, then stuck.
+    //
+    // Both alternatives come from the kiro-cli binary's own strings. The
+    // welcome line is matched WITHOUT the product name because the binary only
+    // contains ", let's get you signed in!" — the name is filled in at runtime —
+    // and both of its lines are required together, so prose that happens to
+    // mention one of them does not read as a live sign-in screen.
+    loginScreenPattern: KIRO_LOGIN_SCREEN,
     menu: {
+      // Deliberately NOT the pattern above: this one drives the menu
+      // automation, and it must match only the menu.
       promptPattern: /Select login method/,
       // Binary-verified on-screen order; "Your Organization" = Identity Center
       // and is followed by the Start URL / Region text prompts below.

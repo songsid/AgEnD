@@ -1214,6 +1214,33 @@ export class Daemon extends EventEmitter {
     return `${ep.type}:${ep.pattern.source}`;
   }
 
+  /**
+   * Undo the auth suspicion a pattern match armed, once the backend's token-free
+   * probe has said the credentials are fine.
+   *
+   * emitErrorPattern arms these BEFORE the pty_error reaches the lifecycle, and
+   * the lifecycle's "valid" verdict used to just drop the incident — leaving the
+   * daemon permanently suspicious of an auth failure that never existed. That
+   * state is not inert: authFailureUnresolved suppresses the stuck/hang
+   * notification and holds MCP auto-restart (a later real MCP death is then read
+   * as already-confirmed auth trouble rather than re-verified), and the recovery
+   * gate suppresses further error detection until a ready pattern shows up.
+   *
+   * Only what an auth match armed is rolled back. If some other pattern has
+   * since armed the recovery gate, that one is still live and stays.
+   */
+  clearSuspectedAuthFailure(): boolean {
+    if (!this.authFailureUnresolved && !this.loginScreenReported) return false;
+    this.authFailureUnresolved = false;
+    this.loginScreenReported = false;
+    if (this.lastDetectedErrorType === "auth_error") {
+      this.clearErrorRecoveryGate();
+      this.lastDetectedErrorType = null;
+    }
+    this.logger.info("Auth suspicion withdrawn — the token-free probe reports valid credentials");
+    return true;
+  }
+
   private clearErrorRecoveryGate(): void {
     this.errorWaitingForRecovery = false;
     this.errorDetectedAt = 0;
