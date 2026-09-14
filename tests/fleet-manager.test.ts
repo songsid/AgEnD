@@ -410,6 +410,47 @@ describe("FleetManager", () => {
       expect((deliver.mock.calls[0][1] as any).meta.chat_id).toBe("778899001122334455");
     });
 
+    /**
+     * A persona bot is a second Discord bot on the SAME guild (quickstart copies
+     * `group_id: primary.group_id`), so one group id has two legitimate owners.
+     * Judging ownership by the first match alone called the persona's own guild
+     * "another world" and withheld a context it can address.
+     */
+    it("seeds a persona instance whose guild is shared with the primary bot", async () => {
+      const fm = new FleetManager(tmpDir);
+      const guild = "1496407196106494055";
+      const primaryConfig = { id: "discord", type: "discord", group_id: guild } as any;
+      const personaConfig = { id: "persona", type: "discord", group_id: guild } as any;
+      const primary = { id: "discord", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
+      const persona = { id: "persona", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
+      fm.fleetConfig = {
+        defaults: {},
+        channels: [primaryConfig, personaConfig],
+        instances: {
+          "persona-bound": { working_directory: tmpDir, topic_id: "1503382159321464899", channel_id: "persona" },
+        },
+      } as any;
+      fm.adapter = primary;
+      addWorld(fm, primaryConfig, primary);
+      addWorld(fm, personaConfig, persona);
+      (fm as any).scheduler = { recordRun: vi.fn() };
+      vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
+      const deliver = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
+
+      await (fm as any).handleScheduleTrigger({
+        id: "persona-schedule", cron: "0 9 * * *", at: null,
+        message: "daily", source: "persona-bound", target: "persona-bound",
+        reply_chat_id: guild, reply_thread_id: "1503382159321464899",
+        label: "persona", enabled: true, timezone: "Asia/Taipei", silent: false,
+        created_at: "2026-08-17T00:00:00.000Z", last_triggered_at: null, last_status: null,
+      });
+
+      const meta = (deliver.mock.calls[0][1] as any).meta;
+      expect(meta.chat_id, "the persona shares this guild — it is not another world").toBe(guild);
+      expect(meta.thread_id).toBe("1503382159321464899");
+      expect(meta.adapter_id).toBe("persona");
+    });
+
     it("seeds scheduled replies with the target instance's configured adapter", async () => {
       const fm = new FleetManager(tmpDir);
       const primary = {

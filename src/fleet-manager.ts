@@ -1203,10 +1203,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!targetWorld) return undefined;
     const channels = this.fleetConfig?.channels
       ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
-    const owner = channels.find(ch => ch.group_id != null && String(ch.group_id) === String(chatId));
-    if (!owner) return undefined;
-    const ownerId = owner.id ?? owner.type;
-    return ownerId && ownerId !== targetWorld ? ownerId : undefined;
+    // ALL owners, not the first: a persona bot shares the primary's guild
+    // (quickstart writes `group_id: primary.group_id`), so one group id is
+    // legitimately claimed by two channels. Taking the first match called a
+    // persona instance's own guild "another world" and stopped seeding a
+    // context it can address perfectly well.
+    const owners = channels.filter(ch => ch.group_id != null && String(ch.group_id) === String(chatId));
+    if (owners.length === 0) return undefined;
+    if (owners.some(ch => (ch.id ?? ch.type) === targetWorld)) return undefined;
+    return owners[0].id ?? owners[0].type;
   }
 
   /** Get the group_id for an instance's bound adapter */
