@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { FleetManager } from "../src/fleet-manager.js";
+import { FleetManager, LOGIN_CALLBACK_PREFIX } from "../src/fleet-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
 describe("/login auth pre-check", () => {
@@ -30,6 +30,38 @@ describe("/login auth pre-check", () => {
     const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic" };
     return { fm, adapter, notifyAlert, sendText, launch, chat };
   }
+
+  // The auth alert's remedy line tells the user to run `/login <backend>`.
+  // The button starts the same flow in place — where there is one to start.
+  it("offers a re-login button for a backend that supports remote login", async () => {
+    const { fm, adapter } = setup();
+    vi.spyOn(fm as any, "getInstanceAdapterId").mockReturnValue("discord");
+    vi.spyOn(fm as any, "getAdapterForInstance").mockReturnValue(adapter);
+    vi.spyOn(fm as any, "getGroupIdForInstance").mockReturnValue("chat");
+    const post = vi.spyOn(fm as any, "postNonceButtonPrompt").mockResolvedValue(undefined);
+
+    await (fm as any).offerBackendLogin("codex-worker", "codex");
+
+    expect(post).toHaveBeenCalledTimes(1);
+    // Routed into the SAME chooser /login uses, so one tap starts the flow.
+    expect(post.mock.calls[0][0]).toMatchObject({
+      prefix: LOGIN_CALLBACK_PREFIX,
+      choices: [{ action: "codex", label: expect.any(String) }],
+    });
+  });
+
+  it("offers no button for a backend that has no remote login flow", async () => {
+    const { fm, adapter } = setup();
+    vi.spyOn(fm as any, "getInstanceAdapterId").mockReturnValue("discord");
+    vi.spyOn(fm as any, "getAdapterForInstance").mockReturnValue(adapter);
+    vi.spyOn(fm as any, "getGroupIdForInstance").mockReturnValue("chat");
+    const post = vi.spyOn(fm as any, "postNonceButtonPrompt").mockResolvedValue(undefined);
+
+    // opencode logs in from a terminal; a button here would lead nowhere.
+    await (fm as any).offerBackendLogin("oc-worker", "opencode");
+
+    expect(post, "the alert's own wording already says what to run").not.toHaveBeenCalled();
+  });
 
   it("valid auth posts the re-login confirmation instead of launching", async () => {
     const { fm, notifyAlert, launch, chat } = setup();

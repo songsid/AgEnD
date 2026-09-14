@@ -145,6 +145,11 @@ export interface LifecycleContext {
   notifyInstanceTopic(name: string, text: string): boolean | void;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
+  /**
+   * Offer a one-tap re-login beside an auth alert. Optional: contexts without
+   * it (tests, lightweight fleets) still get the alert's written remedy.
+   */
+  offerBackendLogin?(targetInstance: string, backend: string): Promise<void>;
   /** Notify a clean CLI exit and offer an admin-only restart action in General. */
   notifyNormalExit(name: string): Promise<void>;
   /** True for a dynamic ClassicBot channel instance (not a fleet topic). */
@@ -481,8 +486,14 @@ export class InstanceLifecycle {
     const remedy = backend === "opencode"
       ? "Run `opencode auth login` in a terminal, then wake the affected instance(s)."
       : `Use \`/login ${backend}\` to re-login remotely.`;
-    this.notifyIncident(notificationTarget, "auth_error",
+    const dispatched = this.notifyIncident(notificationTarget, "auth_error",
       `🔑 ${message}\n\nAffects ${scope}. Credentials are shared per backend — one re-login restores all of them; affected instances pause until then. ${remedy}`);
+    // Only alongside an alert somebody actually saw: a button on its own, or one
+    // trailing a suppressed alert, is a control with no explanation next to it.
+    if (dispatched) {
+      void this.ctx.offerBackendLogin?.(notificationTarget, backend)
+        .catch(err => this.ctx.logger.warn({ err, backend }, "Could not offer the re-login button"));
+    }
   }
 
   /**

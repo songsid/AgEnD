@@ -419,7 +419,7 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
-const LOGIN_CALLBACK_PREFIX = "login:";
+export const LOGIN_CALLBACK_PREFIX = "login:";
 const INSTALL_CALLBACK_PREFIX = "install-select:";
 const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
@@ -7054,6 +7054,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ],
       expiredText: t("interactive.expired", instanceName),
       extra: { generalName, promptKind: kind },
+    });
+  }
+
+  /**
+   * Offer a one-tap re-login next to an auth alert.
+   *
+   * The alert already names the remedy in words (`/login <backend>`), which
+   * still leaves the user to retype it somewhere. The button routes into the
+   * same chooser `/login` uses, so pressing it starts the flow in place.
+   *
+   * Backends with no remote login flow (opencode logs in from a terminal) get
+   * no button — the alert's own wording already tells them what to run.
+   */
+  async offerBackendLogin(targetInstance: string, backend: string): Promise<void> {
+    if (!LOGIN_FLOWS[backend]) return;
+    const adapterId = this.getInstanceAdapterId(targetInstance);
+    const adapter = this.getAdapterForInstance(targetInstance);
+    const chatId = this.getGroupIdForInstance(targetInstance);
+    const topicId = this.fleetConfig?.instances[targetInstance]?.topic_id;
+    const threadId = topicId != null ? String(topicId) : undefined;
+    if (!adapter || !adapterId || !chatId) {
+      this.logger.warn({ targetInstance, backend, adapterId, chatId },
+        "Cannot address the re-login button — the alert text still names the command");
+      return;
+    }
+    await this.postNonceButtonPrompt({
+      prefix: LOGIN_CALLBACK_PREFIX,
+      alertType: "login",
+      instanceName: "login",
+      adapter,
+      adapterId,
+      chatId,
+      threadId,
+      message: t("login.offer", backend),
+      choices: [{ action: backend, label: t("login.offer_action", backend) }],
+      expiredText: t("buttons.stale"),
     });
   }
 

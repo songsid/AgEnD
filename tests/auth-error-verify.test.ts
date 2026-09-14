@@ -5,8 +5,9 @@ import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
 afterEach(() => setAuthCheckRunnerForTests(null));
 
-function lifecycle(backend = "codex", names: string[] = ["worker"]) {
+function lifecycle(backend = "codex", names: string[] = ["worker"], plannedRestart = false) {
   const notifyInstanceTopic = vi.fn();
+  const offerBackendLogin = vi.fn(async () => {});
   const ctx = {
     fleetConfig: {
       instances: Object.fromEntries(names.map(n => [n, { backend }])),
@@ -14,8 +15,9 @@ function lifecycle(backend = "codex", names: string[] = ["worker"]) {
     },
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     eventLog: null,
-    isPlannedRestart: () => false,
+    isPlannedRestart: () => plannedRestart,
     notifyInstanceTopic,
+    offerBackendLogin,
     webhookEmit: vi.fn(),
     clearCancelButton: vi.fn(),
     checkModelFailover() {},
@@ -28,7 +30,7 @@ function lifecycle(backend = "codex", names: string[] = ["worker"]) {
     lc.attachIncidentHandlers(name, daemon as any);
     return daemon;
   });
-  return { lc, ctx, daemons, notifyInstanceTopic };
+  return { lc, ctx, daemons, notifyInstanceTopic, offerBackendLogin };
 }
 
 const authError = (name: string) =>
@@ -54,6 +56,36 @@ describe("auth-error second opinion", () => {
     expect(String(notifyInstanceTopic.mock.calls[0][1])).toContain("/login codex");
     // pause() fails on the nonexistent dir → falls back to pause-when-idle.
     await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalled());
+  });
+
+  // The alert already names the remedy in words; the button saves the user
+  // from retyping it somewhere else. It belongs WITH an alert, not instead of
+  // one — and never after an alert nobody saw.
+  it("offers a one-tap re-login beside a confirmed auth alert", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "Not logged in" }));
+    const { daemons, notifyInstanceTopic, offerBackendLogin } = lifecycle();
+    daemons[0].emit("pty_error", authError("worker"));
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(offerBackendLogin).toHaveBeenCalledWith("worker", "codex"));
+  });
+
+  it("offers no button when the auth check clears the instance", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 0, output: "Logged in" }));
+    const { daemons, offerBackendLogin } = lifecycle();
+    daemons[0].emit("pty_error", authError("worker"));
+    await new Promise(r => setTimeout(r, 30));
+    expect(offerBackendLogin, "a control with no alert next to it explains nothing").not.toHaveBeenCalled();
+  });
+
+  // A suppressed alert means nobody saw the explanation. A bare button under
+  // no message is a control whose purpose the user has to guess.
+  it("offers no button when the alert itself was suppressed", async () => {
+    setAuthCheckRunnerForTests(async () => ({ code: 1, output: "Not logged in" }));
+    const { daemons, notifyInstanceTopic, offerBackendLogin } = lifecycle("codex", ["worker"], true);
+    daemons[0].emit("pty_error", authError("worker"));
+    await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalled());
+    expect(notifyInstanceTopic, "planned restart suppresses the alert").not.toHaveBeenCalled();
+    expect(offerBackendLogin).not.toHaveBeenCalled();
   });
 
   it("an uncertain check (timeout) pauses conservatively", async () => {
