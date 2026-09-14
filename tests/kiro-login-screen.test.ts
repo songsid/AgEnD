@@ -74,6 +74,58 @@ describe("kiro sign-in screen after token expiry", () => {
     expect(menuPrompt.test(EXPIRED_LOGIN_PANE)).toBe(false);
   });
 
+  /**
+   * The real pane, from the reported screenshot: the two lines, then a blank
+   * row, then the empty input row (a cursor block draws no text, so it is
+   * whitespace in a capture), then blanks to the bottom. The "nothing but
+   * blank space after" guard has to allow all of that — a guard that demanded
+   * the instruction be the very last character would miss the actual screen.
+   */
+  const LIVE_SCREEN_WITH_CURSOR_ROW = [
+    "Welcome to Kiro CLI, let's get you signed in!",
+    "Press enter to continue to the browser or esc to cancel",
+    "",
+    "   ",
+    "",
+    "",
+  ].join("\n");
+
+  it("fires on the real screen with a blank input row below the instruction", () => {
+    expect(classify(LIVE_SCREEN_WITH_CURSOR_ROW)).toMatchObject({ type: "auth_error", action: "pause" });
+    expect(kiroLoginScreen().test(LIVE_SCREEN_WITH_CURSOR_ROW)).toBe(true);
+  });
+
+  it("fires whether or not the two lines are adjacent", () => {
+    // Two captures of the same screen differ: one shows the lines adjacent,
+    // another has a blank row between them.
+    const adjacent = "Welcome to Kiro CLI, let's get you signed in!\nPress enter to continue to the browser or esc to cancel\n";
+    const spaced = "Welcome to Kiro CLI, let's get you signed in!\n\nPress enter to continue to the browser or esc to cancel\n";
+    expect(kiroLoginScreen().test(adjacent), "adjacent").toBe(true);
+    expect(kiroLoginScreen().test(spaced), "blank row between").toBe(true);
+  });
+
+  /**
+   * A known, deliberate boundary rather than an oversight. The captured screen
+   * draws its input row as a cursor block, which produces no text — if some
+   * terminal or a future version painted a visible glyph there instead (a box
+   * border, a block character), the "nothing but blank space after" guard would
+   * stop matching and the screen would go undetected.
+   *
+   * That is the safe direction: an undetected screen is today's behaviour,
+   * while a false positive sets authFailureUnresolved, which suppresses hang
+   * notifications and holds MCP auto-restart. If it is ever seen with a glyph,
+   * the fix is to list that row here, not to loosen the guard.
+   */
+  it("fails closed if the input row is ever drawn with a visible glyph", () => {
+    const withGlyph = [
+      "Welcome to Kiro CLI, let's get you signed in!",
+      "Press enter to continue to the browser or esc to cancel",
+      "",
+      "│ │",
+    ].join("\n");
+    expect(kiroLoginScreen().test(withGlyph)).toBe(false);
+  });
+
   it("does not fire on ordinary kiro output", () => {
     expect(classify(WORKING_PANE)?.type).not.toBe("auth_error");
     expect(kiroLoginScreen().test(WORKING_PANE)).toBe(false);
