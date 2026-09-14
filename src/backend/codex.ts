@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
@@ -604,6 +605,21 @@ export class CodexBackend implements CliBackend {
       pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
       keys: ["Escape"],
       description: "Codex startup update-available picker",
+      // A delivery must never land on this screen. Its selected option is
+      // `› 1. Update now (runs … curl … | sh)` — the same `›` the input row
+      // uses — so an Enter here runs an installer instead of sending a message.
+      // The runtime dismisser presses Escape, but it only polls every few
+      // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
+      // which parks on this picker for as long as nobody answers it).
+      blocksDelivery: true,
+      // Bottom-anchored, so a transcript that quotes the picker (an agent
+      // pasting a pane capture, this very change being reviewed) is not
+      // mistaken for a live one: the real picker owns the bottom of the pane
+      // and has no input row under it.
+      isActive: (pane: string) => {
+        const last = lastNonBlankRow(pane);
+        return last != null && /^\s*Press enter to continue\s*$/.test(last);
+      },
     };
   }
 

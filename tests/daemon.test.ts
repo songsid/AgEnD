@@ -359,7 +359,10 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(control.hasOutputSince).not.toHaveBeenCalled();
       expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
       expect(tmux.pasteBuffer).toHaveBeenCalledWith("queued work");
-      expect(tmux.capturePane).toHaveBeenCalledOnce();
+      // Codex's update picker blocks delivery, so the dialog probe reads the
+      // pane too — the exact number of captures is not a contract, but the
+      // single paste and single Enter below are.
+      expect(tmux.capturePane).toHaveBeenCalled();
       expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(1);
       expect(tmux.sendSpecialKey).toHaveBeenCalledWith("Enter");
       expect(queued).toHaveBeenCalledOnce();
@@ -374,8 +377,14 @@ describe("Daemon backend-native input queue delivery", () => {
     // First capture (post busy-paste) empty → silent loss; after idle-gated
     // re-paste the text appears (or busy confirm succeeds).
     const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false, "");
+    // Codex's update picker blocks delivery, so two dialog probes read the pane
+    // before the paste (once to decide the handoff, once under the write lock
+    // right before writing). Neither must consume the frame the submit check is
+    // meant to see — that one is the third.
     tmux.capturePane
-      .mockResolvedValueOnce("working… redrawing…") // no text, no ↳
+      .mockResolvedValueOnce("working… redrawing…") // handoff dialog probe
+      .mockResolvedValueOnce("working… redrawing…") // re-probe under the write lock
+      .mockResolvedValueOnce("working… redrawing…") // submit check: no text, no ↳
       .mockResolvedValue("↳ queued work that was swallowed");
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
