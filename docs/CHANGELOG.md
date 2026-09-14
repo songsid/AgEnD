@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.5] - 2026-09-14
+
+### Upgrade Notes
+- **`/restart full` with empty `allowed_users` is now fail-closed** — previously, an empty `allowed_users` list in fleet.yaml would allow any user to perform admin operations. This release treats an empty list as "no one allowed," requiring explicit population of the allowlist. Review your fleet.yaml before upgrading if you rely on admin commands (#726).
+- **Multi-adapter fleets: reply context requires adapter binding** — in fleets running more than one channel adapter (e.g., Telegram + Discord), if `last-chat.json` was written by an older version and lacks an `adapterId` field, the first reply after restart will fail with "no adapter bound" until an inbound message re-establishes the world binding. This is intentional: failing is safer than routing a chat id through the wrong platform's bot. Single-adapter fleets are unaffected (#752).
+
+### Added
+The `/login` slash command introduced in 2.1.4 received significant enhancements this release. Login now runs inside the token-gated web terminal, providing a secure browser-based authentication flow for all backends. Codex uses device-auth mode for headless environments. After a successful login, the system reports the result immediately without waiting for instances to restart, and the restart carries a visible deadline so users know when to expect their fleet back online. An inline "re-login" button now appears alongside auth-failure alerts, letting operators fix expired credentials with a single tap instead of typing the command (#715, #717, #729, #733, #748).
+
+The new `/install-cli` command lets operators install CLI backends remotely, and ClassicBot instances now recover automatically after a backend login instead of requiring manual intervention (#733).
+
+The `/ctx` command now displays the configured reasoning effort alongside the model, and `list_instances` adopts progressive disclosure: the initial response shows a compact fleet summary with counts by backend, status, and tag, plus guidance on how to drill down. Query parameters (`tags`, `backend`, `status`, `name`) filter the list, and `describe_instance` returns full details for a single instance. Claude Code's live model (read from the statusline) is included when available (#738, #740).
+
+`/restart full` performs a complete process reload from chat, service-aware and single-flight. The systemd handoff timeout outcome is now tracked correctly, and the reload is fenced against standalone updates so a mid-flight `agend update` cannot race (#726).
+
+Instance logs retrieved via `get_instance_logs` are now capped at 200 lines by default, protecting against runaway context consumption.
+
+### Fixed
+This release addresses several silent-message-loss scenarios that could cause user messages to vanish without error.
+
+The Kiro ready-state detector now distinguishes transcript residue from text genuinely stranded in the input row, eliminating false delivery failures that reported ❌ when the message had actually been sent (#736). Kiro CLI 2.14+ prints the agent name in brackets before the prompt (e.g., `[Agent Name] ❯`); the detector recognises this format (#746). When a Kiro session's token expires, the CLI falls back to a sign-in screen. AgEnD now detects that screen structurally (not just by keyword) and withdraws any auth-suspicion flag when a follow-up probe clears. Misidentifying this screen would suppress hang notifications and disable MCP auto-restart—**not** block deliveries—so the fix restores monitoring accuracy rather than unblocking a delivery path (#746, #747).
+
+Codex could report a delivery as successful even when the message was never submitted. The root cause was a race between the input-row snapshot and the actual paste: the daemon saw text in the input area, assumed it had been sent, and returned success. The fix ties submission evidence to the specific paste and explicitly submits any stranded text instead of re-pasting. Additionally, deliveries are now held while the Codex update picker owns the pane, and a message still sitting in the input row is never confirmed as delivered (#745).
+
+A startup timeout no longer abandons a session. Previously, if an instance took too long to start, the daemon would give up and create a fresh session, silently discarding the conversation history. Now the session is preserved and renamed so it can be recovered manually (#737).
+
+Claude Code turns that end without a platform-acknowledged reply are now detected. When this happens, the daemon posts a neutral status message ("the agent did not reply; retrying once") and injects a one-shot recovery prompt asking the model to send its conclusion. If the recovery turn also fails to deliver a reply, the turn ends with an explicit "unrecovered reply drop" notice rather than silent loss. This addresses the root cause of issues #664, #662, and #649 (#750).
+
+The `/model` command now re-probes a stale CLI environment so newly released models appear without requiring a cold start (#721). The `/update` command guarantees terminal progress delivery, fixing cases where the final status message was lost (#722). The usage panel no longer hangs when one provider is slow; each vendor's collection is bounded independently (#718).
+
+Two notification bugs are fixed: fleet-wide notices now post to a channel instead of failing silently, and scheduled notices route to their source chat correctly (#732). The warmup reload notice no longer tells a resume-reloading backend to reload its instructions when it is already doing so (#727). The web terminal now hands out paths with a trailing slash so relative assets resolve correctly (#729). A flaky web-terminal integration test is stabilised (#742).
+
+Cross-channel-world message routing is hardened. When a schedule fires and its reply coordinates belong to a different channel world—for example, a schedule created in a Telegram group targeting a Discord instance—those coordinates are no longer seeded as the target instance's reply context. Previously this caused the instance to send every subsequent channel reply to Discord using a Telegram chat id, producing continuous "Unknown Channel" errors for tens of minutes until a real user message overwrote the stale context. Additionally, the Discord adapter now returns an explicit error when it receives a chat id that clearly belongs to another platform (negative numbers indicating Telegram groups, or numbers too short to be Discord snowflakes), rather than the opaque `10003 Unknown Channel`. In multi-adapter setups where no world is specified, the system now reports a routing error instead of guessing the first available adapter (#752, #753).
+
 ## [2.1.4] - 2026-09-07
 
 ### Upgrade Notes
