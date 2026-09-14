@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
@@ -134,6 +135,35 @@ export class CodexBackend implements CliBackend {
 
   supportsQueuedInput(): boolean {
     return true;
+  }
+
+  /**
+   * Codex's input row, from live captures on codex-cli 0.153.4: `› Ask Codex to
+   * do anything` when empty, `› <text>` once something is typed or pasted, and
+   * the text wraps onto unprefixed continuation rows.
+   *
+   * NOT bottom-anchored, unlike Kiro's: `Context 63% left` is painted under it.
+   * Codex also echoes each submitted message into
+   * the transcript with the same `›` prefix, which is why every caller takes
+   * the LAST matching row — the transcript echo is always above the input row.
+   *
+   * The marker alone is deliberately not treated as "ready to accept a paste":
+   * the startup update picker highlights its selected option the same way
+   * (`› 1. Update now (runs … curl … | sh)`), and pressing Enter there would
+   * run an installer. That screen is caught by the dialog probe
+   * (updatePickerDialog) before any delivery path reads this pattern.
+   */
+  getBottomReadyPattern(): RegExp | null {
+    return /^\s*›\s?/;
+  }
+
+  /**
+   * The row codex paints for input it has taken into its own queue instead of
+   * submitting: `↳ <message>` under "Messages to be submitted after next tool
+   * call (press esc to interrupt and send immediately)".
+   */
+  getQueuedInputMarker(): RegExp | null {
+    return /↳/;
   }
 
   buildCommand(config: CliBackendConfig): string {
@@ -575,6 +605,21 @@ export class CodexBackend implements CliBackend {
       pattern: /Update available![\s\S]{0,200}Release notes: https:\/\/github\.com\/openai\/codex\/releases/m,
       keys: ["Escape"],
       description: "Codex startup update-available picker",
+      // A delivery must never land on this screen. Its selected option is
+      // `› 1. Update now (runs … curl … | sh)` — the same `›` the input row
+      // uses — so an Enter here runs an installer instead of sending a message.
+      // The runtime dismisser presses Escape, but it only polls every few
+      // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
+      // which parks on this picker for as long as nobody answers it).
+      blocksDelivery: true,
+      // Bottom-anchored, so a transcript that quotes the picker (an agent
+      // pasting a pane capture, this very change being reviewed) is not
+      // mistaken for a live one: the real picker owns the bottom of the pane
+      // and has no input row under it.
+      isActive: (pane: string) => {
+        const last = lastNonBlankRow(pane);
+        return last != null && /^\s*Press enter to continue\s*$/.test(last);
+      },
     };
   }
 
