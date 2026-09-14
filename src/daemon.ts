@@ -3713,7 +3713,7 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
+      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id })) {
         this.markTurnStarted(meta, formatted);
       } else if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
         this.reportCrossInstanceDeliveryFailure(meta);
@@ -3750,7 +3750,7 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch })) {
+      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id })) {
         this.markTurnStarted(meta, formatted);
       }
     }).catch(err => {
@@ -3855,7 +3855,7 @@ export class Daemon extends EventEmitter {
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
-        if (await this.deliverMessage(formatted, status, { deliveryEpoch })) {
+        if (await this.deliverMessage(formatted, status, { deliveryEpoch, submissionId: meta.message_id })) {
           this.markTurnStarted(meta, formatted);
         } else if (meta.from_instance && this.isDeliveryEpochCurrent(deliveryEpoch)) {
           this.reportCrossInstanceDeliveryFailure(meta);
@@ -3891,7 +3891,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(
     formatted: string,
     status?: { chatId: string; messageId: string },
-    opts?: { steer?: boolean; deliveryEpoch?: number },
+    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string },
   ): Promise<boolean> {
     const cancelled = () => opts?.deliveryEpoch !== undefined
       && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
@@ -4017,7 +4017,7 @@ export class Daemon extends EventEmitter {
           const probe = await this.probeBlockingDialog();
           if (probe.state !== "clear") return "dialog";
         }
-        return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status);
+        return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId);
       });
       if (outcome !== "dialog") return outcome;
       // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
@@ -4389,7 +4389,9 @@ export class Daemon extends EventEmitter {
     initialWindowId: string | undefined,
     handingOffToNativeQueue: boolean,
     status?: { chatId: string; messageId: string },
+    submissionId?: string,
   ): Promise<boolean> {
+    const signature = this.submissionSignature(formatted, submissionId);
     let windowId = initialWindowId;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
@@ -4398,7 +4400,7 @@ export class Daemon extends EventEmitter {
       const pasteStartedAt = Date.now();
       // Read the pane BEFORE writing to it, so the submission check can require
       // evidence this paste ADDED rather than evidence that was already there.
-      const pasteBaseline = await this.capturePaneEvidence(formatted);
+      const pasteBaseline = await this.capturePaneEvidence(signature);
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
         const tmuxError = this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure";
@@ -4481,7 +4483,7 @@ export class Daemon extends EventEmitter {
       // can silently swallow it). Idle submissions keep the swallowed-Enter path.
       if (handingOffToNativeQueue) {
         await new Promise(r => setTimeout(r, NATIVE_QUEUE_PASTE_VERIFY_MS));
-        const proof = await this.confirmSubmitted(formatted, pasteBaseline);
+        const proof = await this.confirmSubmitted(signature, pasteBaseline);
         if (proof === "submitted") {
           if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
           return true;
@@ -4512,7 +4514,7 @@ export class Daemon extends EventEmitter {
         // itself — paste-buffer writes at the cursor — and the next Enter then
         // submits the message twice over. That is the trap this fix would walk
         // into if it treated "not confirmed" as one state.
-        const settled = await this.confirmSubmitted(formatted, pasteBaseline);
+        const settled = await this.confirmSubmitted(signature, pasteBaseline);
         if (settled === "submitted") {
           this.logger.info("Native-queue message submitted itself while we waited for idle");
           if (status) this.emit("message_confirmed", status); // ✅
@@ -4527,7 +4529,7 @@ export class Daemon extends EventEmitter {
             if (status) this.emit("message_failed", status); // ❌
             return false;
           }
-          const afterEnter = await this.confirmSubmitted(formatted, pasteBaseline);
+          const afterEnter = await this.confirmSubmitted(signature, pasteBaseline);
           const turnStarted = windowId && this.controlClient
             ? await this.confirmBusyAfterEnter(windowId, strandedAt)
             : false;
@@ -4571,7 +4573,7 @@ export class Daemon extends EventEmitter {
             if (status) this.emit("message_confirmed", status); // ✅
             return true;
           }
-        } else if (await this.confirmSubmitted(formatted, pasteBaseline) === "submitted") {
+        } else if (await this.confirmSubmitted(signature, pasteBaseline) === "submitted") {
           if (status) this.emit("message_confirmed", status); // ✅
           return true;
         }
@@ -4651,7 +4653,7 @@ export class Daemon extends EventEmitter {
    * anywhere. Evidence is weighed in order of what it can prove, and the
    * disqualifying evidence is checked first.
    */
-  private async confirmSubmitted(formatted: string, baseline: PaneEvidence | null): Promise<SubmitProof> {
+  private async confirmSubmitted(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
     if (!this.tmux) return "unproven";
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
@@ -4665,16 +4667,15 @@ export class Daemon extends EventEmitter {
     // for the first and recovers on the second, which is what it did before —
     // the fix here is for backends that CAN be read, not a new guess for those
     // that cannot.
-    const signature = this.submissionSignature(formatted);
     const prompt = this.backend?.getBottomReadyPattern?.();
     if (!prompt) {
-      const seen = this.paneEvidence(pane, formatted);
+      const seen = this.paneEvidence(pane, signature);
       if (signature.unique && seen.payload > 0) return "unverifiable";
       return seen.payload > (baseline?.payload ?? Infinity) || seen.queued > (baseline?.queued ?? Infinity)
         ? "unverifiable"
         : "unproven";
     }
-    const after = this.paneEvidence(pane, formatted);
+    const after = this.paneEvidence(pane, signature);
 
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
@@ -4719,14 +4720,14 @@ export class Daemon extends EventEmitter {
    * paste and once after, so confirmSubmitted can require a NEW marker or a NEW
    * echo rather than accepting whatever was already there.
    */
-  private async capturePaneEvidence(formatted: string): Promise<PaneEvidence | null> {
+  private async capturePaneEvidence(signature: SubmissionSignature): Promise<PaneEvidence | null> {
     if (!this.tmux) return null;
     // Bounded re-probe: a capture that fails here costs the delivery its only
     // "before" picture, and a momentary failure should not decide anything.
     for (let attempt = 1; attempt <= BASELINE_CAPTURE_ATTEMPTS; attempt++) {
       try {
         const pane = await this.tmux.capturePane();
-        const evidence = this.paneEvidence(pane, formatted);
+        const evidence = this.paneEvidence(pane, signature);
         const prompt = this.backend?.getBottomReadyPattern?.();
         if (prompt && strandedAgendMessageInInput(pane, prompt)) {
           // Whatever we paste now lands after it, and one Enter submits both as
@@ -4745,9 +4746,8 @@ export class Daemon extends EventEmitter {
     return null;
   }
 
-  private paneEvidence(pane: string, formatted: string): PaneEvidence {
+  private paneEvidence(pane: string, signature: SubmissionSignature): PaneEvidence {
     const marker = this.backend?.getQueuedInputMarker?.();
-    const signature = this.submissionSignature(formatted);
     const prompt = this.backend?.getBottomReadyPattern?.();
     const input = prompt ? inputAreaText(pane, prompt) : null;
     return {
@@ -4765,9 +4765,15 @@ export class Daemon extends EventEmitter {
    * paste that never landed. System pastes carry no envelope and fall back to
    * the body signature, which the baseline comparison still ties to this paste.
    */
-  private submissionSignature(formatted: string): SubmissionSignature {
-    const id = formatted.match(/message_id:\s*([^\s|)\]]+)/);
-    if (id) return { value: `message_id:${id[1]}`, unique: true };
+  private submissionSignature(formatted: string, trustedId?: string): SubmissionSignature {
+    // The id must come from the message's own metadata, never from scanning the
+    // rendered text: agents and users discuss message ids in the body all the
+    // time ("check message_id: abc"), and a body-scanned value would match an
+    // older transcript entry quoting the same thing — then be trusted as unique
+    // and confirm a paste that never landed. Only the value AgEnD itself put in
+    // the handoff metadata identifies THIS delivery.
+    const id = trustedId?.trim();
+    if (id) return { value: `message_id:${id}`, unique: true };
     return { value: pastedTextSignature(formatted), unique: false };
   }
 
@@ -4783,7 +4789,8 @@ export class Daemon extends EventEmitter {
    */
   private async submitSystemPaste(text: string, label: string): Promise<boolean> {
     if (!this.tmux) return false;
-    const baseline = await this.capturePaneEvidence(text);
+    const signature = this.submissionSignature(text);
+    const baseline = await this.capturePaneEvidence(signature);
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
@@ -4791,7 +4798,7 @@ export class Daemon extends EventEmitter {
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
     if (!(await this.sendDeliveryEnter(label))) return false;
 
-    let proof = await this.confirmSubmitted(text, baseline);
+    let proof = await this.confirmSubmitted(signature, baseline);
     if (proof === "unverifiable") {
       // No input row to read: this backend gets exactly what the old pasteText
       // path gave it, including the unconditional second Enter for queue-less
@@ -4810,7 +4817,7 @@ export class Daemon extends EventEmitter {
       // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
       if (!(await this.sendDeliveryEnter(`${label}-retry`))) return false;
-      proof = await this.confirmSubmitted(text, baseline);
+      proof = await this.confirmSubmitted(signature, baseline);
     }
     if (proof !== "submitted") {
       this.logger.warn({ label, proof }, "System paste may not have been submitted");

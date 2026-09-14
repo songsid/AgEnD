@@ -166,7 +166,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = false;                      // busy → native-queue handoff
     h.state.afterPaste = STRANDED_MULTILINE;   // Enter dropped: text never left the input row
     h.state.afterEnter = SUBMITTED; // the recovery Enter, once the pane is idle
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     // paste-buffer writes at the cursor, so re-pasting text that is STILL in
     // the input row appends it to itself and the next Enter submits it twice.
@@ -194,7 +194,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterPaste = STRANDED_MULTILINE;
     h.state.outputSince = false; // no idle→busy after any Enter
 
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     expect(ok).toBe(false);
     expect(h.events, "a message nobody could submit is not delivered").not.toContain("message_confirmed");
@@ -214,7 +214,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       "  Context 63% left",
     ].join("\n");
     h.state.afterEnter = SUBMITTED;
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     expect(h.paste, "a stacked strand is still a strand").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
@@ -275,7 +275,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     // Ours arrives; the older copy has scrolled out of the viewport.
     h.state.afterPaste = SUBMITTED;
 
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     expect(h.paste, "an already-submitted message must not be sent again").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
@@ -299,7 +299,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterPaste = olderStranded;  // ours was swallowed by a redraw
     h.state.afterEnter = olderStranded;  // and the old one is what any Enter submits
 
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     // Ours is nowhere on screen, so the recovery is to paste it — not to press
     // Enter on someone else's text and call this delivery done.
@@ -327,7 +327,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.paste.mockImplementation(async (...args: unknown[]) => { pasted = true; return origPaste(...args as []); });
     h.state.afterPaste = SUBMITTED; // m-1 echoed into the transcript, input row clear
 
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     expect(h.paste, "a message the pane clearly shows must not be pasted twice").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
@@ -355,6 +355,76 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(ok).toBe(true);
   });
 
+  // Agents and users discuss message ids in the message BODY all the time
+  // ("check message_id: abc"). Scanning the rendered text for the first
+  // `message_id:` picks that up instead of the id AgEnD appended, treats it as
+  // uniquely identifying, and then an older transcript entry quoting the same
+  // thing confirms a paste that never landed. The id has to come from the
+  // message's own metadata, not from reading the text back out.
+  it("does not treat a message id written in the body as this delivery's identity", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    const bodyMentioningAnId = "inspect message_id: mentioned-by-user and report back";
+    const older = [
+      "• Working (9s • esc to interrupt)",
+      `› [from:agend-dev-claude-t1519896892392083558] ${bodyMentioningAnId}`,
+      "  (message_id: m-0 | correlation_id: cid-older-delivery)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    h.state.pane = older;
+    h.state.afterPaste = older; // this delivery's paste was swallowed by a redraw
+
+    const ok = await settle(h.daemon.deliverMessage(
+      `[from:agend-dev-claude-t1519896892392083558] ${bodyMentioningAnId}\n(message_id: m-1 | correlation_id: cid-now)`,
+      STATUS,
+      { submissionId: "m-1" },
+    ));
+
+    expect(h.paste, "the id in the body belongs to an older message, not this one").toHaveBeenCalledTimes(2);
+    expect(ok).toBe(true);
+  });
+
+  // The wiring, not just the check: deliverMessage only knows the trusted id
+  // because pushChannelMessage hands it over. This is the shape where that
+  // matters — a repeated instruction whose older copy scrolls off as ours
+  // arrives. Counting body matches gives the same number before and after, so
+  // without the envelope id the delivery is judged unproven and pasted again.
+  it("carries the envelope id from the real entry point into the submission proof", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    const repeated = "carry on with the migration and report back when it is done";
+    h.state.pane = [
+      "• Working (9s • esc to interrupt)",
+      `› [user:hanhanv via discord] ${repeated}`,
+      "  (message_id: old-1 | correlation_id: cid-older)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    // Ours is submitted and echoed; the older copy has scrolled out of view.
+    h.state.afterPaste = [
+      "• You have 1 usage limit reset available. Run /usage to use one.",
+      `› [user:hanhanv via discord] ${repeated}`,
+      "  (message_id: new-1 | correlation_id: cid-now)",
+      "• Working (1s • esc to interrupt)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+
+    h.daemon.pushChannelMessage(repeated, {
+      user: "hanhanv", source: "discord", chat_id: "c",
+      message_id: "new-1", correlation_id: "cid-now",
+    });
+    await settle(Promise.resolve().then(async () => {
+      const done = () => h.events.includes("message_confirmed") || h.events.includes("message_failed");
+      for (let i = 0; i < 300 && !done(); i++) await new Promise(r => setTimeout(r, 100));
+      return true;
+    }));
+
+    expect(h.paste, "an already-submitted message must not be pasted again").toHaveBeenCalledTimes(1);
+    expect(h.events).toContain("message_confirmed");
+  });
+
   // The same trap in the transcript: an older message that opens the same way
   // must not vouch for this one. The routing envelope's message_id is what
   // separates them.
@@ -370,7 +440,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     ].join("\n");
     h.state.afterPaste = h.state.pane; // our paste never rendered
 
-    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     expect(h.paste, "the older copy is not evidence for this delivery").toHaveBeenCalledTimes(2);
     expect(ok).toBe(true);
