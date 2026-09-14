@@ -79,6 +79,45 @@ describe("kiro sign-in screen after token expiry", () => {
     expect(kiroLoginScreen().test(WORKING_PANE)).toBe(false);
   });
 
+  /**
+   * The whole screen quoted verbatim, followed by ordinary prose. This fleet
+   * maintains AgEnD, so this exact input happens while people discuss the bug —
+   * it is not a theoretical string.
+   *
+   * A false positive here is not harmless. The startup scanner sets
+   * authFailureUnresolved on a hit, which suppresses hang notifications
+   * (daemon.ts) and holds MCP auto-restart, and nothing clears it when the auth
+   * probe afterwards reports the credentials are fine — so one quotation would
+   * durably blind that daemon.
+   */
+  const QUOTED_SCREEN = [
+    "> what exactly did the pane say?",
+    "The exact screen was:",
+    "Welcome to Kiro CLI, let's get you signed in!",
+    "",
+    "Press enter to continue to the browser or esc to cancel",
+    "That is quoted diagnostic prose, not a live screen.",
+    "51% !>",
+  ].join("\n");
+
+  it("does not fire on the whole screen quoted inside a conversation", () => {
+    expect(classify(QUOTED_SCREEN)?.type, "runtime monitor").not.toBe("auth_error");
+    expect(kiroLoginScreen().test(QUOTED_SCREEN), "startup scan").toBe(false);
+  });
+
+  it("lets a real outage win over a stale quotation of the screen", () => {
+    // Screen quoted earlier in the scrollback, a genuine backend outage now.
+    const outageAfterQuote = [
+      QUOTED_SCREEN,
+      "● Kiro is having trouble responding right now:",
+      "   1: dispatch failure (timeout): request timed out",
+      "",
+      "> ",
+    ].join("\n");
+    // First match wins, so a stale quote must not take the auth slot.
+    expect(classify(outageAfterQuote)).toMatchObject({ type: "network" });
+  });
+
   // This fleet maintains AgEnD, so an agent discussing this very bug will have
   // the sign-in wording on screen. One line alone is not a sign-in screen.
   it("does not fire on prose quoting a single line of the screen", () => {
