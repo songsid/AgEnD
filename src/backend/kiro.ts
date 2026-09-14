@@ -225,7 +225,12 @@ export class KiroBackend implements CliBackend {
     // ASCII marker is `!>` and its `!` is REQUIRED, so a bare `100% > done` at a
     // row start is not a prompt either; the glyph form `8% ❯` (see
     // getReadyPattern) needs no `!` because `❯` never occurs in tool output.
-    return /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
+    //
+    // kiro-cli 2.14+ may prefix the prompt row with a bracketed agent name, e.g.
+    // "[global_zh_tw] 31% !>" (user-defined agent names can be any string). Allow
+    // an optional bracketed prefix before the percentage — but ONLY a single
+    // `[name]` at the start; anything else (like `Progress [x] 50%`) must not match.
+    return /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
   }
 
   buildCommand(config: CliBackendConfig): string {

@@ -76,6 +76,58 @@ describe("KiroBackend", () => {
         expect(prompt.test(row), row).toBe(false);
       }
     });
+
+    it("recognises prompt rows with a bracketed agent name prefix (kiro-cli 2.14+)", () => {
+      const backend = makeBackend();
+      const prompt = backend.getBottomReadyPattern()!;
+      // kiro-cli 2.14+ prefixes the prompt with a bracketed agent name (user-defined).
+      // Bug report: "[global_zh_tw] 31% !>" was misdetected as busy → send_to_instance ❌.
+      for (const row of [
+        "[global_zh_tw] 31% !> What would you like to do?",
+        "[global_zh_tw] 31% !>",
+        "[my-agent] 5% ❯",
+        "[Code Review Agent] 20% λ !>",   // agent name with spaces
+        "[test_agent_v2] 8% !>",          // underscores and digits
+        "[] 15% !>",                       // empty brackets allowed
+        "  [agent] 8% !>",                 // leading whitespace allowed
+      ]) {
+        expect(prompt.test(row), `should be ready: ${row}`).toBe(true);
+      }
+    });
+
+    it("does NOT read tool output with brackets as a prompt (strictness preserved)", () => {
+      const backend = makeBackend();
+      const prompt = backend.getBottomReadyPattern()!;
+      // The fix must not loosen the pattern to the point where tool output
+      // containing brackets and percentages is misread as ready.
+      for (const row of [
+        "Progress 50% > /tmp/output",
+        "download 100% -> done",
+        "[stdout] Processing 50% complete",
+        "Status [OK] 100% > log.txt",
+        "Task [1/5] 20% progress",
+        "Build [release] 75% > output.log",
+      ]) {
+        expect(prompt.test(row), `should NOT be ready: ${row}`).toBe(false);
+      }
+    });
+
+    it("SABOTAGE: removing the optional profile prefix breaks the fix (regression gate)", () => {
+      // This test documents that the fix is load-bearing: if someone removes the
+      // `(?:\[[^\]]*\]\s*)?` group, the profile-prefixed prompt stops matching.
+      const sabotaged = /^\s*\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
+      const fixed = /^\s*(?:\[[^\]]*\]\s*)?\d+%\s*(?:[^\s\d%!❯>]{1,2}\s+)?(?:!\s?[❯>]|❯)/;
+
+      const prefixed = "[global_zh_tw] 31% !>";
+      expect(sabotaged.test(prefixed), "sabotaged must NOT match profile-prefixed").toBe(false);
+      expect(fixed.test(prefixed), "fixed must match profile-prefixed").toBe(true);
+
+      // Both must still match unprefixed prompts and reject tool output.
+      expect(sabotaged.test("31% !>")).toBe(true);
+      expect(fixed.test("31% !>")).toBe(true);
+      expect(sabotaged.test("Progress 50% > /tmp")).toBe(false);
+      expect(fixed.test("Progress 50% > /tmp")).toBe(false);
+    });
   });
 
   describe("buildCommand", () => {
