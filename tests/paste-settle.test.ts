@@ -201,10 +201,14 @@ describe("writeMessageToPane settle routing", () => {
     const control = fakeControl();
     const { daemon, instanceDir } = makeDaemon(control);
     const enters: number[] = [];
+    // This test is about WHEN the Enter goes out, so the delivery has to reach
+    // a normal confirmation rather than the recovery path: the pane gains the
+    // pasted text only after the paste, which is what proves it was submitted.
+    let pasted = false;
     (daemon as any).tmux = {
-      pasteBuffer: async () => true,
+      pasteBuffer: async () => { pasted = true; return true; },
       sendSpecialKey: async (key: string) => { if (key === "Enter") enters.push(Date.now()); return true; },
-      capturePane: async () => "❯ hello world from the queue",
+      capturePane: async () => (pasted ? "❯ hello world from the queue" : "❯"),
     };
     try {
       const start = Date.now();

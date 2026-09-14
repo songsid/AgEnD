@@ -61,14 +61,28 @@ const NATIVE_QUEUE_ACCEPTED = [
 const SUBMITTED = [
   "• You have 1 usage limit reset available. Run /usage to use one.",
   `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+  "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
   "• Working (1s • esc to interrupt)",
   "› Ask Codex to do anything",
   "  Context 100% left",
 ].join("\n");
 
+/**
+ * The pane BEFORE we paste: codex is working on something else. Submission is
+ * judged by what the pane gains, so every test starts from a frame that holds
+ * none of our evidence — a queue marker or transcript echo that was already
+ * there must never vouch for this delivery.
+ */
+const BUSY_BEFORE_PASTE = [
+  "• Working (9s • esc to interrupt)",
+  "› Ask Codex to do anything",
+  "  Context 63% left",
+].join("\n");
+
 interface Harness {
   daemon: any;
-  state: { pane: string; idle: boolean; outputSince: boolean };
+  /** `afterPaste`/`afterEnter` repaint the pane the way the CLI would. */
+  state: { pane: string; idle: boolean; outputSince: boolean; afterPaste?: string; afterEnter?: string };
   paste: ReturnType<typeof vi.fn>;
   enter: ReturnType<typeof vi.fn>;
   events: string[];
@@ -88,9 +102,14 @@ function makeHarness(): Harness {
     log_level: "silent",
   } as any, dir, false, new CodexBackend(dir) as any, undefined, { child: () => logger } as any) as any;
 
-  const state = { pane: STRANDED_MULTILINE, idle: false, outputSince: true };
-  const paste = vi.fn(async () => true);
-  const enter = vi.fn(async () => true);
+  const state: Harness["state"] = { pane: BUSY_BEFORE_PASTE, idle: false, outputSince: true };
+  const paste = vi.fn(async () => { if (state.afterPaste !== undefined) state.pane = state.afterPaste; return true; });
+  // An Enter arriving while the CLI is busy is DROPPED — that is the failure
+  // being modelled. Once the pane is idle the Enter lands and repaints.
+  const enter = vi.fn(async () => {
+    if (state.idle && state.afterEnter !== undefined) state.pane = state.afterEnter;
+    return true;
+  });
   daemon.tmux = {
     capturePane: async () => state.pane,
     pasteBuffer: paste,
@@ -142,18 +161,16 @@ afterEach(() => {
 describe("codex native-queue handoff: text left in the input row is NOT a delivery", () => {
   // THE GATE. Reverting the success criterion to "the pasted text is visible in
   // the pane" turns this red: the stranded pane below contains the text.
-  it("refuses the handoff and redelivers when the text is still in the input row", async () => {
+  it("submits the stranded text instead of pasting it a second time", async () => {
     const h = makeHarness(); dirs.push(h.dir);
-    h.state.idle = false;              // busy → native-queue handoff
-    h.state.pane = STRANDED_MULTILINE; // Enter dropped: the text never left the input row
-
+    h.state.idle = false;                      // busy → native-queue handoff
+    h.state.afterPaste = STRANDED_MULTILINE;   // Enter dropped: text never left the input row
+    h.state.afterEnter = SUBMITTED; // the recovery Enter, once the pane is idle
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
 
-    // The handoff must not accept this pane. It falls through to the idle-gated
-    // path — the only one with a full confirmation ladder — which pastes again.
-    expect(h.paste, "the stranded pane must not end the delivery").toHaveBeenCalledTimes(2);
-    // That second attempt is verified for real (idle→busy), so the message is
-    // recovered rather than silently dropped.
+    // paste-buffer writes at the cursor, so re-pasting text that is STILL in
+    // the input row appends it to itself and the next Enter submits it twice.
+    expect(h.paste, "the stranded payload must never be pasted on top of itself").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
     expect(h.events).toContain("message_confirmed");
   });
@@ -161,21 +178,21 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
   it("also refuses the single-line shape of the same failure", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    h.state.pane = STRANDED_SINGLELINE;
-
+    h.state.afterPaste = STRANDED_SINGLELINE;
+    h.state.afterEnter = SUBMITTED;
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
-    expect(h.paste).toHaveBeenCalledTimes(2);
+    expect(h.paste).toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
   });
 
-  // The end of the line: the pane stays stranded and the redelivery's Enter is
-  // dropped too. The delivery must say ❌, not ✅ — silent loss is the bug.
-  it("fails loudly when even the idle-gated redelivery cannot be confirmed", async () => {
+  // The end of the line: the text stays in the input row however many Enters
+  // go out. The delivery must say ❌, not ✅ — silent loss is the bug.
+  it("fails loudly when the stranded text cannot be submitted at all", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    h.state.pane = STRANDED_MULTILINE;
-    h.state.outputSince = false; // no idle→busy after either Enter
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.outputSince = false; // no idle→busy after any Enter
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
 
@@ -184,22 +201,22 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.events).toContain("message_failed");
   });
 
-  // The Forge shape: an EARLIER delivery is already stranded, so the input row
-  // holds "previous message + ours" and ours is no longer a prefix of it.
+  // The reported shape: an EARLIER delivery is already stranded, so the input
+  // row holds "previous message + ours" and ours is no longer a prefix of it.
   it("detects stranding when an earlier message is stacked in front of ours", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    h.state.pane = [
+    h.state.afterPaste = [
       "• You have 1 usage limit reset available. Run /usage to use one.",
       "› [system] an earlier notice whose Enter was dropped",
       `  [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
       "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
       "  Context 63% left",
     ].join("\n");
-
+    h.state.afterEnter = SUBMITTED;
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
 
-    expect(h.paste, "a stacked strand is still a strand").toHaveBeenCalledTimes(2);
+    expect(h.paste, "a stacked strand is still a strand").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
   });
 
@@ -208,7 +225,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
   it("confirms a message codex took into its own queue (↳), pasting exactly once", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    h.state.pane = NATIVE_QUEUE_ACCEPTED;
+    h.state.afterPaste = NATIVE_QUEUE_ACCEPTED;
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
@@ -218,18 +235,71 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(h.paste, "a confirmed message must not be delivered twice").toHaveBeenCalledTimes(1);
   });
 
-  // The race that a bare "↳ must be present" rule would get wrong: codex can
-  // finish its turn between the readiness probe and our Enter, submitting the
-  // message immediately. There is no ↳ then — only the transcript echo.
-  it("confirms a message codex submitted immediately, without a queue marker", async () => {
+  // A ↳ that was ALREADY on screen belongs to an earlier message. If our paste
+  // is swallowed, that marker must not vouch for this delivery.
+  it("does not let an earlier queued message's ↳ confirm a paste that vanished", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    h.state.pane = SUBMITTED;
+    h.state.pane = [
+      "• Working (9s • esc to interrupt)",
+      "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)",
+      "  ↳ [from:someone-else] an unrelated message queued earlier…",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    h.state.afterPaste = h.state.pane; // a redraw swallowed our paste entirely
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
+    // Nothing of ours reached the pane, so the redelivery paste is the right
+    // recovery here — and it must actually happen.
+    expect(h.paste).toHaveBeenCalledTimes(2);
+    expect(ok).toBe(true);
+  });
+
+  // Counting alone is not enough when the viewport scrolls. A repeated
+  // instruction pushes the older copy off the top as ours arrives, so the count
+  // is unchanged — identical before and after. Tying the evidence to THIS
+  // message's envelope id is what separates them; without it the delivery is
+  // judged unproven and pasted a second time.
+  it("confirms this delivery even when an identical older message scrolls off", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.pane = [
+      "• Working (9s • esc to interrupt)",
+      `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+      "  (message_id: m-0 | correlation_id: cid-older-delivery)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    // Ours arrives; the older copy has scrolled out of the viewport.
+    h.state.afterPaste = SUBMITTED;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+
+    expect(h.paste, "an already-submitted message must not be sent again").toHaveBeenCalledTimes(1);
     expect(ok).toBe(true);
     expect(h.events).toContain("message_confirmed");
-    expect(h.paste, "no redelivery — it was already submitted").toHaveBeenCalledTimes(1);
+  });
+
+  // The same trap in the transcript: an older message that opens the same way
+  // must not vouch for this one. The routing envelope's message_id is what
+  // separates them.
+  it("does not let an older transcript entry with the same body confirm this paste", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.pane = [
+      "• Working (9s • esc to interrupt)",
+      `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+      "  (message_id: m-0 | correlation_id: cid-older-delivery)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    h.state.afterPaste = h.state.pane; // our paste never rendered
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, {}));
+
+    expect(h.paste, "the older copy is not evidence for this delivery").toHaveBeenCalledTimes(2);
+    expect(ok).toBe(true);
   });
 });

@@ -439,14 +439,41 @@ const NORMAL_ENTER_SETTLE_MS = 500;
 
 /**
  * What the pane proves about a paste we just pressed Enter on.
- *  - "submitted":  positive evidence it left the input row (transcript echo, or
- *                  the CLI's own queued-input marker).
- *  - "stranded":   positive evidence it is STILL in the input row — the silent
- *                  failure this type exists to make unrepresentable as success.
- *  - "unproven":   no evidence either way (pane unreadable, backend exposes no
- *                  input row, or the paste itself never rendered). Never a ✅.
+ *  - "submitted":    positive NEW evidence it left the input row (a transcript
+ *                    echo, or the CLI's own queued-input marker, that the pane
+ *                    did not already show before we pasted).
+ *  - "stranded":     positive evidence it is STILL in the input row — the silent
+ *                    failure this type exists to make unrepresentable as success.
+ *                    Recovering means submitting that text, never pasting again.
+ *  - "unverifiable": our text reached the pane, but this backend exposes no
+ *                    input row to read, so submitted and stranded cannot be told
+ *                    apart. The caller keeps that backend's prior best effort.
+ *  - "unproven":     nothing of ours reached the pane (unreadable, or the paste
+ *                    was swallowed). Never a ✅; re-pasting is safe here.
  */
-type SubmitProof = "submitted" | "stranded" | "unproven";
+type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
+
+/**
+ * Evidence counts read off ONE pane snapshot. Submission is judged by what the
+ * pane gained, never by what it contains: a `↳` from an earlier queued message,
+ * or an older transcript entry that happens to start the same way, are both
+ * already on screen before we paste and would otherwise vouch for a paste that
+ * a redraw swallowed.
+ */
+interface PaneEvidence {
+  /** Rows carrying the backend's queued-input marker. */
+  queued: number;
+  /** Occurrences of this message's identifying signature. */
+  payload: number;
+}
+
+/** Occurrences of `needle` in `haystack` (plain text, no regex semantics). */
+function countOccurrences(haystack: string, needle: string): number {
+  if (!needle) return 0;
+  let n = 0;
+  for (let i = haystack.indexOf(needle); i !== -1; i = haystack.indexOf(needle, i + needle.length)) n++;
+  return n;
+}
 /** Bottom-ready re-poll cadence for Enter-dropping TUIs once the pane is quiet. */
 const BOTTOM_READY_POLL_MS = 250;
 /** Consecutive unreadable pane probes tolerated by the delivery gate before the delivery is failed (≈10s at the poll cadence). */
@@ -4354,6 +4381,9 @@ export class Daemon extends EventEmitter {
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const pasteStartedAt = Date.now();
+      // Read the pane BEFORE writing to it, so the submission check can require
+      // evidence this paste ADDED rather than evidence that was already there.
+      const pasteBaseline = await this.capturePaneEvidence(formatted);
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
         const tmuxError = this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure";
@@ -4436,9 +4466,19 @@ export class Daemon extends EventEmitter {
       // can silently swallow it). Idle submissions keep the swallowed-Enter path.
       if (handingOffToNativeQueue) {
         await new Promise(r => setTimeout(r, NATIVE_QUEUE_PASTE_VERIFY_MS));
-        const proof = await this.confirmSubmitted(formatted);
+        const proof = await this.confirmSubmitted(formatted, pasteBaseline);
         if (proof === "submitted") {
           if (status) this.emit("message_confirmed", status); // ✅ native queue accepted
+          return true;
+        }
+        if (proof === "unverifiable") {
+          // Our text reached the pane but this backend exposes no input row, so
+          // "submitted" and "stranded" look identical from here. Only /steer
+          // reaches this path on such a backend, and re-pasting an interjection
+          // the CLI may already have taken would deliver it twice — accept, as
+          // this path always has, and say in the log that it is unproven.
+          this.logger.warn("Steer paste reached the pane but cannot be verified as submitted on this backend");
+          if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
           return true;
         }
 
@@ -4450,6 +4490,43 @@ export class Daemon extends EventEmitter {
         if (windowId && this.controlClient) {
           await this.controlClient.waitUntilIdle(windowId);
         }
+
+        // Re-read before doing anything: the CLI had a whole turn to flush its
+        // queue while we waited, and the right recovery differs per outcome.
+        // Re-pasting a payload that is STILL in the input row appends it to
+        // itself — paste-buffer writes at the cursor — and the next Enter then
+        // submits the message twice over. That is the trap this fix would walk
+        // into if it treated "not confirmed" as one state.
+        const settled = await this.confirmSubmitted(formatted, pasteBaseline);
+        if (settled === "submitted") {
+          this.logger.info("Native-queue message submitted itself while we waited for idle");
+          if (status) this.emit("message_confirmed", status); // ✅
+          return true;
+        }
+        if (settled === "stranded") {
+          // The text is already there in full: it needs submitting, not sending
+          // again. The prompt is back now, so an Enter can land.
+          this.logger.warn("Message still in the input row after idle — submitting the existing text instead of pasting it again");
+          const strandedAt = Date.now();
+          if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
+          const afterEnter = await this.confirmSubmitted(formatted, pasteBaseline);
+          const turnStarted = windowId && this.controlClient
+            ? await this.confirmBusyAfterEnter(windowId, strandedAt)
+            : false;
+          if (afterEnter === "submitted" || turnStarted) {
+            if (status) this.emit("message_confirmed", status); // ✅
+            return true;
+          }
+          this.logger.error("Stranded message could not be submitted by Enter");
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
+
+        // "unproven": nothing of ours is on screen — the paste itself was lost,
+        // so pasting it again cannot duplicate anything.
         const repasted = await this.tmux!.pasteBuffer(formatted);
         if (!repasted) {
           this.logger.error({
@@ -4479,7 +4556,7 @@ export class Daemon extends EventEmitter {
             if (status) this.emit("message_confirmed", status); // ✅
             return true;
           }
-        } else if (await this.confirmSubmitted(formatted) === "submitted") {
+        } else if (await this.confirmSubmitted(formatted, pasteBaseline) === "submitted") {
           if (status) this.emit("message_confirmed", status); // ✅
           return true;
         }
@@ -4559,35 +4636,84 @@ export class Daemon extends EventEmitter {
    * anywhere. Evidence is weighed in order of what it can prove, and the
    * disqualifying evidence is checked first.
    */
-  private async confirmSubmitted(formatted: string): Promise<SubmitProof> {
+  private async confirmSubmitted(formatted: string, baseline: PaneEvidence | null): Promise<SubmitProof> {
     if (!this.tmux) return "unproven";
     let pane: string;
     try { pane = await this.tmux.capturePane(); } catch { return "unproven"; }
 
+    // Without a way to tell the input row from the transcript, "the text is on
+    // screen" cannot distinguish submitted from stranded — that ambiguity IS
+    // the bug. Such a backend gets an explicit verdict rather than a guess:
+    // "unverifiable" (something of ours appeared, but not provably out of the
+    // input row) or "unproven" (nothing of ours appeared, so the paste itself
+    // was lost). The caller keeps that backend's existing best-effort handling
+    // for the first and recovers on the second, which is what it did before —
+    // the fix here is for backends that CAN be read, not a new guess for those
+    // that cannot.
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    if (!prompt) {
+      const seen = this.paneEvidence(pane, formatted);
+      return seen.payload > (baseline?.payload ?? Infinity) || seen.queued > (baseline?.queued ?? Infinity)
+        ? "unverifiable"
+        : "unproven";
+    }
+
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
     //    it was not submitted — whatever else is on screen.
-    const prompt = this.backend?.getBottomReadyPattern?.();
-    if (prompt) {
-      const input = inputAreaText(pane, prompt);
-      if (input != null && inputShowsPastedText(input, formatted)) return "stranded";
-    }
+    const input = inputAreaText(pane, prompt);
+    if (input != null && inputShowsPastedText(input, formatted)) return "stranded";
 
-    // 2. The CLI says it took the message into its own pending queue.
-    if (this.backend?.getQueuedInputMarker?.()?.test(pane)) return "submitted";
+    // 2/3. Positive evidence, and it must be NEW. Counting against a baseline
+    //    taken before the paste is what ties the evidence to THIS delivery: a
+    //    queue marker left by an earlier message, or an older transcript entry
+    //    that opens the same way, are on screen either way and would otherwise
+    //    confirm a paste that never landed.
+    const after = this.paneEvidence(pane, formatted);
+    if (after.queued > (baseline?.queued ?? Infinity)) return "submitted";
+    if (after.payload > (baseline?.payload ?? Infinity)) return "submitted";
 
-    // 3. The text is on screen but (per 1) not in the input row: the CLI echoed
-    //    it into the transcript, which only happens on submission. Compared with
-    //    whitespace removed because the TUI re-wraps a pasted line at the pane
-    //    width — the old check compared line by line, so it returned false for a
-    //    wrapped single-line message and true for a STRANDED multi-line one (its
-    //    short trailing "(message_id: …)" row does not wrap, and it was verbatim
-    //    on screen precisely BECAUSE it was still in the input row).
-    const signature = pastedTextSignature(formatted);
-    if (signature && pane.replace(/\s+/g, "").includes(signature)) return "submitted";
-
-    // 4. Nothing of ours anywhere: the paste itself was swallowed by a redraw.
+    // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
     return "unproven";
+  }
+
+  /**
+   * What the pane currently shows of a given message. Taken once before the
+   * paste and once after, so confirmSubmitted can require a NEW marker or a NEW
+   * echo rather than accepting whatever was already there.
+   */
+  private async capturePaneEvidence(formatted: string): Promise<PaneEvidence | null> {
+    if (!this.tmux) return null;
+    try {
+      return this.paneEvidence(await this.tmux.capturePane(), formatted);
+    } catch {
+      // No baseline means nothing can be proven NEW; confirmSubmitted then
+      // reports "unproven" rather than trusting what is already on screen.
+      return null;
+    }
+  }
+
+  private paneEvidence(pane: string, formatted: string): PaneEvidence {
+    const marker = this.backend?.getQueuedInputMarker?.();
+    const signature = this.submissionSignature(formatted);
+    return {
+      queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
+      payload: countOccurrences(pane.replace(/\s+/g, ""), signature),
+    };
+  }
+
+  /**
+   * What identifies THIS message on screen. The routing envelope carries a
+   * message_id that no earlier transcript entry can share, so prefer it: the
+   * body alone is not distinctive enough — short repeated instructions ("carry
+   * on", a status ping) recur verbatim, and an older copy would vouch for a
+   * paste that never landed. System pastes carry no envelope and fall back to
+   * the body signature, which the baseline comparison still ties to this paste.
+   */
+  private submissionSignature(formatted: string): string {
+    const id = formatted.match(/message_id:\s*([^\s|)\]]+)/);
+    if (id) return `message_id:${id[1]}`;
+    return pastedTextSignature(formatted);
   }
 
   /**
@@ -4602,19 +4728,34 @@ export class Daemon extends EventEmitter {
    */
   private async submitSystemPaste(text: string, label: string): Promise<boolean> {
     if (!this.tmux) return false;
+    const baseline = await this.capturePaneEvidence(text);
     if (!(await this.tmux.pasteBuffer(text))) {
       this.logger.warn({ label }, "System paste failed to reach the pane");
       return false;
     }
     await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
     if (!(await this.sendDeliveryEnter(label))) return false;
-    let proof = await this.confirmSubmitted(text);
+
+    let proof = await this.confirmSubmitted(text, baseline);
+    if (proof === "unverifiable") {
+      // No input row to read: this backend gets exactly what the old pasteText
+      // path gave it, including the unconditional second Enter for queue-less
+      // TUIs that swallow the first. Narrowing that to one Enter on the grounds
+      // that "the text is visible" would be the very inference this change
+      // exists to remove — visible text is also what a strand looks like.
+      if (this.systemPasteOptions().retryEnter) {
+        await new Promise(r => setTimeout(r, 1_000));
+        await this.sendDeliveryEnter(`${label}-defensive-retry`);
+      }
+      return true; // best effort, exactly as before — nothing here is verified
+    }
     if (proof !== "submitted") {
-      // The same single retry the delivery ladder uses. A bare Enter at an empty
-      // prompt is a no-op, so this is safe when the first one did land.
+      // A bare Enter is a no-op at an empty prompt, so this is safe even if the
+      // first one did land; when the text is still in the input row it is the
+      // submit it never got. Re-pasting would append the text to itself.
       await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
       if (!(await this.sendDeliveryEnter(`${label}-retry`))) return false;
-      proof = await this.confirmSubmitted(text);
+      proof = await this.confirmSubmitted(text, baseline);
     }
     if (proof !== "submitted") {
       this.logger.warn({ label, proof }, "System paste may not have been submitted");
@@ -5107,7 +5248,15 @@ export class Daemon extends EventEmitter {
       // Messages can arrive during a restart and be queued on pasteLock before the
       // snapshot lands; both write to the pane, so both go through the same lock.
       const restoreNotice = `[system:session-snapshot]\n${snapshot}\n\nThis is a background context restore — do NOT reply to or acknowledge this message. Simply resume normal operation when the next user or instance message arrives.`;
-      await this.paneWriteLock.run(() => this.submitSystemPaste(restoreNotice, "session-snapshot-restore"));
+      const injected = await this.paneWriteLock.run(() => this.submitSystemPaste(restoreNotice, "session-snapshot-restore"));
+      if (!injected) {
+        // rotation-state.json was deleted when the prompt was built, so there is
+        // nothing left to retry from: the restore is gone either way. Say so —
+        // reporting it as injected is how a lost context restore stays invisible.
+        this.logger.error("Session snapshot could not be submitted — session continues without context");
+        this.emit("snapshot_failed", this.name);
+        return;
+      }
       this.logger.info("Injected session snapshot as first message");
       this.emit("snapshot_injected", this.name);
     } catch (err) {
@@ -5505,10 +5654,19 @@ export class Daemon extends EventEmitter {
       // This path only runs when pasteQueueDepth > 0 — i.e. exactly when a real
       // delivery is already in flight or queued. Without the lock the notice and
       // that delivery race into the same pane.
-      await this.paneWriteLock.run(() => this.submitSystemPaste(
+      const told = await this.paneWriteLock.run(() => this.submitSystemPaste(
         buildInstructionReloadNotice(this.backend?.binaryName ?? "unknown", this.name, this.instanceDir),
         "instruction-reload-notice",
       ));
+      if (!told) {
+        // Recording the new instructions here would mark the agent as told about
+        // a notice it never received, and every later restart would then skip
+        // the reload. Leave the snapshot behind and hand it to the deferred
+        // notice, which fires on the next real message.
+        this.logger.warn("Instruction reload notice not confirmed — deferring it to the next message");
+        this.pendingInstructionsNotice = true;
+        return;
+      }
       // Record the value the agent has now been told about so the next
       // unchanged restart skips the reload.
       try { writeFileSync(join(this.instanceDir, "prev-instructions"), this.lastBuiltInstructions); } catch { /* best effort */ }

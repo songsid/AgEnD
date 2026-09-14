@@ -140,7 +140,7 @@ function makeDaemon(opts: {
     capturePane: async () => pane,
     getLastSendSpecialKeyError: () => null,
   };
-  daemon.paneWriteLock = { run: async (fn: () => Promise<unknown>) => { await fn(); } };
+  daemon.paneWriteLock = { run: async (fn: () => Promise<unknown>) => await fn() };
   // A real daemon has a control client; stubbing it takes the same branch
   // production does and skips the 5s fallback timer.
   writeFileSync(join(dir, "window-id"), "warmup-win");
@@ -173,9 +173,11 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
 
     expect(pasteText, "kiro must still be told").toHaveBeenCalledTimes(1);
     expect(String(pasteText.mock.calls[0][0])).toContain(".kiro/steering/agend-warmup-test.md");
-    // The notice used to be pasted with an unverified Enter; it now goes through
-    // the same submit primitive as a delivery, so an Enter must actually go out.
-    expect(enter, "a pasted notice nobody submits just strands in the input row").toHaveBeenCalled();
+    // A backend with no readable input row keeps exactly what it had before:
+    // the unconditional second Enter for a queue-less TUI that swallows the
+    // first. Narrowing that to one Enter because "the text is visible" would be
+    // the very inference this change exists to remove.
+    expect(enter, "the defensive double-Enter must survive for unverifiable backends").toHaveBeenCalledTimes(2);
     expect(readFileSync(prevFile(dir), "utf-8")).toBe("INSTRUCTIONS-v2");
   });
 
@@ -198,7 +200,10 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
     expect(enter, "an unsubmitted notice gets one more Enter").toHaveBeenCalledTimes(2);
     expect(warns.some(w => String(w).includes("may not have been submitted")),
       "and a strand it could not fix must be reported, not assumed delivered").toBe(true);
-    expect(readFileSync(prevFile(dir), "utf-8")).toBe("INSTRUCTIONS-v2");
+    // Recording the new instructions here would mark the agent as told about a
+    // notice it never received, and every later restart would skip the reload.
+    expect(existsSync(prevFile(dir)), "an unsubmitted notice must not be recorded as delivered").toBe(false);
+    expect(daemon.pendingInstructionsNotice, "it is handed to the next real message instead").toBe(true);
   });
 
   it("defers instead of pasting when nobody is talking to the instance", async () => {

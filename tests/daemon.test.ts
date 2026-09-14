@@ -227,7 +227,7 @@ describe("Daemon", () => {
 });
 
 describe("Daemon backend-native input queue delivery", () => {
-  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity", idle: boolean, pane = "") {
+  function makeDeliveryDaemon(backendName: "codex" | "claude-code" | "kiro-cli" | "antigravity", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-queued-input-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@queued");
@@ -254,10 +254,14 @@ describe("Daemon backend-native input queue delivery", () => {
       control as any,
       rootLogger,
     );
+    // When a test supplies paneBeforePaste, the pane only shows `pane` once the
+    // paste has happened — which is what the submission check needs, since it
+    // judges by what the pane GAINED rather than by what it already held.
+    let pasted = false;
     const tmux = {
-      pasteBuffer: vi.fn().mockResolvedValue(true),
+      pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
-      capturePane: vi.fn().mockResolvedValue(pane),
+      capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
     };
     (daemon as any).tmux = tmux;
     (daemon as any).firstDeliveryDelay = { consume: () => 0 };
@@ -338,6 +342,7 @@ describe("Daemon backend-native input queue delivery", () => {
       "codex",
       false,
       "thinking…\n↳ queued work",
+      "thinking…", // before the paste there is no queue marker to borrow
     );
     const queued = vi.fn();
     const delivered = vi.fn();
@@ -376,16 +381,19 @@ describe("Daemon backend-native input queue delivery", () => {
   it("re-delivers via idle gate when busy Codex paste is silently swallowed", async () => {
     // First capture (post busy-paste) empty → silent loss; after idle-gated
     // re-paste the text appears (or busy confirm succeeds).
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false, "");
-    // Codex's update picker blocks delivery, so two dialog probes read the pane
-    // before the paste (once to decide the handoff, once under the write lock
-    // right before writing). Neither must consume the frame the submit check is
-    // meant to see — that one is the third.
-    tmux.capturePane
-      .mockResolvedValueOnce("working… redrawing…") // handoff dialog probe
-      .mockResolvedValueOnce("working… redrawing…") // re-probe under the write lock
-      .mockResolvedValueOnce("working… redrawing…") // submit check: no text, no ↳
-      .mockResolvedValue("↳ queued work that was swallowed");
+    // The paste is swallowed: the pane never gains anything of ours, so the
+    // delivery must fall back to the idle-gated path and paste again. The ↳
+    // that appears later belongs to that second, successful attempt.
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
+      "codex",
+      false,
+      "working… redrawing…",
+    );
+    let pastes = 0;
+    tmux.pasteBuffer.mockImplementation(async () => {
+      if (++pastes >= 2) tmux.capturePane.mockResolvedValue("↳ queued work that was swallowed");
+      return true;
+    });
     const confirm = vi.fn().mockResolvedValue(true);
     (daemon as any).confirmBusyAfterEnter = confirm;
     const failed = vi.fn();
@@ -901,7 +909,7 @@ describe("Daemon error monitor recovery", () => {
 });
 
 describe("Daemon /steer delivery", () => {
-  function makeSteerDaemon(backendName: "claude-code" | "codex", idle: boolean, pane = "") {
+  function makeSteerDaemon(backendName: "claude-code" | "codex", idle: boolean, pane = "", paneBeforePaste?: string) {
     const instanceDir = join(tmpdir(), `agend-steer-${backendName}-${Date.now()}-${Math.random()}`);
     mkdirSync(instanceDir, { recursive: true });
     writeFileSync(join(instanceDir, "window-id"), "@steer");
@@ -923,10 +931,13 @@ describe("Daemon /steer delivery", () => {
       control as any,
       rootLogger,
     );
+    // See makeDeliveryDaemon: with paneBeforePaste the steered text only shows
+    // up after the paste, so the pre-paste frame can serve as the baseline.
+    let pasted = false;
     const tmux = {
-      pasteBuffer: vi.fn().mockResolvedValue(true),
+      pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
-      capturePane: vi.fn().mockResolvedValue(pane),
+      capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
     };
     (daemon as any).tmux = tmux;
     (daemon as any).firstDeliveryDelay = { consume: () => 0 };
@@ -941,6 +952,7 @@ describe("Daemon /steer delivery", () => {
     const { control, daemon, tmux } = makeSteerDaemon(
       "claude-code", false,
       "✻ thinking…\n[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]",
+      "✻ thinking…",
     );
     const confirmed = vi.fn();
     daemon.on("message_confirmed", confirmed);
@@ -1086,7 +1098,7 @@ describe("Daemon /steer delivery", () => {
 
   it("submits the BTW wrapper immediately to a busy Claude pane", async () => {
     const formatted = "[BTW — side question from the user.]\n[user:han] side question";
-    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, formatted);
+    const { control, daemon, tmux } = makeSteerDaemon("claude-code", false, formatted, "✻ thinking…");
 
     const result = await (daemon as any).deliverMessage(
       formatted,
