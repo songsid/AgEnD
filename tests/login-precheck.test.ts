@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { FleetManager } from "../src/fleet-manager.js";
+import { FleetManager, LOGIN_CALLBACK_PREFIX } from "../src/fleet-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
 describe("/login auth pre-check", () => {
@@ -30,6 +30,38 @@ describe("/login auth pre-check", () => {
     const chat = { adapter, adapterId: "discord", chatId: "chat", threadId: "topic" };
     return { fm, adapter, notifyAlert, sendText, launch, chat };
   }
+
+  // The auth alert's remedy line tells the user to run `/login <backend>`.
+  // The button starts the same flow in place — where there is one to start.
+  it("offers a re-login button for a backend that supports remote login", async () => {
+    const { fm, adapter } = setup();
+    vi.spyOn(fm as any, "getInstanceAdapterId").mockReturnValue("discord");
+    vi.spyOn(fm as any, "getAdapterForInstance").mockReturnValue(adapter);
+    vi.spyOn(fm as any, "getGroupIdForInstance").mockReturnValue("chat");
+    const post = vi.spyOn(fm as any, "postNonceButtonPrompt").mockResolvedValue(undefined);
+
+    await (fm as any).offerBackendLogin("codex-worker", "codex");
+
+    expect(post).toHaveBeenCalledTimes(1);
+    // Routed into the SAME chooser /login uses, so one tap starts the flow.
+    expect(post.mock.calls[0][0]).toMatchObject({
+      prefix: LOGIN_CALLBACK_PREFIX,
+      choices: [{ action: "codex", label: expect.any(String) }],
+    });
+  });
+
+  it("offers no button for a backend that has no remote login flow", async () => {
+    const { fm, adapter } = setup();
+    vi.spyOn(fm as any, "getInstanceAdapterId").mockReturnValue("discord");
+    vi.spyOn(fm as any, "getAdapterForInstance").mockReturnValue(adapter);
+    vi.spyOn(fm as any, "getGroupIdForInstance").mockReturnValue("chat");
+    const post = vi.spyOn(fm as any, "postNonceButtonPrompt").mockResolvedValue(undefined);
+
+    // opencode logs in from a terminal; a button here would lead nowhere.
+    await (fm as any).offerBackendLogin("oc-worker", "opencode");
+
+    expect(post, "the alert's own wording already says what to run").not.toHaveBeenCalled();
+  });
 
   it("valid auth posts the re-login confirmation instead of launching", async () => {
     const { fm, notifyAlert, launch, chat } = setup();
@@ -108,11 +140,46 @@ describe("/login auth pre-check", () => {
     const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
 
     const result = await (fm as any).recoverBackendInstances("codex");
-    expect(result).toEqual({ woken: ["codex-paused-live", "codex-paused-marker"], restarted: ["codex-running"] });
+    expect(result).toEqual({ woken: ["codex-paused-live", "codex-paused-marker"], restarted: ["codex-running"], pending: [] });
     expect(wake).toHaveBeenCalledWith("codex-paused-live", 30_000);
     expect(startPersisted).toHaveBeenCalledWith("codex-paused-marker");
     expect(restart).toHaveBeenCalledTimes(1);
     expect(restart).toHaveBeenCalledWith("codex-running");
+  });
+
+  // The recovery loop had no wall-clock bound, and the caller only built its
+  // "login completed" message after it returned — so one instance that never
+  // came back suppressed the news of a login that had already succeeded.
+  it("post-login recovery gives up WAITING on a hung instance and reports it as pending", async () => {
+    const { fm } = setup();
+    fm.fleetConfig = {
+      defaults: { backend: "codex" },
+      instances: {
+        "codex-hangs": { working_directory: "/tmp/hangs" },
+        "codex-after": { working_directory: "/tmp/after" },
+      },
+    } as any;
+    vi.spyOn(fm, "getInstanceStatus").mockImplementation(() => "running" as any);
+    let hungSettled = false;
+    const restart = vi.spyOn(fm, "restartSingleInstance").mockImplementation(async (name: string) => {
+      if (name === "codex-hangs") {
+        await new Promise(r => setTimeout(r, 5_000));
+        hungSettled = true;
+      }
+    });
+
+    const started = Date.now();
+    const result = await (fm as any).recoverBackendInstances("codex", 50);
+
+    expect(Date.now() - started, "the whole batch must not wait on one instance").toBeLessThan(4_000);
+    expect(result.pending).toContain("codex-hangs");
+    expect(result.restarted).not.toContain("codex-hangs");
+    // Every instance is still accounted for: the ones after the deadline are
+    // reported as pending too, rather than silently dropped from the report.
+    expect([...result.restarted, ...result.pending].sort()).toEqual(["codex-after", "codex-hangs"]);
+    // Not cancelled — it is still coming back on its own.
+    expect(hungSettled).toBe(false);
+    expect(restart).toHaveBeenCalled();
   });
 
   it("post-login recovery includes ClassicBot instances of the same backend without reviving stopped or crashed ones", async () => {
@@ -164,6 +231,7 @@ describe("/login auth pre-check", () => {
     expect(result).toEqual({
       woken: ["classic-paused-live", "classic-paused-marker"],
       restarted: ["fleet-kiro", "duplicate-kiro", "classic-running"],
+      pending: [],
     });
     expect(wake).toHaveBeenCalledExactlyOnceWith("classic-paused-live", 30_000);
     expect(startPersisted).toHaveBeenCalledExactlyOnceWith("classic-paused-marker");
@@ -188,9 +256,9 @@ describe("/login auth pre-check", () => {
     const restart = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
 
     expect(await (fm as any).recoverBackendInstances("kiro-cli"))
-      .toEqual({ woken: [], restarted: [] });
+      .toEqual({ woken: [], restarted: [], pending: [] });
     expect(await (fm as any).recoverBackendInstances("codex"))
-      .toEqual({ woken: [], restarted: ["shared"] });
+      .toEqual({ woken: [], restarted: ["shared"], pending: [] });
     expect(restart).toHaveBeenCalledExactlyOnceWith("shared");
   });
 

@@ -69,7 +69,8 @@ import { handleViewRequest, isViewPath } from "./view-api.js";
 import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
-import { LoginController, LOGIN_TOKEN_RESEND_PREFIX } from "./login-controller.js";
+import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
+import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
@@ -418,7 +419,7 @@ const HANG_CALLBACK_PREFIX = "hang:";
 const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const TIP_DISMISS_CALLBACK_PREFIX = "tip-dismiss:";
 const TIP_UNLOCK_CALLBACK_PREFIX = "tip-unlock:";
-const LOGIN_CALLBACK_PREFIX = "login:";
+export const LOGIN_CALLBACK_PREFIX = "login:";
 const INSTALL_CALLBACK_PREFIX = "install-select:";
 const CLASSIC_APPROVE_CALLBACK_PREFIX = "classic-approve:";
 const LOGIN_MENU_CALLBACK_PREFIX = "login-menu:";
@@ -7056,6 +7057,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
   }
 
+  /**
+   * Offer a one-tap re-login next to an auth alert.
+   *
+   * The alert already names the remedy in words (`/login <backend>`), which
+   * still leaves the user to retype it somewhere. The button routes into the
+   * same chooser `/login` uses, so pressing it starts the flow in place.
+   *
+   * Backends with no remote login flow (opencode logs in from a terminal) get
+   * no button — the alert's own wording already tells them what to run.
+   */
+  async offerBackendLogin(targetInstance: string, backend: string): Promise<void> {
+    if (!LOGIN_FLOWS[backend]) return;
+    const adapterId = this.getInstanceAdapterId(targetInstance);
+    const adapter = this.getAdapterForInstance(targetInstance);
+    const chatId = this.getGroupIdForInstance(targetInstance);
+    const topicId = this.fleetConfig?.instances[targetInstance]?.topic_id;
+    const threadId = topicId != null ? String(topicId) : undefined;
+    if (!adapter || !adapterId || !chatId) {
+      this.logger.warn({ targetInstance, backend, adapterId, chatId },
+        "Cannot address the re-login button — the alert text still names the command");
+      return;
+    }
+    await this.postNonceButtonPrompt({
+      prefix: LOGIN_CALLBACK_PREFIX,
+      alertType: "login",
+      instanceName: "login",
+      adapter,
+      adapterId,
+      chatId,
+      threadId,
+      message: t("login.offer", backend),
+      choices: [{ action: backend, label: t("login.offer_action", backend) }],
+      expiredText: t("buttons.stale"),
+    });
+  }
+
   /** Consume a General assist button exactly once. */
   private async handleInteractivePromptAssist(
     data: AdapterCallbackData,
@@ -8157,13 +8194,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (cleanupFailed) {
           await chat.adapter.sendText(chat.chatId, t("login.web_cleanup_failed", backend), { threadId: chat.threadId }).catch(() => {});
         }
+        const send = (text: string) =>
+          chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => {});
         let text: string;
         if (ok) {
-          const { woken, restarted } = await this.recoverBackendInstances(backend);
-          const none = t("login.none");
-          text = t("login.success", backend,
-            woken.length ? woken.join(", ") : none,
-            restarted.length ? restarted.join(", ") : none);
+          // Same order as the web-login path: the login result goes out first,
+          // then the recovery reports its own outcome. Waiting for recovery to
+          // build this message is what made a successful login look hung.
+          await send(t("login.completed", backend));
+          await announcePostLoginRecovery(backend, () => this.recoverBackendInstances(backend), send);
+          return;
         } else if (detail === "cancelled") {
           // The cancel command's own reply already announced this — a second
           // message here was a duplicate.
@@ -8295,26 +8335,49 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * only re-reads credentials on process start (a paused instance's CLI is
    * already dead, so waking it respawns with the new token for free).
    */
-  private async recoverBackendInstances(backend: string): Promise<{ woken: string[]; restarted: string[] }> {
+  /**
+   * Wake/restart every instance of a backend after a successful re-login.
+   *
+   * Bounded by a wall-clock deadline. This used to be an unbounded sequential
+   * loop, and the caller only built its "login completed" message AFTER it
+   * returned — so with several instances (or one slow restart) the user was
+   * told nothing at all for minutes, concluded the login had hung, and
+   * restarted things by hand. Instances that do not finish in time are NOT
+   * cancelled: they are still coming back, and are reported as pending so the
+   * message can say so instead of implying failure.
+   */
+  private async recoverBackendInstances(
+    backend: string,
+    deadlineMs = POST_LOGIN_RECOVERY_DEADLINE_MS,
+  ): Promise<PostLoginRecovery> {
     const woken: string[] = [];
     const restarted: string[] = [];
+    const pending: string[] = [];
+    const deadline = Date.now() + deadlineMs;
     for (const name of this.configuredBackendInstanceNames()) {
       if (this.backendNameOf(name) !== backend) continue;
       const status = this.getInstanceStatus(name);
-      try {
+      if (status !== "paused" && status !== "running") continue;
+      const result = await runBeforeDeadline(async () => {
         if (status === "paused") {
           if (this.daemons.has(name)) await this.lifecycle.wake(name, 30_000);
           else await this.startPersistedPausedInstance(name);
-          woken.push(name);
-        } else if (status === "running") {
+        } else {
           await this.restartSingleInstance(name);
-          restarted.push(name);
         }
-      } catch (err) {
-        this.logger.warn({ err: (err as Error).message, name, status }, "Post-login recovery failed");
+      }, deadline);
+      if (result.status === "fulfilled") {
+        (status === "paused" ? woken : restarted).push(name);
+      } else if (result.status === "timeout") {
+        // Out of time: record it and stop waiting, but keep walking the list —
+        // the remaining instances are checked against the same deadline and
+        // fall straight through, so the caller still learns about all of them.
+        pending.push(name);
+      } else {
+        this.logger.warn({ err: (result.reason as Error)?.message, name, status }, "Post-login recovery failed");
       }
     }
-    return { woken, restarted };
+    return { woken, restarted, pending };
   }
 
   /** Backend chooser button → start that backend's login session. */

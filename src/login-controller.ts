@@ -45,6 +45,67 @@ export const DEFAULT_WEB_TERMINAL_TTL_MINUTES = 10;
 export const START_RATE_LIMIT = 3;
 export const START_RATE_WINDOW_MS = 5 * 60_000;
 
+/**
+ * What post-login recovery managed within its deadline. `pending` instances
+ * were NOT cancelled — they are still restarting, and saying so beats implying
+ * they failed or saying nothing at all.
+ */
+export interface PostLoginRecovery {
+  woken: string[];
+  restarted: string[];
+  pending: string[];
+  /** Set when recovery itself threw; the login still succeeded. */
+  failed?: string;
+}
+
+/**
+ * How long the login flow waits for the affected instances to come back before
+ * it reports progress instead of a result. Generous: a restart is slow and the
+ * user would rather wait than be told "still working" too eagerly — but finite,
+ * because silence is what made this look like a hang.
+ */
+export const POST_LOGIN_RECOVERY_DEADLINE_MS = 90_000;
+
+/**
+ * Bring the backend's instances back and report the OUTCOME — always, and in
+ * terms the user can act on. Shared by both login paths so they cannot drift
+ * into telling the user different things about the same event.
+ *
+ * The caller has already said the login itself succeeded; this is the second
+ * half, and it must be terminal. An unfinished instance is reported as still
+ * restarting rather than left to silence: silence is what made people restart
+ * things by hand while the recovery was in fact still running.
+ */
+export async function announcePostLoginRecovery(
+  backend: string,
+  recover: () => Promise<PostLoginRecovery>,
+  send: (text: string) => Promise<unknown>,
+  deadlineMs = POST_LOGIN_RECOVERY_DEADLINE_MS,
+): Promise<void> {
+  const none = t("login.none");
+  let result: PostLoginRecovery;
+  try {
+    result = await recover();
+  } catch (err) {
+    // Recovery throwing must not swallow the report: the login DID succeed and
+    // the user still needs to know where that leaves them.
+    result = { woken: [], restarted: [], pending: [], failed: String((err as Error)?.message ?? err) };
+  }
+  const list = (names: string[]) => (names.length ? names.join(", ") : none);
+  if (result.failed) {
+    await send(t("login.recover_failed", backend, result.failed));
+    return;
+  }
+  // Defensive on shape, deliberately: this function exists to guarantee the
+  // user hears an outcome, so it must not be the thing that throws.
+  const pending = result.pending ?? [];
+  if (pending.length) {
+    await send(t("login.recover_pending", backend, String(Math.round(deadlineMs / 1000)), pending.join(", ")));
+    return;
+  }
+  await send(t("login.recovered", backend, list(result.woken), list(result.restarted)));
+}
+
 export interface LoginChat {
   adapter: ChannelAdapter;
   adapterId: string;
@@ -72,7 +133,7 @@ export interface LoginControllerDeps {
   /** Event log sink; instance column is "login". */
   eventLog: () => { insert(instance: string, type: string, payload?: Record<string, unknown>): void } | null;
   /** Wake/restart the backend's instances after a successful login. */
-  recoverBackendInstances(backend: string): Promise<{ woken: string[]; restarted: string[] }>;
+  recoverBackendInstances(backend: string): Promise<PostLoginRecovery>;
   /** Post nonce buttons (FleetManager.postNonceButtonPrompt). Rejects when the platform refused. */
   postButtons(opts: {
     prefix: string; instanceName: string; chat: LoginChat; message: string;
@@ -473,12 +534,20 @@ export class LoginController {
   }
 
   private async reportDone(chat: LoginChat, backend: string, result: WebTerminalResult): Promise<void> {
+    const send = (text: string) =>
+      chat.adapter.sendText(chat.chatId, text, { threadId: chat.threadId }).catch(() => { /* chat gone */ });
+
     let text: string;
     if (result.ok) {
-      const { woken, restarted } = await this.deps.recoverBackendInstances(backend);
-      const none = t("login.none");
-      text = t("login.success", backend, woken.length ? woken.join(", ") : none, restarted.length ? restarted.join(", ") : none);
-    } else if (result.reason === "cancel" && result.detail === "cancelled") {
+      // Say the login worked BEFORE bringing the instances back. This used to
+      // wait for the whole recovery first, so a slow restart meant the user was
+      // told nothing at all — and concluded the login itself had hung.
+      await send(t("login.completed", backend));
+      await announcePostLoginRecovery(backend, () => this.deps.recoverBackendInstances(backend), send);
+      if (result.cleanupFailed) await send(t("login.web_cleanup_failed", backend));
+      return;
+    }
+    if (result.reason === "cancel" && result.detail === "cancelled") {
       text = "";                                              // the cancel command's own reply already announced this
     } else {
       text = t("login.failed", backend, result.detail);
