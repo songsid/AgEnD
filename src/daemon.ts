@@ -4778,14 +4778,18 @@ export class Daemon extends EventEmitter {
             return false;
           }
           const afterEnter = await this.confirmSubmitted(signature, pasteBaseline);
-          const turnStarted = windowId && this.controlClient
-            ? await this.confirmBusyAfterEnter(windowId, strandedAt)
-            : false;
-          if (afterEnter === "submitted" || turnStarted) {
+          if (afterEnter === "submitted") {
             if (status) this.emit("message_confirmed", status); // ✅
             return true;
           }
-          this.logger.error("Stranded message could not be submitted by Enter");
+          // Deliberately NOT "or the pane went busy". This branch runs because
+          // the text was still in the input row; if the recovery Enter was
+          // swallowed too, the pane is busy with something else — a late redraw,
+          // another turn's output — and treating that as proof re-confirms a
+          // message nobody submitted. Output is corroboration; text sitting in
+          // the input row is disqualifying, and disqualifying evidence wins.
+          this.logger.error({ afterEnter, strandedAt },
+            "Stranded message could not be submitted by Enter");
           if (status) this.emit("message_failed", status); // ❌
           return false;
         }
@@ -4855,11 +4859,43 @@ export class Daemon extends EventEmitter {
           return false;
         }
       } else if (windowId && this.controlClient) {
-        let becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
+        // An idle delivery used to be judged by output alone: anything the pane
+        // printed after Enter counted as "submitted". Waking a paused instance
+        // breaks that — the CLI's final redraw arrives right as we press Enter,
+        // so a swallowed Enter is confirmed by the redraw it was lost to, and
+        // the message is never in a turn (#745 left this path on the old rule).
+        //
+        // Where the input row can be read, it decides: text still sitting there
+        // is disqualifying and no amount of output may override it. Where it
+        // cannot (a backend with no prompt pattern), the output signal remains
+        // exactly as before — this must not regress backends we cannot read.
+        let proof = await this.confirmSubmitted(signature, pasteBaseline);
+        if (proof === "stranded") {
+          this.logger.warn("Enter did not submit — text is still in the input row; waiting for the prompt and re-sending once");
+          const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
+          if (promptBack && !(await this.sendDeliveryEnter("idle-stranded-retry"))) {
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
+          proof = promptBack ? await this.confirmSubmitted(signature, pasteBaseline) : proof;
+          if (proof !== "submitted") {
+            this.logger.error({ proof }, "Message pasted but never submitted (still in the input row after the retry)");
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
+        }
+        let becameBusy = proof === "submitted";
+        if (!becameBusy) becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
         if (!becameBusy) {
           this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
           const retryAt = Date.now();
           if (!(await this.sendDeliveryEnter("idle-to-busy-retry"))) {
+            if (status) this.emit("message_failed", status); // ❌
+            return false;
+          }
+          // The input row still outranks output on the retry too.
+          if (await this.confirmSubmitted(signature, pasteBaseline) === "stranded") {
+            this.logger.error("Message pasted but never submitted (still in the input row after two Enters)");
             if (status) this.emit("message_failed", status); // ❌
             return false;
           }
