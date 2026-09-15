@@ -176,6 +176,25 @@ export interface RuntimeDialog {
 }
 
 /**
+ * A self-clearing TUI phase during which an input row may be visible but Enter
+ * is not accepted (for example Codex while it paints `Resuming session…`).
+ *
+ * This is deliberately separate from {@link RuntimeDialog}: nobody should send
+ * keys to clear it, so the delivery path may wait for it while holding the pane
+ * write lock without starving the dialog dismisser.  Implementations must make
+ * `isActive` structural and current-screen-aware.  A loose whole-pane match can
+ * be triggered by transcript prose quoting the very diagnostic text.
+ */
+export interface InputUnavailableTransient {
+  /** Cheap identity/pre-filter; never authoritative by itself. */
+  pattern: RegExp;
+  /** Human-readable description for bounded-wait diagnostics. */
+  description: string;
+  /** Whether this transient owns the current interactive screen. */
+  isActive(pane: string): boolean;
+}
+
+/**
  * A dialog that may appear during CLI startup (trust prompts, session pickers, etc.).
  * With `fatal` set, the screen cannot be dismissed by keypresses (e.g. a corrupt
  * claude.json modal whose only choices are "exit" and "reset config"): the daemon
@@ -347,6 +366,13 @@ export interface CliBackend {
    * The daemon's error monitor auto-dismisses these by sending the specified keys.
    */
   getRuntimeDialogs?(): RuntimeDialog[];
+
+  /**
+   * Self-clearing startup/runtime phases that visibly expose an input row but
+   * do not yet accept Enter.  The daemon checks these during startup, before a
+   * write, and immediately before every delivery Enter.
+   */
+  getInputUnavailableTransients?(): InputUnavailableTransient[];
 
   /**
    * Dialogs that may appear during CLI startup (trust prompts, confirmation dialogs).
