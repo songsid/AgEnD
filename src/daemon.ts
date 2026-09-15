@@ -441,6 +441,9 @@ export class PendingWorkTracker {
 }
 
 const NORMAL_ENTER_SETTLE_MS = 500;
+/** How long to keep looking for proof after a retry Enter before failing it. */
+const POST_ENTER_PROOF_WINDOW_MS = 3_000;
+const POST_ENTER_PROOF_POLL_MS = 250;
 /** Attempts to read the pre-paste pane before a delivery gives up on a baseline. */
 const BASELINE_CAPTURE_ATTEMPTS = 3;
 const BASELINE_CAPTURE_RETRY_MS = 150;
@@ -4811,17 +4814,7 @@ export class Daemon extends EventEmitter {
           return false;
         }
         if (windowId && this.controlClient) {
-          let becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
-          if (!becameBusy) {
-            this.logger.warn("No idle→busy after idle-gated redelivery — re-sending Enter once");
-            const retry2At = Date.now();
-            if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery-retry"))) {
-              if (status) this.emit("message_failed", status); // ❌
-              return false;
-            }
-            becameBusy = await this.confirmBusyAfterEnter(windowId, retry2At);
-          }
-          if (becameBusy) {
+          if (await this.confirmAfterEnter(windowId, retryAt, signature, pasteBaseline, "native-queue-idle-redelivery-retry")) {
             if (status) this.emit("message_confirmed", status); // ✅
             return true;
           }
@@ -4869,38 +4862,7 @@ export class Daemon extends EventEmitter {
         // is disqualifying and no amount of output may override it. Where it
         // cannot (a backend with no prompt pattern), the output signal remains
         // exactly as before — this must not regress backends we cannot read.
-        let proof = await this.confirmSubmitted(signature, pasteBaseline);
-        if (proof === "stranded") {
-          this.logger.warn("Enter did not submit — text is still in the input row; waiting for the prompt and re-sending once");
-          const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
-          if (promptBack && !(await this.sendDeliveryEnter("idle-stranded-retry"))) {
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
-          }
-          proof = promptBack ? await this.confirmSubmitted(signature, pasteBaseline) : proof;
-          if (proof !== "submitted") {
-            this.logger.error({ proof }, "Message pasted but never submitted (still in the input row after the retry)");
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
-          }
-        }
-        let becameBusy = proof === "submitted";
-        if (!becameBusy) becameBusy = await this.confirmBusyAfterEnter(windowId, enterAt);
-        if (!becameBusy) {
-          this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
-          const retryAt = Date.now();
-          if (!(await this.sendDeliveryEnter("idle-to-busy-retry"))) {
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
-          }
-          // The input row still outranks output on the retry too.
-          if (await this.confirmSubmitted(signature, pasteBaseline) === "stranded") {
-            this.logger.error("Message pasted but never submitted (still in the input row after two Enters)");
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
-          }
-          becameBusy = await this.confirmBusyAfterEnter(windowId, retryAt);
-        }
+        const becameBusy = await this.confirmAfterEnter(windowId, enterAt, signature, pasteBaseline, "idle-to-busy-retry");
         if (becameBusy) {
           if (status) this.emit("message_confirmed", status); // ✅
         } else {
@@ -4937,6 +4899,68 @@ export class Daemon extends EventEmitter {
    * anywhere. Evidence is weighed in order of what it can prove, and the
    * disqualifying evidence is checked first.
    */
+  /**
+   * Whether this backend exposes an input row we can actually read, i.e. whether
+   * confirmSubmitted can ever return a verdict stronger than a guess.
+   *
+   * This is a property of the BACKEND, not of one delivery's verdict. Keying the
+   * output-signal fallback off the verdict instead let codex — which can be read
+   * — fall back to "the pane printed something" whenever a paste left no trace,
+   * which is the same false confirmation one layer down.
+   */
+  private canProveSubmission(): boolean {
+    return !!this.backend?.getBottomReadyPattern?.();
+  }
+
+  /**
+   * Decide a submission after an Enter, with one bounded retry.
+   *
+   * Backends we can read must SHOW the text left the input row: neither a
+   * strand nor a vanished paste may be upgraded to success by output, because
+   * the output that would do the upgrading is usually the very redraw the Enter
+   * was lost to. Backends we cannot read keep the legacy output signal — there
+   * is nothing better available for them, and taking it away would fail every
+   * one of their deliveries.
+   *
+   * One ladder, used by every post-Enter confirmation, so an escape hatch
+   * cannot reappear in just one of them (it did: three copies, two of which
+   * still confirmed on output alone).
+   */
+  private async confirmAfterEnter(
+    windowId: string,
+    enterAt: number,
+    signature: SubmissionSignature,
+    baseline: PaneEvidence | null,
+    retryPhase: string,
+  ): Promise<boolean> {
+    if (!this.canProveSubmission()) {
+      let busy = await this.confirmBusyAfterEnter(windowId, enterAt);
+      if (!busy) {
+        this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
+        const retryAt = Date.now();
+        if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+        busy = await this.confirmBusyAfterEnter(windowId, retryAt);
+      }
+      return busy;
+    }
+
+    if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
+
+    // Retry once the prompt is back — an Enter sent into a mid-redraw TUI is
+    // how we got here. Then poll briefly rather than judging on one capture:
+    // the key takes a moment to be digested, and a single early look would
+    // report a failure for a message that did go out.
+    this.logger.warn("Enter did not submit — waiting for the prompt, then re-sending once");
+    if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
+    if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+    const deadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+    for (;;) {
+      if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+    }
+  }
+
   private async confirmSubmitted(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
     if (!this.tmux) return "unproven";
     let pane: string;

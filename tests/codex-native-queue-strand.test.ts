@@ -82,7 +82,7 @@ const BUSY_BEFORE_PASTE = [
 interface Harness {
   daemon: any;
   /** `afterPaste`/`afterEnter` repaint the pane the way the CLI would. */
-  state: { pane: string; idle: boolean; outputSince: boolean; afterPaste?: string; afterEnter?: string };
+  state: { pane: string; idle: boolean; outputSince: boolean; afterPaste?: string; afterEnter?: string; afterSecondPaste?: string };
   paste: ReturnType<typeof vi.fn>;
   enter: ReturnType<typeof vi.fn>;
   events: string[];
@@ -103,7 +103,19 @@ function makeHarness(): Harness {
   } as any, dir, false, new CodexBackend(dir) as any, undefined, { child: () => logger } as any) as any;
 
   const state: Harness["state"] = { pane: BUSY_BEFORE_PASTE, idle: false, outputSince: true };
-  const paste = vi.fn(async () => { if (state.afterPaste !== undefined) state.pane = state.afterPaste; return true; });
+  // A redelivery that actually lands paints the message; the first paste in
+  // these tests is the one that vanished, the second is the recovery.
+  let pastes = 0;
+  const paste = vi.fn(async () => {
+    pastes++;
+    const recovered = pastes >= 2 && state.afterSecondPaste !== undefined;
+    const next = recovered ? state.afterSecondPaste : state.afterPaste;
+    if (next !== undefined) state.pane = next;
+    // Once the recovery paste has landed the pane does not revert to the old
+    // frame on the next Enter — that Enter is what submits the new text.
+    if (recovered) state.afterEnter = state.afterSecondPaste;
+    return true;
+  });
   // An Enter arriving while the CLI is busy is DROPPED — that is the failure
   // being modelled. Once the pane is idle the Enter lands and repaints.
   const enter = vi.fn(async () => {
@@ -249,6 +261,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     ].join("\n");
     h.state.afterPaste = h.state.pane; // a redraw swallowed our paste entirely
 
+    h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
     // Nothing of ours reached the pane, so the redelivery paste is the right
@@ -299,6 +312,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterPaste = olderStranded;  // ours was swallowed by a redraw
     h.state.afterEnter = olderStranded;  // and the old one is what any Enter submits
 
+    h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
     // Ours is nowhere on screen, so the recovery is to paste it — not to press
@@ -348,7 +362,10 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.pane = identicalOlderStrand;
     h.state.afterPaste = identicalOlderStrand; // ours was swallowed
     h.state.afterEnter = identicalOlderStrand;
-
+    // The recovery lands. The older strand is still on screen above it — it
+    // does not disappear because we pasted — so the body now appears twice,
+    // which is what makes this provable without an envelope id.
+    h.state.afterSecondPaste = [identicalOlderStrand, SUBMITTED].join("\n");
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
     expect(h.paste, "the older strand is not ours to claim as delivered").toHaveBeenCalledTimes(2);
@@ -375,6 +392,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.pane = older;
     h.state.afterPaste = older; // this delivery's paste was swallowed by a redraw
 
+    h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(
       `[from:agend-dev-claude-t1519896892392083558] ${bodyMentioningAnId}\n(message_id: m-1 | correlation_id: cid-now)`,
       STATUS,
@@ -472,6 +490,36 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     expect(ok).toBe(false);
   });
 
+  /**
+   * The native-queue recovery's OTHER exit. When the first paste leaves no
+   * trace the branch re-pastes — and then judged that attempt by output alone
+   * whenever a control client existed, consulting the real proof only when
+   * there was none. So the strong check ran exactly where we could observe
+   * least. If the second paste is swallowed too and the pane is still
+   * redrawing, that redraw confirmed a message that was never submitted.
+   */
+  it("does not let unrelated output confirm a native redelivery whose second paste also vanished", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;                 // busy → native-queue handoff
+    h.state.outputSince = true;           // the wake redraw keeps printing
+    const noTrace = [
+      "• Working (9s • esc to interrupt)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    h.state.pane = noTrace;
+    h.state.afterPaste = noTrace;         // neither paste ever renders
+    h.state.afterSecondPaste = noTrace;
+    h.state.afterEnter = noTrace;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(h.paste, "the vanished paste is retried").toHaveBeenCalledTimes(2);
+    expect(h.events, "a redraw is not proof that the retry landed either").not.toContain("message_confirmed");
+    expect(h.events).toContain("message_failed");
+    expect(ok).toBe(false);
+  });
+
   // The same trap in the transcript: an older message that opens the same way
   // must not vouch for this one. The routing envelope's message_id is what
   // separates them.
@@ -486,6 +534,9 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       "  Context 63% left",
     ].join("\n");
     h.state.afterPaste = h.state.pane; // our paste never rendered
+    // The recovery lands and carries THIS delivery's envelope id, which is what
+    // separates it from the older copy still sitting above.
+    h.state.afterSecondPaste = [h.state.pane, SUBMITTED].join("\n");
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
