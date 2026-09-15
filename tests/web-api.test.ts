@@ -200,3 +200,69 @@ describe("backend detection endpoint", () => {
     expect(backends.map(b => b.name)).toEqual(expect.arrayContaining(["antigravity", "grok"]));
   });
 });
+
+describe("/ui/instance/:name new fields (B2 wiring)", () => {
+  it("returns model, model_source, effort, effort_source, context_pct, display_name", async () => {
+    const ctx = makeCtx({
+      fleetConfig: {
+        channel: { group_id: 1 },
+        defaults: { backend: "kiro-cli", effort: "high" },
+        instances: {
+          "test-inst": {
+            working_directory: "/tmp/test",
+            display_name: "Test Instance",
+            model: "configured-model",
+            effort: "max",
+          },
+        },
+        teams: {},
+      },
+      getInstanceDir: () => "/tmp/nonexistent",
+      resolveInstanceModel: () => ({ model: "configured-model", display: "configured-model", source: "instance" }),
+      effortStrategyFor: () => "restart",
+      resolveInstanceEffort: () => ({ effort: "max", source: "instance" }),
+    });
+
+    const res = await callAndWait("GET", "/ui/instance/test-inst", undefined, ctx);
+
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    // B2: All new fields must be present with correct values
+    expect(data.backend).toBe("kiro-cli");
+    expect(data.model).toBe("configured-model");
+    expect(data.model_source).toBe("instance");
+    expect(data.effort).toBe("max");
+    expect(data.effort_source).toBe("instance");
+    expect(data.display_name).toBe("Test Instance");
+    // context_pct can be null (no statusline) — that's correct, not undefined
+    expect("context_pct" in data).toBe(true);
+  });
+
+  it("returns null effort for unsupported backends", async () => {
+    const ctx = makeCtx({
+      fleetConfig: {
+        channel: { group_id: 1 },
+        defaults: { effort: "high" },
+        instances: {
+          "unsupported-inst": {
+            working_directory: "/tmp/test",
+            backend: "opencode",
+          },
+        },
+        teams: {},
+      },
+      getInstanceDir: () => "/tmp/nonexistent",
+      resolveInstanceModel: () => ({ model: "gpt-4", display: "gpt-4", source: "cli-default" }),
+      effortStrategyFor: () => "unsupported",
+      resolveInstanceEffort: () => ({ effort: "high", source: "fleet-default" }),
+    });
+
+    const res = await callAndWait("GET", "/ui/instance/unsupported-inst", undefined, ctx);
+
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    // Unsupported backend should have null effort, not the configured value
+    expect(data.effort).toBeNull();
+    expect(data.effort_source).toBeNull();
+  });
+});

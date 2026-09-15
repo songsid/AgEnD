@@ -14,4 +14,13 @@ describe("dashboard zh-TW feedback", () => {
     expect(html).toContain('confirm(trf("deleteTeam", name))');
     expect(html).toContain('${tr("loadFailed")}');
   });
+
+  // R2b: sidebar tooltip effort_source must always show label for consistency
+  it("sidebar tooltip always shows effort_source label including instance (R2 regression)", () => {
+    // The effortPart must show sourceLabel for all sources, not skip instance
+    // Pattern: i.effort_source ? ` (${sourceLabel(i.effort_source)})` : ""
+    // Must NOT have the old condition that skips instance: i.effort_source !== "instance"
+    expect(html).toMatch(/effortPart.*i\.effort_source \? .*sourceLabel\(i\.effort_source\)/);
+    expect(html).not.toMatch(/effortPart.*i\.effort_source !== "instance"/);
+  });
 });

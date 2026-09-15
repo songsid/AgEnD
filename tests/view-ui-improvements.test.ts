@@ -9,7 +9,17 @@ describe("View UI improvements", () => {
     for (const backend of ["claude-code", "kiro-cli", "codex", "grok", "antigravity", "opencode"]) {
       expect(html).toContain(`.cli-${backend}`);
     }
-    expect(html).toContain('${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
+    // M2: context_pct != null shows value including 0%; null means unavailable
+    expect(html).toContain('${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
+  });
+
+  // R2a: renderCard must use != null to show 0% context (not truthiness)
+  it("renderCard uses != null for context_pct so 0% displays (R2 regression)", () => {
+    // The renderCard function must check "!= null" not truthiness
+    // Pattern: ctxPart = it.context_pct != null ? ... : "";
+    expect(html).toMatch(/const ctxPart = it\.context_pct != null \?/);
+    // Must NOT have the old truthiness check that hides 0%
+    expect(html).not.toMatch(/const ctxPart = it\.context_pct \? [^n]/);
   });
 
   it("uses human-readable backend labels in icons and instance tooltips", () => {

@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
+import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
 import { WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
@@ -121,7 +122,8 @@ export interface WebApiContext {
   readonly sseClients: Set<ServerResponse>;
   readonly fleetConfig: {
     channel?: { group_id?: number | string; mode?: string };
-    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string }>;
+    defaults?: { backend?: string; effort?: string };
+    instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
   readonly instanceIpcClients: Map<string, { send(msg: unknown): void }>;
@@ -144,6 +146,14 @@ export interface WebApiContext {
   saveFleetConfig(): void;
   readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void): Promise<void> };
   connectIpcToInstance(name: string): Promise<void>;
+  /** Human-readable model string (aligned with /ctx). */
+  modelDisplayForInstance?(name: string): string;
+  /** Full model resolution with source. */
+  resolveInstanceModel?(name: string): { model: string; source: string; display: string };
+  /** Configured effort for an instance (no live file from CLI). */
+  resolveInstanceEffort?(name: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" };
+  /** Effort strategy for backend capability check. */
+  effortStrategyFor?(name: string): "runtime" | "restart" | "unsupported";
   readonly scheduler: {
     db: {
       listTasks(opts?: { assignee?: string; status?: string }): unknown[];
@@ -382,12 +392,35 @@ export function handleWebRequest(
       a => a.sender === name || a.receiver === name,
     );
 
+    // Backend: instance → fleet default → claude-code
+    const backend = config.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code";
+    // Context: aligned with /ctx — resolveInstanceContext, not statusline
+    const { context } = resolveInstanceContext(ctx.dataDir, name, backend);
+    const context_pct = context; // null when unavailable, not 0
+    // Model: Claude Code has live statusline, others use the effective resolver (aligned with /ctx).
+    const statuslineModel = backend === "claude-code" ? readStatuslineModel(ctx.dataDir, name) : null;
+    const resolved = ctx.resolveInstanceModel?.(name);
+    const model = statuslineModel ?? resolved?.display ?? ctx.modelDisplayForInstance?.(name);
+    const model_source = statuslineModel ? "live" : (resolved?.source ?? "unresolved");
+    // Effort: aligned with /ctx's effortLineFor — unsupported and antigravity don't show effort.
+    const effortStrategy = ctx.effortStrategyFor?.(name) ?? "unsupported";
+    const isAgy = backend === "antigravity" || backend === "agy";
+    const effortResolved = ctx.resolveInstanceEffort?.(name);
+    const effort = (effortStrategy === "unsupported" || isAgy) ? null : (effortResolved?.effort ?? null);
+    const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : (effortResolved?.source ?? "unset");
+
     json(res, 200, {
       name,
       status: ctx.getInstanceStatus(name),
       description: config.description,
       display_name: config.display_name,
       working_directory: config.working_directory,
+      backend,
+      context_pct,
+      model,
+      model_source,
+      effort,
+      effort_source,
       statusline,
       recent_activity: instanceActivity.slice(0, 20),
     });

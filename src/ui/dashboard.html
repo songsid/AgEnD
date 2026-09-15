@@ -335,11 +335,23 @@ sse.onerror = () => { document.getElementById("uptime").textContent = tr("discon
 function renderList() {
   document.getElementById("fleetEntry").className = `fleet-entry${mode==="fleet"?" active":""}`;
   const el = document.getElementById("instanceList");
-  el.innerHTML = instances.map(i => `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}">
+  // Map internal source enums to user-facing labels (M2: consistency with detail/view)
+  const sourceLabel = (src) => src === "instance" || src === "classic" ? "configured" : src === "fleet-default" ? "fleet default" : src;
+  el.innerHTML = instances.map(i => {
+    // Hover tooltip: name · backend · model (source) · effort (source) · ctx · status
+    const modelPart = i.model ? (i.model_source === "live" ? i.model : `${i.model} (${sourceLabel(i.model_source)})`) : null;
+    // R2: effort_source always shows label for consistency (instance/classic → configured)
+    const effortPart = i.effort ? `effort:${i.effort}${i.effort_source ? ` (${sourceLabel(i.effort_source)})` : ""}` : null;
+    const ctxPart = i.context_pct != null ? `ctx:${Math.round(i.context_pct)}%` : null;
+    const tip = [i.name, i.backend, modelPart, effortPart, ctxPart, i.status].filter(Boolean).join(" · ");
+    // M2: show ctx:0% when context_pct is 0, only hide when null (unavailable)
+    const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
+    return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
     <div class="dot ${i.status}" title="${i.status}"></div><div style="flex:1;min-width:0">
-    <div class="inst-name">${esc(i.name)}</div>
-    <div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${i.context_pct>0?` ctx:${Math.round(i.context_pct)}%`:""}</div>
-    </div></div>`).join("");
+    <div class="inst-name">${esc(i.display_name || i.name)}</div>
+    <div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div>
+    </div></div>`;
+  }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
 }
 
@@ -432,8 +444,19 @@ async function loadDetail() {
   const el = document.getElementById("detailView"); if (!el||!cur) return;
   try {
     const d = await api("GET", `/ui/instance/${encodeURIComponent(cur)}`);
-    const sl = d.statusline||{}, cost=sl.cost?.total_cost_usd??0, ctx=sl.context_window?.used_percentage??0;
-    const model=sl.model?.display_name??"--", rl5=sl.rate_limits?.five_hour?.used_percentage??0, rl7=sl.rate_limits?.seven_day?.used_percentage??0;
+    const sl = d.statusline||{}, cost=sl.cost?.total_cost_usd??0;
+    // Context: use API's resolved context (aligned with /ctx), not statusline
+    const ctx = d.context_pct;
+    const ctxDisplay = ctx != null ? `${Math.round(ctx)}%` : "--";
+    const ctxBar = ctx != null ? `<span class="progress-bar"><span class="progress-fill" style="width:${Math.min(ctx,100)}%;background:${ctx>80?'var(--warn)':'var(--accent)'}"></span></span>` : "";
+    // Model: with source labeling
+    const model = d.model || sl.model?.display_name || "--";
+    const modelSource = d.model_source === "live" ? "" : d.model_source === "instance" ? " <span style='color:var(--text-muted);font-size:11px'>(configured)</span>" : d.model_source === "fleet-default" ? " <span style='color:var(--text-muted);font-size:11px'>(fleet default)</span>" : "";
+    const rl5=sl.rate_limits?.five_hour?.used_percentage??0, rl7=sl.rate_limits?.seven_day?.used_percentage??0;
+    // Effort: only show if configured (no live value from CLI), with source labeling
+    const effortLine = d.effort
+      ? `<div class="detail-row"><span class="detail-label">Effort</span><span>${esc(d.effort)}${d.effort_source==="instance"?" <span style='color:var(--text-muted);font-size:11px'>(configured)</span>":d.effort_source==="fleet-default"?" <span style='color:var(--text-muted);font-size:11px'>(fleet default)</span>":""}</span></div>`
+      : "";
     let h = `<div class="card"><h3>Instance</h3>
       <div class="detail-row"><span class="detail-label">Name</span><span>${esc(d.name)}</span></div>
       <div class="detail-row"><span class="detail-label">Status</span><span>${esc(d.status)}</span></div>
@@ -441,9 +464,11 @@ async function loadDetail() {
       <div class="detail-row"><span class="detail-label">Description</span><span>${esc(d.description||"--")}</span></div>
       <div class="detail-row"><span class="detail-label">Directory</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px">${esc(d.working_directory)}</span></div></div>
       <div class="card"><h3>Runtime</h3>
-      <div class="detail-row"><span class="detail-label">Model</span><span>${esc(model)}</span></div>
+      <div class="detail-row"><span class="detail-label">Backend</span><span>${esc(d.backend||"--")}</span></div>
+      <div class="detail-row"><span class="detail-label">Model</span><span>${esc(model)}${modelSource}</span></div>
+      ${effortLine}
       <div class="detail-row"><span class="detail-label">Cost</span><span>$${cost.toFixed(2)} <span style="color:var(--text-muted);font-size:11px">(session accumulated)</span></span></div>
-      <div class="detail-row"><span class="detail-label">Context</span><span>${Math.round(ctx)}% <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(ctx,100)}%;background:${ctx>80?'var(--warn)':'var(--accent)'}"></span></span></span></div>
+      <div class="detail-row"><span class="detail-label">Context</span><span>${ctxDisplay} ${ctxBar}</span></div>
       <div class="detail-row"><span class="detail-label">Rate 5h</span><span>${Math.round(rl5)}% <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(rl5,100)}%;background:${rl5>90?'var(--error)':rl5>70?'var(--warn)':'var(--accent)'}"></span></span></span></div>
       <div class="detail-row"><span class="detail-label">Rate 7d</span><span>${Math.round(rl7)}% <span class="progress-bar"><span class="progress-fill" style="width:${Math.min(rl7,100)}%;background:${rl7>90?'var(--error)':rl7>70?'var(--warn)':'var(--accent)'}"></span></span></span></div></div>`;
     if (d.recent_activity?.length) {
