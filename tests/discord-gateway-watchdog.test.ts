@@ -80,6 +80,72 @@ afterEach(() => {
 });
 
 describe("Discord gateway watchdog", () => {
+  it("classifies only a current ready generation's explicit Unknown Channel as missing", async () => {
+    const h = harness();
+    await h.adapter.start();
+    const fetch = h.clients[1].channels.fetch;
+
+    fetch.mockRejectedValueOnce(Object.assign(new Error("Unknown Channel"), { code: 10003 }));
+    await expect(h.adapter.probeTopicPresence("gone")).resolves.toEqual({
+      status: "missing",
+      generation: 1,
+      evidence: "discord-unknown-channel",
+    });
+    expect(fetch).toHaveBeenLastCalledWith("gone", { force: true });
+
+    for (const code of [500, 429, 50001, "ETIMEDOUT"]) {
+      fetch.mockRejectedValueOnce(Object.assign(new Error(`ambiguous provider failure: ${code}`), { code }));
+      await expect(h.adapter.probeTopicPresence(`ambiguous-${code}`)).resolves.toEqual({
+        status: "unknown",
+        generation: 1,
+        reason: "provider-probe-failed",
+      });
+    }
+
+    fetch.mockResolvedValueOnce(null as never);
+    await expect(h.adapter.probeTopicPresence("empty-view")).resolves.toEqual({
+      status: "unknown",
+      generation: 1,
+      reason: "empty-channel-view",
+    });
+    await h.adapter.stop();
+  });
+
+  it("does not start or wait for a gateway reconnect during a passive topology probe", async () => {
+    const h = harness();
+    const initialClientCount = h.clients.length;
+    const fetch = h.clients[0].channels.fetch;
+
+    await expect(h.adapter.probeTopicPresence("topic")).resolves.toMatchObject({
+      status: "unknown",
+      reason: "adapter-not-ready",
+    });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(h.clients).toHaveLength(initialClientCount);
+  });
+
+  it("rejects a missing result if readiness changes while the REST probe is in flight", async () => {
+    const h = harness();
+    await h.adapter.start();
+    const gate = deferred();
+    h.clients[1].channels.fetch.mockImplementationOnce(async () => {
+      await gate.promise;
+      throw Object.assign(new Error("Unknown Channel"), { code: 10003 });
+    });
+
+    const probe = h.adapter.probeTopicPresence("topic");
+    h.clients[1].ready = false;
+    h.clients[1].ws.status = Status.Reconnecting;
+    gate.resolve();
+
+    await expect(probe).resolves.toMatchObject({
+      status: "unknown",
+      reason: "adapter-generation-changed",
+    });
+    await h.adapter.stop();
+  });
+
   it("uses a fresh Client at startup and leaves a normally idle, ACKing shard alone", async () => {
     const h = harness();
     await h.adapter.start();

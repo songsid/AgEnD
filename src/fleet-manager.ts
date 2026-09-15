@@ -37,7 +37,7 @@ import { CostGuard, formatCents } from "./cost-guard.js";
 import { TmuxManager } from "./tmux-manager.js";
 import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
-import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice } from "./channel/types.js";
+import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
@@ -76,6 +76,7 @@ import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
+import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
@@ -518,6 +519,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private reloadPending = false;
   /** A running reconciliation; only one may mutate lifecycle/config state at a time. */
   private reconcileInFlight: Promise<void> | null = null;
+  /** Topology checks are serialized separately from config reconciliation. */
+  private topicCleanupInFlight: Promise<void> | null = null;
+  private topicCleanupGeneration = 0;
+  private topicProbeWarnings = new Map<string, number>();
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
@@ -3398,10 +3403,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       accessManager,
       inboxDir,
     });
-    const world = new AdapterWorld(adapterId, this.adapter, accessManager, channelConfig);
+    const adapter = this.adapter;
+    const world = new AdapterWorld(adapterId, adapter, accessManager, channelConfig);
     this.worlds.set(adapterId, world);
-    (this.adapters as Map<string, ChannelAdapter>).set(adapterId, this.adapter);
-    this.bindAdapterHealth(this.adapter, adapterId);
+    (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
+    this.bindAdapterHealth(adapter, adapterId);
 
     this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
       await this.handleInboundMessage(msg);
@@ -3434,11 +3440,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, "adapter.callback_query"));
 
-    this.adapter.on("topic_closed", safeHandler(async (data: { chatId: string; threadId: string }) => {
-      // Skip unbind if we archived this topic ourselves
-      if (this.topicArchiver.isArchived(data.threadId)) return;
-      await this.topicCommands.handleTopicDeleted(data.threadId);
-    }, this.logger, "adapter.topic_closed"));
+    this.bindTopicClosedHandler(adapter, adapterId, "adapter.topic_closed");
 
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
@@ -3755,10 +3757,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }, this.logger, `adapter[${adapterId}].callback_query`));
 
-    adapter.on("topic_closed", safeHandler(async (data: { chatId: string; threadId: string }) => {
-      if (this.topicArchiver.isArchived(data.threadId)) return;
-      await this.topicCommands.handleTopicDeleted(data.threadId);
-    }, this.logger, `adapter[${adapterId}].topic_closed`));
+    this.bindTopicClosedHandler(adapter, adapterId, `adapter[${adapterId}].topic_closed`);
 
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
@@ -5732,25 +5731,187 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private classicReloadTimer: ReturnType<typeof setInterval> | null = null;
   private botUserId: string | undefined;
 
-  /** Periodically check if bound topics still exist */
+  /** Periodically check if bound topics still exist. Never deletes user data. */
   private startTopicCleanupPoller(): void {
-    this.topicCleanupTimer = setInterval(async () => {
-      if (!this.fleetConfig?.channel?.group_id || !this.adapter?.topicExists) return;
+    if (this.topicCleanupTimer) clearInterval(this.topicCleanupTimer);
+    const generation = ++this.topicCleanupGeneration;
+    this.topicCleanupTimer = setInterval(() => { void this.scheduleTopicCleanup(generation); }, 5 * 60_000);
+  }
 
-      for (const [threadId, target] of this.routing.entries()) {
-        try {
-          if (!isProbeableRouteTarget(target)) {
-            continue;
-          }
-          const exists = await this.adapter.topicExists(threadId);
-          if (!exists) {
-            await this.topicCommands.handleTopicDeleted(threadId);
-          }
-        } catch (err) {
-          this.logger.debug({ err, threadId }, "Topic existence check failed");
-        }
+  /** Coalesce timer ticks; an outage must not create overlapping destructive-looking scans. */
+  private scheduleTopicCleanup(generation = this.topicCleanupGeneration): Promise<void> {
+    if (this.topicCleanupInFlight) return this.topicCleanupInFlight;
+    const run = this.runTopicCleanup(generation).finally(() => {
+      if (this.topicCleanupInFlight === run) this.topicCleanupInFlight = null;
+    });
+    this.topicCleanupInFlight = run;
+    return run;
+  }
+
+  private confirmedProbeFence(adapterId: string, adapter: ChannelAdapter): { generation?: number } | null {
+    const health = adapter.getHealthSnapshot?.();
+    if (health) {
+      return health.status === "connected" && health.isReady
+        ? { generation: health.generation }
+        : null;
+    }
+    return this.adapterState.get(adapterId)?.status === "connected" ? {} : null;
+  }
+
+  private sameProbeFence(
+    adapterId: string,
+    adapter: ChannelAdapter,
+    before: { generation?: number },
+    result?: TopicPresence,
+  ): boolean {
+    const after = this.confirmedProbeFence(adapterId, adapter);
+    if (!after) return false;
+    if (before.generation !== after.generation) return false;
+    return result?.generation === undefined || result.generation === after.generation;
+  }
+
+  private warnTopicProbeUnknown(instanceName: string, threadId: string, adapterId: string | undefined, reason: string): void {
+    const key = `${adapterId ?? "unbound"}:${reason}`;
+    const now = Date.now();
+    const last = this.topicProbeWarnings.get(key) ?? 0;
+    if (now - last < FleetManager.FLEET_ERROR_THROTTLE_MS) return;
+    this.topicProbeWarnings.set(key, now);
+    this.logger.error({ instanceName, threadId, adapterId, reason },
+      "Topic presence could not be confirmed — retaining instance and all data");
+    this.notifyFleetError(t("fleet.topic_probe_unknown", instanceName, adapterId ?? "unbound"));
+  }
+
+  /** One fixed-snapshot topology pass. Automatic evidence can only quarantine. */
+  private async runTopicCleanup(generation: number): Promise<void> {
+    if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
+    const snapshot = [...this.routing.entries()].filter(([, target]) => isProbeableRouteTarget(target));
+    const missing: Array<{
+      threadId: string;
+      target: RouteTarget;
+      adapterId: string;
+      adapter: ChannelAdapter;
+      generation?: number;
+    }> = [];
+
+    for (const [threadId, target] of snapshot) {
+      if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
+      // The route may have been replaced while an earlier probe was in flight.
+      if (this.routing.resolve(threadId) !== target) continue;
+      const adapterId = this.getInstanceAdapterId(target.name);
+      const adapter = adapterId ? this.adapters.get(adapterId) : undefined;
+      if (!adapterId || !adapter?.probeTopicPresence) {
+        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-unavailable");
+        continue;
       }
-    }, 5 * 60_000);
+      const before = this.confirmedProbeFence(adapterId, adapter);
+      if (!before) {
+        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-not-ready");
+        continue;
+      }
+
+      let result: TopicPresence;
+      try {
+        result = await adapter.probeTopicPresence(threadId);
+      } catch {
+        result = { status: "unknown", reason: "provider-probe-threw" };
+      }
+      if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
+      if (!this.sameProbeFence(adapterId, adapter, before, result)) {
+        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-generation-changed");
+        continue;
+      }
+      if (result.status === "unknown") {
+        this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason);
+      } else if (result.status === "missing") {
+        missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
+      }
+    }
+
+    if (generation !== this.topicCleanupGeneration || this.shuttingDown || missing.length === 0) return;
+    if (missing.length > 1) {
+      this.logger.error({ missing: missing.map(item => ({ instanceName: item.target.name, threadId: item.threadId, adapterId: item.adapterId })) },
+        "Multiple topics appeared missing in one pass — treating topology evidence as untrusted and retaining all data");
+      this.notifyFleetError(t("fleet.topic_probe_bulk", missing.length));
+      return;
+    }
+
+    const item = missing[0];
+    if (this.routing.resolve(item.threadId) !== item.target
+      || this.getInstanceAdapterId(item.target.name) !== item.adapterId
+      || this.adapters.get(item.adapterId) !== item.adapter) return;
+    const current = this.confirmedProbeFence(item.adapterId, item.adapter);
+    if (!current || (item.generation !== undefined && current.generation !== item.generation)) {
+      this.warnTopicProbeUnknown(item.target.name, item.threadId, item.adapterId, "owner-adapter-changed-before-action");
+      return;
+    }
+    this.topicCommands.handleTopicDeleted(item.threadId, {
+      source: "provider-probe",
+      adapterId: item.adapterId,
+      generation: item.generation,
+    });
+  }
+
+  /**
+   * A gateway event is only a hint. Confirm it through the passive REST probe;
+   * reconnecting gateways have emitted false channelDelete events in practice.
+   */
+  private async handleProviderTopicClosed(threadId: string, adapterId: string, adapter: ChannelAdapter): Promise<void> {
+    const target = this.routing.resolve(threadId);
+    if (!target || !isProbeableRouteTarget(target)) return;
+    if (this.getInstanceAdapterId(target.name) !== adapterId) return;
+    if (this.adapters.get(adapterId) !== adapter) return;
+    const before = this.confirmedProbeFence(adapterId, adapter);
+    if (!before || !adapter.probeTopicPresence) {
+      this.warnTopicProbeUnknown(target.name, threadId, adapterId, "topic-close-from-unready-adapter");
+      return;
+    }
+    let result: TopicPresence;
+    try {
+      result = await adapter.probeTopicPresence(threadId);
+    } catch {
+      result = { status: "unknown", reason: "provider-probe-threw" };
+    }
+    if (this.routing.resolve(threadId) !== target
+      || this.getInstanceAdapterId(target.name) !== adapterId
+      || this.adapters.get(adapterId) !== adapter
+      || !this.sameProbeFence(adapterId, adapter, before, result)) {
+      this.warnTopicProbeUnknown(target.name, threadId, adapterId, "topic-close-generation-changed");
+      return;
+    }
+    if (result.status !== "missing") {
+      this.warnTopicProbeUnknown(target.name, threadId, adapterId,
+        result.status === "unknown" ? result.reason : "topic-close-not-confirmed-missing");
+      return;
+    }
+    this.topicCommands.handleTopicDeleted(threadId, {
+      source: "provider-event",
+      adapterId,
+      generation: result.generation,
+    });
+  }
+
+  private bindTopicClosedHandler(adapter: ChannelAdapter, adapterId: string, label: string): void {
+    adapter.on("topic_closed", safeHandler(async (data: { chatId: string; threadId: string }) => {
+      if (this.topicArchiver.isArchived(data.threadId)) return;
+      await this.handleProviderTopicClosed(data.threadId, adapterId, adapter);
+    }, this.logger, label));
+  }
+
+  /**
+   * Remove only the volatile route. The instance config, daemon, schedules,
+   * teams, metadata directory, and working tree remain untouched until an
+   * authenticated explicit deletion is requested.
+   */
+  quarantineMissingTopic(
+    threadId: string,
+    target: RouteTarget,
+    evidence: { source: "provider-event" | "provider-probe"; adapterId?: string; generation?: number },
+  ): void {
+    if (!isProbeableRouteTarget(target) || this.routing.resolve(threadId) !== target) return;
+    this.routing.unregister(threadId);
+    this.logger.error({ instanceName: target.name, threadId, ...evidence },
+      "Topic is confirmed missing — route quarantined; instance configuration and user data were retained");
+    this.notifyFleetError(t("fleet.topic_quarantined", target.name, threadId));
   }
 
   /**
@@ -5918,7 +6079,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
 
-  async removeInstance(name: string): Promise<void> {
+  async removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void> {
+    assertExplicitInstanceRemoval(authorization);
     // Drop cached pane context — the map is keyed by instance name and nothing
     // else evicted deleted entries, so it grew for the life of the process.
     forgetInstanceContext(name);
@@ -5945,7 +6107,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
-    await this.lifecycle.remove(name);
+    await this.lifecycle.remove(name, authorization);
 
     // Clean up per-instance tracking maps so they don't grow unbounded
     // as instances are created and deleted over the lifetime of the fleet.
@@ -10737,6 +10899,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       clearInterval(this.topicCleanupTimer);
       this.topicCleanupTimer = null;
     }
+    this.topicCleanupGeneration++;
     if (this.sessionPruneTimer) {
       clearInterval(this.sessionPruneTimer);
       this.sessionPruneTimer = null;

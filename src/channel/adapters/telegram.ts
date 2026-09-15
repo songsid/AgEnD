@@ -7,7 +7,7 @@ import { join, extname, basename } from "node:path";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
-import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData } from "../types.js";
+import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 
@@ -1105,24 +1105,24 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     await this.bot.api.raw.deleteForumTopic({ chat_id: Number(chatId), message_thread_id: Number(topicId) });
   }
 
-  async topicExists(topicId: number): Promise<boolean> {
+  async probeTopicPresence(topicId: number | string): Promise<TopicPresence> {
     const chatId = this.getChatId();
-    if (!chatId) return false;
+    if (!chatId) return { status: "unknown", reason: "adapter-not-initialized" };
     // AgEnD uses id=1 as the General-topic sentinel. Telegram rejects an
     // explicit message_thread_id=1, but the group root exists when the chat does.
-    if (topicId === 1) return true;
+    if (String(topicId) === "1") return { status: "present" };
     try {
       const msg = await this.bot.api.sendMessage(Number(chatId), "\u200B", {
-        message_thread_id: topicId,
+        message_thread_id: Number(topicId),
       });
       await this.bot.api.deleteMessage(Number(chatId), msg.message_id).catch(() => {});
-      return true;
+      return { status: "present" };
     } catch (err: unknown) {
       const errMsg = String(err);
       if (errMsg.includes("thread not found") || errMsg.includes("TOPIC_ID_INVALID")) {
-        return false;
+        return { status: "missing", evidence: "telegram-topic-not-found" };
       }
-      throw err;
+      return { status: "unknown", reason: "provider-probe-failed" };
     }
   }
 

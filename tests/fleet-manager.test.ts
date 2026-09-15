@@ -1949,9 +1949,11 @@ describe("TopicCommands", () => {
   it("ignores topic deletion for the General instance", async () => {
     const logger = { debug: vi.fn(), info: vi.fn() };
     const removeInstance = vi.fn();
+    const quarantineMissingTopic = vi.fn();
     const tc = new TopicCommands({
       logger,
       removeInstance,
+      quarantineMissingTopic,
       routingTable: new Map([["1", { kind: "general", name: "general" }]]),
       fleetConfig: {
         defaults: {},
@@ -1978,6 +1980,7 @@ describe("TopicCommands", () => {
     await tc.handleTopicDeleted("1");
 
     expect(removeInstance).not.toHaveBeenCalled();
+    expect(quarantineMissingTopic).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalled();
   });

@@ -212,7 +212,7 @@ describe("Telegram stale HTTP socket recovery", () => {
     (adapter as any).lastChatId = "-100123";
     const send = vi.spyOn(adapter.getBot().api, "sendMessage");
 
-    await expect(adapter.topicExists(1)).resolves.toBe(true);
+    await expect(adapter.probeTopicPresence(1)).resolves.toEqual({ status: "present" });
     await expect(adapter.deleteTopic(1)).resolves.toBeUndefined();
 
     expect(send).not.toHaveBeenCalled();
