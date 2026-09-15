@@ -626,8 +626,6 @@
     if (!it) return;
     q("dname").textContent = it.display_name || it.instance_name;
     q("role").textContent = it.role || "";
-    // Only show ctx% when we actually have a reading (>0); 0/null means the
-    // backend didn't report one, so hiding it avoids a misleading "0%".
     // R2: context_pct != null shows value including 0%; null means unavailable (hide)
     const ctxPart = it.context_pct != null ? ` · ctx ${Math.round(it.context_pct)}%` : "";
     q("meta").textContent = `${it.instance_name} · ${it.backend}${it.model ? " · " + it.model : ""}${ctxPart} · ${it.status}`;
