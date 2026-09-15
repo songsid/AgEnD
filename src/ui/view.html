@@ -465,15 +465,16 @@
       lines.push(it.instance_name);
     }
     lines.push(translated("tooltipBackend", backendLabel(it.backend)));
-    // Model with source labeling (live = no suffix, configured/fleet-default = suffix)
+    // Model with source labeling: instance/classic → configured, fleet-default → fleet default
+    // live/cli-default/unresolved → no suffix (resolved.display already explains)
     const modelDisplay = it.model || T("tooltipUnavailable");
-    const modelSuffix = it.model_source === "live" ? "" : it.model_source === "instance" ? " (configured)" : it.model_source === "fleet-default" ? " (fleet default)" : "";
+    const modelSuffix = it.model_source === "instance" || it.model_source === "classic" ? " (configured)" : it.model_source === "fleet-default" ? " (fleet default)" : "";
     lines.push(translated("tooltipModel", modelDisplay + modelSuffix));
     lines.push(translated("tooltipStatus", status));
     lines.push(translated("tooltipContext", context));
     // Effort: only show if present (backend capability already filtered by getUiStatus)
     if (it.effort) {
-      const effortSuffix = it.effort_source === "instance" ? " (configured)" : it.effort_source === "fleet-default" ? " (fleet default)" : "";
+      const effortSuffix = it.effort_source === "instance" || it.effort_source === "classic" ? " (configured)" : it.effort_source === "fleet-default" ? " (fleet default)" : "";
       lines.push(translated("tooltipEffort", it.effort + effortSuffix));
     }
     if (typeof it.description === "string" && it.description.trim()) {
