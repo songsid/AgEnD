@@ -13,6 +13,15 @@ describe("View UI improvements", () => {
     expect(html).toContain('${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
   });
 
+  // R2a: renderCard must use != null to show 0% context (not truthiness)
+  it("renderCard uses != null for context_pct so 0% displays (R2 regression)", () => {
+    // The renderCard function must check "!= null" not truthiness
+    // Pattern: ctxPart = it.context_pct != null ? ... : "";
+    expect(html).toMatch(/const ctxPart = it\.context_pct != null \?/);
+    // Must NOT have the old truthiness check that hides 0%
+    expect(html).not.toMatch(/const ctxPart = it\.context_pct \? [^n]/);
+  });
+
   it("uses human-readable backend labels in icons and instance tooltips", () => {
     expect(html).toContain('"claude-code": "Claude Code"');
     expect(html).toContain('"kiro-cli": "Kiro CLI"');

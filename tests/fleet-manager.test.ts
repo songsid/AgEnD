@@ -2273,7 +2273,7 @@ describe("getUiStatus model/effort/context wiring (B4)", () => {
     expect(inst?.model_source).toBe("instance");
   });
 
-  // B1: Claude live model uses readStatuslineModel semantics (display_name combo)
+  // B1: Claude live model uses readStatuslineModel semantics (display_name + id combo)
   it("Claude live model uses readStatuslineModel display format (B1 regression)", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
@@ -2283,18 +2283,19 @@ describe("getUiStatus model/effort/context wiring (B4)", () => {
       },
     } as any;
     mkdirSync(join(tmpDir, "instances/claude-live"), { recursive: true });
-    // readStatuslineModel reads display_name from statusline
+    // readStatuslineModel reads model.id (not name) and combines with display_name
+    // Fixture must use "id" field to match what readStatuslineModel actually reads
     writeFileSync(
       join(tmpDir, "instances/claude-live/statusline.json"),
-      JSON.stringify({ model: { display_name: "Claude Opus 4.5", name: "claude-opus-4-5" } }),
+      JSON.stringify({ model: { display_name: "Claude Opus 4.5", id: "claude-opus-4-5" } }),
     );
 
     const ui = fm.getUiStatus() as {
       instances: Array<{ name: string; model: string; model_source: string }>;
     };
     const inst = ui.instances.find(i => i.name === "claude-live");
-    // Must show live display_name, source=live
-    expect(inst?.model).toBe("Claude Opus 4.5");
+    // readStatuslineModel returns "display_name (id)" when both differ
+    expect(inst?.model).toBe("Claude Opus 4.5 (claude-opus-4-5)");
     expect(inst?.model_source).toBe("live");
   });
 
@@ -2308,16 +2309,21 @@ describe("getUiStatus model/effort/context wiring (B4)", () => {
       },
     } as any;
     mkdirSync(join(tmpDir, "instances/kiro-default"), { recursive: true });
+    // Spy on resolveInstanceModel to return a deterministic cli-default scenario
+    // This ensures the test verifies getUiStatus uses resolved.display, not resolved.model
+    const spy = vi.spyOn(fm, "resolveInstanceModel").mockReturnValue({
+      model: "auto",
+      source: "cli-default",
+      display: "auto (default)",
+    });
 
     const ui = fm.getUiStatus() as {
       instances: Array<{ name: string; model: string; model_source: string }>;
     };
     const inst = ui.instances.find(i => i.name === "kiro-default");
-    // resolveInstanceModel returns display="default (not probed yet)" when no cli-env cache
-    // or display="auto (default)" when probed. Key: must use resolved.display, not resolved.model.
-    // The key assertion: model includes "default" indicator (from display format)
-    expect(inst?.model).toContain("default");
-    // model_source: cli-default when probed, unresolved when not
-    expect(["cli-default", "unresolved"]).toContain(inst?.model_source);
+    // Key: getUiStatus must use resolved.display (includes "(default)"), not resolved.model (bare "auto")
+    expect(inst?.model).toBe("auto (default)");
+    expect(inst?.model_source).toBe("cli-default");
+    spy.mockRestore();
   });
 });
