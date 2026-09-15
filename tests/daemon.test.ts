@@ -411,7 +411,9 @@ describe("Daemon backend-native input queue delivery", () => {
       expect(control.waitUntilIdle).toHaveBeenCalledOnce();
       expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
       expect(tmux.sendSpecialKey.mock.calls.filter((c: string[]) => c[0] === "Enter").length).toBeGreaterThanOrEqual(2);
-      expect(confirm).toHaveBeenCalled();
+      // Codex exposes an input row, so the redelivery is confirmed by the pane
+      // gaining the message — not by confirmBusyAfterEnter, which no longer
+      // decides for backends that can be read.
       expect(confirmed).toHaveBeenCalledOnce();
       expect(failed).not.toHaveBeenCalled();
     } finally {
@@ -433,7 +435,10 @@ describe("Daemon backend-native input queue delivery", () => {
       });
 
       expect(result).toBe(false);
-      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+      // Waiting for the prompt before a retry Enter is part of the confirmation
+      // ladder now, so the idle wait is no longer once-only; what must hold is
+      // that an unprovable delivery is redelivered and then failed.
+      expect(control.waitUntilIdle).toHaveBeenCalled();
       expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
       expect(failed).toHaveBeenCalledOnce();
     } finally {
@@ -633,20 +638,31 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
-  it("retains swallowed-Enter confirmation for Codex when it starts idle", async () => {
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", true);
-    const confirm = vi.fn()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
-    (daemon as any).confirmBusyAfterEnter = confirm;
+  it("recovers a swallowed first Enter for Codex when it starts idle", async () => {
+    // The first Enter is dropped and the text sits in the input row; the retry
+    // submits it. Codex can be read, so the recovery is proven by the pane
+    // rather than by "the pane printed something after Enter" — which, on a
+    // freshly woken instance, is satisfied by the redraw that ate the Enter.
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", true, "› Ask Codex to do anything");
+    const STRANDED = "› normal idle submission\n  Context 63% left";
+    const SUBMITTED = "› normal idle submission\n• Working (1s)\n› Ask Codex to do anything";
+    let enters = 0;
+    tmux.pasteBuffer.mockImplementation(async () => { tmux.capturePane.mockResolvedValue(STRANDED); return true; });
+    tmux.sendSpecialKey.mockImplementation(async (key: string) => {
+      if (key === "Enter" && ++enters >= 2) tmux.capturePane.mockResolvedValue(SUBMITTED);
+      return true;
+    });
 
     try {
       const result = await (daemon as any).deliverMessage("normal idle submission");
 
       expect(result).toBe(true);
-      expect(control.waitUntilIdle).not.toHaveBeenCalled();
-      expect(confirm).toHaveBeenCalledTimes(2);
-      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(2);
+      expect(enters, "one Enter swallowed, one that landed").toBe(2);
+      // The wait belongs to the RETRY — an Enter is only re-sent once the
+      // prompt is back. It is not an idle gate on the delivery itself, which
+      // still pastes immediately into an idle pane (asserted above by the
+      // paste happening before any wait).
+      expect(control.waitUntilIdle).toHaveBeenCalledTimes(1);
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }
