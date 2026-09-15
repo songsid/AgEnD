@@ -335,13 +335,16 @@ sse.onerror = () => { document.getElementById("uptime").textContent = tr("discon
 function renderList() {
   document.getElementById("fleetEntry").className = `fleet-entry${mode==="fleet"?" active":""}`;
   const el = document.getElementById("instanceList");
+  // Map internal source enums to user-facing labels (M2: consistency with detail/view)
+  const sourceLabel = (src) => src === "instance" || src === "classic" ? "configured" : src === "fleet-default" ? "fleet default" : src;
   el.innerHTML = instances.map(i => {
     // Hover tooltip: name · backend · model (source) · effort (source) · ctx · status
-    const modelPart = i.model ? (i.model_source === "live" ? i.model : `${i.model} (${i.model_source})`) : null;
-    const effortPart = i.effort ? `effort:${i.effort}${i.effort_source === "fleet-default" ? " (default)" : ""}` : null;
+    const modelPart = i.model ? (i.model_source === "live" ? i.model : `${i.model} (${sourceLabel(i.model_source)})`) : null;
+    const effortPart = i.effort ? `effort:${i.effort}${i.effort_source && i.effort_source !== "instance" ? ` (${sourceLabel(i.effort_source)})` : ""}` : null;
     const ctxPart = i.context_pct != null ? `ctx:${Math.round(i.context_pct)}%` : null;
     const tip = [i.name, i.backend, modelPart, effortPart, ctxPart, i.status].filter(Boolean).join(" · ");
-    const ctxMeta = i.context_pct != null && i.context_pct > 0 ? ` ctx:${Math.round(i.context_pct)}%` : "";
+    // M2: show ctx:0% when context_pct is 0, only hide when null (unavailable)
+    const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
     return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
     <div class="dot ${i.status}" title="${i.status}"></div><div style="flex:1;min-width:0">
     <div class="inst-name">${esc(i.display_name || i.name)}</div>

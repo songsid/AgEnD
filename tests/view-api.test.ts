@@ -113,3 +113,65 @@ describe("GET /api/pane/:instance", () => {
     }
   });
 });
+
+describe("/api/profiles new fields (B2 wiring)", () => {
+  const dataDir = mkdtempSync(join(tmpdir(), "view-api-profiles-"));
+
+  it("returns model_source, effort_source, display_name in roster", async () => {
+    const ctx: ViewApiContext = {
+      viewToken: null,
+      webToken: "wt",
+      dataDir,
+      fleetConfig: {
+        defaults: { backend: "kiro-cli", effort: "high" },
+        instances: {
+          "test-alpha": {
+            working_directory: "/tmp/alpha",
+            display_name: "Alpha Instance",
+            model: "configured-model",
+            effort: "max",
+          },
+        },
+      } as unknown as ViewApiContext["fleetConfig"],
+      logger: { debug() {}, info() {}, warn() {}, error() {} } as unknown as ViewApiContext["logger"],
+      classicChannels: null,
+      getInstanceStatus: () => "running",
+      getUiStatus: () => ({
+        instances: [{
+          name: "test-alpha",
+          display_name: "Alpha Instance",
+          model: "configured-model",
+          model_source: "instance",
+          effort: "max",
+          effort_source: "instance",
+          context_pct: 42,
+          backend: "kiro-cli",
+          status: "running",
+        }],
+      }),
+      resolveInstanceModel: () => ({ model: "configured-model", display: "configured-model", source: "instance" }),
+      effortStrategyFor: () => "restart",
+    };
+
+    const { res, out } = fakeRes();
+    handleViewRequest(
+      { method: "GET", headers: {} } as IncomingMessage,
+      res,
+      new URL("http://x/api/profiles"),
+      ctx,
+    );
+    await out.done;
+    expect(out.code).toBe(200);
+
+    const data = JSON.parse(out.body) as Array<Record<string, unknown>>;
+    const alpha = data.find(p => p.instance_name === "test-alpha");
+    expect(alpha).toBeDefined();
+    // B2: All new fields must be present
+    expect(alpha?.model).toBe("configured-model");
+    expect(alpha?.model_source).toBe("instance");
+    expect(alpha?.effort).toBe("max");
+    expect(alpha?.effort_source).toBe("instance");
+    expect(alpha?.display_name).toBe("Alpha Instance");
+    expect(alpha?.context_pct).toBe(42);
+  });
+});

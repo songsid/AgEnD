@@ -2247,4 +2247,77 @@ describe("getUiStatus model/effort/context wiring (B4)", () => {
     const inst = ui.instances.find(i => i.name === "classic-with-name");
     expect(inst?.display_name).toBe("Classic Display");
   });
+
+  // B1: Non-Claude ignores stale statusline.json model
+  it("non-Claude backend ignores stale statusline.json model (B1 regression)", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" },
+      instances: {
+        "kiro-with-stale": { working_directory: "/tmp", model: "claude-opus-4-5" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/kiro-with-stale"), { recursive: true });
+    // Simulate stale Claude statusline from a previous backend switch
+    writeFileSync(
+      join(tmpDir, "instances/kiro-with-stale/statusline.json"),
+      JSON.stringify({ model: { display_name: "stale-claude-opus", name: "stale" } }),
+    );
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "kiro-with-stale");
+    // Must use configured model, NOT stale statusline
+    expect(inst?.model).toBe("claude-opus-4-5");
+    expect(inst?.model_source).toBe("instance");
+  });
+
+  // B1: Claude live model uses readStatuslineModel semantics (display_name combo)
+  it("Claude live model uses readStatuslineModel display format (B1 regression)", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code" },
+      instances: {
+        "claude-live": { working_directory: "/tmp", model: "configured-model" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/claude-live"), { recursive: true });
+    // readStatuslineModel reads display_name from statusline
+    writeFileSync(
+      join(tmpDir, "instances/claude-live/statusline.json"),
+      JSON.stringify({ model: { display_name: "Claude Opus 4.5", name: "claude-opus-4-5" } }),
+    );
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "claude-live");
+    // Must show live display_name, source=live
+    expect(inst?.model).toBe("Claude Opus 4.5");
+    expect(inst?.model_source).toBe("live");
+  });
+
+  // B1: Kiro CLI default shows resolved.display with "(default)" indicator
+  it("Kiro CLI default model shows display format from resolver (B1 regression)", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" }, // no model = Kiro default
+      instances: {
+        "kiro-default": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/kiro-default"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "kiro-default");
+    // resolveInstanceModel returns display="default (not probed yet)" when no cli-env cache
+    // or display="auto (default)" when probed. Key: must use resolved.display, not resolved.model.
+    // The key assertion: model includes "default" indicator (from display format)
+    expect(inst?.model).toContain("default");
+    // model_source: cli-default when probed, unresolved when not
+    expect(["cli-default", "unresolved"]).toContain(inst?.model_source);
+  });
 });

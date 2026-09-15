@@ -11860,11 +11860,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
       let cost = 0;
-      let statuslineModel: string | null = null;
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
         cost = data.cost?.total_cost_usd ?? 0;
-        statuslineModel = data.model?.display_name || null;
       } catch (err) {
         this.logger.debug({ err, name }, "statusline.json read failed (getUiStatus)");
       }
@@ -11878,12 +11876,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const { context } = resolveInstanceContext(this.dataDir, name, backend);
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;
-      // Model: Claude Code has live statusline, others use the effective resolver.
-      // This aligns with /ctx's logic (readStatuslineModel fallback modelDisplayForInstance).
+      // Model: Only Claude Code has live statusline; others use the effective resolver.
+      // readStatuslineModel provides the /ctx-aligned display_name+id combo for Claude.
+      // Non-Claude backends must NOT read statusline.json model (may be stale from previous Claude run).
       const resolved = this.resolveInstanceModel(name);
-      const model = statuslineModel ?? resolved.model;
-      // model_source: "live" when statusline succeeded, else the resolver's source
-      const model_source = statuslineModel ? "live" : resolved.source;
+      const liveModel = backend === "claude-code" ? readStatuslineModel(this.dataDir, name) : null;
+      // Display value: live model for Claude, resolved.display for others (includes "auto (default)" for Kiro)
+      const model = liveModel ?? resolved.display;
+      // model_source: "live" when Claude statusline succeeded, else the resolver's source
+      const model_source = liveModel ? "live" : resolved.source;
       // Effort: aligned with /ctx's effortLineFor — unsupported and antigravity don't show effort.
       const effortStrategy = this.effortStrategyFor(name);
       const isAgy = backend === "antigravity" || backend === "agy";

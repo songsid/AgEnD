@@ -9,7 +9,8 @@ describe("View UI improvements", () => {
     for (const backend of ["claude-code", "kiro-cli", "codex", "grok", "antigravity", "opencode"]) {
       expect(html).toContain(`.cli-${backend}`);
     }
-    expect(html).toContain('${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
+    // M2: context_pct != null shows value including 0%; null means unavailable
+    expect(html).toContain('${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}');
   });
 
   it("uses human-readable backend labels in icons and instance tooltips", () => {

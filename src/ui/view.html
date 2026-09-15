@@ -416,14 +416,11 @@
     if (tags.length) return tags[0];
     return "Other";
   }
-  // Short label: display name if set, else instance name minus its tag prefix
-  // and the -t<id> suffix (doupo-server-t1503… → server).
+  // Short label: display name if set, else raw instance_name.
+  // M1: No fallback shortening — raw identity must be preserved when no display_name.
+  // Tooltip still shows full instance_name for discoverability.
   function shortName(it) {
-    if (it.display_name) return it.display_name;
-    let n = it.instance_name.replace(/-t[0-9a-z]+$/i, "");
-    const tag = (it.tags || [])[0];
-    if (tag && n.toLowerCase().startsWith(tag.toLowerCase() + "-")) n = n.slice(tag.length + 1);
-    return n || it.instance_name;
+    return it.display_name || it.instance_name;
   }
 
   const BACKEND_LABELS = {
@@ -537,7 +534,8 @@
         const el = document.createElement("div");
         el.className = "inst" + (name === current ? " active" : "");
         el.draggable = true;
-        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
+        // M2: context_pct != null shows value including 0%; null means unavailable (empty)
+        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
         el.title = instanceTooltip(it);
         el.onclick = () => select(name);
         wireDrag(el, { type: "instance", name, group: g });
