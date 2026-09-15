@@ -67,6 +67,32 @@ const SUBMITTED = [
   "  Context 100% left",
 ].join("\n");
 
+/** Verbatim Codex 0.154.0 auto-wake frame: the input row is visible but Enter is a no-op. */
+const RESUMING_WITH_MESSAGE = [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│                                             │",
+  "│ model:       loading   /model to change     │",
+  "│ directory:   ~/Projects/AgEnD-agend-dev-sol │",
+  "│ permissions: YOLO mode                      │",
+  "╰─────────────────────────────────────────────╯",
+  "  Resuming session…",
+  "",
+  `› [from:agend-dev-claude-t1519896892392083558] ${BODY}`,
+  "  (message_id: m-1 | correlation_id: cid-1789438369044-j7krk0)",
+  "",
+  "  ? for shortcuts",
+].join("\n");
+
+const READY_EMPTY = [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│ model:       gpt-5.6-sol                    │",
+  "╰─────────────────────────────────────────────╯",
+  "› Ask Codex to do anything",
+  "  Context 46% left",
+].join("\n");
+
 /**
  * The pane BEFORE we paste: codex is working on something else. Submission is
  * judged by what the pane gains, so every test starts from a frame that holds
@@ -171,6 +197,174 @@ afterEach(() => {
 });
 
 describe("codex native-queue handoff: text left in the input row is NOT a delivery", () => {
+  it("keeps the startup scan open while the current Codex screen is resuming", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    let captures = 0;
+    h.daemon.tmux.capturePane = async () => {
+      captures++;
+      return captures <= 2 ? RESUMING_WITH_MESSAGE : READY_EMPTY;
+    };
+
+    const scan = h.daemon.dismissDialogsUntilReady(5_000, 100);
+    await expect(settle(scan, 5_000, 50)).resolves.toBe(true);
+    h.daemon.endSpawn();
+
+    // Without the production transient gate, Codex's broad ready pattern sees
+    // its header and returns after the first two resuming frames.
+    expect(captures).toBeGreaterThanOrEqual(4);
+  });
+
+  it("classifies a quiet resume screen as transient rather than native-queue busy", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.idle = true;
+    h.state.pane = RESUMING_WITH_MESSAGE;
+
+    await expect(h.daemon.paneReadinessForDelivery("@19")).resolves.toBe("transient");
+  });
+
+  it("bounds a resume transient found before paste and fails without writing", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.idle = true;
+    h.state.pane = RESUMING_WITH_MESSAGE;
+
+    const ok = await settle(
+      h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }),
+      35_000,
+    );
+
+    expect(ok).toBe(false);
+    expect(h.paste).not.toHaveBeenCalled();
+    expect(h.enter).not.toHaveBeenCalled();
+    expect(h.events).toContain("message_failed");
+  });
+
+  it("rechecks the transient under the write lock before pasting", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.idle = true;
+    h.state.pane = READY_EMPTY;
+    h.state.afterPaste = SUBMITTED;
+    h.state.afterEnter = SUBMITTED;
+    const capture = h.daemon.tmux.capturePane;
+    let captures = 0;
+    h.daemon.tmux.capturePane = async () => {
+      captures++;
+      // Initial readiness and stranded-input probes saw a clear screen. The
+      // resume phase arrives at the final under-lock TOCTOU check.
+      if (captures === 4) h.state.pane = RESUMING_WITH_MESSAGE;
+      return capture();
+    };
+    setTimeout(() => { h.state.pane = READY_EMPTY; }, 5_000);
+
+    const delivery = h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" });
+    await vi.advanceTimersByTimeAsync(3_500);
+    expect(h.paste, "a transient discovered under the lock must hold the paste").not.toHaveBeenCalled();
+    await expect(settle(delivery)).resolves.toBe(true);
+    expect(h.paste).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits through a post-paste resume redraw, then sends the first Enter once", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn(); // keep this generation's first-delivery guard armed
+    h.state.idle = true;
+    h.state.pane = READY_EMPTY;
+    h.state.afterPaste = READY_EMPTY;
+    h.state.afterEnter = SUBMITTED;
+    // The live 0.154.0 sequence: AgEnD observes a prompt and pastes first;
+    // Codex paints the resume phase a fraction of a second later.
+    setTimeout(() => { h.state.pane = RESUMING_WITH_MESSAGE; }, 300);
+    setTimeout(() => { h.state.pane = STRANDED_MULTILINE; }, 5_000);
+
+    const delivery = h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" });
+    await vi.advanceTimersByTimeAsync(3_500);
+    expect(h.enter, "the 3s submission-proof budget must not run during resume").not.toHaveBeenCalled();
+    const ok = await settle(delivery);
+
+    expect(ok).toBe(true);
+    expect(h.enter).toHaveBeenCalledTimes(1);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("fails loudly without an Enter when the resume transient never clears", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.idle = true;
+    h.state.pane = READY_EMPTY;
+    h.state.afterPaste = RESUMING_WITH_MESSAGE;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.enter, "timeout is not permission to press Enter blind").not.toHaveBeenCalled();
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).toContain("message_failed");
+  });
+
+  it("does not let an old generation's wait send Enter into a replacement pane", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.pane = RESUMING_WITH_MESSAGE;
+    setTimeout(() => {
+      h.daemon.beginSpawn();
+      h.state.pane = READY_EMPTY;
+      h.daemon.endSpawn();
+    }, 1_000);
+
+    await expect(settle(h.daemon.sendDeliveryEnter("generation-fence"))).resolves.toBe(false);
+    expect(h.enter, "the clear pane belongs to a new spawn generation").not.toHaveBeenCalled();
+  });
+
+  it("does not hold delivery when the user merely quotes the resume screen", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.daemon.endSpawn();
+    h.state.idle = true;
+    h.state.pane = [
+      "› [user:maintainer] Here is the screen I saw:",
+      ...RESUMING_WITH_MESSAGE.split("\n").map(row => `  ${row}`),
+      "• I can inspect that startup race.",
+      "› Ask Codex to do anything",
+    ].join("\n");
+    h.state.afterPaste = SUBMITTED;
+    h.state.afterEnter = SUBMITTED;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.enter).toHaveBeenCalledTimes(1);
+    expect(h.events).toContain("message_confirmed");
+  });
+
+  it("submits a positively identified old Codex strand before pasting the next message", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;
+    h.state.pane = STRANDED_MULTILINE.replaceAll("m-1", "old-1");
+    h.state.afterPaste = STRANDED_MULTILINE;
+    let enters = 0;
+    h.enter.mockImplementation(async () => {
+      enters++;
+      h.state.pane = enters === 1 ? READY_EMPTY : SUBMITTED;
+      return true;
+    });
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledTimes(1);
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.enter.mock.invocationCallOrder[0]).toBeLessThan(h.paste.mock.invocationCallOrder[0]);
+  });
+
   // THE GATE. Reverting the success criterion to "the pasted text is visible in
   // the pane" turns this red: the stranded pane below contains the text.
   it("submits the stranded text instead of pasting it a second time", async () => {

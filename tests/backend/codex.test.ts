@@ -202,6 +202,48 @@ describe("CodexBackend", () => {
     });
   });
 
+  describe("input-unavailable startup transient", () => {
+    const resuming = [
+      "╭─────────────────────────────────────────────╮",
+      "│ >_ OpenAI Codex (v0.154.0)                  │",
+      "│                                             │",
+      "│ model:       loading   /model to change     │",
+      "│ directory:   ~/Projects/example             │",
+      "│ permissions: YOLO mode                      │",
+      "╰─────────────────────────────────────────────╯",
+      "  Resuming session…",
+      "",
+      "› Ask Codex to do anything",
+      "",
+      "  ? for shortcuts",
+    ].join("\n");
+
+    it("recognises the real 0.154.0 loading card followed by Resuming session", () => {
+      const [transient] = new CodexBackend(TEST_DIR).getInputUnavailableTransients();
+      expect(transient.pattern.test(resuming)).toBe(true);
+      expect(transient.isActive(resuming)).toBe(true);
+    });
+
+    it("does not self-trigger when a message quotes the same screen", () => {
+      const quoted = [
+        "› [user:maintainer] This was the captured screen:",
+        ...resuming.split("\n").map(row => `  ${row}`),
+        "",
+        "• I found the startup race and will fix it.",
+        "› Ask Codex to do anything",
+      ].join("\n");
+      const [transient] = new CodexBackend(TEST_DIR).getInputUnavailableTransients();
+      expect(transient.pattern.test(quoted)).toBe(true);
+      expect(transient.isActive(quoted)).toBe(false);
+    });
+
+    it("requires the current card to still say model loading", () => {
+      const ready = resuming.replace("model:       loading", "model:       gpt-5.6-sol");
+      const [transient] = new CodexBackend(TEST_DIR).getInputUnavailableTransients();
+      expect(transient.isActive(ready)).toBe(false);
+    });
+  });
+
   describe("listModels", () => {
     it("reads visible account models from the Codex TUI cache", async () => {
       const codexHome = SHARED_CODEX_HOME;

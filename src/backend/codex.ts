@@ -19,7 +19,7 @@ import {
 import { homedir } from "node:os";
 import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
-import { type CliBackend, type CliBackendConfig, type ErrorPattern, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
+import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
 
@@ -634,6 +634,38 @@ export class CodexBackend implements CliBackend {
       },
       this.updatePickerDialog(),
     ];
+  }
+
+  getInputUnavailableTransients(): InputUnavailableTransient[] {
+    return [{
+      pattern: /(?:^|\n)\s*Resuming session…\s*(?:\n|$)/,
+      description: "Codex session resume in progress",
+      isActive: (pane: string) => {
+        const rows = pane.split(/\r?\n/);
+
+        // Anchor to the LAST real Codex header in the viewport.  User input and
+        // transcript continuations are indented by the TUI, so an unindented
+        // box row cannot be forged merely by discussing this screen — the same
+        // self-triggering trap that made whole-pane auth/dialog regexes unsafe.
+        let header = -1;
+        for (let i = 0; i < rows.length; i++) {
+          if (/^│ >_ OpenAI Codex \(v[^)]+\)\s*│\s*$/.test(rows[i])) header = i;
+        }
+        if (header < 1 || !/^╭─+╮\s*$/.test(rows[header - 1])) return false;
+
+        const close = rows.findIndex((row, i) => i > header && i <= header + 8 && /^╰─+╯\s*$/.test(row));
+        if (close < 0) return false;
+        const loading = rows.slice(header + 1, close).some(row => /^│ model:\s+loading\b.*│\s*$/.test(row));
+        if (!loading) return false;
+
+        // In 0.154.0 this is a standalone status row immediately below the
+        // loading card, followed by the apparent input row.  That input is only
+        // visual at this phase: paste works, Enter is swallowed.
+        const resume = rows.findIndex((row, i) => i > close && i <= close + 4 && /^\s{2}Resuming session…\s*$/.test(row));
+        if (resume < 0) return false;
+        return rows.slice(resume + 1).some(row => /^›(?:\s|$)/.test(row));
+      },
+    }];
   }
 
   getContextUsage(): number | null {

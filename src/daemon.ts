@@ -17,7 +17,7 @@ import { ContextGuardian } from "./context-guardian.js";
 import { IpcServer } from "./channel/ipc-bridge.js";
 import { daemonBudgetMs } from "./channel/ipc-timeouts.js";
 import { MessageBus } from "./channel/message-bus.js";
-import type { CliBackend, CliBackendConfig, ErrorPattern, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
+import type { CliBackend, CliBackendConfig, ErrorPattern, InputUnavailableTransient, InstanceState, InstanceStateSnapshot, RuntimeDialog, StartupDialog } from "./backend/types.js";
 import { shellQuote } from "./backend/types.js";
 import type { ChannelAdapter, InboundMessage } from "./channel/types.js";
 import { getTmuxSession } from "./config.js";
@@ -521,6 +521,9 @@ export class BackendUnreachableStartupError extends Error {
 }
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
+/** A passive startup phase must clear within this bound before an Enter is sent. */
+const INPUT_TRANSIENT_WAIT_MS = 30_000;
+const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 const FIRST_ENTER_SETTLE_MS = 1_750;
@@ -996,6 +999,14 @@ export class Daemon extends EventEmitter {
   private spawnSettled: Promise<void> | null = null;
   private resolveSpawnSettled: (() => void) | null = null;
   private spawnDepth = 0;
+  /** Monotonic identity for nested beginSpawn/endSpawn lifecycles. */
+  private spawnGeneration = 0;
+  /**
+   * Keeps passive startup-transient checks alive through the first positively
+   * submitted post-spawn message.  Without this tail, a transient painted just
+   * after the startup scan can still swallow that message's Enter.
+   */
+  private inputTransientGuardGeneration: number | null = null;
   private skipResume = false;
   private startupAborted = false;
   /** First time the current on-screen blocking dialog was seen (0 = none); drives the parked report. */
@@ -2708,6 +2719,9 @@ export class Daemon extends EventEmitter {
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     this.turnReplyGuard.reset();
+    // Invalidate any bounded pre-Enter wait from the process generation being
+    // stopped. It must fail closed, not press Enter in a replacement pane.
+    this.inputTransientGuardGeneration = null;
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
     if (this.adapter) await this.adapter.stop();
@@ -4176,7 +4190,7 @@ export class Daemon extends EventEmitter {
     // If the CLI is busy, either hand the complete submission to its native input
     // queue or wait for idle. Native queue support is an explicit backend capability:
     // normal Enter input has steering/interrupt semantics in several other CLIs.
-    let readiness: "ready" | "busy" | "dialog" | "unknown" = "ready";
+    let readiness: "ready" | "busy" | "dialog" | "transient" | "unknown" = "ready";
     const gateWindowId = windowId;
     if (gateWindowId && this.controlClient) readiness = await this.paneReadinessForDelivery(gateWindowId);
     if (readiness !== "ready") {
@@ -4252,14 +4266,21 @@ export class Daemon extends EventEmitter {
       }
     }
 
-    // Everything above is *waiting*; everything below *writes*. Only the write is
-    // held under the pane lock — holding it across the idle wait (up to 30 min)
-    // would starve the runtime-dialog dismisser, which is often the very thing
-    // that would let the pane go idle again.
+    // Everything above is *waiting*; everything below owns the write lock.
+    // Long idle/dialog waits stay outside because the runtime dismisser may be
+    // what makes progress. The one under-lock wait below is explicitly passive:
+    // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
       const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog"> => {
         if (cancelled()) return false;
         if (this.refuseFatalStartupDelivery(status)) return false;
+        // A passive startup phase may paint after the outer readiness probe.
+        // It clears without input, so waiting under the pane lock cannot starve
+        // a dialog dismisser and closes the final clear→paste TOCTOU window.
+        if (!(await this.waitForInputTransientToClear("pre-write"))) {
+          if (status) this.emit("message_failed", status); // ❌
+          return false;
+        }
         // TOCTOU: the probes above ran outside this lock, and the CLI repaints
         // whenever it likes — a resume prompt can be painted between "clear" and
         // this critical section. Re-probe here, right before the write; a
@@ -4299,6 +4320,79 @@ export class Daemon extends EventEmitter {
    */
   private deliveryBlockingDialogs(): RuntimeDialog[] {
     return (this.backend?.getRuntimeDialogs?.() ?? []).filter(d => d.blocksDelivery || d.holdOnly);
+  }
+
+  /** Passive input-unavailable phases relevant to the current spawn only. */
+  private guardedInputTransients(): InputUnavailableTransient[] {
+    if (this.inputTransientGuardGeneration === null
+      || this.inputTransientGuardGeneration !== this.spawnGeneration) return [];
+    return this.backend?.getInputUnavailableTransients?.() ?? [];
+  }
+
+  /** Match a passive transient against the current interactive screen. */
+  private inputTransientInPane(pane: string): InputUnavailableTransient | null {
+    for (const transient of this.guardedInputTransients()) {
+      // `pattern` is only a cheap pre-filter. `isActive` is deliberately the
+      // authority because users and agents routinely quote diagnostic text.
+      transient.pattern.lastIndex = 0;
+      if (!transient.pattern.test(pane)) continue;
+      if (transient.isActive(pane)) return transient;
+    }
+    return null;
+  }
+
+  /** Capture failure is unknown, never evidence that input is available. */
+  private async probeInputTransient(): Promise<
+    | { state: "active"; transient: InputUnavailableTransient }
+    | { state: "clear" }
+    | { state: "unknown" }
+  > {
+    if (this.guardedInputTransients().length === 0 || !this.tmux) return { state: "clear" };
+    try {
+      const pane = await this.tmux.capturePane();
+      const transient = this.inputTransientInPane(pane);
+      return transient ? { state: "active", transient } : { state: "clear" };
+    } catch (err) {
+      this.logger.debug({ err }, "capture-pane failed during the input-transient probe — pane state unknown");
+      return { state: "unknown" };
+    }
+  }
+
+  /**
+   * Wait under the pane lock for a passive transient to disappear. Unlike a
+   * dialog, this state clears by itself, so the wait cannot starve a keypress
+   * dismisser. Stop or a replacement spawn invalidates the captured identity.
+   */
+  private async waitForInputTransientToClear(phase: string, timeoutMs = INPUT_TRANSIENT_WAIT_MS): Promise<boolean> {
+    const generation = this.inputTransientGuardGeneration;
+    if (generation === null || generation !== this.spawnGeneration) return true;
+
+    const deadline = Date.now() + timeoutMs;
+    let observedDescription: string | null = null;
+    for (;;) {
+      if (this.inputTransientGuardGeneration !== generation || this.spawnGeneration !== generation) {
+        this.logger.warn({ phase, generation }, "Spawn changed while waiting for input availability — refusing to send Enter into the replacement pane");
+        return false;
+      }
+      const probe = await this.probeInputTransient();
+      if (this.inputTransientGuardGeneration !== generation || this.spawnGeneration !== generation) {
+        this.logger.warn({ phase, generation }, "Spawn changed during the input-availability probe — refusing to send Enter into the replacement pane");
+        return false;
+      }
+      if (probe.state === "clear") return true;
+      if (probe.state === "active" && observedDescription !== probe.transient.description) {
+        observedDescription = probe.transient.description;
+        this.logger.info({ phase, transient: probe.transient.description, generation },
+          "CLI is still completing startup — waiting before sending Enter");
+      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        this.logger.error({ phase, generation, timeoutMs, transient: observedDescription },
+          "CLI input stayed unavailable — refusing to send Enter");
+        return false;
+      }
+      await new Promise(r => setTimeout(r, Math.min(INPUT_TRANSIENT_POLL_MS, remaining)));
+    }
   }
 
   private static dialogKey(dialog: RuntimeDialog): string {
@@ -4402,15 +4496,18 @@ export class Daemon extends EventEmitter {
 
   /**
    * Why a pane is not deliverable matters. "busy" may be handed to a native
-   * input queue or steered (after its own dialog probe); "dialog" and "unknown"
-   * must never be — a paste + Enter into a dialog answers it with its default,
-   * and an unreadable pane proves nothing. The silence gate comes first and
-   * costs no capture, so a CLI that is simply working never pays for the probe.
+   * input queue or steered (after its own dialog probe); "dialog", "transient"
+   * and "unknown" must never be — a paste + Enter into a dialog answers it
+   * with its default, while a startup transient swallows it and an unreadable
+   * pane proves nothing. The silence gate comes first and costs no capture.
    */
-  private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "unknown"> {
+  private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "transient" | "unknown"> {
     if (!this.isPaneIdleForDelivery(windowId)) return "busy";
     const probe = await this.probeBlockingDialog();
     if (probe.state !== "clear") return probe.state;
+    const transient = await this.probeInputTransient();
+    if (transient.state === "active") return "transient";
+    if (transient.state === "unknown") return "unknown";
     if (this.backend?.dropsEnterWhileBusy?.() !== true) return "ready";
     const prompt = this.backend.getBottomReadyPattern?.();
     if (!prompt || !this.tmux) return "ready";
@@ -4453,6 +4550,7 @@ export class Daemon extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true;
     let unknownStreak = 0;
+    let transientDeadline = 0;
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
@@ -4460,6 +4558,27 @@ export class Daemon extends EventEmitter {
       if (!idle) return false;
       // The idle wait just resolved, so re-reading the silence gate would only
       // add a stale-cache race; ask the pane the remaining questions directly.
+      const transient = await this.probeInputTransient();
+      if (transient.state === "active") {
+        unknownStreak = 0;
+        transientDeadline ||= Math.min(deadline, Date.now() + INPUT_TRANSIENT_WAIT_MS);
+        if (Date.now() >= transientDeadline) {
+          this.logger.error({ transient: transient.transient.description, timeoutMs: INPUT_TRANSIENT_WAIT_MS },
+            "CLI input stayed unavailable during the delivery-readiness wait");
+          return false;
+        }
+        await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
+        continue;
+      }
+      transientDeadline = 0;
+      if (transient.state === "unknown") {
+        if (++unknownStreak >= DIALOG_PROBE_UNKNOWN_MAX) {
+          this.logger.error({ probes: unknownStreak }, "Pane stayed unreadable during the input-transient probe — refusing to deliver blind");
+          return false;
+        }
+        await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
+        continue;
+      }
       if (bottomGated) {
         if (await this.isPaneReadyForDelivery(windowId)) return true;
       } else {
@@ -4492,13 +4611,14 @@ export class Daemon extends EventEmitter {
    * must fail rather than paste on top of the stranded text).
    */
   private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy" | "failed"> {
-    if (this.backend?.dropsEnterWhileBusy?.() !== true || !this.tmux) return "idle";
+    if (!this.tmux || !this.backend) return "idle";
     const prompt = this.backend.getBottomReadyPattern?.();
     if (!prompt) return "idle";
+    const requireBottomReady = this.backend.dropsEnterWhileBusy?.() === true;
     // Pre-check outside the lock so the common case (verified clear) never
     // contends with the dialog dismisser. Only a POSITIVE "clear" skips the
     // lock; an unreadable pane is re-examined under it, not waved through.
-    const pre = await this.strandedInputState(prompt);
+    const pre = await this.strandedInputState(prompt, requireBottomReady);
     if (pre === "clear") return "idle";
     if (pre === "busy") return "busy";
     if (pre === "stranded") {
@@ -4511,7 +4631,7 @@ export class Daemon extends EventEmitter {
       // acted), or a fatal startup screen may have come up. A bare Enter is a
       // no-op at an empty prompt, but into a modal it is a confirmation.
       if (this.fatalStartupBlocked) return "busy";
-      const state = await this.strandedInputState(prompt);
+      const state = await this.strandedInputState(prompt, requireBottomReady);
       if (state === "clear") return "idle";
       if (state !== "stranded") return "busy"; // busy, or unreadable: no evidence the prompt is free
       const sent = await this.sendDeliveryEnter("stranded-input-submit");
@@ -4520,17 +4640,21 @@ export class Daemon extends EventEmitter {
   }
 
   /**
-   * "stranded": an AgEnD message sits in the input row; "clear": the prompt is
-   * at the bottom with no stranded text; "busy": generating, or the prompt is
-   * not at the bottom (incl. a blank frame); "unknown": the pane could not be
-   * read. Only "clear" is positive evidence.
+   * "stranded": an AgEnD message sits in the input row; "clear": no strand is
+   * visible under the backend's readiness policy; "busy": generating, or (for
+   * a bottom-gated backend) the prompt is not at the bottom; "unknown": the
+   * pane could not be read. Only "clear" permits the next paste.
    */
-  private async strandedInputState(prompt: RegExp): Promise<"stranded" | "busy" | "clear" | "unknown"> {
+  private async strandedInputState(prompt: RegExp, requireBottomReady: boolean): Promise<"stranded" | "busy" | "clear" | "unknown"> {
     let pane: string;
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
+    if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
-    return bottomRowIsReady(pane, prompt) ? "clear" : "busy";
+    // Kiro needs a bottom-anchored prompt as positive readiness evidence. Codex
+    // does not: this preflight runs only after its ordinary silence gate and is
+    // enabled solely to recover a positively identified old AgEnD strand.
+    return !requireBottomReady || bottomRowIsReady(pane, prompt) ? "clear" : "busy";
   }
 
   /**
@@ -4625,6 +4749,7 @@ export class Daemon extends EventEmitter {
    * an invariant maintained by comments.
    */
   private async sendDeliveryEnter(phase: string): Promise<boolean> {
+    if (!(await this.waitForInputTransientToClear(phase))) return false;
     const sent = await this.tmux!.sendSpecialKey("Enter");
     if (!sent) {
       this.logger.error({
@@ -4912,6 +5037,14 @@ export class Daemon extends EventEmitter {
     return !!this.backend?.getBottomReadyPattern?.();
   }
 
+  /** Positive submission retires the startup transient guard for this spawn. */
+  private submittedProof(): SubmitProof {
+    if (this.inputTransientGuardGeneration === this.spawnGeneration) {
+      this.inputTransientGuardGeneration = null;
+    }
+    return "submitted";
+  }
+
   /**
    * Decide a submission after an Enter, with one bounded retry.
    *
@@ -5002,15 +5135,15 @@ export class Daemon extends EventEmitter {
     //    the input row is proof in itself — which also means a momentary
     //    failure to read the pane BEFORE pasting cannot turn a delivered
     //    message into a re-paste.
-    if (signature.unique && after.payload > 0) return "submitted";
+    if (signature.unique && after.payload > 0) return this.submittedProof();
 
     // 3. Otherwise the evidence must be NEW relative to the pane as it was
     //    before we pasted: a queue marker left by an earlier message, or an
     //    older transcript entry that opens the same way, are on screen either
     //    way and would otherwise confirm a paste that never landed.
     if (baseline) {
-      if (after.queued > baseline.queued) return "submitted";
-      if (after.payload > baseline.payload) return "submitted";
+      if (after.queued > baseline.queued) return this.submittedProof();
+      if (after.payload > baseline.payload) return this.submittedProof();
       // 4. Nothing new of ours anywhere: the paste was swallowed by a redraw.
       return "unproven";
     }
@@ -5664,6 +5797,12 @@ export class Daemon extends EventEmitter {
     // warning is safer than treating the replacement's startup idle as the old
     // turn ending and injecting a stale recovery prompt.
     this.turnReplyGuard.reset();
+    if (this.spawnDepth === 0) {
+      this.spawnGeneration++;
+      this.inputTransientGuardGeneration = (this.backend?.getInputUnavailableTransients?.().length ?? 0) > 0
+        ? this.spawnGeneration
+        : null;
+    }
     this.spawnDepth++;
     this.spawning = true;
     if (!this.spawnSettled) {
@@ -6240,6 +6379,7 @@ export class Daemon extends EventEmitter {
     const sleep = async () => { if (remaining() > 0) await new Promise(r => setTimeout(r, Math.min(pollMs, Math.max(remaining(), 0)))); };
     let cleanReadyPolls = 0;
     let lastDialog: StartupDialog | null = null;
+    let lastTransient: InputUnavailableTransient | null = null;
     let captureFailures = 0;
     let attempts = 0;
     do {
@@ -6259,6 +6399,18 @@ export class Daemon extends EventEmitter {
         continue;
       }
       try {
+        // Some TUIs expose a real-looking input row before they accept Enter.
+        // This phase clears by itself: never send a key, and let its structural
+        // current-screen matcher outrank the otherwise-valid ready pattern.
+        const transient = this.inputTransientInPane(pane);
+        if (transient) {
+          cleanReadyPolls = 0;
+          lastDialog = null;
+          lastTransient = transient;
+          await sleep();
+          continue;
+        }
+        lastTransient = null;
         // Try each startup dialog pattern before checking ready state
         let matched = false;
         lastDialog = null;
@@ -6381,7 +6533,10 @@ export class Daemon extends EventEmitter {
       await sleep();
     } while (remaining() > 0);
     // Budget exhausted. Never silently: say which way it went.
-    if (lastDialog) {
+    if (lastTransient) {
+      this.logger.warn({ description: lastTransient.description, attempts, budgetMs },
+        "Startup scan exhausted while CLI input was still unavailable — retaining the delivery guard");
+    } else if (lastDialog) {
       this.logger.warn({ description: lastDialog.description, attempts, budgetMs },
         "Startup scan exhausted with a dialog still on screen — reporting the CLI alive; deliveries stay blocked until it is answered");
     } else {
