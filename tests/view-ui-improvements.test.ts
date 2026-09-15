@@ -64,4 +64,11 @@ describe("View UI improvements", () => {
     expect(html).toContain('document.querySelectorAll("[data-i18n-title]")');
     expect(html).toContain('q("pre").textContent = TF("rosterFailed"');
   });
+
+  // Fix-forward: instanceTooltip must map classic → configured (same as instance)
+  it("instanceTooltip maps classic to configured for model/effort suffix (tooltip consistency)", () => {
+    // modelSuffix and effortSuffix must include classic alongside instance → configured
+    expect(html).toMatch(/modelSuffix.*model_source === "classic"/);
+    expect(html).toMatch(/effortSuffix.*effort_source === "classic"/);
+  });
 });

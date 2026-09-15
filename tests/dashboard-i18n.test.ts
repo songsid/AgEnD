@@ -23,4 +23,13 @@ describe("dashboard zh-TW feedback", () => {
     expect(html).toMatch(/effortPart.*i\.effort_source \? .*sourceLabel\(i\.effort_source\)/);
     expect(html).not.toMatch(/effortPart.*i\.effort_source !== "instance"/);
   });
+
+  // Fix-forward: cli-default/unresolved must not append source suffix (resolved.display already explains)
+  it("modelPart skips source suffix for cli-default and unresolved (tooltip consistency)", () => {
+    // modelPart must check cli-default/unresolved alongside live for no-suffix
+    expect(html).toMatch(/modelPart.*model_source === "cli-default"/);
+    expect(html).toMatch(/modelPart.*model_source === "unresolved"/);
+    // Must NOT have the old pattern that only checks live
+    expect(html).not.toMatch(/modelPart.*model_source === "live" \? i\.model : `\$\{i\.model\}/);
+  });
 });

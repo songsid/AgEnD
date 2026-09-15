@@ -339,7 +339,8 @@ function renderList() {
   const sourceLabel = (src) => src === "instance" || src === "classic" ? "configured" : src === "fleet-default" ? "fleet default" : src;
   el.innerHTML = instances.map(i => {
     // Hover tooltip: name · backend · model (source) · effort (source) · ctx · status
-    const modelPart = i.model ? (i.model_source === "live" ? i.model : `${i.model} (${sourceLabel(i.model_source)})`) : null;
+    // cli-default/unresolved: resolved.display already explains "(default)"/"(not probed yet)", no extra suffix
+    const modelPart = i.model ? (i.model_source === "live" || i.model_source === "cli-default" || i.model_source === "unresolved" ? i.model : `${i.model} (${sourceLabel(i.model_source)})`) : null;
     // R2: effort_source always shows label for consistency (instance/classic → configured)
     const effortPart = i.effort ? `effort:${i.effort}${i.effort_source ? ` (${sourceLabel(i.effort_source)})` : ""}` : null;
     const ctxPart = i.context_pct != null ? `ctx:${Math.round(i.context_pct)}%` : null;
