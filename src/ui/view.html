@@ -191,6 +191,7 @@
       usageUpdated: "updated", usageRefresh: "Refresh", usageHigh: "high", usageNear: "near limit",
       usageMoveUp: "Move up", usageMoveDown: "Move down",
       tooltipBackend: "Backend: {value}", tooltipStatus: "Status: {value}", tooltipContext: "Context: {value}",
+      tooltipModel: "Model: {value}", tooltipEffort: "Effort: {value}",
       tooltipUnavailable: "Unavailable", statusRunning: "Running", statusPaused: "Paused",
       statusStopped: "Stopped", statusCrashed: "Crashed", statusUnknown: "Unknown",
       usageResets: "resets in {t}", usageSoon: "resets soon", usageFail: "Could not load usage data.",
@@ -253,6 +254,7 @@
       usageUpdated: "更新於", usageRefresh: "重新整理", usageHigh: "偏高", usageNear: "接近上限",
       usageMoveUp: "上移", usageMoveDown: "下移",
       tooltipBackend: "後端：{value}", tooltipStatus: "狀態：{value}", tooltipContext: "上下文：{value}",
+      tooltipModel: "模型：{value}", tooltipEffort: "推理強度：{value}",
       tooltipUnavailable: "無資料", statusRunning: "運行中", statusPaused: "已暫停",
       statusStopped: "已停止", statusCrashed: "已崩潰", statusUnknown: "未知",
       usageResets: "{t}後重置", usageSoon: "即將重置", usageFail: "無法載入用量資料。",
@@ -451,18 +453,32 @@
   }
 
   function instanceTooltip(it) {
-    const context = typeof it.context_pct === "number" && Number.isFinite(it.context_pct)
+    const context = it.context_pct != null && Number.isFinite(it.context_pct)
       ? `${Math.round(Math.min(100, Math.max(0, it.context_pct)))}%`
       : T("tooltipUnavailable");
     const statusKey = STATUS_LABEL_KEYS[it.status];
     const status = statusKey ? T(statusKey) : it.status || T("statusUnknown");
     const translated = (key, value) => T(key).replace("{value}", value);
-    const lines = [
-      it.instance_name,
-      translated("tooltipBackend", backendLabel(it.backend)),
-      translated("tooltipStatus", status),
-      translated("tooltipContext", context),
-    ];
+    // B3: display_name as first line, then raw instance_name if they differ
+    const lines = [];
+    if (it.display_name && it.display_name !== it.instance_name) {
+      lines.push(it.display_name);
+      lines.push(`(${it.instance_name})`);
+    } else {
+      lines.push(it.instance_name);
+    }
+    lines.push(translated("tooltipBackend", backendLabel(it.backend)));
+    // Model with source labeling (live = no suffix, configured/fleet-default = suffix)
+    const modelDisplay = it.model || T("tooltipUnavailable");
+    const modelSuffix = it.model_source === "live" ? "" : it.model_source === "instance" ? " (configured)" : it.model_source === "fleet-default" ? " (fleet default)" : "";
+    lines.push(translated("tooltipModel", modelDisplay + modelSuffix));
+    lines.push(translated("tooltipStatus", status));
+    lines.push(translated("tooltipContext", context));
+    // Effort: only show if present (backend capability already filtered by getUiStatus)
+    if (it.effort) {
+      const effortSuffix = it.effort_source === "instance" ? " (configured)" : it.effort_source === "fleet-default" ? " (fleet default)" : "";
+      lines.push(translated("tooltipEffort", it.effort + effortSuffix));
+    }
     if (typeof it.description === "string" && it.description.trim()) {
       lines.push("", it.description.trim());
     }

@@ -38,7 +38,7 @@ export interface ViewApiContext {
   readonly logger: Logger;
   // Dynamically-created ClassicBot instances (not in fleet.yaml). Null before init.
   readonly classicChannels: {
-    getAll(): { instanceName: string; name: string; backend?: string; channelId: string }[];
+    getAll(): { instanceName: string; name: string; backend?: string; channelId: string; displayName?: string }[];
     getBackendByInstance(name: string, fleetDefault?: string): string;
   } | null;
   getInstanceStatus(name: string): "running" | "paused" | "stopped" | "crashed";
@@ -246,7 +246,16 @@ export function handleViewRequest(
 
   // ── GET /api/profiles — merged roster ──
   if (method === "GET" && path === "/api/profiles") {
-    const ui = ctx.getUiStatus() as { instances: Array<{ name: string; status: string; context_pct: number; model: string }> };
+    const ui = ctx.getUiStatus() as { instances: Array<{
+      name: string;
+      status: string;
+      context_pct: number | null;
+      model: string;
+      model_source: string;
+      effort: string | null;
+      effort_source: string | null;
+      display_name?: string;
+    }> };
     const live = new Map(ui.instances.map(i => [i.name, i]));
     const db = profileDb(ctx.dataDir);
     const profiles = new Map((db.prepare("SELECT * FROM instance_profile").all() as ProfileRow[]).map(r => [r.instance_name, r]));
@@ -258,13 +267,23 @@ export function handleViewRequest(
       const classic = classicByName.get(name);
       const l = live.get(name);
       const p = profiles.get(name);
+      // display_name priority: profile DB > fleet config > classic channel > null
+      const display_name = p?.display_name
+        ?? cfg?.display_name
+        ?? classic?.displayName
+        ?? l?.display_name
+        ?? null;
       return {
         instance_name: name,
         status: l?.status ?? ctx.getInstanceStatus(name),
-        context_pct: l?.context_pct ?? 0,
+        context_pct: l?.context_pct ?? null, // null when unavailable, not 0
         // Prefer the CLI's live statusline when it reports a model; Classic and
         // non-statusline backends fall back to the shared effective resolver.
         model: l?.model || ctx.resolveInstanceModel?.(name).model || "",
+        model_source: l?.model_source ?? "unresolved",
+        // Effort: only the configured value (no live file from CLI), with capability check.
+        effort: l?.effort ?? null,
+        effort_source: l?.effort_source ?? null,
         // Prefer explicit instance backend; else classic resolver; else fleet
         // default — never hardcode "claude-code" when defaults.backend is kiro.
         backend: cfg?.backend
@@ -273,7 +292,7 @@ export function handleViewRequest(
             : ctx.fleetConfig?.defaults?.backend)
           ?? "claude-code",
         tags: cfg?.tags ?? (classic ? ["classic"] : []),
-        display_name: p?.display_name ?? null,
+        display_name,
         role: p?.role ?? null,
         avatar_path: p?.avatar_path ?? null,
         description: p?.description ?? cfg?.description ?? null,

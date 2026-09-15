@@ -39,15 +39,45 @@ describe("FleetManager", () => {
     classicChannels.register("channel-1", "discord", "classic-room", "Room", "owner", "codex");
     fm.classicChannels = classicChannels;
 
-    const ui = fm.getUiStatus() as { instances: Array<{ name: string; context_pct: number }> };
+    const ui = fm.getUiStatus() as { instances: Array<{ name: string; context_pct: number | null }> };
     const names = ui.instances.map(i => i.name);
     expect(names).toContain("fleet-only");
-    // Classic was previously omitted → /api/profiles live map miss → ctx always 0
+    // Classic was previously omitted → /api/profiles live map miss → ctx always null (not 0)
     expect(names).toContain("classic-room");
-    expect(ui.instances.find(i => i.name === "classic-room")).toMatchObject({
+    const classic = ui.instances.find(i => i.name === "classic-room");
+    expect(classic).toMatchObject({
       name: "classic-room",
-      context_pct: expect.any(Number),
     });
+    // context_pct can be null when no statusline/pane available
+    expect(classic?.context_pct === null || typeof classic?.context_pct === "number").toBe(true);
+  });
+
+  it("getUiStatus includes backend/model/effort aligned with /ctx", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli", effort: "high" },
+      instances: {
+        "with-effort": { working_directory: "/tmp", effort: "max" },
+        "default-effort": { working_directory: "/tmp" },
+        "codex-inst": { working_directory: "/tmp", backend: "codex" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/with-effort"), { recursive: true });
+    mkdirSync(join(tmpDir, "instances/default-effort"), { recursive: true });
+    mkdirSync(join(tmpDir, "instances/codex-inst"), { recursive: true });
+
+    const ui = fm.getUiStatus() as { instances: Array<{ name: string; backend: string; model: string; effort: string | null }> };
+
+    // Backend: instance override or fleet default
+    expect(ui.instances.find(i => i.name === "with-effort")?.backend).toBe("kiro-cli");
+    expect(ui.instances.find(i => i.name === "codex-inst")?.backend).toBe("codex");
+
+    // Model: uses modelDisplayForInstance (resolved, not raw statusline)
+    expect(ui.instances.find(i => i.name === "with-effort")?.model).toBeDefined();
+
+    // Effort: instance > fleet-default > null
+    expect(ui.instances.find(i => i.name === "with-effort")?.effort).toBe("max");
+    expect(ui.instances.find(i => i.name === "default-effort")?.effort).toBe("high");
   });
 
   it("collects usage providers from running and paused fleet and Classic instances", () => {
@@ -1983,5 +2013,238 @@ describe("TopicCommands", () => {
     expect(quarantineMissingTopic).not.toHaveBeenCalled();
     expect(logger.info).not.toHaveBeenCalled();
     expect(logger.debug).toHaveBeenCalled();
+  });
+});
+
+describe("getUiStatus model/effort/context wiring (B4)", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ccd-fleet-b4-${Date.now()}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns model_source='live' when Claude statusline reports a model", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code", model: "sonnet" },
+      instances: {
+        "claude-inst": { working_directory: "/tmp", model: "opus" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/claude-inst"), { recursive: true });
+    // Simulate statusline with model
+    const statusline = {
+      model: { display_name: "claude-4.5-opus", name: "claude-opus-4-5" },
+    };
+    writeFileSync(
+      join(tmpDir, "instances/claude-inst/statusline.json"),
+      JSON.stringify(statusline),
+    );
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "claude-inst");
+    // When statusline has model, we use "live" not "instance"
+    expect(inst?.model).toBe("claude-4.5-opus");
+    expect(inst?.model_source).toBe("live");
+  });
+
+  it("returns model_source='instance' when no statusline and instance has model", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli", model: "sonnet" },
+      instances: {
+        "kiro-inst": { working_directory: "/tmp", model: "claude-opus-4-5" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/kiro-inst"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "kiro-inst");
+    expect(inst?.model).toBe("claude-opus-4-5");
+    expect(inst?.model_source).toBe("instance");
+  });
+
+  it("returns model_source='fleet-default' when instance inherits from defaults", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli", model: "claude-sonnet-4-5" },
+      instances: {
+        "no-model": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/no-model"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; model: string; model_source: string }>;
+    };
+    const inst = ui.instances.find(i => i.name === "no-model");
+    expect(inst?.model).toBe("claude-sonnet-4-5");
+    expect(inst?.model_source).toBe("fleet-default");
+  });
+
+  it("returns effort_source='instance' for instance-level effort override", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code", effort: "high" },
+      instances: {
+        "effort-max": { working_directory: "/tmp", effort: "max" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/effort-max"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; effort: string | null; effort_source: string | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "effort-max");
+    expect(inst?.effort).toBe("max");
+    expect(inst?.effort_source).toBe("instance");
+  });
+
+  it("returns effort_source='fleet-default' when instance inherits effort from defaults", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code", effort: "high" },
+      instances: {
+        "inherit-effort": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/inherit-effort"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; effort: string | null; effort_source: string | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "inherit-effort");
+    expect(inst?.effort).toBe("high");
+    expect(inst?.effort_source).toBe("fleet-default");
+  });
+
+  it("returns null effort for unsupported backends (opencode)", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { effort: "high" },
+      instances: {
+        "opencode-inst": { working_directory: "/tmp", backend: "opencode" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/opencode-inst"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; effort: string | null; effort_source: string | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "opencode-inst");
+    expect(inst?.effort).toBeNull();
+    expect(inst?.effort_source).toBeNull();
+  });
+
+  it("returns null effort for antigravity backend", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { effort: "high" },
+      instances: {
+        "agy-inst": { working_directory: "/tmp", backend: "antigravity" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/agy-inst"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; effort: string | null; effort_source: string | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "agy-inst");
+    expect(inst?.effort).toBeNull();
+    expect(inst?.effort_source).toBeNull();
+  });
+
+  it("returns context_pct=null when statusline is missing", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" },
+      instances: {
+        "no-ctx": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/no-ctx"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; context_pct: number | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "no-ctx");
+    expect(inst?.context_pct).toBeNull();
+  });
+
+  it("returns context_pct from Claude statusline when available", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code" },
+      instances: {
+        "has-ctx": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/has-ctx"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, "instances/has-ctx/statusline.json"),
+      JSON.stringify({ context_window: { used_percentage: 42 } }),
+    );
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; context_pct: number | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "has-ctx");
+    expect(inst?.context_pct).toBe(42);
+  });
+
+  it("includes display_name from fleet config", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: {},
+      instances: {
+        "named-inst": {
+          working_directory: "/tmp",
+          display_name: "My Pretty Instance",
+        },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/named-inst"), { recursive: true });
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; display_name: string | undefined }>;
+    };
+    const inst = ui.instances.find(i => i.name === "named-inst");
+    // Must include the exact configured display_name, not just any truthy value
+    expect(inst?.display_name).toBe("My Pretty Instance");
+  });
+
+  it("includes display_name from classic channel when not in fleet config", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code" },
+      instances: {},
+    } as any;
+    const classicChannels = new ClassicChannelManager(tmpDir, fm.logger);
+    classicChannels.setPrimaryAdapterId("discord");
+    // Register with displayName
+    (classicChannels as any).channels.set("channel-1:discord", {
+      instanceName: "classic-with-name",
+      name: "classic-channel",
+      channelId: "channel-1",
+      adapterId: "discord",
+      displayName: "Classic Display",
+      createdAt: new Date().toISOString(),
+    });
+    fm.classicChannels = classicChannels;
+
+    const ui = fm.getUiStatus() as {
+      instances: Array<{ name: string; display_name: string | null }>;
+    };
+    const inst = ui.instances.find(i => i.name === "classic-with-name");
+    expect(inst?.display_name).toBe("Classic Display");
   });
 });

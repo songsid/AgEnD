@@ -48,7 +48,7 @@ import { Scheduler } from "./scheduler/index.js";
 import type { Schedule, SchedulerConfig } from "./scheduler/index.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { FleetContext } from "./fleet-context.js";
-import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext } from "./topic-commands.js";
+import { TopicCommands, saveCommandForBackend, parseSaveFilename, parsePauseWakeCommand, SAVE_FILENAME_RE, resolveInstanceContext, forgetInstanceContext, readStatuslineModel } from "./topic-commands.js";
 import type { HangDetector } from "./hang-detector.js";
 import { DailySummary } from "./daily-summary.js";
 import { WebhookEmitter } from "./webhook-emitter.js";
@@ -11860,11 +11860,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const instances = names.map(name => {
       const statusFile = join(this.getInstanceDir(name), "statusline.json");
       let cost = 0;
-      let model = "";
+      let statuslineModel: string | null = null;
       try {
         const data = JSON.parse(readFileSync(statusFile, "utf-8"));
         cost = data.cost?.total_cost_usd ?? 0;
-        model = data.model?.display_name ?? "";
+        statuslineModel = data.model?.display_name || null;
       } catch (err) {
         this.logger.debug({ err, name }, "statusline.json read failed (getUiStatus)");
       }
@@ -11876,8 +11876,37 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           ?? this.fleetConfig?.defaults?.backend
           ?? "claude-code");
       const { context } = resolveInstanceContext(this.dataDir, name, backend);
-      const context_pct = context ?? 0;
-      return { name, status: this.getInstanceStatus(name), context_pct, cost, model };
+      // context_pct: null when unavailable, not 0
+      const context_pct = context ?? null;
+      // Model: Claude Code has live statusline, others use the effective resolver.
+      // This aligns with /ctx's logic (readStatuslineModel fallback modelDisplayForInstance).
+      const resolved = this.resolveInstanceModel(name);
+      const model = statuslineModel ?? resolved.model;
+      // model_source: "live" when statusline succeeded, else the resolver's source
+      const model_source = statuslineModel ? "live" : resolved.source;
+      // Effort: aligned with /ctx's effortLineFor — unsupported and antigravity don't show effort.
+      const effortStrategy = this.effortStrategyFor(name);
+      const isAgy = backend === "antigravity" || backend === "agy";
+      const effortResolved = this.resolveInstanceEffort(name);
+      // Only show effort if backend supports it and it's not antigravity
+      const effort = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.effort;
+      const effort_source = (effortStrategy === "unsupported" || isAgy) ? null : effortResolved.source;
+      // Display name: fleet config → classic channel → undefined
+      const display_name = classic
+        ? this.classicChannels?.getAll().find(ch => ch.instanceName === name)?.displayName
+        : this.fleetConfig?.instances[name]?.display_name;
+      return {
+        name,
+        display_name: display_name || undefined,
+        status: this.getInstanceStatus(name),
+        context_pct,
+        cost,
+        model,
+        model_source,
+        backend,
+        effort,
+        effort_source,
+      };
     });
     return {
       instances,
