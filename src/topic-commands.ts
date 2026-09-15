@@ -1263,8 +1263,14 @@ export class TopicCommands {
     );
   }
 
-  /** Handle topic deletion — stop daemon and remove from config */
-  async handleTopicDeleted(threadId: string): Promise<void> {
+  /**
+   * Handle provider-confirmed topic deletion without deleting instance data.
+   * Topology observations are not user authorization for worktree removal.
+   */
+  handleTopicDeleted(
+    threadId: string,
+    evidence: { source: "provider-event" | "provider-probe"; adapterId?: string; generation?: number } = { source: "provider-event" },
+  ): void {
     const target = this.ctx.routingTable.get(threadId);
     if (!target) return;
     if (target.kind === "general") {
@@ -1272,8 +1278,7 @@ export class TopicCommands {
       return;
     }
 
-    this.ctx.logger.info({ instanceName: target.name, threadId }, "Topic deleted — auto-unbinding");
-    await this.ctx.removeInstance(target.name);
+    this.ctx.quarantineMissingTopic(threadId, target, evidence);
   }
 
   /** Create instance config, save fleet.yaml, start daemon, connect IPC. */

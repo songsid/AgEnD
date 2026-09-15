@@ -46,6 +46,21 @@ export interface AdapterHealthSnapshot {
   reconnectCount: number;
 }
 
+/**
+ * Result of an adapter topology probe.
+ *
+ * `missing` is destructive-grade evidence: adapters may return it only when
+ * the provider positively says the topic does not exist. Transport failures,
+ * an empty cache, an unavailable gateway, and ambiguous permission errors are
+ * all `unknown`.
+ */
+export type TopicMissingEvidence = "discord-unknown-channel" | "telegram-topic-not-found";
+
+export type TopicPresence =
+  | { status: "present"; generation?: number }
+  | { status: "missing"; generation?: number; evidence: TopicMissingEvidence }
+  | { status: "unknown"; generation?: number; reason: string };
+
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;
   readonly id: string;
@@ -117,7 +132,7 @@ export interface ChannelAdapter extends EventEmitter {
 
   createTopic?(name: string): Promise<number | string>;
   deleteTopic?(topicId: number | string): Promise<void>;
-  topicExists?(topicId: number | string): Promise<boolean>;
+  probeTopicPresence?(topicId: number | string): Promise<TopicPresence>;
   closeForumTopic?(threadId: number | string): Promise<void>;
   reopenForumTopic?(threadId: number | string): Promise<void>;
   editForumTopic?(threadId: number | string, opts: { name?: string; iconCustomEmojiId?: string }): Promise<void>;

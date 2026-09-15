@@ -36,6 +36,7 @@ import type {
   Choice,
   AlertData,
   AdapterHealthSnapshot,
+  TopicPresence,
 } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
@@ -1494,12 +1495,45 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     }
   }
 
-  async topicExists(topicId: number | string): Promise<boolean> {
+  async probeTopicPresence(topicId: number | string): Promise<TopicPresence> {
+    // Topology probes are passive. In particular, they must not call
+    // readyClient(): doing so starts/waits for a reconnect, and the old boolean
+    // API then converted that transport failure into "topic missing".
+    const before = this.getHealthSnapshot();
+    const generation = before.generation;
+    if (before.status !== "connected" || !before.isReady || this.reconnectPromise) {
+      return { status: "unknown", generation, reason: "adapter-not-ready" };
+    }
+    const client = this.client;
     try {
-      const channel = await (await this.readyClient()).channels.fetch(String(topicId));
-      return channel != null;
-    } catch {
-      return false;
+      const channel = await client.channels.fetch(String(topicId), { force: true });
+      const after = this.getHealthSnapshot();
+      if (client !== this.client
+        || after.generation !== generation
+        || after.status !== "connected"
+        || !after.isReady
+        || this.reconnectPromise) {
+        return { status: "unknown", generation: after.generation, reason: "adapter-generation-changed" };
+      }
+      // A null/empty view is not provider proof. Only Discord's explicit
+      // Unknown Channel response below is strong enough to say "missing".
+      return channel == null
+        ? { status: "unknown", generation, reason: "empty-channel-view" }
+        : { status: "present", generation };
+    } catch (err) {
+      const after = this.getHealthSnapshot();
+      if (client !== this.client
+        || after.generation !== generation
+        || after.status !== "connected"
+        || !after.isReady
+        || this.reconnectPromise) {
+        return { status: "unknown", generation: after.generation, reason: "adapter-generation-changed" };
+      }
+      const code = err && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+      if (code === 10003 || code === "10003") {
+        return { status: "missing", generation, evidence: "discord-unknown-channel" };
+      }
+      return { status: "unknown", generation, reason: "provider-probe-failed" };
     }
   }
 

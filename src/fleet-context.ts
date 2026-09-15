@@ -5,6 +5,7 @@ import type { Scheduler } from "./scheduler/index.js";
 import type { Logger } from "./logger.js";
 import type { CostGuard } from "./cost-guard.js";
 import type { ClassicChannelManager } from "./classic-channel-manager.js";
+import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
 export type RouteTarget =
   | { kind: "instance"; name: string }
@@ -73,7 +74,13 @@ export interface FleetContext {
   saveFleetConfig(): void;
   getInstanceDir(name: string): string;
   createForumTopic(topicName: string, adapterId?: string): Promise<number | string>;
-  removeInstance(name: string): Promise<void>;
+  removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
+  /** Quarantine a provider-confirmed missing topic without deleting user data. */
+  quarantineMissingTopic(
+    threadId: string,
+    target: RouteTarget,
+    evidence: { source: "provider-event" | "provider-probe"; adapterId?: string; generation?: number },
+  ): void;
   getAdapterStates?(): Map<string, { status: string; retryCount: number; lastError?: string }>;
   getInstanceExecutionState?(name: string): "idle" | "working" | "stuck" | "paused" | null;
   /** Live dashboard auth/readiness; URLs must not be issued before the server listens. */

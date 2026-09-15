@@ -24,6 +24,7 @@ import { fetchClaudeUsage, fetchCodexUsage, type ProviderUsage } from "./usage/p
 import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
+import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -134,7 +135,7 @@ export interface LifecycleContext {
   deleteForumTopic(topicId: number | string): Promise<void>;
   setTopicIcon(name: string, state: "green" | "blue" | "red" | "remove"): void;
   /** Remove instance with full cleanup (scheduler, IPC, routing, config). */
-  removeInstance(name: string): Promise<void>;
+  removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   touchActivity(name: string): void;
   sendHangNotification(name: string, unchangedForMs?: number): Promise<void>;
   /**
@@ -1207,7 +1208,9 @@ export class InstanceLifecycle {
     }
   }
 
-  async remove(name: string): Promise<void> {
+  async remove(name: string, authorization: ExplicitInstanceRemoval): Promise<void> {
+    // Automatic topology reconciliation must never reach the destructive path.
+    assertExplicitInstanceRemoval(authorization);
     const config = this.ctx.fleetConfig?.instances[name];
     if (!config) return;
 
@@ -1565,7 +1568,7 @@ export class InstanceLifecycle {
       await this.ctx.deleteForumTopic(instanceConfig.topic_id);
     }
 
-    await this.ctx.removeInstance(instanceName);
+    await this.ctx.removeInstance(instanceName, authorizeExplicitInstanceRemoval("delete-instance-tool"));
     respond({ success: true, name: instanceName, topic_deleted: deleteTopic });
   }
 

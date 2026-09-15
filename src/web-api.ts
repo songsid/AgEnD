@@ -11,6 +11,8 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { z } from "zod";
 import { WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
+import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
 // ── Strict public-facing schemas ────────────────────────────────────────────
 // web-api endpoints must reject unknown fields so the dashboard cannot inject
@@ -137,7 +139,7 @@ export interface WebApiContext {
   startInstance(name: string, config: unknown, topicMode: boolean): Promise<void>;
   stopInstance(name: string): Promise<void>;
   restartSingleInstance(name: string): Promise<void>;
-  removeInstance(name: string): Promise<void>;
+  removeInstance(name: string, authorization: ExplicitInstanceRemoval): Promise<void>;
   lastInboundUser: Map<string, string>;
   saveFleetConfig(): void;
   readonly lifecycle: { handleCreate(args: LifecycleCreateArgs, respond: (result: unknown, error?: string) => void): Promise<void> };
@@ -351,7 +353,7 @@ export function handleWebRequest(
           json(res, 400, { error: `Confirmation required: { "confirm": "delete ${name}" }` });
           return;
         }
-        await ctx.removeInstance(name);
+        await ctx.removeInstance(name, authorizeExplicitInstanceRemoval("dashboard-confirmed"));
         ctx.emitSseEvent("status", ctx.getUiStatus());
         json(res, 200, { deleted: name });
       } catch (err) {
