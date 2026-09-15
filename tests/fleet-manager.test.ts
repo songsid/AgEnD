@@ -50,6 +50,26 @@ describe("FleetManager", () => {
     });
   });
 
+  it("getUiStatus includes display_name for fleet instances", () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "kiro-cli" },
+      instances: {
+        "with-display": { working_directory: "/tmp", display_name: "Sentinel" },
+        "no-display": { working_directory: "/tmp" },
+      },
+    } as any;
+    mkdirSync(join(tmpDir, "instances/with-display"), { recursive: true });
+    mkdirSync(join(tmpDir, "instances/no-display"), { recursive: true });
+
+    const ui = fm.getUiStatus() as { instances: Array<{ name: string; display_name?: string }> };
+    const withDisplay = ui.instances.find(i => i.name === "with-display");
+    const noDisplay = ui.instances.find(i => i.name === "no-display");
+
+    expect(withDisplay?.display_name).toBe("Sentinel");
+    expect(noDisplay?.display_name).toBeUndefined();
+  });
+
   it("collects usage providers from running and paused fleet and Classic instances", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {

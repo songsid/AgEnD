@@ -11714,7 +11714,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           ?? "claude-code");
       const { context } = resolveInstanceContext(this.dataDir, name, backend);
       const context_pct = context ?? 0;
-      return { name, status: this.getInstanceStatus(name), context_pct, cost, model };
+      const display_name = classic ? undefined : this.fleetConfig?.instances[name]?.display_name;
+      return { name, display_name, status: this.getInstanceStatus(name), context_pct, cost, model };
     });
     return {
       instances,

@@ -337,7 +337,7 @@ function renderList() {
   const el = document.getElementById("instanceList");
   el.innerHTML = instances.map(i => `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}">
     <div class="dot ${i.status}" title="${i.status}"></div><div style="flex:1;min-width:0">
-    <div class="inst-name">${esc(i.name)}</div>
+    <div class="inst-name" title="${esc(i.name)}">${esc(i.display_name || i.name)}</div>
     <div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${i.context_pct>0?` ctx:${Math.round(i.context_pct)}%`:""}</div>
     </div></div>`).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
