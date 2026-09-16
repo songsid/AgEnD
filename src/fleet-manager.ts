@@ -243,6 +243,20 @@ const HOT_INSTANCE_CONFIG_KEYS = new Set<keyof InstanceConfig>([
   "log_level",
 ]);
 
+interface TopicProbeUnknownContext {
+  instanceName: string;
+  threadId: string;
+  adapterId: string | undefined;
+  reason: string;
+  detail?: string;
+}
+
+/** Outcomes of one topic-cleanup scan, folded into the streaks once the pass ends. */
+interface TopicProbePass {
+  unknown: Map<string, TopicProbeUnknownContext>;
+  definite: Set<string>;
+}
+
 function splitHotColdConfig(config: InstanceConfig): {
   hot: Partial<InstanceConfig>;
   cold: Partial<InstanceConfig>;
@@ -543,6 +557,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     "adapter-generation-changed",
     "topic-close-from-unready-adapter",
     "topic-close-generation-changed",
+    // Telegram probe: the transport or Telegram itself is down, not one topic.
+    "transport-failed",
+    "provider-unavailable",
   ]);
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
@@ -5861,6 +5878,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * removal: unknown is always retained data. The only question is whether
    * the operator hears about it, and a single transient (one flaky HTTP call
    * out of dozens per pass) must not — only a streak does.
+   *
+   * Used directly for single-route events (channelDelete, the pre-action
+   * fence). The periodic scan goes through a TopicProbePass instead, so one
+   * pass over N routes of a dead adapter counts as ONE check, not N.
    */
   private warnTopicProbeUnknown(
     instanceName: string,
@@ -5869,7 +5890,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     reason: string,
     detail?: string,
   ): void {
-    const streakKey = this.topicProbeStreakKey(threadId, adapterId, reason);
+    this.noteTopicProbeUnknown(this.topicProbeStreakKey(threadId, adapterId, reason),
+      { instanceName, threadId, adapterId, reason, detail });
+  }
+
+  /** One scan's worth of probe outcomes, applied to the streaks after the loop. */
+  private newTopicProbePass(): TopicProbePass {
+    return { unknown: new Map(), definite: new Set() };
+  }
+
+  private passTopicProbeUnknown(
+    pass: TopicProbePass,
+    instanceName: string,
+    threadId: string,
+    adapterId: string | undefined,
+    reason: string,
+    detail?: string,
+  ): void {
+    const key = this.topicProbeStreakKey(threadId, adapterId, reason);
+    // First unknown per key per pass wins; the rest of the routes on a dead
+    // adapter are the same observation, not additional checks.
+    if (!pass.unknown.has(key)) pass.unknown.set(key, { instanceName, threadId, adapterId, reason, detail });
+  }
+
+  private passTopicProbeDefinite(pass: TopicProbePass, threadId: string, adapterId: string | undefined): void {
+    pass.definite.add(`thread:${threadId}`);
+    pass.definite.add(`adapter:${adapterId ?? "unbound"}`);
+  }
+
+  /**
+   * Apply a pass: a definite answer resets its keys, and an adapter that
+   * answered for any route this pass is evidently alive, so an unknown for the
+   * same adapter key in the same pass does not count — regardless of the order
+   * the routes happened to be probed in.
+   */
+  private applyTopicProbePass(pass: TopicProbePass): void {
+    for (const key of pass.definite) this.topicProbeUnknownStreak.delete(key);
+    for (const [key, ctx] of pass.unknown) {
+      if (pass.definite.has(key)) continue;
+      this.noteTopicProbeUnknown(key, ctx);
+    }
+  }
+
+  private noteTopicProbeUnknown(
+    streakKey: string,
+    { instanceName, threadId, adapterId, reason, detail }: TopicProbeUnknownContext,
+  ): void {
     const streak = (this.topicProbeUnknownStreak.get(streakKey) ?? 0) + 1;
     this.topicProbeUnknownStreak.set(streakKey, streak);
     if (streak < FleetManager.TOPIC_PROBE_UNKNOWN_ESCALATION) {
@@ -5898,6 +5964,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter: ChannelAdapter;
       generation?: number;
     }> = [];
+    const pass = this.newTopicProbePass();
 
     for (const [threadId, target] of snapshot) {
       if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
@@ -5906,12 +5973,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.getInstanceAdapterId(target.name);
       const adapter = adapterId ? this.adapters.get(adapterId) : undefined;
       if (!adapterId || !adapter?.probeTopicPresence) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-unavailable");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-unavailable");
         continue;
       }
       const before = this.confirmedProbeFence(adapterId, adapter);
       if (!before) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-not-ready");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-not-ready");
         continue;
       }
 
@@ -5923,20 +5990,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
       if (!this.sameProbeFence(adapterId, adapter, before, result)) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-generation-changed");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-generation-changed");
         continue;
       }
       if (result.status === "unknown") {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason, result.detail);
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, result.reason, result.detail);
       } else {
-        this.clearTopicProbeUnknownStreak(threadId, adapterId);
+        this.passTopicProbeDefinite(pass, threadId, adapterId);
         if (result.status === "missing") {
           missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
         }
       }
     }
 
-    if (generation !== this.topicCleanupGeneration || this.shuttingDown || missing.length === 0) return;
+    if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
+    // One pass, one check: streaks move by at most one per key here.
+    this.applyTopicProbePass(pass);
+    if (missing.length === 0) return;
     if (missing.length > 1) {
       this.logger.error({ missing: missing.map(item => ({ instanceName: item.target.name, threadId: item.threadId, adapterId: item.adapterId })) },
         "Multiple topics appeared missing in one pass — treating topology evidence as untrusted and retaining all data");

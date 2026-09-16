@@ -116,11 +116,30 @@ describe("Telegram topic probe classification (#776)", () => {
     (adapter as any).httpsAgent.destroy();
   });
 
-  it("never turns a transport failure into missing, even when the message text mentions threads", () => {
-    const inner = Object.assign(new Error("request to /bot/sendMessage failed, reason: thread not found in pool"), { code: "ECONNRESET" });
-    const result = classifyTelegramProbeError(new HttpError("Network request for 'sendMessage' failed!", inner), TOKEN);
-    // Only Telegram's own description may prove absence; a transport error is unknown.
-    expect(result.status).toBe("unknown");
+  it.each([
+    ["HttpError whose own message says thread not found",
+      () => new HttpError("Network failure: thread not found", new Error("socket closed")), "transport-failed"],
+    ["HttpError whose inner error says TOPIC_ID_INVALID",
+      () => new HttpError("Network request for 'sendMessage' failed!", Object.assign(new Error("TOPIC_ID_INVALID"), { code: "ECONNRESET" })), "transport-failed"],
+    ["generic Error saying TOPIC_ID_INVALID", () => new Error("TOPIC_ID_INVALID"), "provider-probe-failed"],
+    ["generic Error saying thread not found", () => new Error("Bad Request: message thread not found"), "provider-probe-failed"],
+    ["plain string saying thread not found", () => "message thread not found", "provider-probe-failed"],
+  ])("never lets %s prove absence — only Telegram's own description can", (_label, make, reason) => {
+    const result = classifyTelegramProbeError(make(), TOKEN);
+    expect(result).toMatchObject({ status: "unknown", reason });
+  });
+
+  it("runs the whole probe to unknown, not missing, when a transport error carries thread-not-found text", async () => {
+    vi.useFakeTimers();
+    const adapter = makeAdapter();
+    vi.spyOn(adapter.getBot().api, "sendMessage")
+      .mockRejectedValue(new HttpError("Network failure: thread not found", new Error("socket closed")));
+
+    const result = await probeWithRetryClock(adapter, 118);
+
+    expect(result).toMatchObject({ status: "unknown", reason: "transport-failed" });
+    (adapter as any).httpAgent.destroy();
+    (adapter as any).httpsAgent.destroy();
   });
 
   it("falls back to provider-probe-failed for an unrecognised error shape", () => {

@@ -118,8 +118,9 @@ class TelegramTransportError extends Error {
 /**
  * Turn a failed topology probe into the tri-state contract.
  *
- * `missing` needs Telegram's own words (thread not found / TOPIC_ID_INVALID).
- * Everything else is `unknown`, split by what failed so the fleet's debug log
+ * `missing` needs Telegram's own words (a GrammyError whose description says
+ * thread not found / TOPIC_ID_INVALID). Every other error type is `unknown` no
+ * matter what its text says, split by what failed so the fleet's debug log
  * can tell a flaky socket from a Telegram-side rejection:
  *  - transport-failed: the request never got a Telegram answer (HttpError, or
  *    the recovery layer's TelegramTransportError). Safe to retry for a probe.
@@ -127,14 +128,16 @@ class TelegramTransportError extends Error {
  *  - provider-rejected: Telegram answered with any other error.
  */
 export function classifyTelegramProbeError(err: unknown, botToken = ""): TopicPresence {
-  const errMsg = err instanceof GrammyError ? err.description : String(err);
-  if (errMsg.includes("thread not found") || errMsg.includes("TOPIC_ID_INVALID")) {
-    return { status: "missing", evidence: "telegram-topic-not-found" };
-  }
   if (err instanceof TelegramTransportError || err instanceof HttpError) {
+    // No Telegram answer at all. Whatever the message text says, a transport
+    // error can never prove the topic is gone.
     return { status: "unknown", reason: "transport-failed", detail: telegramNetworkErrorDetails(err, botToken) };
   }
   if (err instanceof GrammyError) {
+    // Only Telegram's own description is destructive-grade evidence.
+    if (err.description.includes("thread not found") || err.description.includes("TOPIC_ID_INVALID")) {
+      return { status: "missing", evidence: "telegram-topic-not-found" };
+    }
     const code = err.error_code;
     const reason = code === 429 || code >= 500 ? "provider-unavailable" : "provider-rejected";
     return { status: "unknown", reason, detail: redactTelegramSecrets(`${code} ${err.description}`, botToken) };
