@@ -82,6 +82,8 @@ describe("topic cleanup data-loss firewall", () => {
 
     await (fm as any).runTopicCleanup(0);
     await (fm as any).runTopicCleanup(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
 
     expect(adapter.probeTopicPresence).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
@@ -102,6 +104,9 @@ describe("topic cleanup data-loss firewall", () => {
     const before = JSON.stringify(fm.fleetConfig);
     const remove = vi.spyOn(fm.lifecycle, "remove");
 
+    await (fm as any).runTopicCleanup(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
     await (fm as any).runTopicCleanup(0);
 
     expect(remove).not.toHaveBeenCalled();
@@ -272,5 +277,189 @@ describe("topic cleanup data-loss firewall", () => {
 
     await fm.removeInstance("worker", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
     expect(remove).toHaveBeenCalledWith("worker", expect.objectContaining({ source: "dashboard-confirmed" }));
+  });
+
+  // ── #776: a transient unknown is debug-only; only a streak reaches the operator ──
+
+  it("logs a single unknown pass at debug and tells nobody", async () => {
+    const fm = fleet();
+    const { adapter } = fakeAdapter("owner", async () => ({
+      status: "unknown", reason: "transport-failed", detail: "ECONNRESET socket broke",
+    }));
+    install(fm, adapter);
+    const debug = vi.spyOn(fm.logger, "debug");
+    const error = vi.spyOn(fm.logger, "error");
+
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "topic-1", reason: "transport-failed", detail: "ECONNRESET socket broke", streak: 1 }),
+      expect.stringContaining("transient"),
+    );
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+  });
+
+  it("escalates to the operator only after TOPIC_PROBE_UNKNOWN_ESCALATION consecutive unknown passes", async () => {
+    const fm = fleet();
+    const { adapter } = fakeAdapter("owner", async () => ({ status: "unknown", reason: "provider-unavailable" }));
+    install(fm, adapter);
+    const error = vi.spyOn(fm.logger, "error");
+    const escalation = FleetManager.TOPIC_PROBE_UNKNOWN_ESCALATION;
+    expect(escalation).toBeGreaterThan(1);
+
+    for (let pass = 1; pass < escalation; pass++) {
+      await (fm as any).runTopicCleanup(0);
+      expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    }
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).toHaveBeenCalledTimes(1);
+    expect((fm as any).notifyFleetError.mock.calls[0][0]).toContain(String(escalation));
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "provider-unavailable", streak: escalation }),
+      expect.stringContaining("repeatedly"),
+    );
+    // Still fail-closed: the route and config were never touched.
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+    expect(fm.fleetConfig!.instances.worker).toBeDefined();
+  });
+
+  it("resets the unknown streak when a pass confirms the topic is present", async () => {
+    const fm = fleet();
+    // provider-rejected is topic-scoped, so the streak lives under thread:topic-1.
+    let result: TopicPresence = { status: "unknown", reason: "provider-rejected" };
+    const { adapter } = fakeAdapter("owner", async () => result);
+    install(fm, adapter);
+
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+    result = { status: "present", generation: 1 };
+    await (fm as any).runTopicCleanup(0);
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined();
+    result = { status: "unknown", reason: "provider-rejected" };
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBe(2);
+  });
+
+  function threeRoutes() {
+    const dirs = ["worker-2", "worker-3"].map(name => join(dataDir, "repo", name));
+    for (const dir of dirs) mkdirSync(dir, { recursive: true });
+    return fleet({
+      worker: { working_directory: workDir, topic_id: "topic-1", channel_id: "owner" },
+      "worker-2": { working_directory: dirs[0], topic_id: "topic-2", channel_id: "owner" },
+      "worker-3": { working_directory: dirs[1], topic_id: "topic-3", channel_id: "owner" },
+    });
+  }
+
+  it("counts an adapter outage once per pass, however many routes the adapter owns", async () => {
+    const fm = threeRoutes();
+    const { adapter } = fakeAdapter("owner", async () => ({ status: "present" }), {
+      status: "retrying", isReady: false, generation: 4,
+    });
+    install(fm, adapter);
+    const streak = () => (fm as any).topicProbeUnknownStreak.get("adapter:owner");
+
+    // Three routes on one dead adapter is ONE failed check, not three.
+    await (fm as any).runTopicCleanup(0);
+    expect(streak()).toBe(1);
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined();
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
+    expect(streak()).toBe(2);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
+
+    expect(streak()).toBe(3);
+    expect((fm as any).notifyFleetError).toHaveBeenCalledTimes(1);
+    expect((fm as any).notifyFleetError.mock.calls[0][0]).toContain("3");
+    expect(adapter.probeTopicPresence).not.toHaveBeenCalled();
+  });
+
+  it.each(["transport-failed", "provider-unavailable"])(
+    "treats a Telegram %s result as an adapter outage shared by all routes, once per pass",
+    async reason => {
+      const fm = threeRoutes();
+      const { adapter } = fakeAdapter("owner", async () => ({ status: "unknown", reason, detail: "redacted" }));
+      install(fm, adapter);
+
+      await (fm as any).runTopicCleanup(0);
+      expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(3);
+      expect((fm as any).topicProbeUnknownStreak.get("adapter:owner")).toBe(1);
+      for (const thread of ["topic-1", "topic-2", "topic-3"]) {
+        expect((fm as any).topicProbeUnknownStreak.get(`thread:${thread}`)).toBeUndefined();
+      }
+      await (fm as any).runTopicCleanup(0);
+      expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+      await (fm as any).runTopicCleanup(0);
+      expect((fm as any).notifyFleetError).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("keeps provider-rejected scoped to the one route that was rejected", async () => {
+    const fm = threeRoutes();
+    const { adapter } = fakeAdapter("owner", async (topicId: string) => topicId === "topic-2"
+      ? { status: "unknown", reason: "provider-rejected", detail: "400 chat not found" }
+      : { status: "present", generation: 1 });
+    install(fm, adapter);
+
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-2")).toBe(1);
+    expect((fm as any).topicProbeUnknownStreak.get("adapter:owner")).toBeUndefined();
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined();
+  });
+
+  it("lets a definite answer on the same adapter outrank an unknown in the same pass, whatever the route order", async () => {
+    const fm = threeRoutes();
+    // topic-1 is probed first and fails on transport; topic-2 and topic-3 then
+    // answer present through the same adapter — the adapter is evidently alive.
+    const { adapter } = fakeAdapter("owner", async (topicId: string) => topicId === "topic-1"
+      ? { status: "unknown", reason: "transport-failed", detail: "ECONNRESET" }
+      : { status: "present", generation: 1 });
+    install(fm, adapter);
+    (fm as any).topicProbeUnknownStreak.set("adapter:owner", 2);
+
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).topicProbeUnknownStreak.get("adapter:owner")).toBeUndefined();
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+
+    // And the reverse order: unknown probed last must not resurrect the streak.
+    const reversed = threeRoutes();
+    const late = fakeAdapter("owner", async (topicId: string) => topicId === "topic-3"
+      ? { status: "unknown", reason: "transport-failed", detail: "ECONNRESET" }
+      : { status: "present", generation: 1 });
+    install(reversed, late.adapter);
+    await (reversed as any).runTopicCleanup(0);
+    expect((reversed as any).topicProbeUnknownStreak.get("adapter:owner")).toBeUndefined();
+  });
+
+  it("feeds channelDelete unknowns into the same streak and clears it on a REST-present answer", async () => {
+    const fm = fleet();
+    let result: TopicPresence = { status: "unknown", reason: "provider-rejected" };
+    const { adapter } = fakeAdapter("owner", async () => result);
+    install(fm, adapter);
+    (fm as any).bindTopicClosedHandler(adapter, "owner", "test.topic_closed");
+    const remove = vi.spyOn(fm.lifecycle, "remove");
+
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(1));
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBe(2));
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+
+    result = { status: "present", generation: 1 };
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined());
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+    expect(readFileSync(join(workDir, "untracked.txt"), "utf8")).toBe("must survive\n");
   });
 });

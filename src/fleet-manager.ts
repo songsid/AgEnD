@@ -243,6 +243,20 @@ const HOT_INSTANCE_CONFIG_KEYS = new Set<keyof InstanceConfig>([
   "log_level",
 ]);
 
+interface TopicProbeUnknownContext {
+  instanceName: string;
+  threadId: string;
+  adapterId: string | undefined;
+  reason: string;
+  detail?: string;
+}
+
+/** Outcomes of one topic-cleanup scan, folded into the streaks once the pass ends. */
+interface TopicProbePass {
+  unknown: Map<string, TopicProbeUnknownContext>;
+  definite: Set<string>;
+}
+
 function splitHotColdConfig(config: InstanceConfig): {
   hot: Partial<InstanceConfig>;
   cold: Partial<InstanceConfig>;
@@ -524,6 +538,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicCleanupInFlight: Promise<void> | null = null;
   private topicCleanupGeneration = 0;
   private topicProbeWarnings = new Map<string, number>();
+  /**
+   * Consecutive unknown probe results per route (or per adapter for outage
+   * class reasons). A single transient never reaches the operator; only a
+   * streak of TOPIC_PROBE_UNKNOWN_ESCALATION does.
+   */
+  private topicProbeUnknownStreak = new Map<string, number>();
+  /** Unknown results in a row before the operator is told. 3 × 5 min poller = 15 min. */
+  static readonly TOPIC_PROBE_UNKNOWN_ESCALATION = 3;
+  /** Reasons that describe the adapter, not one topic — counted once per adapter. */
+  private static readonly TOPIC_PROBE_ADAPTER_SCOPED_REASONS = new Set([
+    "owner-adapter-unavailable",
+    "owner-adapter-not-ready",
+    "owner-adapter-generation-changed",
+    "owner-adapter-changed-before-action",
+    "adapter-not-ready",
+    "adapter-not-initialized",
+    "adapter-generation-changed",
+    "topic-close-from-unready-adapter",
+    "topic-close-generation-changed",
+    // Telegram probe: the transport or Telegram itself is down, not one topic.
+    "transport-failed",
+    "provider-unavailable",
+  ]);
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
@@ -5824,15 +5861,96 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result?.generation === undefined || result.generation === after.generation;
   }
 
-  private warnTopicProbeUnknown(instanceName: string, threadId: string, adapterId: string | undefined, reason: string): void {
+  private topicProbeStreakKey(threadId: string, adapterId: string | undefined, reason: string): string {
+    return FleetManager.TOPIC_PROBE_ADAPTER_SCOPED_REASONS.has(reason)
+      ? `adapter:${adapterId ?? "unbound"}`
+      : `thread:${threadId}`;
+  }
+
+  /** A definite answer (present or missing) ends the unknown streak for that route and its adapter. */
+  private clearTopicProbeUnknownStreak(threadId: string, adapterId: string | undefined): void {
+    this.topicProbeUnknownStreak.delete(`thread:${threadId}`);
+    this.topicProbeUnknownStreak.delete(`adapter:${adapterId ?? "unbound"}`);
+  }
+
+  /**
+   * Record one unknown probe result. Nothing here can touch quarantine or
+   * removal: unknown is always retained data. The only question is whether
+   * the operator hears about it, and a single transient (one flaky HTTP call
+   * out of dozens per pass) must not — only a streak does.
+   *
+   * Used directly for single-route events (channelDelete, the pre-action
+   * fence). The periodic scan goes through a TopicProbePass instead, so one
+   * pass over N routes of a dead adapter counts as ONE check, not N.
+   */
+  private warnTopicProbeUnknown(
+    instanceName: string,
+    threadId: string,
+    adapterId: string | undefined,
+    reason: string,
+    detail?: string,
+  ): void {
+    this.noteTopicProbeUnknown(this.topicProbeStreakKey(threadId, adapterId, reason),
+      { instanceName, threadId, adapterId, reason, detail });
+  }
+
+  /** One scan's worth of probe outcomes, applied to the streaks after the loop. */
+  private newTopicProbePass(): TopicProbePass {
+    return { unknown: new Map(), definite: new Set() };
+  }
+
+  private passTopicProbeUnknown(
+    pass: TopicProbePass,
+    instanceName: string,
+    threadId: string,
+    adapterId: string | undefined,
+    reason: string,
+    detail?: string,
+  ): void {
+    const key = this.topicProbeStreakKey(threadId, adapterId, reason);
+    // First unknown per key per pass wins; the rest of the routes on a dead
+    // adapter are the same observation, not additional checks.
+    if (!pass.unknown.has(key)) pass.unknown.set(key, { instanceName, threadId, adapterId, reason, detail });
+  }
+
+  private passTopicProbeDefinite(pass: TopicProbePass, threadId: string, adapterId: string | undefined): void {
+    pass.definite.add(`thread:${threadId}`);
+    pass.definite.add(`adapter:${adapterId ?? "unbound"}`);
+  }
+
+  /**
+   * Apply a pass: a definite answer resets its keys, and an adapter that
+   * answered for any route this pass is evidently alive, so an unknown for the
+   * same adapter key in the same pass does not count — regardless of the order
+   * the routes happened to be probed in.
+   */
+  private applyTopicProbePass(pass: TopicProbePass): void {
+    for (const key of pass.definite) this.topicProbeUnknownStreak.delete(key);
+    for (const [key, ctx] of pass.unknown) {
+      if (pass.definite.has(key)) continue;
+      this.noteTopicProbeUnknown(key, ctx);
+    }
+  }
+
+  private noteTopicProbeUnknown(
+    streakKey: string,
+    { instanceName, threadId, adapterId, reason, detail }: TopicProbeUnknownContext,
+  ): void {
+    const streak = (this.topicProbeUnknownStreak.get(streakKey) ?? 0) + 1;
+    this.topicProbeUnknownStreak.set(streakKey, streak);
+    if (streak < FleetManager.TOPIC_PROBE_UNKNOWN_ESCALATION) {
+      this.logger.debug({ instanceName, threadId, adapterId, reason, detail, streak },
+        "Topic presence not confirmed this pass — transient, retaining instance and all data");
+      return;
+    }
     const key = `${adapterId ?? "unbound"}:${reason}`;
     const now = Date.now();
     const last = this.topicProbeWarnings.get(key) ?? 0;
     if (now - last < FleetManager.FLEET_ERROR_THROTTLE_MS) return;
     this.topicProbeWarnings.set(key, now);
-    this.logger.error({ instanceName, threadId, adapterId, reason },
-      "Topic presence could not be confirmed — retaining instance and all data");
-    this.notifyFleetError(t("fleet.topic_probe_unknown", instanceName, adapterId ?? "unbound"));
+    this.logger.error({ instanceName, threadId, adapterId, reason, detail, streak },
+      "Topic presence could not be confirmed repeatedly — retaining instance and all data");
+    this.notifyFleetError(t("fleet.topic_probe_unknown", instanceName, adapterId ?? "unbound", streak));
   }
 
   /** One fixed-snapshot topology pass. Automatic evidence can only quarantine. */
@@ -5846,6 +5964,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter: ChannelAdapter;
       generation?: number;
     }> = [];
+    const pass = this.newTopicProbePass();
 
     for (const [threadId, target] of snapshot) {
       if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
@@ -5854,12 +5973,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapterId = this.getInstanceAdapterId(target.name);
       const adapter = adapterId ? this.adapters.get(adapterId) : undefined;
       if (!adapterId || !adapter?.probeTopicPresence) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-unavailable");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-unavailable");
         continue;
       }
       const before = this.confirmedProbeFence(adapterId, adapter);
       if (!before) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-not-ready");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-not-ready");
         continue;
       }
 
@@ -5871,17 +5990,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
       if (!this.sameProbeFence(adapterId, adapter, before, result)) {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, "owner-adapter-generation-changed");
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-generation-changed");
         continue;
       }
       if (result.status === "unknown") {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason);
-      } else if (result.status === "missing") {
-        missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
+        this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, result.reason, result.detail);
+      } else {
+        this.passTopicProbeDefinite(pass, threadId, adapterId);
+        if (result.status === "missing") {
+          missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
+        }
       }
     }
 
-    if (generation !== this.topicCleanupGeneration || this.shuttingDown || missing.length === 0) return;
+    if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
+    // One pass, one check: streaks move by at most one per key here.
+    this.applyTopicProbePass(pass);
+    if (missing.length === 0) return;
     if (missing.length > 1) {
       this.logger.error({ missing: missing.map(item => ({ instanceName: item.target.name, threadId: item.threadId, adapterId: item.adapterId })) },
         "Multiple topics appeared missing in one pass — treating topology evidence as untrusted and retaining all data");
@@ -5932,9 +6057,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.warnTopicProbeUnknown(target.name, threadId, adapterId, "topic-close-generation-changed");
       return;
     }
+    if (result.status === "unknown") {
+      this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason, result.detail);
+      return;
+    }
+    this.clearTopicProbeUnknownStreak(threadId, adapterId);
     if (result.status !== "missing") {
-      this.warnTopicProbeUnknown(target.name, threadId, adapterId,
-        result.status === "unknown" ? result.reason : "topic-close-not-confirmed-missing");
+      // The gateway said deleted, REST says present: a definite answer, so it
+      // is not an unknown streak — but it is worth one debug line.
+      this.logger.debug({ instanceName: target.name, threadId, adapterId },
+        "channelDelete hint contradicted by REST — topic present, nothing to do");
       return;
     }
     this.topicCommands.handleTopicDeleted(threadId, {

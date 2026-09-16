@@ -59,7 +59,7 @@ export type TopicMissingEvidence = "discord-unknown-channel" | "telegram-topic-n
 export type TopicPresence =
   | { status: "present"; generation?: number }
   | { status: "missing"; generation?: number; evidence: TopicMissingEvidence }
-  | { status: "unknown"; generation?: number; reason: string };
+  | { status: "unknown"; generation?: number; reason: string; detail?: string };
 
 export interface ChannelAdapter extends EventEmitter {
   readonly type: string;

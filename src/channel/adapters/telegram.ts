@@ -13,6 +13,8 @@ import { MessageQueue } from "../message-queue.js";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"]);
 const TELEGRAM_NETWORK_RETRY_MS = 250;
+/** A topology probe message is harmless to resend, so it may retry where sendMessage cannot. */
+export const TELEGRAM_PROBE_RETRY_MS = 1_000;
 const TELEGRAM_LONG_POLL_TIMEOUT_SECONDS = 20;
 const HTTP_AGENT_RESET_COOLDOWN_MS = 30_000;
 const DEFINITELY_PRE_DELIVERY_CODES = new Set([
@@ -111,6 +113,36 @@ class TelegramTransportError extends Error {
     const inner = underlyingTelegramNetworkError(source) as { code?: unknown } | null;
     if (typeof inner?.code === "string") this.code = inner.code;
   }
+}
+
+/**
+ * Turn a failed topology probe into the tri-state contract.
+ *
+ * `missing` needs Telegram's own words (a GrammyError whose description says
+ * thread not found / TOPIC_ID_INVALID). Every other error type is `unknown` no
+ * matter what its text says, split by what failed so the fleet's debug log
+ * can tell a flaky socket from a Telegram-side rejection:
+ *  - transport-failed: the request never got a Telegram answer (HttpError, or
+ *    the recovery layer's TelegramTransportError). Safe to retry for a probe.
+ *  - provider-unavailable: Telegram answered 429 or 5xx.
+ *  - provider-rejected: Telegram answered with any other error.
+ */
+export function classifyTelegramProbeError(err: unknown, botToken = ""): TopicPresence {
+  if (err instanceof TelegramTransportError || err instanceof HttpError) {
+    // No Telegram answer at all. Whatever the message text says, a transport
+    // error can never prove the topic is gone.
+    return { status: "unknown", reason: "transport-failed", detail: telegramNetworkErrorDetails(err, botToken) };
+  }
+  if (err instanceof GrammyError) {
+    // Only Telegram's own description is destructive-grade evidence.
+    if (err.description.includes("thread not found") || err.description.includes("TOPIC_ID_INVALID")) {
+      return { status: "missing", evidence: "telegram-topic-not-found" };
+    }
+    const code = err.error_code;
+    const reason = code === 429 || code >= 500 ? "provider-unavailable" : "provider-rejected";
+    return { status: "unknown", reason, detail: redactTelegramSecrets(`${code} ${err.description}`, botToken) };
+  }
+  return { status: "unknown", reason: "provider-probe-failed", detail: redactTelegramSecrets(errorMessage(err), botToken) };
 }
 
 /**
@@ -1111,6 +1143,22 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     // AgEnD uses id=1 as the General-topic sentinel. Telegram rejects an
     // explicit message_thread_id=1, but the group root exists when the chat does.
     if (String(topicId) === "1") return { status: "present" };
+    // The API-level recovery (installNetworkRecovery) refuses to retry a
+    // sendMessage whose outcome is ambiguous, because a real message might
+    // already have landed. A zero-width probe has no such cost, so a transport
+    // failure gets one more attempt here before it is reported as unknown.
+    let result = await this.probeTopicOnce(chatId, topicId);
+    if (result.status === "unknown" && result.reason === "transport-failed") {
+      await new Promise(resolve => {
+        const timer = setTimeout(resolve, TELEGRAM_PROBE_RETRY_MS);
+        timer.unref?.();
+      });
+      result = await this.probeTopicOnce(chatId, topicId);
+    }
+    return result;
+  }
+
+  private async probeTopicOnce(chatId: string, topicId: number | string): Promise<TopicPresence> {
     try {
       const msg = await this.bot.api.sendMessage(Number(chatId), "\u200B", {
         message_thread_id: Number(topicId),
@@ -1118,11 +1166,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       await this.bot.api.deleteMessage(Number(chatId), msg.message_id).catch(() => {});
       return { status: "present" };
     } catch (err: unknown) {
-      const errMsg = String(err);
-      if (errMsg.includes("thread not found") || errMsg.includes("TOPIC_ID_INVALID")) {
-        return { status: "missing", evidence: "telegram-topic-not-found" };
-      }
-      return { status: "unknown", reason: "provider-probe-failed" };
+      return classifyTelegramProbeError(err, this.botToken);
     }
   }
 
