@@ -194,7 +194,7 @@
       backend: "Backend", model: "Model", workingDir: "Working directory", channelBinding: "Channel binding",
       description: "Description", systemPrompt: "System prompt", tags: "Tags", generalTopicField: "General topic (fleet dispatcher)",
       runtimeResources: "Runtime & Resources", autoPause: "Auto-pause after", minutes: "minutes", inheritDefault: "Inherit from defaults",
-      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
+      detection: "Detection", startup: "Startup", backendSection: "Backend", advancedSection: "Advanced & Access", hangEnabled: "Hang detector enabled", hangTimeout: "Stuck timeout", agentMode: "Agent mode", toolSet: "Tool set", toolProgress: "Tool progress", replyCompletionGuard: "Require a delivered reply", replyGuardSupported: "Active for Claude Code in MCP mode.", replyGuardUnsupported: "Stored but inactive: {0} in {1} mode does not support reply-drop recovery.", logLevel: "Log level", concurrency: "Startup concurrency", staggerDelay: "Stagger delay", lightweight: "Lightweight mode", modelFailover: "Fallback model", displayName: "Display name", pause: "Pause", wake: "Wake", accessMode: "Access mode", affected: "Affected instances",
       language: "Language (bot replies)", defaultBackend: "Default backend", defaultModel: "Default model", allowedUsers: "Allowed users (primary bot)",
       classicAdmins: "ClassicBot admins", allowedGuilds: "Allowed guilds", type: "Type", adapterId: "Adapter id",
       tokenEnv: "Bot token env var", groupId: "Group / guild id", nameField: "Name",
@@ -216,7 +216,7 @@
       backend: "後端", model: "模型", workingDir: "工作目錄", channelBinding: "頻道綁定",
       description: "描述", systemPrompt: "System prompt", tags: "標籤", generalTopicField: "General topic（fleet 分派器）",
       runtimeResources: "執行環境與資源", autoPause: "閒置後自動暫停", minutes: "分鐘", inheritDefault: "沿用全域預設值",
-      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
+      detection: "偵測", startup: "啟動", backendSection: "後端", advancedSection: "進階與存取", hangEnabled: "啟用卡住偵測", hangTimeout: "卡住逾時", agentMode: "Agent 模式", toolSet: "工具集", toolProgress: "工具進度", replyCompletionGuard: "要求送出回覆", replyGuardSupported: "Claude Code 的 MCP 模式可用。", replyGuardUnsupported: "設定會保留，但不會生效：{0} 的 {1} 模式不支援回覆遺失補救。", logLevel: "Log 等級", concurrency: "啟動併發數", staggerDelay: "錯開延遲", lightweight: "輕量模式", modelFailover: "備援模型", displayName: "顯示名稱", pause: "暫停", wake: "喚醒", accessMode: "存取模式", affected: "受影響 instances",
       language: "語言（bot 回覆）", defaultBackend: "預設後端", defaultModel: "預設模型", allowedUsers: "允許使用者（主 bot）",
       classicAdmins: "ClassicBot 管理員", allowedGuilds: "允許的伺服器", type: "類型", adapterId: "Adapter id",
       tokenEnv: "Bot token 環境變數", groupId: "群組 / guild id", nameField: "名稱",
@@ -373,7 +373,7 @@
     button.disabled = false;
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
-  const HOT_FIELDS = new Set(["tool_progress", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"]);
+  const HOT_FIELDS = new Set(["tool_progress", "reply_completion_guard", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"]);
   const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function changedFields(next, baseline) {
     return Object.fromEntries(Object.entries(next).filter(([key, value]) => !sameValue(value, baseline[key])));
@@ -389,6 +389,12 @@
     toggle.onchange = () => { input.disabled = toggle.checked; };
     return { input, toggle, row: el("div", {}, input, el("label", { class: "inherit-row" }, toggle, el("span", {}, t("inheritDefault")), impact(impactKind))) };
   }
+  const replyGuardSupported = (backend, mode) => backend === "claude-code" && mode === "mcp";
+  const replyGuardHint = (backend, mode) => el(
+    "div",
+    { class: "hint" },
+    replyGuardSupported(backend, mode) ? t("replyGuardSupported") : tf("replyGuardUnsupported", backend, mode),
+  );
   function setValidation(input, feedback, error, warning) {
     input.classList.toggle("invalid", !!error);
     feedback.className = "feedback" + (error ? " error" : warning ? " warning" : "");
@@ -501,7 +507,17 @@
     const hang = overrideControl(hangHolder, "value", el("input", { type: "number", min: "0.1", step: "0.5", value: hangRaw.timeout_minutes ?? defaults.hang_detector?.timeout_minutes ?? 15 }), defaults.hang_detector?.timeout_minutes ?? 15);
     const agentMode = overrideControl(inst, "agent_mode", select(inst.agent_mode || defaults.agent_mode || "mcp", ["mcp", "cli"]), defaults.agent_mode || "mcp");
     const toolSet = overrideControl(inst, "tool_set", select(inst.tool_set || defaults.tool_set || "full", ["full", "standard", "minimal"]), defaults.tool_set || "full");
-    const toolProgress = overrideControl(inst, "tool_progress", select(inst.tool_progress || defaults.tool_progress || "off", ["off", "standard", "verbose"]), defaults.tool_progress || "off", "now");
+    const toolProgress = overrideControl(inst, "tool_progress", select(inst.tool_progress ?? defaults.tool_progress ?? "off", ["off", "standard", "verbose"]), defaults.tool_progress ?? "off", "now");
+    const fReplyGuard = el("input", { type: "checkbox" });
+    fReplyGuard.checked = inst.reply_completion_guard ?? defaults.reply_completion_guard ?? true;
+    const replyGuard = overrideControl(inst, "reply_completion_guard", fReplyGuard, defaults.reply_completion_guard ?? true, "now");
+    const replyHint = replyGuardHint(fBackend.value, agentMode.input.value);
+    const refreshReplyHint = () => {
+      const supported = replyGuardSupported(fBackend.value, agentMode.input.value);
+      replyHint.textContent = supported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, agentMode.input.value);
+    };
+    fBackend.addEventListener("change", refreshReplyHint);
+    agentMode.input.addEventListener("change", refreshReplyHint);
     const logLevel = overrideControl(inst, "log_level", select(inst.log_level || defaults.log_level || "info", ["trace", "debug", "info", "warn", "error"]), defaults.log_level || "info");
     const fLightweight = el("input", { type: "checkbox" }); fLightweight.checked = inst.lightweight ?? defaults.lightweight ?? false;
     const lightweight = overrideControl(inst, "lightweight", fLightweight, defaults.lightweight ?? false);
@@ -521,7 +537,7 @@
       saveBtn.disabled = !(validAuto && validHang);
       return !saveBtn.disabled;
     };
-    for (const ctl of [auto, hang, agentMode, toolSet, toolProgress, logLevel, lightweight, failover, displayName]) {
+    for (const ctl of [auto, hang, agentMode, toolSet, toolProgress, replyGuard, logLevel, lightweight, failover, displayName]) {
       ctl.input.addEventListener("input", validate); ctl.input.addEventListener("change", validate); ctl.toggle.addEventListener("change", validate);
     }
     saveBtn.onclick = async () => {
@@ -536,6 +552,7 @@
         agent_mode: agentMode.toggle.checked ? null : agentMode.input.value,
         tool_set: toolSet.toggle.checked ? null : toolSet.input.value,
         tool_progress: toolProgress.toggle.checked ? null : toolProgress.input.value,
+        reply_completion_guard: replyGuard.toggle.checked ? null : replyGuard.input.checked,
         log_level: logLevel.toggle.checked ? null : logLevel.input.value,
         lightweight: lightweight.toggle.checked ? null : lightweight.input.checked,
         model_failover: failover.toggle.checked ? null : (failover.input.value.trim() ? [failover.input.value.trim()] : []),
@@ -555,6 +572,7 @@
         agent_mode: hasOwn(inst, "agent_mode") ? inst.agent_mode : null,
         tool_set: hasOwn(inst, "tool_set") ? inst.tool_set : null,
         tool_progress: hasOwn(inst, "tool_progress") ? inst.tool_progress : null,
+        reply_completion_guard: hasOwn(inst, "reply_completion_guard") ? inst.reply_completion_guard : null,
         log_level: hasOwn(inst, "log_level") ? inst.log_level : null,
         lightweight: hasOwn(inst, "lightweight") ? inst.lightweight : null,
         model_failover: hasOwn(inst, "model_failover") ? inst.model_failover : null,
@@ -591,6 +609,7 @@
         el("div", {}, el("label", {}, t("agentMode")), agentMode.row),
         el("div", {}, el("label", {}, t("toolSet")), toolSet.row),
         el("div", {}, el("label", {}, t("toolProgress"), impact("now")), toolProgress.row),
+        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("now")), replyGuard.row, replyHint),
         el("div", {}, el("label", {}, t("logLevel"), impact("now")), logLevel.row),
         el("div", {}, el("label", {}, t("lightweight")), lightweight.row),
         el("div", {}, el("label", {}, t("modelFailover")), failover.row, failoverFeedback)),
@@ -717,10 +736,22 @@
     const inheritedBackend = classicDefaults.backend || fleetDefaults.backend || "claude-code";
     const inheritedModel = classicDefaults.model || fleetDefaults.model || "";
     const inheritedAutoPause = classicDefaults.auto_pause_after ?? fleetDefaults.auto_pause_after ?? 0;
+    const inheritedToolProgress = classicDefaults.tool_progress ?? fleetDefaults.tool_progress ?? "off";
+    const inheritedReplyGuard = classicDefaults.reply_completion_guard ?? fleetDefaults.reply_completion_guard ?? true;
     const runtime = classicRuntime(c.instanceName);
     const fBackend = select(c.backend || inheritedBackend, BACKENDS.filter(value => value !== "gemini-cli"));
     const fModel = el("input", { type: "text", value: c.model || "", placeholder: inheritedModel || "(inherit default)" });
     const auto = overrideControl(c, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: c.auto_pause_after ?? inheritedAutoPause, placeholder: "0 = disabled" }), inheritedAutoPause);
+    const toolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? inheritedToolProgress, ["off", "standard", "verbose"]), inheritedToolProgress, "now");
+    const fReplyGuard = el("input", { type: "checkbox" });
+    fReplyGuard.checked = c.reply_completion_guard ?? inheritedReplyGuard;
+    const replyGuard = overrideControl(c, "reply_completion_guard", fReplyGuard, inheritedReplyGuard, "now");
+    const classicMode = fleetDefaults.agent_mode ?? "mcp";
+    const replyHint = replyGuardHint(fBackend.value, classicMode);
+    fBackend.addEventListener("change", () => {
+      const supported = replyGuardSupported(fBackend.value, classicMode);
+      replyHint.textContent = supported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, classicMode);
+    });
     const fCollab = el("input", { type: "checkbox" }); fCollab.checked = !!c.collab;
     const fContext = el("input", { type: "number", min: "0", step: "1", value: c.context_lines ?? classicDefaults.context_lines ?? 5 });
     const autoFeedback = el("div", { class: "feedback" });
@@ -734,24 +765,39 @@
       saveBtn.disabled = !(validAuto && validContext);
       return !saveBtn.disabled;
     };
-    for (const input of [fBackend, fModel, auto.input, auto.toggle, fCollab, fContext]) {
+    for (const input of [fBackend, fModel, auto.input, auto.toggle, toolProgress.input, toolProgress.toggle, replyGuard.input, replyGuard.toggle, fCollab, fContext]) {
       input.addEventListener("input", validate); input.addEventListener("change", validate);
     }
     saveBtn.onclick = () => {
       if (!validate()) return;
-      const patch = {
+      const nextPatch = {
         backend: fBackend.value,
         model: fModel.value.trim() || null,
         auto_pause_after: auto.toggle.checked ? null : Number(auto.input.value),
+        tool_progress: toolProgress.toggle.checked ? null : toolProgress.input.value,
+        reply_completion_guard: replyGuard.toggle.checked ? null : replyGuard.input.checked,
         collab: fCollab.checked,
         context_lines: Number(fContext.value),
       };
+      const patch = changedFields(nextPatch, {
+        backend: c.backend || inheritedBackend,
+        model: c.model?.trim() || null,
+        auto_pause_after: hasOwn(c, "auto_pause_after") ? c.auto_pause_after : null,
+        tool_progress: hasOwn(c, "tool_progress") ? c.tool_progress : null,
+        reply_completion_guard: hasOwn(c, "reply_completion_guard") ? c.reply_completion_guard : null,
+        collab: !!c.collab,
+        context_lines: c.context_lines ?? classicDefaults.context_lines ?? 5,
+      });
+      if (Object.keys(patch).length === 0) { editingClassic = null; renderClassic(); return; }
       state.classic.channels[c.key] = { ...state.classic.channels[c.key], ...patch };
       if (patch.model === null) delete state.classic.channels[c.key].model;
       if (patch.auto_pause_after === null) delete state.classic.channels[c.key].auto_pause_after;
+      if (patch.tool_progress === null) delete state.classic.channels[c.key].tool_progress;
+      if (patch.reply_completion_guard === null) delete state.classic.channels[c.key].reply_completion_guard;
+      const hotOnly = Object.keys(patch).every(key => key === "tool_progress" || key === "reply_completion_guard");
       stageChange(`classic:${c.key}`, {
         label: `Update ${c.name || c.instanceName}`,
-        impact: "instance",
+        impact: hotOnly ? "now" : "instance",
         apply: () => api(`/api/settings/classic/channels/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
       });
       editingClassic = null;
@@ -763,6 +809,8 @@
         el("div", {}, el("label", {}, t("backend"), impact("instance")), fBackend),
         el("div", {}, el("label", {}, t("model"), impact("instance")), fModel),
         el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), auto.row, autoFeedback),
+        el("div", {}, el("label", {}, t("toolProgress"), impact("now")), toolProgress.row),
+        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("now")), replyGuard.row, replyHint),
         el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("instance")))),
       el("div", { class: "advanced-only" },
         el("label", {}, "Context lines", impact("instance")), fContext, contextFeedback),
@@ -872,7 +920,11 @@
     const fModel = el("input", { type: "text", value: d.model || "", placeholder: "e.g. claude-opus-4-8" });
     const fAgentMode = select(d.agent_mode || "mcp", ["mcp", "cli"]);
     const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
-    const fToolProgress = select(d.tool_progress || "off", ["off", "standard", "verbose"]);
+    const fToolProgress = select(d.tool_progress ?? "off", ["off", "standard", "verbose"]);
+    const fReplyGuard = el("input", { type: "checkbox" }); fReplyGuard.checked = d.reply_completion_guard ?? true;
+    const fClassicToolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? d.tool_progress ?? "off", ["off", "standard", "verbose"]), d.tool_progress ?? "off", "now");
+    const fClassicReplyInput = el("input", { type: "checkbox" }); fClassicReplyInput.checked = c.reply_completion_guard ?? d.reply_completion_guard ?? true;
+    const fClassicReplyGuard = overrideControl(c, "reply_completion_guard", fClassicReplyInput, d.reply_completion_guard ?? true, "now");
     const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"]);
     const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
     const fLocale = el("select");
@@ -889,6 +941,17 @@
     const staggerFeedback = el("div", { class: "feedback" });
     const accessFeedback = el("div", { class: "feedback" });
     const saveBtn = el("button", { class: "primary" }, t("save"));
+    const defaultReplyHint = replyGuardHint(fBackend.value, fAgentMode.value);
+    const classicReplyHint = replyGuardHint(fClassicBackend.value, fAgentMode.value);
+    const refreshDefaultReplyHints = () => {
+      const fleetSupported = replyGuardSupported(fBackend.value, fAgentMode.value);
+      defaultReplyHint.textContent = fleetSupported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fBackend.value, fAgentMode.value);
+      const classicSupported = replyGuardSupported(fClassicBackend.value, fAgentMode.value);
+      classicReplyHint.textContent = classicSupported ? t("replyGuardSupported") : tf("replyGuardUnsupported", fClassicBackend.value, fAgentMode.value);
+    };
+    fBackend.addEventListener("change", refreshDefaultReplyHints);
+    fClassicBackend.addEventListener("change", refreshDefaultReplyHints);
+    fAgentMode.addEventListener("change", refreshDefaultReplyHints);
     const validate = () => {
       const auto = Number(fAutoPause.value), timeout = Number(fHangTimeout.value);
       const concurrency = Number(fConcurrency.value), stagger = Number(fStagger.value);
@@ -915,6 +978,7 @@
         agent_mode: fAgentMode.value,
         tool_set: fToolSet.value,
         tool_progress: fToolProgress.value,
+        reply_completion_guard: fReplyGuard.checked,
         log_level: fLogLevel.value,
         hang_detector: { enabled: fHangEnabled.checked, timeout_minutes: Number(fHangTimeout.value) },
         startup: { concurrency: Number(fConcurrency.value), stagger_delay_ms: Number(fStagger.value) },
@@ -926,21 +990,31 @@
         auto_pause_after: d.auto_pause_after ?? 0,
         agent_mode: d.agent_mode || "mcp",
         tool_set: d.tool_set || "full",
-        tool_progress: d.tool_progress || "off",
+        tool_progress: d.tool_progress ?? "off",
+        reply_completion_guard: d.reply_completion_guard ?? true,
         log_level: d.log_level || "info",
         hang_detector: { enabled: hang.enabled !== false, timeout_minutes: hang.timeout_minutes ?? 15 },
         startup: { concurrency: startup.concurrency ?? 10, stagger_delay_ms: startup.stagger_delay_ms ?? 500 },
       });
       const classicPatch = changedFields(
-        { backend: fClassicBackend.value, admin_users: c.admin_users, allowed_guilds: c.allowed_guilds },
+        {
+          backend: fClassicBackend.value,
+          tool_progress: fClassicToolProgress.toggle.checked ? null : fClassicToolProgress.input.value,
+          reply_completion_guard: fClassicReplyGuard.toggle.checked ? null : fClassicReplyGuard.input.checked,
+          admin_users: c.admin_users,
+          allowed_guilds: c.allowed_guilds,
+        },
         {
           backend: originalClassicDefaults.backend || d.backend || "claude-code",
+          tool_progress: hasOwn(originalClassicDefaults, "tool_progress") ? originalClassicDefaults.tool_progress : null,
+          reply_completion_guard: hasOwn(originalClassicDefaults, "reply_completion_guard") ? originalClassicDefaults.reply_completion_guard : null,
           admin_users: originalClassicDefaults.admin_users || [],
           allowed_guilds: originalClassicDefaults.allowed_guilds || [],
         },
       );
       state.fleet.defaults = { ...d, ...defaultsPatch };
       state.classic.defaults = { ...c, ...classicPatch };
+      for (const [key, value] of Object.entries(classicPatch)) if (value === null) delete state.classic.defaults[key];
       if (Object.keys(defaultsPatch).length > 0) {
         stageChange("defaults:fleet", { label: "Update Agent defaults", impact: Object.keys(defaultsPatch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance", apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
       }
@@ -962,7 +1036,8 @@
         }
       }
       if (Object.keys(classicPatch).length > 0) {
-        stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
+        const classicHotOnly = Object.keys(classicPatch).every(key => key === "tool_progress" || key === "reply_completion_guard");
+        stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: classicHotOnly ? "now" : "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
       }
       msg.innerHTML = `<span class="s">${esc(t("readyApply"))}</span>`;
     };
@@ -978,10 +1053,14 @@
           el("div", { class: "field" }, el("label", {}, t("language"), impact("now")), fLocale),
           el("div", { class: "field" }, el("label", {}, t("defaultBackend"), impact("instance")), fBackend),
           el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("instance")), fModel),
-          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), fAutoPause, autoFeedback))),
+          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), fAutoPause, autoFeedback),
+          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fToolProgress),
+          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("now")), defaultReplyHint))),
       section("ClassicBot", true,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("instance")), fClassicBackend)),
+          el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("instance")), fClassicBackend),
+          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fClassicToolProgress.row),
+          el("div", { class: "field" }, el("label", {}, t("replyCompletionGuard"), impact("now")), fClassicReplyGuard.row, classicReplyHint)),
         el("div", { class: "field" }, el("strong", {}, "Who can use ClassicBot"),
           el("div", { class: "grid2" },
             el("div", {}, el("label", {}, t("classicAdmins"), impact("fleet")), chipList(c.admin_users, null, "user id")),
@@ -990,7 +1069,6 @@
       section(t("runtimeResources"), false,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("instance")), fToolSet),
-          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fToolProgress),
           el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("now")), fLogLevel),
           el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("instance")), fAgentMode))),
       section(t("detection"), false,

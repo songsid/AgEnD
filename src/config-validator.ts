@@ -90,6 +90,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (value.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(value.tool_progress))) {
       err(`${path}.tool_progress`, "must be off, standard, or verbose");
     }
+    if (value.reply_completion_guard !== undefined && typeof value.reply_completion_guard !== "boolean") {
+      err(`${path}.reply_completion_guard`, "must be a boolean");
+    }
 
     if (value.effort !== undefined) {
       const e = value.effort;
@@ -281,6 +284,12 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       err("defaults.backend", `unknown backend "${String(b)}" (known: ${KNOWN_BACKENDS.join(", ")})`);
     }
     validateAutoPause(d.auto_pause_after, "defaults.auto_pause_after");
+    if (d.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(d.tool_progress))) {
+      err("defaults.tool_progress", "must be off, standard, or verbose");
+    }
+    if (d.reply_completion_guard !== undefined && typeof d.reply_completion_guard !== "boolean") {
+      err("defaults.reply_completion_guard", "must be a boolean");
+    }
     for (const key of ["allowed_guilds", "admin_users", "allowed_groups", "allowed_users"]) {
       if (d[key] !== undefined && !isIdArray(d[key])) {
         err(`defaults.${key}`, "must be an array of strings/numbers");
@@ -294,6 +303,12 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
     for (const [key, channel] of Object.entries(config.channels)) {
       if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
+      if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {
+        err(`channels.${key}.tool_progress`, "must be off, standard, or verbose");
+      }
+      if (channel.reply_completion_guard !== undefined && typeof channel.reply_completion_guard !== "boolean") {
+        err(`channels.${key}.reply_completion_guard`, "must be a boolean");
+      }
     }
   }
 

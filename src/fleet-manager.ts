@@ -233,6 +233,7 @@ const IGNORED_REACTION_EMOJIS = new Set(["📷"]);
 
 const HOT_INSTANCE_CONFIG_KEYS = new Set<keyof InstanceConfig>([
   "tool_progress",
+  "reply_completion_guard",
   "mcp_proxy_reply",
   "auto_pause_after",
   "warm_cap",
@@ -1753,8 +1754,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.lifecycle.isPaused(name) ? "paused" : "not_idle";
   }
 
+  /** Deliver an already-resolved hot snapshot without depending on IPC timing. */
+  private applyHotConfigUpdate(instanceName: string, update: Record<string, unknown>): boolean {
+    const daemon = this.daemons.get(instanceName);
+    if (!daemon) return false;
+    const ipc = this.instanceIpcClients.get(instanceName);
+    const sent = ipc?.connected === true && ipc.send({ type: "config_update", config: update });
+    if (!sent) {
+      daemon.applyConfigUpdate(update);
+      this.logger.warn({ name: instanceName }, "Config-update IPC unavailable — applied hot config in-process");
+    }
+    return true;
+  }
+
+  private classicBehaviorUpdate(instanceName: string): Record<string, unknown> {
+    return {
+      tool_progress: this.classicChannels?.getToolProgressByInstance(
+        instanceName,
+        this.fleetConfig?.defaults?.tool_progress,
+      ) ?? "off",
+      reply_completion_guard: this.classicChannels?.getReplyCompletionGuardByInstance(
+        instanceName,
+        this.fleetConfig?.defaults?.reply_completion_guard,
+      ) ?? true,
+    };
+  }
+
   /** Apply a Settings edit to a ClassicBot channel without waiting for the poller. */
-  async restartClassicInstanceFromSettings(instanceName: string): Promise<void> {
+  async restartClassicInstanceFromSettings(instanceName: string, changedFields: string[] = []): Promise<void> {
     if (!this.classicChannels) throw new Error("Classic channel manager not initialized");
     const wasRunning = this.daemons.has(instanceName);
     this.classicChannels.reloadFromDisk();
@@ -1763,6 +1790,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const channel = this.classicChannels.getAll().find(item => item.instanceName === instanceName);
     if (!channel) throw new Error("Classic channel not found after reload");
     if (!wasRunning) return;
+    const hotOnly = changedFields.length > 0
+      && changedFields.every(field => field === "tool_progress" || field === "reply_completion_guard");
+    if (hotOnly) {
+      this.applyHotConfigUpdate(instanceName, this.classicBehaviorUpdate(instanceName));
+      this.logger.info({ instanceName, fields: changedFields }, "Classic instance hot config reloaded");
+      return;
+    }
     await this.stopInstance(instanceName);
     await new Promise(resolve => setTimeout(resolve, 250));
     await this.startClassicInstance(
@@ -1772,6 +1806,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
       this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
     );
+  }
+
+  /** Reload classicBot.yaml once. Kept callable so the periodic production
+   * path is covered without relying on fake timers around startAll(). */
+  private async reloadClassicConfigFromDisk(): Promise<void> {
+    try {
+      if (!this.classicChannels) return;
+      const fleetBackend = this.fleetConfig?.defaults?.backend;
+      const fleetModel = this.fleetConfig?.defaults?.model;
+      const oldBackends = new Map<string, string>();
+      const oldModels = new Map<string, string | undefined>();
+      const oldAutoPause = new Map<string, number | undefined>();
+      const oldToolProgress = new Map<string, InstanceConfig["tool_progress"]>();
+      const oldReplyGuard = new Map<string, boolean>();
+      for (const ch of this.classicChannels.getAll()) {
+        oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
+        oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
+        oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
+        oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
+        oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
+      }
+      if (!this.classicChannels.checkReload()) return;
+      // A reload can introduce a bad id (hand edit) or clear one; the
+      // throttle keeps a repeated report from flooding the topic.
+      this.reportClassicUnrecoverableIds();
+      this.reregisterClassicChannels();
+      for (const ch of this.classicChannels.getAll()) {
+        const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
+        const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
+        const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
+        const newToolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
+        const newReplyGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
+        const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
+        const modelChanged = oldModels.get(ch.instanceName) !== newModel;
+        const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
+        if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
+          this.logger.info(
+            { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
+            "Backend/model changed — restarting",
+          );
+          await this.stopInstance(ch.instanceName).catch(() => {});
+          // Small delay to let tmux window clean up
+          await new Promise(r => setTimeout(r, 2000));
+          // The manager already holds the new backend/model/auto-pause; the
+          // unattended helper reads them from it and schedules the delayed
+          // retry on failure like every other unattended start.
+          await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
+        } else if (this.daemons.has(ch.instanceName)
+          && (oldToolProgress.get(ch.instanceName) !== newToolProgress
+            || oldReplyGuard.get(ch.instanceName) !== newReplyGuard)) {
+          this.applyHotConfigUpdate(ch.instanceName, {
+            tool_progress: newToolProgress,
+            reply_completion_guard: newReplyGuard,
+          });
+          this.logger.info({ instanceName: ch.instanceName }, "Classic instance hot config reloaded");
+        }
+      }
+    } catch (err) {
+      this.logger.warn({ err }, "classicBot.yaml reload error");
+    }
   }
 
   async startInstance(
@@ -2674,48 +2768,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Poll classicBot.yaml for external changes every 30s
-    this.classicReloadTimer = setInterval(async () => {
-      try {
-        if (!this.classicChannels) return;
-        const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const fleetModel = this.fleetConfig?.defaults?.model;
-        const oldBackends = new Map<string, string>();
-        const oldModels = new Map<string, string | undefined>();
-        const oldAutoPause = new Map<string, number | undefined>();
-        for (const ch of this.classicChannels.getAll()) {
-          oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
-          oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
-          oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
-        }
-        if (!this.classicChannels.checkReload()) return;
-        // A reload can introduce a bad id (hand edit) or clear one; the
-        // throttle keeps a repeated report from flooding the topic.
-        this.reportClassicUnrecoverableIds();
-        this.reregisterClassicChannels();
-        for (const ch of this.classicChannels.getAll()) {
-          const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
-          const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
-          const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
-          const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
-          const modelChanged = oldModels.get(ch.instanceName) !== newModel;
-          const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
-          if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
-            this.logger.info(
-              { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
-              "Backend/model changed — restarting",
-            );
-            await this.stopInstance(ch.instanceName).catch(() => {});
-            // Small delay to let tmux window clean up
-            await new Promise(r => setTimeout(r, 2000));
-            // The manager already holds the new backend/model/auto-pause; the
-            // unattended helper reads them from it and schedules the delayed
-            // retry on failure like every other unattended start.
-            await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
-          }
-        }
-      } catch (err) {
-        this.logger.warn({ err }, "classicBot.yaml reload error");
-      }
+    this.classicReloadTimer = setInterval(() => {
+      void this.reloadClassicConfigFromDisk();
     }, 30_000);
 
     const costGuardConfig: CostGuardConfig = {
@@ -10766,11 +10820,27 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const workDir = join(getAgendHome(), "workspaces", instanceName);
     ensureWorkspaceGit(workDir);
     const classicIdentity = this.classicChannels?.getAll().find(ch => ch.instanceName === instanceName);
+    const toolProgress = classicIdentity
+      ? this.classicChannels?.getToolProgress(
+        classicIdentity.channelId,
+        classicIdentity.adapterId,
+        this.fleetConfig?.defaults?.tool_progress,
+      )
+      : this.fleetConfig?.defaults?.tool_progress;
+    const replyCompletionGuard = classicIdentity
+      ? this.classicChannels?.getReplyCompletionGuard(
+        classicIdentity.channelId,
+        classicIdentity.adapterId,
+        this.fleetConfig?.defaults?.reply_completion_guard,
+      )
+      : this.fleetConfig?.defaults?.reply_completion_guard;
     const config: InstanceConfig = {
       ...DEFAULT_INSTANCE_CONFIG,
       ...this.fleetConfig?.defaults,
       working_directory: workDir,
       lightweight: true,
+      tool_progress: toolProgress ?? "off",
+      reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),
       ...(model ? { model } : {}),
       ...(classicIdentity?.displayName ? { display_name: classicIdentity.displayName } : {}),
@@ -11160,6 +11230,36 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return;
     }
 
+    // Classic behavior settings share the fleet defaults but are not entries
+    // in fleet.yaml. Snapshot the old effective chain before reloading the
+    // Classic file so SIGHUP can hot-apply either source without waiting for
+    // the 30-second Classic poller.
+    const oldClassicBehavior = new Map<string, {
+      backend: string;
+      model?: string;
+      autoPauseAfter?: number;
+      toolProgress: InstanceConfig["tool_progress"];
+      replyCompletionGuard: boolean;
+    }>();
+    if (this.classicChannels) {
+      for (const ch of this.classicChannels.getAll()) {
+        const runtimeConfig = this.daemons.get(ch.instanceName)?.getConfigSnapshot?.();
+        oldClassicBehavior.set(ch.instanceName, {
+          backend: this.classicChannels.getBackend(ch.channelId, ch.adapterId, oldConfig?.defaults?.backend),
+          model: this.classicChannels.getModel(ch.channelId, ch.adapterId, oldConfig?.defaults?.model),
+          autoPauseAfter: this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, oldConfig?.defaults?.auto_pause_after),
+          // Settings mutates FleetManager's in-memory defaults before SIGHUP.
+          // The live daemon is therefore the authority for the previous hot
+          // values, exactly as in the fleet-topic reconciliation below.
+          toolProgress: runtimeConfig?.tool_progress
+            ?? this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, oldConfig?.defaults?.tool_progress),
+          replyCompletionGuard: runtimeConfig?.reply_completion_guard
+            ?? this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, oldConfig?.defaults?.reply_completion_guard),
+        });
+      }
+      if (this.classicChannels.checkReload()) this.reportClassicUnrecoverableIds();
+    }
+
     this.routing.rebuild(this.fleetConfig!);
     this.reregisterClassicChannels();
     this.scheduler?.reload();
@@ -11224,6 +11324,35 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             this.logger.warn({ name }, "Config-update IPC unavailable — applied hot config in-process");
           }
           this.logger.info({ name, fields: [...HOT_INSTANCE_CONFIG_KEYS] }, "Instance hot config reloaded");
+        }
+      }
+    }
+
+    // A Classic channel inherits fleet defaults beneath its own two levels.
+    // Recompute that complete chain on SIGHUP. Only the two behavior switches
+    // are hot; changes to backend/model/auto-pause retain the existing restart
+    // semantics.
+    if (this.classicChannels) {
+      for (const ch of this.classicChannels.getAll()) {
+        const old = oldClassicBehavior.get(ch.instanceName);
+        if (!old || !this.daemons.has(ch.instanceName)) continue;
+        const backend = this.classicChannels.getBackend(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.backend);
+        const model = this.classicChannels.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model);
+        const autoPauseAfter = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
+        if (old.backend !== backend || old.model !== model || old.autoPauseAfter !== autoPauseAfter) {
+          this.logger.info({ instanceName: ch.instanceName }, "Classic cold config changed — restarting");
+          await this.stopInstance(ch.instanceName).catch(() => {});
+          await this.startClassicInstanceUnattended(ch, "classic instance after fleet reload");
+          continue;
+        }
+        const toolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
+        const replyCompletionGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
+        if (old.toolProgress !== toolProgress || old.replyCompletionGuard !== replyCompletionGuard) {
+          this.applyHotConfigUpdate(ch.instanceName, {
+            tool_progress: toolProgress,
+            reply_completion_guard: replyCompletionGuard,
+          });
+          this.logger.info({ instanceName: ch.instanceName }, "Classic inherited hot config reloaded");
         }
       }
     }

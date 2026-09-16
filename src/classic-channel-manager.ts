@@ -6,6 +6,7 @@ import { sanitizeInstanceName } from "./topic-commands.js";
 import type { Logger } from "./logger.js";
 import { KNOWN_BACKENDS } from "./config-validator.js";
 import type { Choice } from "./channel/types.js";
+import type { InstanceConfig } from "./types.js";
 
 
 /** Last real channel activity recorded in a ClassicBot chat log. */
@@ -55,12 +56,27 @@ export interface ClassicChannel {
   collab?: boolean;
   preTaskCommand?: string;
   contextLines?: number;
+  toolProgress?: InstanceConfig["tool_progress"];
+  replyCompletionGuard?: boolean;
   createdAt: string;
   createdBy: string;
 }
 
+interface ClassicDefaults {
+  backend?: string;
+  model?: string;
+  auto_pause_after?: number;
+  context_lines?: number;
+  tool_progress?: InstanceConfig["tool_progress"];
+  reply_completion_guard?: boolean;
+  allowed_guilds?: string[];
+  admin_users?: string[];
+  allowed_groups?: string[];
+  allowed_users?: string[];
+}
+
 interface ClassicBotYaml {
-  defaults?: { backend?: string; model?: string; auto_pause_after?: number; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] };
+  defaults?: ClassicDefaults;
   channels?: Record<string, {
     // New format persists channelId/adapterId/instanceName explicitly so the
     // yaml key is just a unique id and naming never drifts. Old format omitted
@@ -75,6 +91,8 @@ interface ClassicBotYaml {
     description?: string;
     auto_pause_after?: number;
     context_lines?: number;
+    tool_progress?: InstanceConfig["tool_progress"];
+    reply_completion_guard?: boolean;
     collab?: boolean;
     pre_task_command?: string;
     createdBy?: string;
@@ -139,7 +157,7 @@ export class ClassicChannelManager {
   private channels = new Map<string, ClassicChannel>();
   /** Distinct channelIds across all adapters — makes hasChannel() O(1) (hot path: every inbound). */
   private channelIds = new Set<string>();
-  private defaults: { backend?: string; model?: string; auto_pause_after?: number; context_lines?: number; allowed_guilds?: string[]; admin_users?: string[]; allowed_groups?: string[]; allowed_users?: string[] } = {};
+  private defaults: ClassicDefaults = {};
   private readonly configPath: string;
   private lastMtime = 0;
   /** The primary (channels[0]) adapter id. It names without a suffix. */
@@ -285,6 +303,8 @@ export class ClassicChannelManager {
               collab: val.collab,
               preTaskCommand: val.pre_task_command,
               contextLines: val.context_lines,
+              toolProgress: val.tool_progress,
+              replyCompletionGuard: val.reply_completion_guard,
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
             },
@@ -395,6 +415,8 @@ export class ClassicChannelManager {
       if (ch.description) entry.description = ch.description;
       if (ch.autoPauseAfter !== undefined) entry.auto_pause_after = ch.autoPauseAfter;
       if (ch.contextLines) entry.context_lines = ch.contextLines;
+      if (ch.toolProgress !== undefined) entry.tool_progress = ch.toolProgress;
+      if (ch.replyCompletionGuard !== undefined) entry.reply_completion_guard = ch.replyCompletionGuard;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
@@ -420,7 +442,7 @@ export class ClassicChannelManager {
     if (repaired && this.backupBeforeAdapterRepair()) this.save();
   }
 
-  getDefaults(): { backend?: string } { return this.defaults; }
+  getDefaults(): Readonly<ClassicDefaults> { return this.defaults; }
 
   /** Check if a guild is allowed. Empty/unset/non-array allowed_guilds = allow all (backward compat). */
   isGuildAllowed(guildId: string): boolean {
@@ -676,6 +698,45 @@ export class ClassicChannelManager {
       if (ch.instanceName === instanceName) return this.getAutoPauseAfter(ch.channelId, ch.adapterId, fleetDefault);
     }
     return this.defaults.auto_pause_after ?? fleetDefault;
+  }
+
+  /** Tool-progress fallback: channel → Classic defaults → fleet defaults → off. */
+  getToolProgress(
+    channelId: string,
+    adapterId?: string,
+    fleetDefault?: InstanceConfig["tool_progress"],
+  ): InstanceConfig["tool_progress"] {
+    return this.find(channelId, adapterId)?.toolProgress
+      ?? this.defaults.tool_progress
+      ?? fleetDefault
+      ?? "off";
+  }
+
+  getToolProgressByInstance(
+    instanceName: string,
+    fleetDefault?: InstanceConfig["tool_progress"],
+  ): InstanceConfig["tool_progress"] {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) return this.getToolProgress(ch.channelId, ch.adapterId, fleetDefault);
+    }
+    return this.defaults.tool_progress ?? fleetDefault ?? "off";
+  }
+
+  /** Reply-guard fallback: channel → Classic defaults → fleet defaults → true. */
+  getReplyCompletionGuard(channelId: string, adapterId?: string, fleetDefault?: boolean): boolean {
+    return this.find(channelId, adapterId)?.replyCompletionGuard
+      ?? this.defaults.reply_completion_guard
+      ?? fleetDefault
+      ?? true;
+  }
+
+  getReplyCompletionGuardByInstance(instanceName: string, fleetDefault?: boolean): boolean {
+    for (const ch of this.channels.values()) {
+      if (ch.instanceName === instanceName) {
+        return this.getReplyCompletionGuard(ch.channelId, ch.adapterId, fleetDefault);
+      }
+    }
+    return this.defaults.reply_completion_guard ?? fleetDefault ?? true;
   }
 
   /** Get backend for an instance by name */

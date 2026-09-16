@@ -127,6 +127,13 @@ export interface InstanceConfig {
    * Defaults to "off" so upgrades do not start broadcasting tool activity.
    */
   tool_progress?: "off" | "standard" | "verbose";
+  /**
+   * Detect a human-channel turn that ended without a delivered reply and ask
+   * the agent to send one bounded recovery reply. Only capable backends use
+   * this switch; evidence tracking remains active for reply/tool correctness.
+   * Default: true.
+   */
+  reply_completion_guard?: boolean;
   /** Skip non-essential subsystems (transcript monitor, context guardian, approval server, prompt detector) */
   lightweight?: boolean;
   /** System prompt — supports comma-separated file: paths for modularization */

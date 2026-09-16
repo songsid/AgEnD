@@ -14,7 +14,7 @@ const logger = pino({ level: "silent" }) as Logger;
 const dirs: string[] = [];
 type AnyDaemon = any;
 
-function makeDaemon(enabled = true): AnyDaemon {
+function makeDaemon(enabled = true, configured?: boolean): AnyDaemon {
   const dir = mkdtempSync(join(tmpdir(), "agend-reply-drop-"));
   dirs.push(dir);
   const backend = {
@@ -23,6 +23,7 @@ function makeDaemon(enabled = true): AnyDaemon {
   } as any;
   const daemon = new Daemon("worker", {
     backend: enabled ? "claude-code" : "codex",
+    ...(configured === undefined ? {} : { reply_completion_guard: configured }),
     working_directory: dir,
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
@@ -95,6 +96,19 @@ describe("Claude human-turn reply completion harness", () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-reply-guard-capability-"));
     dirs.push(dir);
     expect(new ClaudeCodeBackend(dir).replyCompletionGuard).toBe(true);
+  });
+
+  it("requires both the backend capability and the effective config switch", () => {
+    const enabled = makeDaemon(true, true);
+    const disabled = makeDaemon(true, false);
+    const incapable = makeDaemon(false, true);
+
+    expect(enabled.replyCompletionGuardEnabled()).toBe(true);
+    expect(disabled.replyCompletionGuardEnabled()).toBe(false);
+    expect(incapable.replyCompletionGuardEnabled()).toBe(false);
+
+    disabled.applyConfigUpdate({ reply_completion_guard: true });
+    expect(disabled.replyCompletionGuardEnabled()).toBe(true);
   });
 
   it("arms through the real human-message ingress and advances for steer and BTW", async () => {

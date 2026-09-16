@@ -285,3 +285,23 @@ describe("tool_progress default", () => {
     expect(DEFAULT_INSTANCE_CONFIG.tool_progress).toBe("off");
   });
 });
+
+describe("reply_completion_guard config", () => {
+  it("defaults on so upgrading preserves the reply-drop protection", async () => {
+    const { DEFAULT_INSTANCE_CONFIG } = await import("../src/config.js");
+    expect(DEFAULT_INSTANCE_CONFIG.reply_completion_guard).toBe(true);
+  });
+
+  it("rejects non-boolean fleet defaults and instance overrides", () => {
+    const result = validateFleetConfig({
+      defaults: { reply_completion_guard: "yes" },
+      instances: {
+        worker: { working_directory: "/tmp", reply_completion_guard: 1 },
+      },
+    });
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "defaults.reply_completion_guard" }),
+      expect.objectContaining({ path: "instances.worker.reply_completion_guard" }),
+    ]));
+  });
+});
