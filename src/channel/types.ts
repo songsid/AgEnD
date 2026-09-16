@@ -56,6 +56,8 @@ export interface AdapterHealthSnapshot {
  */
 export type TopicMissingEvidence = "discord-unknown-channel" | "telegram-topic-not-found";
 
+export type TopicProbePolicy = "periodic" | "on-demand";
+
 export type TopicPresence =
   | { status: "present"; generation?: number }
   | { status: "missing"; generation?: number; evidence: TopicMissingEvidence }
@@ -133,6 +135,15 @@ export interface ChannelAdapter extends EventEmitter {
   createTopic?(name: string): Promise<number | string>;
   deleteTopic?(topicId: number | string): Promise<void>;
   probeTopicPresence?(topicId: number | string): Promise<TopicPresence>;
+  /**
+   * How the fleet may use probeTopicPresence. Absent means "periodic": the
+   * 5-minute topology scan probes every route this adapter owns (Discord's
+   * passive REST fetch is cheap and silent). "on-demand" means the scan skips
+   * this adapter's routes and the probe is only used to confirm a hint that
+   * a real delivery already produced (Telegram: the only existence check is a
+   * visible send+delete, so it must not run unprompted).
+   */
+  topicProbePolicy?(): TopicProbePolicy;
   closeForumTopic?(threadId: number | string): Promise<void>;
   reopenForumTopic?(threadId: number | string): Promise<void>;
   editForumTopic?(threadId: number | string, opts: { name?: string; iconCustomEmojiId?: string }): Promise<void>;

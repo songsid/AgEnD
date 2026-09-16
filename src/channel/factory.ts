@@ -49,7 +49,12 @@ export async function createAdapter(config: ChannelConfig, opts: AdapterOpts): P
   // Built-in adapters
   if (config.type === "telegram") {
     const { TelegramAdapter } = await import("./adapters/telegram.js");
-    return new TelegramAdapter({ ...opts, apiRoot: config.telegram_api_root });
+    const topicProbe = config.options?.topic_probe;
+    return new TelegramAdapter({
+      ...opts,
+      apiRoot: config.telegram_api_root,
+      ...(topicProbe === "periodic" || topicProbe === "on-demand" ? { topicProbe } : {}),
+    });
   }
   if (config.type === "discord") {
     const { DiscordAdapter } = await import("./adapters/discord.js");

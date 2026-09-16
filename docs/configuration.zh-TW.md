@@ -68,7 +68,7 @@ health_port: 19280
 | `group_id` | number | — | Telegram 群組 ID（負數）或 Discord guild ID |
 | `access` | object | **必填** | 存取控制 |
 | `mirror_topic_id` | number \| string | — | 鏡像跨 instance 通訊的 Telegram topic ID。所有 `send_to_instance` 訊息都會出現在此 |
-| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`） |
+| `options` | object | — | 平台特定選項（Discord：`category_name`、`general_channel_id`；Telegram：`topic_probe`，`on-demand`（預設，只在真實投遞回報 topic 不存在時才確認，不做定期送刪訊息）或 `periodic`（每 5 分鐘對每個 topic 送刪一則空白訊息確認存在）） |
 
 ### channel.access
 

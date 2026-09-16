@@ -279,6 +279,54 @@ describe("topic cleanup data-loss firewall", () => {
     expect(remove).toHaveBeenCalledWith("worker", expect.objectContaining({ source: "dashboard-confirmed" }));
   });
 
+  // ── #777: on-demand adapters are left alone by the periodic scan, but still confirm hints ──
+
+  it("skips on-demand adapters in the periodic scan while a periodic (Discord-like) adapter is still probed", async () => {
+    const secondDir = join(dataDir, "repo", "worker-2");
+    mkdirSync(secondDir, { recursive: true });
+    const fm = fleet({
+      worker: { working_directory: workDir, topic_id: "topic-1", channel_id: "owner" },
+      "worker-2": { working_directory: secondDir, topic_id: "topic-2", channel_id: "telegram" },
+    });
+    fm.fleetConfig!.channels!.push({ id: "telegram", type: "telegram", mode: "topic", bot_token_env: "T", group_id: "-100" } as any);
+    // No topicProbePolicy method at all — exactly what DiscordAdapter exposes.
+    const discordLike = fakeAdapter("owner", async () => ({ status: "present", generation: 1 }));
+    const telegramLike = fakeAdapter("telegram", async () => ({ status: "unknown", reason: "transport-failed" }));
+    Object.assign(telegramLike.adapter, { type: "telegram", topicProbePolicy: () => "on-demand" });
+    install(fm, discordLike.adapter);
+    (fm.adapters as Map<string, any>).set("telegram", telegramLike.adapter);
+    const debug = vi.spyOn(fm.logger, "debug");
+
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+
+    expect(discordLike.adapter.probeTopicPresence).toHaveBeenCalledTimes(3);
+    expect(telegramLike.adapter.probeTopicPresence).not.toHaveBeenCalled();
+    expect((fm as any).topicProbeUnknownStreak.size).toBe(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledWith(expect.objectContaining({ adapterId: "telegram" }), expect.stringContaining("on-demand"));
+    expect(fm.routing.resolve("topic-2")).toBeDefined();
+  });
+
+  it("still confirms a delivery-failure hint on an on-demand adapter and only quarantines", async () => {
+    const fm = fleet();
+    const { adapter } = fakeAdapter("owner", async () => ({ status: "missing", generation: 1, evidence: "telegram-topic-not-found" }));
+    Object.assign(adapter, { type: "telegram", topicProbePolicy: () => "on-demand" });
+    install(fm, adapter);
+    const remove = vi.spyOn(fm.lifecycle, "remove");
+    (fm as any).bindTopicClosedHandler(adapter, "owner", "test.topic_closed");
+
+    adapter.emit("topic_closed", { chatId: "-100", threadId: "topic-1" });
+    await vi.waitFor(() => expect(fm.routing.resolve("topic-1")).toBeUndefined());
+
+    expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(1);
+    expect(remove).not.toHaveBeenCalled();
+    expect(fm.fleetConfig!.instances.worker).toBeDefined();
+    expect(readFileSync(fleetPath, "utf8")).toBe("sentinel fleet config must survive\n");
+    expect(readFileSync(join(workDir, "untracked.txt"), "utf8")).toBe("must survive\n");
+  });
+
   // ── #776: a transient unknown is debug-only; only a streak reaches the operator ──
 
   it("logs a single unknown pass at debug and tells nobody", async () => {

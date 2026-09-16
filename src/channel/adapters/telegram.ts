@@ -7,7 +7,7 @@ import { join, extname, basename } from "node:path";
 import { Bot, GrammyError, HttpError, InputFile } from "grammy";
 import type { Context, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
-import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence } from "../types.js";
+import type { ChannelAdapter, ApprovalHandle, SendOpts, SentMessage, PermissionPrompt, Choice, AlertData, TopicPresence, TopicProbePolicy } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
 
@@ -200,7 +200,23 @@ export interface TelegramAdapterOptions {
   inboxDir: string;
   /** Override Telegram Bot API root URL (for mock server in E2E tests). */
   apiRoot?: string;
+  /**
+   * "on-demand" (default): no periodic existence probe; a topic is checked
+   * only after a real delivery reports it missing. "periodic": opt back into
+   * the fleet's 5-minute send+delete scan (channels[].options.topic_probe).
+   */
+  topicProbe?: TopicProbePolicy;
 }
+
+/** Telegram's own words for a forum topic that no longer exists. */
+const TELEGRAM_TOPIC_GONE = /message thread not found|TOPIC_ID_INVALID/;
+/** Send methods that address a forum topic and can therefore report it gone. */
+const TELEGRAM_TOPIC_ADDRESSED_METHODS = new Set([
+  "sendMessage", "sendPhoto", "sendDocument", "sendVideo", "sendAudio", "sendVoice",
+  "sendAnimation", "sendMediaGroup", "sendSticker", "sendChatAction", "copyMessage", "forwardMessage",
+]);
+/** One hint per topic per window; an outage can fail many deliveries to the same dead topic. */
+export const TELEGRAM_TOPIC_GONE_HINT_DEBOUNCE_MS = 60_000;
 
 /**
  * Whitelist of legitimate Telegram API roots. Misconfiguring `apiRoot`
@@ -257,10 +273,16 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   private lastHttpAgentResetAt = Number.NEGATIVE_INFINITY;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
+  private readonly topicProbe: TopicProbePolicy;
+  /** Topics the probe itself is addressing right now — their failures are results, not hints. */
+  private readonly probingThreads = new Set<string>();
+  private readonly topicGoneHintAt = new Map<string, number>();
+
   constructor(opts: TelegramAdapterOptions) {
     super();
     this.id = opts.id;
     this.botToken = opts.botToken;
+    this.topicProbe = opts.topicProbe ?? "on-demand";
     this.accessManager = opts.accessManager;
     this.inboxDir = opts.inboxDir;
     if (opts.apiRoot) validateTelegramApiRoot(opts.apiRoot);
@@ -282,6 +304,7 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       },
     });
     this.installNetworkRecovery();
+    this.installTopicGoneHints();
 
     // Build MessageQueue backed by this bot
     this.queue = new MessageQueue({
@@ -551,15 +574,10 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       }
     });
 
-    this.bot.on("message:forum_topic_closed", (ctx: Context) => {
-      const chatId = String(ctx.message?.chat.id ?? "");
-      const threadId = ctx.message?.message_thread_id != null
-        ? String(ctx.message.message_thread_id)
-        : undefined;
-      if (threadId) {
-        this.emit("topic_closed", { chatId, threadId });
-      }
-    });
+    // forum_topic_closed is a CLOSE, not a deletion (Telegram gives bots no
+    // deletion event at all), so it is not a topology hint. The only Telegram
+    // source of "topic_closed" is a real delivery that Telegram answered with
+    // "message thread not found" — see installTopicGoneHints().
   }
 
   private _extractAttachments(msg: NonNullable<Context["message"]>): Array<{
@@ -1159,6 +1177,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   private async probeTopicOnce(chatId: string, topicId: number | string): Promise<TopicPresence> {
+    const key = String(topicId);
+    this.probingThreads.add(key);
     try {
       const msg = await this.bot.api.sendMessage(Number(chatId), "\u200B", {
         message_thread_id: Number(topicId),
@@ -1167,7 +1187,44 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
       return { status: "present" };
     } catch (err: unknown) {
       return classifyTelegramProbeError(err, this.botToken);
+    } finally {
+      this.probingThreads.delete(key);
     }
+  }
+
+  topicProbePolicy(): TopicProbePolicy {
+    return this.topicProbe;
+  }
+
+  /**
+   * Passive topology detection. Every outbound call passes through this
+   * transformer; when Telegram itself answers a topic-addressed send with
+   * "message thread not found", that is the same evidence the probe would
+   * have produced — so emit the topic_closed hint the fleet already verifies
+   * (handleProviderTopicClosed → one on-demand probe → quarantine only).
+   * The response is returned untouched: the delivery still fails as before.
+   */
+  private installTopicGoneHints(): void {
+    if (!this.bot.api.config?.use) return;
+    this.bot.api.config.use(async (prev, method, payload, signal) => {
+      const res = await prev(method, payload, signal);
+      if (!res.ok) this.noteTopicGoneResponse(method, payload as Record<string, unknown>, res.description);
+      return res;
+    });
+  }
+
+  private noteTopicGoneResponse(method: string, payload: Record<string, unknown>, description: string): void {
+    if (!TELEGRAM_TOPIC_ADDRESSED_METHODS.has(method)) return;
+    const thread = payload.message_thread_id;
+    if (thread == null || thread === "" || payload.chat_id == null) return;
+    const threadId = String(thread);
+    if (!TELEGRAM_TOPIC_GONE.test(description)) return;
+    if (this.probingThreads.has(threadId)) return;
+    const now = Date.now();
+    const last = this.topicGoneHintAt.get(threadId) ?? 0;
+    if (now - last < TELEGRAM_TOPIC_GONE_HINT_DEBOUNCE_MS) return;
+    this.topicGoneHintAt.set(threadId, now);
+    this.emit("topic_closed", { chatId: String(payload.chat_id), threadId });
   }
 
   // ── Pairing ───────────────────────────────────────────────────────────────
