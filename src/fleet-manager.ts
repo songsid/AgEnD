@@ -524,6 +524,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private topicCleanupInFlight: Promise<void> | null = null;
   private topicCleanupGeneration = 0;
   private topicProbeWarnings = new Map<string, number>();
+  /**
+   * Consecutive unknown probe results per route (or per adapter for outage
+   * class reasons). A single transient never reaches the operator; only a
+   * streak of TOPIC_PROBE_UNKNOWN_ESCALATION does.
+   */
+  private topicProbeUnknownStreak = new Map<string, number>();
+  /** Unknown results in a row before the operator is told. 3 × 5 min poller = 15 min. */
+  static readonly TOPIC_PROBE_UNKNOWN_ESCALATION = 3;
+  /** Reasons that describe the adapter, not one topic — counted once per adapter. */
+  private static readonly TOPIC_PROBE_ADAPTER_SCOPED_REASONS = new Set([
+    "owner-adapter-unavailable",
+    "owner-adapter-not-ready",
+    "owner-adapter-generation-changed",
+    "owner-adapter-changed-before-action",
+    "adapter-not-ready",
+    "adapter-not-initialized",
+    "adapter-generation-changed",
+    "topic-close-from-unready-adapter",
+    "topic-close-generation-changed",
+  ]);
   logger: Logger = createLogger("info");
   private topicCommands: TopicCommands;
   // sessionName → instanceName mapping for external sessions
@@ -5824,15 +5844,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return result?.generation === undefined || result.generation === after.generation;
   }
 
-  private warnTopicProbeUnknown(instanceName: string, threadId: string, adapterId: string | undefined, reason: string): void {
+  private topicProbeStreakKey(threadId: string, adapterId: string | undefined, reason: string): string {
+    return FleetManager.TOPIC_PROBE_ADAPTER_SCOPED_REASONS.has(reason)
+      ? `adapter:${adapterId ?? "unbound"}`
+      : `thread:${threadId}`;
+  }
+
+  /** A definite answer (present or missing) ends the unknown streak for that route and its adapter. */
+  private clearTopicProbeUnknownStreak(threadId: string, adapterId: string | undefined): void {
+    this.topicProbeUnknownStreak.delete(`thread:${threadId}`);
+    this.topicProbeUnknownStreak.delete(`adapter:${adapterId ?? "unbound"}`);
+  }
+
+  /**
+   * Record one unknown probe result. Nothing here can touch quarantine or
+   * removal: unknown is always retained data. The only question is whether
+   * the operator hears about it, and a single transient (one flaky HTTP call
+   * out of dozens per pass) must not — only a streak does.
+   */
+  private warnTopicProbeUnknown(
+    instanceName: string,
+    threadId: string,
+    adapterId: string | undefined,
+    reason: string,
+    detail?: string,
+  ): void {
+    const streakKey = this.topicProbeStreakKey(threadId, adapterId, reason);
+    const streak = (this.topicProbeUnknownStreak.get(streakKey) ?? 0) + 1;
+    this.topicProbeUnknownStreak.set(streakKey, streak);
+    if (streak < FleetManager.TOPIC_PROBE_UNKNOWN_ESCALATION) {
+      this.logger.debug({ instanceName, threadId, adapterId, reason, detail, streak },
+        "Topic presence not confirmed this pass — transient, retaining instance and all data");
+      return;
+    }
     const key = `${adapterId ?? "unbound"}:${reason}`;
     const now = Date.now();
     const last = this.topicProbeWarnings.get(key) ?? 0;
     if (now - last < FleetManager.FLEET_ERROR_THROTTLE_MS) return;
     this.topicProbeWarnings.set(key, now);
-    this.logger.error({ instanceName, threadId, adapterId, reason },
-      "Topic presence could not be confirmed — retaining instance and all data");
-    this.notifyFleetError(t("fleet.topic_probe_unknown", instanceName, adapterId ?? "unbound"));
+    this.logger.error({ instanceName, threadId, adapterId, reason, detail, streak },
+      "Topic presence could not be confirmed repeatedly — retaining instance and all data");
+    this.notifyFleetError(t("fleet.topic_probe_unknown", instanceName, adapterId ?? "unbound", streak));
   }
 
   /** One fixed-snapshot topology pass. Automatic evidence can only quarantine. */
@@ -5875,9 +5927,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         continue;
       }
       if (result.status === "unknown") {
-        this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason);
-      } else if (result.status === "missing") {
-        missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
+        this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason, result.detail);
+      } else {
+        this.clearTopicProbeUnknownStreak(threadId, adapterId);
+        if (result.status === "missing") {
+          missing.push({ threadId, target, adapterId, adapter, generation: result.generation });
+        }
       }
     }
 
@@ -5932,9 +5987,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.warnTopicProbeUnknown(target.name, threadId, adapterId, "topic-close-generation-changed");
       return;
     }
+    if (result.status === "unknown") {
+      this.warnTopicProbeUnknown(target.name, threadId, adapterId, result.reason, result.detail);
+      return;
+    }
+    this.clearTopicProbeUnknownStreak(threadId, adapterId);
     if (result.status !== "missing") {
-      this.warnTopicProbeUnknown(target.name, threadId, adapterId,
-        result.status === "unknown" ? result.reason : "topic-close-not-confirmed-missing");
+      // The gateway said deleted, REST says present: a definite answer, so it
+      // is not an unknown streak — but it is worth one debug line.
+      this.logger.debug({ instanceName: target.name, threadId, adapterId },
+        "channelDelete hint contradicted by REST — topic present, nothing to do");
       return;
     }
     this.topicCommands.handleTopicDeleted(threadId, {

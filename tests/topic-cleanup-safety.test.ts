@@ -82,6 +82,8 @@ describe("topic cleanup data-loss firewall", () => {
 
     await (fm as any).runTopicCleanup(0);
     await (fm as any).runTopicCleanup(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
 
     expect(adapter.probeTopicPresence).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
@@ -102,6 +104,9 @@ describe("topic cleanup data-loss firewall", () => {
     const before = JSON.stringify(fm.fleetConfig);
     const remove = vi.spyOn(fm.lifecycle, "remove");
 
+    await (fm as any).runTopicCleanup(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    await (fm as any).runTopicCleanup(0);
     await (fm as any).runTopicCleanup(0);
 
     expect(remove).not.toHaveBeenCalled();
@@ -272,5 +277,120 @@ describe("topic cleanup data-loss firewall", () => {
 
     await fm.removeInstance("worker", authorizeExplicitInstanceRemoval("dashboard-confirmed"));
     expect(remove).toHaveBeenCalledWith("worker", expect.objectContaining({ source: "dashboard-confirmed" }));
+  });
+
+  // ── #776: a transient unknown is debug-only; only a streak reaches the operator ──
+
+  it("logs a single unknown pass at debug and tells nobody", async () => {
+    const fm = fleet();
+    const { adapter } = fakeAdapter("owner", async () => ({
+      status: "unknown", reason: "transport-failed", detail: "ECONNRESET socket broke",
+    }));
+    install(fm, adapter);
+    const debug = vi.spyOn(fm.logger, "debug");
+    const error = vi.spyOn(fm.logger, "error");
+
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+    expect(debug).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "topic-1", reason: "transport-failed", detail: "ECONNRESET socket broke", streak: 1 }),
+      expect.stringContaining("transient"),
+    );
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+  });
+
+  it("escalates to the operator only after TOPIC_PROBE_UNKNOWN_ESCALATION consecutive unknown passes", async () => {
+    const fm = fleet();
+    const { adapter } = fakeAdapter("owner", async () => ({ status: "unknown", reason: "provider-unavailable" }));
+    install(fm, adapter);
+    const error = vi.spyOn(fm.logger, "error");
+    const escalation = FleetManager.TOPIC_PROBE_UNKNOWN_ESCALATION;
+    expect(escalation).toBeGreaterThan(1);
+
+    for (let pass = 1; pass < escalation; pass++) {
+      await (fm as any).runTopicCleanup(0);
+      expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    }
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).toHaveBeenCalledTimes(1);
+    expect((fm as any).notifyFleetError.mock.calls[0][0]).toContain(String(escalation));
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: "provider-unavailable", streak: escalation }),
+      expect.stringContaining("repeatedly"),
+    );
+    // Still fail-closed: the route and config were never touched.
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+    expect(fm.fleetConfig!.instances.worker).toBeDefined();
+  });
+
+  it("resets the unknown streak when a pass confirms the topic is present", async () => {
+    const fm = fleet();
+    let result: TopicPresence = { status: "unknown", reason: "transport-failed" };
+    const { adapter } = fakeAdapter("owner", async () => result);
+    install(fm, adapter);
+
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+    result = { status: "present", generation: 1 };
+    await (fm as any).runTopicCleanup(0);
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined();
+    result = { status: "unknown", reason: "transport-failed" };
+    await (fm as any).runTopicCleanup(0);
+    await (fm as any).runTopicCleanup(0);
+
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBe(2);
+  });
+
+  it("counts adapter outage reasons once per adapter, not once per route", async () => {
+    const secondDir = join(dataDir, "repo", "worker-2");
+    mkdirSync(secondDir, { recursive: true });
+    const fm = fleet({
+      worker: { working_directory: workDir, topic_id: "topic-1", channel_id: "owner" },
+      "worker-2": { working_directory: secondDir, topic_id: "topic-2", channel_id: "owner" },
+    });
+    const { adapter } = fakeAdapter("owner", async () => ({ status: "present" }), {
+      status: "retrying", isReady: false, generation: 4,
+    });
+    install(fm, adapter);
+
+    // Two routes on one dead adapter: one pass = two unknowns for the adapter.
+    await (fm as any).runTopicCleanup(0);
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+    expect((fm as any).topicProbeUnknownStreak.get("adapter:owner")).toBe(2);
+    expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined();
+    await (fm as any).runTopicCleanup(0);
+
+    // Streak 3 is reached on the second pass through adapter-scoped counting;
+    // the throttle then folds the same pass's fourth unknown into one notice.
+    expect((fm as any).notifyFleetError).toHaveBeenCalledTimes(1);
+    expect(adapter.probeTopicPresence).not.toHaveBeenCalled();
+  });
+
+  it("feeds channelDelete unknowns into the same streak and clears it on a REST-present answer", async () => {
+    const fm = fleet();
+    let result: TopicPresence = { status: "unknown", reason: "transport-failed" };
+    const { adapter } = fakeAdapter("owner", async () => result);
+    install(fm, adapter);
+    (fm as any).bindTopicClosedHandler(adapter, "owner", "test.topic_closed");
+    const remove = vi.spyOn(fm.lifecycle, "remove");
+
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(1));
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBe(2));
+    expect((fm as any).notifyFleetError).not.toHaveBeenCalled();
+
+    result = { status: "present", generation: 1 };
+    adapter.emit("topic_closed", { chatId: "guild", threadId: "topic-1" });
+    await vi.waitFor(() => expect(adapter.probeTopicPresence).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() => expect((fm as any).topicProbeUnknownStreak.get("thread:topic-1")).toBeUndefined());
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(fm.routing.resolve("topic-1")).toBeDefined();
+    expect(readFileSync(join(workDir, "untracked.txt"), "utf8")).toBe("must survive\n");
   });
 });
