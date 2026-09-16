@@ -885,8 +885,9 @@ describe("FleetManager", () => {
     const classic = new ClassicChannelManager(tmpDir, fm.logger);
     classic.configureAdapters([{ id: "discord", type: "discord" }]);
     fm.classicChannels = classic;
+    const getConfigSnapshot = vi.fn(() => ({ tool_progress: "off", reply_completion_guard: true }));
     const daemon = {
-      getConfigSnapshot: () => ({ tool_progress: "off", reply_completion_guard: true }),
+      getConfigSnapshot,
       applyConfigUpdate: vi.fn(),
     } as any;
     fm.lifecycle.daemons.set("classic-one", daemon);
@@ -914,6 +915,84 @@ describe("FleetManager", () => {
       config: { tool_progress: "verbose", reply_completion_guard: false },
     });
     expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(getConfigSnapshot).toHaveBeenCalled();
+  });
+
+  it("hot-applies a Classic Settings behavior edit without stopping or restarting", async () => {
+    const classicPath = join(tmpDir, "classicBot.yaml");
+    const channel = (toolProgress: string, replyGuard: boolean) => yaml.dump({
+      defaults: { tool_progress: "off", reply_completion_guard: true },
+      channels: {
+        "123456789012345678#discord": {
+          channelId: "123456789012345678",
+          adapterId: "discord",
+          instanceName: "classic-one",
+          name: "One",
+          tool_progress: toolProgress,
+          reply_completion_guard: replyGuard,
+        },
+      },
+    });
+    writeFileSync(classicPath, channel("standard", true));
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { tool_progress: "off", reply_completion_guard: true }, instances: {} } as any;
+    const classic = new ClassicChannelManager(tmpDir, fm.logger);
+    classic.configureAdapters([{ id: "discord", type: "discord" }]);
+    fm.classicChannels = classic;
+    const daemon = { applyConfigUpdate: vi.fn() } as any;
+    fm.lifecycle.daemons.set("classic-one", daemon);
+    const send = vi.fn(() => true);
+    (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    const start = vi.spyOn(fm as any, "startClassicInstance").mockResolvedValue(undefined);
+
+    writeFileSync(classicPath, channel("verbose", false));
+    await fm.restartClassicInstanceFromSettings("classic-one", ["tool_progress", "reply_completion_guard"]);
+
+    expect(send).toHaveBeenCalledWith({
+      type: "config_update",
+      config: { tool_progress: "verbose", reply_completion_guard: false },
+    });
+    expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("hot-applies a Classic behavior edit through the production reload poll body", async () => {
+    const classicPath = join(tmpDir, "classicBot.yaml");
+    const channel = (toolProgress: string, replyGuard: boolean) => yaml.dump({
+      channels: {
+        "123456789012345678#discord": {
+          channelId: "123456789012345678",
+          adapterId: "discord",
+          instanceName: "classic-one",
+          name: "One",
+          tool_progress: toolProgress,
+          reply_completion_guard: replyGuard,
+        },
+      },
+    });
+    writeFileSync(classicPath, channel("standard", true));
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = { defaults: { tool_progress: "off", reply_completion_guard: true }, instances: {} } as any;
+    const classic = new ClassicChannelManager(tmpDir, fm.logger);
+    classic.configureAdapters([{ id: "discord", type: "discord" }]);
+    fm.classicChannels = classic;
+    fm.lifecycle.daemons.set("classic-one", { applyConfigUpdate: vi.fn() } as any);
+    const send = vi.fn(() => true);
+    (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+
+    writeFileSync(classicPath, channel("verbose", false));
+    const future = new Date(Date.now() + 2_000);
+    utimesSync(classicPath, future, future);
+    await (fm as any).reloadClassicConfigFromDisk();
+
+    expect(send).toHaveBeenCalledWith({
+      type: "config_update",
+      config: { tool_progress: "verbose", reply_completion_guard: false },
+    });
     expect(stop).not.toHaveBeenCalled();
   });
 

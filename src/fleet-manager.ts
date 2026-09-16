@@ -1808,6 +1808,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
   }
 
+  /** Reload classicBot.yaml once. Kept callable so the periodic production
+   * path is covered without relying on fake timers around startAll(). */
+  private async reloadClassicConfigFromDisk(): Promise<void> {
+    try {
+      if (!this.classicChannels) return;
+      const fleetBackend = this.fleetConfig?.defaults?.backend;
+      const fleetModel = this.fleetConfig?.defaults?.model;
+      const oldBackends = new Map<string, string>();
+      const oldModels = new Map<string, string | undefined>();
+      const oldAutoPause = new Map<string, number | undefined>();
+      const oldToolProgress = new Map<string, InstanceConfig["tool_progress"]>();
+      const oldReplyGuard = new Map<string, boolean>();
+      for (const ch of this.classicChannels.getAll()) {
+        oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
+        oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
+        oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
+        oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
+        oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
+      }
+      if (!this.classicChannels.checkReload()) return;
+      // A reload can introduce a bad id (hand edit) or clear one; the
+      // throttle keeps a repeated report from flooding the topic.
+      this.reportClassicUnrecoverableIds();
+      this.reregisterClassicChannels();
+      for (const ch of this.classicChannels.getAll()) {
+        const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
+        const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
+        const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
+        const newToolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
+        const newReplyGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
+        const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
+        const modelChanged = oldModels.get(ch.instanceName) !== newModel;
+        const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
+        if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
+          this.logger.info(
+            { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
+            "Backend/model changed — restarting",
+          );
+          await this.stopInstance(ch.instanceName).catch(() => {});
+          // Small delay to let tmux window clean up
+          await new Promise(r => setTimeout(r, 2000));
+          // The manager already holds the new backend/model/auto-pause; the
+          // unattended helper reads them from it and schedules the delayed
+          // retry on failure like every other unattended start.
+          await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
+        } else if (this.daemons.has(ch.instanceName)
+          && (oldToolProgress.get(ch.instanceName) !== newToolProgress
+            || oldReplyGuard.get(ch.instanceName) !== newReplyGuard)) {
+          this.applyHotConfigUpdate(ch.instanceName, {
+            tool_progress: newToolProgress,
+            reply_completion_guard: newReplyGuard,
+          });
+          this.logger.info({ instanceName: ch.instanceName }, "Classic instance hot config reloaded");
+        }
+      }
+    } catch (err) {
+      this.logger.warn({ err }, "classicBot.yaml reload error");
+    }
+  }
+
   async startInstance(
     name: string,
     config: InstanceConfig,
@@ -2708,62 +2768,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Poll classicBot.yaml for external changes every 30s
-    this.classicReloadTimer = setInterval(async () => {
-      try {
-        if (!this.classicChannels) return;
-        const fleetBackend = this.fleetConfig?.defaults?.backend;
-        const fleetModel = this.fleetConfig?.defaults?.model;
-        const oldBackends = new Map<string, string>();
-        const oldModels = new Map<string, string | undefined>();
-        const oldAutoPause = new Map<string, number | undefined>();
-        const oldToolProgress = new Map<string, InstanceConfig["tool_progress"]>();
-        const oldReplyGuard = new Map<string, boolean>();
-        for (const ch of this.classicChannels.getAll()) {
-          oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
-          oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
-          oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
-          oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
-          oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
-        }
-        if (!this.classicChannels.checkReload()) return;
-        // A reload can introduce a bad id (hand edit) or clear one; the
-        // throttle keeps a repeated report from flooding the topic.
-        this.reportClassicUnrecoverableIds();
-        this.reregisterClassicChannels();
-        for (const ch of this.classicChannels.getAll()) {
-          const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
-          const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
-          const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
-          const newToolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
-          const newReplyGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
-          const backendChanged = oldBackends.get(ch.instanceName) !== newBackend;
-          const modelChanged = oldModels.get(ch.instanceName) !== newModel;
-          const autoPauseChanged = oldAutoPause.get(ch.instanceName) !== newAutoPause;
-          if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged)) {
-            this.logger.info(
-              { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel },
-              "Backend/model changed — restarting",
-            );
-            await this.stopInstance(ch.instanceName).catch(() => {});
-            // Small delay to let tmux window clean up
-            await new Promise(r => setTimeout(r, 2000));
-            // The manager already holds the new backend/model/auto-pause; the
-            // unattended helper reads them from it and schedules the delayed
-            // retry on failure like every other unattended start.
-            await this.startClassicInstanceUnattended(ch, "classic instance after backend/model change");
-          } else if (this.daemons.has(ch.instanceName)
-            && (oldToolProgress.get(ch.instanceName) !== newToolProgress
-              || oldReplyGuard.get(ch.instanceName) !== newReplyGuard)) {
-            this.applyHotConfigUpdate(ch.instanceName, {
-              tool_progress: newToolProgress,
-              reply_completion_guard: newReplyGuard,
-            });
-            this.logger.info({ instanceName: ch.instanceName }, "Classic instance hot config reloaded");
-          }
-        }
-      } catch (err) {
-        this.logger.warn({ err }, "classicBot.yaml reload error");
-      }
+    this.classicReloadTimer = setInterval(() => {
+      void this.reloadClassicConfigFromDisk();
     }, 30_000);
 
     const costGuardConfig: CostGuardConfig = {
