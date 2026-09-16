@@ -815,6 +815,7 @@ describe("FleetManager", () => {
     // must apply the effective value even when old/new config objects now agree.
     Object.assign(fm.fleetConfig!.instances.one, {
       tool_progress: "standard",
+      reply_completion_guard: false,
       mcp_proxy_reply: true,
       auto_pause_after: 4,
       warm_cap: 8,
@@ -826,6 +827,7 @@ describe("FleetManager", () => {
     writeFileSync(configPath, [
       "defaults:",
       "  tool_progress: standard",
+      "  reply_completion_guard: false",
       "  mcp_proxy_reply: true",
       "  auto_pause_after: 4",
       "  warm_cap: 8",
@@ -844,6 +846,7 @@ describe("FleetManager", () => {
       type: "config_update",
       config: expect.objectContaining({
         tool_progress: "standard",
+        reply_completion_guard: false,
         mcp_proxy_reply: true,
         auto_pause_after: 4,
         warm_cap: 8,
@@ -856,6 +859,106 @@ describe("FleetManager", () => {
     expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();
     expect(start).not.toHaveBeenCalled();
+  });
+
+  it("hot-applies fleet behavior defaults to a running Classic instance through the full fallback", async () => {
+    const configPath = join(tmpDir, "fleet.yaml");
+    writeFileSync(configPath, [
+      "defaults:",
+      "  tool_progress: off",
+      "  reply_completion_guard: true",
+      "instances: {}",
+      "",
+    ].join("\n"));
+    writeFileSync(join(tmpDir, "classicBot.yaml"), yaml.dump({
+      channels: {
+        "123456789012345678#discord": {
+          channelId: "123456789012345678",
+          adapterId: "discord",
+          instanceName: "classic-one",
+          name: "One",
+        },
+      },
+    }));
+    const fm = new FleetManager(tmpDir);
+    fm.loadConfig(configPath);
+    const classic = new ClassicChannelManager(tmpDir, fm.logger);
+    classic.configureAdapters([{ id: "discord", type: "discord" }]);
+    fm.classicChannels = classic;
+    const daemon = {
+      getConfigSnapshot: () => ({ tool_progress: "off", reply_completion_guard: true }),
+      applyConfigUpdate: vi.fn(),
+    } as any;
+    fm.lifecycle.daemons.set("classic-one", daemon);
+    const send = vi.fn(() => true);
+    (fm as any).instanceIpcClients.set("classic-one", { connected: true, send });
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+
+    // Settings mutates the manager's config before it persists and sends
+    // SIGHUP; the live daemon must still be recognized as stale.
+    Object.assign(fm.fleetConfig!.defaults, {
+      tool_progress: "verbose",
+      reply_completion_guard: false,
+    });
+    writeFileSync(configPath, [
+      "defaults:",
+      "  tool_progress: verbose",
+      "  reply_completion_guard: false",
+      "instances: {}",
+      "",
+    ].join("\n"));
+    await (fm as any).reconcileInstances();
+
+    expect(send).toHaveBeenCalledWith({
+      type: "config_update",
+      config: { tool_progress: "verbose", reply_completion_guard: false },
+    });
+    expect(daemon.applyConfigUpdate).not.toHaveBeenCalled();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("starts Classic with channel behavior overrides, preserving explicit false over true defaults", async () => {
+    const previousAgendHome = process.env.AGEND_HOME;
+    process.env.AGEND_HOME = tmpDir;
+    try {
+    writeFileSync(join(tmpDir, "classicBot.yaml"), yaml.dump({
+      defaults: { tool_progress: "standard", reply_completion_guard: true },
+      channels: {
+        "123456789012345678#discord": {
+          channelId: "123456789012345678",
+          adapterId: "discord",
+          instanceName: "classic-one",
+          name: "One",
+          tool_progress: "verbose",
+          reply_completion_guard: false,
+        },
+      },
+    }));
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { tool_progress: "off", reply_completion_guard: true },
+      instances: {},
+    } as any;
+    const classic = new ClassicChannelManager(tmpDir, fm.logger);
+    classic.configureAdapters([{ id: "discord", type: "discord" }]);
+    fm.classicChannels = classic;
+    const start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+
+    await (fm as any).startClassicInstance("classic-one", "claude-code");
+
+    expect(start).toHaveBeenCalledWith(
+      "classic-one",
+      expect.objectContaining({
+        tool_progress: "verbose",
+        reply_completion_guard: false,
+      }),
+      false,
+      "classic",
+    );
+    } finally {
+      if (previousAgendHome === undefined) delete process.env.AGEND_HOME;
+      else process.env.AGEND_HOME = previousAgendHome;
+    }
   });
 
   it.each([

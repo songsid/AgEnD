@@ -515,6 +515,7 @@ describe("tool_progress opt-in gate", () => {
     try {
       daemon.applyConfigUpdate({
         tool_progress: "verbose",
+        reply_completion_guard: false,
         mcp_proxy_reply: true,
         auto_pause_after: 4,
         warm_cap: 7,
@@ -528,6 +529,7 @@ describe("tool_progress opt-in gate", () => {
       const snapshot = daemon.getConfigSnapshot();
       expect(snapshot).toMatchObject({
         tool_progress: "verbose",
+        reply_completion_guard: false,
         mcp_proxy_reply: true,
         auto_pause_after: 4,
         warm_cap: 7,

@@ -65,6 +65,7 @@ export const DEFAULT_INSTANCE_CONFIG: Omit<InstanceConfig, "working_directory"> 
   mcp_auto_restart: true, // restart (idle-gated) when the MCP server dies
   mcp_proxy_reply: false, // opt-in: relaying raw pane text can leak more than regex redaction catches
   tool_progress: "off", // opt-in: the bubble tool list broadcasts activity into the channel
+  reply_completion_guard: true, // detect and recover a human turn that ended without a delivered reply
 
   kiro_ui: "legacy",
   terminal: {

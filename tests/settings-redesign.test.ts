@@ -20,13 +20,21 @@ describe("Settings P0 redesign shell", () => {
   });
 
   it("stages tool-progress defaults and overrides, then requests a hot reload", () => {
-    expect(html).toContain('select(inst.tool_progress || defaults.tool_progress || "off", ["off", "standard", "verbose"])');
-    expect(html).toContain('select(d.tool_progress || "off", ["off", "standard", "verbose"])');
+    expect(html).toContain('select(inst.tool_progress ?? defaults.tool_progress ?? "off", ["off", "standard", "verbose"])');
+    expect(html).toContain('select(d.tool_progress ?? "off", ["off", "standard", "verbose"])');
     expect(html).toContain('tool_progress: toolProgress.toggle.checked ? null : toolProgress.input.value');
     expect(html).toContain('tool_progress: fToolProgress.value');
-    expect(html).toContain('const HOT_FIELDS = new Set(["tool_progress", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"])');
+    expect(html).toContain('const HOT_FIELDS = new Set(["tool_progress", "reply_completion_guard", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"])');
     expect(html).toContain('impact: Object.keys(patch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance"');
     expect(html).toContain('await api("/api/settings/reload", { method: "POST" })');
+  });
+
+  it("wires the reply completion guard at global, fleet-instance, and Classic levels", () => {
+    expect(html).toContain('fReplyGuard.checked = d.reply_completion_guard ?? true');
+    expect(html).toContain('reply_completion_guard: replyGuard.toggle.checked ? null : replyGuard.input.checked');
+    expect(html).toContain('reply_completion_guard: fClassicReplyGuard.toggle.checked ? null : fClassicReplyGuard.input.checked');
+    expect(html).toContain('backend === "claude-code" && mode === "mcp"');
+    expect(html).toContain('Stored but inactive: {0} in {1} mode does not support reply-drop recovery.');
   });
 
   it("surfaces the ClassicBot access and editable channel workflow", () => {

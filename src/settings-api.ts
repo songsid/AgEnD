@@ -48,7 +48,7 @@ export interface SettingsApiContext {
     wake(name: string, timeoutMs?: number): Promise<void>;
   };
   isClassicInstance?(name: string): boolean;
-  restartClassicInstanceFromSettings?(instanceName: string): Promise<void>;
+  restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -240,6 +240,8 @@ export function handleSettingsRequest(
       try { classic = readClassic(ctx); }
       catch (err) { return json(res, 409, { error: (err as Error).message }); }
       const merged = { ...(classic.defaults as Record<string, unknown> ?? {}), ...body };
+      if (body.tool_progress === null) delete merged.tool_progress;
+      if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       const before = validateClassicBotConfig(classic);
       const after = validateClassicBotConfig({ ...classic, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
@@ -266,7 +268,15 @@ export function handleSettingsRequest(
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json(res, 400, { error: "expected an object" });
-      const allowed = new Set(["backend", "model", "auto_pause_after", "collab", "context_lines"]);
+      const allowed = new Set([
+        "backend",
+        "model",
+        "auto_pause_after",
+        "collab",
+        "context_lines",
+        "tool_progress",
+        "reply_completion_guard",
+      ]);
       const unknown = Object.keys(body).filter(field => !allowed.has(field));
       if (unknown.length) return json(res, 400, { error: `unsupported fields: ${unknown.join(", ")}` });
       if (body.backend !== undefined && (typeof body.backend !== "string" || !KNOWN_BACKENDS.includes(body.backend))) {
@@ -281,6 +291,14 @@ export function handleSettingsRequest(
       if (body.context_lines !== undefined && (!Number.isInteger(body.context_lines) || (body.context_lines as number) < 0)) {
         return json(res, 400, { error: "context_lines must be a non-negative integer" });
       }
+      if (body.tool_progress !== undefined && body.tool_progress !== null
+        && !["off", "standard", "verbose"].includes(String(body.tool_progress))) {
+        return json(res, 400, { error: "tool_progress must be off, standard, or verbose" });
+      }
+      if (body.reply_completion_guard !== undefined && body.reply_completion_guard !== null
+        && typeof body.reply_completion_guard !== "boolean") {
+        return json(res, 400, { error: "reply_completion_guard must be a boolean" });
+      }
 
       let classic: Record<string, unknown>;
       try { classic = readClassic(ctx); }
@@ -293,6 +311,8 @@ export function handleSettingsRequest(
       const merged = { ...(current as Record<string, unknown>), ...body };
       if (body.model === null || body.model === "") delete merged.model;
       if (body.auto_pause_after === null) delete merged.auto_pause_after;
+      if (body.tool_progress === null) delete merged.tool_progress;
+      if (body.reply_completion_guard === null) delete merged.reply_completion_guard;
       (channels as Record<string, unknown>)[key] = merged;
       const before = validateClassicBotConfig(previous);
       const after = validateClassicBotConfig(classic);
@@ -304,21 +324,30 @@ export function handleSettingsRequest(
       }
       const instanceName = typeof merged.instanceName === "string" ? merged.instanceName : undefined;
       try {
-        if (instanceName && ctx.restartClassicInstanceFromSettings) await ctx.restartClassicInstanceFromSettings(instanceName);
+        if (instanceName && ctx.restartClassicInstanceFromSettings) {
+          await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body));
+        }
       } catch (err) {
         // Keep disk and runtime consistent if the requested restart fails.
         try { writeClassicAtomic(ctx, previous); } catch (rollbackErr) {
           ctx.logger.error({ err: rollbackErr, key }, "settings: failed to roll back classic channel update");
         }
         if (instanceName && ctx.restartClassicInstanceFromSettings) {
-          try { await ctx.restartClassicInstanceFromSettings(instanceName); }
+          try { await ctx.restartClassicInstanceFromSettings(instanceName, Object.keys(body)); }
           catch (recoveryErr) { ctx.logger.error({ err: recoveryErr, key, instanceName }, "settings: failed to restore classic instance after rollback"); }
         }
         ctx.logger.warn({ err, key, instanceName }, "settings: classic channel restart failed; config rolled back");
         return json(res, 409, { error: `classic instance restart failed: ${(err as Error).message}` });
       }
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
-      json(res, 200, { ok: true, warnings: saveWarnings(before, after), restarted: !!instanceName });
+      const hotOnly = Object.keys(body).length > 0
+        && Object.keys(body).every(field => field === "tool_progress" || field === "reply_completion_guard");
+      json(res, 200, {
+        ok: true,
+        warnings: saveWarnings(before, after),
+        restarted: !!instanceName && !hotOnly,
+        hot_updated: !!instanceName && hotOnly,
+      });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -333,7 +362,7 @@ export function handleSettingsRequest(
 
   // ── Instances (create / patch / delete) ──
   const validName = (n: string) => !!n && /^[^\\/\x00]+$/.test(n);
-  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "log_level", "lightweight", "model_failover", "display_name"]);
+  const nullableInstanceOverrides = new Set(["model", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "tool_progress", "reply_completion_guard", "log_level", "lightweight", "model_failover", "display_name"]);
   const removesInstanceOverride = (key: string, value: unknown): boolean =>
     nullableInstanceOverrides.has(key)
     && (value === null || (key === "model" && typeof value === "string" && value.trim() === ""));

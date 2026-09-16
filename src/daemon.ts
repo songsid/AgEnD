@@ -3179,7 +3179,8 @@ export class Daemon extends EventEmitter {
   }
 
   private replyCompletionGuardEnabled(): boolean {
-    return this.backend?.replyCompletionGuard === true;
+    return this.config.reply_completion_guard !== false
+      && this.backend?.replyCompletionGuard === true;
   }
 
   private startReplyRecovery(turn: TurnReplySnapshot, reason: "no_valid_call" | "malformed_call"): void {
@@ -3770,6 +3771,11 @@ export class Daemon extends EventEmitter {
 
     if (update.tool_progress === null || ["off", "standard", "verbose"].includes(String(update.tool_progress))) {
       this.updateToolProgress(update.tool_progress === null ? undefined : update.tool_progress as InstanceConfig["tool_progress"]);
+    }
+    if (typeof update.reply_completion_guard === "boolean") {
+      this.config.reply_completion_guard = update.reply_completion_guard;
+    } else if (update.reply_completion_guard === null) {
+      delete this.config.reply_completion_guard;
     }
     if (typeof update.mcp_proxy_reply === "boolean") this.config.mcp_proxy_reply = update.mcp_proxy_reply;
     else if (update.mcp_proxy_reply === null) delete this.config.mcp_proxy_reply;

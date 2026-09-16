@@ -44,6 +44,30 @@ instances:
 ```
 Leave unset (or `legacy`) unless testing a newer profile. Ignored by other backends.
 
+## Reply completion guard
+
+`reply_completion_guard` detects a human-channel turn that ended without a
+delivered reply and asks the agent to send one bounded recovery reply. It is
+enabled by default and currently takes effect only for Claude Code in MCP mode;
+other backends keep the setting but do not claim the protection is active.
+
+Prefer a narrow per-instance override when one worker repeatedly finishes work
+without posting its conclusion:
+
+```yaml
+defaults:
+  reply_completion_guard: true   # fleet-wide bottom default
+instances:
+  unreliable-worker:
+    reply_completion_guard: true # per-instance override
+```
+
+ClassicBot uses `channels.<id>` → `classicBot.yaml defaults` → `fleet.yaml
+defaults`. Both `reply_completion_guard` and `tool_progress` use that chain and
+hot-reload without restarting the agent. The switch only enables or disables
+recovery; it does not change which trusted human messages require a reply, and
+it does not turn tool-call text into proof that the reply reached the channel.
+
 ## Config Validation
 
 **After editing fleet.yaml or classicBot.yaml, validate before reloading:**
@@ -67,6 +91,6 @@ Fix all errors before `agend reload`; warnings are advisory.
 
 **After editing config:**
 ```bash
-agend reload              # hot-reload (SIGHUP) — adds/removes instances without restart
-agend fleet restart       # if channel/defaults changed — needs full restart
+agend reload              # hot-reload (SIGHUP) — behavior switches apply without restart
+agend fleet restart       # if channel or other cold defaults changed
 ```

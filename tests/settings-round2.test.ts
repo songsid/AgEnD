@@ -213,6 +213,33 @@ describe("Settings manual lifecycle API", () => {
       { path: ["instances", "worker", "tool_progress"], value: null, remove: true },
     ]);
   });
+
+  it("persists and removes the reply_completion_guard instance override", async () => {
+    const { ctx } = context();
+    const disabled = await request(
+      "/api/settings/fleet/instances/worker",
+      ctx,
+      "PATCH",
+      { reply_completion_guard: false },
+    );
+    expect(disabled.status).toBe(200);
+    expect(ctx.fleetConfig!.instances.worker.reply_completion_guard).toBe(false);
+    expect(ctx.saveFleetConfig).toHaveBeenLastCalledWith([
+      { path: ["instances", "worker", "reply_completion_guard"], value: false, remove: false },
+    ]);
+
+    const inherited = await request(
+      "/api/settings/fleet/instances/worker",
+      ctx,
+      "PATCH",
+      { reply_completion_guard: null },
+    );
+    expect(inherited.status).toBe(200);
+    expect(ctx.fleetConfig!.instances.worker.reply_completion_guard).toBeUndefined();
+    expect(ctx.saveFleetConfig).toHaveBeenLastCalledWith([
+      { path: ["instances", "worker", "reply_completion_guard"], value: null, remove: true },
+    ]);
+  });
 });
 
 describe("Settings classicBot persistence", () => {
@@ -276,7 +303,60 @@ describe("Settings classicBot persistence", () => {
     expect(saved.channels["123#discord"]).toMatchObject({ backend: "opencode", model: "test-model", auto_pause_after: 12, collab: true, context_lines: 8 });
     const manager = new ClassicChannelManager(dir, ctx.logger);
     expect(manager.getAutoPauseAfterByInstance("classic-demo-0123", 30)).toBe(12);
-    expect(restartClassicInstanceFromSettings).toHaveBeenCalledWith("classic-demo-0123");
+    expect(restartClassicInstanceFromSettings).toHaveBeenCalledWith(
+      "classic-demo-0123",
+      ["backend", "model", "auto_pause_after", "collab", "context_lines"],
+    );
+  });
+
+  it("persists hot Classic overrides, including explicit false, without reporting a restart", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    writeFileSync(path, yaml.dump({
+      defaults: { reply_completion_guard: true, tool_progress: "standard" },
+      channels: { one: { instanceName: "classic-demo-0123" } },
+    }));
+    const { ctx, restartClassicInstanceFromSettings } = context(dir);
+
+    const response = await request(
+      "/api/settings/classic/channels/one",
+      ctx,
+      "PATCH",
+      { reply_completion_guard: false, tool_progress: "verbose" },
+    );
+
+    expect(response).toMatchObject({ status: 200, body: { restarted: false, hot_updated: true } });
+    const saved = yaml.load(readFileSync(path, "utf8")) as any;
+    expect(saved.channels.one).toMatchObject({ reply_completion_guard: false, tool_progress: "verbose" });
+    expect(restartClassicInstanceFromSettings).toHaveBeenCalledWith(
+      "classic-demo-0123",
+      ["reply_completion_guard", "tool_progress"],
+    );
+  });
+
+  it("removes Classic behavior overrides so the channel inherits its defaults", async () => {
+    const dir = makeDir();
+    const path = join(dir, "classicBot.yaml");
+    writeFileSync(path, yaml.dump({
+      channels: {
+        one: {
+          instanceName: "classic-demo-0123",
+          reply_completion_guard: false,
+          tool_progress: "verbose",
+        },
+      },
+    }));
+    const { ctx } = context(dir);
+    const response = await request(
+      "/api/settings/classic/channels/one",
+      ctx,
+      "PATCH",
+      { reply_completion_guard: null, tool_progress: null },
+    );
+    expect(response.status).toBe(200);
+    const saved = yaml.load(readFileSync(path, "utf8")) as any;
+    expect(saved.channels.one.reply_completion_guard).toBeUndefined();
+    expect(saved.channels.one.tool_progress).toBeUndefined();
   });
 
   it("rejects invalid Classic channel fields without writing", async () => {
