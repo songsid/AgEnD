@@ -161,6 +161,13 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const multi = channelList.length > 1;
   channelList.forEach((ch, i) => {
     const at = Array.isArray(config.channels) && i < config.channels.length ? `channels[${i}]` : "channel";
+    if (isObj(ch.options) && ch.options.topic_probe !== undefined) {
+      if (ch.type !== "telegram") {
+        warn(`${at}.options.topic_probe`, "only Telegram honours topic_probe — Discord always probes passively on the periodic scan");
+      } else if (ch.options.topic_probe !== "periodic" && ch.options.topic_probe !== "on-demand") {
+        err(`${at}.options.topic_probe`, 'must be "on-demand" (default) or "periodic"');
+      }
+    }
     if (typeof ch.type !== "string" || !ch.type) err(`${at}.type`, "required (e.g. \"telegram\" or \"discord\")");
     if (typeof ch.bot_token_env !== "string" || !ch.bot_token_env) err(`${at}.bot_token_env`, "required — the env var holding the bot token");
     // With multiple channels an explicit id is needed to disambiguate bindings.

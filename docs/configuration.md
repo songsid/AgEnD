@@ -54,6 +54,12 @@ Each entry configures a platform adapter (Telegram or Discord).
 |-------|------|-------------|
 | `general_channel_id` | string | Discord channel ID for the General instance |
 
+#### channel.options (Telegram)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `topic_probe` | `"on-demand"` \| `"periodic"` | `"on-demand"` | `on-demand`: a topic is only checked after a real delivery reports it missing (no scheduled send+delete, no notifications). `periodic`: also probe every bound topic on the 5-minute scan, which posts and deletes a blank message in each topic. |
+
 ---
 
 ### defaults

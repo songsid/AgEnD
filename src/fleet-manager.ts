@@ -5965,6 +5965,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       generation?: number;
     }> = [];
     const pass = this.newTopicProbePass();
+    const skippedOnDemand = new Set<string>();
 
     for (const [threadId, target] of snapshot) {
       if (generation !== this.topicCleanupGeneration || this.shuttingDown) return;
@@ -5974,6 +5975,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const adapter = adapterId ? this.adapters.get(adapterId) : undefined;
       if (!adapterId || !adapter?.probeTopicPresence) {
         this.passTopicProbeUnknown(pass, target.name, threadId, adapterId, "owner-adapter-unavailable");
+        continue;
+      }
+      // An on-demand adapter's probe is reserved for confirming a delivery
+      // failure hint (handleProviderTopicClosed); the periodic scan leaves its
+      // routes alone — no probe, no unknown, no streak, no notice.
+      if (adapter.topicProbePolicy?.() === "on-demand") {
+        if (!skippedOnDemand.has(adapterId)) {
+          skippedOnDemand.add(adapterId);
+          this.logger.debug({ adapterId }, "Topic scan skipping on-demand adapter — presence is confirmed only on delivery failure");
+        }
         continue;
       }
       const before = this.confirmedProbeFence(adapterId, adapter);
