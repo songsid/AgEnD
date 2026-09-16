@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+  <title id="title">AgEnD v2.1.5 — 登入更順，投遞更穩</title>
+  <desc id="desc">AgEnD v2.1.5 穩定版更新宣傳圖，介紹登入與管理體驗，以及投遞與資料保護的重要改善。</desc>
+  <defs>
+    <linearGradient id="title-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2155E8"/>
+      <stop offset="0.52" stop-color="#4E46E5"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="new-gradient" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F9F86"/>
+      <stop offset="1" stop-color="#0A7BD8"/>
+    </linearGradient>
+    <linearGradient id="footer-gradient" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#EFF5FF"/>
+      <stop offset="0.5" stop-color="#F3F0FF"/>
+      <stop offset="1" stop-color="#ECFBF7"/>
+    </linearGradient>
+    <filter id="soft-shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="18" flood-color="#22335F" flood-opacity="0.08"/>
+    </filter>
+    <style>
+      .sans { font-family: "Microsoft YaHei Mono", "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; }
+      .section-title { font-size: 31px; font-weight: 700; letter-spacing: 0.015em; }
+      .card-title { fill: #10182D; font-size: 23px; font-weight: 700; letter-spacing: -0.015em; }
+      .card-copy { fill: #58657B; font-size: 17px; font-weight: 400; }
+      .icon-line { fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1200" fill="#FFFFFF"/>
+
+  <!-- Quiet decorative geometry -->
+  <g fill="none" stroke="#DCE7FF" stroke-width="1.5" opacity="0.65">
+    <path d="M0 78H292M0 130H238M0 182H180"/>
+    <path d="M52 0V224M104 0V185M156 0V137"/>
+    <path d="M1800 960H1640M1800 1012H1586M1800 1064H1532"/>
+    <path d="M1748 1200V940M1696 1200V980M1644 1200V1020"/>
+  </g>
+  <circle cx="1650" cy="104" r="72" fill="#F5F3FF"/>
+  <circle cx="1650" cy="104" r="43" fill="none" stroke="#D9D2FF" stroke-width="2"/>
+  <path d="M1650 72v64M1618 104h64" stroke="#6857E8" stroke-width="3" stroke-linecap="round" opacity="0.78"/>
+
+  <!-- Header -->
+  <g class="sans">
+    <rect x="96" y="68" width="142" height="38" rx="19" fill="#EEF3FF"/>
+    <circle cx="119" cy="87" r="5" fill="#315CE8"/>
+    <text x="135" y="94" fill="#3151B7" font-size="16" font-weight="700">穩定版更新</text>
+
+    <text x="96" y="184" fill="#0A1022" font-size="67" font-weight="800" letter-spacing="-0.045em">AgEnD <tspan fill="url(#title-gradient)">v2.1.5</tspan></text>
+    <text x="96" y="244" fill="#202B45" font-size="34" font-weight="700">登入更順，投遞更穩</text>
+    <text x="96" y="286" fill="#6A768B" font-size="20">從登入、日常管理到資料保護，關鍵流程全面加固。</text>
+  </g>
+
+  <path d="M96 326H1704" stroke="#E6EAF2" stroke-width="2"/>
+
+  <!-- Section panels -->
+  <rect x="72" y="354" width="810" height="714" rx="30" fill="#F7F9FE" stroke="#E4E9F4" stroke-width="2" filter="url(#soft-shadow)"/>
+  <rect x="918" y="354" width="810" height="714" rx="30" fill="#F5FBFA" stroke="#DDEEEA" stroke-width="2" filter="url(#soft-shadow)"/>
+
+  <!-- Left section header -->
+  <g class="sans">
+    <rect x="104" y="389" width="50" height="50" rx="15" fill="#E9EFFF"/>
+    <path d="M118 414h22M129 403v22" stroke="#315CE8" stroke-width="3" stroke-linecap="round"/>
+    <text x="173" y="424" class="section-title" fill="#203B96">登入與管理體驗</text>
+  </g>
+
+  <!-- Right section header -->
+  <g class="sans">
+    <rect x="950" y="389" width="50" height="50" rx="15" fill="#E2F6F1"/>
+    <path d="M965 418l10-17 10 17h-7v10h-6v-10z" fill="url(#new-gradient)"/>
+    <text x="1019" y="424" class="section-title" fill="#087B6C">投遞與資料保護</text>
+  </g>
+
+  <!-- Left cards -->
+  <g class="sans">
+    <g transform="translate(104 466)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 42)" color="#315CE8">
+        <rect class="icon-line" x="1" y="6" width="29" height="22" rx="4"/>
+        <path class="icon-line" d="M8 13h9M8 20h6"/>
+        <circle class="icon-line" cx="25" cy="3" r="5"/>
+        <path class="icon-line" d="M25 0v6M22 3h6"/>
+      </g>
+      <text x="104" y="48" class="card-title">登入卡住也有安全入口</text>
+      <text x="104" y="79" class="card-copy">在聊天中使用 /login，即可開啟一次性的</text>
+      <text x="104" y="105" class="card-copy">瀏覽器終端，完成重新登入。</text>
+    </g>
+
+    <g transform="translate(104 614)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 42)" color="#315CE8">
+        <path class="icon-line" d="M2 7h28M2 16h28M2 25h28"/>
+        <circle cx="10" cy="7" r="4" fill="#EEF3FF" stroke="currentColor" stroke-width="2.6"/>
+        <circle cx="22" cy="16" r="4" fill="#EEF3FF" stroke="currentColor" stroke-width="2.6"/>
+        <circle cx="14" cy="25" r="4" fill="#EEF3FF" stroke="currentColor" stroke-width="2.6"/>
+      </g>
+      <text x="104" y="48" class="card-title">兩個全域開關，隨時調整</text>
+      <text x="104" y="79" class="card-copy">工具進度與回覆防漏可在 Settings 一鍵切換，</text>
+      <text x="104" y="105" class="card-copy">也能為個別代理設定。</text>
+    </g>
+
+    <g transform="translate(104 762)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 42)" color="#315CE8">
+        <rect class="icon-line" x="1" y="2" width="30" height="27" rx="4"/>
+        <path class="icon-line" d="M7 21v-6M13 21V9M19 21v-3M25 21V6"/>
+      </g>
+      <text x="104" y="48" class="card-title">代理狀態一眼看清</text>
+      <text x="104" y="79" class="card-copy">後端、模型、推理強度與脈絡用量，</text>
+      <text x="104" y="105" class="card-copy">都在 Dashboard 清楚呈現。</text>
+    </g>
+
+    <g transform="translate(104 910)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#E2E7F1"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#EEF3FF"/>
+      <g transform="translate(36 41)" color="#315CE8">
+        <circle class="icon-line" cx="8" cy="8" r="5"/>
+        <path class="icon-line" d="M1 22c1-5 4-8 7-8s6 3 7 8"/>
+        <rect class="icon-line" x="19" y="3" width="13" height="21" rx="3"/>
+        <path class="icon-line" d="M22 9h7M22 14h7M22 19h5"/>
+      </g>
+      <text x="104" y="48" class="card-title">名稱與暱稱不再混淆</text>
+      <text x="104" y="79" class="card-copy">側欄保留原始名稱作為識別，暱稱放在下方，</text>
+      <text x="104" y="105" class="card-copy">找代理更快，也不會認錯。</text>
+    </g>
+  </g>
+
+  <!-- Right cards -->
+  <g class="sans">
+    <g transform="translate(950 466)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M3 5h27v12c0 8-6 12-13.5 15C9 29 3 25 3 17z"/>
+        <path class="icon-line" d="M9 17l5 5 10-11"/>
+      </g>
+      <text x="104" y="48" class="card-title">斷線不再誤刪工作目錄</text>
+      <text x="104" y="79" class="card-copy">頻道暫時消失時只會安全隔離，</text>
+      <text x="104" y="105" class="card-copy">設定、對話與工作目錄都會完整保留。</text>
+    </g>
+
+    <g transform="translate(950 614)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M2 3h28v20H13l-8 7v-7H2z"/>
+        <path class="icon-line" d="M9 13h12M17 8l5 5-5 5"/>
+      </g>
+      <text x="104" y="48" class="card-title">Codex 喚醒後，首則訊息送得進去</text>
+      <text x="104" y="79" class="card-copy">系統會等恢復完成再送出，避免按鍵被吃掉、</text>
+      <text x="104" y="105" class="card-copy">文字卡在輸入框。</text>
+    </g>
+
+    <g transform="translate(950 762)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M2 4h28v20H13l-8 7v-7H2z"/>
+        <path class="icon-line" d="M8 14l5 5 10-11"/>
+      </g>
+      <text x="104" y="48" class="card-title">投遞成功，才會顯示完成</text>
+      <text x="104" y="79" class="card-copy">系統會確認文字真的離開輸入框；無法證明時</text>
+      <text x="104" y="105" class="card-copy">明確回報失敗，不再猜成功。</text>
+    </g>
+
+    <g transform="translate(950 910)">
+      <rect width="746" height="132" rx="21" fill="#FFFFFF" stroke="#DCEBE8"/>
+      <rect x="22" y="28" width="58" height="58" rx="17" fill="#E7F7F3"/>
+      <g transform="translate(36 42)" color="#0B8D79">
+        <path class="icon-line" d="M2 3h24v18H12l-7 7v-7H2z"/>
+        <path class="icon-line" d="M10 9h9M10 15h6"/>
+        <path class="icon-line" d="M24 4a8 8 0 1 1-3 15"/>
+        <path class="icon-line" d="M21 14v5h5"/>
+      </g>
+      <text x="104" y="48" class="card-title">漏回覆不再靜默</text>
+      <text x="104" y="79" class="card-copy">回合結束卻沒送出回答時，系統會立即提示，</text>
+      <text x="104" y="105" class="card-copy">並要求代理補送一次。</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <g class="sans">
+    <rect x="445" y="1100" width="910" height="58" rx="29" fill="url(#footer-gradient)" stroke="#E2E7F1"/>
+    <circle cx="492" cy="1129" r="8" fill="#315CE8"/>
+    <text x="516" y="1137" fill="#25324B" font-size="20" font-weight="700">登入・投遞・資料全面加固</text>
+    <circle cx="885" cy="1129" r="3.5" fill="#9AA5B5"/>
+    <text x="920" y="1137" fill="#25324B" font-size="20" font-weight="700">v2.1.5 穩定版現已推出</text>
+    <circle cx="1308" cy="1129" r="8" fill="#0B9B82"/>
+  </g>
+</svg>
