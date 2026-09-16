@@ -26,7 +26,9 @@
   .inst.active { background: rgba(88,166,255,.14); border-left: 3px solid var(--accent); padding-left: 13px; }
   .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
   .dot.running { background: #3fb950; } .dot.stopped { background: #6e7681; } .dot.crashed { background: #f85149; }
-  .inst .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inst .identity { flex: 1; min-width: 0; }
+  .inst .nm { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inst .alias { display: block; margin-top: 2px; color: var(--dim); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inst .pct { color: var(--dim); font-size: 11px; }
   .cli-icon { width: 10px; height: 10px; flex: 0 0 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,.24); box-shadow: 0 0 0 1px rgba(0,0,0,.18); }
   .cli-claude-code { background: #c678dd; }
@@ -416,11 +418,9 @@
     if (tags.length) return tags[0];
     return "Other";
   }
-  // Short label: display name if set, else raw instance_name.
-  // M1: No fallback shortening — raw identity must be preserved when no display_name.
-  // Tooltip still shows full instance_name for discoverability.
-  function shortName(it) {
-    return it.display_name || it.instance_name;
+  function sidebarAlias(it) {
+    const alias = typeof it.display_name === "string" ? it.display_name.trim() : "";
+    return alias && alias !== it.instance_name ? alias : "";
   }
 
   const BACKEND_LABELS = {
@@ -536,7 +536,8 @@
         el.className = "inst" + (name === current ? " active" : "");
         el.draggable = true;
         // M2: context_pct != null shows value including 0%; null means unavailable (empty)
-        el.innerHTML = `<span class="dot ${it.status}"></span><span class="nm">${esc(shortName(it))}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
+        const alias = sidebarAlias(it);
+        el.innerHTML = `<span class="dot ${it.status}"></span><span class="identity"><span class="nm">${esc(it.instance_name)}</span>${alias ? `<span class="alias">${esc(alias)}</span>` : ""}</span><span class="pct">${it.context_pct != null ? Math.round(it.context_pct)+"%" : ""}</span>${backendIconHtml(it.backend)}`;
         el.title = instanceTooltip(it);
         el.onclick = () => select(name);
         wireDrag(el, { type: "instance", name, group: g });

@@ -77,8 +77,10 @@
   .dot.running { background: var(--success); box-shadow: 0 0 8px rgba(86,211,100,0.5); }
   .dot.stopped { background: var(--error); opacity: 0.7; }
   .dot.crashed { background: var(--warn); }
+  .inst-identity { flex: 1; min-width: 0; }
   .inst-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .inst-meta { font-size: 11px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
+  .inst-alias { margin-top: 2px; font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inst-meta { flex-shrink: 0; font-size: 11px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; }
   .sidebar-footer { padding: 16px; border-top: 1px solid var(--glass-border); }
 
   /* ── Main ────────────────────────────────────────────── */
@@ -347,11 +349,11 @@ function renderList() {
     const tip = [i.name, i.backend, modelPart, effortPart, ctxPart, i.status].filter(Boolean).join(" · ");
     // M2: show ctx:0% when context_pct is 0, only hide when null (unavailable)
     const ctxMeta = i.context_pct != null ? ` ctx:${Math.round(i.context_pct)}%` : "";
+    const alias = typeof i.display_name === "string" && i.display_name.trim() !== i.name ? i.display_name.trim() : "";
     return `<div class="instance-item${i.name===cur&&mode==="instance"?" active":""}" data-n="${esc(i.name)}" title="${esc(tip)}">
-    <div class="dot ${i.status}" title="${i.status}"></div><div style="flex:1;min-width:0">
-    <div class="inst-name">${esc(i.display_name || i.name)}</div>
-    <div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div>
-    </div></div>`;
+    <div class="dot ${i.status}" title="${i.status}"></div><div class="inst-identity">
+    <div class="inst-name">${esc(i.name)}</div>${alias ? `<div class="inst-alias">${esc(alias)}</div>` : ""}
+    </div><div class="inst-meta">${i.cost>0?`$${i.cost.toFixed(2)}`:""}${ctxMeta}</div></div>`;
   }).join("");
   el.querySelectorAll(".instance-item").forEach(x => x.addEventListener("click", () => sel(x.dataset.n)));
 }
