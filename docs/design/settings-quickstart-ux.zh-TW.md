@@ -7,6 +7,25 @@
 
 ---
 
+## v2 修訂說明（回應 fable 架構/安全 review）
+
+**我在 v1 的 D.4 寫錯了一條事實，先更正。** v1 的邊界規則一寫「web 層永不直接操作 daemon，只產生 config 變更」，並畫成一張彷彿描述現況的圖。**現況不是這樣**：`WebApiContext`（`web-api.ts:138-149`）已經直接暴露 `startInstance`／`stopInstance`／`restartSingleInstance`／`removeInstance`／`deliverToInstance`／`connectIpcToInstance`／`saveFleetConfig`，而 `settings-api` 也直接呼 `ctx.lifecycle.pause/wake`（:189）與 `ctx.restartClassicInstanceFromSettings`（:327-336）。**web 層今天已經是一個帶完整生命週期權限的控制面，不是 config 層。**
+
+這個錯誤不是措辭問題，它會直接害到票 5：如果 pre-fleet 用「stub context 承載同一份 handler」來實作，等於在一個**沒有 fleet 的行程裡放進可以 spawn instance 的動詞**——一個提權面。v2 的 D.4 因此整段重寫。
+
+| 修訂 | 內容 |
+|---|---|
+| D.1 | hot 欄位不是兩處是**五處**，逐一列出 |
+| D.2 | 補兩個常態失效：客戶端產生冪等鍵、apply job 必須落磁碟 |
+| D.4 | 整段重寫：WebApiContext 拆 config verbs / lifecycle verbs；setup 宿主＝表單 + spawn + 自行退出 |
+| D.5 | 整段重寫：setup 不用 web.token、改 CLI 一次性 token；setup-complete 獨立標記；宿主自退作為時間窗 |
+| 票 0 | **新增**：Settings 既有 gate 硬化，排在 tunnel 接線之前 |
+| 票 1 | 從「schema endpoint」擴成「單一來源 + parity 測試」 |
+
+(A)(B)(C) 維持 v1，未受此次 review 影響。
+
+---
+
 ## 摘要
 
 三個發現改變了我原本預期的提案形狀：
@@ -192,36 +211,35 @@ Gitea 在尚未設定時，於同一個埠提供 setup 頁；**管理員帳號�
 
 ## (D) 架構：Settings 能不能跟 fleet 解耦
 
-### D.1 現況：hot / cold 邊界在哪
+### D.1 現況：hot / cold 邊界在哪，以及它被寫了五份
 
-**server 端（唯一權威）**：`src/fleet-manager.ts:234` 的 `HOT_INSTANCE_CONFIG_KEYS` —
-`tool_progress`、`reply_completion_guard`、`mcp_proxy_reply`、`auto_pause_after`、`warm_cap`、`display_name`、`description`、`tags`、`log_level`。
+**權威來源**：`fleet-manager.ts:234` 的 `HOT_INSTANCE_CONFIG_KEYS`（9 鍵）—— `tool_progress`、`reply_completion_guard`、`mcp_proxy_reply`、`auto_pause_after`、`warm_cap`、`display_name`、`description`、`tags`、`log_level`。`splitHotColdConfig()`（:260）據此拆分，`reconcileInstances()`（:11426）把 hot 推進 live daemon、其餘維持重啟語意。
 
-`splitHotColdConfig()`（:260）把一份 instance config 拆成 hot / cold；`reconcileInstances()`（:11426）重讀 fleet.yaml 後：**hot 欄位推進 live daemon；其餘 instance 欄位與 cold fleet-level 設定維持「需重啟」語意**（見 :11420-11424 的註解）。ClassicBot 走同一條路（:11585「Classic cold config changed — restarting」）。
+**但同一份知識實際上散在五處**（v1 只說了兩處，低估了）：
 
-**觸發方式**：`POST /api/settings/reload` 目前只是 `process.kill(process.pid, "SIGHUP")`（`settings-api.ts:356`）——送出後**沒有任何回傳通道**告訴前端「協調到哪了」。
+| # | 位置 | 內容 | 與權威的關係 |
+|---|---|---|---|
+| 1 | `fleet-manager.ts:234` | 9 鍵 | **權威** |
+| 2 | `daemon.ts:3863` `applyConfigUpdate` | 實際只認 `tool_progress`/`reply_completion_guard`/`mcp_proxy_reply`/`auto_pause_after`/`warm_cap`/`tags`/`log_level` | 少了 `display_name`/`description`（由 fleet 端處理）——**差集是刻意的，但沒有任何東西擔保它不變** |
+| 3 | `settings-api.ts:344` | classic PATCH 的 `hotOnly` 硬編碼 `tool_progress`、`reply_completion_guard` | 手寫子集 |
+| 4 | `fleet-manager.ts:1852` | `restartClassicInstanceFromSettings` 再次硬編碼同樣兩個 | 與 #3 重複 |
+| 5 | `settings.html` | **42 處**逐欄位手寫的 `impact("now"/"instance"/"fleet")` | 手寫，決定使用者看到的影響說明 |
 
-**前端**：`settings.html:376` 有一份手抄的 `HOT_FIELDS`，用來把欄位標成 ⚡ 立即／🔄 重啟。
+**觸發方式**：`POST /api/settings/reload` 目前只是 `process.kill(process.pid, "SIGHUP")`（`settings-api.ts:356`），送出後沒有任何回傳通道。
 
-> **建議先修的小債**：把 hot 欄位清單改由 API 下發（例如 `GET /api/settings/schema` 回傳 hot keys 與每個欄位的 impact），前端不再自己維護第二份。這是 Save→apply→progress 的前置，因為進度畫面必須跟 server 對同一份 hot/cold 認知。
+> v1 說「schema endpoint 可以根治」——**不對，它只根治第 5 處**。票 1 因此改寫為「單一來源 + parity 測試」，見票表。
 
-### D.2 要做到 GHES 式 Save→apply→restart→progress，缺什麼
+### D.2 Save→apply→restart→progress 缺什麼
 
-**已經有的**：
-- 暫存變更模型：`state.pending` / `stageChange()` / `applyPendingChanges()`（`settings.html:344-365`）
-- 每筆變更的影響等級：`now` / `instance` / `fleet`
-- 套用前的安全確認：access mode 變更的 `change.confirm()` 前置檢查（:351-358，刻意在第一次寫入前跑完所有確認，避免部分套用）
-- SSE 基礎建設：`web-api.ts:270` 已有 `text/event-stream` 與廣播函式
-- per-instance 重啟與進度：`RestartProgress`（#722 已有終局送達與 deadline）
+**已經有的**：暫存模型（`settings.html:344` `stageChange`）、影響分級、套用前的安全確認、SSE 基礎建設（`web-api.ts:262-300`）、per-instance 重啟與 `RestartProgress`（#722 的終局送達與 deadline）。
 
 **要新增的**：
-1. **Apply job 物件**：`POST /api/settings/apply` 回傳 `jobId`，而不是現在的 fire-and-forget SIGHUP。job 內含每個受影響對象一列：`{ target, kind: "hot"|"restart", status: "pending"|"running"|"done"|"failed", error? }`。這正是 GHES 逐元件 DONE/CONFIGURING/PENDING 的對應物。
-2. **進度事件**：沿用既有 SSE 通道，新增 `apply_progress` 事件（`jobId` + 該列狀態變化）。**不需要新的傳輸層**。
-3. **job 狀態查詢**：`GET /api/settings/apply/:jobId`，供重新整理／斷線重連後補看（SSE 斷線是常態，逃生艙尤其）。
-4. **終局保證**：比照 #722——每個 job 有 wall-clock deadline，逾時要明講「仍在重啟中(Ns)」而不是靜默。這條是我在 #748 學到的：**把成功訊息卡在長流程後面，使用者會以為它掛了**。
-5. **冪等**：同一個 jobId 重送不得重複重啟（逃生艙在行動網路上重送很常見）。
 
-**不需要新增**：暫存模型、影響分級、SSE 傳輸、per-instance 重啟本身。
+1. **Apply job**：`POST /api/settings/apply` 回 `jobId`，內含每個受影響對象一列 `{ target, kind: "hot"|"restart", status, error? }`。對應 GHES 的逐元件 DONE/CONFIGURING/PENDING。
+2. **冪等鍵必須由客戶端產生**。v1 只寫「同一個 jobId 重送不得重複重啟」，漏了真正的常態：行動網路上 POST 送達、**回應沒收到**、客戶端重送——此時 server 已 mint 了 jobId 而客戶端不知道，於是產生第二個 job、第二次重啟。**修正**：客戶端送 `Idempotency-Key`（或客戶端預產 jobId），server 在時間窗內對同鍵回同一個 job。逃生艙在行動網路上用，這是預設情境不是邊角。
+3. **Job 必須落磁碟**。**fleet-impact 的變更會重啟 AgEnD 本身**——in-memory job 隨行程消失，重啟後 `GET /apply/:jobId` 回 404，進度永遠停在「重啟中」。這正是 #722／#748 的形狀再演一次。**修正**：job 寫磁碟標記，新行程啟動時讀標記、收尾成 `done` 並能回答 GET。
+4. **SSE 只是加速通道，GET 才權威**。現行 SSE 不發 `id:`（`web-api.ts:262-300` 無 event id），沒有 Last-Event-ID 續傳，斷線就漏事件。因此進度畫面必須以輪詢 GET 為真相來源、SSE 只用來降低延遲。
+5. **終局保證**：每個 job 一個 wall-clock deadline，逾時明講「仍在重啟中(Ns)」而非靜默（#722 教訓）。
 
 ### D.3 套用進度畫面（線框）
 
@@ -240,71 +258,114 @@ Gitea 在尚未設定時，於同一個埠提供 setup 頁；**管理員帳號�
 │                        [在背景繼續] [關閉]      │
 └───────────────────────────────────────────────┘
 ```
+（重啟 AgEnD 本身時，此畫面在新行程接手後由磁碟 job 標記續播，而不是回 404。）
 
-### D.4 pre-fleet setup 模式（逃生艙關鍵情境）
+### D.4 解耦邊界（v2 重寫）
 
-**可行性比預期高，證據**：
-- `SettingsApiContext.fleetConfig: FleetConfig | null`、`configPath: string | null`（`settings-api.ts:38-40`）——型別上已經容許「還沒有 fleet」。
-- `GET /api/settings/fleet` 在無 fleet 時回 `{}` 而不是炸掉（:166 `ctx.fleetConfig ?? {}`）。
-- web token 來自 `loadOrCreateWebToken(dataDir)`（`web-auth.ts:33`）——**不依賴 fleet.yaml**，所以 token gate 在 pre-fleet 就能成立。
+#### D.4.1 現況更正
 
-**建議的解耦邊界**：
+`WebApiContext`（`web-api.ts:138-149`）已含 `deliverToInstance`、`startInstance`、`stopInstance`、`restartSingleInstance`、`removeInstance`、`connectIpcToInstance`、`saveFleetConfig`；`settings-api` 另呼 `ctx.lifecycle.pause/wake`（:189）與 `ctx.restartClassicInstanceFromSettings`（:327-336）。**web 層已經是控制面。**
+
+兩條看似自然的 pre-fleet 實作因此都不能用：
+- **stub context 承載同一份 handler** → 在無 fleet 行程裡放進可 spawn instance 的動詞（提權面）。
+- **setup 宿主內嵌 FleetManager** → 第二個 fleet，與正式 fleet 搶 port / tmux server / IPC socket，並可能同時寫 fleet.yaml。
+
+#### D.4.2 建議：把 context 拆成兩個介面
+
+```ts
+// 只碰檔案，永遠可在無 fleet 下實作
+interface ConfigVerbs {
+  readFleetConfig(): FleetConfig | null;
+  writeFleetConfig(patch): void;      // fleet.yaml
+  writeClassicConfig(patch): void;    // classicBot.yaml
+  writeSecret(key, value): void;      // .env
+  validate(candidate): ValidationResult;
+}
+
+// 現有那一組，只有正式 fleet 行程能實作
+interface LifecycleVerbs {
+  startInstance(...); stopInstance(...); restartSingleInstance(...);
+  removeInstance(...); deliverToInstance(...); connectIpcToInstance(...);
+  lifecycle: { pause(...); wake(...) };
+}
+```
+
+- 正式 fleet 的 web server 同時實作兩者（行為不變）。
+- **setup 宿主只實作 `ConfigVerbs`**；`LifecycleVerbs` 的路由一律回 **409 `fleet not running`**。關鍵在於**靜態型別上就拿不到 daemon**，不是靠執行期判斷——否則哪天有人加一條新路由就又漏了。
+
+#### D.4.3 setup 宿主：表單 + spawn + 自行退出
+
+採 fable 建議的更省邊界：**setup 宿主不是新的 web server**，而是 **quickstart 既有寫檔邏輯 + 一個極小 HTTP 表單**，只提供 wizard 四步與一個 launch 動作，**不載入 `settings.html`**。攻擊面因此只剩四個表單 + 一個 spawn。
 
 ```
-            ┌────────────────────────────┐
-  瀏覽器 ──▶│  web server（永遠可跑）      │
-            │  ├ token gate（web.token）  │  ← 無 fleet 也有效
-            │  ├ /settings/setup  (無 fleet 時)│
-            │  └ /settings        (有 fleet 時)│
-            └───────────┬────────────────┘
-                        │ 只透過兩個動詞
-                        ▼
-            ┌────────────────────────────┐
-            │  config 層：讀/寫 fleet.yaml │
-            │  classicBot.yaml / .env     │
-            └───────────┬────────────────┘
-                        │ applyJob（新增）
-                        ▼
-            ┌────────────────────────────┐
-            │  fleet 生命週期              │
-            │  reconcile / start / restart│
-            └────────────────────────────┘
+CLI: agend setup --web
+  └─ 印出 http://127.0.0.1:PORT/setup?t=<一次性 token>
+     ├─ [表單 1-4] 寫 fleet.yaml / .env（只用 ConfigVerbs）
+     └─ [建立並啟動] ─┬─ 寫 setup-complete 標記
+                      ├─ spawn `agend start`（或 service start）
+                      ├─ 釋放 port、行程退出          ← 宿主不再存在
+                      └─ 瀏覽器輪詢同一 port
+                          └─ 正式 fleet 的 web server 接手
+                             （web.token 來自 dataDir，跨行程有效）
 ```
 
-**邊界規則**：
-1. **web 層永不直接操作 daemon**，只產生 config 變更與 apply job；由 fleet 層去 reconcile。這讓 Settings 在 fleet 未啟動時仍可運作（只是 apply job 會是「建立並啟動」而非「重啟」）。
-2. **pre-fleet 時 web server 由誰啟動**：目前 web server 由 FleetManager 啟。pre-fleet 模式需要一個**不需要 fleet.yaml 就能起的最小宿主**（`agend setup --web` 之類）。這是唯一需要新增生命週期的地方，也是這份提案裡風險最高的一塊，建議單獨拆 ticket 並請 fable 看。
-3. **setup 完成即收斂**：wizard 最後一步寫檔 + 啟動 fleet，之後 `/settings/setup` 應該**拒絕再次提供**（比照 Gitea 的「admin 只能在 setup 階段建立」），避免外網可達的環境留著一個能重寫整個 fleet 的入口。
+**票 5 必須明寫的三件事**：
+1. **port 交接**：宿主先完全釋放再 spawn，或約定正式 fleet 起在同一 port 並容忍短暫 connection refused；瀏覽器端以輪詢處理空窗。
+2. **宿主退出時機**：spawn 成功即退出，不等 fleet ready（否則宿主活著的時間不可控）。ready 由瀏覽器輪詢正式 server 判斷。
+3. **fleet 已在跑時拒絕啟動 setup 宿主**：避免兩個行程同時寫 fleet.yaml。判斷依 pid 檔 + port 佔用。
 
-### D.5 安全（不弱化）
+### D.5 安全（v2 重寫）
 
-- **維持既有 token gate**：所有 `/api/settings/*` 已由全域 web-token gate 保護（`settings-api.ts:18` 的註解、`web-api.ts:204-206`）。pre-fleet 模式**照用同一個 gate**，token 來自 dataDir，第一次啟動即產生。
-- **admin gate 不因 pre-fleet 而放寬**：有 fleet 之後，設定/重啟面板仍走 admin 判定；pre-fleet 階段沒有 admin 概念，因此**必須靠 token + 「setup 只能跑一次」** 兩層，而不是放行。
-- **逃生艙預設外網可達**（cloudflared + `allow_public:true`，見 leader 的 project decision），所以：
-  - setup 模式建議加**時間窗**（例如啟動後 N 分鐘內未完成即關閉 setup 路由，需重新以 CLI 開啟），降低「裝好忘了設定」的暴露面。
-  - apply/restart 這類有副作用的動作，建議在 audit log 留一筆（誰的 token、改了什麼、job 結果）。
-- **不建議**照抄 Gitea 的無認證 setup 頁。
+#### D.5.1 既有 gate 的實況
 
----
+- 一把**長期不輪替**的 `web.token`（`fleet-manager.ts:2514`），比對方式為純字串相等（`web-api.ts:204-206`）。
+- 接受 `?token=` query 或 header。
+- **啟動時把含 token 的完整 URL 寫進 fleet.log**（`fleet-manager.ts:12182`：``{ url: `http://localhost:${port}/ui?token=${this.webToken}` }``）。
+- 無 cookie、無 CSP、無 Referrer-Policy。
+- `GET /view` **完全不需 token**（`view-api.ts:5` 註解即寫明 "static page (no token)"）。
+
+外網可達之後：token 會留在瀏覽器歷史、截圖、Referer 與 log；**洩漏即永久有效**。而 Settings 能改整個 fleet 與 `.env`，威脅面比 web terminal 大。
+
+#### D.5.2 setup 授權不使用 web.token
+
+- **一次性 setup token 由 CLI 在本機 shell 產生**（本機 shell ≈ admin 等價），**TTL ~15 分鐘、完成即消耗、連續三次失敗即銷毀並要求重新 `agend setup --web`**。
+- 理由：pre-fleet 沒有 admin 概念，而 `web.token` 是長期憑證；拿長期憑證當 setup 授權等於把「一次性高權限操作」綁在「永久低輪替憑證」上。
+
+#### D.5.3 setup 只能跑一次，且不可靠刪檔復活
+
+- 寫一個**獨立於 fleet.yaml 的 `setup-complete` 標記**（放 dataDir），路由拒絕**以標記為準**。
+- 重跑只能 `agend setup --web --reset`（本機 shell）。**刪掉 fleet.yaml 不會讓 setup 路由復活**——否則外網可達環境裡，任何能刪檔的路徑都變成重置整個 fleet 的入口。
+
+#### D.5.4 時間窗 = 宿主行程自行退出
+
+不用計時器關路由（可被繞過或忘記），而是**宿主完成後直接退出**。這是唯一不可繞過的時間窗形式：行程不在，端點就不存在。
+
+#### D.5.5 Audit 的誠實界線
+
+append-only 檔可行，但必須寫明：目前只有**一把** `web.token`，所以 audit 只能記「**哪一把 token** 做了什麼」，**不是「誰」**。要做到「誰」需要先有 per-user 憑證，不在本提案範圍。
+
+#### D.5.6 `/view` 無 token（需使用者決策）
+
+`allow_public` 一開，`/view` 會公開 instance 名稱與活動。這是產品決策不是技術問題，已請 leader 轉使用者定奪；本提案不預設答案。
 
 ## 未決與風險
 
-1. **pre-fleet 的 web 宿主**（D.4 規則 2）是唯一需要新增生命週期的部分，也是最該先做 spike 的。
-2. **hot 欄位兩份清單**（D.1）建議在 apply job 之前先收斂，否則進度畫面會用一份可能過期的認知去標示影響。
-3. **NN/g 的「超過兩層揭露可用性下降」**與我們現有的三層（含 Developer YAML）有張力。提案的做法是把 Level 3 收成單一抽屜而不是再細分，但這需要使用者確認接受。
-4. 本文未涵蓋 tunnel 接線（排在此 UX 改版之後）與 #769 的 adapter↔core 解耦本身。
+1. **票 5 的 port 交接**是最需要先 spike 的一塊：宿主退出與正式 fleet 起在同一 port 之間有一段空窗，瀏覽器體驗取決於輪詢處理得好不好。
+2. **`daemon.applyConfigUpdate` 與 `HOT_INSTANCE_CONFIG_KEYS` 的差集是刻意的**（`display_name`/`description` 由 fleet 端處理），但目前沒有任何東西擔保這個差集不會悄悄改變——票 1 的 parity 測試就是為此。
+3. **NN/g 的「超過兩層揭露可用性下降」**與現有三層（含 Developer YAML）有張力。提案把 Level 3 收成單一抽屜，需使用者確認。
+4. **`/view` 無 token 在 `allow_public` 下的暴露面**，待使用者決策。
+5. 本文未涵蓋 tunnel 接線本身與 #769 的 adapter↔core 解耦。
 
-## 建議的實作拆分（供審過後開票）
+## 實作拆分（票 0–5）
 
-| # | 範圍 | 相依 |
-|---|---|---|
-| 1 | `GET /api/settings/schema`：hot keys + 欄位 impact 由 server 下發，前端刪除手抄清單 | 無 |
-| 2 | Apply job + `apply_progress` SSE + `GET /apply/:jobId` + deadline/冪等 | 1 |
-| 3 | 常駐面板改版：長列表 → 列 + [設定] modal；Level 3 收進抽屜 | 1 |
-| 4 | Guided wizard（有 fleet 時可重跑於 modal 內） | 3 |
-| 5 | pre-fleet setup 模式（最小 web 宿主 + 一次性 setup 路由 + 時間窗） | 2, 4 |
-
----
+| # | 範圍 | 相依 | 備註 |
+|---|---|---|---|
+| **0** | **既有 Settings gate 硬化**：token → HttpOnly `SameSite=Strict` cookie（query token 僅用於一次性換發）、`Origin == Host` 檢查、`Referrer-Policy: no-referrer`、**停止把含 token 的 URL 寫進 log**（`fleet-manager.ts:12182`） | 無 | **必須排在 tunnel 接線之前**。否則 UX 改版一上線，外網可達的就是一個長期 token 面板 |
+| 1 | **hot/cold 單一來源**：`HOT_INSTANCE_CONFIG_KEYS` 為權威；classic `hotOnly` 從同一集合推導（消除 `settings-api.ts:344` 與 `fleet-manager.ts:1852` 兩份硬編碼）；新增 schema endpoint 回每欄 impact，前端刪除 42 處手寫；**加 parity 測試**斷言 `daemon.applyConfigUpdate` 接受的鍵集合 == HOT 集合 − fleet 端處理的鍵 | 無 | 是票 2 的前置：進度畫面必須與 server 同一份認知 |
+| 2 | **Apply job**：客戶端產生冪等鍵、job 落磁碟並可跨 AgEnD 重啟續播、`GET /apply/:jobId` 為權威、`apply_progress` SSE 僅作加速、wall-clock deadline | 1 | |
+| 3 | **常駐面板改版**：長列表 → 列 + [設定] modal；Level 3 收進單一抽屜 | 1 | |
+| 4 | **Guided wizard**（有 fleet 時可於 modal 內重跑） | 3 | |
+| 5 | **pre-fleet setup 宿主**：`ConfigVerbs`/`LifecycleVerbs` 介面拆分；極小表單宿主（不載入 settings.html）；CLI 一次性 token；`setup-complete` 標記；spawn 後自行退出；**port 交接、退出時機、fleet 已在跑時拒絕啟動** | 2, 4 | 風險最高，建議先 spike；請 fable 複審 |
 
 ## 來源
 
