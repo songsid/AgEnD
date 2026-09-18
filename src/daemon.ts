@@ -3557,23 +3557,28 @@ export class Daemon extends EventEmitter {
           this.instanceStatePeriodicIdleConfirmations = 0;
           snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
         }
-      } else if (structuredPeriodicIdle && reason !== "idle_debounce" && !settled) {
-        // Startup, safety, and explicit state probes must not bless a broad
-        // Codex ready match when the structural layout is unknown or visibly
-        // busy. The settled debounce below remains the compatibility path for
-        // drafts and older layouts that simply lack the new footer.
-        //
-        // ONLY while output is still recent. recordOutput sets working
-        // unconditionally, and the safety sweep fires for every daemon on a
-        // timer — so without this guard a Codex that had gone quiet was flipped
-        // to working by the next sweep and could never come back, because a
-        // quiet pane produces no further output to re-evaluate it. That state
-        // holds the Cancel button open, disables auto-pause, and makes the hang
-        // detector report a perfectly idle instance as stuck. A settled capture
-        // has no recent output to defend and falls through to the legacy
-        // ready/busy reading below.
-        this.instanceStatePeriodicIdleConfirmations = 0;
-        snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+      } else if (structuredPeriodicIdle && !settled) {
+        // While output is still arriving, an unfamiliar Codex frame must not
+        // bless the broad prompt regex. The settled path below remains the
+        // compatibility path for startup/safety/stuck captures, drafts, and
+        // older layouts that simply lack the new footer. In particular, a
+        // quiet safety sweep must never turn an already-idle pane back into
+        // working merely because its layout is not the structured proof.
+        const idlePane = structuredPeriodicIdle.call(this.backend, pane);
+        if (idlePane && this.instanceState === "idle") {
+          // Cosmetic output must not manufacture an idle -> working edge. A
+          // sweep can race the last starfield frame while the quiet monitor is
+          // still waiting for its debounce; the state is already authoritative
+          // idle, so retain it and let the next probe continue from two proofs.
+          this.instanceStatePeriodicIdleConfirmations = 2;
+          snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+            settled: true,
+            changeAt: observedChangeAt,
+          });
+        } else {
+          this.instanceStatePeriodicIdleConfirmations = 0;
+          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        }
       } else {
         // Structural proof is an additional working-stage escape hatch only.
         // Settled captures retain the legacy ready/busy semantics for drafts,
