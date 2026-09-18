@@ -314,6 +314,20 @@ export interface CliBackend {
    */
   hasPeriodicPaneRedraw?(): boolean;
 
+  /**
+   * Positive, structural proof that a periodically-redrawing TUI is parked at
+   * its live input prompt.  This is deliberately stronger than
+   * `getReadyPattern()`: many TUIs leave their header, context meter and even
+   * input chrome visible while a turn is still running.  The daemon may use
+   * two consecutive positive captures to recover working -> idle even when
+   * cosmetic animation prevents the ordinary silence debounce from firing.
+   *
+   * Return false for an unfamiliar layout.  False negatives merely retain the
+   * existing working state; false positives can retire Cancel and admit a new
+   * delivery into a busy CLI.
+   */
+  isPeriodicRedrawIdlePane?(pane: string): boolean;
+
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
 

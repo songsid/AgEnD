@@ -105,6 +105,8 @@ export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 /** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
 export const PERIODIC_REDRAW_PROBE_MS = 25;
+/** Do not turn a streaming Codex turn into one capture-pane per burst. */
+export const STRUCTURED_IDLE_PROBE_MS = 500;
 /** A foreground server/port-forward should hand control back or be acknowledged. */
 export const DEFAULT_BLOCKING_PROCESS_GRACE_MS = 2 * 60_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
@@ -1028,6 +1030,9 @@ export class Daemon extends EventEmitter {
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private instanceStateIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputProbeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Consecutive structural idle captures for a noisy, periodically-redrawing
+   * pane.  Two are required before a working -> idle transition. */
+  private instanceStatePeriodicIdleConfirmations = 0;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
   private instanceStateOutputEventName: string | null = null;
@@ -3435,12 +3440,12 @@ export class Daemon extends EventEmitter {
    * visible cell. Probe the pane once per burst: a changed capture is real work;
    * an identical ready capture remains idle and emits no state edge.
    */
-  private scheduleInstanceStateOutputProbe(): void {
+  private scheduleInstanceStateOutputProbe(delayMs = PERIODIC_REDRAW_PROBE_MS): void {
     if (this.instanceStateOutputProbeTimer) return;
     this.instanceStateOutputProbeTimer = setTimeout(() => {
       this.instanceStateOutputProbeTimer = null;
       void this.captureAndEvaluateInstanceState("output_probe", this.instanceStateLastOutputAt);
-    }, PERIODIC_REDRAW_PROBE_MS);
+    }, delayMs);
     this.instanceStateOutputProbeTimer.unref?.();
   }
 
@@ -3525,11 +3530,92 @@ export class Daemon extends EventEmitter {
       // changed when tmux reported output (observedChangeAt), but idle/stuck are
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
-      const snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
-        settled,
-        changeAt: observedChangeAt,
-        forceBusy: paneActivity !== null,
-      });
+      const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
+      let snapshot: InstanceStateSnapshot;
+      if (structuredPeriodicIdle && reason === "output_probe") {
+        const idlePane = structuredPeriodicIdle.call(this.backend, pane);
+        if (idlePane) {
+          if (this.instanceState === "idle") {
+            // Cosmetic output must not manufacture an idle -> working edge.
+            this.instanceStatePeriodicIdleConfirmations = 2;
+          } else {
+            this.instanceStatePeriodicIdleConfirmations++;
+          }
+          if (this.instanceStatePeriodicIdleConfirmations < 2) {
+            // One positive frame is intentionally not enough to bless a
+            // working pane while the starfield is still repainting.
+            snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+          } else {
+            snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+              settled: true,
+              changeAt: observedChangeAt,
+            });
+          }
+        } else {
+          // A live busy marker or an unfamiliar layout outranks the broad Codex
+          // ready pattern during the noisy-redraw path. Unknown is working.
+          this.instanceStatePeriodicIdleConfirmations = 0;
+          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        }
+      } else if (structuredPeriodicIdle && reason !== "idle_debounce" && !settled) {
+        // Startup, safety, and explicit state probes must not bless a broad
+        // Codex ready match when the structural layout is unknown or visibly
+        // busy. The settled debounce below remains the compatibility path for
+        // drafts and older layouts that simply lack the new footer.
+        //
+        // ONLY while output is still recent. recordOutput sets working
+        // unconditionally, and the safety sweep fires for every daemon on a
+        // timer — so without this guard a Codex that had gone quiet was flipped
+        // to working by the next sweep and could never come back, because a
+        // quiet pane produces no further output to re-evaluate it. That state
+        // holds the Cancel button open, disables auto-pause, and makes the hang
+        // detector report a perfectly idle instance as stuck. A settled capture
+        // has no recent output to defend and falls through to the legacy
+        // ready/busy reading below.
+        //
+        // The `settled` guard alone is not enough for the case this whole
+        // branch exists to serve. While the Astra star field keeps repainting,
+        // output never stops arriving, so the capture is NEVER settled — and a
+        // sweep landing on an already-idle animated pane flipped it to working
+        // once a minute, then back an instant later once two probes re-proved
+        // it. Each flicker is a spurious pair of state edges for the fleet and
+        // resets the idleSince this daemon reports when it asks to auto-pause.
+        //
+        // So the same rule the output_probe branch already applies holds here:
+        // cosmetic output must not manufacture an idle -> working edge. A pane
+        // that is STRUCTURALLY idle and already known idle stays idle.
+        //
+        // It must be re-read as SETTLED to do that. Falling through to the
+        // ordinary reading is not equivalent: that path is given the real
+        // `settled` (false, because the animation is still painting), and an
+        // unsettled capture of a CHANGED pane is working by definition — so a
+        // sweep landing on a frame no probe had captured yet still flipped an
+        // idle pane over. Treating this capture as settled is what lets the
+        // ready/busy reading decide on the frame itself.
+        const idlePane = structuredPeriodicIdle.call(this.backend, pane);
+        if (idlePane && this.instanceState === "idle") {
+          this.instanceStatePeriodicIdleConfirmations = 2;
+          snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+            settled: true,
+            changeAt: observedChangeAt,
+          });
+        } else {
+          this.instanceStatePeriodicIdleConfirmations = 0;
+          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        }
+      } else {
+        // Structural proof is an additional working-stage escape hatch only.
+        // Settled captures retain the legacy ready/busy semantics for drafts,
+        // older Codex layouts, and panes without a Context footer.
+        if (structuredPeriodicIdle && settled) {
+          this.instanceStatePeriodicIdleConfirmations = 0;
+        }
+        snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+          settled,
+          changeAt: observedChangeAt,
+          forceBusy: paneActivity !== null,
+        });
+      }
       this.applyInstanceStateSnapshot(snapshot, pane);
 
       // Backends without a transcript feed can still say what they are doing, if
@@ -3540,9 +3626,10 @@ export class Daemon extends EventEmitter {
         this.publishActivity(snapshot.state === "idle" ? null : paneActivity);
       }
 
-      if (snapshot.state === "idle") {
+      const currentState = this.instanceState;
+      if (currentState === "idle") {
         this.clearInstanceStateStuckTimer();
-      } else if (snapshot.state === "working") {
+      } else if (currentState === "working") {
         // If control mode missed the pane change, the safety capture becomes
         // the new progress timestamp and re-arms both deadlines.
         if (!expectedOutputAt) this.instanceStateLastOutputAt = captureStartedAt;
@@ -3560,11 +3647,17 @@ export class Daemon extends EventEmitter {
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
     this.instanceStateLastOutputAt = event.at;
-    if (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle") {
+    const canProvePeriodicIdle = !!this.backend?.isPeriodicRedrawIdlePane;
+    if (canProvePeriodicIdle || (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle")) {
       // Do not emit idle→working solely because agy repainted an identical
-      // footer. The short capture probe below still observes genuine pane
-      // changes promptly and moves the state to working.
-      this.scheduleInstanceStateOutputProbe();
+      // footer. Codex additionally uses a structural probe while working: two
+      // positive prompt captures can recover from an animation stream that
+      // never leaves a two-second quiet window.
+      if (this.instanceState !== "idle") {
+        this.applyInstanceStateSnapshot(this.instanceStateMachine.recordOutput(event.at));
+        this.scheduleInstanceStateStuckDeadline(event.at);
+      }
+      this.scheduleInstanceStateOutputProbe(canProvePeriodicIdle ? STRUCTURED_IDLE_PROBE_MS : PERIODIC_REDRAW_PROBE_MS);
       this.scheduleInstanceStateIdleCapture();
       return;
     }
@@ -3608,6 +3701,7 @@ export class Daemon extends EventEmitter {
       this.instanceStateBusyPattern,
     );
     this.instanceStateLastOutputAt = 0;
+    this.instanceStatePeriodicIdleConfirmations = 0;
     this.instanceStateMonitorActive = true;
 
     if (this.controlClient) {
@@ -3627,6 +3721,7 @@ export class Daemon extends EventEmitter {
 
   private stopInstanceStateMonitor(): void {
     this.instanceStateMonitorActive = false;
+    this.instanceStatePeriodicIdleConfirmations = 0;
     this.clearInstanceStateIdleTimer();
     this.clearInstanceStateOutputProbeTimer();
     this.clearInstanceStateStuckTimer();
@@ -4717,7 +4812,7 @@ export class Daemon extends EventEmitter {
   private isPaneIdleForDelivery(windowId: string): boolean {
     if (!this.controlClient) return true;
     if (this.controlClient.isIdle(windowId)) return true;
-    if (this.backend?.hasPeriodicPaneRedraw?.() !== true || this.instanceState !== "idle") return false;
+    if (!this.canTrustRedrawIdleState() || this.instanceState !== "idle") return false;
 
     const lastOutputAt = this.controlClient.getLastOutputAt(windowId);
     if (lastOutputAt === undefined || !this.instanceStateMachine) return false;
@@ -4728,7 +4823,7 @@ export class Daemon extends EventEmitter {
 
   private waitForPaneIdleForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
     if (!this.controlClient) return Promise.resolve(true);
-    if (this.backend?.hasPeriodicPaneRedraw?.() !== true) {
+    if (!this.canTrustRedrawIdleState()) {
       return this.controlClient.waitUntilIdle(windowId, timeoutMs);
     }
     if (this.isPaneIdleForDelivery(windowId)) return Promise.resolve(true);
@@ -4745,6 +4840,20 @@ export class Daemon extends EventEmitter {
         resolve(false);
       }, timeoutMs);
     });
+  }
+
+  /**
+   * Antigravity has always opted into pane-state delivery readiness because its
+   * footer redraws while idle.  Codex's structural idle proof is useful only
+   * while the event-driven state monitor is actually running; without that
+   * monitor there is no fresh proof to trust, so preserve the legacy
+   * TmuxControlClient.waitUntilIdle fallback.  This matters during isolated
+   * startup/recovery paths as well as in tests: merely having a matcher must
+   * never turn a missing observer into a 30-minute polling wait.
+   */
+  private canTrustRedrawIdleState(): boolean {
+    if (this.backend?.hasPeriodicPaneRedraw?.() === true) return true;
+    return this.instanceStateMonitorActive && !!this.backend?.isPeriodicRedrawIdlePane;
   }
 
   /**
