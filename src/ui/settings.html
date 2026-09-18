@@ -78,8 +78,24 @@
   .inherit-row { display:flex; gap:8px; align-items:center; margin-top:6px; color:var(--muted); font-size:12px; }
   .adv-body { display: none; padding: 14px 16px; }
   .adv-body.open { display: block; }
-  .advanced-only { display:none !important; }
-  body.show-advanced .advanced-only { display:block !important; }
+  /* One expandable drawer instead of a hidden third level: nothing is removed,
+     everything is one click away. */
+  .drawer { border:1px solid var(--border); border-radius:var(--radius-sm); margin-top:12px; background:var(--card); }
+  .drawer > summary { cursor:pointer; padding:10px 12px; font-weight:600; font-size:13px; list-style:none; }
+  .drawer > summary::-webkit-details-marker { display:none; }
+  .drawer > summary::before { content:"▶ "; color:var(--muted); }
+  .drawer[open] > summary::before { content:"▼ "; }
+  .drawer > .drawer-body { padding:0 12px 12px; }
+  .modal-backdrop { position:fixed; inset:0; background:rgba(17,24,39,.45); z-index:40; display:none; }
+  .modal-backdrop.open { display:block; }
+  .modal { position:fixed; z-index:41; inset:0; display:none; align-items:center; justify-content:center; padding:16px; }
+  .modal.open { display:flex; }
+  .modal-panel { background:var(--bg); border-radius:var(--radius); width:min(720px, 100%); max-height:88vh; display:flex; flex-direction:column; box-shadow:0 18px 48px rgba(0,0,0,.22); }
+  .modal-head { display:flex; align-items:baseline; gap:10px; padding:16px 20px 8px; border-bottom:1px solid var(--border); }
+  .modal-head h3 { font-size:16px; }
+  .modal-body { padding:16px 20px; overflow:auto; }
+  .modal-foot { display:flex; align-items:center; gap:10px; padding:12px 20px; border-top:1px solid var(--border); flex-wrap:wrap; }
+  .modal-foot .grow { flex:1; }
   .more-menu { position:relative; }
   .more-menu summary { list-style:none; cursor:pointer; padding:4px 9px; color:var(--muted); }
   .more-menu summary::-webkit-details-marker { display:none; }
@@ -138,7 +154,7 @@
   <div class="grow"></div>
   <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language">🌐</button>
   <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
-  <button id="advancedToggle" data-i18n-title="showAdditional" title="Show additional controls">Show advanced</button>
+  <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" style="width:220px;margin-right:8px">
 </header>
 <div class="help-backdrop" id="helpBackdrop"></div>
 <aside class="help-panel" id="helpPanel">
@@ -146,9 +162,22 @@
   <div id="helpContent"></div>
 </aside>
 <div class="banner" id="banner"></div>
+<div class="modal-backdrop" id="modalBackdrop"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-panel">
+    <div class="modal-head"><h3 id="modalTitle"></h3><span class="sub" id="modalSubtitle"></span></div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-foot">
+      <span class="sub" id="modalImpact"></span>
+      <span class="grow"></span>
+      <button id="modalCancel" data-i18n="cancel">Cancel</button>
+      <button class="primary" id="modalDone" data-i18n="modalDone">Stage change</button>
+    </div>
+  </div>
+</div>
 <main>
   <section>
-    <div class="sec-head"><h2 data-i18n="myAgents">🤖 My Agents</h2><div class="grow"></div><input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search…" style="width:180px;margin-right:8px"><button class="sm" id="newAgentBtn" data-i18n="new">+ New</button></div>
+    <div class="sec-head"><h2 data-i18n="myAgents">🤖 My Agents</h2><div class="grow"></div><button class="sm" id="newAgentBtn" data-i18n="new">+ New</button></div>
     <div id="newAgent"></div>
     <div class="card" id="agents"></div>
   </section>
@@ -159,7 +188,7 @@
   </section>
 
   <section>
-    <div class="sec-head"><h2>🔌 Connections &amp; Bots</h2><div class="grow"></div><button class="sm advanced-only" id="newBotBtn" data-i18n="add">+ Add</button></div>
+    <div class="sec-head"><h2>🔌 Connections &amp; Bots</h2><div class="grow"></div><button class="sm" id="newBotBtn" data-i18n="add">+ Add</button></div>
     <div id="newBot"></div>
     <div class="card" id="bots"></div>
   </section>
@@ -217,6 +246,9 @@
       wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
       applying: "Applying changes…", applyDone: "✓ Changes applied", applyPartial: "⚠️ Some changes failed", applyClose: "Close",
+      settingsButton: "Settings", modalDone: "Stage change", advancedSection: "Advanced",
+      guildIdField: "Guild id", groupIdField: "Group id", notSet: "(not set)", deleteBot: "Delete this bot", noAllowedUsers: "no allowed users",
+      searchAll: "🔍 Search agents, bots, channels…", accessMovedHint: "Who may use the bot is set on the connection itself — open Settings on \"{0}\" under Connections & Bots.",
       applyRestartNeeded: "Saved — restart AgEnD to apply", applyNoChange: "no change needed",
       applyRestartHint: "This change needs AgEnD itself restarted. You can restart it here, or run /restart in your chat channel.",
       applyBusy: "AgEnD is already reloading its configuration. Your changes are saved — try Apply again in a moment.",
@@ -249,6 +281,9 @@
       wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
       applying: "正在套用變更…", applyDone: "✓ 變更已套用", applyPartial: "⚠️ 有部分變更失敗", applyClose: "關閉",
+      settingsButton: "設定", modalDone: "加入待套用", advancedSection: "進階",
+      guildIdField: "Guild id", groupIdField: "群組 id", notSet: "（未設定）", deleteBot: "刪除這個機器人", noAllowedUsers: "沒有允許的使用者",
+      searchAll: "🔍 搜尋 agent、機器人、頻道…", accessMovedHint: "誰可以使用 bot 是在連線本身設定 —— 請到「連線與機器人」開啟「{0}」的設定。",
       applyRestartNeeded: "已儲存 —— 需要重新啟動 AgEnD 才會生效", applyNoChange: "無需變更",
       applyRestartHint: "此變更需要重新啟動 AgEnD 本身。可以在這裡重新啟動，或在聊天頻道執行 /restart。",
       applyBusy: "AgEnD 正在重新載入設定。你的變更已儲存，請稍候再按一次套用。",
@@ -374,6 +409,39 @@
     const order = state.schema.order;
     return order[keys.reduce((worst, k) => Math.max(worst, order.indexOf(impactFor(k))), 0)];
   };
+  /** One expandable drawer. Advanced settings are collapsed, never removed. */
+  function drawer(title, ...children) {
+    const box = el("details", { class: "drawer" });
+    box.append(el("summary", {}, title), el("div", { class: "drawer-body" }, ...children));
+    return box;
+  }
+
+  /**
+   * One modal edits one object, and closing it stages a change — it never
+   * writes. Applying stays where it was: the Apply button on the pending bar.
+   */
+  let modalState = null;
+  function openModal({ title, subtitle, body, impacts, stage, doneLabel }) {
+    modalState = { stage };
+    $("modalTitle").textContent = title;
+    $("modalSubtitle").textContent = subtitle || "";
+    $("modalBody").innerHTML = "";
+    $("modalBody").append(body);
+    // The footer says what the whole modal will cost, so the impact per field
+    // does not have to be added up by eye.
+    const kinds = [...new Set((impacts || []).map(impactOf))];
+    $("modalImpact").textContent = kinds.length ? kinds.map(impactText).join(" · ") : "";
+    $("modalDone").textContent = doneLabel || t("modalDone");
+    $("modal").classList.add("open");
+    $("modalBackdrop").classList.add("open");
+  }
+  function closeModal() {
+    modalState = null;
+    $("modal").classList.remove("open");
+    $("modalBackdrop").classList.remove("open");
+    $("modalBody").innerHTML = "";
+  }
+
   function updatePendingBar() {
     const n = state.pending.size;
     $("pendingBar").classList.toggle("open", n > 0);
@@ -560,7 +628,6 @@
   }
 
   // ── My Agents ──
-  let editing = null;
   function agentChannelLabel(inst) {
     if (inst.general_topic) return "general";
     if (!inst.channel_id) return "";
@@ -601,7 +668,10 @@
       el("span", { class: "tag" }, `effort: ${summary.effort}`),
       chTag ? el("span", { class: "tag" + (chTag.includes("persona") ? " persona" : chTag.includes("telegram") ? " tg" : "") }, chTag) : null,
       el("span", { class: "spacer" }),
-      el("button", { class: "sm ghost", onclick: () => { editing = editing === name ? null : name; renderAgents(); } }, editing === name ? t("close") : t("edit")),
+      el("button", { class: "sm ghost", onclick: () => {
+        const form = agentEditForm(name, inst);
+        openModal({ title: shortName(name, inst), subtitle: "ID: " + name, body: form.box, impacts: form.impacts, stage: form.stage });
+      } }, t("settingsButton")),
       running ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "pause") }, t("pause")) : null,
       paused ? el("button", { class: "sm", onclick: () => pauseWakeAgent(name, "wake") }, t("wake")) : null,
       !paused ? el("button", { class: "sm", onclick: () => toggleAgent(name, running) }, running ? t("stop") : t("start")) : null,
@@ -609,7 +679,6 @@
         el("summary", { title: "More actions" }, "⋯"),
         el("div", { class: "menu" }, el("button", { class: "sm danger", onclick: () => delAgent(name) }, "Delete Agent"))),
     ));
-    if (editing === name) item.append(agentEditForm(name, inst));
     return item;
   }
   function renderAgents() {
@@ -676,7 +745,10 @@
     const hangFeedback = el("div", { class: "feedback" });
     const failoverFeedback = el("div", { class: "feedback" });
     const msg = el("span", { class: "msg" });
-    const saveBtn = el("button", { class: "primary sm" }, t("save"));
+    // Never rendered: it carries the validation state and the submit handler
+    // that the modal footer triggers through stage(). The form has no button
+    // of its own, so nothing here can write on its own.
+    const saveBtn = el("button", { hidden: "hidden" });
     const validate = () => {
       const autoValue = Number(auto.input.value), hangValue = Number(hang.input.value);
       const validAuto = setValidation(auto.input, autoFeedback, !auto.toggle.checked && (!Number.isFinite(autoValue) || autoValue < 0) ? t("mustNonNegative") : "");
@@ -737,7 +809,7 @@
         impact: batchImpact(Object.keys(patch), key => impactOf(`instance.${key}`)),
         apply: () => api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) }),
       });
-      editing = null; renderAgents();
+      renderAgents();
     };
     box.append(
       el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
@@ -749,29 +821,41 @@
       el("label", {}, t("workingDir"), impact("instance.working_directory")), fWd,
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance.auto_pause_after")), auto.row, autoFeedback)),
-      el("div", { class: "advanced-only" },
-        el("div", { class: "sub", style: "margin:14px 0 6px;font-weight:600" }, "Advanced Agent settings"),
+      drawer(t("advancedSection"),
         el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("channelBinding"), impact("instance.topic_id")), fChan),
-        el("div", {}, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`), hang.row, hangFeedback),
-        el("div", {}, el("label", {}, t("agentMode")), agentMode.row),
-        el("div", {}, el("label", {}, t("toolSet")), toolSet.row),
+        el("div", {}, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("instance.hang_detector")), hang.row, hangFeedback),
+        el("div", {}, el("label", {}, t("agentMode"), impact("instance.agent_mode")), agentMode.row),
+        el("div", {}, el("label", {}, t("toolSet"), impact("instance.tool_set")), toolSet.row),
         el("div", {}, el("label", {}, t("toolProgress"), impact("instance.tool_progress")), toolProgress.row),
         el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("instance.reply_completion_guard")), replyGuard.row, replyHint),
         el("div", {}, el("label", {}, t("logLevel"), impact("instance.log_level")), logLevel.row),
-        el("div", {}, el("label", {}, t("lightweight")), lightweight.row),
-        el("div", {}, el("label", {}, t("modelFailover")), failover.row, failoverFeedback)),
+        el("div", {}, el("label", {}, t("lightweight"), impact("instance.lightweight")), lightweight.row),
+        el("div", {}, el("label", {}, t("modelFailover"), impact("instance.model_failover")), failover.row, failoverFeedback)),
         el("label", {}, t("systemPrompt"), impact("instance.systemPrompt")), fSys,
         el("label", {}, t("tags"), impact("instance.tags")), chipList(tags, null, "tag"),
         el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
-      el("div", { class: "actions" },
-        saveBtn,
-        el("button", { class: "sm ghost", onclick: () => { editing = null; renderAgents(); } }, t("cancel")),
-        msg),
+      el("div", { class: "actions" }, msg),
     );
     validate();
-    return box;
+    return {
+      box,
+      // The modal's footer drives this; nothing in the form submits by itself.
+      stage: () => { if (saveBtn.disabled) return false; saveBtn.onclick(); return true; },
+      impacts: AGENT_MODAL_FIELDS,
+    };
   }
+
+  /** Every field the agent modal shows, for the footer's impact summary. */
+  const AGENT_MODAL_FIELDS = [
+    "instance.display_name", "instance.description", "instance.backend",
+    "instance.model", "instance.working_directory", "instance.auto_pause_after",
+    "instance.topic_id", "instance.hang_detector", "instance.agent_mode",
+    "instance.tool_set", "instance.tool_progress",
+    "instance.reply_completion_guard", "instance.log_level",
+    "instance.lightweight", "instance.model_failover", "instance.systemPrompt",
+    "instance.tags", "instance.general_topic",
+  ];
   async function toggleAgent(name, running) {
     if (running) await api(`/stop/${encodeURIComponent(name)}`, { method: "POST" });
     else await api(`/api/instance/${encodeURIComponent(name)}/start`, { method: "POST" });
@@ -814,10 +898,13 @@
   }
 
   // ── Bots ──
-  let editingBot = null;
   function renderBots() {
-    const host = $("bots"); host.innerHTML = ""; const chs = channels();
-    if (!chs.length) { host.className = "card empty"; host.textContent = t("noBots"); return; }
+    const host = $("bots"); host.innerHTML = ""; let chs = channels();
+    // One search box for the whole page.
+    const filter = ($("agentSearch")?.value || "").trim().toLowerCase();
+    if (filter) chs = chs.filter(ch => [ch.id, ch.type, ch.group_id, ch.bot_token_env]
+      .some(v => String(v ?? "").toLowerCase().includes(filter)));
+    if (!chs.length) { host.className = "card empty"; host.textContent = filter ? tf("noAgentMatch", filter) : t("noBots"); return; }
     host.className = "card";
     chs.forEach((ch, i) => {
       const item = el("div", { class: "item" });
@@ -825,13 +912,20 @@
       item.append(el("div", { class: "item-row" },
         el("span", { class: "name" }, type === "telegram" ? "Telegram" : "Discord"),
         el("span", { class: "tag" + (i === 0 ? "" : " persona") + (type === "telegram" ? " tg" : "") }, ch.id || chLabel(i)),
-        el("span", { class: "sub advanced-only", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
+        el("span", { class: "sub", style: "margin:0" }, ch.bot_token_env || "(no token env)"),
+        ch.group_id ? el("span", { class: "tag" }, `${type === "telegram" ? "group" : "guild"} ${ch.group_id}`) : null,
+        el("span", { class: "tag" }, `${t("accessMode")}: ${ch.access?.mode || "locked"}`),
+        el("span", { class: "sub", style: "margin:0" },
+          (ch.access?.allowed_users || []).length
+            ? (ch.access.allowed_users).slice(0, 3).join(", ") + ((ch.access.allowed_users).length > 3 ? ` +${(ch.access.allowed_users).length - 3}` : "")
+            : t("noAllowedUsers")),
         el("span", { class: "spacer" }),
         el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
-        el("button", { class: "sm ghost advanced-only", onclick: () => { editingBot = editingBot === i ? null : i; renderBots(); } }, editingBot === i ? t("close") : t("edit")),
-        el("button", { class: "sm danger advanced-only", onclick: () => delBot(i) }, "Delete"),
+        el("button", { class: "sm ghost", onclick: () => {
+          const form = botEditForm(ch, i);
+          openModal({ title: type === "telegram" ? "Telegram" : "Discord", subtitle: ch.id || chLabel(i), body: form.box, impacts: form.impacts, stage: form.stage });
+        } }, t("settingsButton")),
       ));
-      if (editingBot === i) item.append(botEditForm(ch, i));
       host.append(item);
     });
   }
@@ -840,10 +934,10 @@
     ch.access = ch.access || { mode: "locked", allowed_users: [] };
     ch.access.allowed_users = ch.access.allowed_users || [];
     const previousAccess = structuredClone(ch.access);
+    const type = ch.type || "telegram";
     const box = el("div", { class: "edit" });
     const fMode = select(ch.access.mode || "locked", ["open", "locked", "pairing"]);
     const users = [...ch.access.allowed_users];
-    const msg = el("span", { class: "msg" });
     const accessFeedback = el("div", { class: "feedback" });
     const validateAccess = () => setValidation(fMode, accessFeedback, "", fMode.value === "locked" && users.length === 0 ? t("accessLockedEmpty") : "");
     fMode.addEventListener("change", validateAccess);
@@ -851,26 +945,43 @@
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("accessMode"), impact("fleet.channel.access.mode")), fMode, accessFeedback),
         el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet.channel.access.allowed_users")), chipList(users, validateAccess, "user id"))),
-      el("div", { class: "actions" },
-        el("button", { class: "primary sm", onclick: async () => {
-          if (!confirmAccessChange(previousAccess, fMode.value, users)) return;
-          const chs = channels();
-          chs[i] = { ...chs[i], access: { ...chs[i].access, mode: fMode.value, allowed_users: users } };
-          const res = await saveChannels(msg);
-          if (res.ok) {
-            const affected = Object.keys(state.fleet.instances || {});
-            editingBot = null; await reload();
-            showBanner(`✓ ${t("affected")}: ${affected.length ? affected.join(", ") : chLabel(i) + " bot"} — 🔄🔄 restart fleet`);
-          }
-        } }, t("save")),
-        el("button", { class: "sm ghost", onclick: () => { editingBot = null; renderBots(); } }, t("cancel")), msg),
+      // Only the field that platform actually has, the way quickstart asks.
+      el("div", { class: "field" },
+        el("label", {}, type === "discord" ? t("guildIdField") : t("groupIdField"), impact("fleet.channels")),
+        el("div", { class: "sub" }, ch.group_id ? String(ch.group_id) : t("notSet"))),
+      drawer(t("advancedSection"),
+        el("div", { class: "field" }, el("label", {}, t("tokenEnv")), el("div", { class: "sub" }, ch.bot_token_env || "(no token env)")),
+        el("div", { class: "actions" },
+          el("button", { class: "sm danger", onclick: () => { closeModal(); delBot(i); } }, t("deleteBot")))),
     );
     validateAccess();
-    return box;
+    return {
+      box,
+      impacts: ["fleet.channel.access.mode", "fleet.channel.access.allowed_users", "fleet.channels"],
+      // Staged, not saved: the old form wrote channels straight to the API from
+      // inside the editor, which is the one thing a modal must not do.
+      stage: () => {
+        const originalChannels = structuredClone(channels());
+        const stagedAccessMode = fMode.value;
+        const stagedAllowedUsers = [...users];
+        const nextChannels = structuredClone(originalChannels);
+        nextChannels[i] = { ...nextChannels[i], access: { ...nextChannels[i].access, mode: stagedAccessMode, allowed_users: stagedAllowedUsers } };
+        if (sameValue(nextChannels, originalChannels)) return true;
+        stageChange(`connections:${ch.id || chLabel(i)}`, {
+          label: `Update ${ch.id || chLabel(i)} access`,
+          impact: impactOf("fleet.channels"),
+          // Confirm the immutable staged snapshot, not live form controls
+          // that the user may edit again before pressing global Apply.
+          confirm: () => confirmAccessChange(previousAccess, stagedAccessMode, stagedAllowedUsers),
+          cancelMessage: t("accessChangeCancelled"),
+          apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(nextChannels) }),
+        });
+        return true;
+      },
+    };
   }
 
   // ── ClassicBot Channels ──
-  let editingClassic = null;
   function classicRuntime(instanceName) {
     const live = state.classicLive[instanceName] || {};
     const status = live.status || state.classicStatus[instanceName] || "stopped";
@@ -904,7 +1015,10 @@
     const fContext = el("input", { type: "number", min: "0", step: "1", value: c.context_lines ?? classicDefaults.context_lines ?? 5 });
     const autoFeedback = el("div", { class: "feedback" });
     const contextFeedback = el("div", { class: "feedback" });
-    const saveBtn = el("button", { class: "primary sm" }, t("save"));
+    // Never rendered: it carries the validation state and the submit handler
+    // that the modal footer triggers through stage(). The form has no button
+    // of its own, so nothing here can write on its own.
+    const saveBtn = el("button", { hidden: "hidden" });
     const validate = () => {
       const autoValue = Number(auto.input.value);
       const contextValue = Number(fContext.value);
@@ -936,7 +1050,7 @@
         collab: !!c.collab,
         context_lines: c.context_lines ?? classicDefaults.context_lines ?? 5,
       });
-      if (Object.keys(patch).length === 0) { editingClassic = null; renderClassic(); return; }
+      if (Object.keys(patch).length === 0) { renderClassic(); return; }
       state.classic.channels[c.key] = { ...state.classic.channels[c.key], ...patch };
       if (patch.model === null) delete state.classic.channels[c.key].model;
       if (patch.auto_pause_after === null) delete state.classic.channels[c.key].auto_pause_after;
@@ -948,7 +1062,6 @@
         impact: hotOnly ? "now" : "instance",
         apply: () => api(`/api/settings/classic/channels/${encodeURIComponent(c.key)}`, { method: "PATCH", body: JSON.stringify(patch) }),
       });
-      editingClassic = null;
       renderClassic();
     };
     box.append(
@@ -960,16 +1073,22 @@
         el("div", {}, el("label", {}, t("toolProgress"), impact("classic.tool_progress")), toolProgress.row),
         el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("classic.reply_completion_guard")), replyGuard.row, replyHint),
         el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab")))),
-      el("div", { class: "advanced-only" },
-        el("label", {}, "Context lines", impact("classic.context_lines")), fContext, contextFeedback),
-      el("div", { class: "actions" },
-        saveBtn,
-        runtime.status === "running" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "pause") }, t("pause")) : null,
-        runtime.status === "paused" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "wake") }, t("wake")) : null,
-        el("button", { class: "sm ghost", onclick: () => { editingClassic = null; renderClassic(); } }, t("cancel"))),
+      drawer(t("advancedSection"),
+        el("label", {}, "Context lines", impact("classic.context_lines")), fContext, contextFeedback,
+        el("div", { class: "actions" },
+          runtime.status === "running" ? el("button", { class: "sm", onclick: () => { closeModal(); pauseWakeAgent(c.instanceName, "pause"); } }, t("pause")) : null,
+          runtime.status === "paused" ? el("button", { class: "sm", onclick: () => { closeModal(); pauseWakeAgent(c.instanceName, "wake"); } }, t("wake")) : null)),
     );
     validate();
-    return box;
+    return {
+      box,
+      stage: () => { if (saveBtn.disabled) return false; saveBtn.onclick(); return true; },
+      impacts: [
+        "classic.backend", "classic.model", "classic.auto_pause_after",
+        "classic.tool_progress", "classic.reply_completion_guard",
+        "classic.collab", "classic.context_lines",
+      ],
+    };
   }
   function renderClassic() {
     const host = $("classicList"); if (!host) return; host.innerHTML = "";
@@ -1001,11 +1120,13 @@
         c.collab ? el("span", { class: "tag", style: "background:#ecfdf5;color:#065f46" }, "collab") : null,
         el("span", { class: "spacer" }),
         el("span", { class: "tag", title: STATUS_TEXT[st] || st }, EXECUTION_TEXT[runtime.execution] || runtime.execution),
-        el("button", { class: "sm ghost", onclick: () => { editingClassic = editingClassic === c.key ? null : c.key; renderClassic(); } }, editingClassic === c.key ? t("close") : t("edit")),
+        el("button", { class: "sm ghost", onclick: () => {
+          const form = classicEditForm(c);
+          openModal({ title: c.name || c.instanceName, subtitle: c.instanceName, body: form.box, impacts: form.impacts, stage: form.stage });
+        } }, t("settingsButton")),
         st === "running" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "pause") }, t("pause")) : null,
         st === "paused" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "wake") }, t("wake")) : null,
       ));
-      if (editingClassic === c.key) item.append(classicEditForm(c));
       host.append(item);
     }
   }
@@ -1166,23 +1287,6 @@
       if (Object.keys(defaultsPatch).length > 0) {
         stageChange("defaults:fleet", { label: "Update Agent defaults", impact: batchImpact(Object.keys(defaultsPatch), key => impactOf(`defaults.${key}`)), apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
       }
-      if (primary) {
-        const stagedAccessMode = fAccessMode.value;
-        const stagedAllowedUsers = [...allowedUsers];
-        const nextChannels = structuredClone(originalChannels);
-        nextChannels[0] = { ...nextChannels[0], access: { ...nextChannels[0].access, mode: stagedAccessMode, allowed_users: stagedAllowedUsers } };
-        if (!sameValue(nextChannels, originalChannels)) {
-          stageChange("connections:primary", {
-            label: "Update primary connection access",
-            impact: impactOf("fleet.channels"),
-            // Confirm the immutable staged snapshot, not live form controls
-            // that the user may edit again before pressing global Apply.
-            confirm: () => confirmAccessChange(originalPrimaryAccess, stagedAccessMode, stagedAllowedUsers),
-            cancelMessage: t("accessChangeCancelled"),
-            apply: () => api("/api/settings/fleet/channels", { method: "PUT", body: JSON.stringify(nextChannels) }),
-          });
-        }
-      }
       if (Object.keys(classicPatch).length > 0) {
         const classicHotOnly = Object.keys(classicPatch).every(key => impactOf(`classic_defaults.${key}`) === "now");
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: classicHotOnly ? "now" : "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
@@ -1213,7 +1317,7 @@
           el("div", { class: "grid2" },
             el("div", {}, el("label", {}, t("classicAdmins"), impact("classic.admin_users")), chipList(c.admin_users, null, "user id")),
             el("div", {}, el("label", {}, t("allowedGuilds"), impact("classic.allowed_guilds")), chipList(c.allowed_guilds, null, "guild id"))))),
-      el("div", { class: "advanced-only" },
+      drawer(t("advancedSection"),
       section(t("runtimeResources"), false,
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("defaults.tool_set")), fToolSet),
@@ -1227,11 +1331,11 @@
         el("div", { class: "grid2" },
           el("div", { class: "field" }, el("label", {}, t("concurrency"), impact("fleet.spawn_concurrency")), fConcurrency, concurrencyFeedback),
           el("div", { class: "field" }, el("label", {}, `${t("staggerDelay")} (ms)`, impact("fleet.spawn_stagger_ms")), fStagger, staggerFeedback))),
-      section("Advanced & Access", false,
+      section("Access", false,
+        // Access belongs to a connection, and one modal edits one object — so
+        // it is edited there, and this is only a pointer to it.
         primary
-          ? el("div", { class: "grid2" },
-              el("div", { class: "field" }, el("label", {}, t("accessMode"), impact("fleet.channel.access.mode")), fAccessMode, accessFeedback),
-              el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet.channel.access.allowed_users")), chipList(allowedUsers, validate, "user id")))
+          ? el("div", { class: "field hint" }, tf("accessMovedHint", primary.id || chLabel(0)))
           : el("div", { class: "field hint" }, t("noBots")))),
       el("div", { class: "field" }, el("div", { class: "actions" }, saveBtn, msg)),
     );
@@ -1341,19 +1445,15 @@
   $("helpBackdrop").onclick = () => setHelp(false);
   $("langBtn").onclick = () => { lang = lang === "en" ? "zh-TW" : "en"; localStorage.setItem("agend_lang", lang); renderAll(); };
   $("verBadge").onclick = () => window.open("https://github.com/songsid/AgEnD/releases/latest", "_blank", "noopener");
-  $("agentSearch").oninput = () => { renderAgents(); renderClassic(); };
+  $("agentSearch").oninput = () => { renderAgents(); renderClassic(); renderBots(); };
   $("newAgentBtn").onclick = () => { state.newAgentOpen = !state.newAgentOpen; $("newAgentBtn").textContent = state.newAgentOpen ? t("cancel") : t("new"); renderNewAgent(state.newAgentOpen); };
   $("newBotBtn").onclick = () => { state.newBotOpen = !state.newBotOpen; $("newBotBtn").textContent = state.newBotOpen ? t("cancel") : t("add"); renderNewBot(state.newBotOpen); };
   $("advToggle").onclick = () => { const b = $("advBody"); const open = !b.classList.contains("open"); b.classList.toggle("open", open); $("advToggle").textContent = open ? t("collapse") : t("expand"); };
-  const advancedEnabled = localStorage.getItem("agend_settings_advanced") === "true";
-  document.body.classList.toggle("show-advanced", advancedEnabled);
-  $("advancedToggle").textContent = advancedEnabled ? t("hideAdvanced") : t("showAdvanced");
-  $("advancedToggle").onclick = () => {
-    const enabled = !document.body.classList.contains("show-advanced");
-    document.body.classList.toggle("show-advanced", enabled);
-    localStorage.setItem("agend_settings_advanced", String(enabled));
-    $("advancedToggle").textContent = enabled ? t("hideAdvanced") : t("showAdvanced");
-  };
+  // Closing stages; cancelling discards. Neither writes anything.
+  $("modalDone").onclick = () => { if (modalState?.stage() !== false) closeModal(); };
+  $("modalCancel").onclick = () => closeModal();
+  $("modalBackdrop").onclick = () => closeModal();
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && modalState) closeModal(); });
   $("applyChanges").onclick = applyPendingChanges;
   $("discardChanges").onclick = async () => { state.pending.clear(); updatePendingBar(); await reload(); };
 
