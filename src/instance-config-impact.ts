@@ -11,6 +11,7 @@
  * Everything here is derived from the two sets below. The settings page reads
  * it from `GET /api/settings/schema` instead of carrying its own copy.
  */
+import { isDeepStrictEqual } from "node:util";
 import type { InstanceConfig } from "./types.js";
 
 /** ⚡ applied to the running agent / 🔄 restart the agent / 🔄🔄 restart AgEnD. */
@@ -93,6 +94,46 @@ const FLEET_FIELD_IMPACTS: Readonly<Record<string, ConfigImpact>> = {
   "classic.allowed_guilds": "fleet",
   "instance.delete": "fleet",
 };
+
+/** Split a config into what a live daemon can take and what needs a restart. */
+export function splitHotColdConfig(config: InstanceConfig): {
+  hot: Partial<InstanceConfig>;
+  cold: Partial<InstanceConfig>;
+} {
+  const hot: Partial<InstanceConfig> = {};
+  const cold: Partial<InstanceConfig> = {};
+  for (const [key, value] of Object.entries(config) as Array<[keyof InstanceConfig, InstanceConfig[keyof InstanceConfig]]>) {
+    (HOT_INSTANCE_CONFIG_KEYS.has(key) ? hot : cold)[key] = value as never;
+  }
+  return { hot, cold };
+}
+
+/** The complete hot snapshot sent over IPC; absent values are explicit nulls so
+ * the daemon removes them rather than keeping a stale override. */
+export function hotConfigUpdate(config: InstanceConfig): Record<string, unknown> {
+  const update: Record<string, unknown> = {};
+  for (const key of HOT_INSTANCE_CONFIG_KEYS) update[key] = config[key] ?? null;
+  return update;
+}
+
+/**
+ * What applying `next` to a running instance costs.
+ *
+ * The one comparison `reconcileInstances` makes when it decides between an IPC
+ * hot update and a stop/start — shared so the apply job's plan says what the
+ * reconcile will actually do rather than holding a second opinion about it.
+ */
+export function classifyInstanceChange(
+  runtime: InstanceConfig,
+  next: InstanceConfig,
+): "restart" | "hot" | "none" {
+  const before = splitHotColdConfig(runtime);
+  const after = splitHotColdConfig(next);
+  // Every field not explicitly classified hot is cold by default.
+  if (!isDeepStrictEqual(before.cold, after.cold)) return "restart";
+  if (!isDeepStrictEqual(before.hot, after.hot)) return "hot";
+  return "none";
+}
 
 export function instanceFieldImpact(key: string): ConfigImpact {
   if (FLEET_SCOPED_INSTANCE_KEYS.has(key)) return "fleet";

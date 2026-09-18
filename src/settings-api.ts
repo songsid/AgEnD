@@ -33,6 +33,7 @@ import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { buildSettingsImpactSchema, CLASSIC_HOT_CONFIG_KEYS } from "./instance-config-impact.js";
+import { viewOf, type ApplyJob, type ApplyJobStore } from "./apply-job.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -50,6 +51,9 @@ export interface SettingsApiContext {
   };
   isClassicInstance?(name: string): boolean;
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
+  /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
+  applyJobs?: ApplyJobStore;
+  startSettingsApply?(key: string): ApplyJob;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -360,7 +364,46 @@ export function handleSettingsRequest(
     return true;
   }
 
+  // ── Apply (observable) ──
+  //
+  // Replaces the fire-and-forget SIGHUP below for anything that wants to watch:
+  // the answer is a job, and the job is the authority. `apply_progress` SSE
+  // frames are an accelerator carrying no event id, so a client that reconnects
+  // cannot replay what it missed — it re-reads the job.
+  if (method === "POST" && path === "/api/settings/apply") {
+    if (!ctx.startSettingsApply) { json(res, 501, { error: "apply jobs unavailable" }); return true; }
+    readBody(req, 64 * 1024).then(buf => {
+      let body: Record<string, unknown> = {};
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* key may come from the header */ }
+      // The client generates the key before its first attempt. A server-minted
+      // id cannot deduplicate a retry whose first response was lost.
+      const header = req.headers["idempotency-key"];
+      const key = (typeof header === "string" ? header : undefined)
+        ?? (typeof body.idempotency_key === "string" ? body.idempotency_key : undefined);
+      if (!key || !/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) {
+        json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" });
+        return;
+      }
+      const existing = ctx.applyJobs?.findByKey(key) ?? null;
+      const job = ctx.startSettingsApply!(key);
+      ctx.logger.info({ jobId: job.id, reused: !!existing }, existing
+        ? "settings: apply retry rejoined the existing job"
+        : "settings: apply job started");
+      json(res, existing ? 200 : 202, viewOf(job));
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  const jobMatch = path.match(/^\/api\/settings\/apply\/([A-Za-z0-9-]+)$/);
+  if (method === "GET" && jobMatch) {
+    const job = ctx.applyJobs?.get(jobMatch[1]!) ?? null;
+    if (!job) { json(res, 404, { error: "job not found" }); return true; }
+    json(res, 200, viewOf(job));
+    return true;
+  }
+
   // ── Reload (SIGHUP) ──
+  // The unobserved path, kept for scripts. Nothing reports what it did.
   if (method === "POST" && path === "/api/settings/reload") {
     ctx.logger.info("settings: reload requested — sending SIGHUP");
     try { process.kill(process.pid, "SIGHUP"); } catch (err) { ctx.logger.warn({ err }, "settings: SIGHUP failed"); }

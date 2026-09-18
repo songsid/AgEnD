@@ -1,0 +1,473 @@
+import { EventEmitter } from "node:events";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  APPLY_FLEET_TARGET,
+  APPLY_JOB_DEADLINE_MS,
+  APPLY_JOB_RETENTION_MS,
+  ApplyJobStore,
+  viewOf,
+} from "../src/apply-job.js";
+import { FleetManager } from "../src/fleet-manager.js";
+import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
+
+const dirs: string[] = [];
+const DEAD_PID = 999_999;
+
+/** Re-stamp a job as the work of a process that is no longer here, which is
+ * what "left behind by the previous fleet" means on disk. */
+function asPreviousProcess(store: ApplyJobStore, id: string): void {
+  store.update(id, job => { job.pid = DEAD_PID; });
+}
+
+function tempDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "agend-apply-job-"));
+  dirs.push(dir);
+  return dir;
+}
+
+afterEach(() => {
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  vi.restoreAllMocks();
+});
+
+// ── The store ───────────────────────────────────────────────────────────────
+
+describe("apply job store", () => {
+  it("survives the process that created it", () => {
+    const dir = tempDir();
+    const first = new ApplyJobStore(dir);
+    const job = first.create("key-abcdefgh", [{ target: "one", kind: "restart" }]);
+    first.setTargetStatus(job.id, "one", "running");
+
+    // A separate store on the same data dir is what the replacement process is.
+    const replacement = new ApplyJobStore(dir);
+
+    expect(replacement.get(job.id)).toMatchObject({
+      id: job.id,
+      key: "key-abcdefgh",
+      status: "running",
+      targets: [{ target: "one", kind: "restart", status: "running" }],
+    });
+    expect(existsSync(join(dir, "settings-apply-jobs.json"))).toBe(true);
+  });
+
+  it("is findable by key from another process before any work has happened", () => {
+    const dir = tempDir();
+    const creating = new ApplyJobStore(dir);
+    const job = creating.create("key-before-any-work", [{ target: "one", kind: "restart" }]);
+
+    // The process dies here — between minting the job and the first transition.
+    // The retry lands on the replacement, which must recognise the key.
+    const replacement = new ApplyJobStore(dir);
+
+    expect(replacement.findByKey("key-before-any-work")?.id).toBe(job.id);
+  });
+
+  it("settles a job the restart finished, and says the restart finished it", () => {
+    const dir = tempDir();
+    const before = new ApplyJobStore(dir);
+    const job = before.create("key-restarted", [
+      { target: "one", kind: "restart" },
+      { target: "two", kind: "hot" },
+    ]);
+    before.setTargetStatus(job.id, "one", "running");
+    asPreviousProcess(before, job.id);
+
+    const after = new ApplyJobStore(dir);
+    const settled = after.settleAfterRestart();
+
+    expect(settled.map(item => item.id)).toEqual([job.id]);
+    const reread = after.get(job.id)!;
+    expect(reread.status).toBe("done");
+    expect(reread.finishedAt).toBeGreaterThan(0);
+    for (const row of reread.targets) {
+      expect(row.status).toBe("done");
+      expect(row.settled_by).toBe("fleet-restart");
+    }
+    // Persisted, so a second new process agrees.
+    expect(new ApplyJobStore(dir).get(job.id)!.status).toBe("done");
+  });
+
+  it("leaves this process's own in-flight job alone", () => {
+    // The health server answers a little before startup finishes, so an apply
+    // can already be running here when the settle pass runs. Declaring it
+    // finished by a restart would report someone else's outcome.
+    const dir = tempDir();
+    const store = new ApplyJobStore(dir);
+    const mine = store.create("key-started-here", [{ target: "one", kind: "restart" }]);
+    store.setTargetStatus(mine.id, "one", "running");
+
+    expect(store.settleAfterRestart()).toEqual([]);
+    expect(store.get(mine.id)!.status).toBe("running");
+    expect(store.get(mine.id)!.targets[0]!.settled_by).toBeUndefined();
+  });
+
+  it("leaves a job that already finished alone", () => {
+    const dir = tempDir();
+    const store = new ApplyJobStore(dir);
+    const job = store.create("key-finished", [{ target: "one", kind: "hot" }]);
+    store.finish(job.id);
+    asPreviousProcess(store, job.id);
+
+    expect(new ApplyJobStore(dir).settleAfterRestart()).toEqual([]);
+    expect(store.get(job.id)!.targets[0]!.settled_by).toBeUndefined();
+  });
+
+  it("returns the same job for a repeated key and a new one for a fresh key", () => {
+    const store = new ApplyJobStore(tempDir());
+    const first = store.create("key-repeated", []);
+
+    expect(store.findByKey("key-repeated")!.id).toBe(first.id);
+    expect(store.findByKey("key-other")).toBeNull();
+  });
+
+  it("stops honouring a key once it has aged out", () => {
+    let now = 1_000_000;
+    const store = new ApplyJobStore(tempDir(), () => now);
+    store.create("key-aging", []);
+
+    now += APPLY_JOB_RETENTION_MS + 1;
+
+    expect(store.findByKey("key-aging")).toBeNull();
+  });
+
+  it("ignores an unreadable jobs file instead of blocking the apply", () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, "settings-apply-jobs.json"), "{ not json");
+
+    const store = new ApplyJobStore(dir);
+
+    expect(store.all()).toEqual([]);
+    expect(() => store.create("key-recovered", [])).not.toThrow();
+  });
+
+  it("marks a job failed when any target failed", () => {
+    const store = new ApplyJobStore(tempDir());
+    const job = store.create("key-partial", [
+      { target: "one", kind: "restart" },
+      { target: "two", kind: "hot" },
+    ]);
+    store.setTargetStatus(job.id, "one", "failed", "boom");
+
+    store.finish(job.id);
+
+    expect(store.get(job.id)!.status).toBe("failed");
+    expect(store.get(job.id)!.targets[1]!.status).toBe("done");
+  });
+});
+
+describe("apply job deadline", () => {
+  it("says how long it has been instead of spinning silently", () => {
+    const store = new ApplyJobStore(tempDir());
+    const job = store.create("key-slow", [{ target: "one", kind: "restart" }]);
+
+    const inTime = viewOf(job, job.startedAt + 5_000);
+    expect(inTime.overdue).toBe(false);
+    expect(inTime.message).toBe("");
+
+    const late = viewOf(job, job.startedAt + APPLY_JOB_DEADLINE_MS + 7_000);
+    expect(late.overdue).toBe(true);
+    expect(late.message).toBe("Still restarting (127s)");
+  });
+
+  it("never calls a finished job overdue, however long the page was closed", () => {
+    const store = new ApplyJobStore(tempDir());
+    const job = store.create("key-done", []);
+    store.finish(job.id);
+
+    const view = viewOf(store.get(job.id)!, Date.now() + 10 * APPLY_JOB_DEADLINE_MS);
+
+    expect(view.overdue).toBe(false);
+    expect(view.elapsed_ms).toBeLessThan(APPLY_JOB_DEADLINE_MS);
+  });
+});
+
+// ── The HTTP surface ────────────────────────────────────────────────────────
+
+function request(
+  path: string,
+  ctx: SettingsApiContext,
+  method = "GET",
+  opts: { body?: unknown; headers?: Record<string, string> } = {},
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  return new Promise((resolve, reject) => {
+    const req = new EventEmitter() as EventEmitter & {
+      method: string; headers: Record<string, string>; destroy(): void;
+    };
+    req.method = method;
+    req.headers = opts.headers ?? {};
+    req.destroy = () => undefined;
+    let status = 0;
+    const res = {
+      writeHead(code: number) { status = code; },
+      end(payload: string) { resolve({ status, body: JSON.parse(payload) as Record<string, unknown> }); },
+    };
+    try {
+      expect(handleSettingsRequest(req as never, res as never, new URL(`http://localhost${path}`), ctx)).toBe(true);
+      queueMicrotask(() => {
+        if (opts.body !== undefined) req.emit("data", Buffer.from(JSON.stringify(opts.body)));
+        req.emit("end");
+      });
+    } catch (err) { reject(err); }
+  });
+}
+
+function apiContext(dir: string) {
+  const store = new ApplyJobStore(dir);
+  const started: string[] = [];
+  const ctx = {
+    fleetConfig: { defaults: {}, instances: {} },
+    configPath: join(dir, "fleet.yaml"),
+    dataDir: dir,
+    logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+    getRawFleetConfig: () => ({}),
+    saveFleetConfig: vi.fn(),
+    lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
+    applyJobs: store,
+    startSettingsApply: (key: string) => {
+      started.push(key);
+      return store.findByKey(key) ?? store.create(key, [{ target: "one", kind: "hot" }]);
+    },
+  } as unknown as SettingsApiContext;
+  return { ctx, store, started };
+}
+
+describe("POST /api/settings/apply", () => {
+  it("answers with a job", async () => {
+    const { ctx } = apiContext(tempDir());
+
+    const res = await request("/api/settings/apply", ctx, "POST", {
+      headers: { "idempotency-key": "key-first-apply" },
+    });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({ status: "running", key: "key-first-apply" });
+    expect(res.body.id).toBeTruthy();
+    expect(res.body).toHaveProperty("targets");
+  });
+
+  it("returns the original job when the client retries the same key", async () => {
+    const dir = tempDir();
+    const { ctx, store } = apiContext(dir);
+
+    const first = await request("/api/settings/apply", ctx, "POST", {
+      headers: { "idempotency-key": "key-retried-once" },
+    });
+    const retry = await request("/api/settings/apply", ctx, "POST", {
+      headers: { "idempotency-key": "key-retried-once" },
+    });
+
+    expect(retry.body.id).toBe(first.body.id);
+    expect(retry.status).toBe(200);
+    // The point of the key: no second apply was minted behind the retry.
+    expect(store.all()).toHaveLength(1);
+  });
+
+  it("accepts the key in the body for clients that cannot set headers", async () => {
+    const { ctx, store } = apiContext(tempDir());
+
+    const res = await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "key-from-body" },
+    });
+
+    expect(res.status).toBe(202);
+    expect(store.all()).toHaveLength(1);
+  });
+
+  it("refuses to mint a job without a usable key", async () => {
+    const { ctx, store } = apiContext(tempDir());
+
+    const missing = await request("/api/settings/apply", ctx, "POST", {});
+    const tooShort = await request("/api/settings/apply", ctx, "POST", {
+      headers: { "idempotency-key": "short" },
+    });
+
+    expect(missing.status).toBe(400);
+    expect(tooShort.status).toBe(400);
+    expect(store.all()).toEqual([]);
+  });
+});
+
+describe("GET /api/settings/apply/:jobId", () => {
+  it("is the authority, including for a job this process did not start", async () => {
+    const dir = tempDir();
+    const previousProcess = new ApplyJobStore(dir);
+    const job = previousProcess.create("key-earlier-process", [{ target: "one", kind: "restart" }]);
+    previousProcess.setTargetStatus(job.id, "one", "running");
+    asPreviousProcess(previousProcess, job.id);
+    // The replacement process: a fresh store over the same data dir.
+    const { ctx } = apiContext(dir);
+    (ctx.applyJobs as ApplyJobStore).settleAfterRestart();
+
+    const res = await request(`/api/settings/apply/${job.id}`, ctx);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: job.id, status: "done" });
+    expect((res.body.targets as Array<Record<string, unknown>>)[0]).toMatchObject({
+      status: "done", settled_by: "fleet-restart",
+    });
+  });
+
+  it("404s an id it has never seen", async () => {
+    const { ctx } = apiContext(tempDir());
+
+    const res = await request("/api/settings/apply/00000000-0000-0000-0000-000000000000", ctx);
+
+    expect(res.status).toBe(404);
+  });
+});
+
+// ── Real wiring: the rows are the reconcile's own work ──────────────────────
+
+function fleetWithInstance(dir: string, body: string[]): { fm: FleetManager; configPath: string } {
+  const configPath = join(dir, "fleet.yaml");
+  writeFileSync(configPath, body.join("\n"));
+  const fm = new FleetManager(dir);
+  fm.loadConfig(configPath);
+  (fm as unknown as { startupComplete: boolean }).startupComplete = true;
+  return { fm, configPath };
+}
+
+describe("a Settings apply drives the real reconcile", () => {
+  it("reports a hot change as hot and finishes the job", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
+    fm.lifecycle.daemons.set("one", {
+      getConfigSnapshot: () => runtimeConfig,
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    fm.fleetConfig!.instances.one!.tool_progress = "verbose";
+
+    expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "hot" }]);
+    const job = fm.startSettingsApply("key-hot-change");
+
+    expect(job.targets).toEqual([{ target: "one", kind: "hot", status: "pending" }]);
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    expect(fm.applyJobs.get(job.id)!.targets[0]).toMatchObject({ target: "one", kind: "hot", status: "done" });
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it("reports a cold change as a restart and stops the instance", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
+    fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => runtimeConfig } as never);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    vi.spyOn(fm as unknown as {
+      startInstanceUnattended(...args: unknown[]): Promise<void>;
+    }, "startInstanceUnattended").mockResolvedValue(undefined);
+    const frames: unknown[][] = [];
+    vi.spyOn(fm, "emitSseEvent").mockImplementation((event, data) => {
+      if (event === "apply_progress") frames.push([event, structuredClone(data)]);
+    });
+    writeFileSync(configPath, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "    backend: codex", "",
+    ].join("\n"));
+    fm.fleetConfig!.instances.one!.backend = "codex";
+
+    expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "restart" }]);
+    const job = fm.startSettingsApply("key-cold-change");
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    expect(stop).toHaveBeenCalledWith("one");
+    expect(fm.applyJobs.get(job.id)!.targets[0]!.status).toBe("done");
+    // The row has to have been reported in flight. Asserting only the terminal
+    // state would pass even if the reconcile never said anything, because
+    // finishing a job tidies leftover rows to done.
+    const seen = frames.flatMap(([, data]) => (data as { targets: Array<{ target: string; status: string }> }).targets)
+      .filter(row => row.target === "one")
+      .map(row => row.status);
+    expect(seen).toContain("running");
+    expect(seen.indexOf("running")).toBeLessThan(seen.lastIndexOf("done"));
+  });
+
+  it("pushes apply_progress frames without making them the authority", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
+    fm.lifecycle.daemons.set("one", {
+      getConfigSnapshot: () => runtimeConfig,
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    const emit = vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
+    fm.fleetConfig!.instances.one!.tool_progress = "verbose";
+
+    const job = fm.startSettingsApply("key-sse-frames");
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+
+    const frames = emit.mock.calls.filter(([event]) => event === "apply_progress");
+    expect(frames.length).toBeGreaterThan(1);
+    // The frame is a view of the job, and carries no id of its own to resume from.
+    expect(frames[0]![1]).toMatchObject({ id: job.id });
+    expect(frames[0]![1]).not.toHaveProperty("event_id");
+  });
+
+  it("does not run a second reconcile for a retried key", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    fm.lifecycle.daemons.set("one", {
+      getConfigSnapshot: () => structuredClone(fm.fleetConfig!.instances.one!),
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    const reconcile = vi.spyOn(fm as unknown as {
+      reconcileInstances(): Promise<void>;
+    }, "reconcileInstances").mockResolvedValue(undefined);
+
+    const first = fm.startSettingsApply("key-double-submit");
+    const retry = fm.startSettingsApply("key-double-submit");
+
+    expect(retry.id).toBe(first.id);
+    await vi.waitFor(() => expect(fm.applyJobs.get(first.id)!.status).toBe("done"));
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(fm.applyJobs.all()).toHaveLength(1);
+  });
+
+  it("plans a fleet row when the fleet-level config moved under a running process", () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, [
+      "defaults:", "  backend: claude-code", "instances: {}", "",
+    ]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    expect(fm.planConfigApply()).toEqual([]);
+    fm.fleetConfig!.defaults!.backend = "codex";
+
+    expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+  });
+
+  it("settles a job left running by the process that died, on the next startup", async () => {
+    const dir = tempDir();
+    const dying = new ApplyJobStore(dir);
+    const job = dying.create("key-across-restart", [
+      { target: "one", kind: "restart" },
+      { target: APPLY_FLEET_TARGET, kind: "restart" },
+    ]);
+    dying.setTargetStatus(job.id, "one", "running");
+    asPreviousProcess(dying, job.id);
+
+    // The replacement fleet process reaching the end of startup.
+    const { fm } = fleetWithInstance(dir, ["instances: {}", ""]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    const settled = fm.applyJobs.get(job.id)!;
+    expect(settled.status).toBe("done");
+    expect(settled.targets.map(row => row.settled_by)).toEqual(["fleet-restart", "fleet-restart"]);
+    // And the on-disk copy agrees, so a later GET from any process does too.
+    const onDisk = JSON.parse(readFileSync(join(dir, "settings-apply-jobs.json"), "utf-8")) as {
+      jobs: Array<{ id: string; status: string }>;
+    };
+    expect(onDisk.jobs.find(item => item.id === job.id)!.status).toBe("done");
+  });
+});

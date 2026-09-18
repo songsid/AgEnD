@@ -84,7 +84,14 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
-import { CLASSIC_HOT_CONFIG_KEYS, HOT_INSTANCE_CONFIG_KEYS } from "./instance-config-impact.js";
+import { APPLY_FLEET_TARGET, ApplyJobStore, viewOf, type ApplyJob, type ApplyTargetKind } from "./apply-job.js";
+import {
+  classifyInstanceChange,
+  CLASSIC_HOT_CONFIG_KEYS,
+  HOT_INSTANCE_CONFIG_KEYS,
+  hotConfigUpdate,
+  splitHotColdConfig,
+} from "./instance-config-impact.js";
 import {
   formatRestartProgressCompletion,
   RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
@@ -246,23 +253,6 @@ interface TopicProbePass {
   definite: Set<string>;
 }
 
-function splitHotColdConfig(config: InstanceConfig): {
-  hot: Partial<InstanceConfig>;
-  cold: Partial<InstanceConfig>;
-} {
-  const hot: Partial<InstanceConfig> = {};
-  const cold: Partial<InstanceConfig> = {};
-  for (const [key, value] of Object.entries(config) as Array<[keyof InstanceConfig, InstanceConfig[keyof InstanceConfig]]>) {
-    (HOT_INSTANCE_CONFIG_KEYS.has(key) ? hot : cold)[key] = value as never;
-  }
-  return { hot, cold };
-}
-
-function hotConfigUpdate(config: InstanceConfig): Record<string, unknown> {
-  const update: Record<string, unknown> = {};
-  for (const key of HOT_INSTANCE_CONFIG_KEYS) update[key] = config[key] ?? null;
-  return update;
-}
 /**
  * How long a delivery waits out a disconnected instance IPC before giving up.
  *
@@ -703,6 +693,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * authorizing revoked links and cookies until the fleet restarted.
    */
   private get webToken(): string | null { return readWebToken(this.dataDir); }
+  /**
+   * Set while a Settings apply job is driving the reconcile. The reconcile
+   * stays the single doer; it just says out loud what it is doing to whom, so
+   * the job's rows are the work rather than a prediction of it.
+   */
+  private applyObserver: ((target: string, status: "running" | "done" | "failed", error?: string) => void) | null = null;
+  private applyJobStoreCache: ApplyJobStore | null = null;
+  /** The fleet-level signature this process actually came up on. */
+  private appliedFleetLevel: string | null = null;
   private viewToken: string | null = null;
   private healthServerListening = false;
 
@@ -831,6 +830,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private finishStartup(): void {
     this.startupComplete = true;
+    this.appliedFleetLevel = this.fleetLevelSignature();
+    // A job from the process that just died cannot still be running here. The
+    // restart applied the saved config to every instance, so its open rows are
+    // finished — by the restart, which is what the user needs told.
+    for (const settled of this.applyJobs.settleAfterRestart()) {
+      this.logger.info({ jobId: settled.id }, "Settings apply job settled by fleet restart");
+    }
     // We are the post-update fleet: the update is over by definition. Clearing
     // it here (rather than in the update command, which exits before the new
     // fleet is up) is what keeps the quiet window from outliving the restart.
@@ -11519,8 +11525,16 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const { tips: _newTips, ...newDefaultCold } = newDefaultColdWithFleetFields as Record<string, unknown>;
     const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldDefaultCold });
     const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: newDefaultCold });
-    if (oldFleetLevel !== newFleetLevel) {
+    // Settings edits mutate this.fleetConfig in place before the reload, so the
+    // pre-load copy is already the new value and this comparison sees nothing.
+    // appliedFleetLevel is the snapshot from the last time the fleet actually
+    // came up on a config, which is what "needs a restart" is relative to.
+    const changedFleetLevel = oldFleetLevel !== newFleetLevel
+      || (this.appliedFleetLevel !== null && this.appliedFleetLevel !== newFleetLevel);
+    if (changedFleetLevel) {
       this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
+      this.applyObserver?.(APPLY_FLEET_TARGET, "running");
+      this.applyObserver?.(APPLY_FLEET_TARGET, "done");
     }
 
     // Stop removed instances (skip classic bot instances — they're managed by classicBot.yaml)
@@ -11528,8 +11542,13 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     for (const name of this.daemons.keys()) {
       if (!(name in newInstances) && !classicNames.has(name)) {
         this.logger.info({ name }, "Instance removed from config — stopping");
-        await this.stopInstance(name).catch(err =>
-          this.logger.error({ err, name }, "Failed to stop removed instance"));
+        this.applyObserver?.(name, "running");
+        await this.stopInstance(name)
+          .then(() => this.applyObserver?.(name, "done"))
+          .catch(err => {
+            this.applyObserver?.(name, "failed", (err as Error).message);
+            this.logger.error({ err, name }, "Failed to stop removed instance");
+          });
       }
     }
 
@@ -11540,18 +11559,21 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (!this.daemons.has(name)) {
         // New instance — startInstance already calls connectIpcToInstance
         this.logger.info({ name }, "New instance in config — starting");
+        this.applyObserver?.(name, "running");
         await this.startInstanceUnattended(name, config, topicMode, "new instance");
+        this.applyObserver?.(name, "done");
       } else if (oldConfig?.instances[name]) {
         const daemon = this.daemons.get(name)!;
         const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
-        const oldParts = splitHotColdConfig(runtimeConfig);
-        const newParts = splitHotColdConfig(config);
-        // Every field not explicitly classified hot is cold by default.
-        if (!isDeepStrictEqual(oldParts.cold, newParts.cold)) {
+        const change = classifyInstanceChange(runtimeConfig, config);
+        if (change === "restart") {
           this.logger.info({ name }, "Instance config changed — restarting");
+          this.applyObserver?.(name, "running");
           await this.stopInstance(name).catch(() => {});
           await this.startInstanceUnattended(name, config, topicMode, "modified instance");
-        } else if (!isDeepStrictEqual(oldParts.hot, newParts.hot)) {
+          this.applyObserver?.(name, "done");
+        } else if (change === "hot") {
+          this.applyObserver?.(name, "running");
           const update = hotConfigUpdate(config);
           const ipc = this.instanceIpcClients.get(name);
           const sent = ipc?.connected === true && ipc.send({ type: "config_update", config: update });
@@ -11562,6 +11584,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             this.logger.warn({ name }, "Config-update IPC unavailable — applied hot config in-process");
           }
           this.logger.info({ name, fields: [...HOT_INSTANCE_CONFIG_KEYS] }, "Instance hot config reloaded");
+          this.applyObserver?.(name, "done");
         }
       }
     }
@@ -11579,18 +11602,22 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         const autoPauseAfter = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
         if (old.backend !== backend || old.model !== model || old.autoPauseAfter !== autoPauseAfter) {
           this.logger.info({ instanceName: ch.instanceName }, "Classic cold config changed — restarting");
+          this.applyObserver?.(ch.instanceName, "running");
           await this.stopInstance(ch.instanceName).catch(() => {});
           await this.startClassicInstanceUnattended(ch, "classic instance after fleet reload");
+          this.applyObserver?.(ch.instanceName, "done");
           continue;
         }
         const toolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
         const replyCompletionGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
         if (old.toolProgress !== toolProgress || old.replyCompletionGuard !== replyCompletionGuard) {
+          this.applyObserver?.(ch.instanceName, "running");
           this.applyHotConfigUpdate(ch.instanceName, {
             tool_progress: toolProgress,
             reply_completion_guard: replyCompletionGuard,
           });
           this.logger.info({ instanceName: ch.instanceName }, "Classic inherited hot config reloaded");
+          this.applyObserver?.(ch.instanceName, "done");
         }
       }
     }
@@ -11599,7 +11626,105 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // currently idle instances instead of waiting for a future state edge.
     this.enforceWarmCap();
 
+    this.appliedFleetLevel = newFleetLevel;
     this.logger.info({ running: this.daemons.size, configured: Object.keys(newInstances).length }, "Reconcile complete");
+  }
+
+  /**
+   * `{channel, cold defaults}` as one comparable string — the part of the config
+   * a running fleet process cannot adopt without restarting.
+   */
+  private fleetLevelSignature(): string {
+    const cold = this.fleetConfig?.defaults
+      ? splitHotColdConfig(this.fleetConfig.defaults as InstanceConfig).cold
+      : {};
+    const { tips: _tips, ...defaults } = cold as Record<string, unknown>;
+    return JSON.stringify({ channel: this.fleetConfig?.channel, defaults });
+  }
+
+  /** Jobs outlive this process on purpose; see apply-job.ts. */
+  get applyJobs(): ApplyJobStore {
+    return (this.applyJobStoreCache ??= new ApplyJobStore(this.dataDir));
+  }
+
+  /**
+   * What a reconcile is about to do, per target.
+   *
+   * A forecast, not the record: it is built from the same `classifyInstanceChange`
+   * the reconcile decides with, but the rows that end up in the job are the ones
+   * the reconcile reports as it works. A target the forecast missed (a Classic
+   * instance inheriting a changed default) is added when it is first touched.
+   */
+  planConfigApply(): Array<{ target: string; kind: ApplyTargetKind }> {
+    const rows: Array<{ target: string; kind: ApplyTargetKind }> = [];
+    const next = this.fleetConfig?.instances ?? {};
+    const classicNames = new Set(this.classicChannels?.getAll().map(ch => ch.instanceName) ?? []);
+
+    for (const [name, config] of Object.entries(next)) {
+      const daemon = this.daemons.get(name);
+      if (!daemon) { rows.push({ target: name, kind: "restart" }); continue; }
+      const runtime = daemon.getConfigSnapshot?.();
+      if (!runtime) continue;
+      const change = classifyInstanceChange(runtime, config);
+      if (change !== "none") rows.push({ target: name, kind: change === "restart" ? "restart" : "hot" });
+    }
+    for (const name of this.daemons.keys()) {
+      if (!(name in next) && !classicNames.has(name)) rows.push({ target: name, kind: "restart" });
+    }
+    if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== this.fleetLevelSignature()) {
+      rows.push({ target: APPLY_FLEET_TARGET, kind: "restart" });
+    }
+    return rows;
+  }
+
+  /**
+   * Start (or re-join) a Settings apply.
+   *
+   * The key is the client's. Handing back the existing job for a repeated key is
+   * the whole point: the retry after a lost response must not apply everything a
+   * second time.
+   */
+  startSettingsApply(key: string): ApplyJob {
+    const existing = this.applyJobs.findByKey(key);
+    if (existing) return existing;
+
+    const job = this.applyJobs.create(key, this.planConfigApply());
+    // Start after the caller has its answer, so the first thing the page renders
+    // is the whole plan with every row still pending — not a job the reconcile
+    // has already half-finished synchronously.
+    queueMicrotask(() => void this.runSettingsApply(job.id));
+    return job;
+  }
+
+  private async runSettingsApply(jobId: string): Promise<void> {
+    const emit = (): void => {
+      const job = this.applyJobs.get(jobId);
+      // An accelerator only: these frames carry no event id, so a client that
+      // reconnects cannot ask for what it missed. GET is the authority.
+      if (job) this.emitSseEvent("apply_progress", viewOf(job));
+    };
+    this.applyObserver = (target, status, error) => {
+      this.applyJobs.update(jobId, job => {
+        let row = job.targets.find(item => item.target === target);
+        if (!row) {
+          row = { target, kind: status === "running" ? "restart" : "hot", status: "pending" };
+          job.targets.push(row);
+        }
+        row.status = status;
+        if (error) row.error = error;
+      });
+      emit();
+    };
+    emit();
+    try {
+      await this.reconcileInstances();
+      this.applyJobs.finish(jobId);
+    } catch (err) {
+      this.applyJobs.finish(jobId, err instanceof Error ? err.message : String(err));
+    } finally {
+      this.applyObserver = null;
+      emit();
+    }
   }
 
   async restartInstances(): Promise<void> {

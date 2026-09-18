@@ -87,6 +87,13 @@
   .more-menu .menu button { width:100%; text-align:left; border:0; }
   .pending-bar { position:fixed; left:0; right:0; bottom:0; display:none; align-items:center; gap:12px; padding:12px max(16px, calc((100vw - 860px) / 2 + 24px)); background:#111827; color:#fff; z-index:35; box-shadow:0 -4px 18px rgba(0,0,0,.18); }
   .pending-bar.open { display:flex; }
+  .apply-panel { position:fixed; left:0; right:0; bottom:0; display:none; flex-direction:column; gap:8px; padding:14px max(16px, calc((100vw - 860px) / 2 + 24px)); background:#111827; color:#fff; z-index:36; box-shadow:0 -4px 18px rgba(0,0,0,.18); max-height:60vh; overflow:auto; }
+  .apply-panel.open { display:flex; }
+  .apply-panel .apply-head { display:flex; align-items:baseline; gap:10px; }
+  .apply-panel .sub { color:#9ca3af; }
+  .apply-row { display:flex; align-items:center; gap:10px; font-size:13px; }
+  .apply-row .name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .apply-row .err { color:#fca5a5; }
   .pending-bar .grow { flex:1; }
   .pending-bar button.primary { background:#fff; color:#111827; border-color:#fff; }
   .level-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; margin-bottom:8px; }
@@ -168,6 +175,10 @@
     <div class="card"><div class="adv-body" id="advBody"></div></div>
   </section>
 </main>
+<div class="apply-panel" id="applyPanel">
+  <div class="apply-head"><strong id="applyTitle">Applying changes…</strong><span id="applyNote" class="sub"></span></div>
+  <div id="applyRows"></div>
+</div>
 <div class="pending-bar" id="pendingBar">
   <strong id="pendingCount">0 changes not applied</strong>
   <span id="pendingImpact">⚡ Immediately · 🔄 Restart this Agent · 🔄🔄 Restart AgEnD</span>
@@ -205,6 +216,9 @@
       helpTitle: "📖 Help", tipReload: "💡 Click [↻ Reload Fleet] after changes to apply them.",
       wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
+      applying: "Applying changes…", applyDone: "✓ Changes applied", applyPartial: "⚠️ Some changes failed", applyClose: "Close",
+      applyStillWorking: "Still restarting ({0}s) — AgEnD is still working; this page keeps checking.",
+      applyLostJob: "Lost track of this apply (the fleet may have restarted). Reload the page to see the current state.",
       changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — open the Settings link again.",
       confirmOpenAccess: "Open access allows anyone in this channel to operate the bot. Continue?", confirmLockedEmpty: "Locked access has no allowed users. This may leave nobody able to administer the bot. Continue?", accessLockedEmpty: "Locked mode has no allowed users; add at least one administrator to avoid lockout.", accessChangeCancelled: "Access mode change cancelled",
       mustNonNegative: "Must be 0 or greater", mustPositive: "Must be greater than 0", nonnegativeInteger: "Must be a non-negative integer", failoverEmpty: "Empty list disables failover", concurrencyRange: "Must be an integer from 1 to 20", concurrencyWarning: "May exceed CPU capacity on smaller hosts", staggerRange: "Must be between 0 and 30000", staggerWarning: "Very low values can cause startup spikes",
@@ -227,6 +241,9 @@
       helpTitle: "📖 使用說明", tipReload: "💡 修改後點 [↻ 重新載入] 讓設定生效。",
       wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
+      applying: "正在套用變更…", applyDone: "✓ 變更已套用", applyPartial: "⚠️ 有部分變更失敗", applyClose: "關閉",
+      applyStillWorking: "仍在重啟中（{0} 秒）—— AgEnD 還在處理，此頁面會持續確認。",
+      applyLostJob: "已追蹤不到這次套用（AgEnD 可能重啟過）。請重新整理頁面查看目前狀態。",
       changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請重新開啟 Settings 連結。",
       confirmOpenAccess: "Open 模式會允許此頻道中的所有人操作 bot，確定要繼續嗎？", confirmLockedEmpty: "Locked 模式目前沒有允許的使用者，可能導致沒有人能管理 bot，確定要繼續嗎？", accessLockedEmpty: "Locked 模式沒有允許的使用者；建議至少加入一位管理員，避免無法操作。", accessChangeCancelled: "已取消 Access Mode 變更",
       mustNonNegative: "必須為 0 或更大的數值", mustPositive: "必須大於 0", nonnegativeInteger: "必須是非負整數", failoverEmpty: "空白清單會停用模型備援", concurrencyRange: "必須是 1 到 20 的整數", concurrencyWarning: "在較小的主機上可能超出 CPU 負荷", staggerRange: "必須介於 0 到 30000", staggerWarning: "數值太低可能造成啟動尖峰",
@@ -376,10 +393,72 @@
       }
       state.pending.delete(key); updatePendingBar();
     }
-    await api("/api/settings/reload", { method: "POST" });
+    // The key is generated here, before the first attempt, and reused by every
+    // retry: a POST whose response is lost on a phone must rejoin the same job
+    // instead of applying everything twice.
+    const key = (crypto.randomUUID ? crypto.randomUUID() : `k-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const started = await api("/api/settings/apply", {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ idempotency_key: key }),
+    });
+    if (!started.ok || !started.body?.id) {
+      showBanner(started.body?.error || t("applyFailed"), true);
+      button.disabled = false;
+      return;
+    }
+    await watchApplyJob(started.body);
     await reload();
-    showBanner(t("changesApplied"));
     button.disabled = false;
+  }
+
+  function applyRow(row) {
+    const icon = row.status === "done" ? "✓" : row.status === "failed" ? "✗" : row.status === "running" ? "…" : "·";
+    const kind = row.kind === "hot" ? t("impactNow") : t("impactAgent");
+    return el("div", { class: "apply-row" },
+      el("span", {}, icon),
+      el("span", { class: "name" }, row.target === "fleet" ? "AgEnD" : shortName(row.target, {})),
+      el("span", { class: "sub" }, kind),
+      row.error ? el("span", { class: "err" }, row.error) : null,
+      row.settled_by === "fleet-restart" ? el("span", { class: "sub" }, "(restart)") : null);
+  }
+
+  function renderApplyJob(job) {
+    $("applyPanel").classList.add("open");
+    $("applyTitle").textContent = job.status === "done"
+      ? (job.targets.some(r => r.status === "failed") ? t("applyPartial") : t("applyDone"))
+      : job.status === "failed" ? t("applyPartial") : t("applying");
+    $("applyNote").textContent = job.overdue ? tf("applyStillWorking", Math.round(job.elapsed_ms / 1000)) : "";
+    const rows = $("applyRows"); rows.innerHTML = "";
+    for (const row of job.targets) rows.append(applyRow(row));
+    if (job.error) rows.append(el("div", { class: "apply-row err" }, job.error));
+  }
+
+  /**
+   * GET is the authority. The SSE stream carries no event id, so a reconnect
+   * cannot replay missed frames; it only shortens the wait between polls.
+   */
+  async function watchApplyJob(job) {
+    renderApplyJob(job);
+    const deadline = Date.now() + 10 * 60_000;
+    let current = job;
+    while (current.status === "running" && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 1000));
+      const res = await api(`/api/settings/apply/${encodeURIComponent(job.id)}`);
+      if (res.status === 404) {
+        // The job outlives the process that made it, so a 404 means it aged out
+        // of the store — not that it never happened.
+        $("applyNote").textContent = t("applyLostJob");
+        return;
+      }
+      if (!res.ok || !res.body?.id) continue;
+      current = res.body;
+      renderApplyJob(current);
+    }
+    showBanner(current.status === "done" && !current.targets.some(r => r.status === "failed")
+      ? t("changesApplied")
+      : t("applyPartial"), current.status !== "done");
+    setTimeout(() => $("applyPanel").classList.remove("open"), 4000);
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
   const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
