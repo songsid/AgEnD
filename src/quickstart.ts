@@ -1,6 +1,8 @@
 import { createInterface } from "node:readline/promises";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
+// The same probes the Settings wizard makes — one copy, one behaviour.
+import { awaitTelegramGroupStart, listDiscordGuilds, verifyDiscordToken } from "./provider-probe.js";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
@@ -47,28 +49,6 @@ function detectBackends(): typeof BACKENDS {
 
 // ── Discord bot verification ─────────────────────────────
 
-async function verifyDiscordToken(token: string): Promise<{ valid: boolean; username: string | null; id: string | null }> {
-  try {
-    const res = await fetch("https://discord.com/api/v10/users/@me", {
-      headers: { Authorization: `Bot ${token}` },
-    });
-    if (!res.ok) return { valid: false, username: null, id: null };
-    // For a bot user, the account id is also its application (client) id.
-    const data = (await res.json()) as { username?: string; id?: string };
-    return { valid: true, username: data.username ?? null, id: data.id ?? null };
-  } catch { return { valid: false, username: null, id: null }; }
-}
-
-async function listDiscordGuilds(token: string): Promise<{ id: string; name: string }[]> {
-  try {
-    const res = await fetch("https://discord.com/api/v10/users/@me/guilds", {
-      headers: { Authorization: `Bot ${token}` },
-    });
-    if (!res.ok) return [];
-    return (await res.json()) as { id: string; name: string }[];
-  } catch { return []; }
-}
-
 // ── Telegram group + user detection ──────────────────────
 
 const DETECT_TIMEOUT = 3 * 60_000;
@@ -76,35 +56,15 @@ const DETECT_TIMEOUT = 3 * 60_000;
 async function detectGroupAndUser(
   token: string,
 ): Promise<{ groupId: number; userId: number }> {
-  const api = `https://api.telegram.org/bot${token}`;
-  let offset = 0;
   const start = Date.now();
-
-  // Consume stale updates first
-  try {
-    const stale = await fetch(`${api}/getUpdates?offset=-1&timeout=0`);
-    const data = (await stale.json()) as { result?: { update_id: number }[] };
-    if (data.result?.length) offset = data.result[data.result.length - 1].update_id + 1;
-  } catch { /* ignore */ }
-
+  let offset = 0;
   while (Date.now() - start < DETECT_TIMEOUT) {
     process.stdout.write(`  Waiting for message... ${dim("(Ctrl+C to cancel)")}\r`);
-    const res = await fetch(`${api}/getUpdates?offset=${offset}&timeout=30`);
-    const data = (await res.json()) as {
-      result?: {
-        update_id: number;
-        message?: { chat: { id: number; type: string }; from?: { id: number } };
-      }[];
-    };
-    for (const update of data.result ?? []) {
-      offset = update.update_id + 1;
-      const msg = update.message;
-      if (msg?.chat?.type === "supergroup" || msg?.chat?.type === "group") {
-        if (msg.from?.id) {
-          process.stdout.write("\x1b[2K"); // clear line
-          return { groupId: msg.chat.id, userId: msg.from.id };
-        }
-      }
+    const slice = await awaitTelegramGroupStart(token, { deadlineMs: 30_000, offset });
+    offset = slice.offset;
+    if (slice.found) {
+      process.stdout.write("\x1b[2K"); // clear line
+      return slice.found;
     }
   }
   throw new Error("Timed out (3 min). Please run `agend quickstart` again.");
