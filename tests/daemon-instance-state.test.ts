@@ -185,12 +185,12 @@ describe("Daemon event-driven pane monitor", () => {
 
       monitor.setPane(codexAnimatedIdleFrame("⋆"));
       monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(500);
       expect(monitor.daemon.getInstanceState()).toBe("working");
 
       monitor.setPane(codexAnimatedIdleFrame(""));
       monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-      await vi.advanceTimersByTimeAsync(25);
+      await vi.advanceTimersByTimeAsync(500);
       expect(monitor.daemon.getInstanceState()).toBe("idle");
       expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(true);
     } finally {
@@ -210,7 +210,30 @@ describe("Daemon event-driven pane monitor", () => {
       for (const seconds of [2, 3, 4]) {
         monitor.setPane(codexWorkingFrame(seconds));
         monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-        await vi.advanceTimersByTimeAsync(25);
+        await vi.advanceTimersByTimeAsync(500);
+        expect(monitor.daemon.getInstanceState()).toBe("working");
+      }
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an unfamiliar no-footer Codex layout working during continuous redraw", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      const noFooter = (tick: number) => [
+        `• redraw ${tick}`,
+        "› Ask Codex to do anything",
+      ].join("\n");
+      for (let i = 0; i < 4; i++) {
+        monitor.setPane(noFooter(i));
+        monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(500);
         expect(monitor.daemon.getInstanceState()).toBe("working");
       }
     } finally {
@@ -236,7 +259,7 @@ describe("Daemon event-driven pane monitor", () => {
       for (let i = 0; i < 2; i++) {
         monitor.setPane(quoteOnly);
         monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-        await vi.advanceTimersByTimeAsync(25);
+        await vi.advanceTimersByTimeAsync(500);
       }
       expect(monitor.daemon.getInstanceState()).toBe("working");
 
@@ -251,7 +274,7 @@ describe("Daemon event-driven pane monitor", () => {
       for (let i = 0; i < 2; i++) {
         monitor.setPane(quotedThenIdle);
         monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-        await vi.advanceTimersByTimeAsync(25);
+        await vi.advanceTimersByTimeAsync(500);
       }
       expect(monitor.daemon.getInstanceState()).toBe("idle");
     } finally {
@@ -274,6 +297,53 @@ describe("Daemon event-driven pane monitor", () => {
       expect(monitor.daemon.getInstanceState()).toBe("working");
       await vi.advanceTimersByTimeAsync(1);
       expect(monitor.daemon.getInstanceState()).toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["a draft in the composer", "› please also fix the flaky test in ci\n  (no context footer)"],
+    ["a layout without a context footer", "• Finished the requested work.\n› Ask Codex to do anything"],
+  ])("keeps the ordinary quiet debounce path for %s", async (_label, unknownIdlePane) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      monitor.setPane(unknownIdlePane);
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("rate-limits structural probes while a Codex turn streams output", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      const initialCaptures = monitor.tmux.capturePane.mock.calls.length;
+
+      for (let i = 0; i < 200; i++) {
+        monitor.setPane(codexWorkingFrame(i));
+        monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(10);
+      }
+
+      const probes = monitor.tmux.capturePane.mock.calls.length - initialCaptures;
+      expect(probes).toBeLessThanOrEqual(6);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
     } finally {
       monitor.close();
       vi.useRealTimers();

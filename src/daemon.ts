@@ -105,6 +105,8 @@ export const DEFAULT_STATE_IDLE_DEBOUNCE_MS = 2_000;
 export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 /** Coalesce one cosmetic-redraw burst before comparing the visible pane. */
 export const PERIODIC_REDRAW_PROBE_MS = 25;
+/** Do not turn a streaming Codex turn into one capture-pane per burst. */
+export const STRUCTURED_IDLE_PROBE_MS = 500;
 /** A foreground server/port-forward should hand control back or be acknowledged. */
 export const DEFAULT_BLOCKING_PROCESS_GRACE_MS = 2 * 60_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
@@ -3438,12 +3440,12 @@ export class Daemon extends EventEmitter {
    * visible cell. Probe the pane once per burst: a changed capture is real work;
    * an identical ready capture remains idle and emits no state edge.
    */
-  private scheduleInstanceStateOutputProbe(): void {
+  private scheduleInstanceStateOutputProbe(delayMs = PERIODIC_REDRAW_PROBE_MS): void {
     if (this.instanceStateOutputProbeTimer) return;
     this.instanceStateOutputProbeTimer = setTimeout(() => {
       this.instanceStateOutputProbeTimer = null;
       void this.captureAndEvaluateInstanceState("output_probe", this.instanceStateLastOutputAt);
-    }, PERIODIC_REDRAW_PROBE_MS);
+    }, delayMs);
     this.instanceStateOutputProbeTimer.unref?.();
   }
 
@@ -3528,31 +3530,47 @@ export class Daemon extends EventEmitter {
       // changed when tmux reported output (observedChangeAt), but idle/stuck are
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
-      let snapshot: InstanceStateSnapshot;
       const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
-      if (structuredPeriodicIdle) {
+      let snapshot: InstanceStateSnapshot;
+      if (structuredPeriodicIdle && reason === "output_probe") {
         const idlePane = structuredPeriodicIdle.call(this.backend, pane);
         if (idlePane) {
-          if (this.instanceState === "idle" || (reason !== "output_probe" && settled)) {
+          if (this.instanceState === "idle") {
             // Cosmetic output must not manufacture an idle -> working edge.
-            // A normal two-second quiet capture remains sufficient on its own.
             this.instanceStatePeriodicIdleConfirmations = 2;
-          } else if (reason === "output_probe") {
+          } else {
             this.instanceStatePeriodicIdleConfirmations++;
           }
-          snapshot = this.instanceStatePeriodicIdleConfirmations >= 2
-            ? this.instanceStateMachine.observe(pane, Date.now(), {
-                settled: true,
-                changeAt: observedChangeAt,
-              })
-            : this.instanceStateMachine.recordOutput(observedChangeAt);
+          if (this.instanceStatePeriodicIdleConfirmations < 2) {
+            // One positive frame is intentionally not enough to bless a
+            // working pane while the starfield is still repainting.
+            snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+          } else {
+            snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+              settled: true,
+              changeAt: observedChangeAt,
+            });
+          }
         } else {
           // A live busy marker or an unfamiliar layout outranks the broad Codex
-          // ready pattern.  Unknown is working, never guessed idle.
+          // ready pattern during the noisy-redraw path. Unknown is working.
           this.instanceStatePeriodicIdleConfirmations = 0;
           snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
         }
+      } else if (structuredPeriodicIdle && reason !== "idle_debounce") {
+        // Startup, safety, and explicit state probes must not bless a broad
+        // Codex ready match when the structural layout is unknown or visibly
+        // busy. The settled debounce below remains the compatibility path for
+        // drafts and older layouts that simply lack the new footer.
+        this.instanceStatePeriodicIdleConfirmations = 0;
+        snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
       } else {
+        // Structural proof is an additional working-stage escape hatch only.
+        // Settled captures retain the legacy ready/busy semantics for drafts,
+        // older Codex layouts, and panes without a Context footer.
+        if (structuredPeriodicIdle && settled) {
+          this.instanceStatePeriodicIdleConfirmations = 0;
+        }
         snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
           settled,
           changeAt: observedChangeAt,
@@ -3569,9 +3587,10 @@ export class Daemon extends EventEmitter {
         this.publishActivity(snapshot.state === "idle" ? null : paneActivity);
       }
 
-      if (snapshot.state === "idle") {
+      const currentState = this.instanceState;
+      if (currentState === "idle") {
         this.clearInstanceStateStuckTimer();
-      } else if (snapshot.state === "working") {
+      } else if (currentState === "working") {
         // If control mode missed the pane change, the safety capture becomes
         // the new progress timestamp and re-arms both deadlines.
         if (!expectedOutputAt) this.instanceStateLastOutputAt = captureStartedAt;
@@ -3599,7 +3618,7 @@ export class Daemon extends EventEmitter {
         this.applyInstanceStateSnapshot(this.instanceStateMachine.recordOutput(event.at));
         this.scheduleInstanceStateStuckDeadline(event.at);
       }
-      this.scheduleInstanceStateOutputProbe();
+      this.scheduleInstanceStateOutputProbe(canProvePeriodicIdle ? STRUCTURED_IDLE_PROBE_MS : PERIODIC_REDRAW_PROBE_MS);
       this.scheduleInstanceStateIdleCapture();
       return;
     }

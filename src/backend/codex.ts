@@ -157,6 +157,11 @@ export class CodexBackend implements CliBackend {
     return /^\s*›\s?/;
   }
 
+  /** Live status chrome that must veto the broad prompt/context ready match. */
+  getBusyPattern(): RegExp {
+    return /(?:^|\n)•\s+Working\b[^\n]*\besc to interrupt\b/i;
+  }
+
   /**
    * Codex 0.154's Astra theme can keep animating a star field around the input
    * box (and its terminal title) after the TUI has returned to the prompt.

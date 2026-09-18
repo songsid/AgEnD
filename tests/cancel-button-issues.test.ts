@@ -146,6 +146,38 @@ describe("idle-edge cancel-button retirement grace", () => {
 });
 
 describe("cancel-button publication generation fence (#782)", () => {
+  it("does not let an old idle timer retire a newer in-flight publication", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm, internals } = makeFleet();
+      const first = { messageId: "old", chatId: "g1", threadId: "123" };
+      const post = deferred<{ messageId: string; chatId: string; threadId: string }>();
+      const notifyAlert = vi.fn()
+        .mockResolvedValueOnce(first)
+        .mockImplementationOnce(() => post.promise);
+      const { deleteMessage } = installCancelAdapter(fm, notifyAlert);
+      internals.startProgressTicker = vi.fn();
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      await internals.sendCancelButton("alpha");
+      internals.cacheInstanceExecutionState("alpha", { state: "idle" });
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      const sendNew = internals.sendCancelButton("alpha");
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(deleteMessage).not.toHaveBeenCalledWith("g1", "old", "123");
+      expect(internals.cancelButtons.has("old")).toBe(true);
+
+      post.resolve({ messageId: "new", chatId: "g1", threadId: "123" });
+      await sendNew;
+      await flushButtonRetirement();
+      expect(internals.cancelButtons.has("new")).toBe(true);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
   it("retires a late publication after the idle edge and grace elapsed while the POST was pending", async () => {
     vi.useFakeTimers();
     try {

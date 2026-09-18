@@ -495,6 +495,17 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
+  it("keeps Codex structural idle proof behind the active state monitor", async () => {
+    const { backend, control, daemon, instanceDir } = makeDeliveryDaemon("codex", false, "› Ask Codex to do anything");
+    try {
+      expect(backend.isPeriodicRedrawIdlePane?.("› Ask Codex to do anything\n  Context 16% left")).toBe(true);
+      expect(await (daemon as any).waitForPaneIdleForDelivery("@queued", 100)).toBe(true);
+      expect(control.waitUntilIdle).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
   it("always retries the first post-restart Enter for Kiro before trusting redraw output", async () => {
     // The pane shows Kiro's legacy prompt: the Enter-drop gate fails closed on
     // anything else (a blank stub is "not ready", not "nothing to strand into").
