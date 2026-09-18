@@ -84,6 +84,18 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
+import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
+
+/** What a reconcile has to say for itself beyond "it ran". */
+interface ReconcileOutcome {
+  /** Set when the new configuration was refused and the old one kept. */
+  rejected?: string;
+}
+
+/** A self-restart is a whole service restart; 120s is the apply budget, not this. */
+const SELF_RESTART_DEADLINE_MS = 300_000;
+
 import {
   APPLY_FLEET_TARGET,
   ApplyJobStore,
@@ -91,6 +103,7 @@ import {
   type ApplyJob,
   type ApplyTargetKind,
   type ApplyTargetStatus,
+  type SelfRestartResult,
 } from "./apply-job.js";
 
 /**
@@ -723,6 +736,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private activeApplyJobId: string | null = null;
   /** The fleet-level signature this process actually came up on. */
   private appliedFleetLevel: string | null = null;
+  /** The config behind that signature, kept so a "needs restart" log can name
+   * which keys moved rather than just asserting that something did. */
+  private startupFleetConfig: FleetConfig | null = null;
+  /** Set when the file on disk and the in-memory config disagree on a
+   * startup-only key at startup. See checkStartupSignatureConsistency(). */
+  private fleetSignatureMismatch: string[] | null = null;
   private viewToken: string | null = null;
   private healthServerListening = false;
 
@@ -840,16 +859,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The returned promise is the caller's to handle; the stored one is already
    * handled, so a rejection never escapes as an unhandled rejection.
    */
-  private startExclusiveReconcile(observer?: ReconcileObserver): Promise<void> | null {
+  private startExclusiveReconcile(observer?: ReconcileObserver): Promise<ReconcileOutcome> | null {
     if (this.reconcileInFlight) return null;
 
     this.reloadPending = false;
-    let settle!: (err: unknown) => void;
-    const caller = new Promise<void>((resolve, reject) => {
-      settle = err => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve());
+    let settle!: (err: unknown, outcome?: ReconcileOutcome) => void;
+    const caller = new Promise<ReconcileOutcome>((resolve, reject) => {
+      settle = (err, outcome) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(outcome ?? {}));
     });
     this.reconcileInFlight = this.reconcileInstances(observer)
-      .then(() => settle(null), err => settle(err))
+      .then(outcome => settle(null, outcome), err => settle(err))
       .finally(() => {
         this.reconcileInFlight = null;
         if (this.reloadPending && this.startupComplete) {
@@ -874,7 +893,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private finishStartup(): void {
     this.startupComplete = true;
+    // After slimFleetConfigAtStartup() and the general/topic fixups, all of
+    // which may rewrite fleet.yaml — the baseline has to be what this process
+    // is actually running, compared against what a reconcile would load.
     this.appliedFleetLevel = this.fleetLevelSignature();
+    this.startupFleetConfig = this.fleetConfig ? structuredClone(this.fleetConfig) : null;
+    this.checkStartupSignatureConsistency();
     // A job from the process that just died cannot still be running here. The
     // restart applied the saved config to every instance, so its open rows are
     // finished — by the restart, which is what the user needs told.
@@ -11469,8 +11493,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * Whitelisted runtime fields are pushed into live daemons; all other instance
    * fields, plus cold fleet-level settings, retain restart semantics.
    */
-  private async reconcileInstances(observe?: ReconcileObserver): Promise<void> {
-    if (!this.configPath) return;
+  private async reconcileInstances(observe?: ReconcileObserver): Promise<ReconcileOutcome> {
+    if (!this.configPath) return {};
     const oldConfig = this.fleetConfig;
     const previousRawConfig = this.rawFleetConfig;
     const previousRawDocument = this.rawFleetDocument;
@@ -11515,7 +11539,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           ? t("fleet.reload_removed_all", oldCount)
           : t("fleet.reload_removed_half", oldCount, newCount);
       this.notifyFleetError(t("fleet.reload_rejected", why));
-      return;
+      // Reported, not swallowed: an apply job whose config was refused used to
+      // mark every row done and tell the user "changes applied".
+      return { rejected: why };
     }
 
     // Classic behavior settings share the fleet defaults but are not entries
@@ -11555,31 +11581,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const newInstances = this.fleetConfig!.instances;
     const topicMode = this.fleetConfig?.channel?.mode === "topic";
 
-    // Detect fleet-level changes which still need a restart. Hot defaults are
-    // reconciled below and must not produce a misleading restart warning.
-    const oldDefaultColdWithFleetFields = oldConfig?.defaults
-      ? splitHotColdConfig(oldConfig.defaults as InstanceConfig).cold
-      : {};
-    const newDefaultColdWithFleetFields = this.fleetConfig?.defaults
-      ? splitHotColdConfig(this.fleetConfig.defaults as InstanceConfig).cold
-      : {};
-    // `tips` is a fleet-owned hot switch; it is read at post time and never
-    // belongs in a daemon config or a "restart required" warning.
-    const { tips: _oldTips, ...oldDefaultCold } = oldDefaultColdWithFleetFields as Record<string, unknown>;
-    const { tips: _newTips, ...newDefaultCold } = newDefaultColdWithFleetFields as Record<string, unknown>;
-    const oldFleetLevel = JSON.stringify({ channel: oldConfig?.channel, defaults: oldDefaultCold });
-    const newFleetLevel = JSON.stringify({ channel: this.fleetConfig?.channel, defaults: newDefaultCold });
-    // Settings edits mutate this.fleetConfig in place before the reload, so the
-    // pre-load copy is already the new value and this comparison sees nothing.
-    // appliedFleetLevel is the snapshot from the last time the fleet actually
-    // came up on a config, which is what "needs a restart" is relative to.
-    // Relative to the signature this process came up on, not to the pre-load
-    // copy: a Settings edit mutates the in-memory config first, so the two
-    // sides of `oldFleetLevel !== newFleetLevel` are already identical by the
-    // time we get here and the change looks like nothing happened.
-    void oldFleetLevel;
+    // Only what a fresh process can adopt, and only relative to the signature
+    // this process came up on: a Settings edit mutates this.fleetConfig in place
+    // before the reload, so comparing the pre-load copy sees nothing at all.
+    const newFleetLevel = this.fleetLevelSignature();
     if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== newFleetLevel) {
-      this.logger.warn("Fleet-level config changed (channel/defaults) — use /restart for full effect");
+      this.logger.warn({
+        keys: fleetLevelDifferences(this.startupFleetConfig, this.fleetConfig),
+      }, "Fleet-level config changed — restart AgEnD for it to take effect");
       // Terminal, and deliberately not "done": this reconcile cannot adopt a
       // fleet-level change, and saying otherwise would claim AgEnD is running
       // on a configuration it is not running on.
@@ -11680,6 +11689,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // the process, so moving it would erase the fact that a restart is still
     // owed and silence every later reminder.
     this.logger.info({ running: this.daemons.size, configured: Object.keys(newInstances).length }, "Reconcile complete");
+    return {};
   }
 
   /**
@@ -11687,11 +11697,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * a running fleet process cannot adopt without restarting.
    */
   private fleetLevelSignature(config: FleetConfig | null = this.fleetConfig): string {
-    const cold = config?.defaults
-      ? splitHotColdConfig(config.defaults as InstanceConfig).cold
-      : {};
-    const { tips: _tips, ...defaults } = cold as Record<string, unknown>;
-    return JSON.stringify({ channel: config?.channel, defaults });
+    return fleetLevelSignature(config);
   }
 
   /**
@@ -11711,6 +11717,165 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       // falls back to what is running rather than failing the request.
       this.logger.debug({ err }, "Apply plan fell back to the in-memory config");
       return this.fleetConfig;
+    }
+  }
+
+  /**
+   * Does the config this process is running match the one a reconcile would
+   * load off disk?
+   *
+   * If not, every apply reports a fleet-level change that a restart cannot
+   * clear — restart, recompute, disagree again — a self-sustaining loop that
+   * the rate limit can only slow to three naggings an hour. Startup rewrites
+   * the file in three places before this point (slimFleetConfigAtStartup, the
+   * general auto-create, the general fixup), so the two can genuinely diverge.
+   *
+   * An offer to restart that cannot possibly succeed is worse than no offer, so
+   * the panel shows the mismatch instead of a button.
+   */
+  private checkStartupSignatureConsistency(): void {
+    if (!this.configPath) { this.fleetSignatureMismatch = null; return; }
+    let onDisk: FleetConfig | null;
+    try {
+      onDisk = loadFleetConfig(this.configPath);
+    } catch (err) {
+      this.logger.warn({ err }, "Could not re-read fleet.yaml to check the startup signature");
+      this.fleetSignatureMismatch = null;
+      return;
+    }
+    if (fleetLevelSignature(onDisk) === this.appliedFleetLevel) {
+      this.fleetSignatureMismatch = null;
+      return;
+    }
+    this.fleetSignatureMismatch = fleetLevelDifferences(this.fleetConfig, onDisk);
+    this.logger.warn({
+      keys: this.fleetSignatureMismatch,
+      configPath: this.configPath,
+    }, "fleet.yaml and the running configuration disagree on startup-only keys — every apply will ask for a restart that cannot clear it");
+  }
+
+  /** Non-null when startup found the running config and fleet.yaml disagreeing. */
+  fleetSignatureMismatchKeys(): string[] | null {
+    return this.fleetSignatureMismatch;
+  }
+
+  /**
+   * Restart AgEnD itself on behalf of a Settings apply.
+   *
+   * Deliberately a separate action from Apply: the panel is reachable from
+   * outside the LAN, and "restart the whole fleet" must never be something a
+   * single Apply click can carry along with it.
+   *
+   * The order below is the safety envelope, and the order matters:
+   * concurrency and consistency first (cheap, and a restart during a reconcile
+   * is the dangerous one), then the state checks, then the rate limit, then the
+   * audit notice — and only once all of that holds is the attempt written to
+   * disk and fsynced, before anything spawns.
+   */
+  async requestSettingsSelfRestart(jobId: string, key: string): Promise<SelfRestartResult> {
+    // A retry after a lost response must not restart a second time. The key is
+    // recorded on the job, which survives the restart it triggers.
+    const already = this.applyJobs.findByRestartKey(key);
+    if (already) return { ok: true, jobId: already.id, reused: true };
+
+    if (this.reconcileInFlight || this.activeApplyJobId) {
+      return { ok: false, status: 409, error: "a configuration reload is running — try again once it finishes" };
+    }
+    if (this.fleetSignatureMismatch) {
+      // Restarting cannot clear this, so offering it would be a loop.
+      return {
+        ok: false,
+        status: 409,
+        error: `fleet.yaml and the running configuration disagree on ${this.fleetSignatureMismatch.join(", ")} — check fleet.log before restarting`,
+      };
+    }
+
+    const job = this.applyJobs.get(jobId);
+    const row = job?.targets.find(item => item.target === APPLY_FLEET_TARGET);
+    if (!job || !row || row.status !== "restart-required") {
+      return { ok: false, status: 409, error: "that apply has no pending fleet-level change" };
+    }
+    // The row alone is not enough: an old job keeps its row for the whole
+    // retention window, so a change made and then reverted would still leave a
+    // job that looks restartable. The live signature is the authority — and it
+    // must be the same view of the config the plan uses.
+    if (this.appliedFleetLevel === null || this.appliedFleetLevel === this.fleetLevelSignature(this.nextFleetConfig())) {
+      return { ok: false, status: 409, error: "no fleet-level change is pending any more" };
+    }
+
+    const allowance = checkSelfRestartAllowance(this.dataDir);
+    if (!allowance.allowed) {
+      return {
+        ok: false,
+        status: 429,
+        error: allowance.reason === "too-soon"
+          ? "AgEnD was restarted from Settings very recently"
+          : "too many Settings-triggered restarts in the last hour",
+        retryAfterSeconds: allowance.retryAfterSeconds,
+      };
+    }
+
+    // Out-of-band notice before anything happens, so a panel restart is visible
+    // where the admins are. Refusing when it cannot be posted is the same rule
+    // as refusing when the progress marker cannot be written: no untraceable
+    // restarts.
+    const notice = await this.postSelfRestartNotice();
+    if (!notice) {
+      return {
+        ok: false,
+        status: 409,
+        error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
+      };
+    }
+
+    // Before the spawn, and fsynced: the process is about to be replaced, and an
+    // attempt that is not on the device is an attempt that never happened.
+    if (!recordSelfRestartAttempt(this.dataDir)) {
+      this.logger.error("Self-restart attempt could not be recorded — refusing to restart unmetered");
+      return { ok: false, status: 503, error: "could not record the restart attempt" };
+    }
+
+    // Consume the row: it moves to running, which is also what lets the next
+    // process settle it (settleAfterRestart only touches non-terminal rows).
+    this.applyJobs.update(jobId, current => {
+      const target = current.targets.find(item => item.target === APPLY_FLEET_TARGET);
+      if (target) target.status = "running";
+      current.restart_key = key;
+      current.deadlineMs = SELF_RESTART_DEADLINE_MS;
+    });
+    this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
+
+    const launched = await this.requestFullRestart(notice.adapter, notice.chatId, notice.threadId, notice.messageId)
+      .catch(err => {
+        this.logger.error({ err }, "Settings-triggered self restart failed to launch");
+        return false;
+      });
+    if (!launched) {
+      this.applyJobs.setTargetStatus(jobId, APPLY_FLEET_TARGET, "failed", "restart could not be launched");
+      this.applyJobs.finish(jobId, "restart could not be launched");
+      this.emitSseEvent("apply_progress", viewOf(this.applyJobs.get(jobId)!));
+      return { ok: false, status: 409, error: "the restart could not be launched — see fleet.log" };
+    }
+    return { ok: true, jobId };
+  }
+
+  /** The audit notice, and the message the restart progress will edit. */
+  private async postSelfRestartNotice(): Promise<{
+    adapter: ChannelAdapter; chatId: string; threadId: string | undefined; messageId: string;
+  } | null> {
+    const groupId = this.fleetConfig?.channel?.group_id;
+    const adapter = this.adapter;
+    if (!groupId || !adapter) return null;
+    const generalName = this.findGeneralInstance();
+    const rawThreadId = generalName ? this.fleetConfig?.instances[generalName]?.topic_id : undefined;
+    const threadId = rawThreadId != null ? String(rawThreadId) : undefined;
+    try {
+      const sent = await adapter.sendText(String(groupId), t("restart.settings_triggered"), { threadId });
+      if (!sent?.messageId) return null;
+      return { adapter, chatId: sent.chatId, threadId: sent.threadId, messageId: sent.messageId };
+    } catch (err) {
+      this.logger.error({ err }, "Could not announce the Settings-triggered restart — refusing to restart silently");
+      return null;
     }
   }
 
@@ -11809,8 +11974,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         this.applyJobs.finish(jobId, "a config reload was already running");
         return;
       }
-      await started;
-      this.applyJobs.finish(jobId);
+      const outcome = await started;
+      this.applyJobs.finish(jobId, outcome.rejected);
     } catch (err) {
       this.applyJobs.finish(jobId, err instanceof Error ? err.message : String(err));
     } finally {

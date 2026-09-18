@@ -1,7 +1,13 @@
 # 自身重啟安全信封（Settings Apply → 重啟 AgEnD 本身）
 
-狀態：**leader 三裁示 + fable 安全 review 的五項必改已折入，待 fable 確認後才實作第 2 部分。**
-單一 instance 重啟（本票第 1 部分）不在此信封內，已實作並經 fable APPROVE（`d7694f0a`）。
+狀態：**已實作**（fable APPROVE 此信封後開工）。本文件現在是這個功能的設計說明，不再是提案。
+第 1 部分（單一 instance 重啟的預報修正）已實作並經 fable APPROVE（`d7694f0a`）。
+
+實作對應：
+- §0 集合 → `src/fleet-level-config.ts`，兩側列舉測試在 `tests/fleet-level-config.test.ts`
+- §1–§4 → `FleetManager.requestSettingsSelfRestart()` 與 `POST /api/settings/restart-fleet`
+- §3 rate-limit → `src/self-restart-limit.ts`
+- §5 一致性檢查 → `FleetManager.checkStartupSignatureConsistency()`，在 `finishStartup()` 內、所有啟動期改寫之後
 
 **裁示三已由 fable 拍板：token 作為唯一授權「足夠」。** 這個 token 今天已經授權更嚴重的動作（停光所有 agent、typed-confirm 刪 instance、改所有 backend），一次受限的自身重啟沒有引入新的權限類別；票 0 又把它硬化成 HttpOnly + SameSite=Strict + Origin 檢查的 cookie。
 
@@ -44,9 +50,13 @@
 | `defaults.tips` | 發送時現讀 |
 | 其餘 cold defaults（`backend`/`model`/`tool_set`/`agent_mode`/`hang_detector`…） | 由「重啟 instance」吸收，已經有 instance 列 |
 
-### 實作時必須先查證再定案
+### 原本待查的五個鍵：全部不屬於集合（已定案）
 
-`web`、`hostname`、`login`、`web_terminal`（四個 fleet 頂層鍵，**現在也都不在簽章裡**）、`defaults.progress_min_elapsed`。
+`web`（`usage-api.ts:268` 現讀）、`hostname`（`topic-commands.ts:378` / `login-controller.ts:344` 產生連結時現讀）、`login` 與 `web_terminal`（除型別外無 runtime 讀取點）、`defaults.progress_min_elapsed`（`fleet-manager.ts:8110` 現讀）。
+
+`defaults.scheduler` **不能整塊進集合**：只有 `max_schedules` 與 `default_timezone` 被 Scheduler ctor 捕捉，`retry_count` / `retry_interval_ms` 在每次觸發時現讀（`fleet-manager.ts:5346-5347`）。簽章只收前兩個子鍵。
+
+另外：**沒有 `defaults.timezone` 這個鍵**。`detectLocale()` 只讀 `defaults.locale` 與主機時鐘，可設定的時區在 `defaults.cost_guard` 裡（整塊已收）。
 
 ### 集合要有測試（必改一）
 
