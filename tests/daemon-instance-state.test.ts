@@ -117,7 +117,7 @@ describe("PendingWorkTracker", () => {
 });
 
 describe("Daemon event-driven pane monitor", () => {
-  function makeCodexMonitor(initialPane: string) {
+  function makeCodexMonitor(initialPane: string, autoPauseMinutes = 0) {
     const instanceDir = mkdtempSync(join(tmpdir(), "agend-codex-redraw-"));
     writeFileSync(join(instanceDir, "window-id"), "@codex");
     let lastOutputAt = 0;
@@ -136,6 +136,7 @@ describe("Daemon event-driven pane monitor", () => {
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
       hang_detector: { enabled: true, timeout_minutes: 10, idle_debounce_ms: 2_000 },
+      auto_pause_after: autoPauseMinutes,
       log_level: "silent",
     } as any, instanceDir, false, new CodexBackend(instanceDir), control as any,
       { child: () => logger } as any);
@@ -243,6 +244,80 @@ describe("Daemon event-driven pane monitor", () => {
   });
 
   /**
+   * The other half of B3, and the case the `!settled` clause exists for.
+   *
+   * The structural guard only protects a pane that is ALREADY idle. A turn that
+   * ends while nobody is watching leaves the daemon in working with a quiet,
+   * structurally idle pane — and the next capture is a safety sweep. Without
+   * the settled clause that sweep calls recordOutput and pins it in working
+   * forever, which is the original bug with one extra step. Removing
+   * `!settled` turns this red.
+   */
+  it("lets a settled safety sweep recover a finished turn to idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      // The turn ends and the pane goes quiet — no further output events, so
+      // the next capture is settled.
+      monitor.setPane(codexIdleFrame);
+      await vi.advanceTimersByTimeAsync(2_500);
+      monitor.control.emit("safety_sweep", { at: Date.now() });
+      await vi.advanceTimersByTimeAsync(50);
+
+      expect(monitor.daemon.getInstanceState(),
+        "a quiet finished turn must be recoverable by the sweep").toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The reverse guard, at the only point where this branch actually decides
+   * anything.
+   *
+   * For a pane that CHANGED, the legacy reading already says working while
+   * output is fresh, so the branch makes no difference there. It matters for an
+   * UNCHANGED pane that matches the broad Codex prompt regex but is not the
+   * structured idle layout — a draft or older frame with no Context footer.
+   * The legacy reading blesses that as idle; mid-turn, with output still
+   * arriving, it is not. Widening the B4 guard until the branch never fires
+   * turns this red.
+   */
+  it("does not bless an unchanged unknown layout as idle while output is still arriving", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    // Prompt row present (so the broad ready regex matches) but no Context
+    // footer, so the structural matcher correctly refuses to call it idle.
+    const unknownLayout = [
+      "• Reading files…",
+      "› Ask Codex to do anything",
+    ].join("\n");
+    const monitor = makeCodexMonitor(unknownLayout);
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+
+      // Output keeps arriving but the visible frame does not change.
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(300);
+      monitor.control.emit("safety_sweep", { at: Date.now() });
+      await vi.advanceTimersByTimeAsync(50);
+
+      expect(monitor.daemon.getInstanceState(),
+        "an unknown layout mid-turn is not idle just because the prompt row is visible").toBe("working");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * The same guard must not blind the sweep while output IS recent: a pane that
    * is genuinely repainting mid-turn still has to read as working.
    */
@@ -267,14 +342,33 @@ describe("Daemon event-driven pane monitor", () => {
     }
   });
 
-  it("does not turn an idle Astra starfield into working on a safety sweep", async () => {
+  /**
+   * B4 — the case this whole branch exists to serve, and the one a `settled`
+   * guard alone cannot reach.
+   *
+   * While the Astra star field keeps repainting, output never stops arriving,
+   * so a capture is NEVER settled. A safety sweep landing on an already-idle
+   * animated pane therefore still called recordOutput and flipped it to
+   * working, an instant before two probes proved it idle again — once a
+   * minute, forever. Each flicker is a spurious pair of state edges for the
+   * fleet and resets the idleSince this daemon reports, so a Codex left idle
+   * with Astra on never settles into auto-pause.
+   */
+  it("keeps an idle Codex idle across safety sweeps while the star field is still animating", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    // 1 minute of inactivity is enough to auto-pause, so the assertion below
+    // reaches a real decision rather than a timeout.
+    const monitor = makeCodexMonitor(codexWorkingFrame(1), 1);
+    const edges: string[] = [];
+    const autoPause: Array<{ idleSince: number }> = [];
+    monitor.daemon.on("instance_state", (e: any) => edges.push(e.state));
+    monitor.daemon.on("auto_pause_requested", (e: any) => autoPause.push(e));
     try {
       (monitor.daemon as any).startInstanceStateMonitor();
       await vi.advanceTimersByTimeAsync(0);
 
+      // Settle to idle the normal way.
       monitor.setPane(codexAnimatedIdleFrame("⋆"));
       monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
       await vi.advanceTimersByTimeAsync(500);
@@ -283,19 +377,33 @@ describe("Daemon event-driven pane monitor", () => {
       await vi.advanceTimersByTimeAsync(500);
       expect(monitor.daemon.getInstanceState()).toBe("idle");
 
-      const edges = vi.fn();
-      monitor.daemon.on("instance_state", edges);
-      // A starfield frame arrives shortly before the fleet-wide sweep. The
-      // capture is unsettled, but the pane is already idle and structurally
-      // positive, so the sweep must not emit idle→working.
-      monitor.setPane(codexAnimatedIdleFrame("⋆"));
-      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
-      await vi.advanceTimersByTimeAsync(250);
-      monitor.control.emit("safety_sweep");
-      await vi.advanceTimersByTimeAsync(0);
+      const idleSince = (monitor.daemon as any).instanceStateMachine.snapshot().stateChangedAt;
+      edges.length = 0;
 
-      expect(monitor.daemon.getInstanceState()).toBe("idle");
-      expect(edges).not.toHaveBeenCalled();
+      // The star field never stops. Output stays fresh the whole time, so no
+      // capture is ever settled — and a sweep arrives every minute.
+      for (let sweep = 1; sweep <= 3; sweep++) {
+        for (const star of ["⋆", "", "⋆"]) {
+          monitor.setPane(codexAnimatedIdleFrame(star));
+          monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+          await vi.advanceTimersByTimeAsync(700);
+        }
+        monitor.control.emit("safety_sweep", { at: Date.now() });
+        await vi.advanceTimersByTimeAsync(50);
+        expect(monitor.daemon.getInstanceState(), `after sweep ${sweep}`).toBe("idle");
+      }
+
+      expect(edges, "cosmetic animation must not manufacture state edges").toEqual([]);
+      expect((monitor.daemon as any).instanceStateMachine.snapshot().stateChangedAt,
+        "idleSince must not be reset by a sweep").toBe(idleSince);
+
+      // And the instance still reaches auto-pause rather than being kept awake
+      // by its own screensaver.
+      await vi.advanceTimersByTimeAsync(61_000);
+      monitor.control.emit("safety_sweep", { at: Date.now() });
+      await vi.advanceTimersByTimeAsync(50);
+      expect(autoPause.length, "an idle Codex with Astra on must still auto-pause").toBeGreaterThan(0);
+      expect(autoPause[0].idleSince).toBe(idleSince);
     } finally {
       monitor.close();
       vi.useRealTimers();
