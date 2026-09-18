@@ -277,7 +277,8 @@
 </div>
 
 <script>
-const T = new URLSearchParams(location.search).get("token") || "";
+// No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+// which the browser attaches to these same-origin requests on its own.
 const UI_LANG = localStorage.getItem("agend_lang") || (navigator.language?.toLowerCase().startsWith("zh") ? "zh-TW" : "en");
 const UI_TEXT = {
   en: {
@@ -308,7 +309,7 @@ const msgs = {};
 async function api(m, p, b) {
   const o = { method: m, headers: { "Content-Type": "application/json" } };
   if (b) o.body = JSON.stringify(b);
-  const r = await fetch(`${p}${p.includes("?") ? "&" : "?"}token=${T}`, o);
+  const r = await fetch(p, o);
   return r.json();
 }
 function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
@@ -318,7 +319,7 @@ function toast(msg, ok=true) {
   document.body.appendChild(el); setTimeout(() => el.remove(), 3000);
 }
 
-const sse = new EventSource(`/ui/events?token=${T}`);
+const sse = new EventSource("/ui/events");
 sse.addEventListener("status", e => {
   const d = JSON.parse(e.data); instances = d.instances;
   document.getElementById("uptime").textContent = fmtUp(d.uptime);

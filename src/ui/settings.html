@@ -178,7 +178,8 @@
 <script>
 (() => {
   "use strict";
-  const token = new URLSearchParams(location.search).get("token") || "";
+  // No token in the URL: the gate redeemed it for an HttpOnly session cookie,
+  // which the browser attaches to these same-origin requests on its own.
   const $ = (id) => document.getElementById(id);
   const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag); for (const k in attrs) { if (k === "class") e.className = attrs[k]; else if (k === "html") e.innerHTML = attrs[k]; else if (k.startsWith("on")) e.addEventListener(k.slice(2), attrs[k]); else e.setAttribute(k, attrs[k]); } for (const c of kids) if (c != null) e.append(c); return e; };
   const esc = (s) => String(s).replace(/[&<>]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;" }[c]));
@@ -204,7 +205,7 @@
       helpTitle: "📖 Help", tipReload: "💡 Click [↻ Reload Fleet] after changes to apply them.",
       wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
-      changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — check the token in the URL.",
+      changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — open the Settings link again.",
       confirmOpenAccess: "Open access allows anyone in this channel to operate the bot. Continue?", confirmLockedEmpty: "Locked access has no allowed users. This may leave nobody able to administer the bot. Continue?", accessLockedEmpty: "Locked mode has no allowed users; add at least one administrator to avoid lockout.", accessChangeCancelled: "Access mode change cancelled",
       mustNonNegative: "Must be 0 or greater", mustPositive: "Must be greater than 0", nonnegativeInteger: "Must be a non-negative integer", failoverEmpty: "Empty list disables failover", concurrencyRange: "Must be an integer from 1 to 20", concurrencyWarning: "May exceed CPU capacity on smaller hosts", staggerRange: "Must be between 0 and 30000", staggerWarning: "Very low values can cause startup spikes",
     },
@@ -226,7 +227,7 @@
       helpTitle: "📖 使用說明", tipReload: "💡 修改後點 [↻ 重新載入] 讓設定生效。",
       wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
-      changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請檢查網址中的 token。",
+      changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請重新開啟 Settings 連結。",
       confirmOpenAccess: "Open 模式會允許此頻道中的所有人操作 bot，確定要繼續嗎？", confirmLockedEmpty: "Locked 模式目前沒有允許的使用者，可能導致沒有人能管理 bot，確定要繼續嗎？", accessLockedEmpty: "Locked 模式沒有允許的使用者；建議至少加入一位管理員，避免無法操作。", accessChangeCancelled: "已取消 Access Mode 變更",
       mustNonNegative: "必須為 0 或更大的數值", mustPositive: "必須大於 0", nonnegativeInteger: "必須是非負整數", failoverEmpty: "空白清單會停用模型備援", concurrencyRange: "必須是 1 到 20 的整數", concurrencyWarning: "在較小的主機上可能超出 CPU 負荷", staggerRange: "必須介於 0 到 30000", staggerWarning: "數值太低可能造成啟動尖峰",
     },
@@ -292,7 +293,7 @@
 
   // ── API ──
   async function api(path, opts = {}) {
-    const headers = Object.assign({ "X-Agend-Token": token }, opts.headers || {});
+    const headers = Object.assign({}, opts.headers || {});
     if (opts.body) headers["Content-Type"] = "application/json";
     const r = await fetch(path, Object.assign({}, opts, { headers }));
     let body = null; try { body = await r.json(); } catch {}

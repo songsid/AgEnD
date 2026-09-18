@@ -1664,6 +1664,25 @@ program
     child.unref();
   });
 
+program
+  .command("web-token")
+  .description("Rotate the web dashboard access token")
+  .argument("<action>", "rotate")
+  .action(async (action: string) => {
+    if (action !== "rotate") {
+      console.error(`Unknown action "${action}". Only "rotate" is supported.`);
+      process.exit(1);
+    }
+    const { rotateWebToken } = await import("./web-auth.js");
+    rotateWebToken(DATA_DIR);
+    // The new token is deliberately not printed: it would land in shell history
+    // and scrollback, which is what moving it out of URLs and logs was for.
+    console.log("Web token rotated.");
+    console.log("Every previously issued dashboard link and browser session is now rejected.");
+    console.log("A running fleet picks this up immediately — no restart needed.");
+    console.log("Get a new link with `agend web`, or /dashboard in your chat channel.");
+  });
+
   program
   .command("view")
   .description("Open the read-only View dashboard in your browser")

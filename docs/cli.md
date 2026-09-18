@@ -129,7 +129,14 @@ agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust
 ```bash
 agend web                       # Open Web UI dashboard in browser
 agend view                      # Open the read-only View dashboard in browser
+agend web-token rotate          # Revoke every dashboard link and browser session
 ```
+
+Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
+and redirects to the same page without the token, so the credential stays out of
+the address bar, browser history and any log that records request URLs. The
+cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
+cookie at once — a running fleet picks it up with no restart.
 
 ## Schedules
 

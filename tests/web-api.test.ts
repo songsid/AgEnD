@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 import { handleWebRequest, type WebApiContext } from "../src/web-api.js";
-import { WEB_TOKEN_INVALID_MESSAGE } from "../src/web-auth.js";
+import { WEB_SESSION_COOKIE, WEB_TOKEN_INVALID_MESSAGE, webSessionCookieValue } from "../src/web-auth.js";
 
 // Minimal mock ServerResponse that captures status + body.
 class CaptureRes extends ServerResponse {
@@ -20,6 +20,8 @@ class CaptureRes extends ServerResponse {
     return this;
   }
 }
+
+const TEST_TOKEN = "t".repeat(48);
 
 function makeReq(method: string, url: string, body?: unknown): IncomingMessage {
   const raw = body ? JSON.stringify(body) : "";
@@ -46,7 +48,7 @@ function makeCtx(overrides: Partial<WebApiContext> = {}): WebApiContext {
     delete: () => {},
   };
   return {
-    webToken: null,
+    webToken: TEST_TOKEN,
     dataDir: "/tmp",
     sseClients: new Set(),
     fleetConfig: { channel: { group_id: 1 }, instances: {}, teams: {} },
@@ -78,12 +80,12 @@ async function callAndWait(
   url: string,
   body: unknown,
   ctx: WebApiContext,
+  headers: Record<string, string> = { "x-agend-token": TEST_TOKEN },
 ): Promise<CaptureRes> {
   const req = makeReq(method, url, body);
+  Object.assign(req.headers, headers);
   const res = new CaptureRes(req);
   const urlObj = new URL(url, "http://localhost");
-  // Append token query so auth passes (test sets webToken=null, and handler
-  // compares with `!==`, so we need to leave token unset AND webToken null).
   handleWebRequest(req, res, urlObj, ctx);
   // Let the async handler resolve (parseBody reads from the stream).
   for (let i = 0; i < 20; i++) {
@@ -152,10 +154,26 @@ describe("web-api zod validation", () => {
 describe("web-api authentication", () => {
   it("returns an actionable message for an invalid dashboard token", async () => {
     const ctx = makeCtx({ webToken: "valid-token" });
-    const res = await callAndWait("GET", "/ui?token=expired-token", undefined, ctx);
+    const res = await callAndWait("GET", "/ui?token=expired-token", undefined, ctx, {});
 
     expect(res.status).toBe(401);
     expect(JSON.parse(res.body)).toEqual({ error: WEB_TOKEN_INVALID_MESSAGE });
+  });
+
+  it("closes the panel when no token is configured instead of matching null against null", async () => {
+    const ctx = makeCtx({ webToken: null });
+    const res = await callAndWait("GET", "/ui", undefined, ctx, {});
+
+    expect(res.status).toBe(401);
+  });
+
+  it("accepts the session cookie the gate issued, with no token anywhere in the URL", async () => {
+    const ctx = makeCtx({ webToken: TEST_TOKEN });
+    const res = await callAndWait("GET", "/ui/backends", undefined, ctx, {
+      cookie: `${WEB_SESSION_COOKIE}=${webSessionCookieValue(TEST_TOKEN)}`,
+    });
+
+    expect(res.status).toBe(200);
   });
 });
 
