@@ -3557,8 +3557,7 @@ export class Daemon extends EventEmitter {
           this.instanceStatePeriodicIdleConfirmations = 0;
           snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
         }
-      } else if (structuredPeriodicIdle && reason !== "idle_debounce" && !settled
-        && !(structuredPeriodicIdle.call(this.backend, pane) && this.instanceState === "idle")) {
+      } else if (structuredPeriodicIdle && reason !== "idle_debounce" && !settled) {
         // Startup, safety, and explicit state probes must not bless a broad
         // Codex ready match when the structural layout is unknown or visibly
         // busy. The settled debounce below remains the compatibility path for
@@ -3584,10 +3583,26 @@ export class Daemon extends EventEmitter {
         //
         // So the same rule the output_probe branch already applies holds here:
         // cosmetic output must not manufacture an idle -> working edge. A pane
-        // that is STRUCTURALLY idle and already known idle stays idle, and the
-        // legacy reading below confirms it.
-        this.instanceStatePeriodicIdleConfirmations = 0;
-        snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        // that is STRUCTURALLY idle and already known idle stays idle.
+        //
+        // It must be re-read as SETTLED to do that. Falling through to the
+        // ordinary reading is not equivalent: that path is given the real
+        // `settled` (false, because the animation is still painting), and an
+        // unsettled capture of a CHANGED pane is working by definition — so a
+        // sweep landing on a frame no probe had captured yet still flipped an
+        // idle pane over. Treating this capture as settled is what lets the
+        // ready/busy reading decide on the frame itself.
+        const idlePane = structuredPeriodicIdle.call(this.backend, pane);
+        if (idlePane && this.instanceState === "idle") {
+          this.instanceStatePeriodicIdleConfirmations = 2;
+          snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+            settled: true,
+            changeAt: observedChangeAt,
+          });
+        } else {
+          this.instanceStatePeriodicIdleConfirmations = 0;
+          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        }
       } else {
         // Structural proof is an additional working-stage escape hatch only.
         // Settled captures retain the legacy ready/busy semantics for drafts,

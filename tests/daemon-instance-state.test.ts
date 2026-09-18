@@ -244,6 +244,83 @@ describe("Daemon event-driven pane monitor", () => {
   });
 
   /**
+   * The adverse timing inside B4, and the one my first attempt missed.
+   *
+   * Excluding this case from the branch (so it fell through to the ordinary
+   * reading) looked equivalent and was not: that path receives the REAL
+   * settled flag — false, because the star field is still painting — and an
+   * unsettled capture of a CHANGED pane is working by definition. So a sweep
+   * arriving on a frame no probe had captured yet still flipped an idle pane
+   * over, exactly as before.
+   *
+   * The first B4 regression passed anyway, because the timing it happened to
+   * use left the pane unchanged at sweep. This one pins the timing that
+   * decides: re-reading the capture as settled is what makes the ready/busy
+   * judgement land on the frame itself.
+   */
+  it("keeps idle when a sweep lands on an animation frame no probe has captured yet", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      monitor.setPane(codexAnimatedIdleFrame("⋆"));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(500);
+      monitor.setPane(codexAnimatedIdleFrame(""));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(500);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+
+      // A NEW animation frame paints, and the sweep arrives before any probe
+      // has captured it — so at sweep time the pane HAS changed.
+      monitor.setPane(codexAnimatedIdleFrame("⋆"));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(50);
+      monitor.control.emit("safety_sweep", { at: Date.now() });
+      await vi.advanceTimersByTimeAsync(20);
+      expect(monitor.daemon.getInstanceState(), "uncaptured new frame at sweep").toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * The keep-idle judgement is for panes ALREADY known idle. It must not become
+   * a way for a single sweep to promote a working instance.
+   *
+   * A turn in progress can momentarily paint a frame that satisfies the
+   * structural layout — between outputs, once the banner has scrolled away.
+   * Promotion still requires two positive probe confirmations; a sweep is not
+   * one of them. Dropping the already-idle condition turns this red.
+   */
+  it("does not let a single sweep promote a working instance to idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      // The pane momentarily looks structurally idle while output still flows.
+      monitor.setPane(codexAnimatedIdleFrame("⋆"));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(50);
+      monitor.control.emit("safety_sweep", { at: Date.now() });
+      await vi.advanceTimersByTimeAsync(20);
+
+      expect(monitor.daemon.getInstanceState(),
+        "a sweep is not one of the two confirmations that prove idle").toBe("working");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
    * The other half of B3, and the case the `!settled` clause exists for.
    *
    * The structural guard only protects a pane that is ALREADY idle. A turn that
