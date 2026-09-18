@@ -317,7 +317,7 @@
   }
 
   // ── State ──
-  const state = { fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
+  const state = { schema: { impacts: {}, order: ["now", "instance", "fleet"] }, fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -334,7 +334,15 @@
   }
   function select(value, options) { const s = el("select"); for (const o of options) { const val = typeof o === "string" ? o : o.value; const label = typeof o === "string" ? o : o.label; const opt = el("option", {}, label); opt.value = val; if (val === value) opt.selected = true; s.append(opt); } return s; }
   const impactText = (kind) => t(kind === "now" ? "impactNow" : kind === "fleet" ? "impactFleet" : "impactAgent");
-  const impact = (kind) => el("span", { class: "impact" }, impactText(kind));
+  // The server derives every field's impact from HOT_INSTANCE_CONFIG_KEYS and
+  // hands it over at /api/settings/schema, so this page never decides it.
+  const impactOf = (field) => state.schema.impacts[field] || "instance";
+  const impact = (field) => el("span", { class: "impact" }, impactText(impactOf(field)));
+  // A batch costs as much as its worst member, in the order the server ships.
+  const batchImpact = (keys, impactFor) => {
+    const order = state.schema.order;
+    return order[keys.reduce((worst, k) => Math.max(worst, order.indexOf(impactFor(k))), 0)];
+  };
   function updatePendingBar() {
     const n = state.pending.size;
     $("pendingBar").classList.toggle("open", n > 0);
@@ -374,12 +382,11 @@
     button.disabled = false;
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
-  const HOT_FIELDS = new Set(["tool_progress", "reply_completion_guard", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"]);
   const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   function changedFields(next, baseline) {
     return Object.fromEntries(Object.entries(next).filter(([key, value]) => !sameValue(value, baseline[key])));
   }
-  function overrideControl(inst, key, input, inheritedValue, impactKind = "instance") {
+  function overrideControl(inst, key, input, inheritedValue, impactField = `instance.${key}`) {
     const inherited = !hasOwn(inst, key);
     const toggle = el("input", { type: "checkbox" }); toggle.checked = inherited;
     input.disabled = inherited;
@@ -388,7 +395,7 @@
       else input.value = inheritedValue;
     }
     toggle.onchange = () => { input.disabled = toggle.checked; };
-    return { input, toggle, row: el("div", {}, input, el("label", { class: "inherit-row" }, toggle, el("span", {}, t("inheritDefault")), impact(impactKind))) };
+    return { input, toggle, row: el("div", {}, input, el("label", { class: "inherit-row" }, toggle, el("span", {}, t("inheritDefault")), impact(impactField))) };
   }
   const replyGuardSupported = (backend, mode) => backend === "claude-code" && mode === "mcp";
   const replyGuardHint = (backend, mode) => el(
@@ -505,13 +512,13 @@
     const auto = overrideControl(inst, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: inst.auto_pause_after ?? defaults.auto_pause_after ?? 0, placeholder: "0 = disabled" }), defaults.auto_pause_after ?? 0);
     const hangRaw = inst.hang_detector || {};
     const hangHolder = hasOwn(hangRaw, "timeout_minutes") ? { value: hangRaw.timeout_minutes } : {};
-    const hang = overrideControl(hangHolder, "value", el("input", { type: "number", min: "0.1", step: "0.5", value: hangRaw.timeout_minutes ?? defaults.hang_detector?.timeout_minutes ?? 15 }), defaults.hang_detector?.timeout_minutes ?? 15);
+    const hang = overrideControl(hangHolder, "value", el("input", { type: "number", min: "0.1", step: "0.5", value: hangRaw.timeout_minutes ?? defaults.hang_detector?.timeout_minutes ?? 15 }), defaults.hang_detector?.timeout_minutes ?? 15, "instance.hang_detector");
     const agentMode = overrideControl(inst, "agent_mode", select(inst.agent_mode || defaults.agent_mode || "mcp", ["mcp", "cli"]), defaults.agent_mode || "mcp");
     const toolSet = overrideControl(inst, "tool_set", select(inst.tool_set || defaults.tool_set || "full", ["full", "standard", "minimal"]), defaults.tool_set || "full");
-    const toolProgress = overrideControl(inst, "tool_progress", select(inst.tool_progress ?? defaults.tool_progress ?? "off", ["off", "standard", "verbose"]), defaults.tool_progress ?? "off", "now");
+    const toolProgress = overrideControl(inst, "tool_progress", select(inst.tool_progress ?? defaults.tool_progress ?? "off", ["off", "standard", "verbose"]), defaults.tool_progress ?? "off");
     const fReplyGuard = el("input", { type: "checkbox" });
     fReplyGuard.checked = inst.reply_completion_guard ?? defaults.reply_completion_guard ?? true;
-    const replyGuard = overrideControl(inst, "reply_completion_guard", fReplyGuard, defaults.reply_completion_guard ?? true, "now");
+    const replyGuard = overrideControl(inst, "reply_completion_guard", fReplyGuard, defaults.reply_completion_guard ?? true);
     const replyHint = replyGuardHint(fBackend.value, agentMode.input.value);
     const refreshReplyHint = () => {
       const supported = replyGuardSupported(fBackend.value, agentMode.input.value);
@@ -587,7 +594,7 @@
       }
       stageChange(`agent:${name}`, {
         label: `Update ${shortName(name, state.fleet.instances[name])}`,
-        impact: Object.keys(patch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance",
+        impact: batchImpact(Object.keys(patch), key => impactOf(`instance.${key}`)),
         apply: () => api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "PATCH", body: JSON.stringify(patch) }),
       });
       editing = null; renderAgents();
@@ -595,28 +602,28 @@
     box.append(
       el("div", { class: "sub", style: "margin:0 0 8px" }, "ID: " + name),
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, t("displayName"), impact("now")), displayName.row),
-        el("div", {}, el("label", {}, t("description"), impact("now")), fDesc),
-        el("div", {}, el("label", {}, t("backend"), impact("instance")), fBackend),
-        el("div", {}, el("label", {}, t("model"), impact("instance")), fModel)),
-      el("label", {}, t("workingDir"), impact("instance")), fWd,
+        el("div", {}, el("label", {}, t("displayName"), impact("instance.display_name")), displayName.row),
+        el("div", {}, el("label", {}, t("description"), impact("instance.description")), fDesc),
+        el("div", {}, el("label", {}, t("backend"), impact("instance.backend")), fBackend),
+        el("div", {}, el("label", {}, t("model"), impact("instance.model")), fModel)),
+      el("label", {}, t("workingDir"), impact("instance.working_directory")), fWd,
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), auto.row, autoFeedback)),
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance.auto_pause_after")), auto.row, autoFeedback)),
       el("div", { class: "advanced-only" },
         el("div", { class: "sub", style: "margin:14px 0 6px;font-weight:600" }, "Advanced Agent settings"),
         el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, t("channelBinding"), impact("fleet")), fChan),
+        el("div", {}, el("label", {}, t("channelBinding"), impact("instance.topic_id")), fChan),
         el("div", {}, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`), hang.row, hangFeedback),
         el("div", {}, el("label", {}, t("agentMode")), agentMode.row),
         el("div", {}, el("label", {}, t("toolSet")), toolSet.row),
-        el("div", {}, el("label", {}, t("toolProgress"), impact("now")), toolProgress.row),
-        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("now")), replyGuard.row, replyHint),
-        el("div", {}, el("label", {}, t("logLevel"), impact("now")), logLevel.row),
+        el("div", {}, el("label", {}, t("toolProgress"), impact("instance.tool_progress")), toolProgress.row),
+        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("instance.reply_completion_guard")), replyGuard.row, replyHint),
+        el("div", {}, el("label", {}, t("logLevel"), impact("instance.log_level")), logLevel.row),
         el("div", {}, el("label", {}, t("lightweight")), lightweight.row),
         el("div", {}, el("label", {}, t("modelFailover")), failover.row, failoverFeedback)),
-        el("label", {}, t("systemPrompt"), impact("instance")), fSys,
-        el("label", {}, t("tags"), impact("now")), chipList(tags, null, "tag"),
-        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("fleet"))),
+        el("label", {}, t("systemPrompt"), impact("instance.systemPrompt")), fSys,
+        el("label", {}, t("tags"), impact("instance.tags")), chipList(tags, null, "tag"),
+        el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer" }, fGeneral, el("span", {}, t("generalTopicField")), impact("instance.general_topic"))),
       el("div", { class: "actions" },
         saveBtn,
         el("button", { class: "sm ghost", onclick: () => { editing = null; renderAgents(); } }, t("cancel")),
@@ -639,7 +646,7 @@
     if (!confirm(tf("deleteAgent", name))) return;
     delete state.fleet.instances[name];
     stageChange(`agent:${name}`, {
-      label: `Delete ${name}`, impact: "fleet",
+      label: `Delete ${name}`, impact: impactOf("instance.delete"),
       apply: () => api(`/api/settings/fleet/instances/${encodeURIComponent(name)}`, { method: "DELETE" }),
     });
     renderAgents();
@@ -702,8 +709,8 @@
     fMode.addEventListener("change", validateAccess);
     box.append(
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, t("accessMode"), impact("fleet")), fMode, accessFeedback),
-        el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(users, validateAccess, "user id"))),
+        el("div", {}, el("label", {}, t("accessMode"), impact("fleet.channel.access.mode")), fMode, accessFeedback),
+        el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet.channel.access.allowed_users")), chipList(users, validateAccess, "user id"))),
       el("div", { class: "actions" },
         el("button", { class: "primary sm", onclick: async () => {
           if (!confirmAccessChange(previousAccess, fMode.value, users)) return;
@@ -742,11 +749,11 @@
     const runtime = classicRuntime(c.instanceName);
     const fBackend = select(c.backend || inheritedBackend, BACKENDS.filter(value => value !== "gemini-cli"));
     const fModel = el("input", { type: "text", value: c.model || "", placeholder: inheritedModel || "(inherit default)" });
-    const auto = overrideControl(c, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: c.auto_pause_after ?? inheritedAutoPause, placeholder: "0 = disabled" }), inheritedAutoPause);
-    const toolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? inheritedToolProgress, ["off", "standard", "verbose"]), inheritedToolProgress, "now");
+    const auto = overrideControl(c, "auto_pause_after", el("input", { type: "number", min: "0", step: "1", value: c.auto_pause_after ?? inheritedAutoPause, placeholder: "0 = disabled" }), inheritedAutoPause, "classic.auto_pause_after");
+    const toolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? inheritedToolProgress, ["off", "standard", "verbose"]), inheritedToolProgress, "classic.tool_progress");
     const fReplyGuard = el("input", { type: "checkbox" });
     fReplyGuard.checked = c.reply_completion_guard ?? inheritedReplyGuard;
-    const replyGuard = overrideControl(c, "reply_completion_guard", fReplyGuard, inheritedReplyGuard, "now");
+    const replyGuard = overrideControl(c, "reply_completion_guard", fReplyGuard, inheritedReplyGuard, "classic.reply_completion_guard");
     const classicMode = fleetDefaults.agent_mode ?? "mcp";
     const replyHint = replyGuardHint(fBackend.value, classicMode);
     fBackend.addEventListener("change", () => {
@@ -795,7 +802,7 @@
       if (patch.auto_pause_after === null) delete state.classic.channels[c.key].auto_pause_after;
       if (patch.tool_progress === null) delete state.classic.channels[c.key].tool_progress;
       if (patch.reply_completion_guard === null) delete state.classic.channels[c.key].reply_completion_guard;
-      const hotOnly = Object.keys(patch).every(key => key === "tool_progress" || key === "reply_completion_guard");
+      const hotOnly = Object.keys(patch).every(key => impactOf(`classic.${key}`) === "now");
       stageChange(`classic:${c.key}`, {
         label: `Update ${c.name || c.instanceName}`,
         impact: hotOnly ? "now" : "instance",
@@ -807,14 +814,14 @@
     box.append(
       el("div", { class: "sub", style: "margin:0 0 8px" }, `ID: ${c.instanceName} · ${EXECUTION_TEXT[runtime.execution] || runtime.execution}`),
       el("div", { class: "grid2" },
-        el("div", {}, el("label", {}, t("backend"), impact("instance")), fBackend),
-        el("div", {}, el("label", {}, t("model"), impact("instance")), fModel),
-        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("instance")), auto.row, autoFeedback),
-        el("div", {}, el("label", {}, t("toolProgress"), impact("now")), toolProgress.row),
-        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("now")), replyGuard.row, replyHint),
-        el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("instance")))),
+        el("div", {}, el("label", {}, t("backend"), impact("classic.backend")), fBackend),
+        el("div", {}, el("label", {}, t("model"), impact("classic.model")), fModel),
+        el("div", {}, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("classic.auto_pause_after")), auto.row, autoFeedback),
+        el("div", {}, el("label", {}, t("toolProgress"), impact("classic.tool_progress")), toolProgress.row),
+        el("div", {}, el("label", {}, t("replyCompletionGuard"), impact("classic.reply_completion_guard")), replyGuard.row, replyHint),
+        el("div", {}, el("label", { style: "display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:28px" }, fCollab, el("span", {}, "Collaboration mode"), impact("classic.collab")))),
       el("div", { class: "advanced-only" },
-        el("label", {}, "Context lines", impact("instance")), fContext, contextFeedback),
+        el("label", {}, "Context lines", impact("classic.context_lines")), fContext, contextFeedback),
       el("div", { class: "actions" },
         saveBtn,
         runtime.status === "running" ? el("button", { class: "sm", onclick: () => pauseWakeAgent(c.instanceName, "pause") }, t("pause")) : null,
@@ -923,9 +930,9 @@
     const fToolSet = select(d.tool_set || "full", ["full", "standard", "minimal"]);
     const fToolProgress = select(d.tool_progress ?? "off", ["off", "standard", "verbose"]);
     const fReplyGuard = el("input", { type: "checkbox" }); fReplyGuard.checked = d.reply_completion_guard ?? true;
-    const fClassicToolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? d.tool_progress ?? "off", ["off", "standard", "verbose"]), d.tool_progress ?? "off", "now");
+    const fClassicToolProgress = overrideControl(c, "tool_progress", select(c.tool_progress ?? d.tool_progress ?? "off", ["off", "standard", "verbose"]), d.tool_progress ?? "off", "classic_defaults.tool_progress");
     const fClassicReplyInput = el("input", { type: "checkbox" }); fClassicReplyInput.checked = c.reply_completion_guard ?? d.reply_completion_guard ?? true;
-    const fClassicReplyGuard = overrideControl(c, "reply_completion_guard", fClassicReplyInput, d.reply_completion_guard ?? true, "now");
+    const fClassicReplyGuard = overrideControl(c, "reply_completion_guard", fClassicReplyInput, d.reply_completion_guard ?? true, "classic_defaults.reply_completion_guard");
     const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"]);
     const fLogLevel = select(d.log_level || "info", ["trace", "debug", "info", "warn", "error"]);
     const fLocale = el("select");
@@ -1017,7 +1024,7 @@
       state.classic.defaults = { ...c, ...classicPatch };
       for (const [key, value] of Object.entries(classicPatch)) if (value === null) delete state.classic.defaults[key];
       if (Object.keys(defaultsPatch).length > 0) {
-        stageChange("defaults:fleet", { label: "Update Agent defaults", impact: Object.keys(defaultsPatch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance", apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
+        stageChange("defaults:fleet", { label: "Update Agent defaults", impact: batchImpact(Object.keys(defaultsPatch), key => impactOf(`defaults.${key}`)), apply: () => api("/api/settings/fleet/defaults", { method: "PUT", body: JSON.stringify(defaultsPatch) }) });
       }
       if (primary) {
         const stagedAccessMode = fAccessMode.value;
@@ -1027,7 +1034,7 @@
         if (!sameValue(nextChannels, originalChannels)) {
           stageChange("connections:primary", {
             label: "Update primary connection access",
-            impact: "fleet",
+            impact: impactOf("fleet.channels"),
             // Confirm the immutable staged snapshot, not live form controls
             // that the user may edit again before pressing global Apply.
             confirm: () => confirmAccessChange(originalPrimaryAccess, stagedAccessMode, stagedAllowedUsers),
@@ -1037,7 +1044,7 @@
         }
       }
       if (Object.keys(classicPatch).length > 0) {
-        const classicHotOnly = Object.keys(classicPatch).every(key => key === "tool_progress" || key === "reply_completion_guard");
+        const classicHotOnly = Object.keys(classicPatch).every(key => impactOf(`classic_defaults.${key}`) === "now");
         stageChange("defaults:classic", { label: "Update ClassicBot defaults and access", impact: classicHotOnly ? "now" : "fleet", apply: () => api("/api/settings/classic/defaults", { method: "PUT", body: JSON.stringify(classicPatch) }) });
       }
       msg.innerHTML = `<span class="s">${esc(t("readyApply"))}</span>`;
@@ -1051,40 +1058,40 @@
     host.append(
       section("Defaults", true,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", {}, t("language"), impact("now")), fLocale),
-          el("div", { class: "field" }, el("label", {}, t("defaultBackend"), impact("instance")), fBackend),
-          el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("instance")), fModel),
-          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("now")), fAutoPause, autoFeedback),
-          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fToolProgress),
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("now")), defaultReplyHint))),
+          el("div", { class: "field" }, el("label", {}, t("language"), impact("defaults.locale")), fLocale),
+          el("div", { class: "field" }, el("label", {}, t("defaultBackend"), impact("defaults.backend")), fBackend),
+          el("div", { class: "field" }, el("label", {}, t("defaultModel"), impact("defaults.model")), fModel),
+          el("div", { class: "field" }, el("label", {}, `${t("autoPause")} (${t("minutes")})`, impact("defaults.auto_pause_after")), fAutoPause, autoFeedback),
+          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("defaults.tool_progress")), fToolProgress),
+          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fReplyGuard, el("span", {}, t("replyCompletionGuard")), impact("defaults.reply_completion_guard")), defaultReplyHint))),
       section("ClassicBot", true,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("instance")), fClassicBackend),
-          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("now")), fClassicToolProgress.row),
-          el("div", { class: "field" }, el("label", {}, t("replyCompletionGuard"), impact("now")), fClassicReplyGuard.row, classicReplyHint)),
+          el("div", { class: "field" }, el("label", {}, "Classic default backend", impact("classic_defaults.backend")), fClassicBackend),
+          el("div", { class: "field" }, el("label", {}, t("toolProgress"), impact("classic_defaults.tool_progress")), fClassicToolProgress.row),
+          el("div", { class: "field" }, el("label", {}, t("replyCompletionGuard"), impact("classic_defaults.reply_completion_guard")), fClassicReplyGuard.row, classicReplyHint)),
         el("div", { class: "field" }, el("strong", {}, "Who can use ClassicBot"),
           el("div", { class: "grid2" },
-            el("div", {}, el("label", {}, t("classicAdmins"), impact("fleet")), chipList(c.admin_users, null, "user id")),
-            el("div", {}, el("label", {}, t("allowedGuilds"), impact("fleet")), chipList(c.allowed_guilds, null, "guild id"))))),
+            el("div", {}, el("label", {}, t("classicAdmins"), impact("classic.admin_users")), chipList(c.admin_users, null, "user id")),
+            el("div", {}, el("label", {}, t("allowedGuilds"), impact("classic.allowed_guilds")), chipList(c.allowed_guilds, null, "guild id"))))),
       el("div", { class: "advanced-only" },
       section(t("runtimeResources"), false,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("instance")), fToolSet),
-          el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("now")), fLogLevel),
-          el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("instance")), fAgentMode))),
+          el("div", { class: "field" }, el("label", {}, t("toolSet"), impact("defaults.tool_set")), fToolSet),
+          el("div", { class: "field" }, el("label", {}, t("logLevel"), impact("defaults.log_level")), fLogLevel),
+          el("div", { class: "field" }, el("label", {}, t("agentMode"), impact("defaults.agent_mode")), fAgentMode))),
       section(t("detection"), false,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("instance"))),
-          el("div", { class: "field" }, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("instance")), fHangTimeout, hangFeedback))),
+          el("div", { class: "field" }, el("label", { style: "display:flex;align-items:center;gap:8px" }, fHangEnabled, el("span", {}, t("hangEnabled")), impact("defaults.hang_detector"))),
+          el("div", { class: "field" }, el("label", {}, `${t("hangTimeout")} (${t("minutes")})`, impact("defaults.hang_detector")), fHangTimeout, hangFeedback))),
       section(t("startup"), false,
         el("div", { class: "grid2" },
-          el("div", { class: "field" }, el("label", {}, t("concurrency"), impact("fleet")), fConcurrency, concurrencyFeedback),
-          el("div", { class: "field" }, el("label", {}, `${t("staggerDelay")} (ms)`, impact("fleet")), fStagger, staggerFeedback))),
+          el("div", { class: "field" }, el("label", {}, t("concurrency"), impact("fleet.spawn_concurrency")), fConcurrency, concurrencyFeedback),
+          el("div", { class: "field" }, el("label", {}, `${t("staggerDelay")} (ms)`, impact("fleet.spawn_stagger_ms")), fStagger, staggerFeedback))),
       section("Advanced & Access", false,
         primary
           ? el("div", { class: "grid2" },
-              el("div", { class: "field" }, el("label", {}, t("accessMode"), impact("fleet")), fAccessMode, accessFeedback),
-              el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet")), chipList(allowedUsers, validate, "user id")))
+              el("div", { class: "field" }, el("label", {}, t("accessMode"), impact("fleet.channel.access.mode")), fAccessMode, accessFeedback),
+              el("div", { class: "field" }, el("label", {}, t("allowedUsers"), impact("fleet.channel.access.allowed_users")), chipList(allowedUsers, validate, "user id")))
           : el("div", { class: "field hint" }, t("noBots")))),
       el("div", { class: "field" }, el("div", { class: "actions" }, saveBtn, msg)),
     );
@@ -1178,6 +1185,8 @@
   }
   async function reload() {
     // Forms edit the user-authored config, not defaults-expanded runtime values.
+    const schema = await api("/api/settings/schema");
+    if (schema.ok && schema.body) state.schema = schema.body;
     const f = await api("/api/settings/fleet/raw");
     if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = t("configLoadFailed"); return; }
     state.fleet = f.body || {};

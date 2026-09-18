@@ -138,6 +138,18 @@ the address bar, browser history and any log that records request URLs. The
 cookie lasts 12 hours. `agend web-token rotate` invalidates every issued link and
 cookie at once — a running fleet picks it up with no restart.
 
+**If the page says "No session"** right after you followed a link from web
+Telegram or Discord, reload once. The session cookie is `SameSite=Strict`, and a
+browser that declines to send it on the first cross-site hop will send it on the
+reload, which is same-site. (Verified on Chromium; Firefox and WebKit have not
+been measured.)
+
+**If following the link loops back to "No session" forever**, check what sits in
+front of AgEnD. The cookie is marked `Secure` when the request arrives with
+`X-Forwarded-Proto: https`, so a proxy that sets that header while actually
+serving plain HTTP makes the browser refuse to store the cookie. It is a
+misconfigured proxy, not a failed login.
+
 ## Schedules
 
 ```bash

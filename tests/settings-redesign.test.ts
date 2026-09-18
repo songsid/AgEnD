@@ -24,8 +24,10 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain('select(d.tool_progress ?? "off", ["off", "standard", "verbose"])');
     expect(html).toContain('tool_progress: toolProgress.toggle.checked ? null : toolProgress.input.value');
     expect(html).toContain('tool_progress: fToolProgress.value');
-    expect(html).toContain('const HOT_FIELDS = new Set(["tool_progress", "reply_completion_guard", "mcp_proxy_reply", "auto_pause_after", "warm_cap", "display_name", "description", "tags", "log_level"])');
-    expect(html).toContain('impact: Object.keys(patch).every(key => HOT_FIELDS.has(key)) ? "now" : "instance"');
+    // The hot set lives in instance-config-impact.ts and arrives over
+    // /api/settings/schema; the page classifies a staged edit with it.
+    expect(html).toContain('const impactOf = (field) => state.schema.impacts[field] || "instance"');
+    expect(html).toContain('impact: batchImpact(Object.keys(patch), key => impactOf(`instance.${key}`))');
     expect(html).toContain('await api("/api/settings/reload", { method: "POST" })');
   });
 

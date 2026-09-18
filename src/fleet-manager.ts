@@ -84,6 +84,7 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
+import { CLASSIC_HOT_CONFIG_KEYS, HOT_INSTANCE_CONFIG_KEYS } from "./instance-config-impact.js";
 import {
   formatRestartProgressCompletion,
   RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
@@ -230,18 +231,6 @@ const DELIVERY_STATUS_EMOJIS = new Set(["👀", "⏳", "✅", "❌"]);
  * emoji never changes the documented delivery-state protocol.
  */
 const IGNORED_REACTION_EMOJIS = new Set(["📷"]);
-
-const HOT_INSTANCE_CONFIG_KEYS = new Set<keyof InstanceConfig>([
-  "tool_progress",
-  "reply_completion_guard",
-  "mcp_proxy_reply",
-  "auto_pause_after",
-  "warm_cap",
-  "display_name",
-  "description",
-  "tags",
-  "log_level",
-]);
 
 interface TopicProbeUnknownContext {
   instanceName: string;
@@ -1854,7 +1843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!channel) throw new Error("Classic channel not found after reload");
     if (!wasRunning) return;
     const hotOnly = changedFields.length > 0
-      && changedFields.every(field => field === "tool_progress" || field === "reply_completion_guard");
+      && changedFields.every(field => CLASSIC_HOT_CONFIG_KEYS.has(field));
     if (hotOnly) {
       this.applyHotConfigUpdate(instanceName, this.classicBehaviorUpdate(instanceName));
       this.logger.info({ instanceName, fields: changedFields }, "Classic instance hot config reloaded");

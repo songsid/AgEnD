@@ -220,7 +220,7 @@ Gitea 在尚未設定時，於同一個埠提供 setup 頁；**管理員帳號�
 | # | 位置 | 內容 | 與權威的關係 |
 |---|---|---|---|
 | 1 | `fleet-manager.ts:234` | 9 鍵 | **權威** |
-| 2 | `daemon.ts:3863` `applyConfigUpdate` | 實際只認 `tool_progress`/`reply_completion_guard`/`mcp_proxy_reply`/`auto_pause_after`/`warm_cap`/`tags`/`log_level` | 少了 `display_name`/`description`（由 fleet 端處理）——**差集是刻意的，但沒有任何東西擔保它不變** |
+| 2 | `daemon.ts:3863` `applyConfigUpdate` | 同樣 9 鍵（含 `display_name`/`description`，見 `daemon.ts` 的 `for (const key of ["display_name", "description"])`） | **應與權威相等，但沒有任何東西擔保**——實作時實測確認，見下方修訂 |
 | 3 | `settings-api.ts:344` | classic PATCH 的 `hotOnly` 硬編碼 `tool_progress`、`reply_completion_guard` | 手寫子集 |
 | 4 | `fleet-manager.ts:1852` | `restartClassicInstanceFromSettings` 再次硬編碼同樣兩個 | 與 #3 重複 |
 | 5 | `settings.html` | **42 處**逐欄位手寫的 `impact("now"/"instance"/"fleet")` | 手寫，決定使用者看到的影響說明 |
@@ -370,7 +370,7 @@ append-only 檔可行，但必須寫明：目前只有**一把** `web.token`，�
 ## 未決與風險
 
 1. **票 5 的 port 交接**是最需要先 spike 的一塊：宿主退出與正式 fleet 起在同一 port 之間有一段空窗，瀏覽器體驗取決於輪詢處理得好不好。
-2. **`daemon.applyConfigUpdate` 與 `HOT_INSTANCE_CONFIG_KEYS` 的差集是刻意的**（`display_name`/`description` 由 fleet 端處理），但目前沒有任何東西擔保這個差集不會悄悄改變——票 1 的 parity 測試就是為此。
+2. **`daemon.applyConfigUpdate` 應與 `HOT_INSTANCE_CONFIG_KEYS` 相等**，目前沒有任何東西擔保它不會悄悄分歧——票 1 的 parity 測試就是為此。（本文件 v1/v2 曾寫「daemon 只認 7 鍵、少了 `display_name`/`description`」，這是**誤述**：`daemon.ts` 有一段明確處理這兩個鍵。票 1 實作時以行為測試逐鍵驗證，9 鍵全部會套用到 live daemon。）
 3. **NN/g 的「超過兩層揭露可用性下降」**與現有三層（含 Developer YAML）有張力。提案把 Level 3 收成單一抽屜，需使用者確認。
 4. **`/view` 無 token 在 `allow_public` 下的暴露面**，待使用者決策。
 5. 本文未涵蓋 tunnel 接線本身與 #769 的 adapter↔core 解耦。
@@ -380,7 +380,7 @@ append-only 檔可行，但必須寫明：目前只有**一把** `web.token`，�
 | # | 範圍 | 相依 | 備註 |
 |---|---|---|---|
 | **0** | **既有 Settings gate 硬化**：token → HttpOnly `SameSite=Strict` cookie（query token 僅用於一次性換發）、`Origin == Host` 檢查、`Referrer-Policy: no-referrer`、**停止把含 token 的 URL 寫進 log**（`fleet-manager.ts:12182`）、**新增本機 CLI 輪替指令**（如 `agend web-token rotate`，輪替後既有 cookie 全失效） | 無 | **必須排在 tunnel 接線之前**，否則 UX 改版一上線，外網可達的就是一個長期 token 面板。<br>**輪替是這張票的一部分而非後續**：`web.token` 目前洩漏即永久有效，沒有輪替手段時前四項的價值會被「一次洩漏就得手動刪檔重啟」抵銷。48-hex 隨機值暴力破解不可行，因此不另加失敗鎖定 |
-| 1 | **hot/cold 單一來源**：`HOT_INSTANCE_CONFIG_KEYS` 為權威；classic `hotOnly` 從同一集合推導（消除 `settings-api.ts:344` 與 `fleet-manager.ts:1852` 兩份硬編碼）；新增 schema endpoint 回每欄 impact，前端刪除 42 處手寫；**加 parity 測試**斷言 `daemon.applyConfigUpdate` 接受的鍵集合 == HOT 集合 − fleet 端處理的鍵 | 無 | 是票 2 的前置：進度畫面必須與 server 同一份認知 |
+| 1 | **hot/cold 單一來源**：`HOT_INSTANCE_CONFIG_KEYS` 為權威；classic `hotOnly` 從同一集合推導（消除 `settings-api.ts:344` 與 `fleet-manager.ts:1852` 兩份硬編碼）；新增 schema endpoint 回每欄 impact，前端刪除 42 處手寫；**加 parity 測試**逐鍵斷言 `HOT_INSTANCE_CONFIG_KEYS` 的每個鍵都真的被 `daemon.applyConfigUpdate` 套用（行為驗證，非清單比對） | 無 | 是票 2 的前置：進度畫面必須與 server 同一份認知 |
 | 2 | **Apply job**：客戶端產生冪等鍵、job 落磁碟並可跨 AgEnD 重啟續播、`GET /apply/:jobId` 為權威、`apply_progress` SSE 僅作加速、wall-clock deadline | 1 | |
 | 3 | **常駐面板改版**：長列表 → 列 + [設定] modal；Level 3 收進單一抽屜 | 1 | |
 | 4 | **Guided wizard**（有 fleet 時可於 modal 內重跑） | 3 | |

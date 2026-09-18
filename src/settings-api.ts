@@ -32,6 +32,7 @@ import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
 import { clearPausedMarker } from "./pause-marker.js";
+import { buildSettingsImpactSchema, CLASSIC_HOT_CONFIG_KEYS } from "./instance-config-impact.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -162,6 +163,13 @@ export function handleSettingsRequest(
   }
 
   // ── Reads ──
+  // What each field costs to change, derived from HOT_INSTANCE_CONFIG_KEYS.
+  // The page used to carry its own copy of the hot set plus one hand-written
+  // badge per field, which could disagree with what the fleet actually does.
+  if (method === "GET" && path === "/api/settings/schema") {
+    json(res, 200, buildSettingsImpactSchema());
+    return true;
+  }
   if (method === "GET" && path === "/api/settings/fleet") {
     json(res, 200, ctx.fleetConfig ?? {});
     return true;
@@ -341,7 +349,7 @@ export function handleSettingsRequest(
       }
       ctx.logger.info({ key, instanceName }, "settings: updated classic channel");
       const hotOnly = Object.keys(body).length > 0
-        && Object.keys(body).every(field => field === "tool_progress" || field === "reply_completion_guard");
+        && Object.keys(body).every(field => CLASSIC_HOT_CONFIG_KEYS.has(field));
       json(res, 200, {
         ok: true,
         warnings: saveWarnings(before, after),
