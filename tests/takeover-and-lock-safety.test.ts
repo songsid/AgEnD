@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acquireFleetLock, isFleetStartCommandLine, readProcessCommandLine } from "../src/fleet-lock.js";
+import { acquireFleetLock, isFleetStartCommandLine, isSetupHostCommandLine, readProcessCommandLine } from "../src/fleet-lock.js";
 import { FleetManager } from "../src/fleet-manager.js";
 
 const dirs: string[] = [];
@@ -109,6 +109,28 @@ describe("the health-port takeover", () => {
     const around = source.slice(Math.max(0, at - 400), at);
 
     expect(around).toContain("slice(0, 60)");
+  });
+
+  it("tells the setup page apart from the other agend commands", () => {
+    // The pattern decides whether a lock can be reclaimed, so a command that is
+    // not the setup page must not look like it — `quickstart` is the one that
+    // reads closest.
+    for (const commandLine of [
+      "node /usr/lib/agend/cli.js setup",
+      "agend setup --reset",
+      "/usr/bin/node dist/cli.js setup --port 19280",
+    ]) {
+      expect(isSetupHostCommandLine(commandLine), commandLine).toBe(true);
+    }
+    for (const commandLine of [
+      "agend quickstart",
+      "node /usr/lib/agend/cli.js quickstart",
+      "agend fleet start",
+      "node /usr/lib/agend/cli.js fleet start",
+      "",
+    ]) {
+      expect(isSetupHostCommandLine(commandLine), commandLine).toBe(false);
+    }
   });
 
   it("reads a real command line, and says nothing when it cannot", () => {
