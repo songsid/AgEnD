@@ -326,6 +326,34 @@ describe("Daemon event-driven pane monitor", () => {
     }
   });
 
+  it.each([
+    ["structured idle", codexIdleFrame],
+    ["draft composer", "› please also fix the flaky test in ci\n  (no context footer)"],
+  ])("keeps %s idle across a settled safety sweep", async (_label, idlePane) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+
+      monitor.setPane(idlePane);
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+
+      // A fleet-wide sweep is a settled capture with no new output. It must
+      // preserve the legacy quiet-idle result rather than synthesize a working
+      // edge because the new structural proof is absent.
+      monitor.control.emit("safety_sweep");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("rate-limits structural probes while a Codex turn streams output", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

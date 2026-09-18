@@ -3557,11 +3557,13 @@ export class Daemon extends EventEmitter {
           this.instanceStatePeriodicIdleConfirmations = 0;
           snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
         }
-      } else if (structuredPeriodicIdle && reason !== "idle_debounce") {
-        // Startup, safety, and explicit state probes must not bless a broad
-        // Codex ready match when the structural layout is unknown or visibly
-        // busy. The settled debounce below remains the compatibility path for
-        // drafts and older layouts that simply lack the new footer.
+      } else if (structuredPeriodicIdle && !settled) {
+        // While output is still arriving, an unfamiliar Codex frame must not
+        // bless the broad prompt regex. The settled path below remains the
+        // compatibility path for startup/safety/stuck captures, drafts, and
+        // older layouts that simply lack the new footer. In particular, a
+        // quiet safety sweep must never turn an already-idle pane back into
+        // working merely because its layout is not the structured proof.
         this.instanceStatePeriodicIdleConfirmations = 0;
         snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
       } else {
