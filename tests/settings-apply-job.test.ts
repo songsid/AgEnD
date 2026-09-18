@@ -11,6 +11,7 @@ import {
   viewOf,
 } from "../src/apply-job.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import type { ApplyJob } from "../src/apply-job.js";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 
 const dirs: string[] = [];
@@ -113,7 +114,7 @@ describe("apply job store", () => {
     asPreviousProcess(store, job.id);
 
     expect(new ApplyJobStore(dir).settleAfterRestart()).toEqual([]);
-    expect(store.get(job.id)!.targets[0]!.settled_by).toBeUndefined();
+    expect(store.get(job.id)!.targets[0]!.settled_by).toBe("no-change");
   });
 
   it("returns the same job for a repeated key and a new one for a fresh key", () => {
@@ -142,6 +143,23 @@ describe("apply job store", () => {
 
     expect(store.all()).toEqual([]);
     expect(() => store.create("key-recovered", [])).not.toThrow();
+  });
+
+  it("says so when the job cannot be written down", () => {
+    const dir = tempDir();
+    // A file where the data dir should be: every write under it fails ENOTDIR,
+    // which is what a full or read-only data dir looks like from here.
+    const notADir = join(dir, "blocked");
+    writeFileSync(notADir, "");
+    const warn = vi.fn();
+    const store = new ApplyJobStore(notADir, Date.now, { warn });
+
+    store.create("key-unwritable", []);
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.anything() }),
+      expect.stringContaining("could not be persisted"),
+    );
   });
 
   it("marks a job failed when any target failed", () => {
@@ -229,7 +247,9 @@ function apiContext(dir: string) {
     applyJobs: store,
     startSettingsApply: (key: string) => {
       started.push(key);
-      return store.findByKey(key) ?? store.create(key, [{ target: "one", kind: "hot" }]);
+      const existing = store.findByKey(key);
+      if (existing) return { job: existing, reused: true };
+      return { job: store.create(key, [{ target: "one", kind: "hot" }]), reused: false };
     },
   } as unknown as SettingsApiContext;
   return { ctx, store, started };
@@ -277,6 +297,30 @@ describe("POST /api/settings/apply", () => {
     expect(store.all()).toHaveLength(1);
   });
 
+  it("answers 409 with the running job when a reconcile already owns the slot", async () => {
+    const dir = tempDir();
+    const store = new ApplyJobStore(dir);
+    const running = store.create("key-already-running", [{ target: "one", kind: "restart" }]);
+    const ctx = {
+      fleetConfig: { defaults: {}, instances: {} },
+      configPath: join(dir, "fleet.yaml"),
+      dataDir: dir,
+      logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+      getRawFleetConfig: () => ({}),
+      saveFleetConfig: vi.fn(),
+      lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
+      applyJobs: store,
+      startSettingsApply: () => ({ busy: running }),
+    } as unknown as SettingsApiContext;
+
+    const res = await request("/api/settings/apply", ctx, "POST", {
+      headers: { "idempotency-key": "key-second-attempt" },
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.running_job_id).toBe(running.id);
+  });
+
   it("refuses to mint a job without a usable key", async () => {
     const { ctx, store } = apiContext(tempDir());
 
@@ -320,6 +364,31 @@ describe("GET /api/settings/apply/:jobId", () => {
   });
 });
 
+describe("the settings page tells the truth about a restart it cannot perform", () => {
+  const html = readFileSync(
+    join(process.cwd(), "src", "ui", "settings.html"),
+    "utf8",
+  );
+
+  it("renders restart-required as its own terminal state, not as success", () => {
+    expect(html).toContain('row.status === "restart-required" ? "🔄🔄"');
+    expect(html).toContain('row.status === "restart-required" ? t("applyRestartNeeded")');
+    expect(html).toContain('applyRestartNeeded: "Saved — restart AgEnD to apply"');
+    expect(html).toContain("applyRestartHint");
+    // The panel must not fade away while a restart is still owed.
+    expect(html).toContain("if (!needsRestart) setTimeout");
+  });
+
+  it("names the rows the reconcile found nothing to do", () => {
+    expect(html).toContain('row.settled_by === "no-change"');
+  });
+
+  it("tells the user to retry when the fleet is already reloading", () => {
+    expect(html).toContain("started.status === 409");
+    expect(html).toContain("applyBusy");
+  });
+});
+
 // ── Real wiring: the rows are the reconcile's own work ──────────────────────
 
 function fleetWithInstance(dir: string, body: string[]): { fm: FleetManager; configPath: string } {
@@ -346,7 +415,7 @@ describe("a Settings apply drives the real reconcile", () => {
     fm.fleetConfig!.instances.one!.tool_progress = "verbose";
 
     expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "hot" }]);
-    const job = fm.startSettingsApply("key-hot-change");
+    const { job } = fm.startSettingsApply("key-hot-change") as { job: ApplyJob };
 
     expect(job.targets).toEqual([{ target: "one", kind: "hot", status: "pending" }]);
     await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
@@ -375,7 +444,7 @@ describe("a Settings apply drives the real reconcile", () => {
     fm.fleetConfig!.instances.one!.backend = "codex";
 
     expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "restart" }]);
-    const job = fm.startSettingsApply("key-cold-change");
+    const { job } = fm.startSettingsApply("key-cold-change") as { job: ApplyJob };
     await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
     expect(stop).toHaveBeenCalledWith("one");
     expect(fm.applyJobs.get(job.id)!.targets[0]!.status).toBe("done");
@@ -402,7 +471,7 @@ describe("a Settings apply drives the real reconcile", () => {
     const emit = vi.spyOn(fm, "emitSseEvent").mockImplementation(() => {});
     fm.fleetConfig!.instances.one!.tool_progress = "verbose";
 
-    const job = fm.startSettingsApply("key-sse-frames");
+    const { job } = fm.startSettingsApply("key-sse-frames") as { job: ApplyJob };
     await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
 
     const frames = emit.mock.calls.filter(([event]) => event === "apply_progress");
@@ -425,10 +494,10 @@ describe("a Settings apply drives the real reconcile", () => {
       reconcileInstances(): Promise<void>;
     }, "reconcileInstances").mockResolvedValue(undefined);
 
-    const first = fm.startSettingsApply("key-double-submit");
-    const retry = fm.startSettingsApply("key-double-submit");
+    const { job: first } = fm.startSettingsApply("key-double-submit") as { job: ApplyJob };
+    const retry = fm.startSettingsApply("key-double-submit") as { job: ApplyJob };
 
-    expect(retry.id).toBe(first.id);
+    expect(retry.job.id).toBe(first.id);
     await vi.waitFor(() => expect(fm.applyJobs.get(first.id)!.status).toBe("done"));
     expect(reconcile).toHaveBeenCalledTimes(1);
     expect(fm.applyJobs.all()).toHaveLength(1);
@@ -445,6 +514,132 @@ describe("a Settings apply drives the real reconcile", () => {
     fm.fleetConfig!.defaults!.backend = "codex";
 
     expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+  });
+
+  it("refuses a second, different apply while one is still running", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    fm.lifecycle.daemons.set("one", {
+      getConfigSnapshot: () => structuredClone(fm.fleetConfig!.instances.one!),
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    let release!: () => void;
+    const reconcile = vi.spyOn(fm as unknown as {
+      reconcileInstances(): Promise<void>;
+    }, "reconcileInstances").mockImplementation(() => new Promise(resolve => { release = () => resolve(); }));
+
+    const first = fm.startSettingsApply("key-concurrent-one") as { job: ApplyJob };
+    await Promise.resolve();
+    const second = fm.startSettingsApply("key-concurrent-two") as { busy: ApplyJob | null };
+
+    // Two reconciles would stop and start the same agent in parallel.
+    expect("busy" in second).toBe(true);
+    expect(second.busy?.id).toBe(first.job.id);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(fm.applyJobs.all()).toHaveLength(1);
+
+    release();
+    await vi.waitFor(() => expect(fm.applyJobs.get(first.job.id)!.status).toBe("done"));
+  });
+
+  it("reserves the slot before the work starts, so a request in the gap is refused", () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, ["instances: {}", ""]);
+
+    const first = fm.startSettingsApply("key-gap-first") as { job: ApplyJob };
+    // Synchronously after the first call: the reconcile has not begun yet,
+    // because it is deferred to a microtask.
+    const second = fm.startSettingsApply("key-gap-second");
+
+    expect("busy" in second).toBe(true);
+    expect((second as { busy: ApplyJob | null }).busy?.id).toBe(first.job.id);
+  });
+
+  it("coalesces a SIGHUP arriving mid-apply instead of starting a second reconcile", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, ["instances: {}", ""]);
+    let running = 0;
+    let peak = 0;
+    let release!: () => void;
+    vi.spyOn(fm as unknown as { reconcileInstances(): Promise<void> }, "reconcileInstances")
+      .mockImplementation(() => {
+        running++; peak = Math.max(peak, running);
+        return new Promise(resolve => { release = () => { running--; resolve(); }; });
+      });
+
+    const { job } = fm.startSettingsApply("key-sighup-overlap") as { job: ApplyJob };
+    await Promise.resolve();
+    (fm as unknown as { handleSighup(): void }).handleSighup();
+    (fm as unknown as { handleSighup(): void }).handleSighup();
+
+    expect(peak).toBe(1);
+    release();
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    // The coalesced signal replays once the slot is free.
+    await vi.waitFor(() => expect(peak).toBe(1));
+  });
+
+  it("reports a fleet-level change as restart-required, and keeps reporting it", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "defaults:", "  backend: claude-code", "instances: {}", "",
+    ]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    writeFileSync(configPath, ["defaults:", "  backend: codex", "instances: {}", ""].join("\n"));
+    fm.fleetConfig!.defaults!.backend = "codex";
+
+    const { job } = fm.startSettingsApply("key-fleet-level-one") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+
+    const row = fm.applyJobs.get(job.id)!.targets.find(item => item.target === APPLY_FLEET_TARGET)!;
+    // Not "done": this process is still running the old fleet-level config.
+    expect(row.status).toBe("restart-required");
+
+    // And the debt is not forgotten. A reconcile does not restart the process,
+    // so the next apply must say the same thing.
+    expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+    const { job: second } = fm.startSettingsApply("key-fleet-level-two") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(second.id)!.status).toBe("done"));
+    expect(fm.applyJobs.get(second.id)!.targets.find(item => item.target === APPLY_FLEET_TARGET)!.status)
+      .toBe("restart-required");
+  });
+
+  it("reports a newly added instance as it is started", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, ["instances: {}", ""]);
+    const frames: Array<{ targets: Array<{ target: string; kind: string; status: string }> }> = [];
+    vi.spyOn(fm, "emitSseEvent").mockImplementation((event, data) => {
+      if (event === "apply_progress") frames.push(structuredClone(data) as never);
+    });
+    const start = vi.spyOn(fm as unknown as {
+      startInstanceUnattended(...args: unknown[]): Promise<void>;
+    }, "startInstanceUnattended").mockResolvedValue(undefined);
+    writeFileSync(configPath, [
+      "instances:", "  fresh:", "    working_directory: /tmp/fresh", "",
+    ].join("\n"));
+    fm.fleetConfig!.instances.fresh = { working_directory: "/tmp/fresh" } as never;
+
+    expect(fm.planConfigApply()).toEqual([{ target: "fresh", kind: "restart" }]);
+    const { job } = fm.startSettingsApply("key-new-instance") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+
+    expect(start).toHaveBeenCalled();
+    const seen = frames.flatMap(frame => frame.targets).filter(row => row.target === "fresh");
+    expect(seen.map(row => row.status)).toContain("running");
+    expect(seen.every(row => row.kind === "restart")).toBe(true);
+  });
+
+  it("marks a forecast row the reconcile found nothing to do as no-change", async () => {
+    const dir = tempDir();
+    const { fm } = fleetWithInstance(dir, ["instances: {}", ""]);
+    const store = fm.applyJobs;
+    const job = store.create("key-overforecast", [{ target: "ghost", kind: "restart" }]);
+
+    store.finish(job.id);
+
+    expect(store.get(job.id)!.targets[0]).toMatchObject({ status: "done", settled_by: "no-change" });
   });
 
   it("settles a job left running by the process that died, on the next startup", async () => {

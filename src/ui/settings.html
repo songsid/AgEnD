@@ -217,6 +217,9 @@
       wnIntro: "Recent highlights:", releaseNotes: "📄 View full Release Notes →", languageButton: "Language", helpButton: "Help", showAdditional: "Show additional controls", hideAdvanced: "Hide advanced", showAdvanced: "Show advanced",
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
       applying: "Applying changes…", applyDone: "✓ Changes applied", applyPartial: "⚠️ Some changes failed", applyClose: "Close",
+      applyRestartNeeded: "Saved — restart AgEnD to apply", applyNoChange: "no change needed",
+      applyRestartHint: "This change needs AgEnD itself restarted: run /restart in your chat channel, or `agend restart --reload`.",
+      applyBusy: "AgEnD is already reloading its configuration. Your changes are saved — try Apply again in a moment.",
       applyStillWorking: "Still restarting ({0}s) — AgEnD is still working; this page keeps checking.",
       applyLostJob: "Lost track of this apply (the fleet may have restarted). Reload the page to see the current state.",
       changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — open the Settings link again.",
@@ -242,6 +245,9 @@
       wnIntro: "近期更新重點：", releaseNotes: "📄 查看完整 Release Notes →", languageButton: "語言", helpButton: "使用說明", showAdditional: "顯示更多控制項", hideAdvanced: "隱藏進階設定", showAdvanced: "顯示進階設定",
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
       applying: "正在套用變更…", applyDone: "✓ 變更已套用", applyPartial: "⚠️ 有部分變更失敗", applyClose: "關閉",
+      applyRestartNeeded: "已儲存 —— 需要重新啟動 AgEnD 才會生效", applyNoChange: "無需變更",
+      applyRestartHint: "此變更需要重新啟動 AgEnD 本身：請在聊天頻道執行 /restart，或執行 `agend restart --reload`。",
+      applyBusy: "AgEnD 正在重新載入設定。你的變更已儲存，請稍候再按一次套用。",
       applyStillWorking: "仍在重啟中（{0} 秒）—— AgEnD 還在處理，此頁面會持續確認。",
       applyLostJob: "已追蹤不到這次套用（AgEnD 可能重啟過）。請重新整理頁面查看目前狀態。",
       changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請重新開啟 Settings 連結。",
@@ -402,6 +408,13 @@
       headers: { "Idempotency-Key": key },
       body: JSON.stringify({ idempotency_key: key }),
     });
+    if (started.status === 409) {
+      // One reconcile at a time. The writes above already landed, so re-applying
+      // later is safe and idempotent.
+      showBanner(t("applyBusy"), true);
+      button.disabled = false;
+      return;
+    }
     if (!started.ok || !started.body?.id) {
       showBanner(started.body?.error || t("applyFailed"), true);
       button.disabled = false;
@@ -413,14 +426,21 @@
   }
 
   function applyRow(row) {
-    const icon = row.status === "done" ? "✓" : row.status === "failed" ? "✗" : row.status === "running" ? "…" : "·";
-    const kind = row.kind === "hot" ? t("impactNow") : t("impactAgent");
+    const icon = row.status === "done" ? "✓"
+      : row.status === "failed" ? "✗"
+      : row.status === "restart-required" ? "🔄🔄"
+      : row.status === "running" ? "…" : "·";
+    // restart-required is terminal and is NOT success: the value is saved and a
+    // running AgEnD cannot adopt it.
+    const note = row.status === "restart-required" ? t("applyRestartNeeded")
+      : row.settled_by === "no-change" ? t("applyNoChange")
+      : row.settled_by === "fleet-restart" ? "(restart)"
+      : row.kind === "hot" ? t("impactNow") : t("impactAgent");
     return el("div", { class: "apply-row" },
       el("span", {}, icon),
       el("span", { class: "name" }, row.target === "fleet" ? "AgEnD" : shortName(row.target, {})),
-      el("span", { class: "sub" }, kind),
-      row.error ? el("span", { class: "err" }, row.error) : null,
-      row.settled_by === "fleet-restart" ? el("span", { class: "sub" }, "(restart)") : null);
+      el("span", { class: "sub" }, note),
+      row.error ? el("span", { class: "err" }, row.error) : null);
   }
 
   function renderApplyJob(job) {
@@ -428,7 +448,10 @@
     $("applyTitle").textContent = job.status === "done"
       ? (job.targets.some(r => r.status === "failed") ? t("applyPartial") : t("applyDone"))
       : job.status === "failed" ? t("applyPartial") : t("applying");
-    $("applyNote").textContent = job.overdue ? tf("applyStillWorking", Math.round(job.elapsed_ms / 1000)) : "";
+    const needsRestart = job.targets.some(row => row.status === "restart-required");
+    $("applyNote").textContent = job.overdue
+      ? tf("applyStillWorking", Math.round(job.elapsed_ms / 1000))
+      : needsRestart ? t("applyRestartHint") : "";
     const rows = $("applyRows"); rows.innerHTML = "";
     for (const row of job.targets) rows.append(applyRow(row));
     if (job.error) rows.append(el("div", { class: "apply-row err" }, job.error));
@@ -455,10 +478,12 @@
       current = res.body;
       renderApplyJob(current);
     }
-    showBanner(current.status === "done" && !current.targets.some(r => r.status === "failed")
-      ? t("changesApplied")
-      : t("applyPartial"), current.status !== "done");
-    setTimeout(() => $("applyPanel").classList.remove("open"), 4000);
+    const failed = current.targets.some(r => r.status === "failed");
+    const needsRestart = current.targets.some(r => r.status === "restart-required");
+    showBanner(failed ? t("applyPartial") : needsRestart ? t("applyRestartNeeded") : t("changesApplied"),
+      failed || needsRestart);
+    // A restart reminder has to stay on screen; a clean apply can fade.
+    if (!needsRestart) setTimeout(() => $("applyPanel").classList.remove("open"), 4000);
   }
   const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj || {}, key);
   const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);

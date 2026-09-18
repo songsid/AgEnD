@@ -42,7 +42,12 @@ const MAX_JOBS = 20;
 export const APPLY_FLEET_TARGET = "fleet";
 
 export type ApplyTargetKind = "hot" | "restart";
-export type ApplyTargetStatus = "pending" | "running" | "done" | "failed";
+/**
+ * `restart-required` is a terminal state, not a stalled one: the change is saved
+ * and valid, and a running fleet process cannot adopt it. Reporting it as done
+ * would tell the user AgEnD is on the new configuration when it is not.
+ */
+export type ApplyTargetStatus = "pending" | "running" | "done" | "failed" | "restart-required";
 export type ApplyJobStatus = "running" | "done" | "failed";
 
 export interface ApplyTarget {
@@ -51,8 +56,12 @@ export interface ApplyTarget {
   kind: ApplyTargetKind;
   status: ApplyTargetStatus;
   error?: string;
-  /** Set when a fleet restart, not this job's own work, finished the row. */
-  settled_by?: "fleet-restart";
+  /**
+   * Who finished the row, when it was not this job's own work:
+   * `fleet-restart` — a process restart applied it;
+   * `no-change`     — the plan expected work the reconcile found unnecessary.
+   */
+  settled_by?: "fleet-restart" | "no-change";
 }
 
 export interface ApplyJob {
@@ -103,10 +112,19 @@ export function viewOf(job: ApplyJob, now = Date.now()): ApplyJobView {
  * The jobs file. Small, rewritten whole on every transition — a settings apply
  * happens at human speed, so the simplest durable thing is the right one.
  */
+/** Just enough of a logger for the one thing this module has to report. */
+export interface ApplyJobLogger {
+  warn(data: unknown, message: string): void;
+}
+
 export class ApplyJobStore {
   private jobs: ApplyJob[] = [];
 
-  constructor(private readonly dataDir: string, private readonly now: () => number = Date.now) {
+  constructor(
+    private readonly dataDir: string,
+    private readonly now: () => number = Date.now,
+    private readonly logger?: ApplyJobLogger,
+  ) {
     this.jobs = this.read();
   }
 
@@ -136,8 +154,12 @@ export class ApplyJobStore {
     try {
       writeFileSync(temp, JSON.stringify({ jobs: this.jobs } satisfies JobFile), { mode: 0o600 });
       renameSync(temp, path);
-    } catch {
+    } catch (err) {
       try { unlinkSync(temp); } catch { /* never created */ }
+      // A full or read-only data dir means this job will not survive a restart.
+      // Swallowing that silently is how the symptom becomes "progress just
+      // vanished" with nothing to look at.
+      this.logger?.warn({ err, path }, "Settings apply job could not be persisted");
     }
   }
 
@@ -227,10 +249,12 @@ export class ApplyJobStore {
   finish(id: string, error?: string): void {
     this.update(id, job => {
       for (const row of job.targets) {
-        if (row.status === "pending" || row.status === "running") {
-          row.status = error ? "failed" : "done";
-          if (error) row.error = error;
-        }
+        if (row.status !== "pending" && row.status !== "running") continue;
+        if (error) { row.status = "failed"; row.error = error; continue; }
+        // The plan forecast work the reconcile then found unnecessary. Saying
+        // plain "done" would read as "this agent was restarted".
+        row.status = "done";
+        row.settled_by = "no-change";
       }
       job.status = error ? "failed" : job.targets.some(row => row.status === "failed") ? "failed" : "done";
       job.finishedAt = this.now();

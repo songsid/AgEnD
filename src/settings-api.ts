@@ -53,7 +53,7 @@ export interface SettingsApiContext {
   restartClassicInstanceFromSettings?(instanceName: string, changedFields?: string[]): Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
-  startSettingsApply?(key: string): ApplyJob;
+  startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -384,12 +384,21 @@ export function handleSettingsRequest(
         json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" });
         return;
       }
-      const existing = ctx.applyJobs?.findByKey(key) ?? null;
-      const job = ctx.startSettingsApply!(key);
-      ctx.logger.info({ jobId: job.id, reused: !!existing }, existing
+      const result = ctx.startSettingsApply!(key);
+      if ("busy" in result) {
+        // One reconcile at a time: two of them stop and start the same agent in
+        // parallel. The running job's id lets the client watch that one instead.
+        ctx.logger.info({ runningJobId: result.busy?.id ?? null }, "settings: apply refused — a reconcile is already running");
+        json(res, 409, {
+          error: "a configuration reload is already running",
+          running_job_id: result.busy?.id ?? null,
+        });
+        return;
+      }
+      ctx.logger.info({ jobId: result.job.id, reused: result.reused }, result.reused
         ? "settings: apply retry rejoined the existing job"
         : "settings: apply job started");
-      json(res, existing ? 200 : 202, viewOf(job));
+      json(res, result.reused ? 200 : 202, viewOf(result.job));
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

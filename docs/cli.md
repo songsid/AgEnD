@@ -161,6 +161,16 @@ was still in flight as finished by the restart (`settled_by: "fleet-restart"`),
 and keeps answering `GET`. Past the deadline the job reports `overdue` with a
 "Still restarting (Ns)" message rather than spinning silently.
 
+Only one reconcile runs at a time — two of them stop and start the same agent in
+parallel — so SIGHUP and Apply share the slot: a signal arriving mid-apply is
+coalesced into one replay, and a second Apply gets `409` with the running
+`running_job_id`. The writes are already on disk by then, so retrying is safe.
+
+A change that only a fresh AgEnD process can adopt (channel binding, cold fleet
+defaults) ends as `restart-required`, not `done`: it is saved, valid, and not in
+effect until you run `/restart`. That row keeps appearing on every later apply
+until the process is actually restarted.
+
 `apply_progress` SSE frames on `/ui/events` are an accelerator only. They carry
 no event id, so a client that reconnects cannot ask for what it missed — treat a
 frame as a signal to re-read the job.
