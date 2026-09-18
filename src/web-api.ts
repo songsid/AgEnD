@@ -11,7 +11,7 @@ import type { LifecycleCreateArgs } from "./instance-lifecycle.js";
 import { CreateInstanceArgs, validateArgs } from "./outbound-schemas.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
-import { WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { isWebRequestAuthorized, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
 import { authorizeExplicitInstanceRemoval } from "./instance-removal.js";
 import type { ExplicitInstanceRemoval } from "./instance-removal.js";
 
@@ -199,10 +199,12 @@ export function handleWebRequest(
   const path = url.pathname;
   const method = req.method ?? "GET";
 
-  // Auth check for all /ui routes
+  // Auth check for all /ui routes. Defence in depth behind the fleet-manager
+  // gate, which has already redeemed any `?token=` for a session cookie — so
+  // this accepts the cookie and the header too, and an unset token closes the
+  // panel instead of comparing null against a missing credential.
   if (path.startsWith("/ui")) {
-    const token = url.searchParams.get("token");
-    if (token !== ctx.webToken) {
+    if (!isWebRequestAuthorized(req, url, ctx.webToken)) {
       json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE });
       return true;
     }

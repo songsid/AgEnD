@@ -96,11 +96,15 @@ class CaptureRes extends ServerResponse {
   }
 }
 
+const SSE_TOKEN = "s".repeat(48);
+
 function makeReq(method: string, url: string): IncomingMessage & EventEmitter {
   const stream = Readable.from([]) as unknown as IncomingMessage & EventEmitter;
   stream.method = method;
   stream.url = url;
-  stream.headers = {};
+  // The dashboard reaches /ui/events with the session cookie the gate issued;
+  // the equivalent header token keeps this harness free of crypto helpers.
+  stream.headers = { "x-agend-token": SSE_TOKEN };
   return stream;
 }
 
@@ -113,7 +117,7 @@ function makeSseCtx(sseClients: Set<ServerResponse>): WebApiContext {
     list: () => [], create: () => ({}), delete: () => {},
   };
   return {
-    webToken: null, dataDir: "/tmp", sseClients,
+    webToken: SSE_TOKEN, dataDir: "/tmp", sseClients,
     fleetConfig: { channel: { group_id: 1 }, instances: {}, teams: {} },
     instanceIpcClients: new Map(), adapter: null, daemons: new Map(),
     eventLog: null,

@@ -155,6 +155,7 @@ A `/steer` or `/btw` on an unsupported backend gets an honest error instead of s
 | `agend doctor` | Run backend health diagnostics |
 | `agend doctor mcp` | Fleet-wide MCP health check (IPC, config paths, duplicates, binary PATH) |
 | `agend web` | Launch Web UI dashboard |
+| `agend web-token rotate` | Revoke every dashboard link and browser session |
 | `agend export` | Export fleet config (fleet.yaml + classicBot.yaml) |
 | `agend logs` | View fleet logs |
 

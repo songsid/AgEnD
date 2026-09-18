@@ -83,7 +83,7 @@ import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
-import { loadOrCreateWebToken, WEB_TOKEN_INVALID_MESSAGE } from "./web-auth.js";
+import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import {
   formatRestartProgressCompletion,
   RESTART_PROGRESS_TERMINAL_TIMEOUT_MS,
@@ -708,7 +708,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // Web UI: SSE clients + auth token
   private sseClients = new Set<import("node:http").ServerResponse>();
-  private webToken: string | null = null;
+  /**
+   * Read from disk on every access rather than cached at startup: `agend
+   * web-token rotate` runs in a separate process, and a cached copy would keep
+   * authorizing revoked links and cookies until the fleet restarted.
+   */
+  private get webToken(): string | null { return readWebToken(this.dataDir); }
   private viewToken: string | null = null;
   private healthServerListening = false;
 
@@ -2511,7 +2516,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Initialize auth before any adapter can answer /dashboard. */
   private initializeWebAuthTokens(): void {
-    this.webToken = loadOrCreateWebToken(this.dataDir);
+    // Creates web.token if absent; the value is then read back per request by
+    // the `webToken` getter, so nothing is cached here.
+    loadOrCreateWebToken(this.dataDir);
     this.viewToken = randomBytes(24).toString("hex");
     const viewTokenPath = join(this.dataDir, "view.token");
     writeFileSync(viewTokenPath, this.viewToken, { encoding: "utf8", mode: 0o600 });
@@ -11906,6 +11913,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     this.healthServer = createServer((req, res) => {
       res.setHeader("Content-Type", "application/json");
+      // No Referer to a tunnel host, an upstream proxy, or any page linked from
+      // the panel — the dashboard URL is itself a credential-bearing address.
+      res.setHeader("Referrer-Policy", "no-referrer");
+      // Authorization now depends on a cookie, so a shared cache (a tunnel, a
+      // corporate proxy) must not serve one visitor's response to another.
+      res.setHeader("Vary", "Cookie");
       const requestPath = new URL(req.url ?? "/", `http://localhost:${port}`).pathname;
 
       // Browsers request this automatically and AgEnD does not ship an icon.
@@ -11929,15 +11942,25 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         // /api/ai-usage is read-only GET data for the /view Usage panel — open
         // like the other /view data routes (usage-api.ts rejects non-GET).
       } else {
-        // All other endpoints require a valid token (query ?token= or X-Agend-Token header).
+        // All other endpoints require a session cookie or an X-Agend-Token
+        // header; a `?token=` in the URL is only redeemed for a cookie on a GET.
         // /ui/* will also re-check in web-api.ts, which is harmless.
         const parsedUrl = new URL(req.url ?? "/", `http://localhost:${port}`);
-        const headerToken = req.headers["x-agend-token"];
-        const providedToken = parsedUrl.searchParams.get("token")
-          ?? (typeof headerToken === "string" ? headerToken : null);
-        if (!this.webToken || providedToken !== this.webToken) {
-          res.writeHead(401);
-          res.end(JSON.stringify({ error: WEB_TOKEN_INVALID_MESSAGE }));
+        const decision = decideWebGate(req, parsedUrl, this.webToken);
+        if (decision.kind === "reject") {
+          res.writeHead(decision.status);
+          res.end(JSON.stringify({ error: decision.message }));
+          return;
+        }
+        if (decision.kind === "exchange") {
+          res.setHeader("Set-Cookie", decision.setCookie);
+          res.setHeader("Location", decision.location);
+          // A cached redirect would replay a Set-Cookie for a rotated token.
+          res.setHeader("Cache-Control", "no-store");
+          res.writeHead(302);
+          // Browsers follow the Location; a script that does not gets told why
+          // its URL token stopped being echoed back as data.
+          res.end(JSON.stringify({ redirect: decision.location }));
           return;
         }
       }
@@ -12179,8 +12202,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       this.logger.info({ port }, afterTakeover
         ? "Health endpoint listening (after takeover)"
         : "Health endpoint listening");
-      this.logger.info({ url: `http://localhost:${port}/ui?token=${this.webToken}` }, "Web UI available");
-      this.logger.info({ url: `http://localhost:${port}/view?token=${this.viewToken}` }, "Web View available");
+      // Never the token: fleet.log is readable by anything that can read the
+      // data dir, is copied into bug reports, and is tailed in shared terminals.
+      // `/dashboard` and `agend web` are the ways to get an authorized link.
+      this.logger.info({ url: `http://localhost:${port}/ui` }, "Web UI available (open it with /dashboard or `agend web`)");
+      this.logger.info({ url: `http://localhost:${port}/view` }, "Web View available");
     };
 
     this.healthServer.on("error", (err: NodeJS.ErrnoException) => {
