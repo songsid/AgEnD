@@ -26,6 +26,8 @@ type Internals = {
   armReplyGrace(name: string): void;
   retireButton(entry: unknown): void;
   sendCancelButton(name: string): Promise<void>;
+  clearCancelButton(name: string): void;
+  startProgressTicker(entry: unknown): void;
   getGroupIdForInstance(name: string): string;
   logger: { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
 };
@@ -44,6 +46,35 @@ function makeFleet() {
   // cancel-button-safety-net.test.ts's subject, not this file's).
   internals.getInstanceStatus = () => "running";
   return { fm, internals };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+function installCancelAdapter(
+  fm: FleetManager,
+  notifyAlert: ReturnType<typeof vi.fn>,
+) {
+  const deleteMessage = vi.fn().mockResolvedValue(undefined);
+  const adapter = { notifyAlert, deleteMessage };
+  (fm as unknown as { fleetConfig: unknown }).fleetConfig = {
+    defaults: {},
+    channel: { type: "discord", group_id: "g1" },
+    instances: { alpha: { working_directory: "/tmp", topic_id: "123" } },
+  };
+  (fm as unknown as { adapter: unknown }).adapter = adapter;
+  return { adapter, deleteMessage };
+}
+
+async function flushButtonRetirement(): Promise<void> {
+  // retireButton deliberately does not await the provider delete. Let both the
+  // delete promise and discardButton's continuation drain.
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 describe("issue 4 — idleness comes from the pane state machine, not output lulls", () => {
@@ -109,6 +140,133 @@ describe("idle-edge cancel-button retirement grace", () => {
       expect(retire).toHaveBeenCalledOnce();
       expect(retire).toHaveBeenCalledWith("alpha");
     } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("cancel-button publication generation fence (#782)", () => {
+  it("retires a late publication after the idle edge and grace elapsed while the POST was pending", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm, internals } = makeFleet();
+      const post = deferred<{ messageId: string; chatId: string; threadId: string }>();
+      const { deleteMessage } = installCancelAdapter(fm, vi.fn(() => post.promise));
+      internals.startProgressTicker = vi.fn();
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      const send = internals.sendCancelButton("alpha");
+      internals.cacheInstanceExecutionState("alpha", { state: "idle" });
+      await vi.advanceTimersByTimeAsync(2_001);
+      expect(internals.cancelButtons.size).toBe(0);
+
+      post.resolve({ messageId: "late", chatId: "g1", threadId: "123" });
+      await send;
+      await flushButtonRetirement();
+
+      expect(deleteMessage).toHaveBeenCalledWith("g1", "late", "123");
+      expect(internals.cancelButtons.size).toBe(0);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not resurrect a button when clearCancelButton runs while its POST is pending", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm, internals } = makeFleet();
+      const post = deferred<{ messageId: string; chatId: string; threadId: string }>();
+      const { deleteMessage } = installCancelAdapter(fm, vi.fn(() => post.promise));
+      internals.startProgressTicker = vi.fn();
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      const send = internals.sendCancelButton("alpha");
+      internals.clearCancelButton("alpha");
+
+      post.resolve({ messageId: "late-clear", chatId: "g1", threadId: "123" });
+      await send;
+      await flushButtonRetirement();
+
+      expect(deleteMessage).toHaveBeenCalledWith("g1", "late-clear", "123");
+      expect(internals.cancelButtons.size).toBe(0);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps only the newest generation when two provider POSTs resolve out of order", async () => {
+    vi.useFakeTimers();
+    try {
+      const { fm, internals } = makeFleet();
+      const first = deferred<{ messageId: string; chatId: string; threadId: string }>();
+      const second = deferred<{ messageId: string; chatId: string; threadId: string }>();
+      const notifyAlert = vi.fn()
+        .mockImplementationOnce(() => first.promise)
+        .mockImplementationOnce(() => second.promise);
+      const { deleteMessage } = installCancelAdapter(fm, notifyAlert);
+      internals.startProgressTicker = vi.fn();
+      internals.instanceStateCache.set("alpha", { state: "working" });
+
+      const sendFirst = internals.sendCancelButton("alpha");
+      const sendSecond = internals.sendCancelButton("alpha");
+      second.resolve({ messageId: "new", chatId: "g1", threadId: "123" });
+      await sendSecond;
+      expect([...internals.cancelButtons.keys()]).toEqual(["new"]);
+
+      first.resolve({ messageId: "old-late", chatId: "g1", threadId: "123" });
+      await sendFirst;
+      await flushButtonRetirement();
+
+      expect(deleteMessage).toHaveBeenCalledWith("g1", "old-late", "123");
+      expect(deleteMessage).not.toHaveBeenCalledWith("g1", "new", "123");
+      expect([...internals.cancelButtons.keys()]).toEqual(["new"]);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the existing grace after an idle publication and lets working cancel it", async () => {
+    vi.useFakeTimers();
+    try {
+      const firstFleet = makeFleet();
+      const firstDelete = installCancelAdapter(
+        firstFleet.fm,
+        vi.fn().mockResolvedValue({ messageId: "kept", chatId: "g1", threadId: "123" }),
+      ).deleteMessage;
+      firstFleet.internals.startProgressTicker = vi.fn();
+      firstFleet.internals.instanceStateCache.set("alpha", { state: "idle" });
+
+      await firstFleet.internals.sendCancelButton("alpha");
+      await vi.advanceTimersByTimeAsync(1_000);
+      firstFleet.internals.cacheInstanceExecutionState("alpha", { state: "working" });
+      await vi.advanceTimersByTimeAsync(2_000);
+
+      expect(firstDelete).not.toHaveBeenCalled();
+      expect([...firstFleet.internals.cancelButtons.keys()]).toEqual(["kept"]);
+
+      // A separate publication which remains idle proves that the post-await
+      // level reconciliation actually armed the grace; removing it must fail.
+      const secondFleet = makeFleet();
+      const secondDelete = installCancelAdapter(
+        secondFleet.fm,
+        vi.fn().mockResolvedValue({ messageId: "retired", chatId: "g1", threadId: "123" }),
+      ).deleteMessage;
+      secondFleet.internals.startProgressTicker = vi.fn();
+      secondFleet.internals.instanceStateCache.set("alpha", { state: "idle" });
+
+      await secondFleet.internals.sendCancelButton("alpha");
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(secondDelete).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await flushButtonRetirement();
+
+      expect(secondDelete).toHaveBeenCalledWith("g1", "retired", "123");
+      expect(secondFleet.internals.cancelButtons.size).toBe(0);
+    } finally {
+      vi.clearAllTimers();
       vi.useRealTimers();
     }
   });

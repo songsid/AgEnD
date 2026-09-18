@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail } from "../src/daemon.js";
 import { HangDetector } from "../src/hang-detector.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
+import { CodexBackend } from "../src/backend/codex.js";
 
 describe("PaneStateMachine", () => {
   const timeoutMs = 10 * 60_000;
@@ -66,6 +67,26 @@ describe("PaneStateMachine", () => {
     expect(moving.state).toBe("working");
     expect(moving.unchangedForMs).toBe(0);
     expect(moving.observedAt).toBe(50);
+  });
+
+  it("returns to idle on the exact Codex 0.154.0 turn-end frame", () => {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-codex-154-idle-"));
+    try {
+      const backend = new CodexBackend(instanceDir);
+      const machine = new PaneStateMachine(backend.getReadyPattern(), timeoutMs, 0);
+      const pane = [
+        "• Finished the requested work.",
+        "• .",
+        "  Worked for 5m 21s",
+        "› Ask Codex to do anything",
+        "  Context 19% left",
+      ].join("\n");
+
+      expect(machine.recordOutput(1_000).state).toBe("working");
+      expect(machine.observe(pane, 3_001, { settled: true, changeAt: 1_000 }).state).toBe("idle");
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
   });
 });
 

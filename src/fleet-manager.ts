@@ -319,6 +319,18 @@ interface CancelButtonEntry {
 }
 
 /**
+ * One cancel-button publication attempt. The chat API call completes before a
+ * message id exists, so retirement requests that arrive in that window must be
+ * remembered separately from `cancelButtons`.
+ */
+interface CancelButtonPublication {
+  generation: number;
+  correlationId?: string;
+  inFlight: boolean;
+  retirePending: boolean;
+}
+
+/**
  * Answer shape for `list_models`. `scope` reports where the LIST came from —
  * "instance" only when it was read through that instance's own backend config,
  * "global" for the account/CLI catalog — so a caller can tell an authoritative
@@ -600,6 +612,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // reply, on cancel, or when a newer button supersedes it for the same
   // instance. Per-button tracking means a failed delete never strands a button.
   private cancelButtons = new Map<string, CancelButtonEntry>();
+  /** Latest publication generation per instance. Late results from older
+   * generations are retired without touching the current button. */
+  private cancelButtonPublications = new Map<string, CancelButtonPublication>();
+  private nextCancelButtonPublicationGeneration = 0;
   /** Pending idle-edge retirement, one timer per instance. */
   private cancelButtonIdleRetireTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Duplicate-reply suppression across both the MCP and HTTP reply paths. */
@@ -1447,11 +1463,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private scheduleIdleButtonRetirement(name: string): void {
     this.cancelIdleButtonRetirement(name);
+    // Bind this edge to the publication that was current when idle was
+    // observed. A later inbound may start a new generation before this timer
+    // fires; the old edge must not mark that newer button for retirement.
+    const publication = this.cancelButtonPublications.get(name);
     const timer = setTimeout(() => {
       // Ignore a superseded timer even if it was already queued to run.
       if (this.cancelButtonIdleRetireTimers.get(name) !== timer) return;
       this.cancelButtonIdleRetireTimers.delete(name);
       if (this.getInstanceExecutionState(name) === "idle") {
+        this.markCancelButtonPublicationForRetirement(name, publication);
         this.retireInstanceButtons(name);
       }
     }, CANCEL_BTN_IDLE_RETIRE_GRACE_MS);
@@ -7694,6 +7715,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
+  private beginCancelButtonPublication(
+    instanceName: string,
+    correlationId?: string,
+  ): CancelButtonPublication {
+    // A new handoff supersedes any idle timer left by the previous turn. If the
+    // instance is still idle after this publication, the post-await level check
+    // below starts a fresh grace period for this generation.
+    this.cancelIdleButtonRetirement(instanceName);
+    const publication: CancelButtonPublication = {
+      generation: ++this.nextCancelButtonPublicationGeneration,
+      correlationId,
+      inFlight: true,
+      retirePending: false,
+    };
+    this.cancelButtonPublications.set(instanceName, publication);
+    return publication;
+  }
+
+  /** Remember a clear/cancel/idle decision that arrived before notifyAlert
+   * returned a message id. `expected` fences an idle timer to its generation. */
+  private markCancelButtonPublicationForRetirement(
+    instanceName: string,
+    expected?: CancelButtonPublication,
+  ): void {
+    const publication = this.cancelButtonPublications.get(instanceName);
+    if (!publication?.inFlight) return;
+    if (expected && publication !== expected) return;
+    publication.retirePending = true;
+  }
+
   async sendCancelButton(instanceName: string, correlationId?: string, preserveProgress = false): Promise<void> {
     // Post first, retire after (see the tail of this method). Retiring up front
     // meant that from the delete until the new message came back — a chat API
@@ -7731,6 +7782,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    const publication = this.beginCancelButtonPublication(instanceName, correlationId);
+
     try {
       const sent = await adapter.notifyAlert(chatId, {
         type: "cancel",
@@ -7738,6 +7791,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         message: "👀 處理中…",
         choices: [{ id: `cancel:${instanceName}`, label: t("cancel.button") }],
       }, threadId ? { threadId } : undefined);
+
+      publication.inFlight = false;
 
       const entry: CancelButtonEntry = {
         instanceName,
@@ -7760,6 +7815,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // empty even if the daemon's reset broadcast is still in flight.
         toolProgress: preserveProgress ? this.instanceProgress.get(instanceName) : undefined,
       };
+
+      // A newer send started while this API call was pending. Track this late
+      // message just long enough for the normal bounded delete/retry machinery
+      // to remove it; critically, do not sweep the newer generation.
+      if (this.cancelButtonPublications.get(instanceName) !== publication) {
+        this.cancelButtons.set(sent.messageId, entry);
+        this.persistCancelButtons();
+        this.logger.debug(
+          { instanceName, messageId: sent.messageId, generation: publication.generation },
+          "Retiring superseded cancel-button publication",
+        );
+        this.retireButton(entry);
+        return;
+      }
+
       this.startProgressTicker(entry);
       // Idle-check backstop: every 5min, if the instance is idle, retire the
       // button. Covers turns that end without hitting a clear trigger (reply /
@@ -7795,7 +7865,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       this.persistCancelButtons();
       this.logger.info({ instanceName, messageId: sent.messageId }, "Cancel button sent");
+
+      // Retirement is normally edge-triggered, but the edge (or an explicit
+      // reply/cancel clear) may have happened while notifyAlert was in flight.
+      // Reconcile the level after publication so a late button cannot resurrect
+      // on an already-idle instance. Preserve the existing two-second grace:
+      // a working transition cancels this timer just as it does for a normal
+      // idle edge.
+      if (publication.retirePending) {
+        this.retireButton(entry);
+      } else if (this.getInstanceExecutionState(instanceName) === "idle") {
+        this.scheduleIdleButtonRetirement(instanceName);
+      }
     } catch (e) {
+      if (this.cancelButtonPublications.get(instanceName) === publication) {
+        this.cancelButtonPublications.delete(instanceName);
+        // beginCancelButtonPublication cancelled the previous turn's idle
+        // timer so it could not act on this generation. If the provider POST
+        // failed while the instance remained idle, restore that retirement
+        // opportunity for any older button still on screen.
+        if (this.getInstanceExecutionState(instanceName) === "idle") {
+          this.scheduleIdleButtonRetirement(instanceName);
+        }
+      }
       this.logger.warn({ err: (e as Error).message, instanceName }, "Failed to send cancel button");
     }
   }
@@ -8173,6 +8265,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Retire all cancel buttons for an instance — on reply or cancel. */
   clearCancelButton(instanceName: string): void {
+    this.markCancelButtonPublicationForRetirement(instanceName);
     this.retireInstanceButtons(instanceName);
   }
 
@@ -8181,6 +8274,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the target-address name the button was registered under. */
   clearCancelButtonByCorrelation(correlationId: string): void {
     if (!correlationId) return;
+    for (const [instanceName, publication] of this.cancelButtonPublications) {
+      if (publication.inFlight && publication.correlationId === correlationId) {
+        this.markCancelButtonPublicationForRetirement(instanceName, publication);
+      }
+    }
     for (const e of [...this.cancelButtons.values()]) {
       if (e.correlationId === correlationId) this.retireButton(e);
     }
@@ -11105,6 +11203,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (entry.progressTimer) clearInterval(entry.progressTimer);
     }
     this.cancelButtons.clear();
+    this.cancelButtonPublications.clear();
     for (const timer of this.cancelButtonIdleRetireTimers.values()) clearTimeout(timer);
     this.cancelButtonIdleRetireTimers.clear();
 
