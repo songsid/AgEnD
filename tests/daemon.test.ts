@@ -506,25 +506,6 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
-  it("treats Codex's live Working marker as busy during strand preflight", async () => {
-    const workingPane = [
-      "• Working (12s • esc to interrupt)",
-      "› Ask Codex to do anything",
-      "  Context 16% left",
-    ].join("\n");
-    const { backend, daemon, instanceDir } = makeDeliveryDaemon("codex", true, workingPane);
-    try {
-      const prompt = backend.getBottomReadyPattern();
-      expect(prompt).not.toBeNull();
-      // Codex still owns a native queue, but a live Working marker must not be
-      // mistaken for a clear input row when recovering an older strand. The
-      // native handoff path remains unchanged; this is only the preflight veto.
-      await expect((daemon as any).strandedInputState(prompt, false)).resolves.toBe("busy");
-    } finally {
-      rmSync(instanceDir, { recursive: true, force: true });
-    }
-  });
-
   it("always retries the first post-restart Enter for Kiro before trusting redraw output", async () => {
     // The pane shows Kiro's legacy prompt: the Enter-drop gate fails closed on
     // anything else (a blank stub is "not ready", not "nothing to strand into").

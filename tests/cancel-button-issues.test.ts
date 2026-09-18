@@ -178,6 +178,31 @@ describe("cancel-button publication generation fence (#782)", () => {
     }
   });
 
+  /**
+   * The generation fence itself, pinned directly.
+   *
+   * The end-to-end race above passes with the fence removed, because the timer
+   * is also cancelled when a new publication begins and the timer-identity
+   * check catches a queued one. Those cover the paths that exist today; the
+   * fence is what keeps a stale idle edge from marking a publication it never
+   * observed, for any path that reaches it. Without a test naming it, deleting
+   * the line is invisible.
+   */
+  it("an idle edge only marks the publication it was bound to", () => {
+    const { internals } = makeFleet();
+    const current = { generation: 2, inFlight: true, retirePending: false };
+    internals.cancelButtonPublications.set("alpha", current as never);
+
+    // A stale edge, bound to the publication that preceded this one.
+    const superseded = { generation: 1, inFlight: true, retirePending: false };
+    internals.markCancelButtonPublicationForRetirement("alpha", superseded as never);
+    expect(current.retirePending, "a superseded edge must not retire the live button").toBe(false);
+
+    // The edge bound to THIS publication still works.
+    internals.markCancelButtonPublicationForRetirement("alpha", current as never);
+    expect(current.retirePending).toBe(true);
+  });
+
   it("retires a late publication after the idle edge and grace elapsed while the POST was pending", async () => {
     vi.useFakeTimers();
     try {
