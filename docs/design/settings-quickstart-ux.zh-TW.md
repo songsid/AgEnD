@@ -290,8 +290,20 @@ interface LifecycleVerbs {
 }
 ```
 
-- 正式 fleet 的 web server 同時實作兩者（行為不變）。
-- **setup 宿主只實作 `ConfigVerbs`**；`LifecycleVerbs` 的路由一律回 **409 `fleet not running`**。關鍵在於**靜態型別上就拿不到 daemon**，不是靠執行期判斷——否則哪天有人加一條新路由就又漏了。
+再加第三個介面。wizard 第三步要驗 bot token、等 Telegram `/start`、列 Discord guild——那些是**對外網路呼叫**，既不是 config 也不是 lifecycle，v2 初稿把它們漏掉了：
+
+```ts
+// 唯讀、只對外部平台，不碰本機狀態
+interface ProviderProbeVerbs {
+  verifyBotToken(platform, token): Promise<VerifyResult>;
+  listGuilds(token): Promise<Guild[]>;          // Discord
+  awaitGroupStart(token): Promise<{ groupId; userId }>;  // Telegram getUpdates 長輪詢
+}
+```
+
+- 正式 fleet 的 web server 同時實作 `ConfigVerbs` 與 `LifecycleVerbs`（行為不變）。
+- **setup 宿主只實作 `ConfigVerbs` + `ProviderProbeVerbs`**。它**沒有** lifecycle 路由——所以那些路徑是 **404，不是 409**（v2 初稿寫 409 是錯的：表單宿主根本不註冊那些路由）。
+- **「靜態拿不到 daemon」的落地驗收方式**：宿主模組的 **import 圖不得含 `fleet-manager` / `daemon` / `instance-lifecycle`**，以測試斷言其靜態依賴清單。**不是**掛上現有的 `handleSettingsRequest` 再對 lifecycle 路由回 409——那種做法下 daemon 仍在可達範圍內，只是被執行期擋住。
 
 #### D.4.3 setup 宿主：表單 + spawn + 自行退出
 
@@ -312,7 +324,8 @@ CLI: agend setup --web
 **票 5 必須明寫的三件事**：
 1. **port 交接**：宿主先完全釋放再 spawn，或約定正式 fleet 起在同一 port 並容忍短暫 connection refused；瀏覽器端以輪詢處理空窗。
 2. **宿主退出時機**：spawn 成功即退出，不等 fleet ready（否則宿主活著的時間不可控）。ready 由瀏覽器輪詢正式 server 判斷。
-3. **fleet 已在跑時拒絕啟動 setup 宿主**：避免兩個行程同時寫 fleet.yaml。判斷依 pid 檔 + port 佔用。
+3. **fleet 已在跑時拒絕啟動 setup 宿主**：**沿用既有的 `fleet.lock`**（`fleet-lock.ts:74` `acquireFleetLock`），不要另造 pid + port 判斷。除了「兩個行程同時寫 fleet.yaml」之外還有第二個理由：`ProviderProbeVerbs` 的 Telegram 等待用 `getUpdates` 長輪詢（`quickstart.ts:85,92`），而 Telegram 對第二個消費者會回 **409 Conflict**（`telegram.ts:677` 已有註解記錄此行為）——setup 宿主的探測會直接跟正在跑的 fleet 打架。
+4. **輪詢上限**：最後一頁等正式 server 接手時，若 spawn 出去的 `agend start` 自己失敗，瀏覽器會無限轉圈。**約 60 秒後停止輪詢並顯示「請在本機執行 `agend start` 並查看 fleet.log」**。
 
 ### D.5 安全（v2 重寫）
 
@@ -338,7 +351,13 @@ CLI: agend setup --web
 
 #### D.5.4 時間窗 = 宿主行程自行退出
 
-不用計時器關路由（可被繞過或忘記），而是**宿主完成後直接退出**。這是唯一不可繞過的時間窗形式：行程不在，端點就不存在。
+不用計時器關路由（可被繞過或忘記），而是**宿主行程直接退出**。這是唯一不可繞過的時間窗形式：行程不在，端點就不存在。
+
+退出有**兩個**觸發條件，v2 初稿只寫了第一個：
+1. **setup 完成**（spawn fleet 之後）。
+2. **TTL 到期或閒置逾時**（~15 分鐘無互動）。少了這條，使用者中途離開就會留下一個活著的 setup 宿主——正是時間窗要防的情況。
+
+> 加分項（非必改）：印出的 `?t=<token>` 在第一次 GET 就換成 HttpOnly cookie 並 302 把 token 移出 URL，比照票 0 的做法。因為這個 token 短命且一次性，風險低於長期 `web.token`，所以不列為必要條件。
 
 #### D.5.5 Audit 的誠實界線
 
@@ -360,12 +379,12 @@ append-only 檔可行，但必須寫明：目前只有**一把** `web.token`，�
 
 | # | 範圍 | 相依 | 備註 |
 |---|---|---|---|
-| **0** | **既有 Settings gate 硬化**：token → HttpOnly `SameSite=Strict` cookie（query token 僅用於一次性換發）、`Origin == Host` 檢查、`Referrer-Policy: no-referrer`、**停止把含 token 的 URL 寫進 log**（`fleet-manager.ts:12182`） | 無 | **必須排在 tunnel 接線之前**。否則 UX 改版一上線，外網可達的就是一個長期 token 面板 |
+| **0** | **既有 Settings gate 硬化**：token → HttpOnly `SameSite=Strict` cookie（query token 僅用於一次性換發）、`Origin == Host` 檢查、`Referrer-Policy: no-referrer`、**停止把含 token 的 URL 寫進 log**（`fleet-manager.ts:12182`）、**新增本機 CLI 輪替指令**（如 `agend web-token rotate`，輪替後既有 cookie 全失效） | 無 | **必須排在 tunnel 接線之前**，否則 UX 改版一上線，外網可達的就是一個長期 token 面板。<br>**輪替是這張票的一部分而非後續**：`web.token` 目前洩漏即永久有效，沒有輪替手段時前四項的價值會被「一次洩漏就得手動刪檔重啟」抵銷。48-hex 隨機值暴力破解不可行，因此不另加失敗鎖定 |
 | 1 | **hot/cold 單一來源**：`HOT_INSTANCE_CONFIG_KEYS` 為權威；classic `hotOnly` 從同一集合推導（消除 `settings-api.ts:344` 與 `fleet-manager.ts:1852` 兩份硬編碼）；新增 schema endpoint 回每欄 impact，前端刪除 42 處手寫；**加 parity 測試**斷言 `daemon.applyConfigUpdate` 接受的鍵集合 == HOT 集合 − fleet 端處理的鍵 | 無 | 是票 2 的前置：進度畫面必須與 server 同一份認知 |
 | 2 | **Apply job**：客戶端產生冪等鍵、job 落磁碟並可跨 AgEnD 重啟續播、`GET /apply/:jobId` 為權威、`apply_progress` SSE 僅作加速、wall-clock deadline | 1 | |
 | 3 | **常駐面板改版**：長列表 → 列 + [設定] modal；Level 3 收進單一抽屜 | 1 | |
 | 4 | **Guided wizard**（有 fleet 時可於 modal 內重跑） | 3 | |
-| 5 | **pre-fleet setup 宿主**：`ConfigVerbs`/`LifecycleVerbs` 介面拆分；極小表單宿主（不載入 settings.html）；CLI 一次性 token；`setup-complete` 標記；spawn 後自行退出；**port 交接、退出時機、fleet 已在跑時拒絕啟動** | 2, 4 | 風險最高，建議先 spike；請 fable 複審 |
+| 5 | **pre-fleet setup 宿主**。驗收條件：①介面拆成 `ConfigVerbs` / `LifecycleVerbs` / `ProviderProbeVerbs`，宿主只實作第一與第三個；②**測試斷言宿主模組的 import 圖不含 `fleet-manager`/`daemon`/`instance-lifecycle`**（不是執行期回 409）；③極小表單宿主，不載入 `settings.html`；④CLI 一次性 token（TTL ~15min、完成即消耗、三次失敗銷毀）；⑤`setup-complete` 標記獨立於 fleet.yaml；⑥宿主退出的**兩個**觸發：完成 spawn、TTL 到期或閒置逾時；⑦**以 `fleet.lock` 拒絕在 fleet 執行中啟動**；⑧port 交接與退出時機；⑨最後一頁**輪詢上限 ~60s** 後導向「請在本機執行 `agend start` 並查看 fleet.log」 | 2, 4 | 風險最高，**先 spike port 交接**；已請 fable 複審 |
 
 ## 來源
 
