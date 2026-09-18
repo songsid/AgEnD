@@ -78,6 +78,39 @@ describe("the health-port takeover", () => {
     (fm as unknown as { healthServer: Server | null }).healthServer = null;
   }, 10_000);
 
+  it("does not signal a pid whose command line cannot be read at all", async () => {
+    // "Cannot confirm" is not "confirmed dead". Reading an empty answer as
+    // permission to signal would put the old behaviour back for exactly the
+    // processes it is hardest to identify.
+    const dir = tempDir();
+    const { port } = await listen();
+    writeFileSync(join(dir, "fleet.yaml"), "instances: {}\n");
+    writeFileSync(join(dir, "fleet.pid"), "424242");
+    const fm = new FleetManager(dir);
+    fm.loadConfig(join(dir, "fleet.yaml"));
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    const warn = vi.fn();
+    fm.logger = { info: () => {}, warn, error: () => {}, debug: () => {}, trace: () => {}, fatal: () => {}, child: () => fm.logger } as never;
+    (fm as unknown as { initializeWebAuthTokens(): void }).initializeWebAuthTokens();
+    vi.spyOn(await import("../src/fleet-lock.js"), "readProcessCommandLine").mockReturnValue("");
+
+    (fm as unknown as { startHealthServer(port: number): void }).startHealthServer(port);
+    await vi.waitFor(() => expect(warn.mock.calls.flat().join(" ")).toContain("not signalling it"), { timeout: 4_000 });
+
+    for (const call of kill.mock.calls) expect(call[1]).not.toBe("SIGTERM");
+    const server = (fm as unknown as { healthServer: Server | null }).healthServer;
+    server?.removeAllListeners();
+    (fm as unknown as { healthServer: Server | null }).healthServer = null;
+  }, 10_000);
+
+  it("keeps an unrelated process's command line out of the log in full", () => {
+    const source = readFileSync(join(process.cwd(), "src", "fleet-manager.ts"), "utf8");
+    const at = source.indexOf("does not name an AgEnD fleet process");
+    const around = source.slice(Math.max(0, at - 400), at);
+
+    expect(around).toContain("slice(0, 60)");
+  });
+
   it("reads a real command line, and says nothing when it cannot", () => {
     expect(readProcessCommandLine(process.pid)).toContain("node");
     // A pid that cannot exist: an empty answer is "cannot confirm".
@@ -104,12 +137,37 @@ describe("fleet.lock keeps the two kinds of process apart", () => {
     // start`, so a starting fleet read the lock as stale and took it — then
     // collided with the host on the health port.
     const dir = tempDir();
-    acquireFleetLock(dir, { pid: 5555, role: "setup-host", isProcessAlive: alive, readCommandLine: () => "node setup-host.js" });
+    acquireFleetLock(dir, { pid: 5555, role: "setup-host", isProcessAlive: alive, readCommandLine: () => "node cli.js setup" });
 
     expect(() => acquireFleetLock(dir, {
       pid: 6666, isProcessAlive: alive,
-      readCommandLine: pid => pid === 5555 ? "node setup-host.js" : "node cli.js fleet start",
+      readCommandLine: pid => pid === 5555 ? "node cli.js setup" : "node cli.js fleet start",
     })).toThrow(/Setup is already running/);
+  });
+
+  it("reclaims a setup-host record whose pid now belongs to something else", () => {
+    // The setup page is short-lived and often killed outright, so its pid is a
+    // prime candidate for reuse after a reboot. Without this the lock is
+    // unrecoverable except by hand, and AgEnD will not start at all.
+    const dir = tempDir();
+    acquireFleetLock(dir, { pid: 5555, role: "setup-host", isProcessAlive: alive, readCommandLine: () => "node cli.js setup" });
+
+    const handle = acquireFleetLock(dir, {
+      pid: 6666, isProcessAlive: alive,
+      readCommandLine: pid => pid === 5555 ? "/usr/sbin/cron -f" : "node cli.js fleet start",
+    });
+
+    expect(handle.record.pid).toBe(6666);
+  });
+
+  it("still refuses when the setup-host owner's command line cannot be read", () => {
+    // No evidence is not evidence of absence: an unreadable owner keeps the lock.
+    const dir = tempDir();
+    acquireFleetLock(dir, { pid: 5555, role: "setup-host", isProcessAlive: alive, readCommandLine: () => "node cli.js setup" });
+
+    expect(() => acquireFleetLock(dir, {
+      pid: 6666, isProcessAlive: alive, readCommandLine: () => "",
+    })).toThrow(/refusing to replace it/);
   });
 
   it("records the role, defaulting to fleet", () => {

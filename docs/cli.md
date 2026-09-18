@@ -147,8 +147,16 @@ the two never contend for it; the browser sees connection refused for a few
 seconds and then the fleet answers.
 
 Setup being complete is recorded in its own file, not inferred from fleet.yaml
-existing — deleting the config must not reopen a setup page. `--reset` is the
-only way back, and it is a local command.
+existing — deleting the config must not reopen a setup page. A fleet that comes
+up on a config with agents in it records the marker too, so an installation that
+predates the marker is not treated as unconfigured. `--reset` is the only way
+back, and it is a local command.
+
+The page is for an installation that has no agents yet. With agents configured
+it refuses and points at the dashboard's setup wizard, which edits fleet.yaml in
+place — this page writes the file by dumping the loaded configuration, which is
+right for a file it creates and would flatten comments and freeze defaults in
+one somebody already has.
 
 Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
 and redirects to the same page without the token, so the credential stays out of

@@ -1649,7 +1649,12 @@ program
     // and the link stops working.
     console.log(`\n  Setup page: http://127.0.0.1:${started.port}/?token=${started.token}`);
     console.log("  The link works once, and the page closes itself after 15 minutes.\n");
-    process.on("SIGINT", () => { void host.shutdown(false, "interrupted").then(() => process.exit(0)); });
+    // Every way this command is asked to stop, not just Ctrl-C: a host that
+    // exits without releasing the lock leaves the next `agend start` to prove
+    // the pid is stale before it can run.
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+      process.on(signal, () => { void host.shutdown(false, signal.toLowerCase()).then(() => process.exit(0)); });
+    }
   });
 
 program

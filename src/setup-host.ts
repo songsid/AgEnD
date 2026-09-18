@@ -95,6 +95,17 @@ export class SetupHost {
   }
 
   async start(): Promise<{ port: number; token: string }> {
+    // This host writes fleet.yaml by dumping the loader's output, which expands
+    // every default and drops every comment. That is fine for a file it is
+    // creating and destructive to one somebody already has — and an existing
+    // installation should be using the panel's wizard anyway, which edits the
+    // document in place.
+    const existing = this.readConfig();
+    if (Object.keys(existing.instances ?? {}).length > 0) {
+      throw new Error(
+        "This installation already has agents configured. Open Settings in the dashboard and use the setup wizard there — it edits your fleet.yaml in place.",
+      );
+    }
     // Refuses while a fleet runs, and — since the record carries a role — is
     // equally refused to a fleet that starts while this host is up.
     this.lock = acquireFleetLock(this.opts.dataDir, { role: "setup-host", ...this.opts.lockProbe });
@@ -147,8 +158,11 @@ export class SetupHost {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Vary", "Cookie");
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${this.opts.port}`);
-    this.touch();
     if (!this.authorize(req, res, url)) return;
+    // Only after authorization: otherwise anyone who can reach the port can
+    // hold the page open indefinitely by knocking on it, leaving the TTL as the
+    // only thing that ever closes it.
+    this.touch();
 
     if (req.method === "GET" && url.pathname === "/") {
       // The setup form, not the Settings page: this host has no fleet to show

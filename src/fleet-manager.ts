@@ -82,6 +82,7 @@ import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
+import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
@@ -893,6 +894,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private finishStartup(): void {
     this.startupComplete = true;
+    // An existing installation has never written the setup marker — it predates
+    // it — so `agend setup` would open a pre-fleet form for a fleet that plainly
+    // exists. A fleet that just came up on a config with agents in it is proof
+    // enough that setup happened.
+    if (Object.keys(this.fleetConfig?.instances ?? {}).length > 0 && !isSetupComplete(this.dataDir)) {
+      markSetupComplete(this.dataDir);
+    }
     // After slimFleetConfigAtStartup() and the general/topic fixups, all of
     // which may rewrite fleet.yaml — the baseline has to be what this process
     // is actually running, compared against what a reconcile would load.
@@ -12640,8 +12648,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
                 process.kill(oldPid, "SIGTERM");
                 this.logger.info({ oldPid }, "Killed old fleet process");
               } else {
-                this.logger.warn({ oldPid, commandLine: commandLine || "(unreadable)" },
-                  "fleet.pid does not name an AgEnD fleet process — not signalling it");
+                this.logger.warn({
+                  oldPid,
+                  // Truncated: this is an unrelated process's command line, and
+                  // fleet.log is copied into bug reports.
+                  commandLine: commandLine ? `${commandLine.slice(0, 60)}${commandLine.length > 60 ? "…" : ""}` : "(unreadable)",
+                }, "fleet.pid does not name an AgEnD fleet process — not signalling it");
               }
             }
           }

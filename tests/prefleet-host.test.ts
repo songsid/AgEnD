@@ -6,6 +6,7 @@ import { createServer, request } from "node:http";
 import { connect } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { acquireFleetLock } from "../src/fleet-lock.js";
+import { FleetManager } from "../src/fleet-manager.js";
 import { SetupHost } from "../src/setup-host.js";
 import { clearSetupComplete, isSetupComplete, markSetupComplete } from "../src/setup-marker.js";
 import { SETUP_FORM_HTML } from "../src/setup-form.js";
@@ -13,6 +14,14 @@ import { SETUP_FORM_HTML } from "../src/setup-form.js";
 const SRC = join(dirname(fileURLToPath(import.meta.url)), "..", "src");
 const dirs: string[] = [];
 const hosts: SetupHost[] = [];
+
+function fleetOnConfig(lines: string[]) {
+  const dir = tempDir();
+  writeFileSync(join(dir, "fleet.yaml"), lines.join("\n"));
+  const fm = new FleetManager(dir);
+  fm.loadConfig(join(dir, "fleet.yaml"));
+  return { fm, dir };
+}
 
 function tempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), "agend-prefleet-"));
@@ -116,6 +125,27 @@ describe("the setup-complete marker", () => {
   });
 });
 
+describe("an existing installation counts as set up", () => {
+  it("records the marker when a fleet comes up on a config with agents", () => {
+    // Installations that predate the marker would otherwise never have one, so
+    // `agend setup` would open a pre-fleet form for a fleet that plainly exists.
+    const { fm, dir } = fleetOnConfig(["instances:", "  one:", "    working_directory: /tmp/one", ""]);
+    expect(isSetupComplete(dir)).toBe(false);
+
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    expect(isSetupComplete(dir)).toBe(true);
+  });
+
+  it("does not record it for a fleet with no agents yet", () => {
+    const { fm, dir } = fleetOnConfig(["instances: {}", ""]);
+
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    expect(isSetupComplete(dir)).toBe(false);
+  });
+});
+
 // ── The host ────────────────────────────────────────────────────────────────
 
 interface RawResponse { status: number; headers: Record<string, string | string[] | undefined>; body: string }
@@ -162,6 +192,36 @@ describe("the setup host", () => {
     });
 
     await expect(host.start()).rejects.toThrow(/already running/);
+  });
+
+  it("refuses an installation that already has agents, and points at the panel", async () => {
+    // It writes fleet.yaml by dumping the loader's output — every default
+    // expanded, every comment gone. Fine for a file it creates; destructive to
+    // one somebody already has.
+    const dir = tempDir();
+    writeFileSync(join(dir, "fleet.yaml"), [
+      "# hand-written, with comments",
+      "instances:",
+      "  one:",
+      "    working_directory: /tmp/one",
+      "",
+    ].join("\n"));
+    const before = readFileSync(join(dir, "fleet.yaml"), "utf8");
+    const host = new SetupHost({ dataDir: dir, configPath: join(dir, "fleet.yaml"), port: 0, log: () => {} });
+
+    await expect(host.start()).rejects.toThrow(/setup wizard there/);
+    expect(readFileSync(join(dir, "fleet.yaml"), "utf8")).toBe(before);
+  });
+
+  it("claims the lock as a setup host, so a fleet cannot start beside it", async () => {
+    const { dir } = await startHost();
+
+    // Through the host's own start(), not by calling acquireFleetLock directly.
+    expect(() => acquireFleetLock(dir, {
+      pid: 4242,
+      isProcessAlive: () => true,
+      readCommandLine: pid => pid === process.pid ? "node cli.js setup" : "node cli.js fleet start",
+    })).toThrow(/Setup is already running/);
   });
 
   it("redeems its link once and then only answers the cookie", async () => {
@@ -233,6 +293,17 @@ describe("the setup host", () => {
     await host.shutdown(true, "finished");
 
     expect(() => acquireFleetLock(dir, { pid: 1234 })).not.toThrow();
+  });
+
+  it("does not keep itself alive for requests it rejects", async () => {
+    // Otherwise anyone who can reach the port holds the page open by knocking.
+    const source = readFileSync(join(SRC, "setup-host.ts"), "utf8");
+    const handle = source.slice(source.indexOf("private handle("));
+    const authorizeAt = handle.indexOf("this.authorize(");
+    const touchAt = handle.indexOf("this.touch()");
+
+    expect(authorizeAt).toBeGreaterThan(-1);
+    expect(touchAt, "idle timer refreshed before the request was authorized").toBeGreaterThan(authorizeAt);
   });
 
   it("writes a config a fleet can load", async () => {

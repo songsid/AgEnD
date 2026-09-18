@@ -34,6 +34,12 @@ export interface FleetLockProbe {
   readCommandLine?: (pid: number) => string;
 }
 
+/** Whether a process command line identifies the AgEnD setup page. */
+export function isSetupHostCommandLine(commandLine: string): boolean {
+  const normalized = commandLine.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
+  return /\b(?:agend|(?:cli|daemon-entry)\.(?:js|ts))\b.*\bsetup\b/i.test(normalized);
+}
+
 /** Whether a process command line identifies an AgEnD fleet process. */
 export function isFleetStartCommandLine(commandLine: string): boolean {
   const normalized = commandLine.replace(/\0/g, " ").replace(/\s+/g, " ").trim();
@@ -118,14 +124,26 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
     }
     const owner = parseRecord(observed);
     if (owner && isAlive(owner.pid)) {
+      const commandLine = readCommandLine(owner.pid);
       // A live setup host is an owner in its own right. Before the role existed
       // its command line did not match the fleet pattern, so a starting fleet
       // read the lock as stale and took it — and then collided with the host on
       // the health port, where the takeover kills whatever fleet.pid names.
+      //
+      // Symmetric with the fleet case on purpose: the setup page is short-lived
+      // and often killed outright, so its pid is a prime candidate for reuse
+      // after a reboot. Positive evidence that the pid now belongs to something
+      // else makes the record stale; no evidence still refuses, because an
+      // unreadable owner must never be assumed absent.
       if (owner.role === "setup-host") {
-        throw new Error(`Setup is already running (PID ${owner.pid}, lock: ${lockPath})`);
-      }
-      const commandLine = readCommandLine(owner.pid);
+        if (!commandLine) {
+          throw new Error(`Fleet lock is owned by live PID ${owner.pid}; refusing to replace it`);
+        }
+        if (isSetupHostCommandLine(commandLine)) {
+          throw new Error(`Setup is already running (PID ${owner.pid}, lock: ${lockPath})`);
+        }
+        // The pid was reused by an unrelated process: the lock is stale.
+      } else {
       if (isFleetStartCommandLine(commandLine)) {
         throw new Error(`Fleet is already running (PID ${owner.pid}, lock: ${lockPath})`);
       }
@@ -134,6 +152,7 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
         throw new Error(`Fleet lock is owned by live PID ${owner.pid}; refusing to replace it`);
       }
       // The PID was reused by an unrelated process: the lock is stale.
+      }
     }
 
     // Only unlink the exact stale record we inspected. A competing starter may
