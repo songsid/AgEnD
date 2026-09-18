@@ -17,6 +17,46 @@ import type { InstanceConfig } from "../src/types.js";
 
 const dirs: string[] = [];
 
+/**
+ * Top-level property names of an interface in src/types.ts.
+ *
+ * TypeScript types are gone at runtime, so the alternative is a hand-kept list —
+ * which would silently stop covering the field someone adds tomorrow, i.e. the
+ * exact drift this file exists to catch.
+ */
+function interfaceKeys(source: string, name: string): string[] {
+  const withoutComments = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+  const start = withoutComments.indexOf(`export interface ${name} {`);
+  if (start < 0) throw new Error(`interface ${name} not found`);
+  let depth = 0;
+  let end = start;
+  for (let i = withoutComments.indexOf("{", start); i < withoutComments.length; i++) {
+    if (withoutComments[i] === "{") depth++;
+    else if (withoutComments[i] === "}" && --depth === 0) { end = i; break; }
+  }
+  const body = withoutComments.slice(withoutComments.indexOf("{", start) + 1, end);
+
+  const keys: string[] = [];
+  let nesting = 0;
+  for (const line of body.split("\n")) {
+    const match = nesting === 0 ? line.match(/^\s*([A-Za-z_$][\w$]*)\??\s*:/) : null;
+    if (match) keys.push(match[1]!);
+    for (const ch of line) {
+      if (ch === "{" || ch === "[") nesting++;
+      else if (ch === "}" || ch === "]") nesting--;
+    }
+  }
+  return keys;
+}
+
+function instanceConfigKeys(): string[] {
+  const types = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "types.ts"),
+    "utf8",
+  );
+  return interfaceKeys(types, "InstanceConfig");
+}
+
 afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -87,6 +127,39 @@ describe("hot/cold parity between the fleet's hot set and the daemon", () => {
     const after = daemon.getConfigSnapshot();
     for (const key of Object.keys(cold)) {
       expect(after[key as keyof InstanceConfig]).toEqual(before[key as keyof InstanceConfig]);
+    }
+  });
+
+  it("accepts nothing outside the hot set, across the whole config type", () => {
+    // The forward direction above proves HOT ⊆ accepted. This is the reverse,
+    // read off InstanceConfig itself rather than a list kept by hand, so a field
+    // added to the type is covered the day it lands.
+    const declared = instanceConfigKeys();
+    // A parser that stopped seeing the real interface would leave this loop
+    // vacuous, so prove it found the whole thing before trusting the subset.
+    for (const key of HOT_INSTANCE_CONFIG_KEYS) expect(declared, "parsed InstanceConfig").toContain(key);
+    const cold = declared.filter(key => !HOT_INSTANCE_CONFIG_KEYS.has(key as keyof InstanceConfig));
+    expect(cold.length).toBeGreaterThan(20);
+    expect(cold).toContain("backend");
+    expect(cold).not.toContain("tool_progress");
+
+    const daemon = makeDaemon();
+    const config = (daemon as unknown as { config: Record<string, unknown> }).config;
+
+    for (const key of cold) {
+      // Seed a sentinel so a deletion is as visible as an assignment.
+      config[key] = `sentinel:${key}`;
+      const before = daemon.getConfigSnapshot();
+
+      // Every shape a check might accidentally admit, including the null that
+      // removes a hot value.
+      for (const probe of ["hijacked", 99, true, false, ["hijacked"], { hijacked: true }, null]) {
+        daemon.applyConfigUpdate({ [key]: probe });
+        expect(
+          daemon.getConfigSnapshot(),
+          `Daemon.applyConfigUpdate took "${key}" (${JSON.stringify(probe)}), which the fleet treats as cold — the per-instance socket must not reach it`,
+        ).toEqual(before);
+      }
     }
   });
 
