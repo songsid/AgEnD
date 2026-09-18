@@ -28,7 +28,10 @@ describe("Settings P0 redesign shell", () => {
     // /api/settings/schema; the page classifies a staged edit with it.
     expect(html).toContain('const impactOf = (field) => state.schema.impacts[field] || "instance"');
     expect(html).toContain('impact: batchImpact(Object.keys(patch), key => impactOf(`instance.${key}`))');
-    expect(html).toContain('await api("/api/settings/reload", { method: "POST" })');
+    // Apply is a job now, not a signal: the page asks for one and watches it.
+    expect(html).toContain('await api("/api/settings/apply"');
+    expect(html).toContain('"Idempotency-Key": key');
+    expect(html).toContain('await watchApplyJob(started.body)');
   });
 
   it("wires the reply completion guard at global, fleet-instance, and Classic levels", () => {
@@ -69,7 +72,7 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain('configLoadFailed: "載入設定失敗 — 請重新開啟 Settings 連結。"');
     expect(html).toContain('removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）"');
     expect(html).toContain('setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? t("mustNonNegative") : "")');
-    expect(html).toContain('showBanner(t("changesApplied"))');
+    expect(html).toContain('t("changesApplied")');
     expect(html).toContain('confirm(tf("deleteAgent", name))');
   });
 });
