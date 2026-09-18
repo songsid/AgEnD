@@ -130,7 +130,33 @@ agend backend trust <backend>   # Pre-trust working directories (avoid CLI trust
 agend web                       # Open Web UI dashboard in browser
 agend view                      # Open the read-only View dashboard in browser
 agend web-token rotate          # Revoke every dashboard link and browser session
+agend setup                     # Guided setup page, before a fleet exists
+agend setup --reset             # Allow setup to run again after it completed
 ```
+
+`agend setup` serves a small form on the health port and prints a link that
+carries a one-time token: opening it exchanges the token for a session cookie
+and the link stops working. The page closes itself when you finish, after 15
+minutes, or after 15 minutes idle — a setup form left open is a surface nobody
+is watching.
+
+It refuses to start while AgEnD is running, and a fleet refuses to start while
+it is open: both hold `fleet.lock`, which now records which kind of process owns
+it. When you finish, the page releases the port **before** AgEnD is started, so
+the two never contend for it; the browser sees connection refused for a few
+seconds and then the fleet answers.
+
+Setup being complete is recorded in its own file, not inferred from fleet.yaml
+existing — deleting the config must not reopen a setup page. A fleet that comes
+up on a config with agents in it records the marker too, so an installation that
+predates the marker is not treated as unconfigured. `--reset` is the only way
+back, and it is a local command.
+
+The page is for an installation that has no agents yet. With agents configured
+it refuses and points at the dashboard's setup wizard, which edits fleet.yaml in
+place — this page writes the file by dumping the loaded configuration, which is
+right for a file it creates and would flatten comments and freeze defaults in
+one somebody already has.
 
 Opening a dashboard link redeems its `?token=` for an `HttpOnly` session cookie
 and redirects to the same page without the token, so the credential stays out of

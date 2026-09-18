@@ -1619,6 +1619,45 @@ program
   });
 
 program
+  .command("setup")
+  .description("Open the guided setup page in a browser (before a fleet exists)")
+  .option("--reset", "Allow setup again after it has already been completed")
+  .option("--port <port>", "Port for the setup page (default: the health port)")
+  .action(async (opts: { reset?: boolean; port?: string }) => {
+    const { clearSetupComplete, isSetupComplete } = await import("./setup-marker.js");
+    if (opts.reset) {
+      console.log(clearSetupComplete(DATA_DIR) ? "Setup marker cleared." : "No setup marker to clear.");
+    } else if (isSetupComplete(DATA_DIR)) {
+      // Not keyed on fleet.yaml existing: a deleted or truncated config must not
+      // reopen a setup page that starts out reachable to whoever finds it.
+      console.error("Setup has already been completed. Use `agend setup --reset` to run it again, or edit settings from the dashboard.");
+      process.exit(1);
+    }
+    const { loadFleetConfig } = await import("./config.js");
+    const fleet = existsSync(FLEET_CONFIG_PATH) ? loadFleetConfig(FLEET_CONFIG_PATH) : { defaults: {}, instances: {} };
+    const port = Number(opts.port ?? fleet.health_port ?? 19280);
+    const { SetupHost } = await import("./setup-host.js");
+    const host = new SetupHost({ dataDir: DATA_DIR, configPath: FLEET_CONFIG_PATH, port });
+    let started: { port: number; token: string };
+    try {
+      started = await host.start();
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+    // The link carries the token once; opening it turns the token into a cookie
+    // and the link stops working.
+    console.log(`\n  Setup page: http://127.0.0.1:${started.port}/?token=${started.token}`);
+    console.log("  The link works once, and the page closes itself after 15 minutes.\n");
+    // Every way this command is asked to stop, not just Ctrl-C: a host that
+    // exits without releasing the lock leaves the next `agend start` to prove
+    // the pid is stale before it can run.
+    for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+      process.on(signal, () => { void host.shutdown(false, signal.toLowerCase()).then(() => process.exit(0)); });
+    }
+  });
+
+program
   .command("quickstart")
   .description("Guided setup for a Backend, chat channel, projects, and fleet service")
   .action(async () => {
