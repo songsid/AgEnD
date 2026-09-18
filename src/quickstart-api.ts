@@ -40,7 +40,15 @@ export const WIZARD_BACKENDS = [
 export interface WizardEnvironment {
   backends: string[];
   /** Channels already configured, so the wizard can pre-fill and warn. */
-  channels: Array<{ id: string; type: string; token_env: string | null; group_id: string | null }>;
+  channels: Array<{
+    id: string;
+    type: string;
+    token_env: string | null;
+    group_id: string | null;
+    /** Who can currently drive that connection, so a replacement can say who
+     * it is about to remove. */
+    allowed_users?: string[];
+  }>;
   has_fleet: boolean;
 }
 
@@ -66,6 +74,31 @@ export interface WizardPlan {
   warnings: string[];
 }
 
+/**
+ * A channel id that is free, or the id of the connection being replaced.
+ *
+ * The platform name is the obvious id and the first bot gets it. A second bot on
+ * the same platform cannot have it — `duplicate channel id` — so it is
+ * qualified by the variable that holds its token. Without this the wizard can
+ * never add a second Telegram bot at all.
+ */
+export function nextChannelId(
+  platform: string,
+  tokenEnv: string,
+  existing: ReadonlyArray<{ id: string; token_env: string | null }>,
+): string {
+  const owner = existing.find(channel => channel.token_env === tokenEnv);
+  if (owner) return owner.id;
+  const taken = new Set(existing.map(channel => channel.id));
+  if (!taken.has(platform)) return platform;
+  const qualified = `${platform}-${tokenEnv.toLowerCase()}`;
+  if (!taken.has(qualified)) return qualified;
+  for (let n = 2; ; n++) {
+    const candidate = `${qualified}-${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment): WizardPlan {
   const warnings: string[] = [];
   const channel: Record<string, unknown> = {
@@ -86,7 +119,17 @@ export function planQuickstart(input: WizardPlanInput, env: WizardEnvironment): 
     warnings.push("No admin user id: access stays locked with an empty allow list, so nobody can drive the bot until you add one.");
   }
   const clash = env.channels.find(existing => existing.token_env === input.token_env);
-  if (clash) warnings.push(`${input.token_env} is already used by the "${clash.id}" connection — its token will be overwritten.`);
+  if (clash) {
+    warnings.push(`${input.token_env} is already used by the "${clash.id}" connection — its token will be overwritten.`);
+    // Re-running the wizard rewrites that connection's access block, so anyone
+    // else on its allow list stops being able to drive the bot. That is a
+    // lockout, and it must not happen without the user reading it first.
+    const previous = clash.allowed_users ?? [];
+    const dropped = previous.filter(user => user !== input.admin_user_id);
+    if (dropped.length) {
+      warnings.push(`Its allow list is replaced: ${dropped.join(", ")} will no longer be able to use the bot.`);
+    }
+  }
   if (!env.backends.includes(input.backend)) {
     warnings.push(`${input.backend} was not found on this host; the agent will fail to start until it is installed.`);
   }

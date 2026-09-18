@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-api.js";
 import {
+  nextChannelId,
   planQuickstart,
   runProviderProbe,
   upsertEnvLine,
@@ -56,6 +57,31 @@ describe("the plan the last step shows", () => {
     expect(JSON.stringify(plan)).not.toContain("123456:");
   });
 
+  it("warns that re-running replaces who may use the bot", () => {
+    // Re-running the wizard rewrites the connection's access block. Everyone
+    // else on the allow list stops being able to drive the bot, which is a
+    // lockout the user has to read before it happens.
+    const plan = planQuickstart({ ...BASE, admin_user_id: "42" }, {
+      ...EMPTY_ENV,
+      channels: [{
+        id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN",
+        group_id: null, allowed_users: ["42", "77", "88"],
+      }],
+    });
+
+    expect(plan.warnings.join(" ")).toContain("77, 88");
+    expect(plan.warnings.join(" ")).toContain("no longer be able to use the bot");
+  });
+
+  it("says nothing about the allow list when nobody is dropped", () => {
+    const plan = planQuickstart({ ...BASE, admin_user_id: "42" }, {
+      ...EMPTY_ENV,
+      channels: [{ id: "telegram", type: "telegram", token_env: "AGEND_BOT_TOKEN", group_id: null, allowed_users: ["42"] }],
+    });
+
+    expect(plan.warnings.join(" ")).not.toContain("no longer be able");
+  });
+
   it("warns about an empty allow list, a reused variable, and a missing backend", () => {
     const noAdmin = planQuickstart(BASE, EMPTY_ENV);
     const reused = planQuickstart({ ...BASE, admin_user_id: "7" }, {
@@ -73,6 +99,22 @@ describe("the plan the last step shows", () => {
     const plan = planQuickstart({ ...BASE, admin_user_id: "42" }, EMPTY_ENV);
 
     expect(plan.channel.access).toEqual({ mode: "locked", allowed_users: ["42"] });
+  });
+});
+
+describe("naming a new connection", () => {
+  it("takes the platform name when it is free, and qualifies it when it is not", () => {
+    expect(nextChannelId("telegram", "TG_MAIN", [])).toBe("telegram");
+    expect(nextChannelId("telegram", "TG_SECOND", [{ id: "telegram", token_env: "TG_MAIN" }]))
+      .toBe("telegram-tg_second");
+    expect(nextChannelId("telegram", "TG_THIRD", [
+      { id: "telegram", token_env: "TG_MAIN" },
+      { id: "telegram-tg_third", token_env: "OTHER" },
+    ])).toBe("telegram-tg_third-2");
+  });
+
+  it("keeps the id of the connection it is replacing", () => {
+    expect(nextChannelId("telegram", "TG_MAIN", [{ id: "primary", token_env: "TG_MAIN" }])).toBe("primary");
   });
 });
 
@@ -181,6 +223,32 @@ describe("the provider probes", () => {
   });
 });
 
+describe("a bot token already in use", () => {
+  it("is recognised by its value, not by the variable that holds it", async () => {
+    // The same token can be reached through a differently named variable, and a
+    // variable name is not a token. Comparing names would both miss the real
+    // clash and match a request that merely sent the name.
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dir = tempDir();
+    const fm = new FleetManager(dir);
+    (fm as unknown as { fleetConfig: unknown }).fleetConfig = {
+      defaults: {}, instances: {},
+      channels: [{ id: "telegram", type: "telegram", bot_token_env: "TG_MAIN" }],
+    };
+    const previous = process.env.TG_MAIN;
+    process.env.TG_MAIN = "123456:LIVE-TOKEN";
+    try {
+      expect(fm.isBotTokenInUse("123456:LIVE-TOKEN")).toBe(true);
+      expect(fm.isBotTokenInUse("TG_MAIN")).toBe(false);
+      expect(fm.isBotTokenInUse("123456:OTHER")).toBe(false);
+      expect(fm.isBotTokenInUse("")).toBe(false);
+    } finally {
+      if (previous === undefined) delete process.env.TG_MAIN;
+      else process.env.TG_MAIN = previous;
+    }
+  });
+});
+
 // ── HTTP ────────────────────────────────────────────────────────────────────
 
 function request(
@@ -224,6 +292,24 @@ function context(dir: string) {
   return { ctx, saveFleetConfig };
 }
 
+describe("POST /api/settings/quickstart/probe", () => {
+  it("never writes the token to the log", async () => {
+    const dir = tempDir();
+    const { ctx } = context(dir);
+    const token = "123456:SECRET-TOKEN";
+
+    await request("/api/settings/quickstart/probe", ctx, "POST", {
+      action: "verify", platform: "telegram", token,
+    });
+
+    const logged = (ctx.logger.info as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+    expect(logged.length).toBeGreaterThan(0);
+    for (const call of logged) {
+      expect(JSON.stringify(call), "a probe log line carries the bot token").not.toContain(token);
+    }
+  });
+});
+
 describe("POST /api/settings/quickstart/commit", () => {
   const valid = {
     platform: "telegram", token_env: "AGEND_BOT_TOKEN", backend: "claude-code",
@@ -244,6 +330,73 @@ describe("POST /api/settings/quickstart/commit", () => {
     // Starting is the apply job's business, not the wizard's.
     expect(res.body).not.toHaveProperty("job_id");
     expect(JSON.stringify(res.body)).not.toContain("123456:ABC");
+  });
+
+  it("adds a second bot on the same platform under its own id", async () => {
+    // The platform name is taken by the first connection, so a second one has
+    // to be qualified — otherwise validation rejects a duplicate channel id and
+    // the wizard can never add a second Telegram bot at all.
+    const dir = tempDir();
+    const { ctx } = context(dir);
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
+      { id: "telegram", type: "telegram", bot_token_env: "TG_MAIN", group_id: "-1", mode: "topic", access: { mode: "locked", allowed_users: ["1"] } },
+    ];
+
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", {
+      ...valid, token_env: "TG_SECOND", token: "999:SECOND",
+    });
+
+    expect(res.status).toBe(200);
+    const channels = (ctx.fleetConfig as unknown as { channels: Array<Record<string, unknown>> }).channels;
+    expect(channels).toHaveLength(2);
+    expect(channels.map(channel => channel.id)).toEqual(["telegram", "telegram-tg_second"]);
+  });
+
+  it("writes nothing at all when the assembled config turns out invalid", async () => {
+    const dir = tempDir();
+    const { ctx, saveFleetConfig } = context(dir);
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [
+      { id: "telegram", type: "telegram", bot_token_env: "TG_MAIN", group_id: "-1", mode: "topic", access: { mode: "locked", allowed_users: ["1"] } },
+    ];
+    const before = structuredClone(ctx.fleetConfig);
+    // Capture what was handed to the validator: it has to be the assembled
+    // result, not the config that is still running. Validating the live object
+    // would pass (it is valid) and then write anyway.
+    let validated: unknown = null;
+    vi.spyOn(await import("../src/config-validator.js"), "validateFleetConfig")
+      .mockImplementation(config => {
+        validated = config;
+        return { valid: false, errors: [{ path: "channels", message: "duplicate channel id" }], warnings: [] };
+      });
+
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", {
+      ...valid, token_env: "TG_SECOND", token: "999:SECOND",
+    });
+
+    expect(res.status).toBe(400);
+    expect(saveFleetConfig).not.toHaveBeenCalled();
+    const checked = validated as { channels: Array<Record<string, unknown>>; instances: Record<string, unknown> };
+    expect(checked.channels, "the validator saw the old config, not the new one").toHaveLength(2);
+    expect(checked.instances).toHaveProperty("agent-1");
+    // Neither half may have moved: not the file, not the in-memory config, and
+    // not the .env — validating after writing made that promise only half true.
+    expect(ctx.fleetConfig).toEqual(before);
+    expect(existsSync(join(dir, ".env"))).toBe(false);
+  });
+
+  it("puts the running config back when the save fails", async () => {
+    const dir = tempDir();
+    const { ctx, saveFleetConfig } = context(dir);
+    (ctx.fleetConfig as unknown as { channels: unknown[] }).channels = [];
+    const before = structuredClone(ctx.fleetConfig);
+    saveFleetConfig.mockImplementation(() => { throw new Error("disk full"); });
+
+    const res = await request("/api/settings/quickstart/commit", ctx, "POST", valid);
+
+    expect(res.status).toBe(500);
+    // The file is the authority; the running config must not keep a change it
+    // refused.
+    expect(ctx.fleetConfig).toEqual(before);
   });
 
   it("replaces the connection that already owns the variable instead of adding a second", async () => {
@@ -299,6 +452,22 @@ function wizardFunction(name: string): string {
   }
   throw new Error(`unbalanced body for ${name}`);
 }
+
+describe("the CLI quickstart", () => {
+  const cli = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "src", "quickstart.ts"),
+    "utf8",
+  );
+
+  it("explains a polling conflict instead of dying on it", () => {
+    // Structural, not behavioural — the flow is a readline conversation. It
+    // pins the exact regression: the shared probe throws where the old inline
+    // copy polled on silently, and an uncaught throw ends the command.
+    expect(cli).toContain("if (err instanceof TelegramPollConflictError) {");
+    expect(cli).toContain("Another process is already reading this bot's updates.");
+    expect(cli).toContain("agend stop");
+  });
+});
 
 describe("the wizard in the panel", () => {
   it("is four steps, with one flow whether or not a fleet exists", () => {

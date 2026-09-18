@@ -2,7 +2,7 @@ import { createInterface } from "node:readline/promises";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync, statSync } from "node:fs";
 import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
 // The same probes the Settings wizard makes — one copy, one behaviour.
-import { awaitTelegramGroupStart, listDiscordGuilds, verifyDiscordToken } from "./provider-probe.js";
+import { awaitTelegramGroupStart, listDiscordGuilds, TelegramPollConflictError, verifyDiscordToken } from "./provider-probe.js";
 import { join, resolve } from "node:path";
 import { homedir, platform } from "node:os";
 import { stdin, stdout } from "node:process";
@@ -227,7 +227,20 @@ async function runTelegramFlow(rl: import("node:readline/promises").Interface): 
   }
 
   console.log(`  Add @${botUsername} to a Telegram group, then send /start in the group.\n`);
-  const detected = await detectGroupAndUser(token);
+  let detected: { groupId: number; userId: number };
+  try {
+    detected = await detectGroupAndUser(token);
+  } catch (err) {
+    if (err instanceof TelegramPollConflictError) {
+      // getUpdates has one consumer. Before the shared probe reported this, the
+      // CLI polled against the other reader and timed out after three silent
+      // minutes; now it says what is wrong and how to get past it.
+      console.log(`\n  ${yellow("!")} Another process is already reading this bot's updates.`);
+      console.log(`    A running AgEnD, or a second quickstart, is polling the same token.`);
+      console.log(`    Stop it (${dim("agend stop")}) and try again, or enter the group id by hand in Settings.\n`);
+    }
+    throw err;
+  }
   const groupId = String(detected.groupId);
   const userId = String(detected.userId);
   console.log(`  ${green("✓")} Group: ${groupId} | User: ${userId}\n`);

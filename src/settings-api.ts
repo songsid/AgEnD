@@ -36,12 +36,25 @@ import { buildSettingsImpactSchema, CLASSIC_HOT_CONFIG_KEYS } from "./instance-c
 import { viewOf, type ApplyJob, type ApplyJobStore, type SelfRestartResult } from "./apply-job.js";
 import {
   detectWizardBackends,
+  nextChannelId,
   planQuickstart,
   runProviderProbe,
   writeQuickstartSecret,
   type WizardEnvironment,
   type WizardPlanInput,
 } from "./quickstart-api.js";
+
+/** The channels as the wizard sees them, from either config shape. */
+function wizardChannels(cfg: FleetConfig | null): WizardEnvironment["channels"] {
+  const channels = (cfg?.channels ?? (cfg?.channel ? [cfg.channel] : [])) as unknown as Array<Record<string, unknown>>;
+  return channels.map((channel, index) => ({
+    id: String(channel.id ?? channel.type ?? `channel-${index}`),
+    type: String(channel.type ?? ""),
+    token_env: channel.bot_token_env ? String(channel.bot_token_env) : null,
+    group_id: channel.group_id != null ? String(channel.group_id) : null,
+    allowed_users: ((channel.access as { allowed_users?: unknown[] } | undefined)?.allowed_users ?? []).map(String),
+  }));
+}
 
 /** Reject anything that would land in fleet.yaml or a shell env file unchecked. */
 function validateWizardInput(input: Partial<WizardPlanInput>): string | null {
@@ -444,16 +457,10 @@ export function handleSettingsRequest(
   // questions through the same probes. Nothing here applies: the last step
   // writes the files and the page then starts an ordinary apply job.
   if (method === "GET" && path === "/api/settings/quickstart/environment") {
-    const channels = (cfg?.channels ?? (cfg?.channel ? [cfg.channel] : [])) as unknown as Array<Record<string, unknown>>;
     json(res, 200, {
       backends: detectWizardBackends(),
       has_fleet: !!cfg && Object.keys(cfg.instances ?? {}).length > 0,
-      channels: channels.map((channel, index) => ({
-        id: String(channel.id ?? channel.type ?? `channel-${index}`),
-        type: String(channel.type ?? ""),
-        token_env: channel.bot_token_env ? String(channel.bot_token_env) : null,
-        group_id: channel.group_id != null ? String(channel.group_id) : null,
-      })),
+      channels: wizardChannels(cfg),
     } satisfies WizardEnvironment);
     return true;
   }
@@ -490,16 +497,10 @@ export function handleSettingsRequest(
       catch { return json(res, 400, { error: "invalid JSON" }); }
       const invalid = validateWizardInput(body);
       if (invalid) return json(res, 400, { error: invalid });
-      const channels = (cfg.channels ?? (cfg.channel ? [cfg.channel] : [])) as unknown as Array<Record<string, unknown>>;
       json(res, 200, planQuickstart(body, {
         backends: detectWizardBackends(),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
-        channels: channels.map((channel, index) => ({
-          id: String(channel.id ?? channel.type ?? `channel-${index}`),
-          type: String(channel.type ?? ""),
-          token_env: channel.bot_token_env ? String(channel.bot_token_env) : null,
-          group_id: channel.group_id != null ? String(channel.group_id) : null,
-        })),
+        channels: wizardChannels(cfg),
       }));
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
@@ -515,39 +516,56 @@ export function handleSettingsRequest(
       if (invalid) return json(res, 400, { error: invalid });
       if (!body.token) return json(res, 400, { error: "token required" });
 
-      const secret = writeQuickstartSecret(ctx.dataDir, body.token_env, body.token);
-      const channels = (cfg.channels ?? (cfg.channel ? [cfg.channel] : [])) as unknown as Array<Record<string, unknown>>;
+      const summary = wizardChannels(cfg);
       const plan = planQuickstart(body, {
         backends: detectWizardBackends(),
         has_fleet: Object.keys(cfg.instances ?? {}).length > 0,
-        channels: channels.map((channel, index) => ({
-          id: String(channel.id ?? channel.type ?? `channel-${index}`),
-          type: String(channel.type ?? ""),
-          token_env: channel.bot_token_env ? String(channel.bot_token_env) : null,
-          group_id: channel.group_id != null ? String(channel.group_id) : null,
-        })),
+        channels: summary,
       });
-      // Re-running the wizard replaces the connection that owns the same token
-      // env rather than adding a second one beside it.
+
+      // Everything is assembled and validated on a copy. Nothing on disk and
+      // nothing in memory moves until the whole result is known to be valid —
+      // the previous order wrote the token first and left the running config
+      // rewritten when validation then failed.
+      const draft = structuredClone(cfg) as FleetConfig;
+      const channels = (draft.channels ?? (draft.channel ? [draft.channel] : [])) as unknown as Array<Record<string, unknown>>;
       const existingIndex = channels.findIndex(channel => channel.bot_token_env === body.token_env);
-      const nextChannels = structuredClone(channels);
-      const entry = { id: body.platform, ...plan.channel };
-      if (existingIndex >= 0) nextChannels[existingIndex] = { ...nextChannels[existingIndex], ...entry };
-      else nextChannels.push(entry);
-      cfg.channels = nextChannels as unknown as typeof cfg.channels;
-      delete (cfg as { channel?: unknown }).channel;
-      cfg.instances[body.instance_name] = {
-        ...(cfg.instances[body.instance_name] ?? {}),
+      const entry = { id: nextChannelId(body.platform, body.token_env, summary), ...plan.channel };
+      if (existingIndex >= 0) channels[existingIndex] = { ...channels[existingIndex], ...entry };
+      else channels.push(entry);
+      draft.channels = channels as unknown as typeof draft.channels;
+      delete (draft as { channel?: unknown }).channel;
+      draft.instances[body.instance_name] = {
+        ...(draft.instances[body.instance_name] ?? {}),
         working_directory: body.working_directory,
         backend: body.backend,
-      } as typeof cfg.instances[string];
+      } as typeof draft.instances[string];
 
-      const validation = validateFleetConfig(cfg);
+      const validation = validateFleetConfig(draft);
       if (!validation.valid) {
         return json(res, 400, { error: validation.errors.map(e => `${e.path}: ${e.message}`).join("; ") });
       }
+
+      const secret = writeQuickstartSecret(ctx.dataDir, body.token_env, body.token);
+      const before = {
+        channels: cfg.channels,
+        channel: (cfg as { channel?: unknown }).channel,
+        instance: cfg.instances[body.instance_name],
+        hadInstance: Object.prototype.hasOwnProperty.call(cfg.instances, body.instance_name),
+      };
+      cfg.channels = draft.channels;
+      delete (cfg as { channel?: unknown }).channel;
+      cfg.instances[body.instance_name] = draft.instances[body.instance_name]!;
       try { ctx.saveFleetConfig(); }
-      catch (err) { return json(res, 500, { error: (err as Error).message }); }
+      catch (err) {
+        // The file is the authority. If it did not take the change, the running
+        // config must not keep it either.
+        cfg.channels = before.channels;
+        if (before.channel !== undefined) (cfg as { channel?: unknown }).channel = before.channel;
+        if (before.hadInstance) cfg.instances[body.instance_name] = before.instance!;
+        else delete cfg.instances[body.instance_name];
+        return json(res, 500, { error: (err as Error).message });
+      }
       ctx.logger.info({ instance: body.instance_name, platform: body.platform }, "settings: quickstart committed");
       // No apply here: the page starts the ordinary job so the wizard's last
       // step has the same progress, deadline and restart recovery as everything
