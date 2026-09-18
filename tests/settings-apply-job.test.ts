@@ -403,7 +403,7 @@ function fleetWithInstance(dir: string, body: string[]): { fm: FleetManager; con
 describe("a Settings apply drives the real reconcile", () => {
   it("reports a hot change as hot and finishes the job", async () => {
     const dir = tempDir();
-    const { fm } = fleetWithInstance(dir, [
+    const { fm, configPath } = fleetWithInstance(dir, [
       "instances:", "  one:", "    working_directory: /tmp/one", "",
     ]);
     const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
@@ -412,6 +412,10 @@ describe("a Settings apply drives the real reconcile", () => {
       applyConfigUpdate: vi.fn(),
     } as never);
     const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    // Settings persists before it applies; the plan reads what will be loaded.
+    writeFileSync(configPath, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "    tool_progress: verbose", "",
+    ].join("\n"));
     fm.fleetConfig!.instances.one!.tool_progress = "verbose";
 
     expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "hot" }]);
@@ -505,12 +509,13 @@ describe("a Settings apply drives the real reconcile", () => {
 
   it("plans a fleet row when the fleet-level config moved under a running process", () => {
     const dir = tempDir();
-    const { fm } = fleetWithInstance(dir, [
+    const { fm, configPath } = fleetWithInstance(dir, [
       "defaults:", "  backend: claude-code", "instances: {}", "",
     ]);
     (fm as unknown as { finishStartup(): void }).finishStartup();
 
     expect(fm.planConfigApply()).toEqual([]);
+    writeFileSync(configPath, ["defaults:", "  backend: codex", "instances: {}", ""].join("\n"));
     fm.fleetConfig!.defaults!.backend = "codex";
 
     expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
@@ -604,6 +609,48 @@ describe("a Settings apply drives the real reconcile", () => {
     await vi.waitFor(() => expect(fm.applyJobs.get(second.id)!.status).toBe("done"));
     expect(fm.applyJobs.get(second.id)!.targets.find(item => item.target === APPLY_FLEET_TARGET)!.status)
       .toBe("restart-required");
+  });
+
+  it("forecasts the agents a changed fleet default is about to restart", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "defaults:", "  backend: claude-code",
+      "instances:",
+      "  one:", "    working_directory: /tmp/one",
+      "  two:", "    working_directory: /tmp/two", "",
+    ]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    for (const name of ["one", "two"]) {
+      const runtime = structuredClone(fm.fleetConfig!.instances[name]!);
+      fm.lifecycle.daemons.set(name, {
+        getConfigSnapshot: () => runtime,
+        applyConfigUpdate: vi.fn(),
+      } as never);
+    }
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    vi.spyOn(fm as unknown as {
+      startInstanceUnattended(...args: unknown[]): Promise<void>;
+    }, "startInstanceUnattended").mockResolvedValue(undefined);
+    // What Settings does: write the file, and mutate the in-memory copy. Only
+    // the file goes back through defaults expansion, so a forecast built from
+    // memory would show the fleet row and none of the agents it takes down.
+    writeFileSync(configPath, [
+      "defaults:", "  backend: codex",
+      "instances:",
+      "  one:", "    working_directory: /tmp/one",
+      "  two:", "    working_directory: /tmp/two", "",
+    ].join("\n"));
+    fm.fleetConfig!.defaults!.backend = "codex";
+
+    expect(fm.planConfigApply()).toEqual([
+      { target: "one", kind: "restart" },
+      { target: "two", kind: "restart" },
+      { target: APPLY_FLEET_TARGET, kind: "restart" },
+    ]);
+
+    const { job } = fm.startSettingsApply("key-defaults-fanout") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    expect(stop.mock.calls.map(call => call[0]).sort()).toEqual(["one", "two"]);
   });
 
   it("reports a newly added instance as it is started", async () => {

@@ -11686,12 +11686,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * `{channel, cold defaults}` as one comparable string — the part of the config
    * a running fleet process cannot adopt without restarting.
    */
-  private fleetLevelSignature(): string {
-    const cold = this.fleetConfig?.defaults
-      ? splitHotColdConfig(this.fleetConfig.defaults as InstanceConfig).cold
+  private fleetLevelSignature(config: FleetConfig | null = this.fleetConfig): string {
+    const cold = config?.defaults
+      ? splitHotColdConfig(config.defaults as InstanceConfig).cold
       : {};
     const { tips: _tips, ...defaults } = cold as Record<string, unknown>;
-    return JSON.stringify({ channel: this.fleetConfig?.channel, defaults });
+    return JSON.stringify({ channel: config?.channel, defaults });
+  }
+
+  /**
+   * The config a reconcile is about to load, not the one held in memory.
+   *
+   * Settings mutates the in-memory object and writes the file; only the file
+   * goes back through defaults expansion. Forecasting from memory therefore
+   * misses every instance that a changed fleet default will restart — the user
+   * is told "restart AgEnD" and not told that five agents are about to go down.
+   */
+  private nextFleetConfig(): FleetConfig | null {
+    if (!this.configPath) return this.fleetConfig;
+    try {
+      return loadFleetConfig(this.configPath);
+    } catch (err) {
+      // An unparseable file is the reconcile's problem to report; the forecast
+      // falls back to what is running rather than failing the request.
+      this.logger.debug({ err }, "Apply plan fell back to the in-memory config");
+      return this.fleetConfig;
+    }
   }
 
   /** Jobs outlive this process on purpose; see apply-job.ts. */
@@ -11709,7 +11729,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    */
   planConfigApply(): Array<{ target: string; kind: ApplyTargetKind }> {
     const rows: Array<{ target: string; kind: ApplyTargetKind }> = [];
-    const next = this.fleetConfig?.instances ?? {};
+    const nextConfig = this.nextFleetConfig();
+    const next = nextConfig?.instances ?? {};
     const classicNames = new Set(this.classicChannels?.getAll().map(ch => ch.instanceName) ?? []);
 
     for (const [name, config] of Object.entries(next)) {
@@ -11723,7 +11744,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     for (const name of this.daemons.keys()) {
       if (!(name in next) && !classicNames.has(name)) rows.push({ target: name, kind: "restart" });
     }
-    if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== this.fleetLevelSignature()) {
+    if (this.appliedFleetLevel !== null && this.appliedFleetLevel !== this.fleetLevelSignature(nextConfig)) {
       rows.push({ target: APPLY_FLEET_TARGET, kind: "restart" });
     }
     return rows;
