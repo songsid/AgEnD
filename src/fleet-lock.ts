@@ -3,10 +3,20 @@ import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 
+/**
+ * What kind of process holds the lock.
+ *
+ * A record written before this field existed has no role; it can only have been
+ * a fleet, so that is what a missing value means. Never widen that default —
+ * "unknown" must not become "safe to take from".
+ */
+export type FleetLockRole = "fleet" | "setup-host";
+
 interface FleetLockRecord {
   pid: number;
   nonce: string;
   createdAt: string;
+  role?: FleetLockRole;
 }
 
 export interface FleetLockHandle {
@@ -18,6 +28,8 @@ export interface FleetLockHandle {
 export interface FleetLockProbe {
   pid?: number;
   nonce?: string;
+  /** Defaults to "fleet"; the pre-fleet setup host claims "setup-host". */
+  role?: FleetLockRole;
   isProcessAlive?: (pid: number) => boolean;
   readCommandLine?: (pid: number) => string;
 }
@@ -37,7 +49,14 @@ function processAlive(pid: number): boolean {
   }
 }
 
-function processCommandLine(pid: number): string {
+/**
+ * A process's command line, or "" when it cannot be read.
+ *
+ * Exported because the health-port takeover has to answer the same question
+ * before it sends a signal: an empty answer means "cannot confirm", and nothing
+ * destructive may be done on that.
+ */
+export function readProcessCommandLine(pid: number): string {
   try {
     return readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ").trim();
   } catch {
@@ -77,10 +96,11 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
     pid,
     nonce: probe.nonce ?? randomBytes(16).toString("hex"),
     createdAt: new Date().toISOString(),
+    role: probe.role ?? "fleet",
   };
   const serialized = JSON.stringify(record) + "\n";
   const isAlive = probe.isProcessAlive ?? processAlive;
-  const readCommandLine = probe.readCommandLine ?? processCommandLine;
+  const readCommandLine = probe.readCommandLine ?? readProcessCommandLine;
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
@@ -98,6 +118,13 @@ export function acquireFleetLock(dataDir: string, probe: FleetLockProbe = {}): F
     }
     const owner = parseRecord(observed);
     if (owner && isAlive(owner.pid)) {
+      // A live setup host is an owner in its own right. Before the role existed
+      // its command line did not match the fleet pattern, so a starting fleet
+      // read the lock as stale and took it — and then collided with the host on
+      // the health port, where the takeover kills whatever fleet.pid names.
+      if (owner.role === "setup-host") {
+        throw new Error(`Setup is already running (PID ${owner.pid}, lock: ${lockPath})`);
+      }
       const commandLine = readCommandLine(owner.pid);
       if (isFleetStartCommandLine(commandLine)) {
         throw new Error(`Fleet is already running (PID ${owner.pid}, lock: ${lockPath})`);

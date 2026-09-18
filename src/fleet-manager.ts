@@ -81,7 +81,7 @@ import { validateFleetConfig } from "./config-validator.js";
 import type { InstanceState, InstanceStateSnapshot } from "./backend/types.js";
 import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
-import { releaseProcessFleetLock } from "./fleet-lock.js";
+import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
@@ -12629,8 +12629,20 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
           if (existsSync(pidPath)) {
             const oldPid = parseInt(readFileSync(pidPath, "utf-8").trim(), 10);
             if (oldPid && oldPid !== process.pid) {
-              process.kill(oldPid, "SIGTERM");
-              this.logger.info({ oldPid }, "Killed old fleet process");
+              // fleet.pid is a claim, not proof. A stale or wrong entry points
+              // at whatever now holds that pid, and this used to SIGTERM it —
+              // an unrelated process killed because a port was busy. Confirm
+              // the target really is an AgEnD fleet, and when that cannot be
+              // confirmed, do not signal: not killing costs a dashboard, and
+              // killing costs somebody else's process.
+              const commandLine = readProcessCommandLine(oldPid);
+              if (isFleetStartCommandLine(commandLine)) {
+                process.kill(oldPid, "SIGTERM");
+                this.logger.info({ oldPid }, "Killed old fleet process");
+              } else {
+                this.logger.warn({ oldPid, commandLine: commandLine || "(unreadable)" },
+                  "fleet.pid does not name an AgEnD fleet process — not signalling it");
+              }
             }
           }
         } catch (err) {
