@@ -154,6 +154,7 @@
   <div class="grow"></div>
   <button class="help-btn" id="langBtn" data-i18n-title="languageButton" title="Language">🌐</button>
   <button class="help-btn" id="helpBtn" data-i18n-title="helpButton" title="Help">ℹ️</button>
+  <button class="sm" id="wizardBtn" data-i18n="wizardButton">🧭 Setup wizard</button>
   <input type="text" id="agentSearch" data-i18n-ph="searchPh" placeholder="🔍 Search agents, bots, channels…" style="width:220px;margin-right:8px">
 </header>
 <div class="help-backdrop" id="helpBackdrop"></div>
@@ -170,6 +171,7 @@
     <div class="modal-foot">
       <span class="sub" id="modalImpact"></span>
       <span class="grow"></span>
+      <span id="modalActions"></span>
       <button id="modalCancel" data-i18n="cancel">Cancel</button>
       <button class="primary" id="modalDone" data-i18n="modalDone">Stage change</button>
     </div>
@@ -247,6 +249,22 @@
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
       applying: "Applying changes…", applyDone: "✓ Changes applied", applyPartial: "⚠️ Some changes failed", applyClose: "Close",
       settingsButton: "Settings", modalDone: "Stage change", advancedSection: "Advanced",
+      wizardButton: "🧭 Setup wizard", wizardTitle: "Set up AgEnD", wizardStep: "Step {0} of {1}",
+      wizardRerun: "A fleet is already configured — finishing replaces the connection that uses the same token variable.",
+      wizardBack: "Back", wizardNext: "Next", wizardFinish: "Create and start",
+      wizardBackend: "Backend", wizardBackendFound: "Found on this host: {0}", wizardBackendNone: "No backend CLI found on this host — install one first.",
+      wizardAgentName: "First agent name", wizardNeedDir: "Enter an absolute working directory.",
+      wizardTelegramHint: "Create a bot with @BotFather, then add it to a group.",
+      wizardDiscordHint: "Create an application in the Discord developer portal and invite the bot to your server.",
+      wizardToken: "Bot token", wizardTokenTelegram: "From @BotFather. It is written to ~/.agend/.env and never shown again.",
+      wizardTokenDiscord: "From the Bot tab of your application. It is written to ~/.agend/.env and never shown again.",
+      wizardVerify: "Verify", wizardVerifying: "Asking the provider…",
+      wizardDetect: "Detect from a message", wizardDetectHint: "Or post any message in the group and press Detect.",
+      wizardWaitingStart: "Waiting for a message in the group…", wizardNoStartYet: "No group message yet — post one and press Detect again.",
+      wizardGeneralChannel: "General channel id", wizardAdminUser: "Your user id (becomes the first allowed user)",
+      wizardNeedVerify: "Verify the token before continuing.",
+      wizardPlanLoading: "Building the plan…", wizardWillWrite: "This will be written:", wizardEnvKeys: "And into ~/.agend/.env: {0}",
+      wizardEnvPerms: "⚠️ ~/.agend/.env is readable by other users on this host.",
       guildIdField: "Guild id", groupIdField: "Group id", notSet: "(not set)", deleteBot: "Delete this bot", noAllowedUsers: "no allowed users",
       searchAll: "🔍 Search agents, bots, channels…", accessMovedHint: "Who may use the bot is set on the connection itself — open Settings on \"{0}\" under Connections & Bots.",
       applyRestartNeeded: "Saved — restart AgEnD to apply", applyNoChange: "no change needed",
@@ -282,6 +300,22 @@
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
       applying: "正在套用變更…", applyDone: "✓ 變更已套用", applyPartial: "⚠️ 有部分變更失敗", applyClose: "關閉",
       settingsButton: "設定", modalDone: "加入待套用", advancedSection: "進階",
+      wizardButton: "🧭 設定精靈", wizardTitle: "設定 AgEnD", wizardStep: "第 {0} 步，共 {1} 步",
+      wizardRerun: "已經有設定好的 fleet —— 完成後會取代使用相同 token 變數的那個連線。",
+      wizardBack: "上一步", wizardNext: "下一步", wizardFinish: "建立並啟動",
+      wizardBackend: "後端", wizardBackendFound: "在這台主機上找到：{0}", wizardBackendNone: "這台主機上找不到任何後端 CLI —— 請先安裝一個。",
+      wizardAgentName: "第一個 agent 名稱", wizardNeedDir: "請輸入絕對路徑的工作目錄。",
+      wizardTelegramHint: "用 @BotFather 建立 bot，然後把它加進一個群組。",
+      wizardDiscordHint: "在 Discord 開發者後台建立應用程式，並把 bot 邀請到你的伺服器。",
+      wizardToken: "Bot token", wizardTokenTelegram: "來自 @BotFather。會寫入 ~/.agend/.env，之後不會再顯示。",
+      wizardTokenDiscord: "來自應用程式的 Bot 分頁。會寫入 ~/.agend/.env，之後不會再顯示。",
+      wizardVerify: "驗證", wizardVerifying: "正在向平台確認…",
+      wizardDetect: "從訊息偵測", wizardDetectHint: "或在群組裡發任一則訊息，然後按「從訊息偵測」。",
+      wizardWaitingStart: "等待群組訊息中…", wizardNoStartYet: "還沒收到群組訊息 —— 發一則之後再按一次。",
+      wizardGeneralChannel: "General 頻道 id", wizardAdminUser: "你的 user id（會成為第一個允許使用者）",
+      wizardNeedVerify: "請先驗證 token 再繼續。",
+      wizardPlanLoading: "正在產生方案…", wizardWillWrite: "將寫入：", wizardEnvKeys: "以及寫入 ~/.agend/.env：{0}",
+      wizardEnvPerms: "⚠️ ~/.agend/.env 目前其他使用者也讀得到。",
       guildIdField: "Guild id", groupIdField: "群組 id", notSet: "（未設定）", deleteBot: "刪除這個機器人", noAllowedUsers: "沒有允許的使用者",
       searchAll: "🔍 搜尋 agent、機器人、頻道…", accessMovedHint: "誰可以使用 bot 是在連線本身設定 —— 請到「連線與機器人」開啟「{0}」的設定。",
       applyRestartNeeded: "已儲存 —— 需要重新啟動 AgEnD 才會生效", applyNoChange: "無需變更",
@@ -421,8 +455,12 @@
    * writes. Applying stays where it was: the Apply button on the pending bar.
    */
   let modalState = null;
-  function openModal({ title, subtitle, body, impacts, stage, doneLabel }) {
+  function openModal({ title, subtitle, body, impacts, stage, doneLabel, actions }) {
     modalState = { stage };
+    $("modalActions").innerHTML = "";
+    // A wizard drives its own footer; an editor uses the standard Cancel/Done.
+    $("modalDone").style.display = actions ? "none" : "";
+    if (actions) $("modalActions").append(...actions);
     $("modalTitle").textContent = title;
     $("modalSubtitle").textContent = subtitle || "";
     $("modalBody").innerHTML = "";
@@ -440,6 +478,204 @@
     $("modal").classList.remove("open");
     $("modalBackdrop").classList.remove("open");
     $("modalBody").innerHTML = "";
+  }
+
+  // ── Setup wizard ──────────────────────────────────────────────────────────
+  //
+  // The same four steps as `agend quickstart`. There is no second flow for
+  // "a fleet already exists": the wizard is one modal that pre-fills from the
+  // running configuration and, when it finishes, hands over to the ordinary
+  // apply job — the same progress, deadline and restart recovery as every other
+  // change the panel makes.
+  const WIZARD_STEPS = 4;
+  let wiz = null;
+
+  function wizardField(labelText, input, hint) {
+    return el("div", { class: "field" }, el("label", {}, labelText), input,
+      hint ? el("div", { class: "sub" }, hint) : null);
+  }
+
+  async function openWizard() {
+    const envRes = await api("/api/settings/quickstart/environment");
+    wiz = {
+      step: 1,
+      env: envRes.body || { backends: [], channels: [], has_fleet: false },
+      backend: (envRes.body?.backends || [])[0] || "claude-code",
+      working_directory: "",
+      instance_name: "agent-1",
+      platform: "telegram",
+      token: "",
+      token_env: "AGEND_BOT_TOKEN",
+      group_id: "",
+      guild_id: "",
+      general_channel_id: "",
+      admin_user_id: "",
+      identity: null,
+      guilds: [],
+      plan: null,
+      busy: "",
+    };
+    renderWizard();
+  }
+
+  function renderWizard() {
+    const body = el("div", {});
+    body.append(el("div", { class: "sub" }, tf("wizardStep", wiz.step, WIZARD_STEPS)));
+    body.append(wizardStepBody());
+    if (wiz.busy) body.append(el("div", { class: "sub" }, wiz.busy));
+
+    const back = el("button", { onclick: () => { wiz.step--; renderWizard(); } }, t("wizardBack"));
+    back.disabled = wiz.step === 1;
+    const next = el("button", { class: "primary", onclick: () => advanceWizard() },
+      wiz.step === WIZARD_STEPS ? t("wizardFinish") : t("wizardNext"));
+    openModal({
+      title: t("wizardTitle"),
+      subtitle: wiz.env.has_fleet ? t("wizardRerun") : "",
+      body,
+      actions: [back, next],
+    });
+  }
+
+  function wizardStepBody() {
+    if (wiz.step === 1) {
+      const fBackend = select(wiz.backend, wiz.env.backends.length ? wiz.env.backends : BACKENDS);
+      fBackend.onchange = () => { wiz.backend = fBackend.value; };
+      const fDir = el("input", { type: "text", value: wiz.working_directory, placeholder: "/home/you/projects/app" });
+      fDir.oninput = () => { wiz.working_directory = fDir.value.trim(); };
+      const fName = el("input", { type: "text", value: wiz.instance_name });
+      fName.oninput = () => { wiz.instance_name = fName.value.trim(); };
+      return el("div", {},
+        wizardField(t("wizardBackend"), fBackend,
+          wiz.env.backends.length ? tf("wizardBackendFound", wiz.env.backends.join(", ")) : t("wizardBackendNone")),
+        wizardField(t("workingDir"), fDir),
+        wizardField(t("wizardAgentName"), fName));
+    }
+    if (wiz.step === 2) {
+      const pick = (platform) => el("button", { class: wiz.platform === platform ? "primary" : "", onclick: () => { wiz.platform = platform; renderWizard(); } },
+        platform === "telegram" ? "Telegram" : "Discord");
+      return el("div", {}, el("div", { class: "actions" }, pick("telegram"), pick("discord")),
+        el("div", { class: "sub" }, wiz.platform === "telegram" ? t("wizardTelegramHint") : t("wizardDiscordHint")));
+    }
+    if (wiz.step === 3) return wizardCredentialsStep();
+    return wizardReviewStep();
+  }
+
+  function wizardCredentialsStep() {
+    const fToken = el("input", { type: "password", value: wiz.token, placeholder: "123456:ABC-DEF…" });
+    fToken.oninput = () => { wiz.token = fToken.value.trim(); wiz.identity = null; };
+    const fEnv = el("input", { type: "text", value: wiz.token_env });
+    fEnv.oninput = () => { wiz.token_env = fEnv.value.trim(); };
+    const verify = el("button", { onclick: async () => {
+      wiz.busy = t("wizardVerifying"); renderWizard();
+      const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform: wiz.platform, token: wiz.token }) });
+      wiz.identity = res.body?.identity || { valid: false };
+      wiz.busy = "";
+      if (wiz.identity.valid && wiz.platform === "discord") {
+        const guilds = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token: wiz.token }) });
+        wiz.guilds = guilds.body?.guilds || [];
+      }
+      renderWizard();
+    } }, t("wizardVerify"));
+
+    const rows = [
+      wizardField(t("wizardToken"), fToken, wiz.platform === "telegram" ? t("wizardTokenTelegram") : t("wizardTokenDiscord")),
+      wizardField(t("tokenEnv"), fEnv),
+      el("div", { class: "actions" }, verify,
+        wiz.identity ? el("span", { class: wiz.identity.valid ? "s" : "e" },
+          wiz.identity.valid ? `✓ ${wiz.identity.username || ""}` : `✗ ${wiz.identity.reason || ""}`) : null),
+    ];
+
+    // Only the ids that platform actually has.
+    if (wiz.platform === "discord") {
+      const fGuild = select(wiz.guild_id, ["", ...wiz.guilds.map(g => ({ value: g.id, label: `${g.name} (${g.id})` }))]);
+      fGuild.onchange = () => { wiz.guild_id = fGuild.value; };
+      const fGeneral = el("input", { type: "text", value: wiz.general_channel_id, placeholder: "General channel id" });
+      fGeneral.oninput = () => { wiz.general_channel_id = fGeneral.value.trim(); };
+      const fUser = el("input", { type: "text", value: wiz.admin_user_id, placeholder: "your Discord user id" });
+      fUser.oninput = () => { wiz.admin_user_id = fUser.value.trim(); };
+      rows.push(wizardField(t("guildIdField"), fGuild), wizardField(t("wizardGeneralChannel"), fGeneral), wizardField(t("wizardAdminUser"), fUser));
+    } else {
+      const fGroup = el("input", { type: "text", value: wiz.group_id, placeholder: "-1001234567890" });
+      fGroup.oninput = () => { wiz.group_id = fGroup.value.trim(); };
+      const detect = el("button", { onclick: async () => {
+        wiz.busy = t("wizardWaitingStart"); renderWizard();
+        const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "await-telegram-start", token: wiz.token, offset: wiz.offset || 0 }) });
+        wiz.busy = "";
+        if (!res.ok) { showBanner(res.body?.error || t("applyFailed"), true); renderWizard(); return; }
+        wiz.offset = res.body.offset;
+        if (res.body.found) {
+          wiz.group_id = String(res.body.found.groupId);
+          wiz.admin_user_id = String(res.body.found.userId);
+        } else showBanner(t("wizardNoStartYet"), true);
+        renderWizard();
+      } }, t("wizardDetect"));
+      const fUser = el("input", { type: "text", value: wiz.admin_user_id, placeholder: "your Telegram user id" });
+      fUser.oninput = () => { wiz.admin_user_id = fUser.value.trim(); };
+      rows.push(wizardField(t("groupIdField"), fGroup, t("wizardDetectHint")),
+        el("div", { class: "actions" }, detect), wizardField(t("wizardAdminUser"), fUser));
+    }
+    return el("div", {}, ...rows);
+  }
+
+  function wizardReviewStep() {
+    const box = el("div", {});
+    if (!wiz.plan) { box.append(el("div", { class: "sub" }, t("wizardPlanLoading"))); return box; }
+    box.append(
+      el("div", { class: "field" }, el("strong", {}, t("wizardWillWrite"))),
+      el("pre", { class: "yaml" }, toYaml({ channels: [wiz.plan.channel], instances: { [wiz.plan.instance.name]: { working_directory: wiz.plan.instance.working_directory, backend: wiz.plan.instance.backend } } })),
+      el("div", { class: "field" }, el("div", { class: "sub" }, tf("wizardEnvKeys", wiz.plan.env_keys.join(", ")))),
+    );
+    for (const warning of wiz.plan.warnings || []) box.append(el("div", { class: "field hint" }, "⚠️ " + warning));
+    return box;
+  }
+
+  async function advanceWizard() {
+    if (wiz.step === 1) {
+      if (!wiz.working_directory.startsWith("/")) { showBanner(t("wizardNeedDir"), true); return; }
+      wiz.step = 2; renderWizard(); return;
+    }
+    if (wiz.step === 2) { wiz.step = 3; renderWizard(); return; }
+    if (wiz.step === 3) {
+      if (!wiz.identity?.valid) { showBanner(t("wizardNeedVerify"), true); return; }
+      const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(wizardInput()) });
+      if (!res.ok) { showBanner(res.body?.error || t("applyFailed"), true); return; }
+      wiz.plan = res.body; wiz.step = 4; renderWizard(); return;
+    }
+    await finishWizard();
+  }
+
+  function wizardInput() {
+    return {
+      platform: wiz.platform, token_env: wiz.token_env, backend: wiz.backend,
+      working_directory: wiz.working_directory, instance_name: wiz.instance_name,
+      group_id: wiz.group_id || undefined, guild_id: wiz.guild_id || undefined,
+      general_channel_id: wiz.general_channel_id || undefined,
+      admin_user_id: wiz.admin_user_id || undefined,
+    };
+  }
+
+  /**
+   * Write the files, then start an ordinary apply job.
+   *
+   * The wizard does not apply anything itself — "create and start" is the same
+   * job the Apply button produces, so it has progress, a deadline and recovery
+   * across the restart it may cause instead of a silent spinner.
+   */
+  async function finishWizard() {
+    const commit = await api("/api/settings/quickstart/commit", { method: "POST", body: JSON.stringify({ ...wizardInput(), token: wiz.token }) });
+    if (!commit.ok) { showBanner(commit.body?.error || t("applyFailed"), true); return; }
+    if (commit.body?.secret_mode_ok === false) showBanner(t("wizardEnvPerms"), true);
+    closeModal();
+    const key = (crypto.randomUUID ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const started = await api("/api/settings/apply", {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ idempotency_key: key }),
+    });
+    if (started.status === 409) { showBanner(t("applyBusy"), true); return; }
+    if (!started.ok || !started.body?.id) { showBanner(started.body?.error || t("applyFailed"), true); return; }
+    await watchApplyJob(started.body);
+    await reload();
   }
 
   function updatePendingBar() {
@@ -1454,6 +1690,7 @@
   $("modalCancel").onclick = () => closeModal();
   $("modalBackdrop").onclick = () => closeModal();
   document.addEventListener("keydown", e => { if (e.key === "Escape" && modalState) closeModal(); });
+  $("wizardBtn").onclick = () => openWizard();
   $("applyChanges").onclick = applyPendingChanges;
   $("discardChanges").onclick = async () => { state.pending.clear(); updatePendingBar(); await reload(); };
 

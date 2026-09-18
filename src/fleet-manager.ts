@@ -11754,6 +11754,28 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }, "fleet.yaml and the running configuration disagree on startup-only keys — every apply will ask for a restart that cannot clear it");
   }
 
+  /**
+   * Is a live adapter already long-polling this bot token?
+   *
+   * Telegram's `getUpdates` has exactly one consumer: a second poller takes
+   * turns with the first and both miss messages. The setup wizard's "post in
+   * the group and I'll detect it" step is a second poller, so it has to know
+   * when the answer is "not against this token, not while I'm running".
+   */
+  isBotTokenInUse(token: string): boolean {
+    if (!token) return false;
+    const configured = this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    for (const channel of configured) {
+      const envVar = channel?.bot_token_env;
+      if (!envVar) continue;
+      // Compare the value, not the variable name: the same token can be
+      // reached through a differently named variable.
+      if (process.env[envVar] === token) return true;
+    }
+    return false;
+  }
+
   /** Non-null when startup found the running config and fleet.yaml disagreeing. */
   fleetSignatureMismatchKeys(): string[] | null {
     return this.fleetSignatureMismatch;
