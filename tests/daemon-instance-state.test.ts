@@ -117,6 +117,169 @@ describe("PendingWorkTracker", () => {
 });
 
 describe("Daemon event-driven pane monitor", () => {
+  function makeCodexMonitor(initialPane: string) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-codex-redraw-"));
+    writeFileSync(join(instanceDir, "window-id"), "@codex");
+    let lastOutputAt = 0;
+    const control = Object.assign(new EventEmitter(), {
+      isIdle: vi.fn(() => false),
+      waitUntilIdle: vi.fn(async () => true),
+      getLastOutputAt: vi.fn(() => lastOutputAt),
+      getObservationResetAt: vi.fn(() => 0),
+    });
+    control.on("output:@codex", (event: { at: number }) => { lastOutputAt = event.at; });
+    let pane = initialPane;
+    const tmux = { getWindowId: () => "@codex", capturePane: vi.fn(async () => pane) };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("codex-redraw", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: true, timeout_minutes: 10, idle_debounce_ms: 2_000 },
+      log_level: "silent",
+    } as any, instanceDir, false, new CodexBackend(instanceDir), control as any,
+      { child: () => logger } as any);
+    (daemon as any).tmux = tmux;
+    return {
+      daemon,
+      control,
+      tmux,
+      setPane: (next: string) => { pane = next; },
+      close: () => {
+        (daemon as any).stopInstanceStateMonitor();
+        rmSync(instanceDir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  const codexWorkingFrame = (seconds: number) => [
+    `• Working (${seconds}s • esc to interrupt)`,
+    "",
+    "› Ask Codex to do anything",
+    "  Context 19% left",
+  ].join("\n");
+
+  const codexAnimatedIdleFrame = (spinner: string) => [
+    "• Finished the requested work.",
+    `⋆       ${spinner}       ⋆`,
+    "› ⋆ Ask Codex to do anything",
+    "    ⋆",
+    "⋆  Context 19% left  ⋆",
+    "        ⋆",
+  ].join("\n");
+
+  const codexIdleFrame = [
+    "• Finished the requested work.",
+    "› Ask Codex to do anything",
+    "  Context 19% left",
+  ].join("\n");
+
+  it("settles a continuously animating Codex 0.154 pane after two structural idle captures", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      monitor.setPane(codexAnimatedIdleFrame("⋆"));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(25);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      monitor.setPane(codexAnimatedIdleFrame(""));
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(25);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(true);
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not mistake live Codex working animation for idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+
+      for (const seconds of [2, 3, 4]) {
+        monitor.setPane(codexWorkingFrame(seconds));
+        monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(25);
+        expect(monitor.daemon.getInstanceState()).toBe("working");
+      }
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not let transcript quotes create or suppress Codex idle evidence", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+
+      const quoteOnly = [
+        "• The pane text quoted by the user was:",
+        "    • Working (1s • esc to interrupt)",
+        "    › Ask Codex to do anything",
+        "      Context 19% left",
+      ].join("\n");
+      for (let i = 0; i < 2; i++) {
+        monitor.setPane(quoteOnly);
+        monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(25);
+      }
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      const quotedThenIdle = [
+        "• The old status was:",
+        "    • Working (1s • esc to interrupt)",
+        "    › Ask Codex to do anything",
+        "      Context 19% left",
+        "› Ask Codex to do anything",
+        "  Context 19% left",
+      ].join("\n");
+      for (let i = 0; i < 2; i++) {
+        monitor.setPane(quotedThenIdle);
+        monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+        await vi.advanceTimersByTimeAsync(25);
+      }
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the ordinary quiet debounce path when Codex animations are disabled", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      monitor.setPane(codexIdleFrame);
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+
+      await vi.advanceTimersByTimeAsync(1_999);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps an idle Antigravity pane idle across identical status-line redraws", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);

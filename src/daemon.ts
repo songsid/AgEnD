@@ -1028,6 +1028,9 @@ export class Daemon extends EventEmitter {
   private instanceStateMonitorTimer: ReturnType<typeof setInterval> | null = null;
   private instanceStateIdleTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputProbeTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Consecutive structural idle captures for a noisy, periodically-redrawing
+   * pane.  Two are required before a working -> idle transition. */
+  private instanceStatePeriodicIdleConfirmations = 0;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
   private instanceStateOutputEventName: string | null = null;
@@ -3525,11 +3528,37 @@ export class Daemon extends EventEmitter {
       // changed when tmux reported output (observedChangeAt), but idle/stuck are
       // decisions about *now*. The old double-observe expressed that by calling
       // observe twice, which silently disabled the "content moved" branch.
-      const snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
-        settled,
-        changeAt: observedChangeAt,
-        forceBusy: paneActivity !== null,
-      });
+      let snapshot: InstanceStateSnapshot;
+      const structuredPeriodicIdle = this.backend?.isPeriodicRedrawIdlePane;
+      if (structuredPeriodicIdle) {
+        const idlePane = structuredPeriodicIdle.call(this.backend, pane);
+        if (idlePane) {
+          if (this.instanceState === "idle" || (reason !== "output_probe" && settled)) {
+            // Cosmetic output must not manufacture an idle -> working edge.
+            // A normal two-second quiet capture remains sufficient on its own.
+            this.instanceStatePeriodicIdleConfirmations = 2;
+          } else if (reason === "output_probe") {
+            this.instanceStatePeriodicIdleConfirmations++;
+          }
+          snapshot = this.instanceStatePeriodicIdleConfirmations >= 2
+            ? this.instanceStateMachine.observe(pane, Date.now(), {
+                settled: true,
+                changeAt: observedChangeAt,
+              })
+            : this.instanceStateMachine.recordOutput(observedChangeAt);
+        } else {
+          // A live busy marker or an unfamiliar layout outranks the broad Codex
+          // ready pattern.  Unknown is working, never guessed idle.
+          this.instanceStatePeriodicIdleConfirmations = 0;
+          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+        }
+      } else {
+        snapshot = this.instanceStateMachine.observe(pane, Date.now(), {
+          settled,
+          changeAt: observedChangeAt,
+          forceBusy: paneActivity !== null,
+        });
+      }
       this.applyInstanceStateSnapshot(snapshot, pane);
 
       // Backends without a transcript feed can still say what they are doing, if
@@ -3560,10 +3589,16 @@ export class Daemon extends EventEmitter {
     const windowId = this.tmux?.getWindowId();
     if (!windowId || event.windowId !== windowId || !this.instanceStateMachine) return;
     this.instanceStateLastOutputAt = event.at;
-    if (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle") {
+    const canProvePeriodicIdle = !!this.backend?.isPeriodicRedrawIdlePane;
+    if (canProvePeriodicIdle || (this.backend?.hasPeriodicPaneRedraw?.() === true && this.instanceState === "idle")) {
       // Do not emit idle→working solely because agy repainted an identical
-      // footer. The short capture probe below still observes genuine pane
-      // changes promptly and moves the state to working.
+      // footer. Codex additionally uses a structural probe while working: two
+      // positive prompt captures can recover from an animation stream that
+      // never leaves a two-second quiet window.
+      if (this.instanceState !== "idle") {
+        this.applyInstanceStateSnapshot(this.instanceStateMachine.recordOutput(event.at));
+        this.scheduleInstanceStateStuckDeadline(event.at);
+      }
       this.scheduleInstanceStateOutputProbe();
       this.scheduleInstanceStateIdleCapture();
       return;
@@ -3608,6 +3643,7 @@ export class Daemon extends EventEmitter {
       this.instanceStateBusyPattern,
     );
     this.instanceStateLastOutputAt = 0;
+    this.instanceStatePeriodicIdleConfirmations = 0;
     this.instanceStateMonitorActive = true;
 
     if (this.controlClient) {
@@ -3627,6 +3663,7 @@ export class Daemon extends EventEmitter {
 
   private stopInstanceStateMonitor(): void {
     this.instanceStateMonitorActive = false;
+    this.instanceStatePeriodicIdleConfirmations = 0;
     this.clearInstanceStateIdleTimer();
     this.clearInstanceStateOutputProbeTimer();
     this.clearInstanceStateStuckTimer();
@@ -4717,7 +4754,7 @@ export class Daemon extends EventEmitter {
   private isPaneIdleForDelivery(windowId: string): boolean {
     if (!this.controlClient) return true;
     if (this.controlClient.isIdle(windowId)) return true;
-    if (this.backend?.hasPeriodicPaneRedraw?.() !== true || this.instanceState !== "idle") return false;
+    if (!this.canTrustRedrawIdleState() || this.instanceState !== "idle") return false;
 
     const lastOutputAt = this.controlClient.getLastOutputAt(windowId);
     if (lastOutputAt === undefined || !this.instanceStateMachine) return false;
@@ -4728,7 +4765,7 @@ export class Daemon extends EventEmitter {
 
   private waitForPaneIdleForDelivery(windowId: string, timeoutMs = 30 * 60_000): Promise<boolean> {
     if (!this.controlClient) return Promise.resolve(true);
-    if (this.backend?.hasPeriodicPaneRedraw?.() !== true) {
+    if (!this.canTrustRedrawIdleState()) {
       return this.controlClient.waitUntilIdle(windowId, timeoutMs);
     }
     if (this.isPaneIdleForDelivery(windowId)) return Promise.resolve(true);
@@ -4745,6 +4782,20 @@ export class Daemon extends EventEmitter {
         resolve(false);
       }, timeoutMs);
     });
+  }
+
+  /**
+   * Antigravity has always opted into pane-state delivery readiness because its
+   * footer redraws while idle.  Codex's structural idle proof is useful only
+   * while the event-driven state monitor is actually running; without that
+   * monitor there is no fresh proof to trust, so preserve the legacy
+   * TmuxControlClient.waitUntilIdle fallback.  This matters during isolated
+   * startup/recovery paths as well as in tests: merely having a matcher must
+   * never turn a missing observer into a 30-minute polling wait.
+   */
+  private canTrustRedrawIdleState(): boolean {
+    if (this.backend?.hasPeriodicPaneRedraw?.() === true) return true;
+    return this.instanceStateMonitorActive && !!this.backend?.isPeriodicRedrawIdlePane;
   }
 
   /**

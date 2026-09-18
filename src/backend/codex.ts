@@ -158,6 +158,51 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
+   * Codex 0.154's Astra theme can keep animating a star field around the input
+   * box (and its terminal title) after the TUI has returned to the prompt.
+   * Those cosmetic redraws keep tmux control mode noisy, so the daemon cannot
+   * wait for two seconds of output silence.
+   *
+   * Do not use getReadyPattern() here: the Codex header, context meter and
+   * input chrome all remain visible while a turn is running.  Instead require
+   * the live, empty prompt followed by the context footer at the bottom of the
+   * viewport, and reject a live status row immediately above it.  Transcript
+   * quotes are indented by the TUI and, more importantly, cannot replace the
+   * final live prompt/footer pair.
+   */
+  isPeriodicRedrawIdlePane(pane: string): boolean {
+    // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
+    // idle chrome.  Remove only that observed decorative glyph; broader
+    // punctuation stripping could turn real tool output into a false prompt.
+    const rows = pane.replace(/\r/g, "").split("\n").map(row => row.replace(/⋆/gu, ""));
+    let prompt = -1;
+    for (let i = rows.length - 1; i >= 0; i--) {
+      if (/^[>›]\s*Ask Codex to do anything\s*$/.test(rows[i])) {
+        prompt = i;
+        break;
+      }
+    }
+    if (prompt < 0) return false;
+
+    let footer = -1;
+    for (let i = prompt + 1; i < Math.min(rows.length, prompt + 7); i++) {
+      if (/^\s*Context\s+\d+%\s+(?:left|used)\s*$/i.test(rows[i])) {
+        footer = i;
+        break;
+      }
+      // Only blank/star-only animation rows may separate prompt and footer.
+      if (rows[i].trim() !== "") return false;
+    }
+    if (footer < 0 || rows.slice(footer + 1).some(row => row.trim() !== "")) return false;
+
+    // A real Codex status row is column-zero TUI chrome.  Quoted examples in a
+    // user/assistant message are indented and therefore fail closed here.
+    const activeRegion = rows.slice(Math.max(0, prompt - 8), prompt);
+    if (activeRegion.some(row => /^•\s+\S.*\besc to interrupt\b/i.test(row))) return false;
+    return true;
+  }
+
+  /**
    * The row codex paints for input it has taken into its own queue instead of
    * submitting: `↳ <message>` under "Messages to be submitted after next tool
    * call (press esc to interrupt and send immediately)".
