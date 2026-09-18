@@ -403,7 +403,7 @@ function fleetWithInstance(dir: string, body: string[]): { fm: FleetManager; con
 describe("a Settings apply drives the real reconcile", () => {
   it("reports a hot change as hot and finishes the job", async () => {
     const dir = tempDir();
-    const { fm } = fleetWithInstance(dir, [
+    const { fm, configPath } = fleetWithInstance(dir, [
       "instances:", "  one:", "    working_directory: /tmp/one", "",
     ]);
     const runtimeConfig = structuredClone(fm.fleetConfig!.instances.one!);
@@ -412,6 +412,10 @@ describe("a Settings apply drives the real reconcile", () => {
       applyConfigUpdate: vi.fn(),
     } as never);
     const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    // Settings persists before it applies; the plan reads what will be loaded.
+    writeFileSync(configPath, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "    tool_progress: verbose", "",
+    ].join("\n"));
     fm.fleetConfig!.instances.one!.tool_progress = "verbose";
 
     expect(fm.planConfigApply()).toEqual([{ target: "one", kind: "hot" }]);
@@ -505,13 +509,15 @@ describe("a Settings apply drives the real reconcile", () => {
 
   it("plans a fleet row when the fleet-level config moved under a running process", () => {
     const dir = tempDir();
-    const { fm } = fleetWithInstance(dir, [
-      "defaults:", "  backend: claude-code", "instances: {}", "",
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "defaults:", "  locale: en", "instances: {}", "",
     ]);
     (fm as unknown as { finishStartup(): void }).finishStartup();
 
     expect(fm.planConfigApply()).toEqual([]);
-    fm.fleetConfig!.defaults!.backend = "codex";
+    // locale is read once by setLocale() at startup — only a new process adopts it.
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+    fm.fleetConfig!.defaults!.locale = "zh-TW";
 
     expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
   });
@@ -584,11 +590,11 @@ describe("a Settings apply drives the real reconcile", () => {
   it("reports a fleet-level change as restart-required, and keeps reporting it", async () => {
     const dir = tempDir();
     const { fm, configPath } = fleetWithInstance(dir, [
-      "defaults:", "  backend: claude-code", "instances: {}", "",
+      "defaults:", "  locale: en", "instances: {}", "",
     ]);
     (fm as unknown as { finishStartup(): void }).finishStartup();
-    writeFileSync(configPath, ["defaults:", "  backend: codex", "instances: {}", ""].join("\n"));
-    fm.fleetConfig!.defaults!.backend = "codex";
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+    fm.fleetConfig!.defaults!.locale = "zh-TW";
 
     const { job } = fm.startSettingsApply("key-fleet-level-one") as { job: ApplyJob };
     await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
@@ -604,6 +610,94 @@ describe("a Settings apply drives the real reconcile", () => {
     await vi.waitFor(() => expect(fm.applyJobs.get(second.id)!.status).toBe("done"));
     expect(fm.applyJobs.get(second.id)!.targets.find(item => item.target === APPLY_FLEET_TARGET)!.status)
       .toBe("restart-required");
+  });
+
+  it("forecasts the agents a changed fleet default is about to restart", async () => {
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "defaults:", "  backend: claude-code",
+      "instances:",
+      "  one:", "    working_directory: /tmp/one",
+      "  two:", "    working_directory: /tmp/two", "",
+    ]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+    for (const name of ["one", "two"]) {
+      const runtime = structuredClone(fm.fleetConfig!.instances[name]!);
+      fm.lifecycle.daemons.set(name, {
+        getConfigSnapshot: () => runtime,
+        applyConfigUpdate: vi.fn(),
+      } as never);
+    }
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue(undefined);
+    vi.spyOn(fm as unknown as {
+      startInstanceUnattended(...args: unknown[]): Promise<void>;
+    }, "startInstanceUnattended").mockResolvedValue(undefined);
+    // What Settings does: write the file, and mutate the in-memory copy. Only
+    // the file goes back through defaults expansion, so a forecast built from
+    // memory would show the fleet row and none of the agents it takes down.
+    writeFileSync(configPath, [
+      "defaults:", "  backend: codex",
+      "instances:",
+      "  one:", "    working_directory: /tmp/one",
+      "  two:", "    working_directory: /tmp/two", "",
+    ].join("\n"));
+    fm.fleetConfig!.defaults!.backend = "codex";
+
+    // The agents absorb a changed backend default by restarting; the process
+    // does not need to, so there is no fleet row.
+    expect(fm.planConfigApply()).toEqual([
+      { target: "one", kind: "restart" },
+      { target: "two", kind: "restart" },
+    ]);
+
+    const { job } = fm.startSettingsApply("key-defaults-fanout") as { job: ApplyJob };
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).toBe("done"));
+    expect(stop.mock.calls.map(call => call[0]).sort()).toEqual(["one", "two"]);
+  });
+
+  it("forecasts from the file even when the in-memory copy was not touched", async () => {
+    // The other half of reading the config the reconcile will load: an edit
+    // that reached disk but not memory (a hand edit, a failed in-memory patch)
+    // must still be forecast, and a comparison against memory would miss it.
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "defaults:", "  locale: en", "instances: {}", "",
+    ]);
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    writeFileSync(configPath, ["defaults:", "  locale: zh-TW", "instances: {}", ""].join("\n"));
+    // Note: fm.fleetConfig is deliberately NOT updated here.
+
+    expect(fm.planConfigApply()).toEqual([{ target: APPLY_FLEET_TARGET, kind: "restart" }]);
+  });
+
+  it("fails the job when the reconcile refuses the new configuration", async () => {
+    // The reconcile keeps the running config and notifies; the apply used to
+    // mark every row done and tell the user "changes applied".
+    const dir = tempDir();
+    const { fm, configPath } = fleetWithInstance(dir, [
+      "instances:", "  one:", "    working_directory: /tmp/one", "",
+    ]);
+    fm.lifecycle.daemons.set("one", {
+      getConfigSnapshot: () => structuredClone(fm.fleetConfig!.instances.one!),
+      applyConfigUpdate: vi.fn(),
+    } as never);
+    vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
+    // A channel with no type or token env: valid YAML, refused configuration.
+    // The instance change rides along so the job has a row to be honest about.
+    writeFileSync(configPath, [
+      "channel:", "  group_id: '123'",
+      "instances:", "  one:", "    working_directory: /tmp/one", "    backend: codex", "",
+    ].join("\n"));
+
+    const { job } = fm.startSettingsApply("key-rejected-config") as { job: ApplyJob };
+    expect(job.targets).toEqual([{ target: "one", kind: "restart", status: "pending" }]);
+    await vi.waitFor(() => expect(fm.applyJobs.get(job.id)!.status).not.toBe("running"));
+
+    const finished = fm.applyJobs.get(job.id)!;
+    expect(finished.status).toBe("failed");
+    expect(finished.error).toContain("channel.type");
+    expect(finished.targets[0]!.status).toBe("failed");
   });
 
   it("reports a newly added instance as it is started", async () => {

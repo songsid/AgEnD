@@ -33,7 +33,7 @@ import type { FleetConfig, RawFleetConfig } from "./types.js";
 import { KNOWN_BACKENDS, validateFleetConfig, validateClassicBotConfig, type ValidationResult } from "./config-validator.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { buildSettingsImpactSchema, CLASSIC_HOT_CONFIG_KEYS } from "./instance-config-impact.js";
-import { viewOf, type ApplyJob, type ApplyJobStore } from "./apply-job.js";
+import { viewOf, type ApplyJob, type ApplyJobStore, type SelfRestartResult } from "./apply-job.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -54,6 +54,10 @@ export interface SettingsApiContext {
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
   startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
+  requestSettingsSelfRestart?(jobId: string, key: string): Promise<SelfRestartResult>;
+  /** Non-null when the running config and fleet.yaml disagree on a
+   * startup-only key, in which case a restart cannot clear the fleet row. */
+  fleetSignatureMismatchKeys?(): string[] | null;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -171,7 +175,12 @@ export function handleSettingsRequest(
   // The page used to carry its own copy of the hot set plus one hand-written
   // badge per field, which could disagree with what the fleet actually does.
   if (method === "GET" && path === "/api/settings/schema") {
-    json(res, 200, buildSettingsImpactSchema());
+    json(res, 200, {
+      ...buildSettingsImpactSchema(),
+      // Non-null means a restart cannot clear the fleet row, so the page shows
+      // the mismatch instead of offering a button that can never succeed.
+      fleet_signature_mismatch: ctx.fleetSignatureMismatchKeys?.() ?? null,
+    });
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet") {
@@ -399,6 +408,48 @@ export function handleSettingsRequest(
         ? "settings: apply retry rejoined the existing job"
         : "settings: apply job started");
       json(res, result.reused ? 200 : 202, viewOf(result.job));
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  // ── Restart AgEnD itself ──
+  //
+  // Deliberately not part of Apply. The panel is reachable from outside the
+  // LAN, so restarting the whole fleet is its own action with its own
+  // confirmation, its own idempotency key, and its own rate limit.
+  if (method === "POST" && path === "/api/settings/restart-fleet") {
+    if (!ctx.requestSettingsSelfRestart) { json(res, 501, { error: "self restart unavailable" }); return true; }
+    readBody(req, 64 * 1024).then(async buf => {
+      let body: Record<string, unknown> = {};
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; } catch { /* reported below */ }
+      const header = req.headers["idempotency-key"];
+      const key = (typeof header === "string" ? header : undefined)
+        ?? (typeof body.idempotency_key === "string" ? body.idempotency_key : undefined);
+      if (!key || !/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) {
+        json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" });
+        return;
+      }
+      // A literal, not a boolean: a stray `true` in a replayed body should not
+      // be able to mean "yes, restart the fleet".
+      if (body.confirm !== "restart-agend") {
+        json(res, 400, { error: 'confirm must be the literal "restart-agend"' });
+        return;
+      }
+      const jobId = typeof body.job_id === "string" ? body.job_id : "";
+      if (!jobId) { json(res, 400, { error: "job_id required" }); return; }
+
+      const result = await ctx.requestSettingsSelfRestart!(jobId, key);
+      if (result.ok) {
+        ctx.logger.info({ jobId: result.jobId, reused: !!result.reused }, "settings: self restart accepted");
+        json(res, result.reused ? 200 : 202, { job_id: result.jobId, restarting: true });
+        return;
+      }
+      ctx.logger.warn({ jobId, status: result.status, reason: result.error }, "settings: self restart refused");
+      if (result.retryAfterSeconds) res.setHeader("Retry-After", String(result.retryAfterSeconds));
+      json(res, result.status, {
+        error: result.error,
+        ...(result.retryAfterSeconds ? { retry_after_seconds: result.retryAfterSeconds } : {}),
+      });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }

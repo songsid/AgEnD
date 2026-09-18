@@ -218,8 +218,12 @@
       saved: "Saved", failed: "Failed", actionFailed: "{0} failed", noAgentMatch: "No agents match \"{0}\".", deleteAgent: "Delete agent \"{0}\"? This will be applied only after you confirm the pending changes.", nameRequired: "name required", tokenEnvRequired: "token env required", removeBot: "Remove bot \"{0}\"? (the token in .env is left untouched)",
       applying: "Applying changes…", applyDone: "✓ Changes applied", applyPartial: "⚠️ Some changes failed", applyClose: "Close",
       applyRestartNeeded: "Saved — restart AgEnD to apply", applyNoChange: "no change needed",
-      applyRestartHint: "This change needs AgEnD itself restarted: run /restart in your chat channel, or `agend restart --reload`.",
+      applyRestartHint: "This change needs AgEnD itself restarted. You can restart it here, or run /restart in your chat channel.",
       applyBusy: "AgEnD is already reloading its configuration. Your changes are saved — try Apply again in a moment.",
+      restartFleetButton: "Restart AgEnD", restartFleetConfirm: "Restart AgEnD now?\n\nEvery agent stops and starts again, work in progress is interrupted, and the panel is unreachable for up to a minute. A notice is posted to your chat channel.",
+      restartFleetStarted: "Restarting AgEnD — this page keeps checking.", restartFleetRefused: "Restart refused: {0}",
+      restartFleetRateLimited: "Restart refused: {0} (try again in about {1} minutes)",
+      signatureMismatch: "fleet.yaml and the running configuration disagree on: {0}. Restarting will not clear this — check fleet.log first.",
       applyStillWorking: "Still restarting ({0}s) — AgEnD is still working; this page keeps checking.",
       applyLostJob: "Lost track of this apply (the fleet may have restarted). Reload the page to see the current state.",
       changesPending: "{0} change(s) not applied", impactNow: "⚡ Immediately", impactAgent: "🔄 Restart this Agent", impactFleet: "🔄🔄 Restart AgEnD", queued: "Queued: {0}", applyFailed: "Apply failed", changesApplied: "✓ Changes applied. AgEnD is reconciling affected Agents.", reviewChanges: "Review changes", readyApply: "Ready to apply", copied: "Copied", expectedMapping: "expected a mapping", configLoadFailed: "Failed to load config — open the Settings link again.",
@@ -246,8 +250,12 @@
       saved: "已儲存", failed: "失敗", actionFailed: "{0}失敗", noAgentMatch: "沒有符合「{0}」的 Agent。", deleteAgent: "確定刪除 Agent「{0}」嗎？只有在確認套用待處理變更後才會生效。", nameRequired: "必須填寫名稱", tokenEnvRequired: "必須填寫 token 環境變數", removeBot: "確定移除機器人「{0}」嗎？（.env 中的 token 會保留）",
       applying: "正在套用變更…", applyDone: "✓ 變更已套用", applyPartial: "⚠️ 有部分變更失敗", applyClose: "關閉",
       applyRestartNeeded: "已儲存 —— 需要重新啟動 AgEnD 才會生效", applyNoChange: "無需變更",
-      applyRestartHint: "此變更需要重新啟動 AgEnD 本身：請在聊天頻道執行 /restart，或執行 `agend restart --reload`。",
+      applyRestartHint: "此變更需要重新啟動 AgEnD 本身。可以在這裡重新啟動，或在聊天頻道執行 /restart。",
       applyBusy: "AgEnD 正在重新載入設定。你的變更已儲存，請稍候再按一次套用。",
+      restartFleetButton: "重新啟動 AgEnD", restartFleetConfirm: "現在重新啟動 AgEnD？\n\n所有 agent 都會停止再啟動，進行中的工作會被中斷，面板會有最多約一分鐘無法連線。聊天頻道會收到一則通知。",
+      restartFleetStarted: "AgEnD 重新啟動中 —— 此頁面會持續確認。", restartFleetRefused: "重新啟動被拒絕：{0}",
+      restartFleetRateLimited: "重新啟動被拒絕：{0}（約 {1} 分鐘後可再試）",
+      signatureMismatch: "fleet.yaml 與執行中的設定在這些項目上不一致：{0}。重新啟動無法解決，請先查看 fleet.log。",
       applyStillWorking: "仍在重啟中（{0} 秒）—— AgEnD 還在處理，此頁面會持續確認。",
       applyLostJob: "已追蹤不到這次套用（AgEnD 可能重啟過）。請重新整理頁面查看目前狀態。",
       changesPending: "有 {0} 項變更尚未套用", impactNow: "⚡ 立即生效", impactAgent: "🔄 重新啟動此 Agent", impactFleet: "🔄🔄 重新啟動 AgEnD", queued: "已加入待套用：{0}", applyFailed: "套用失敗", changesApplied: "✓ 變更已套用，AgEnD 正在協調受影響的 Agent。", reviewChanges: "檢查變更", readyApply: "可套用變更", copied: "已複製", expectedMapping: "預期為 mapping", configLoadFailed: "載入設定失敗 — 請重新開啟 Settings 連結。",
@@ -443,17 +451,45 @@
       row.error ? el("span", { class: "err" }, row.error) : null);
   }
 
+  async function restartFleet(job) {
+    // Its own confirmation, its own key. A single Apply must never be able to
+    // carry a full-fleet restart along with it.
+    if (!confirm(t("restartFleetConfirm"))) return;
+    const key = (crypto.randomUUID ? crypto.randomUUID() : `r-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const res = await api("/api/settings/restart-fleet", {
+      method: "POST",
+      headers: { "Idempotency-Key": key },
+      body: JSON.stringify({ job_id: job.id, confirm: "restart-agend", idempotency_key: key }),
+    });
+    if (!res.ok) {
+      const secs = res.body?.retry_after_seconds;
+      showBanner(secs
+        ? tf("restartFleetRateLimited", res.body?.error || "", Math.ceil(secs / 60))
+        : tf("restartFleetRefused", res.body?.error || t("applyFailed")), true);
+      return;
+    }
+    showBanner(t("restartFleetStarted"));
+    await watchApplyJob(job);
+  }
+
   function renderApplyJob(job) {
     $("applyPanel").classList.add("open");
     $("applyTitle").textContent = job.status === "done"
       ? (job.targets.some(r => r.status === "failed") ? t("applyPartial") : t("applyDone"))
       : job.status === "failed" ? t("applyPartial") : t("applying");
     const needsRestart = job.targets.some(row => row.status === "restart-required");
+    const mismatch = state.schema.fleet_signature_mismatch;
     $("applyNote").textContent = job.overdue
       ? tf("applyStillWorking", Math.round(job.elapsed_ms / 1000))
+      : mismatch && needsRestart ? tf("signatureMismatch", mismatch.join(", "))
       : needsRestart ? t("applyRestartHint") : "";
     const rows = $("applyRows"); rows.innerHTML = "";
     for (const row of job.targets) rows.append(applyRow(row));
+    // A restart that cannot clear the mismatch is worse than no button at all.
+    if (needsRestart && !mismatch) {
+      rows.append(el("div", { class: "apply-row" },
+        el("button", { class: "primary", onclick: () => restartFleet(job) }, t("restartFleetButton"))));
+    }
     if (job.error) rows.append(el("div", { class: "apply-row err" }, job.error));
   }
 

@@ -166,10 +166,23 @@ parallel — so SIGHUP and Apply share the slot: a signal arriving mid-apply is
 coalesced into one replay, and a second Apply gets `409` with the running
 `running_job_id`. The writes are already on disk by then, so retrying is safe.
 
-A change that only a fresh AgEnD process can adopt (channel binding, cold fleet
-defaults) ends as `restart-required`, not `done`: it is saved, valid, and not in
-effect until you run `/restart`. That row keeps appearing on every later apply
-until the process is actually restarted.
+A change that only a fresh AgEnD process can adopt ends as `restart-required`,
+not `done`: it is saved, valid, and not in effect yet. That row keeps appearing
+on every later apply until the process is actually restarted.
+
+"Only a fresh process can adopt it" is a short list — the channel bindings,
+`health_port`, `defaults.locale`, and the `cost_guard` / `webhooks` /
+`daily_summary` / scheduler settings that are read once when their subsystem is
+constructed. A changed `defaults.backend` is not on it: the agents absorb that
+by restarting, and asking for a fleet restart on top would be theatre.
+
+The panel can perform that restart (`POST /api/settings/restart-fleet`), behind
+its own confirmation, its own idempotency key, and a rate limit of one restart
+per 10 minutes and three per hour that is written to disk before anything is
+launched — an in-memory counter would reset on the very restart it is limiting.
+The restart is announced in your chat channel before it happens, and is refused
+outright if it cannot be announced, so a panel restart is never invisible to the
+people who would notice it was not them.
 
 `apply_progress` SSE frames on `/ui/events` are an accelerator only. They carry
 no event id, so a client that reconnects cannot ask for what it missed — treat a

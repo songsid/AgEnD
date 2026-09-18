@@ -38,6 +38,11 @@ export const APPLY_JOB_DEADLINE_MS = 120_000;
 /** At most this many jobs are kept, newest first. */
 const MAX_JOBS = 20;
 
+/** Outcome of asking the fleet to restart itself for a Settings change. */
+export type SelfRestartResult =
+  | { ok: true; jobId: string; reused?: boolean }
+  | { ok: false; status: 409 | 429 | 503; error: string; retryAfterSeconds?: number };
+
 /** The row for the fleet process itself, as opposed to one of its agents. */
 export const APPLY_FLEET_TARGET = "fleet";
 
@@ -77,6 +82,12 @@ export interface ApplyJob {
   /** The process that created the job, so a restart is detectable. */
   pid: number;
   error?: string;
+  /**
+   * The idempotency key of the self-restart this job's fleet row was consumed
+   * by. Stored on the job rather than in memory because the process it belongs
+   * to is about to be replaced — a retry after the restart has to find it.
+   */
+  restart_key?: string;
 }
 
 interface JobFile {
@@ -203,6 +214,11 @@ export class ApplyJobStore {
 
   get(id: string): ApplyJob | null {
     return this.jobs.find(job => job.id === id) ?? null;
+  }
+
+  /** The job whose fleet row a given self-restart key already consumed. */
+  findByRestartKey(key: string): ApplyJob | null {
+    return this.jobs.find(job => job.restart_key === key) ?? null;
   }
 
   /** The live job for a key, if the client is retrying rather than re-applying. */
