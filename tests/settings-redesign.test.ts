@@ -4,9 +4,15 @@ import { describe, expect, it } from "vitest";
 const html = readFileSync(new URL("../src/ui/settings.html", import.meta.url), "utf8");
 
 describe("Settings P0 redesign shell", () => {
-  it("provides remembered advanced controls and a developer YAML level", () => {
-    expect(html).toContain('id="advancedToggle"');
-    expect(html).toContain('localStorage.getItem("agend_settings_advanced")');
+  it("keeps advanced settings one click away and the YAML escape hatch intact", () => {
+    // Two levels now: what is shown, and one drawer per object. The global
+    // "show advanced" mode is gone — a mode that hides settings is the thing
+    // the redesign replaced, not a feature to keep.
+    expect(html).not.toContain('id="advancedToggle"');
+    expect(html).not.toContain("advanced-only");
+    expect(html).toContain('class: "drawer"');
+    expect(html).toContain('drawer(t("advancedSection")');
+    // The escape hatch stays exactly where it was.
     expect(html).toContain("Developer · Level 3");
     expect(html).toContain("Developer YAML");
   });
@@ -49,9 +55,12 @@ describe("Settings P0 redesign shell", () => {
   });
 
   it("stages primary access mode and allowed users with lockout confirmations", () => {
-    expect(html).toContain('const fAccessMode = select(originalPrimaryAccess.mode || "locked", ["locked", "open", "pairing"])');
+    // Access is edited on the connection it belongs to — one modal, one object.
+    expect(html).toContain('const fMode = select(ch.access.mode || "locked", ["open", "locked", "pairing"])');
     expect(html).toContain('mode: stagedAccessMode, allowed_users: stagedAllowedUsers');
-    expect(html).toContain('confirmAccessChange(originalPrimaryAccess, stagedAccessMode, stagedAllowedUsers)');
+    // Still confirmed against the immutable staged snapshot at Apply time, not
+    // against controls the user may have edited again since.
+    expect(html).toContain('confirmAccessChange(previousAccess, stagedAccessMode, stagedAllowedUsers)');
     expect(html).toContain('if (change.confirm && !change.confirm())');
     expect(html).toContain('confirmOpenAccess: "Open access allows anyone in this channel to operate the bot. Continue?"');
     expect(html).toContain('accessLockedEmpty: "Locked mode has no allowed users; add at least one administrator to avoid lockout."');
