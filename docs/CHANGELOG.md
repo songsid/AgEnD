@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+Settings now applies changes as a job you can watch. `POST /api/settings/apply` returns one row per affected agent and `GET /api/settings/apply/:jobId` is the authority on it; the job is stored on disk, so a change that restarts AgEnD itself no longer takes the answer down with it. The client generates the idempotency key before its first attempt, so the retry that follows a lost response rejoins the original job instead of applying everything twice.
+
+The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
+
+### Upgrade Notes
+- **Dashboard and Settings links now exchange their token for a session cookie** — opening a link redeems `?token=` once, sets an `HttpOnly; SameSite=Strict` cookie, and redirects to the same page without the token, so the credential stays out of the address bar, browser history and any log that records request URLs. `X-Agend-Token` still works for scripts and the CLI, but a URL token is no longer accepted for a write. `agend web-token rotate` revokes every issued link and cookie at once.
+- **Fewer changes ask for a full AgEnD restart** — "restart AgEnD" used to appear for every cold fleet default, including `backend` and `model`, which the agents absorb by restarting. It is now limited to settings read once when a subsystem is constructed (channel bindings, `health_port`, `defaults.locale`, `cost_guard`, `webhooks`, `daily_summary`, and the two scheduler keys the scheduler captures at startup).
+- **A failed self-restart needs the change applied again** — if the restart cannot be launched, its row is marked failed and the job is finished rather than left open for another attempt. Press Apply again to get a fresh job whose fleet row can be restarted. This is the fail-closed side of "one restart per job": a job whose launch failed must not stay a reusable restart button.
+
 ## [2.1.5] - 2026-09-16
 
 ### Upgrade Notes

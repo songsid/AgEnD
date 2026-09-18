@@ -115,7 +115,9 @@
 3. **落盤的速率限制**：`self-restart.json`，**上限 10 分鐘 1 次、1 小時 3 次**。要求：
    - **必須在 spawn helper 之前寫入並 `fsync` 完成**。順序反了的話，「寫入落地前 process 已被換掉」會讓計數歸零，等於沒有限制；
    - 計數的是**嘗試**，不是成功。失敗的嘗試一樣消耗額度，否則一個穩定失敗的重啟可以無限重試；
+   - **記錄在稽核貼文之前**（fable 備註一）。若記錄持續失敗（磁碟唯讀），先貼文的順序會讓持有 token 者每次呼叫都在頻道貼一則「正在重啟」而實際沒重啟 —— 一個無限的頻道騷擾原語。代價是貼文失敗時也消耗一次額度，這個方向對速率限制而言是正確的；
    - **不得有任何 web 路由能清除或修改這個檔**。可清除的速率限制不是速率限制；
+   - **檔案損毀／無法解析時視為「已達上限」**（fable 備註二，fail-closed）。把損毀讀成「尚無紀錄」等於讓這個控制在自身狀態存疑時自我解除。復原方式是在主機上刪掉該檔 —— 需要的權限跟直接執行 `agend restart` 相同。**檔案不存在**（從未寫過）仍然是正常的首次執行，不算損毀；
    - 檔案權限 **0600**。
 4. **仍在票 0 的 gate 後面**：HttpOnly + SameSite=Strict cookie、Origin 檢查、token。
 
@@ -129,7 +131,7 @@
 - **貼 General 訊息失敗（adapter 不在／送不出去）→ 拒絕重啟**，不做無稽核的重啟。與「marker 寫不進去就拒絕」同一個原則：**不做一個沒有人看得到、也追蹤不到的重啟**。
 - **送出時**：fleet 列從 `restart-required` 轉 `running`。票 2 的 `settleAfterRestart` 只收非終態的列，不轉的話新 process 不會把它收尾。
 - **成功**：新 process 啟動 → `settleAfterRestart` 標 `done` + `settled_by:"fleet-restart"`。瀏覽器輪詢 GET 自然接上，資料形狀不用改。
-- **spawn 失敗／helper 提前退出**：該列 `failed` + 原因，沿用既有的 `setUpdateProgressStage("failed")`。
+- **spawn 失敗／helper 提前退出**：該列 `failed` + 原因，job 結案，沿用既有的 `setUpdateProgressStage("failed")`。使用者要重新 Apply 才會拿到新的可重啟 job —— 這是「一個 job 只能重啟一次」的 fail-closed 代價：一個 launch 失敗的 job 不該留成一顆可重複按的重啟鈕。
 - **逾時**：自身重啟的 deadline 拉長到 **300 秒**（含整個 service 重啟），顯示「仍在重啟中（N 秒）」。
 - **marker 寫不進去**：拒絕重啟（既有行為）。
 - **非阻擋**：`Idempotency-Key` 語意同 apply（重送回原結果，不是第二次重啟）；rate-limit 回 **429 附 `Retry-After`**。

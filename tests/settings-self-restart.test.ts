@@ -85,11 +85,32 @@ describe("self-restart rate limit", () => {
     expect(recordSelfRestartAttempt(notADir)).toBe(false);
   });
 
-  it("treats a corrupt file as empty rather than as a permanent lockout", () => {
+  it("treats a damaged file as spent, not as fresh", () => {
+    // A control that disarms itself when its own state is in doubt is not a
+    // control. Recovery is deleting the file on the host, which needs the same
+    // access as running `agend restart` there.
     const dir = tempDir();
-    writeFileSync(join(dir, "self-restart.json"), "{ not json");
 
-    expect(checkSelfRestartAllowance(dir).allowed).toBe(true);
+    writeFileSync(join(dir, "self-restart.json"), "{ not json");
+    expect(checkSelfRestartAllowance(dir)).toMatchObject({ allowed: false, reason: "unreadable" });
+
+    // A half-written file, which is what an interrupted write leaves behind.
+    writeFileSync(join(dir, "self-restart.json"), "");
+    expect(checkSelfRestartAllowance(dir).allowed).toBe(false);
+
+    // Valid JSON of the wrong shape.
+    writeFileSync(join(dir, "self-restart.json"), JSON.stringify({ attempts: 5 }));
+    expect(checkSelfRestartAllowance(dir).allowed).toBe(false);
+    writeFileSync(join(dir, "self-restart.json"), JSON.stringify({}));
+    expect(checkSelfRestartAllowance(dir).allowed).toBe(false);
+
+    // …and the right shape with junk inside is not trusted either.
+    writeFileSync(join(dir, "self-restart.json"), JSON.stringify({ attempts: ["soon"] }));
+    expect(checkSelfRestartAllowance(dir).allowed).toBe(false);
+  });
+
+  it("still starts fresh when the file has simply never been written", () => {
+    expect(checkSelfRestartAllowance(tempDir()).allowed).toBe(true);
   });
 
   it("is never cleared by anything in the web layer", () => {
@@ -253,7 +274,10 @@ describe("restarting AgEnD from Settings", () => {
     expect(result).toMatchObject({ ok: false, status: 409 });
     expect((result as { error: string }).error).toContain("agend restart");
     expect(fullRestart).not.toHaveBeenCalled();
-    expect(readSelfRestartAttempts(dir)).toEqual([]);
+    // The attempt is recorded before the notice is posted, so a failed
+    // announcement still costs an attempt — otherwise a data dir that cannot be
+    // written turns the announcement into an unlimited channel-spam primitive.
+    expect(readSelfRestartAttempts(dir)).toHaveLength(1);
   });
 
   it("refuses on a deployment with no chat channel at all", async () => {
@@ -270,15 +294,33 @@ describe("restarting AgEnD from Settings", () => {
 
   it("refuses to restart unmetered when the attempt cannot be recorded", async () => {
     const dir = tempDir();
-    const { fm, job, fullRestart } = await fleetWithPendingRestart(dir);
-    writeFileSync(join(dir, "self-restart.json"), "");
-    // Make the data dir path unusable for the limit file only.
-    (fm as unknown as { dataDir: string }).dataDir = join(dir, "self-restart.json");
+    const { fm, job, fullRestart, sendText } = await fleetWithPendingRestart(dir);
+    // A directory that does not exist: reading the (absent) limit file gives
+    // ENOENT and so reads as "no attempts yet", while writing it fails. That is
+    // the read-only-mount shape, and it reaches the record step rather than
+    // being turned away by the unreadable check first.
+    (fm as unknown as { dataDir: string }).dataDir = join(dir, "missing", "deeper");
 
     const result = await fm.requestSettingsSelfRestart(job.id, "key-unrecordable");
 
     expect(result).toMatchObject({ ok: false, status: 503 });
     expect(fullRestart).not.toHaveBeenCalled();
+    // And nothing was announced: a restart that cannot be metered must not
+    // repeatedly tell the channel it is restarting.
+    expect(sendText).not.toHaveBeenCalled();
+  });
+
+  it("refuses with 503 when the rate-limit file itself is damaged", async () => {
+    const dir = tempDir();
+    const { fm, job, fullRestart, sendText } = await fleetWithPendingRestart(dir);
+    writeFileSync(join(dir, "self-restart.json"), "{ half-writ");
+
+    const result = await fm.requestSettingsSelfRestart(job.id, "key-damaged-limit");
+
+    expect(result).toMatchObject({ ok: false, status: 503 });
+    expect((result as { error: string }).error).toContain("self-restart.json");
+    expect(fullRestart).not.toHaveBeenCalled();
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it("marks the row failed when the launch itself fails", async () => {

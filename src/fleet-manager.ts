@@ -11805,6 +11805,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const allowance = checkSelfRestartAllowance(this.dataDir);
     if (!allowance.allowed) {
+      if (allowance.reason === "unreadable") {
+        // Fail closed: with the limit's own state in doubt, "no attempts yet"
+        // is the one reading that must not be assumed.
+        return {
+          ok: false,
+          status: 503,
+          error: "the restart rate-limit file cannot be read — remove self-restart.json from the data dir on the host, or run `agend restart` there",
+        };
+      }
       return {
         ok: false,
         status: 429,
@@ -11815,9 +11824,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       };
     }
 
-    // Out-of-band notice before anything happens, so a panel restart is visible
-    // where the admins are. Refusing when it cannot be posted is the same rule
-    // as refusing when the progress marker cannot be written: no untraceable
+    // Recorded before the notice, not after. If recording keeps failing (a
+    // read-only data dir), posting first would let whoever holds the token spam
+    // the channel with "restarting…" notices for restarts that never happen.
+    // The cost is that a failed announcement still spends an attempt, which is
+    // the right way round for a rate limit.
+    if (!recordSelfRestartAttempt(this.dataDir)) {
+      this.logger.error("Self-restart attempt could not be recorded — refusing to restart unmetered");
+      return { ok: false, status: 503, error: "could not record the restart attempt" };
+    }
+
+    // Out-of-band notice before the restart, so a panel restart is visible where
+    // the admins are. Refusing when it cannot be posted is the same rule as
+    // refusing when the progress marker cannot be written: no untraceable
     // restarts.
     const notice = await this.postSelfRestartNotice();
     if (!notice) {
@@ -11826,13 +11845,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         status: 409,
         error: "no chat channel is available to announce the restart — run `agend restart` on the host instead",
       };
-    }
-
-    // Before the spawn, and fsynced: the process is about to be replaced, and an
-    // attempt that is not on the device is an attempt that never happened.
-    if (!recordSelfRestartAttempt(this.dataDir)) {
-      this.logger.error("Self-restart attempt could not be recorded — refusing to restart unmetered");
-      return { ok: false, status: 503, error: "could not record the restart attempt" };
     }
 
     // Consume the row: it moves to running, which is also what lets the next
