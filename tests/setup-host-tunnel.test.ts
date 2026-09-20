@@ -1,11 +1,11 @@
 import { createServer } from "node:http";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resolvePort, SetupHost } from "../src/setup-host.js";
-import { leasePath, readLease } from "../src/tunnel/lease.js";
+import { leasePath, readLease, writeLease } from "../src/tunnel/lease.js";
 import { TunnelStartError, type TunnelHandle, type TunnelProvider, type TunnelStartContext, type TunnelStopResult } from "../src/tunnel/types.js";
 
 const dirs: string[] = [];
@@ -53,6 +53,8 @@ function fakeProvider(opts: {
   stop?: () => Promise<TunnelStopResult>;
   fail?: TunnelStartError;
   onExit?: (fire: () => void) => void;
+  /** Run the readiness probe for real, the way cloudflared's traffic arrives. */
+  probe?: (result: { status: number; body: string }) => void;
 } = {}): TunnelProvider & { started: TunnelStartContext[]; stops: number } {
   const started: TunnelStartContext[] = [];
   let stops = 0;
@@ -63,6 +65,13 @@ function fakeProvider(opts: {
     preflight: async () => ({ ok: true as const, binaryPath: "/bin/true" }),
     async start(ctx: TunnelStartContext): Promise<TunnelHandle> {
       started.push(ctx);
+      // Exactly where the real provider does it: after the URL validates,
+      // before anything is fetched through the tunnel.
+      ctx.onCandidateHost?.(EXTERNAL_HOST);
+      if (opts.probe) {
+        const res = await call(Number(ctx.origin.port), "GET", ctx.pagePath, { headers: { host: EXTERNAL_HOST } });
+        opts.probe({ status: res.status, body: res.body });
+      }
       if (opts.fail) throw opts.fail;
       let exitListener: (() => void) | null = null;
       opts.onExit?.(() => exitListener?.());
@@ -440,5 +449,145 @@ describe("a tunnel nobody cleaned up", () => {
     } finally {
       await new Promise<void>(resolve => successor.close(() => resolve()));
     }
+  }, 10_000);
+});
+
+// ── The readiness probe arrives under the public hostname ───────────────────
+
+describe("the tunnel's own readiness check can reach the page", () => {
+  it("answers the public Host while the tunnel is still starting", async () => {
+    // cloudflared forwards the browser's Host to the origin, so the readiness
+    // probe arrives as `xxx.trycloudflare.com` — from inside `provider.start`,
+    // before anything has been published. Adding the host only after start
+    // returned meant the probe hit the allowlist and got 403: a tunnel that
+    // worked perfectly reported itself unreachable, every time.
+    let seen: { status: number; body: string } | null = null;
+    // The provider probes the origin it was handed, under the public host —
+    // which is exactly what cloudflared's edge does.
+    const provider = fakeProvider({ probe: result => { seen = result; } });
+
+    const started = await startHost({ tunnel: true, tunnelProvider: provider });
+
+    expect(seen).not.toBeNull();
+    expect(seen!.status).toBe(200);
+    expect(seen!.body).toContain(provider.started[0]!.readinessMarker);
+    expect(started.publicUrl).toBe(`https://${EXTERNAL_HOST}${started.path}`);
+  });
+
+  it("takes the candidate host back off the list when the start fails", async () => {
+    // A host that never became a working tunnel must not keep being answered:
+    // the allowlist is what stops a leftover tunnel reaching a later listener.
+    const { port, path, code } = await startHost({
+      tunnel: true,
+      tunnelProvider: fakeProvider({ fail: new TunnelStartError("readiness-failed", "edge never answered") }),
+    });
+    const cookie = await signIn(port, path, code);
+
+    const res = await call(port, "GET", `${path}setup/status`, {
+      headers: { cookie, host: EXTERNAL_HOST, origin: `https://${EXTERNAL_HOST}` },
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("never widens the allowlist to make its own probe pass", () => {
+    // The two shortcuts that would also have fixed the 403, and are each a hole
+    // that outlives the minute they save.
+    const source = readFileSync(new URL("../src/setup-host.ts", import.meta.url), "utf8");
+
+    expect(source).not.toContain("endsWith(\".trycloudflare.com\")");
+    expect(source).not.toMatch(/starting\s*\?\s*true/);
+    expect(source).toContain("onCandidateHost: host => { this.externalHost = host; }");
+  });
+});
+
+// ── The four conditions are read, not remembered ────────────────────────────
+
+describe("the handover conditions are the things themselves", () => {
+  it("refuses when the lease is gone, because nothing is holding the next tunnel back", async () => {
+    // The fourth condition, made false on its own. A flag set next to the work
+    // could not be falsified like this — which was the point of the finding.
+    const dir = tempDir();
+    const { host, spawnFleet } = await startHost({
+      dataDir: dir, tunnel: true, port: 0,
+      tunnelProvider: fakeProvider({
+        stop: async () => ({ confirmed: false, reason: "did not exit", pid: 4242, identity: "linux:111" }),
+      }),
+    });
+    rmSync(leasePath(dir), { force: true });
+
+    await host.shutdown(true, "finished");
+
+    expect(spawnFleet).not.toHaveBeenCalled();
+  });
+
+  it("reads the listener and the credentials rather than a flag beside them", () => {
+    const source = readFileSync(new URL("../src/setup-host.ts", import.meta.url), "utf8");
+    const guard = source.slice(source.indexOf("private mayHandOverWithUnconfirmedTunnel"));
+
+    expect(guard).toContain("this.server === null");
+    expect(guard).toContain("this.credentials.revokedNow");
+    expect(guard).toContain("existsSync(leasePath(this.opts.dataDir))");
+  });
+});
+
+// ── A tunnel that dies in the handover window ───────────────────────────────
+
+describe("finishing while the tunnel is dying", () => {
+  it("still starts the fleet when the tunnel death gets there first", async () => {
+    // The wizard has committed and been answered; the tunnel then dies, and its
+    // own shutdown takes the flag. Without the handover being recorded at
+    // finish time, that shutdown returns having written the config, told the
+    // page "starting", and started nothing.
+    let fireExit: (() => void) | null = null;
+    const { host, port, path, code, spawnFleet } = await startHost({
+      tunnel: true, tunnelProvider: fakeProvider({ onExit: fire => { fireExit = fire; } }),
+    });
+    const cookie = await signIn(port, path, code);
+
+    const finish = await call(port, "POST", `${path}setup/finish`, { headers: { cookie } });
+    expect(finish.status).toBe(202);
+    fireExit!();
+
+    await vi.waitFor(() => { expect(spawnFleet).toHaveBeenCalledTimes(1); }, { timeout: 4_000 });
+    await host.shutdown(false, "already stopped");
+  }, 10_000);
+
+  it("does not start the fleet when the tunnel dies before anyone finished", async () => {
+    let fireExit: (() => void) | null = null;
+    const { host, spawnFleet } = await startHost({
+      tunnel: true, tunnelProvider: fakeProvider({ onExit: fire => { fireExit = fire; } }),
+    });
+
+    fireExit!();
+    await new Promise(r => setTimeout(r, 200));
+
+    expect(spawnFleet).not.toHaveBeenCalled();
+    await host.shutdown(false, "already stopped");
+  }, 10_000);
+});
+// ── Somebody has to clean up after a crash ──────────────────────────────────
+
+describe("the fleet resolves a leftover tunnel when it starts", () => {
+  it("reaps a lease whose process is already gone", async () => {
+    // Before this, `reapStaleTunnel` only ever ran from the setup host — so a
+    // lease left by a crash sat there until someone happened to run setup
+    // again, and the argument that "the fleet coming up cleans this up" was
+    // not true of any code.
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dir = tempDir();
+    writeFileSync(join(dir, "fleet.yaml"), "instances: {}\n");
+    writeLease(dir, {
+      sid: "old", provider: "cloudflared", originPort: 45678,
+      // A pid that cannot be alive: the reaper should see it gone and clear up.
+      providerPid: 2_147_483_600, strongIdentity: "linux:1",
+      expiresAt: Date.now() - 1, ownerPid: 2_147_483_601, ownerIdentity: null,
+    });
+    const fm = new FleetManager(dir);
+    fm.loadConfig(join(dir, "fleet.yaml"));
+
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    await vi.waitFor(() => { expect(existsSync(leasePath(dir))).toBe(false); }, { timeout: 4_000 });
   }, 10_000);
 });

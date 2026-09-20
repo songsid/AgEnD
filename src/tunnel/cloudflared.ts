@@ -226,6 +226,10 @@ export class CloudflaredProvider implements TunnelProvider {
     try {
       const base = await state.awaitUrl(deadline, ctx.signal, now);
       const pageUrl = `${base}${ctx.pagePath}`;
+      // After the validator, before the probe: cloudflared passes the public
+      // Host through to the origin, so the origin has to be expecting it or it
+      // will refuse our own readiness check.
+      ctx.onCandidateHost?.(new URL(base).host);
       await this.probeReady(pageUrl, ctx, deadline, now);
       state.publish(base, pageUrl);
       return state;

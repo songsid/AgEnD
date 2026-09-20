@@ -50,6 +50,21 @@ export interface TunnelStartContext {
   /** Wall clock. The tunnel may not outlive what it is fronting. */
   readonly expiresAt: number;
   readonly signal: AbortSignal;
+  /**
+   * The hostname this tunnel will answer on, as soon as it is known to be
+   * well-formed and before anything is fetched through it.
+   *
+   * A provider that forwards the browser's Host — which cloudflared does by
+   * default — makes the readiness probe arrive at the origin under the public
+   * hostname. An origin with a host allowlist will refuse it, and the tunnel
+   * that would have worked reports itself unreachable. Handing the exact
+   * validated string over at this point lets the origin expect it without
+   * loosening anything: it is the same host the provider is about to publish,
+   * one step earlier.
+   *
+   * The caller must undo whatever it did with this if `start` does not resolve.
+   */
+  readonly onCandidateHost?: (host: string) => void;
 }
 
 export interface TunnelExit {

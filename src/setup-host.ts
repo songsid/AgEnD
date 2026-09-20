@@ -27,6 +27,7 @@
  */
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadFleetConfig } from "./config.js";
@@ -43,6 +44,7 @@ import {
 } from "./setup-auth.js";
 import { SETUP_CODE_PAGE_HTML, SETUP_FORM_HTML } from "./setup-form.js";
 import { ManagedTunnel } from "./tunnel/manager.js";
+import { leasePath } from "./tunnel/lease.js";
 import { CloudflaredProvider } from "./tunnel/cloudflared.js";
 import type { TunnelHandle, TunnelProvider } from "./tunnel/types.js";
 import yaml from "js-yaml";
@@ -130,9 +132,17 @@ export class SetupHost {
   private tunnelHandle: TunnelHandle | null = null;
   /** The exact host the tunnel answers on; nothing else is added to the set. */
   private externalHost: string | null = null;
-  private listenerClosed = false;
-  private credentialsRevoked = false;
   private tunnelStopResult: "confirmed" | "unconfirmed" | "none" = "none";
+  /**
+   * Set when the wizard asked to hand over, so a shutdown that started for
+   * another reason still completes it.
+   *
+   * Without this the tunnel dying in the moment between "finish" answering and
+   * the handover beginning would take the `stopping` flag first, and the
+   * handover would silently return: configuration written, page saying
+   * "starting", and no fleet.
+   */
+  private handoverRequested = false;
 
   private get ttlMs(): number { return this.opts.ttlMs ?? SETUP_HOST_TTL_MS; }
   private get idleMs(): number { return this.opts.idleMs ?? SETUP_HOST_IDLE_MS; }
@@ -213,6 +223,12 @@ export class SetupHost {
       readinessMarker: this.credentials.readinessMarker,
       expiresAt: (this.opts.now ?? Date.now)() + this.ttlMs,
       signal: new AbortController().signal,
+      // The provider's own readiness probe arrives here under the public
+      // hostname, so it has to be on the list before that probe runs. Exactly
+      // the one host the validator just accepted — the alternative shortcuts,
+      // accepting any Host during startup or any `*.trycloudflare.com`, are
+      // each a hole that outlives the ten seconds they would save.
+      onCandidateHost: host => { this.externalHost = host; },
     });
 
     if (result.ok) {
@@ -226,6 +242,10 @@ export class SetupHost {
       });
       return result.handle.pageUrl;
     }
+
+    // Whatever happens below, a host that never became a working tunnel does
+    // not stay on the list.
+    if (!result.ok) this.externalHost = null;
 
     if (result.leaseHeld) {
       // Fail closed: a tunnel process we cannot account for may still be
@@ -385,6 +405,10 @@ export class SetupHost {
       // a false alarm. The dashboard is not an answer either — it binds
       // loopback, so a link to it would be one a phone cannot open.
       res.end(JSON.stringify({ starting: true, watch: this.externalHost === null }));
+      // Recorded before the timer, not inside it: the tunnel can die in
+      // between, and whichever shutdown runs first has to know a handover was
+      // asked for.
+      this.handoverRequested = true;
       // After the response, so the browser has its answer before the port goes.
       setTimeout(() => { void this.shutdown(true, "finished"); }, 10);
       return;
@@ -437,6 +461,9 @@ export class SetupHost {
   async shutdown(spawnSuccessor: boolean, reason: string): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
+    // A handover asked for by the wizard survives a shutdown that began for a
+    // different reason.
+    const handOver = spawnSuccessor || this.handoverRequested;
     if (this.ttlTimer) clearTimeout(this.ttlTimer);
     if (this.idleTimer) clearTimeout(this.idleTimer);
 
@@ -444,7 +471,6 @@ export class SetupHost {
     //    arriving through a tunnel that is still up — is already unauthorized
     //    from here, so the order below can take its time without a window.
     this.credentials.revoke();
-    this.credentialsRevoked = true;
 
     // 2. The listener, and its open connections. From this point the public URL
     //    reaches nothing, whatever the tunnel is doing.
@@ -454,7 +480,6 @@ export class SetupHost {
       server.closeAllConnections?.();
       await new Promise<void>(resolve => server.close(() => resolve()));
     }
-    this.listenerClosed = true;
 
     // 3. The tunnel, with proof.
     if (this.managedTunnel && this.tunnelHandle) {
@@ -473,7 +498,7 @@ export class SetupHost {
     releaseFleetLock(this.lock);
     this.lock = undefined;
 
-    if (!spawnSuccessor) {
+    if (!handOver) {
       this.log(`Setup host stopped (${reason}). Run \`agend setup\` again to reopen it.`);
       return;
     }
@@ -509,11 +534,14 @@ export class SetupHost {
    * that breaks the reasoning also flips the behaviour.
    */
   private mayHandOverWithUnconfirmedTunnel(): boolean {
+    // Each of these reads the thing itself rather than a flag set alongside it.
+    // A boolean assigned on the same line that does the work is true whenever
+    // the line ran, which makes "all four conditions are checked" a sentence
+    // about nothing — remove the work and the flag goes with it.
     const onEphemeralPort = this.opts.tunnel === true && this.opts.port === 0;
-    const leaseKept = this.managedTunnel !== null;
-    return onEphemeralPort
-      && this.listenerClosed
-      && this.credentialsRevoked
-      && leaseKept;
+    const listenerClosed = this.server === null;
+    const credentialsRevoked = this.credentials.revokedNow;
+    const leaseKept = existsSync(leasePath(this.opts.dataDir));
+    return onEphemeralPort && listenerClosed && credentialsRevoked && leaseKept;
   }
 }
