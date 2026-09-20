@@ -1,6 +1,6 @@
 # 逃生艙 setup 宿主的對外通道：設計與分階段計畫
 
-狀態：**design-first 計畫稿，尚未實作**。T1／T3／T4／T5 已由 leader 裁定並折入本文（見 §6）；**T2 仍待 fable 判斷**。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
+狀態：**設計已通過 fable 安全 review，S1 可實作**。T1／T3／T4／T5 由 leader 裁定、T2 由 fable 裁定，全部折入本文（見 §6）。fable 另抓到第七個攻擊面（§3.8）與三條補強，也已折入。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
 
 參考：`docs/design/web-terminal-tunnel-provider.zh-TW.md`（sol，branch `design/web-terminal-tunnel-provider`，doc-only）、`docs/design/prefleet-host-spike.zh-TW.md`、`src/setup-host.ts`、`src/setup-form.ts`、`src/setup-marker.ts`。
 
@@ -43,7 +43,7 @@ sol 的設計是為 **Web Terminal session** 寫的。setup 宿主在每一條�
 
 ## 3. 兩個設計放在一起才浮現的攻擊面
 
-以下六條**不在 sol 的文件裡，也不在票 5 的信封裡**，只有「外網可達的 pre-fleet 宿主」這個組合才存在。
+以下七條**不在 sol 的文件裡，也不在票 5 的信封裡**，只有「外網可達的 pre-fleet 宿主」這個組合才存在。§3.8 更特別：它是 T1 的裁示**自己造出來**的，在裁定之前不存在。
 
 ### 3.1 🔴 埠交接：tunnel 活過 setup 宿主 = 公網直通 fleet dashboard
 
@@ -55,11 +55,19 @@ setup 宿主不成立：它綁的是 **health port**，而 `shutdown(true, "fini
 
 **採用的解法不是加強關閉順序，而是讓這個危險在結構上不存在**（T3 已裁定）：tunnel 模式下 setup 宿主**改綁 `127.0.0.1:0` 臨時埠**，跟 Web Terminal 一樣。fleet 的 health port 從頭到尾不在 tunnel 後面，殘留 tunnel 只會指向一個沒人會再綁的死埠。
 
-連帶：**`agend setup --tunnel` 與 `--port` 互斥**。`--port` 現在存在（`cli.ts:1626`），若在 tunnel 模式下仍生效，使用者就能把一個固定埠（包括 health port）放到 tunnel 後面，剛剛用結構消掉的危險又被旗標開回來。tunnel 模式下給 `--port` 要直接報錯，不是忽略。
+連帶：**`agend setup --tunnel` 與 `--port` 互斥**，tunnel 模式下給 `--port` 要直接報錯、不是忽略。
 
-代價是票 5 的收尾 UX 會變：`setup-form.ts` 的 `waitForFleet()` 現在靠「fleet 綁同一個埠、前端輪詢 `/health`」顯示「AgEnD is up」。臨時埠下這條斷掉，收尾要改成「設定已寫入，AgEnD 正在啟動，dashboard 連結會發到你剛設定的頻道」——**而這其實才是對的**：那條 dashboard 連結本來就該走頻道，不該讓 pre-fleet 宿主把使用者留在一個即將死亡的公網 URL 上。
+但 `--port` 只是三個來源之一。`cli.ts:1637` 現在是 `Number(opts.port ?? fleet.health_port ?? 19280)`——**所以 tunnel 模式必須連 `fleet.health_port` 與 19280 預設都不看，直接 bind 0**。否則一個已經有 `health_port:` 的 fleet.yaml，使用者沒給 `--port`、只給了 `--tunnel`，照樣會把 health port 放回 tunnel 後面，而且完全沒有旗標可以怪。
 
-即使採用臨時埠，**關閉順序仍要是**：撤銷 token/cookie → 關 listener（含 `closeAllConnections`）→ **確認 tunnel 死亡** → 才 spawn fleet。並保留「無法確認就不 spawn」的 fail-closed（見 §6 取捨 T2）。
+另外：**cloudflared 缺失而 fallback 到 localhost 時，宿主仍然留在臨時埠**。T3 是「tunnel 模式」的性質，不是「tunnel 成功」的性質，不受 fallback 影響。
+
+代價是票 5 的收尾 UX 會變：`setup-form.ts` 的 `waitForFleet()` 現在靠「fleet 綁同一個埠、前端輪詢 `/health`」顯示「AgEnD is up」。臨時埠下這條斷掉。
+
+收尾文案**不能承諾「dashboard 連結會發到頻道」**：dashboard 仍然只綁 loopback，手機就算收到連結也打不開。誠實的說法是「**AgEnD 已啟動，請在你剛設定的頻道跟它對話**」——頻道就是逃生艙交付的東西，dashboard 是之後在主機（或自行轉發）上的事。
+
+即使採用臨時埠，**關閉順序仍要是**：撤銷憑證 → 關 listener（含 `closeAllConnections`）→ **確認 tunnel 死亡** → 才 spawn fleet。無法確認時的處置見 §6 T2（fable 裁定：條件式的「警告但照常 spawn」）。
+
+臨時埠也**不是絕對安全**：之後任何 `bind 127.0.0.1:0` 的 listener 都可能拿到同一個埠號，殭屍 tunnel 就會 front 它。收掉這條要靠信封第 31 條（所有 fleet 側臨時埠 listener 一律做 Host allowlist）。
 
 ### 3.2 🔴 連結預覽會把一次性 token 花掉（而且是必然發生）
 
@@ -91,6 +99,28 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 
 對應的規則：sid 以外的路徑一律 404；`/` 也 404，不做任何提示。lockout 只在 sid 正確的請求上計數，否則掃描者仍可用亂猜的 sid 消耗額度。
 
+**sid 擋的是掃描者，不是拿到連結的人。** 連結本身含 sid，所以聊天室裡任何看得到它的人仍然可以故意錯 5 次把宿主鎖死——這是 sol §9.1 同一個**刻意接受**的殘餘風險，不是這條配套能解的。誠實寫下來，並在 S4 文案加一句「**別把這條連結貼進多人群組**」。
+
+另外三條實作細節，漏掉就走樣：
+- **sid 比對也要 `timingSafeEqual`**。
+- **錯 sid 的 404 必須與其他 404 完全不可區分**（狀態碼、header、body 都一樣），否則 sid 可以被差異探測出來。
+- **錯 sid 的請求不得 `touch()` idle 計時**——否則掃描者雖然鎖不死宿主，卻能讓它永遠不 idle 關閉，把一個十分鐘的視窗變成無限。所以 sid 檢查要在 `authorize()` 裡面；票 5 已經把 `touch()` 移到 authorize 之後，順序是對的。
+- cookie 的 `Path` 綁 `/s/<sid>/`，跟 sol 一致。
+
+（這條**不取代** §3.8：拿到連結的人同時就有 sid，如果 cookie 還是由 40-bit 短碼推導又不計次，猜 cookie 這條路照樣開著。第 28 條的解耦仍然是必改。）
+
+短碼形狀：**8 字元 base32，顯示成 `XXXX-XXXX`，輸入忽略大小寫與連字號**。**lockout 次數定 5**（手機上打 8 個字，5 次比 3 次不容易誤鎖；`5/2^40 ≈ 4.5e-12` 仍可忽略）。這個 DoS 後果要寫進 S4 文案：**任何拿到 URL 的人都能故意錯 5 次讓宿主自毀，之後只能回主機重跑 `agend setup`。**
+
+### 3.8 🔴 cookie 仍由憑證推導，而憑證剛從 192 bits 縮成 40（fable 抓到）
+
+T1(ii) 把憑證從 `randomBytes(24)`（192 bits）換成 8 字元短碼（40 bits），但 cookie 的值仍是**憑證的決定性推導**（`web-auth.ts:106`，`sha256("agend-web-session-v1:" + token)`）。於是 cookie 也只剩 40 bits 的熵。
+
+而 lockout 只管「短碼那條 POST」——**cookie 比對這條路徑沒有任何次數上限**。攻擊者拿到 URL 後根本不必猜短碼：直接帶著候選 cookie 去打受保護路徑，而且候選可以**離線預算**（`sha256` 一個已知前綴，不需要跟伺服器互動就能把 2^40 個 cookie 值算好）。10 分鐘 TTL 內約 6×10⁵ 次請求，成功率約 5×10⁻⁷ —— **比 T1 宣稱的 `3/2^40 ≈ 2.7e-12` 差五個數量級**，而那個宣稱正是接受 40 bits 的理由。
+
+**修法就是 sol 原本的設計**：短碼只是**兌換鍵**，不是 session 憑證。兌換成功時另外產生一個 **256-bit 隨機 session secret**，cookie 帶它的 hash，比對用 `timingSafeEqual`。並且**所有認證失敗共用同一個 lockout 計數**——短碼錯、cookie 不符、sid 正確但憑證不對，全部計進同一個 counter。
+
+（這條的教訓值得寫下來：`webSessionCookieValue()` 從 token 推導 cookie，在 192 bits 的世界裡是個安全的簡化；把憑證縮短就把它變成漏洞。**推導式 cookie 的安全性上限等於它所推導的那個憑證**，換憑證長度時必須重新檢查每一個推導物。）
+
 ### 3.4 🟠 loopback 才成立的三個弱點，上公網後都要補
 
 - **`provided === this.token`**（`setup-host.ts:135`）是逐字元短路比較。loopback 幾乎無所謂；公網上是可測的側通道。必須改 `timingSafeEqual` + 固定長度。
@@ -114,10 +144,11 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 - `SETUP_HOST_TTL_MS` 與 `SETUP_HOST_IDLE_MS` 都是 15 分鐘，**idle 永遠不會先於 TTL 觸發**。loopback 下無所謂；公網下建議 TTL 縮短（sol 的 `ttl_minutes: 10` 是合理起點）並讓 idle 真的更短（3 分鐘）。
 - 表單背後的 `POST /api/settings/quickstart/probe` 會用使用者提供的 token **對 Telegram／Discord 發外連**，`await-telegram-start` 還是 long-poll。在 gate 後面是安全的，但它提高了 gate 被繞過的代價，也是 idle 計時要正確處理 long-poll 的原因。
 - 票 5 的「已有 instances 就拒開」發生在 `start()`，**早於任何 tunnel 建立**——這個順序要保住：先拒絕，再不要 spawn cloudflared。
+- **信任邊界比 sol 的情境更高**：commit 送出的是**長效 bot token 與 admin id**，而 TLS 在 Cloudflare edge 終止。sol §9.3 那句「Cloudflare 理論上可處理 `/open` 的 token 與終端流量」在這裡要升級成 **「你的 bot token 會經過 Cloudflare 傳輸」**，S4 的風險確認文案必須明講，不能沿用終端 session 的說法。
 
 ---
 
-## 4. 調和後的安全信封（實作時要同時成立的守則）
+## 4. 調和後的安全信封（實作時要同時成立的 31 條）
 
 **來自 sol、原樣保留：**
 1. tunnel 只是傳輸，**不是授權來源**，不碰 fleet 的長期 `web.token`。
@@ -139,18 +170,22 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 15. 交出埠之前 `closeAllConnections()` 再 `close()`，之後才 spawn fleet。
 16. `fleet.lock` 帶 role，雙向互斥。
 
-**只有組合才需要的新守則（本文件新增）：**
+**只有組合才需要的新守則（本文件新增，17–31）：**
 17. **tunnel 模式下 listener 綁 `127.0.0.1:0` 臨時埠**，fleet 的 health port 永遠不在 tunnel 後面（§3.1，T3 裁定）。`--tunnel` 與 `--port` 互斥。
 18. **確認 tunnel 死亡之後才 spawn fleet**；無法確認時的處置**待 fable 裁定**（T2）。無論裁定為何，「無法確認」都要寫 `tunnel_cleanup_failed`、保留 lease、明確告知。
-19. **憑證不在 URL 裡**（§3.3，T1 裁定 (ii)）：URL 不帶 token，CLI 印短碼，使用者在頁面輸入。**GET 任何路徑都不得有副作用**——不消耗嘗試次數、不建立 cookie。
+19. **憑證不在 URL 裡**（§3.3，T1 裁定 (ii)）：URL 不帶 token，CLI 印短碼（8 字元 base32，顯示 `XXXX-XXXX`，輸入忽略大小寫與連字號），使用者在頁面輸入。**GET 任何路徑都不得有副作用**——不消耗嘗試次數、不建立 cookie。表單掛在 `/s/<128-bit sid>/` 之下（§3.3.1）：sid 不是憑證，但沒有它，掃描者就能用錯誤次數遠端阻斷設定；sid 不符一律 404 且**不計入 lockout**，對錯 sid 的回應不可區分。
 20. token 比較用 `timingSafeEqual`；**加上硬性錯誤次數上限**（三次，全宿主計數，不是每 IP）。
 21. cookie 的 Secure 由**已驗證的 endpoint scheme** 決定，不信 `X-Forwarded-Proto`。
 22. Host allowlist：{loopback, 本次 exact external host}。
 23. 風險確認只能在 CLI；**無 TTY 一律拒絕**開公網通道。
 24. setup 宿主啟動時自己跑一次 lease reaper；fleet 的 reaper 認得 setup 宿主寫的 lease。
 25. 公網模式縮短 TTL／idle，並修掉 `TTL == IDLE` 導致 idle 永不觸發這個既有 bug（§3.7）。
-26. **表單掛在 `/s/<128-bit sid>/` 之下**（§3.3.1）：sid 不是憑證，但沒有它掃描者就能用三次錯碼遠端阻斷設定。sid 不符一律 404，且**不計入 lockout**。
-27. 只做 `cloudflared` 與 `localhost`／`none`（T5）；這票不接 Web Terminal（T4）。
+26. **表單掛在 `/s/<128-bit sid>/` 之下**（§3.3.1）：sid **不是憑證**，它擋的是掃描者而不是拿到連結的人。sid 比對也用 `timingSafeEqual`；sid 不符的 404 與其他 404 在狀態碼、header 與 body 上**完全不可區分**；sid 不符**不計入 lockout**，也**不得 touch idle 計時**（否則掃描者鎖不死宿主，卻能讓它永遠不 idle 關閉）——所以 sid 檢查必須在 `authorize()` 之內，票 5 已經把 `touch()` 移到 authorize 之後。cookie 的 `Path` 綁 `/s/<sid>/`。
+27. 範圍：只做 `cloudflared` 與 `localhost`／`none`（T5）；這票不接 Web Terminal（T4）。
+28. **cookie 的 secret 與短碼解耦**（§3.8）：短碼只是兌換鍵；兌換成功時另生 **256-bit 隨機 session secret**，cookie 帶它的 hash，比對用 `timingSafeEqual`。**所有認證失敗共用同一個 lockout 計數**（短碼錯、cookie 不符、憑證不對），次數 **5**。
+29. **未認證公開面最小化**：`GET /s/<sid>/`（靜態短碼輸入頁）與兌換用的 POST 是**唯二**不需要 cookie 的端點。`/api/settings/quickstart/environment`（會回報這台機器裝了哪些 backend、既有 channel）、`/probe`、`/plan`、`/commit`、`/setup/finish` **一律要 cookie**。**每一個回應都要 `Cache-Control: no-store`**——目前只有 302 有，其餘可能被 Cloudflare edge 快取。
+30. **cloudflared 子程序給最小環境變數**：它會繼承 `agend setup` 那個 shell 的完整環境，其中可能有雲端憑證。固定 argv 之外還要濾成 allow-list（只留 proxy／CA 相關），不是原樣 `process.env`。
+31. **所有 fleet 側的臨時埠 listener 一律做 Host allowlist**（§3.1 的依賴）：臨時埠「只指向死埠」不是絕對——之後任何 `bind 127.0.0.1:0` 的 listener（Web Terminal 每 session 一個）可能拿到同一個埠號，殭屍 tunnel 就會 front 它。真正收掉這條靠 Host allowlist：殭屍 tunnel 的 host 不在新 session 的名單裡 → 403。**T3 與 T2 的安全論證都依賴這條。**
 
 ---
 
@@ -170,6 +205,10 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 - 惡意 child 輸出（多餘 query／userinfo／path／ANSI／超長行／別的網域）全部拒絕。
 - crash 後留一筆 lease，reaper 能依強指紋回收；**PID 被重用時不得送 signal**（要有測試）。
 - binary 不存在／不可執行 → 不 spawn，明確訊息。
+- **reaper 可以從非 fleet 程序呼叫**（setup 宿主啟動時就要跑一次），並有測試從一個沒有 FleetManager 的情境呼叫它。
+- 子程序拿到的是 **allow-list 過的最小環境變數**，不是 `process.env`（信封 30；mutation：改成原樣繼承要紅）。
+
+**S1 不做**：`web_terminal.tunnel` 設定 schema。T4 不接 Web Terminal、而 setup 宿主在 fleet.yaml 存在之前跑（§3.6），所以這票裡那組設定**沒有任何消費者**；加一組沒人讀的設定介面比不加更糟。等 Web Terminal 接線那票再一起做。
 
 ### Stage 2 — setup 宿主的公網化前置硬化（**還不接 tunnel**）
 
@@ -183,11 +222,16 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 - TTL／idle 分離，**修掉 `TTL == IDLE` 導致 idle 永不觸發**；long-poll 正確 touch。
 
 驗收：
-- 錯三次後宿主關閉、第四次得到 gone；**平行三個錯誤只觸發一次關閉**（照 sol §13.9）。
+- **cookie 與短碼解耦**（信封 28）：兩條 mutation 都要紅 ——「cookie 由短碼推導」、「cookie 比對失敗不計入 lockout」。
+- 錯 **5** 次後宿主關閉、第 6 次得到 gone；**平行的錯誤只觸發一次關閉**（照 sol §13.9）；**短碼錯與 cookie 錯共用同一個計數**。
 - **錯的 sid 不消耗 lockout 額度**，且與對的 sid 在回應上不可區分（都是 404）——否則掃描者既能遠端阻斷設定，也能靠差異探測 sid。
+- 短碼**忽略大小寫與連字號**；`XXXX-XXXX` 與 `xxxxxxxx` 等價。
+- **公開面最小**（信封 29）：未帶 cookie 打 `/environment`、`/probe`、`/plan`、`/commit`、`/setup/finish` 全部 401；只有 `GET /s/<sid>/` 與兌換 POST 例外。
+- **每個回應都有 `Cache-Control: no-store`**（不只 302）。
 - `GET` 任何路徑都不再消耗嘗試次數、不建立 cookie（連結預覽安全性的回歸測試）。
 - 偽造 `X-Forwarded-Proto` 不能讓 cookie 變 Secure 也不能讓它不變。
 - Origin mismatch、未列入 allowlist 的 Host、重放已用短碼全部拒絕。
+- **TTL 與 idle 分離**，idle 真的會先觸發（現況 `TTL == IDLE == 15min` 讓 idle 永不觸發，是既有 bug）。
 - 既有 `tests/prefleet-host.test.ts`（import graph）與 takeover/lock 測試不變。
 
 ### Stage 3 — 用 tunnel front setup 宿主
@@ -196,9 +240,12 @@ sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid
 
 驗收：
 - **埠交接**：finish 後，在 fleet 被 spawn **之前**，tunnel 已 confirmed 死亡；用 fake provider 讓 stop 回 unconfirmed，斷言 **fleet 沒有被 spawn**、lease 保留、訊息說清楚（這條是 §3.1 的核心，mutation：把順序對調或忽略 unconfirmed，必須紅）。
-- tunnel 模式下 listener 不是 health port（mutation：改回 health port 要紅）。
+- tunnel 模式下 listener 不是 health port，**mutation 要明確涵蓋隱含來源**：fleet.yaml 有 `health_port:` + 不給 `--port` + 開 `--tunnel` → 綁到的必須是臨時埠（把 `?? fleet.health_port` 放回去要紅）。`--port` 與 `--tunnel` 同時給要報錯。cloudflared 缺失 fallback 到 localhost 時仍是臨時埠。
 - TTL、idle、Ctrl-C、finish、`start()` 失敗五條路都關 listener、停 provider、拿到正面死亡證據。
 - 對 `/`、`/setup/status`、`/setup/finish`、quickstart API 以外的 path 一律 404；tunnel 進來的請求碰不到任何 fleet 介面（此時本來就沒有 fleet，但要有測試釘住 path allowlist）。
+- **T2 的五個條件各一條斷言**：非臨時埠模式下 unconfirmed → 不 spawn（條件 1 的自動失效）；listener 已確認關閉；憑證已撤銷；lease 保留且記 `tunnel_cleanup_failed`、fleet 起來前不得再開 managed tunnel；訊息含 PID 且**不含「已安全關閉」字樣**。
+- **殭屍 tunnel 對重用埠號**：起一個 fake listener 綁到同一個埠號，用舊 tunnel 的 Host 打它 → **403**（信封 31）。
+- 收尾文案**不承諾 dashboard 連結**，而是「請在你剛設定的頻道跟它對話」（mutation：改回承諾連結要紅）。
 - 真 cloudflared 驗收：手機從外網打得開、完成設定、fleet 起來、URL 不再抵達 origin、child 已退出。
 
 ### Stage 4 — UX 與逐次風險確認
@@ -209,6 +256,8 @@ CLI 互動確認文案（照 sol 的建議文案改寫成 pre-fleet 版本：**�
 - 每次都問，`--yes` 才跳過；**無 TTY 一律拒絕**（mutation：無 TTY 時預設放行要紅）。
 - `allow_public` 相關語意在 pre-fleet 沒有載體這件事寫在文件裡，不要留下「設定過就不用確認」的想像空間。
 - fallback 訊息含「手機通常無法直接開」。
+- 風險確認文案含 **「你的 bot token 會經過 Cloudflare 傳輸」**（§3.7 信任邊界升級），不是沿用 sol 那句終端 session 的說法。
+- 文案含 lockout 的 DoS 後果：**任何拿到 URL 的人都能故意錯 5 次讓宿主自毀，之後只能回主機重跑 `agend setup`**，並提醒**別把這條連結貼進多人群組**。
 
 ---
 
@@ -217,10 +266,19 @@ CLI 互動確認文案（照 sol 的建議文案改寫成 pre-fleet 版本：**�
 **T1 — 憑證怎麼送到手機？→ 裁定 (ii)**（§3.3）
 URL 不帶憑證，CLI 印短碼，使用者在頁面手輸入。同時解掉「URL 即憑證」與「預覽 bot 燒掉 token」兩個 🔴。**連帶產生 §3.3.1**（表單要掛在隨機 sid 之下），那條是這個裁示的必要配套，不是可選項。
 
-**T2 — tunnel 死亡無法確認時，還要不要 spawn fleet？→ 待 fable 裁定**（§3.1）
-- fail closed（不 spawn）：設定已寫入，要使用者回主機跑 `agend start`。逃生艙的最後一步在「只有手機」時失敗。
-- warn but spawn：採用臨時埠後，殘留 tunnel 只指向一個不會被重綁的死埠，風險大幅下降。
-兩邊都要寫 `tunnel_cleanup_failed`、保留 lease、明確告知。**我不預設任何一邊，等 fable。**
+**T2 — tunnel 死亡無法確認時，還要不要 spawn fleet？→ fable 裁定：警告但照常 spawn，但這是一個條件式裁示**（§3.1）
+
+裁定成立**只在下列五項同時為真時**，缺一即回 fail-closed（不 spawn）：
+
+1. **T3 臨時埠模式**——宿主綁的是 `127.0.0.1:0`，不是 health port。
+2. **listener 已確認關閉**（`closeAllConnections()` + `close()` 都完成）。
+3. **憑證已撤銷**——session secret 與 cookie 已失效，短碼已作廢。
+4. **lease 保留並記 `tunnel_cleanup_failed`**；在 fleet 起來之前不得再開任何新的 managed tunnel。
+5. **訊息誠實**——明講「通道未能確認關閉，那條 URL 可能還會回 unavailable 一陣子；要手動處理請 kill PID x」。**不得寫「已安全關閉」。**
+
+**條件式的意思是這是文件裡的一條規則，不是一次性的結論**：若日後有人把宿主改回綁 health port（或讓 `--port` 在 tunnel 模式下生效），本裁示**自動失效**，該路徑必須回到 fail-closed。實作時這要是程式裡的一個顯式判斷（「我現在是臨時埠嗎？」），不是註解裡的假設。
+
+裁示還依賴信封第 31 條：臨時埠可能被之後的 listener 重用，殭屍 tunnel 會 front 它；靠 Host allowlist 讓它拿到 403。
 
 **T3 — 臨時埠 → 裁定採用**（§3.1）
 tunnel 模式綁 `127.0.0.1:0`，health port 從頭到尾不在 tunnel 後面。票 5 的 `waitForFleet()` 改成「dashboard 連結會發到頻道」。`--tunnel` 與 `--port` 互斥。
