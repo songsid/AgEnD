@@ -7,6 +7,10 @@ bin/
 .env
 .worktrees/
 .claude/worktrees/
+# Published at runtime by syncManagedSkills() into whichever working
+# directory an agent runs in — including this repo when a fleet instance
+# is pointed at it. Regenerated every start, never source.
+.claude/skills/
 test-perm-detect.ts
 
 # Website
