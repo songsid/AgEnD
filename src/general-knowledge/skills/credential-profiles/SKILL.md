@@ -23,7 +23,7 @@ in" — so check before promising it works.
 Ask the operator to run this on the host once per subscription:
 
 ```
-XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/<profile> kiro-cli login
+XDG_DATA_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
 ```
 
 ## Create a worker on another subscription
@@ -56,6 +56,20 @@ move with it — the new profile has its own history.
 
 `backend_options` merges per backend, so setting a kiro option leaves a codex
 option on the same instance alone.
+
+## Move an agent back to the default login
+
+A merge cannot remove a key, so send `null` for it:
+
+```
+update_instance_config(
+  name: "research-a",
+  config: { backend_options: { "kiro-cli": { "credential_profile": null } } },
+)
+```
+
+The agent goes back to the login the host uses with no profile set, and is
+restarted for the same reason as any other switch.
 
 ## Answer "which subscription is this agent on?"
 

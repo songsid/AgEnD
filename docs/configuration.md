@@ -293,7 +293,9 @@ update_instance_config(name: "research-a",
 ```
 
 The credentials are read when the CLI launches, so AgEnD restarts the instance
-for you and says `restarted: true`. Ask General in plain language — "move
+for you and says `restarted: true`. A paused or stopped agent is not started:
+its new profile applies when it next comes up. Send `credential_profile: null`
+to put an agent back on the default login. Ask General in plain language — "move
 research-a to the personal subscription" — and it will do this.
 
 Currently implemented for `kiro-cli`. Other backends keep their logins behind

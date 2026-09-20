@@ -120,7 +120,7 @@ describe("a linked directory level is refused", () => {
 
 // ── What General actually calls ─────────────────────────────────────────────
 
-function outboundContext(instance: Record<string, unknown>) {
+function outboundContext(instance: Record<string, unknown>, status: "running" | "paused" | "stopped" = "running") {
   const restartSingleInstance = vi.fn(async () => {});
   const saveFleetConfig = vi.fn();
   const ctx = {
@@ -128,6 +128,9 @@ function outboundContext(instance: Record<string, unknown>) {
     classicChannels: { getAll: () => [] },
     saveFleetConfig,
     restartSingleInstance,
+    lifecycle: { daemons: new Map(), isPaused: () => status === "paused" },
+    instanceIpcClients: new Map(),
+    getInstanceStatus: () => status,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as unknown as OutboundContext;
   return { ctx, restartSingleInstance, saveFleetConfig, instance };
@@ -227,6 +230,116 @@ describe("moving an agent to another subscription", () => {
     expect(restartSingleInstance).not.toHaveBeenCalled();
   });
 
+  it("refuses a bad profile name: nothing saved, nothing restarted", async () => {
+    // The write path used to skip validation entirely, so a typo was saved and
+    // then — because a changed option restarts the instance — the agent was
+    // restarted into a spawn that could only fail.
+    for (const bad of ["../../etc", "a b", 42, true]) {
+      const { ctx, restartSingleInstance, saveFleetConfig, instance } = outboundContext({
+        working_directory: "/tmp/w", backend: "kiro-cli",
+      });
+
+      await expect(call(ctx, "update_instance_config", {
+        name: "worker",
+        config: { backend_options: { "kiro-cli": { credential_profile: bad } } },
+      }), JSON.stringify(bad)).rejects.toThrow(/Rejected/);
+
+      expect(instance.backend_options, JSON.stringify(bad)).toBeUndefined();
+      expect(saveFleetConfig).not.toHaveBeenCalled();
+      expect(restartSingleInstance).not.toHaveBeenCalled();
+    }
+  });
+
+  it("puts back what it had when it refuses", async () => {
+    const { ctx, instance } = outboundContext({
+      working_directory: "/tmp/w", backend: "kiro-cli", description: "before",
+      backend_options: { "kiro-cli": { credential_profile: "work" } },
+    });
+
+    await expect(call(ctx, "update_instance_config", {
+      name: "worker",
+      config: { description: "after", backend_options: { "kiro-cli": { credential_profile: "bad name" } } },
+    })).rejects.toThrow(/Rejected/);
+
+    expect(instance.backend_options).toEqual({ "kiro-cli": { credential_profile: "work" } });
+    expect(instance.description).toBe("before");
+  });
+
+  it("still allows an edit to a fleet that was already invalid", async () => {
+    // Only errors this edit introduces count; otherwise one pre-existing
+    // problem would freeze every instance's config.
+    const { ctx, saveFleetConfig } = outboundContext({ working_directory: "/tmp/w", backend: "kiro-cli" });
+    (ctx.fleetConfig as unknown as { instances: Record<string, unknown> }).instances.broken = { backend: "not-a-backend" };
+
+    const result = await call(ctx, "update_instance_config", {
+      name: "worker",
+      config: { backend_options: { "kiro-cli": { credential_profile: "personal" } } },
+    });
+
+    expect(result).toMatchObject({ success: true });
+    expect(saveFleetConfig).toHaveBeenCalled();
+  });
+
+  it("sends an agent back to the default login with null", async () => {
+    // A merge cannot express removal, and a stored null would be neither a
+    // profile nor absent.
+    const { ctx, instance, restartSingleInstance } = outboundContext({
+      working_directory: "/tmp/w", backend: "kiro-cli",
+      backend_options: { "kiro-cli": { credential_profile: "work" } },
+    });
+
+    const result = await call(ctx, "update_instance_config", {
+      name: "worker",
+      config: { backend_options: { "kiro-cli": { credential_profile: null } } },
+    });
+
+    expect(instance.backend_options).toEqual({});
+    expect(result).toMatchObject({ restarted: true });
+    expect(restartSingleInstance).toHaveBeenCalled();
+  });
+
+  it("does not start a paused or stopped agent to apply a new profile", async () => {
+    // Switching a sleeping agent's subscription must not wake it;
+    // restartSingleInstance is stop-then-start and would.
+    for (const status of ["paused", "stopped"] as const) {
+      const { ctx, restartSingleInstance, saveFleetConfig } = outboundContext(
+        { working_directory: "/tmp/w", backend: "kiro-cli" }, status,
+      );
+
+      const result = await call(ctx, "update_instance_config", {
+        name: "worker",
+        config: { backend_options: { "kiro-cli": { credential_profile: "personal" } } },
+      });
+
+      expect(restartSingleInstance, status).not.toHaveBeenCalled();
+      expect(saveFleetConfig).toHaveBeenCalled();
+      expect(result).toMatchObject({ restarted: false });
+      expect(String(result.note)).toContain(status);
+    }
+  });
+
+  it("answers only after the restart has finished", async () => {
+    // A reply that arrives first would tell the user the switch is done while
+    // the old CLI is still running.
+    let release!: () => void;
+    const { ctx, restartSingleInstance } = outboundContext({ working_directory: "/tmp/w", backend: "kiro-cli" });
+    restartSingleInstance.mockImplementation(() => new Promise<void>(resolve => { release = () => resolve(); }));
+    const order: string[] = [];
+
+    const pending = call(ctx, "update_instance_config", {
+      name: "worker",
+      config: { backend_options: { "kiro-cli": { credential_profile: "personal" } } },
+    }).then(result => { order.push("responded"); return result; });
+
+    await new Promise(r => setTimeout(r, 50));
+    expect(order).toEqual([]);
+    order.push("restart finished");
+    release();
+
+    await expect(pending).resolves.toMatchObject({ restarted: true });
+    expect(order).toEqual(["restart finished", "responded"]);
+  });
+
   it("reports a failed restart instead of claiming the switch happened", async () => {
     const { ctx, restartSingleInstance } = outboundContext({ working_directory: "/tmp/w", backend: "kiro-cli" });
     restartSingleInstance.mockRejectedValue(new Error("tmux is gone"));
@@ -268,5 +381,14 @@ describe("the General skill", () => {
 
   it("says what no profile means, rather than leaving it blank", () => {
     expect(skill).toContain("the default login");
+  });
+
+  it("gives a login command that works when AGEND_HOME is not the default", () => {
+    expect(skill).toContain("${AGEND_HOME:-~/.agend}");
+    expect(skill).not.toMatch(/XDG_DATA_HOME=~\/\.agend/);
+  });
+
+  it("says how to go back to the default login", () => {
+    expect(skill).toContain("credential_profile\": null");
   });
 });

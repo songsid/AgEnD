@@ -1,3 +1,4 @@
+import { validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
 import type { FleetConfig, InstanceConfig } from "./types.js";
@@ -977,6 +978,12 @@ const getFleetConfig: Handler = (ctx, rawArgs, respond) => {
   }
 };
 
+/** Issues the edit introduced, ignoring anything already wrong before it. */
+function introducedErrors(before: ValidationResult, after: ValidationResult): ValidationResult["errors"] {
+  const had = new Set(before.errors.map(issue => `${issue.path}\u0000${issue.message}`));
+  return after.errors.filter(issue => !had.has(`${issue.path}\u0000${issue.message}`));
+}
+
 const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateInstanceConfigArgs, rawArgs, "update_instance_config");
   if (!v.ok) { respond(null, v.error); return; }
@@ -990,6 +997,12 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     return;
   }
   const patch = v.data.config;
+  // Snapshot enough to undo the whole patch if validation refuses it.
+  const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
+  const beforeFields: Record<string, unknown> = {};
+  for (const key of ["backend", "model", "auto_pause_after", "display_name", "description"] as const) {
+    if (patch[key] !== undefined) beforeFields[key] = (inst as any)[key];
+  }
   if (patch.backend !== undefined) (inst as any).backend = patch.backend;
   if (patch.model !== undefined) (inst as any).model = patch.model;
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
@@ -998,16 +1011,43 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // backend_options is read when the CLI is launched, so a change to it is not
   // in effect until the instance restarts. Merged per backend namespace so
   // setting a kiro option cannot silently drop a codex one.
+  const previousOptions = (inst as any).backend_options;
   let relaunchNeeded = false;
   if (patch.backend_options !== undefined) {
-    const before = JSON.stringify((inst as any).backend_options ?? {});
-    const merged: Record<string, Record<string, unknown>> = { ...((inst as any).backend_options ?? {}) };
+    const before = JSON.stringify(previousOptions ?? {});
+    const merged: Record<string, Record<string, unknown>> = { ...(previousOptions ?? {}) };
     for (const [backendName, options] of Object.entries(patch.backend_options)) {
-      merged[backendName] = { ...(merged[backendName] ?? {}), ...options };
+      const namespace: Record<string, unknown> = { ...(merged[backendName] ?? {}), ...options };
+      // A merge cannot express removal, so null (or "") means "drop this key"
+      // — that is how an agent goes back to the fleet's default login.
+      for (const [key, value] of Object.entries(options)) {
+        if (value === null || value === "") delete namespace[key];
+      }
+      if (Object.keys(namespace).length) merged[backendName] = namespace;
+      else delete merged[backendName];
     }
     (inst as any).backend_options = merged;
     relaunchNeeded = JSON.stringify(merged) !== before;
   }
+
+  // Validated here, not only on the Settings path: this handler writes the same
+  // file, and a bad value used to be saved and then — because a changed option
+  // restarts the instance — restarted into a spawn that could only fail. Only
+  // errors this edit introduced count, so a fleet that was already imperfect
+  // can still be edited.
+  const after = validateFleetConfig(ctx.fleetConfig as never);
+  const introduced = introducedErrors(beforeEdit, after);
+  if (introduced.length) {
+    if (previousOptions === undefined) delete (inst as any).backend_options;
+    else (inst as any).backend_options = previousOptions;
+    for (const [key, value] of Object.entries(beforeFields)) {
+      if (value === undefined) delete (inst as any)[key];
+      else (inst as any)[key] = value;
+    }
+    respond(null, `Rejected: ${introduced.map(issue => `${issue.path}: ${issue.message}`).join("; ")}`);
+    return;
+  }
+
   try {
     ctx.saveFleetConfig();
   } catch (err) {
@@ -1016,6 +1056,21 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   }
   if (!relaunchNeeded) {
     respond({ success: true, name: v.data.name, applied: patch });
+    return;
+  }
+  // Only a running instance is restarted. Switching the subscription of a
+  // paused or stopped agent must not start it — restartSingleInstance is
+  // stop-then-start and would — so the new credentials are read whenever it
+  // next comes up on its own.
+  const status = targetState(ctx, v.data.name);
+  if (status !== "running") {
+    respond({
+      success: true,
+      name: v.data.name,
+      applied: patch,
+      restarted: false,
+      note: `Instance is ${status}; the new backend_options apply when it next starts.`,
+    });
     return;
   }
   // Saving without restarting would report a subscription switch that has not
