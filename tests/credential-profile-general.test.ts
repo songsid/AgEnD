@@ -280,6 +280,22 @@ describe("moving an agent to another subscription", () => {
     expect(saveFleetConfig).toHaveBeenCalled();
   });
 
+  it("counts a new problem at a path that already had a different one", async () => {
+    // The difference is keyed by path and message. Keying by path alone would
+    // let an edit that replaces one error with another pass as "nothing new".
+    const { ctx, saveFleetConfig } = outboundContext({ working_directory: "/tmp/w", backend: "kiro-cli" });
+    const instances = (ctx.fleetConfig as unknown as { instances: Record<string, unknown> }).instances;
+    // Pre-existing error on the very path the edit will also break, but with a
+    // different message: backend_options must be a mapping.
+    instances.worker = { working_directory: "/tmp/w", backend: "kiro-cli", backend_options: { "kiro-cli": { credential_profile: 42 } } };
+
+    await expect(call(ctx, "update_instance_config", {
+      name: "worker",
+      config: { backend_options: { "kiro-cli": { credential_profile: "bad name" } } },
+    })).rejects.toThrow(/must match/);
+    expect(saveFleetConfig).not.toHaveBeenCalled();
+  });
+
   it("sends an agent back to the default login with null", async () => {
     // A merge cannot express removal, and a stored null would be neither a
     // profile nor absent.

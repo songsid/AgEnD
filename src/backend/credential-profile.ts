@@ -178,6 +178,51 @@ export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHo
   }
 }
 
+/**
+ * The profiles a fleet is configured to use for one backend, in a stable order.
+ *
+ * Read from the configuration rather than from the directories on disk: the
+ * config is what the fleet will actually launch, a directory can linger after a
+ * profile is removed, and a profile configured but never started has no
+ * directory yet. Instances sharing a profile name collapse into one entry,
+ * because they share one login and one quota.
+ */
+export function listConfiguredProfiles(
+  config: { instances?: Record<string, { backend?: string; backend_options?: Record<string, Record<string, unknown>> }>; defaults?: { backend?: string; backend_options?: Record<string, Record<string, unknown>> } } | null,
+  backendName: string,
+): string[] {
+  const found = new Set<string>();
+  const collect = (options: Record<string, Record<string, unknown>> | undefined) => {
+    try {
+      const profile = resolveCredentialProfile(options?.[backendName]);
+      if (profile) found.add(profile);
+    } catch {
+      // A malformed name is rejected where it is written; usage must not throw
+      // because a config it only reads has something wrong in it.
+    }
+  };
+  collect(config?.defaults?.backend_options);
+  for (const instance of Object.values(config?.instances ?? {})) {
+    collect(instance.backend_options);
+  }
+  return [...found].sort();
+}
+
+/** The profile one instance runs under, or null for the shared login. */
+export function instanceCredentialProfile(
+  instance: { backend_options?: Record<string, Record<string, unknown>> } | undefined,
+  defaults: { backend_options?: Record<string, Record<string, unknown>> } | undefined,
+  backendName: string,
+): string | null {
+  for (const options of [instance?.backend_options, defaults?.backend_options]) {
+    try {
+      const profile = resolveCredentialProfile(options?.[backendName]);
+      if (profile) return profile;
+    } catch { /* reported by the validator, not here */ }
+  }
+  return null;
+}
+
 /** Entries that are real (not links) in a prepared profile — for tests and doctor. */
 export function profilePrivateEntries(spec: CredentialHomeSpec, profileHome: string): string[] {
   const profileStore = spec.storeSubdir ? join(profileHome, spec.storeSubdir) : profileHome;
