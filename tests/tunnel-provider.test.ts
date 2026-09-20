@@ -182,6 +182,27 @@ describe("a tunnel is not ready until the public URL serves this page", () => {
     expect(seen).toEqual(["https://calm-river-1.trycloudflare.com/s/abc/"]);
   });
 
+  it("announces the host before it probes, because the probe arrives under it", async () => {
+    // cloudflared forwards the public Host to the origin, so the readiness
+    // probe is the first request that arrives as `xxx.trycloudflare.com`. An
+    // origin with a host allowlist refuses it unless it has been told first —
+    // which is why the order here is the difference between a tunnel that
+    // works and one that reports itself unreachable.
+    const child = new FakeChild();
+    const order: string[] = [];
+    const provider = providerWith(child, {
+      fetchPage: async () => {
+        order.push("probe");
+        return { status: 200, contentType: "text/html", body: "agend-setup-marker" };
+      },
+    });
+    setTimeout(() => child.say("https://calm-river-8.trycloudflare.com\n"), 5);
+
+    await provider.start(context({ onCandidateHost: host => order.push(`candidate:${host}`) }));
+
+    expect(order).toEqual(["candidate:calm-river-8.trycloudflare.com", "probe"]);
+  });
+
   it("is not ready just because the page loaded — the marker has to be in it", async () => {
     const child = new FakeChild();
     const provider = providerWith(child, {

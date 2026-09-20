@@ -132,6 +132,7 @@ agend view                      # Open the read-only View dashboard in browser
 agend web-token rotate          # Revoke every dashboard link and browser session
 agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
+agend setup --tunnel            # …and expose it publicly, so a phone can open it
 ```
 
 `agend setup` serves a small form on the health port and prints **two** things:
@@ -154,6 +155,30 @@ anyone who found the host could close your setup page without ever finding it.
 
 The page closes itself when you finish, after 15 minutes, or after 10 minutes
 idle — a setup form left open is a surface nobody is watching.
+
+### Setting up from a phone
+
+`agend setup --tunnel` puts the page behind a Cloudflare quick tunnel and prints
+an `https://…trycloudflare.com/s/…/` link instead of the loopback one. The code
+still comes from the terminal and is still what authorises you; the tunnel is
+transport and nothing else. Traffic passes through Cloudflare, so **the bot
+token you enter is seen by Cloudflare's edge** — if that is not acceptable, set
+up from the machine itself.
+
+`--tunnel` cannot be combined with `--port`, and in tunnel mode the page **never
+binds the health port**, not even the one in your `fleet.yaml`: the health port
+is what AgEnD itself binds afterwards, and a tunnel that outlived setup would
+otherwise be pointed at the dashboard.
+
+When you finish, the page revokes its own credentials, closes its listener, and
+only then stops the tunnel and starts AgEnD. If the tunnel cannot be confirmed
+stopped, AgEnD still starts — the leftover tunnel points at a port nothing will
+bind again — but the message says so, names the process to kill, and no further
+tunnel is opened until it is resolved. It never claims the tunnel closed safely
+when it does not know that.
+
+With no `cloudflared` on the machine the page stays on loopback and says so,
+rather than handing you a link a phone cannot open.
 
 It refuses to start while AgEnD is running, and a fleet refuses to start while
 it is open: both hold `fleet.lock`, which now records which kind of process owns

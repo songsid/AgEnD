@@ -83,6 +83,7 @@ import { readLastInboundAt } from "./daemon.js";
 import { clearPausedMarker } from "./pause-marker.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
+import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
@@ -895,6 +896,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private finishStartup(): void {
     this.startupComplete = true;
+    // Resolve whatever a previous run — or a setup host that crashed — left
+    // behind. A tunnel nobody is tracking is a public entrance nobody is
+    // watching, and the fleet starting is the moment there is finally a process
+    // around to notice. Never throws: a lease that cannot be resolved blocks
+    // the next tunnel and says so, it does not block the fleet.
+    void reapStaleTunnel(this.dataDir)
+      .then(outcome => {
+        if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
+        else if (outcome.kind === "reaped") this.logger.info({ how: outcome.how, pid: outcome.pid }, "Reaped a leftover tunnel");
+      })
+      .catch(err => this.logger.warn({ err }, "Tunnel reaper failed"));
     // An existing installation has never written the setup marker — it predates
     // it — so `agend setup` would open a pre-fleet form for a fleet that plainly
     // exists. A fleet that just came up on a config with agents in it is proof

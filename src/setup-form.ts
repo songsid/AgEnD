@@ -19,6 +19,10 @@ export const SETUP_CODE_PAGE_HTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Proof that a request reached THIS listener and not merely something that
+     answers 200. The tunnel's readiness probe looks for exactly this. It is the
+     sid, which is already in the URL, so it discloses nothing new. -->
+<meta name="agend-setup" content="__AGEND_SETUP_MARKER__">
 <title>Set up AgEnD</title>
 <style>
   body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #ffffff; color: #111827; }
@@ -261,8 +265,18 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     $("finishMsg").textContent = "Writing configuration…";
     const commit = await api("api/settings/quickstart/commit", { method: "POST", body: JSON.stringify(Object.assign({}, input(), { token: $("token").value.trim() })) });
     if (!commit.ok) { $("finishMsg").className = "msg err"; $("finishMsg").textContent = commit.body?.error || "Failed."; $("finish").disabled = false; return; }
-    await api("setup/finish", { method: "POST" });
+    const finished = await api("setup/finish", { method: "POST" });
     $("finishMsg").className = "msg";
+    if (finished.body && finished.body.watch === false) {
+      // Behind a tunnel this page and its hostname are both about to stop
+      // existing, so there is nothing here to watch. And the dashboard is not
+      // the thing to promise: it binds loopback, so a link to it is one this
+      // phone cannot open. The channel is what was just set up, and it is
+      // where the agent will be.
+      $("finishMsg").className = "msg ok";
+      $("finishMsg").textContent = "AgEnD is starting. Talk to it in the channel you just set up — this page is done.";
+      return;
+    }
     $("finishMsg").textContent = "Starting AgEnD… this page will stop responding while the port changes hands.";
     waitForFleet();
   };
@@ -274,7 +288,11 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
     const tick = async () => {
       try {
         const res = await fetch("/health", { cache: "no-store" });
-        if (res.status) { $("finishMsg").className = "msg ok"; $("finishMsg").textContent = "AgEnD is up. Open /settings from the link AgEnD sends you."; return; }
+        if (res.status) {
+          $("finishMsg").className = "msg ok";
+          $("finishMsg").textContent = "AgEnD is up. Talk to it in the channel you just set up.";
+          return;
+        }
       } catch { /* not listening yet */ }
       if (Date.now() > deadline) {
         $("finishMsg").className = "msg err";

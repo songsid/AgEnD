@@ -1623,7 +1623,8 @@ program
   .description("Open the guided setup page in a browser (before a fleet exists)")
   .option("--reset", "Allow setup again after it has already been completed")
   .option("--port <port>", "Port for the setup page (default: the health port)")
-  .action(async (opts: { reset?: boolean; port?: string }) => {
+  .option("--tunnel", "Expose the setup page through a Cloudflare quick tunnel so a phone can open it")
+  .action(async (opts: { reset?: boolean; port?: string; tunnel?: boolean }) => {
     const { clearSetupComplete, isSetupComplete } = await import("./setup-marker.js");
     if (opts.reset) {
       console.log(clearSetupComplete(DATA_DIR) ? "Setup marker cleared." : "No setup marker to clear.");
@@ -1633,12 +1634,26 @@ program
       console.error("Setup has already been completed. Use `agend setup --reset` to run it again, or edit settings from the dashboard.");
       process.exit(1);
     }
+    if (opts.tunnel && opts.port) {
+      // Not "ignored": a fixed port behind a tunnel is the one arrangement this
+      // whole design exists to prevent, and silently overriding the flag would
+      // leave someone believing they got the port they asked for.
+      console.error("--tunnel and --port cannot be combined: a tunnelled setup page always binds an ephemeral port.");
+      process.exit(1);
+    }
     const { loadFleetConfig } = await import("./config.js");
     const fleet = existsSync(FLEET_CONFIG_PATH) ? loadFleetConfig(FLEET_CONFIG_PATH) : { defaults: {}, instances: {} };
-    const port = Number(opts.port ?? fleet.health_port ?? 19280);
-    const { SetupHost } = await import("./setup-host.js");
-    const host = new SetupHost({ dataDir: DATA_DIR, configPath: FLEET_CONFIG_PATH, port });
-    let started: { port: number; sid: string; code: string; path: string };
+    const { SetupHost, resolvePort } = await import("./setup-host.js");
+    // In tunnel mode this ignores `--port`, `health_port` and the default
+    // alike: the health port is what the fleet will bind later, and a tunnel
+    // that outlived this process would then be pointed at its dashboard.
+    const port = resolvePort({
+      tunnel: opts.tunnel,
+      port: opts.port === undefined ? undefined : Number(opts.port),
+      healthPort: fleet.health_port,
+    });
+    const host = new SetupHost({ dataDir: DATA_DIR, configPath: FLEET_CONFIG_PATH, port, tunnel: opts.tunnel });
+    let started: { port: number; sid: string; code: string; path: string; publicUrl: string | null };
     try {
       started = await host.start();
     } catch (err) {
@@ -1651,7 +1666,8 @@ program
     // credential in the link would mean a preview fetch, a shell history or a
     // forwarded message carries the whole thing.
     const { formatSetupCode } = await import("./setup-auth.js");
-    console.log(`\n  Setup page: http://127.0.0.1:${started.port}${started.path}`);
+    const pageUrl = started.publicUrl ?? `http://127.0.0.1:${started.port}${started.path}`;
+    console.log(`\n  Setup page: ${pageUrl}`);
     console.log(`  Setup code: ${formatSetupCode(started.code)}`);
     console.log("  Open the page, type the code. Five wrong attempts closes it,");
     console.log("  and it closes itself after 15 minutes.\n");

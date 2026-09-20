@@ -122,7 +122,24 @@ export class SetupCredentials {
     this.code = opts.code ?? generateSetupCode();
   }
 
-  get lockedOut(): boolean { return this.failures >= MAX_SETUP_ATTEMPTS; }
+  private revoked = false;
+
+  /**
+   * Take the page's credentials away, irreversibly.
+   *
+   * Called first in the shutdown, before the listener is closed: from this
+   * instant nothing can authenticate, so anything still in flight — including a
+   * request that arrives over a tunnel we have not torn down yet — is already
+   * too late.
+   */
+  revoke(): void {
+    this.revoked = true;
+    this.secret = null;
+  }
+
+  get revokedNow(): boolean { return this.revoked; }
+
+  get lockedOut(): boolean { return this.revoked || this.failures >= MAX_SETUP_ATTEMPTS; }
   get attemptsLeft(): number { return Math.max(0, MAX_SETUP_ATTEMPTS - this.failures); }
   /** True once the code has been exchanged; the code itself stops working then. */
   get redeemed(): boolean { return this.secret !== null; }
@@ -139,6 +156,12 @@ export class SetupCredentials {
   matchesSid(candidate: string): boolean {
     return constantTimeMatches(candidate, this.sid);
   }
+
+  /**
+   * Something only this page can serve, for proving a tunnel reaches THIS
+   * listener rather than merely returning a 200 from somewhere.
+   */
+  get readinessMarker(): string { return `agend-setup:${this.sid}`; }
 
   /** Exchange the code for a session. One-way: the code is spent either way. */
   redeem(providedCode: string): SetupVerdict & { secret?: string } {
