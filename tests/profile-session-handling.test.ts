@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -89,6 +89,7 @@ interface Harness {
   restartSingleInstance: ReturnType<typeof vi.fn>;
   saveFleetConfig: ReturnType<typeof vi.fn>;
   delivered: Array<Record<string, unknown>>;
+  daemons: Map<string, { collectHandoverContext(): string }>;
 }
 
 function harness(instance: Record<string, unknown>, opts: { handover?: string } = {}): Harness {
@@ -100,6 +101,13 @@ function harness(instance: Record<string, unknown>, opts: { handover?: string } 
   if (opts.handover !== undefined) {
     daemons.set("worker", { collectHandoverContext: () => opts.handover! });
   }
+  const daemonsRef = daemons;
+  // A real restart stops the daemon and builds a new one, so the ring buffer
+  // the handover comes from is gone by the time it resolves. Modelling that
+  // here is what makes the collect-before-restart ordering testable at all:
+  // with a mock that leaves the map alone, moving the collect after the restart
+  // stays green.
+  restartSingleInstance.mockImplementation(async () => { daemons.delete("worker"); });
   const ctx = {
     dataDir,
     fleetConfig: { defaults: {}, instances: { worker: instance } },
@@ -111,7 +119,7 @@ function harness(instance: Record<string, unknown>, opts: { handover?: string } 
     getInstanceStatus: () => "running",
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as unknown as OutboundContext;
-  return { ctx, instance, dataDir, restartSingleInstance, saveFleetConfig, delivered };
+  return { ctx, instance, dataDir, restartSingleInstance, saveFleetConfig, delivered, daemons: daemonsRef };
 }
 
 async function update(h: Harness, config: unknown): Promise<{ result: Record<string, unknown> | null; error?: string }> {
@@ -237,6 +245,22 @@ describe("a switched agent starts a new session and is told why", () => {
     expect(result).toMatchObject({ conversation_carried_over: false, handover_chars: context.length });
   }, 10_000);
 
+  it("takes the context before the restart, while the daemon holding it exists", async () => {
+    // The ring buffer lives in the daemon the restart is about to tear down.
+    // Collecting after the restart would find nothing and hand the new session
+    // an empty brief — silently, because everything else still succeeds.
+    const context = "Recent user messages:\n- finish the migration";
+    const h = harness({ working_directory: "/tmp/w", backend: "kiro-cli" }, { handover: context });
+    makeStore(profileStore(h.dataDir, "personal"), { login: true });
+
+    await update(h, { backend_options: { "kiro-cli": { credential_profile: "personal" } } });
+
+    // The restart really did remove it, so the assertion above is not vacuous.
+    expect(h.daemons.has("worker")).toBe(false);
+    expect(h.delivered).toHaveLength(1);
+    expect(h.delivered[0]!.content as string).toContain("finish the migration");
+  }, 10_000);
+
   it("still completes the switch when there is nothing to hand over", async () => {
     const h = harness({ working_directory: "/tmp/w", backend: "kiro-cli" });
     makeStore(profileStore(h.dataDir, "personal"), { login: true });
@@ -358,5 +382,41 @@ describe("the daemon knows which store its own CLI writes to", () => {
 
     expect(() => daemon.credentialProfileStore()).not.toThrow();
     expect(daemon.credentialProfileStore()).toBeUndefined();
+  });
+});
+
+// ── The one argument a type cannot check ────────────────────────────────────
+
+describe("the transcript source is handed the store, not something else", () => {
+  /** Top-level arguments of the first call to `fn`, as written in the source. */
+  function callArgs(source: string, fn: string): string[] {
+    const start = source.indexOf(`${fn}(`);
+    expect(start, `${fn} is never called`).toBeGreaterThan(-1);
+    const args: string[] = [];
+    let depth = 0;
+    let current = "";
+    for (let i = start + fn.length; i < source.length; i++) {
+      const char = source[i]!;
+      if (char === "(") { depth++; if (depth === 1) continue; }
+      if (char === ")") { depth--; if (depth === 0) { args.push(current); break; } }
+      if (char === "," && depth === 1) { args.push(current); current = ""; continue; }
+      current += char;
+    }
+    return args.map(a => a.trim()).filter(Boolean);
+  }
+
+  it("passes the working directory and the store in that order", () => {
+    // Both are `string`, so swapping them compiles, runs, and quietly reads a
+    // conversation database at the working directory's path — which does not
+    // exist, so the transcript simply goes dark. Nothing else in this file can
+    // catch that: each side is tested, the call between them is one expression.
+    const daemonSource = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
+
+    const args = callArgs(daemonSource, "createTranscriptSource");
+
+    expect(args).toHaveLength(3);
+    expect(args[0]).toContain("this.config.backend");
+    expect(args[1]).toBe("this.config.working_directory");
+    expect(args[2]).toBe("this.credentialProfileStore()");
   });
 });
