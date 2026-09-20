@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
-import { fetchAllUsage, providersForConfig, setUsageProvidersForTests } from "../src/usage/providers.js";
+import { fetchAllUsage, fetchKiroUsage, providersForConfig, setUsageProvidersForTests } from "../src/usage/providers.js";
 import { listConfiguredProfiles, instanceCredentialProfile } from "../src/backend/credential-profile.js";
 
 const dirs: string[] = [];
@@ -248,5 +248,102 @@ describe("the active-row filter follows the profile", () => {
     vi.spyOn(fm, "getInstanceStatus").mockReturnValue("stopped");
 
     expect([...fm.getActiveUsageProviderIds()]).toEqual([]);
+  });
+});
+
+describe("the real kiro reader against a real store", () => {
+  /** A kiro store on disk. `login: null` writes the schema with nobody in it. */
+  function makeStore(dir: string, login: { accessToken: string; qPro: boolean } | null): string {
+    mkdirSync(dir, { recursive: true });
+    const db = new Database(join(dir, "data.sqlite3"));
+    db.exec("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
+    if (login) {
+      db.prepare("INSERT INTO auth_kv (key, value) VALUES (?, ?)").run(
+        "kirocli:odic:token",
+        JSON.stringify({
+          access_token: login.accessToken,
+          expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+          region: "us-east-1",
+          // A Q Developer Pro login reports its plan without any network call,
+          // which is what keeps this test offline and deterministic.
+          ...(login.qPro ? { start_url: "https://view.awsapps.com/start" } : {}),
+        }),
+      );
+    }
+    db.close();
+    return dir;
+  }
+
+  it("opens the store it was handed, not the shared login", async () => {
+    // Both stores are real and readable, and they answer differently — so this
+    // fails if the argument is ignored, rather than only if the fallback is
+    // absent from the machine.
+    const profileStore = makeStore(join(tempDir(), "kiro-cli"), { accessToken: "work-token", qPro: true });
+    process.env.KIRO_CLI_HOME = makeStore(join(tempDir(), "kiro-cli"), null);
+    const before = statSync(join(profileStore, "data.sqlite3"));
+
+    const usage = await fetchKiroUsage(profileStore);
+
+    expect(usage.plan).toBe("Q Developer Pro");
+    // The shared store's answer, which a dropped argument would return instead.
+    expect((await fetchKiroUsage()).plan).toBe("Kiro");
+    const after = statSync(join(profileStore, "data.sqlite3"));
+    expect([after.mtimeMs, after.size]).toEqual([before.mtimeMs, before.size]);
+  });
+
+  it("says a configured subscription is signed out instead of dropping its row", async () => {
+    // The store does not exist because nobody has run `kiro-cli login` for this
+    // profile yet. kiro-cli is plainly installed — the fleet is running it — so
+    // this is the reminder to go and log in, not a reason to hide the row.
+    const dataDir = tempDir();
+    process.env.AGEND_HOME = dataDir;
+    // Pointed away from the developer's own login, so this never reads it —
+    // including when a regression makes the reader fall back to the shared store.
+    process.env.KIRO_CLI_HOME = join(tempDir(), "nowhere");
+    setUsageProvidersForTests([{ id: "kiro", name: "Kiro", fetch: fetchKiroUsage }]);
+
+    const payload = await fetchAllUsage(configWith(["work"]));
+
+    expect(payload.providers.map(p => [p.id, p.status])).toEqual([["kiro:work", "ok"]]);
+    expect(payload.providers[0]!.hint).toContain("Signed out");
+  });
+
+  it("still lets the shared row vanish when kiro-cli is not on this machine", async () => {
+    // The other direction: without a profile, an absent store means the CLI
+    // isn't here, and the panel should not carry a row for it.
+    process.env.AGEND_HOME = tempDir();
+    process.env.KIRO_CLI_HOME = join(tempDir(), "nowhere");
+    setUsageProvidersForTests([{ id: "kiro", name: "Kiro", fetch: fetchKiroUsage }]);
+
+    const payload = await fetchAllUsage(configWith([null]));
+
+    expect(payload.providers).toEqual([]);
+  });
+
+  it("reads fleet.yaml itself when the caller passes no config", async () => {
+    // /usage, the dashboard and get_usage all call fetchAllUsage() bare. If it
+    // did not look the profiles up, every one of them would show the old single
+    // shared row and the second subscription would be invisible.
+    const dataDir = tempDir();
+    process.env.AGEND_HOME = dataDir;
+    writeFileSync(join(dataDir, "fleet.yaml"), [
+      "instances:",
+      "  work-agent:",
+      "    working_directory: /tmp/w",
+      "    backend: kiro-cli",
+      "    backend_options:",
+      "      kiro-cli:",
+      "        credential_profile: work",
+      "",
+    ].join("\n"));
+    setUsageProvidersForTests([{
+      id: "kiro", name: "Kiro",
+      fetch: async (home?: string) => ({ status: "ok", plan: home ?? "shared", metrics: [] }),
+    }] as never);
+
+    const payload = await fetchAllUsage();
+
+    expect(payload.providers.map(p => p.id)).toEqual(["kiro:work"]);
+    expect(payload.providers[0]!.plan).toBe(join(dataDir, "credential-profiles", "kiro-cli", "work", "kiro-cli"));
   });
 });

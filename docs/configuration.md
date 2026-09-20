@@ -305,6 +305,11 @@ one per backend: a fleet with a `work` and a `personal` kiro profile gets
 `Kiro (work)` and `Kiro (personal)`, each read from its own store. A backend
 with no profiles keeps its single row, reading the shared login.
 
+A profile that is configured but never logged in keeps its row too, reading
+`Signed out — run kiro-cli to log in`: when you are setting up a second
+subscription, the one still to be logged in is exactly the row you need to see.
+A row only disappears when the CLI itself is absent from the machine.
+
 The rows are never added together. Two subscriptions have two quotas, and a
 combined number would be true of neither — which is also the quickest way to see
 whether two logins really are separate billing accounts: spend against one and

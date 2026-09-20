@@ -1030,6 +1030,12 @@ export function kiroAuthKind(token: KiroToken): KiroAuthKind {
  * case where the provider should vanish from the panel. `missing` means kiro-cli
  * IS installed but no login we recognise is stored: a real state the user needs
  * to see, not a reason to hide the row.
+ *
+ * A credential profile can only ever be `missing`, never `notInstalled`: the
+ * profile exists because the fleet configured it, so the CLI is demonstrably
+ * here and the absent store means *this subscription* has never been logged in.
+ * That is the one thing the user must see — running two subscriptions, the one
+ * you still have to log into is precisely the row that must not disappear.
  */
 function readKiroToken(storeHome?: string): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean; notInstalled?: boolean } {
   // A credential profile keeps its own store; without one this is the shared
@@ -1039,7 +1045,7 @@ function readKiroToken(storeHome?: string): { token?: KiroToken; kind?: KiroAuth
   try {
     db = new Database(join(home, "data.sqlite3"), { readonly: true, fileMustExist: true });
   } catch {
-    return { notInstalled: true };
+    return storeHome ? { missing: true } : { notInstalled: true };
   }
   try {
     // Read every token-shaped row rather than a fixed pair of keys: kiro names
