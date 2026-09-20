@@ -178,8 +178,31 @@ async function startHost(overrides: Partial<ConstructorParameters<typeof SetupHo
     dataDir: dir, configPath: join(dir, "fleet.yaml"), port: 0, spawnFleet, log: () => {}, ...overrides,
   });
   hosts.push(host);
-  const { port, token } = await host.start();
-  return { host, dir, port, token, spawnFleet };
+  const { port, sid, code, path } = await host.start();
+  return { host, dir, port, sid, code, path, spawnFleet };
+}
+
+/** Type the code in, the way the page does, and keep the cookie it hands back. */
+async function signIn(port: number, path: string, code: string): Promise<string> {
+  const res = await postJson(port, `${path}open`, { code });
+  if (res.status !== 200) throw new Error(`sign-in failed: ${res.status} ${res.body}`);
+  return String(res.headers["set-cookie"]).split(";")[0]!;
+}
+
+function postJson(port: number, path: string, body: unknown, headers: Record<string, string> = {}): Promise<RawResponse> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = request({
+      host: "127.0.0.1", port, method: "POST", path,
+      headers: { "content-type": "application/json", "content-length": Buffer.byteLength(payload), ...headers },
+    }, res => {
+      let text = "";
+      res.on("data", (chunk: Buffer) => { text += chunk.toString(); });
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: text }));
+    });
+    req.on("error", reject);
+    req.end(payload);
+  });
 }
 
 describe("the setup host", () => {
@@ -224,24 +247,27 @@ describe("the setup host", () => {
     })).toThrow(/Setup is already running/);
   });
 
-  it("redeems its link once and then only answers the cookie", async () => {
-    const { port, token } = await startHost();
+  it("serves a code prompt to the link alone, and the wizard only after the code", async () => {
+    // The link is where the page lives, not permission to use it. Someone who
+    // has only the link — a forwarded message, a preview fetch — gets a box to
+    // type into and learns nothing about this machine.
+    const { port, path, code } = await startHost();
 
-    const exchange = await raw(port, "GET", `/?token=${token}`);
-    expect(exchange.status).toBe(302);
-    const cookie = String(exchange.headers["set-cookie"]).split(";")[0]!;
+    const anonymous = await raw(port, "GET", path);
+    expect(anonymous.status).toBe(200);
+    expect(anonymous.body).toContain("Enter the setup code");
+    expect(anonymous.body).not.toContain("Working directory");
 
-    expect((await raw(port, "GET", "/", { cookie })).status).toBe(200);
-    // The same link again: spent.
-    expect((await raw(port, "GET", `/?token=${token}`)).status).toBe(401);
-    expect((await raw(port, "GET", "/")).status).toBe(401);
+    const cookie = await signIn(port, path, code);
+    const signedIn = await raw(port, "GET", path, { cookie });
+    expect(signedIn.body).toContain("Working directory");
   });
 
   it("rejects a cross-site request even with the cookie", async () => {
-    const { port, token } = await startHost();
-    const cookie = String((await raw(port, "GET", `/?token=${token}`)).headers["set-cookie"]).split(";")[0]!;
+    const { port, path, code } = await startHost();
+    const cookie = await signIn(port, path, code);
 
-    const res = await raw(port, "POST", "/setup/finish", { cookie, origin: "https://evil.example" });
+    const res = await raw(port, "POST", `${path}setup/finish`, { cookie, origin: "https://evil.example" });
 
     expect(res.status).toBe(403);
   });
@@ -295,37 +321,28 @@ describe("the setup host", () => {
     expect(() => acquireFleetLock(dir, { pid: 1234 })).not.toThrow();
   });
 
-  it("does not keep itself alive for requests it rejects", async () => {
-    // Otherwise anyone who can reach the port holds the page open by knocking.
+  it("does not keep itself alive for requests that are not for this page", async () => {
+    // Otherwise a scanner that cannot find the page can still keep it open
+    // forever by knocking on the wrong paths — the ten-minute idle window
+    // becomes unbounded.
     const source = readFileSync(join(SRC, "setup-host.ts"), "utf8");
     const handle = source.slice(source.indexOf("private handle("));
-    const authorizeAt = handle.indexOf("this.authorize(");
+    const sidAt = handle.indexOf("matchesSid(");
     const touchAt = handle.indexOf("this.touch()");
 
-    expect(authorizeAt).toBeGreaterThan(-1);
-    expect(touchAt, "idle timer refreshed before the request was authorized").toBeGreaterThan(authorizeAt);
+    expect(sidAt).toBeGreaterThan(-1);
+    expect(touchAt, "idle timer refreshed before the sid was checked").toBeGreaterThan(sidAt);
   });
 
   it("writes a config a fleet can load", async () => {
-    const { host, dir, port, token } = await startHost();
-    const cookie = String((await raw(port, "GET", `/?token=${token}`)).headers["set-cookie"]).split(";")[0]!;
+    const { host, dir, port, path, code } = await startHost();
+    const cookie = await signIn(port, path, code);
 
-    const res = await new Promise<RawResponse>((resolve, reject) => {
-      const payload = JSON.stringify({
-        platform: "telegram", token_env: "AGEND_BOT_TOKEN", backend: "claude-code",
-        working_directory: "/tmp/app", instance_name: "agent-1", group_id: "-100123",
-        admin_user_id: "42", token: "123456:ABC",
-      });
-      const req = request({
-        host: "127.0.0.1", port, method: "POST", path: "/api/settings/quickstart/commit",
-        headers: { cookie, "content-type": "application/json", "content-length": Buffer.byteLength(payload) },
-      }, response => {
-        let body = ""; response.on("data", (c: Buffer) => { body += c.toString(); });
-        response.on("end", () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body }));
-      });
-      req.on("error", reject);
-      req.end(payload);
-    });
+    const res = await postJson(port, `${path}api/settings/quickstart/commit`, {
+      platform: "telegram", token_env: "AGEND_BOT_TOKEN", backend: "claude-code",
+      working_directory: "/tmp/app", instance_name: "agent-1", group_id: "-100123",
+      admin_user_id: "42", token: "123456:ABC",
+    }, { cookie });
 
     expect(res.status).toBe(200);
     const { loadFleetConfig } = await import("../src/config.js");

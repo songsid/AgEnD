@@ -7,6 +7,73 @@
  * work, and it would put the whole panel on a surface that exists before any
  * fleet-level access control does.
  */
+/**
+ * What an unauthenticated visitor gets: a box to type the code into.
+ *
+ * Deliberately says nothing about this machine — no backend list, no existing
+ * channels, no hostname. Whoever has the link has only the link, and until they
+ * prove they also have the code they learn nothing from it.
+ */
+export const SETUP_CODE_PAGE_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up AgEnD</title>
+<style>
+  body { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 0; background: #ffffff; color: #111827; }
+  main { max-width: 420px; margin: 0 auto; padding: 64px 20px; }
+  h1 { font-size: 20px; margin: 0 0 8px; }
+  p { color: #6b7280; font-size: 13px; margin: 0 0 20px; }
+  input { width: 100%; padding: 12px; border: 1px solid #e5e7eb; border-radius: 6px; font-size: 20px; letter-spacing: 3px; text-align: center; text-transform: uppercase; box-sizing: border-box; }
+  button { width: 100%; margin-top: 12px; padding: 12px; border: 1px solid #2563eb; border-radius: 6px; background: #2563eb; color: #fff; font-size: 15px; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .err { color: #dc2626; font-size: 13px; margin-top: 12px; min-height: 18px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Set up AgEnD</h1>
+  <p>Enter the setup code shown in the terminal where you ran <code>agend setup</code>.</p>
+  <form id="f">
+    <input id="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD-EFGH" maxlength="12" autofocus>
+    <button id="go" type="submit">Continue</button>
+  </form>
+  <div class="err" id="msg"></div>
+</main>
+<script>
+(() => {
+  "use strict";
+  const msg = document.getElementById("msg");
+  const go = document.getElementById("go");
+  document.getElementById("f").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    go.disabled = true;
+    msg.textContent = "";
+    let res;
+    try {
+      res = await fetch("open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: document.getElementById("code").value }),
+      });
+    } catch {
+      msg.textContent = "Could not reach the setup page.";
+      go.disabled = false;
+      return;
+    }
+    if (res.ok) { location.reload(); return; }
+    let body = null; try { body = await res.json(); } catch {}
+    msg.textContent = (body && body.error) || "That code was not accepted.";
+    // A spent budget ends the page; there is nothing useful left to type into.
+    if (res.status !== 410) go.disabled = false;
+  });
+})();
+</script>
+</body>
+</html>
+`;
+
 export const SETUP_FORM_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,6 +147,9 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   "use strict";
   const $ = (id) => document.getElementById(id);
   const state = { platform: "telegram", identity: null, guilds: [], offset: 0, plan: null };
+  // Relative to the page's own directory, which is /s/<sid>/. An absolute path
+  // would leave that namespace and 404 — the sid is where this page lives, not
+  // a prefix bolted on to it.
   const api = async (path, opts) => {
     const res = await fetch(path, Object.assign({ headers: { "Content-Type": "application/json" } }, opts || {}));
     let body = null; try { body = await res.json(); } catch {}
@@ -87,7 +157,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   };
 
   async function loadEnvironment() {
-    const res = await api("/api/settings/quickstart/environment");
+    const res = await api("api/settings/quickstart/environment");
     const backends = res.body?.backends || [];
     $("backend").innerHTML = "";
     for (const name of backends.length ? backends : ["claude-code"]) {
@@ -139,7 +209,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
 
   async function detectGroup() {
     $("detectMsg").textContent = "Waiting for a message in the group…";
-    const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "await-telegram-start", token: $("token").value.trim(), offset: state.offset }) });
+    const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "await-telegram-start", token: $("token").value.trim(), offset: state.offset }) });
     if (!res.ok) { $("detectMsg").textContent = res.body?.error || "Failed."; return; }
     state.offset = res.body.offset;
     if (res.body.found) {
@@ -166,19 +236,19 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("verify").onclick = async () => {
     $("verifyMsg").textContent = "Asking the provider…";
     const token = $("token").value.trim();
-    const res = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform: state.platform, token }) });
+    const res = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "verify", platform: state.platform, token }) });
     state.identity = res.body?.identity || { valid: false };
     $("verifyMsg").className = "msg " + (state.identity.valid ? "ok" : "err");
     $("verifyMsg").textContent = state.identity.valid ? "✓ " + (state.identity.username || "verified") : "✗ " + (state.identity.reason || "rejected");
     if (state.identity.valid && state.platform === "discord") {
-      const guilds = await api("/api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token }) });
+      const guilds = await api("api/settings/quickstart/probe", { method: "POST", body: JSON.stringify({ action: "guilds", token }) });
       state.guilds = guilds.body?.guilds || [];
       renderPlatformFields();
     }
   };
 
   $("preview").onclick = async () => {
-    const res = await api("/api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(input()) });
+    const res = await api("api/settings/quickstart/plan", { method: "POST", body: JSON.stringify(input()) });
     if (!res.ok) { $("planOut").hidden = false; $("planOut").textContent = res.body?.error || "Failed."; return; }
     state.plan = res.body;
     $("planOut").hidden = false;
@@ -189,9 +259,9 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
   $("finish").onclick = async () => {
     $("finish").disabled = true;
     $("finishMsg").textContent = "Writing configuration…";
-    const commit = await api("/api/settings/quickstart/commit", { method: "POST", body: JSON.stringify(Object.assign({}, input(), { token: $("token").value.trim() })) });
+    const commit = await api("api/settings/quickstart/commit", { method: "POST", body: JSON.stringify(Object.assign({}, input(), { token: $("token").value.trim() })) });
     if (!commit.ok) { $("finishMsg").className = "msg err"; $("finishMsg").textContent = commit.body?.error || "Failed."; $("finish").disabled = false; return; }
-    await api("/setup/finish", { method: "POST" });
+    await api("setup/finish", { method: "POST" });
     $("finishMsg").className = "msg";
     $("finishMsg").textContent = "Starting AgEnD… this page will stop responding while the port changes hands.";
     waitForFleet();

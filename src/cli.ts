@@ -1638,17 +1638,23 @@ program
     const port = Number(opts.port ?? fleet.health_port ?? 19280);
     const { SetupHost } = await import("./setup-host.js");
     const host = new SetupHost({ dataDir: DATA_DIR, configPath: FLEET_CONFIG_PATH, port });
-    let started: { port: number; token: string };
+    let started: { port: number; sid: string; code: string; path: string };
     try {
       started = await host.start();
     } catch (err) {
       console.error((err as Error).message);
       process.exit(1);
     }
-    // The link carries the token once; opening it turns the token into a cookie
-    // and the link stops working.
-    console.log(`\n  Setup page: http://127.0.0.1:${started.port}/?token=${started.token}`);
-    console.log("  The link works once, and the page closes itself after 15 minutes.\n");
+    // Two things, and only the second one is a credential. The link is where
+    // the page lives — a random path so nothing finds it by looking — and the
+    // code is what proves you are the person who ran this command. Putting the
+    // credential in the link would mean a preview fetch, a shell history or a
+    // forwarded message carries the whole thing.
+    const { formatSetupCode } = await import("./setup-auth.js");
+    console.log(`\n  Setup page: http://127.0.0.1:${started.port}${started.path}`);
+    console.log(`  Setup code: ${formatSetupCode(started.code)}`);
+    console.log("  Open the page, type the code. Five wrong attempts closes it,");
+    console.log("  and it closes itself after 15 minutes.\n");
     // Every way this command is asked to stop, not just Ctrl-C: a host that
     // exits without releasing the lock leaves the next `agend start` to prove
     // the pid is stale before it can run.
