@@ -296,7 +296,7 @@ export const SETUP_FORM_HTML = `<!DOCTYPE html>
       } catch { /* not listening yet */ }
       if (Date.now() > deadline) {
         $("finishMsg").className = "msg err";
-        $("finishMsg").textContent = "AgEnD has not come up within 60s — check fleet.log, or run \`agend start\` on the host.";
+        $("finishMsg").textContent = "AgEnD has not come up within 60 seconds. Run \`agend start\` on the machine itself and check fleet.log — this page cannot tell you any more.";
         return;
       }
       setTimeout(tick, 1000);

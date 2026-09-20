@@ -158,7 +158,14 @@ idle — a setup form left open is a surface nobody is watching.
 
 ### Setting up from a phone
 
-`agend setup --tunnel` puts the page behind a Cloudflare quick tunnel and prints
+`agend setup --tunnel` asks you to confirm first, every time — there is no flag
+and no setting that answers it in advance, and a run with no terminal is refused
+rather than assumed to be consent. The confirmation says what you are agreeing
+to: the bot token you type into the page travels through Cloudflare, anyone who
+sees the link can get the code wrong five times and close your setup page, and
+so you should not paste it into a group chat.
+
+After you agree it puts the page behind a Cloudflare quick tunnel and prints
 an `https://…trycloudflare.com/s/…/` link instead of the loopback one. The code
 still comes from the terminal and is still what authorises you; the tunnel is
 transport and nothing else. Traffic passes through Cloudflare, so **the bot
