@@ -223,6 +223,9 @@ export const UpdateInstanceConfigArgs = z.object({
     auto_pause_after: z.number().optional().describe("Minutes idle before auto-pause (0 = disabled)"),
     display_name: z.string().optional().describe("Display name"),
     description: z.string().optional().describe("Role description"),
+    backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
+      "Backend-specific options keyed by backend name. Use { \"kiro-cli\": { \"credential_profile\": \"work\" } } to move this agent to another subscription — the instance is restarted so the new login takes effect.",
+    ),
   }).describe("Fields to merge-patch into the instance config"),
 });
 

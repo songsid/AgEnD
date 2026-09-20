@@ -1,4 +1,5 @@
 import { validateProvider } from "./backend/types.js";
+import { credentialHomeSpec, resolveCredentialProfile } from "./backend/credential-profile.js";
 
 /**
  * Shared config validation for fleet.yaml and classicBot.yaml.
@@ -66,6 +67,25 @@ export function validateFleetConfig(config: unknown): ValidationResult {
           if (!isObj(settings)) {
             err(optionPath, "must be a mapping");
             continue;
+          }
+          if (settings.credential_profile !== undefined) {
+            // Validated here, not only at launch: Settings and General write
+            // this, and a bad value should be refused where it is entered
+            // rather than surface as a failed spawn minutes later. A number or
+            // a boolean must not become a directory name via String().
+            if (typeof settings.credential_profile !== "string") {
+              err(`${optionPath}.credential_profile`, "must be a string");
+            } else {
+              try {
+                resolveCredentialProfile({ credential_profile: settings.credential_profile });
+              } catch (error) {
+                err(`${optionPath}.credential_profile`, error instanceof Error ? error.message : String(error));
+              }
+              if (!credentialHomeSpec(backendName)) {
+                warn(`${optionPath}.credential_profile`,
+                  `${backendName} has no credential home yet — the profile will be ignored`);
+              }
+            }
           }
           if (backendName === "codex" && settings.provider !== undefined) {
             if (typeof settings.provider !== "string") {

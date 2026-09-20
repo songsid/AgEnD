@@ -278,6 +278,26 @@ second profile costs megabytes rather than gigabytes. The store itself is never
 a symlink — SQLite follows a linked database to its target, which would leave
 the profile sharing the very login it exists to separate.
 
+**A profile starts empty apart from those caches.** Anything the backend keeps
+beside its login and that is not a shared cache — kiro's `knowledge_bases`, its
+shell `history`, its conversation store — belongs to the profile, so an agent
+moved to a new profile starts with none of it. That is the point of the
+isolation, but `knowledge_bases` disappearing is the part people do not expect;
+copy it across by hand if you want it in both.
+
+Switching an existing agent is a config change plus a restart:
+
+```
+update_instance_config(name: "research-a",
+  config: { backend_options: { "kiro-cli": { credential_profile: "personal" } } })
+```
+
+The credentials are read when the CLI launches, so AgEnD restarts the instance
+for you and says `restarted: true`. A paused or stopped agent is not started:
+its new profile applies when it next comes up. Send `credential_profile: null`
+to put an agent back on the default login. Ask General in plain language — "move
+research-a to the personal subscription" — and it will do this.
+
 Currently implemented for `kiro-cli`. Other backends keep their logins behind
 their own variables (Codex uses `CODEX_HOME`); adding one is a new entry in
 `CREDENTIAL_HOMES`, not a new mechanism.
