@@ -1,6 +1,8 @@
 # 一個 fleet 同時用 Amazon Q 訂閱與 Kiro 訂閱：可行性與 spec
 
-狀態：**調查回報，未實作**。所有結論對本機實際安裝的 `kiro-cli 2.22.0`（`~/.local/bin/kiro-cli`）實測，未修改任何既有登入狀態（每次實測都比對過真實 DB 的 mtime/size 未變）。
+狀態：**階段 1（機制核心）已實作**，見 `src/backend/credential-profile.ts`；其餘階段（General 可操作、profile-aware usage、session 處理）未實作。原始調查內容如下，所有結論對本機實際安裝的 `kiro-cli 2.22.0` 實測。
+
+原始狀態：**調查回報，未實作**。所有結論對本機實際安裝的 `kiro-cli 2.22.0`（`~/.local/bin/kiro-cli`）實測，未修改任何既有登入狀態（每次實測都比對過真實 DB 的 mtime/size 未變）。
 
 **結論先講：可行，而且比預期便宜**——`XDG_DATA_HOME` 就能完整隔離憑證，不需要換 HOME、不需要動 CLI。但有一個**不做就會很貴**的陷阱（同一個目錄裡混著 8.4GB 的 runtime 快取），以及一個**這支 CLI 本身不支援**的東西（同一份 DB 內的身分切換）。
 

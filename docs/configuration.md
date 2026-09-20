@@ -110,7 +110,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `tool_set` | string | `"full"` | MCP tool profile: `"full"` (47 tools), `"standard"` (18), `"minimal"` (4). Not user-settable: `"general"` (26 tools, dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Runtime override via the `/effort` command — see [commands.md](./commands.md). |
-| `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. |
+| `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`. |
 | `terminal.enabled` | boolean | `true` | Logical terminal size feature toggle. `false` pins the window to tmux's historical 80x24 for compatibility. |
 | `terminal.columns` | number | `120` | Terminal width when `terminal.enabled` is `true`. |
 | `terminal.rows` | number | `36` | Terminal height when `terminal.enabled` is `true`. |
@@ -239,3 +239,45 @@ Located at `~/.agend/classicBot.yaml`. Manages ClassicBot channels (auto-created
 - **Instance naming**: `classic-<sanitized-channel-name>-<last4-of-channelId>`
 - **DC auto-collab**: Discord `/start` auto-enables collab mode (bot messages visible without @mention)
 - **Fleet /collab**: per-instance in-memory toggle (non-persistent, resets on fleet restart). Allows bot/webhook messages to reach a fleet topic instance.
+
+## Credential profiles (multiple subscriptions of one backend)
+
+A CLI backend keeps its login in one place, so every instance in a fleet shares
+one account. `credential_profile` gives a named, separate copy of that place:
+
+```yaml
+instances:
+  work-agent:
+    backend: kiro-cli
+    backend_options:
+      kiro-cli:
+        credential_profile: work
+  personal-agent:
+    backend: kiro-cli
+    backend_options:
+      kiro-cli:
+        credential_profile: personal
+```
+
+Instances naming the same profile share a login; instances naming different
+profiles have different ones. **An instance with no `credential_profile` is
+unaffected** — nothing is added to its launch and no directory is created for
+it, so this feature cannot change the behaviour of a fleet that does not use it.
+
+A profile lives in `~/.agend/credential-profiles/<backend>/<profile>` — under the
+fleet rather than under an instance, so several agents can point at one
+subscription. Log a profile in once from the host:
+
+```bash
+XDG_DATA_HOME=~/.agend/credential-profiles/kiro-cli/work kiro-cli login
+```
+
+Only the login is duplicated. The multi-gigabyte runtimes kiro downloads (`kas`,
+`node`, `bun`, `cli-checkouts`) are symlinked back to the shared copy, so a
+second profile costs megabytes rather than gigabytes. The store itself is never
+a symlink — SQLite follows a linked database to its target, which would leave
+the profile sharing the very login it exists to separate.
+
+Currently implemented for `kiro-cli`. Other backends keep their logins behind
+their own variables (Codex uses `CODEX_HOME`); adding one is a new entry in
+`CREDENTIAL_HOMES`, not a new mechanism.
