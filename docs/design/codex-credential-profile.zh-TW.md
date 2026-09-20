@@ -1,6 +1,7 @@
 # Codex 的 credential_profile：查證與設計
 
-狀態：**唯讀查證 + 設計，尚未實作**。對本機真實的 `~/.codex` 與 AgEnD 既有的 codex 隔離碼查證（只列目錄、讀 key 名與 SQLite schema，**沒有讀任何值、沒有寫入、沒有碰登入**）。
+狀態：**唯讀查證 + 設計，尚未實作。T2 已裁定並折入；T1／T3 交使用者決定；§5 的實證缺口是實作的 gate。**
+對本機真實的 `~/.codex` 與 AgEnD 既有的 codex 隔離碼查證（只列目錄、讀 key 名與 SQLite schema，**沒有讀任何值、沒有寫入、沒有碰登入**）。
 
 **結論先講：codex 跟 kiro 的結論相反 —— 切 profile 之後對話會留著。** 而且需要做的事比預期少很多：不需要 freshStart、不需要 context-handover、transcript 不用改。
 
@@ -134,23 +135,27 @@ classic-鬥破企劃-7393   -> SYMLINK
 
 ---
 
-## 4. 要裁的取捨
+## 4. 取捨與裁示
 
-**T1 —— 兩個訂閱要不要共用對話歷史？**
+**T2 —— `CREDENTIAL_HOMES` 的形狀 → 裁定：加 `kind`。**
+`relocate-home`（kiro）與 `redirect-files`（codex）兩種。`resolveCredentialProfile`、`listConfiguredProfiles`、`instanceCredentialProfile`、validator、General skill、usage 枚舉全部共用，只有 `prepareCredentialProfileHome` 分支。
+
+**已接受的查證結論**：不做 freshStart、不做 context-handover、不改 `CodexRolloutSource`（§3.3）。切換仍重啟，但走**不帶 freshStart** 的那條。`auth.json` 變真檔的守衛照 `migrateDivergedSessionDir()` 的先例做（§3.4）。
+
+**T1 —— 兩個訂閱要不要共用對話歷史？→ 交使用者決定**（這是他的隱私與資料模型選擇，不是工程取捨）。
 技術上共用是預設（什麼都不做就是共用），而且是 codex 能「切帳號續對話」的原因。但公司／個人兩個帳號共用同一份 `thread_history` 與 `memories`，代表任一邊都看得到另一邊。
 - (a) **共用**（建議）：保住續對話，跟今天 instance 之間的行為一致，把隱私後果寫進文件與 General skill。
 - (b) **連 sessions 與那幾個 DB 一起隔離**：完全分離，但那就退回 kiro 的體驗（乾淨新 session），而且要一次搬一整組互相依賴的檔（JSONL + 四個 DB + locks），出錯面大很多。
-我建議 (a)，並且**在切換時明講「對話歷史是共用的」**，而不是讓使用者自己發現。
+我建議 (a)，並且**在切換時明講「對話歷史是共用的」**，而不是讓使用者自己發現。(b) 要一次搬一整組互相依賴的檔（rollout JSONL + 四個 DB + locks），**而且不能拆散任何一個 DB 的檔案集合**（§1.3）——出錯面比 (a) 大得多。
 
-**T2 —— `CREDENTIAL_HOMES` 加 kind，還是給 codex 另開一條路？**
-我建議加 `kind`（3.2）。理由是 General skill、validator、usage 枚舉、`listConfiguredProfiles` 全部不用分支，只有準備目錄那一步分。
-
-**T3 —— 這票要不要順便把 `--resume` 對 codex 的語意寫清楚？**
+**T3 —— resume 會接到含另一帳號部分的同一段對話 → 隨 T1 一起由使用者決定。**
 codex 的 rollout 是 per-cwd 的 JSONL，跟 kiro 的 per-cwd 對話同構。既然共用，切 profile 後 resume 會接到**同一段**對話 —— 包括另一個帳號跑出來的部分。這是 T1(a) 的直接後果，要不要在切換回應裡明說，請裁。
 
 ---
 
-## 5. 實作前還沒查的
+## 5. 實作的 gate：一個只有第二個帳號能驗的假設
 
-- **沒有實跑過兩個 codex 帳號**（本機只有一個登入）。`auth.json` 換掉之後 codex 是否會因為 `account_id` 變了而拒絕既有 thread，我**無法在單帳號下驗證**。這是 T1(a) 唯一的實證缺口，等使用者確認有第二個帳號時要先驗這一條再實作。
+- **沒有實跑過兩個 codex 帳號**（本機只有一個登入）。`auth.json` 換掉之後 codex 是否會因為 `account_id` 變了而拒絕既有 thread，我**無法在單帳號下驗證**。
+
+  這是 T1(a) 唯一沒被證實的假設，也是**實作的 gate**：整份設計「切帳號能續對話」的價值全押在它上面。若 codex 其實會拒絕跨 account 的 thread，(a) 與 (b) 的體驗就一樣了（都是乾淨新對話），差別只剩隱私——那時 T1 該重新問一次。**先驗這條，再實作。**
 - 沒有讀任何對話內容、memories 內容或 token 值。
