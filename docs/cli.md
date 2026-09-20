@@ -134,11 +134,26 @@ agend setup                     # Guided setup page, before a fleet exists
 agend setup --reset             # Allow setup to run again after it completed
 ```
 
-`agend setup` serves a small form on the health port and prints a link that
-carries a one-time token: opening it exchanges the token for a session cookie
-and the link stops working. The page closes itself when you finish, after 15
-minutes, or after 15 minutes idle — a setup form left open is a surface nobody
-is watching.
+`agend setup` serves a small form on the health port and prints **two** things:
+
+```
+  Setup page: http://127.0.0.1:19280/s/8f3c…/
+  Setup code: K7QM-3XRD
+```
+
+The link is where the page lives, not permission to use it — the random path
+only means nothing finds the page by looking for it. The credential is the code,
+typed into the page. Keeping the credential out of the URL is what stops a
+forwarded message, a shell history or a chat client's link preview from carrying
+the whole thing; a preview fetch of this link gets a box to type into and
+nothing about your machine.
+
+Five wrong answers closes the page, and that budget is shared: a wrong code and
+a replayed session cookie both spend one. A wrong path does not — otherwise
+anyone who found the host could close your setup page without ever finding it.
+
+The page closes itself when you finish, after 15 minutes, or after 10 minutes
+idle — a setup form left open is a surface nobody is watching.
 
 It refuses to start while AgEnD is running, and a fleet refuses to start while
 it is open: both hold `fleet.lock`, which now records which kind of process owns

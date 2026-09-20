@@ -145,7 +145,20 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
   const wait = opts.wait ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
   const graceMs = opts.graceMs ?? TUNNEL_STOP_GRACE_MS;
 
-  const lease = readLease(dataDir);
+  let lease: TunnelLease | null;
+  try {
+    lease = readLease(dataDir);
+  } catch (err) {
+    // A lease we cannot read is not a lease that is absent. Letting this throw
+    // meant an unreadable file took the whole start down instead of closing it:
+    // the caller asks "may I open a tunnel", and the honest answer here is no.
+    return {
+      kind: "manual",
+      reason: `the lease file could not be read (${(err as NodeJS.ErrnoException).code ?? "unknown error"})`,
+      pid: null,
+      leasePath: leasePath(dataDir),
+    };
+  }
   if (!lease) return { kind: "clear" };
 
   // Someone else is using it right now. An expired lease held by a live owner
