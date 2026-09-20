@@ -1,6 +1,6 @@
 # 逃生艙 setup 宿主的對外通道：設計與分階段計畫
 
-狀態：**design-first 計畫稿，尚未實作**。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
+狀態：**design-first 計畫稿，尚未實作**。T1／T3／T4／T5 已由 leader 裁定並折入本文（見 §6）；**T2 仍待 fable 判斷**。本文件回答三件事：cloudflared tunnel provider 目前的實作狀態、sol 的 tunnel 設計與票 5 setup 宿主兩份安全信封要怎麼同時成立、以及可逐段 review 的 stage 拆分。最後一節列出**我不自己拍、要 leader／fable 裁的取捨**。
 
 參考：`docs/design/web-terminal-tunnel-provider.zh-TW.md`（sol，branch `design/web-terminal-tunnel-provider`，doc-only）、`docs/design/prefleet-host-spike.zh-TW.md`、`src/setup-host.ts`、`src/setup-form.ts`、`src/setup-marker.ts`。
 
@@ -53,7 +53,9 @@ setup 宿主不成立：它綁的是 **health port**，而 `shutdown(true, "fini
 
 於是：**只要 tunnel 在 fleet 綁上該埠時還活著，那條公網 URL 就從「一個設定表單」變成「整個 fleet 的控制台」**，而且是在任何 fleet 層級的存取控制決策發生之前。cloudflared 的 Quick Tunnel 沒有 SLA、可能在我們沒觀察到 exit 的情況下續命，sol 自己也寫了「無法確認死亡就保留 lease」——那個 unknown 狀態在 Web Terminal 只是「不能再開新 tunnel」，在這裡是「公網 URL 指向 dashboard」。
 
-**建議的解法不是加強關閉順序，而是讓這個危險在結構上不存在**：tunnel 模式下 setup 宿主**改綁 `127.0.0.1:0` 臨時埠**，跟 Web Terminal 一樣。fleet 的 health port 從頭到尾不在 tunnel 後面，殘留 tunnel 只會指向一個沒人會再綁的死埠。
+**採用的解法不是加強關閉順序，而是讓這個危險在結構上不存在**（T3 已裁定）：tunnel 模式下 setup 宿主**改綁 `127.0.0.1:0` 臨時埠**，跟 Web Terminal 一樣。fleet 的 health port 從頭到尾不在 tunnel 後面，殘留 tunnel 只會指向一個沒人會再綁的死埠。
+
+連帶：**`agend setup --tunnel` 與 `--port` 互斥**。`--port` 現在存在（`cli.ts:1626`），若在 tunnel 模式下仍生效，使用者就能把一個固定埠（包括 health port）放到 tunnel 後面，剛剛用結構消掉的危險又被旗標開回來。tunnel 模式下給 `--port` 要直接報錯，不是忽略。
 
 代價是票 5 的收尾 UX 會變：`setup-form.ts` 的 `waitForFleet()` 現在靠「fleet 綁同一個埠、前端輪詢 `/health`」顯示「AgEnD is up」。臨時埠下這條斷掉，收尾要改成「設定已寫入，AgEnD 正在啟動，dashboard 連結會發到你剛設定的頻道」——**而這其實才是對的**：那條 dashboard 連結本來就該走頻道，不該讓 pre-fleet 宿主把使用者留在一個即將死亡的公網 URL 上。
 
@@ -67,7 +69,7 @@ setup 宿主的 `GET /?token=…` **有副作用**：`tokenRedeemed = true`、`S
 
 這不是機率問題，是「把連結貼進聊天室就必然發生」。而且那個預覽 bot 現在手上有一個有效的 session cookie（cookie 值是 `sha256(token)` 的決定性推導，見 `web-auth.ts:106`）。
 
-任何「把 setup 連結傳給手機」的做法都必須先解掉這條。
+任何「把 setup 連結傳給手機」的做法都必須先解掉這條。**T1 裁定的 (ii) 解掉了它**：URL 不帶憑證，預覽 bot 抓到的只是一個輸入框。
 
 ### 3.3 🔴 pre-fleet 沒有第二條通道，sol 的「URL 不是憑證」在這裡不成立
 
@@ -75,12 +77,19 @@ sol 靠「URL 一則 DM、token 另一則 DM」把 URL 降級成非憑證。**se
 
 所以 tunnel URL 與 token 只能一起出現在同一個地方，**URL 就是憑證**。sol 全篇最重要的那條性質在移植過來時消失了，而這個表單的能力（寫 .env、spawn fleet）比一個終端機 session 更高。
 
-三個可能方向（要裁，見 §6 T1）：
-- **(i) 接受 URL 即憑證**，靠一次性兌換 + 短 TTL + 修好 §3.2 撐住。
-- **(ii) 拆開**：tunnel URL 不帶 token，CLI 另外印一段短碼，使用者在頁面上手輸入。搭配硬 lockout（三次），8 字元 base32（40 bits）的猜中上界是 `3/2^40 ≈ 2.7e-12`——用 sol 自己的算法就夠。這條把「URL 不是憑證」救回來，也順帶解掉 §3.2（預覽 bot 抓到的只是輸入框）。
-- **(iii) 終端機二次確認**：手機開啟時終端機跳確認。逃生艙情境下使用者可能只有手機，不可行。
+**裁定：(ii)**——tunnel URL 不帶 token，CLI 另外印一段短碼，使用者在頁面上手輸入。搭配硬 lockout（三次），8 字元 base32（40 bits）的猜中上界是 `3/2^40 ≈ 2.7e-12`，用 sol 自己的算法就夠。這條把「URL 不是憑證」救回來，也順帶解掉 §3.2。
 
-我的建議是 **(ii)**。
+（另外兩條已排除：(i) 接受 URL 即憑證——一條被轉傳的訊息就是完整授權；(iii) 終端機二次確認——逃生艙情境下使用者可能只有手機。）
+
+### 3.3.1 🔴 (ii) 的二階後果：表單不能擺在 tunnel 根路徑
+
+URL 不再是憑證，代表**任何知道那個 hostname 的人都能拿到表單並開始試碼**。而 §3.4 要加的硬 lockout 是三次——於是出現一條 (i) 沒有的新路徑：**遠端阻斷設定**。隨便一個掃到 hostname 的人打三次錯碼，宿主就關了，使用者必須回主機重跑 `agend setup`——而「只有手機」正是這個逃生艙存在的理由。
+
+sol 的 Web Terminal 沒有這個問題，因為它的頁面在 `/t/<128-bit sid>/`：掃描者連頁面都找不到。**我們把表單放在 `/` 就等於丟掉這層。**
+
+所以 (ii) 必須配套：**setup 表單也放在一段隨機路徑下**，例如 `https://<random>.trycloudflare.com/s/<128-bit sid>/`。sid 一樣**不是憑證**（憑證是短碼），它的作用只有一個：讓掃描者找不到門，因此點不到那三次 lockout。UX 成本為零（URL 本來就是複製貼上或掃 QR）。
+
+對應的規則：sid 以外的路徑一律 404；`/` 也 404，不做任何提示。lockout 只在 sid 正確的請求上計數，否則掃描者仍可用亂猜的 sid 消耗額度。
 
 ### 3.4 🟠 loopback 才成立的三個弱點，上公網後都要補
 
@@ -131,15 +140,17 @@ sol 靠「URL 一則 DM、token 另一則 DM」把 URL 降級成非憑證。**se
 16. `fleet.lock` 帶 role，雙向互斥。
 
 **只有組合才需要的新守則（本文件新增）：**
-17. **tunnel 模式下 listener 綁 `127.0.0.1:0` 臨時埠**，fleet 的 health port 永遠不在 tunnel 後面（§3.1）。
-18. **確認 tunnel 死亡之後才 spawn fleet**；無法確認則不 spawn，寫清楚要人工處理什麼（待裁 T2）。
-19. **token 不得在 GET 的 query 裡被兌換**（§3.2）——改成短碼手輸入（T1 傾向 (ii)），或至少讓連結預覽無法造成副作用。
+17. **tunnel 模式下 listener 綁 `127.0.0.1:0` 臨時埠**，fleet 的 health port 永遠不在 tunnel 後面（§3.1，T3 裁定）。`--tunnel` 與 `--port` 互斥。
+18. **確認 tunnel 死亡之後才 spawn fleet**；無法確認時的處置**待 fable 裁定**（T2）。無論裁定為何，「無法確認」都要寫 `tunnel_cleanup_failed`、保留 lease、明確告知。
+19. **憑證不在 URL 裡**（§3.3，T1 裁定 (ii)）：URL 不帶 token，CLI 印短碼，使用者在頁面輸入。**GET 任何路徑都不得有副作用**——不消耗嘗試次數、不建立 cookie。
 20. token 比較用 `timingSafeEqual`；**加上硬性錯誤次數上限**（三次，全宿主計數，不是每 IP）。
 21. cookie 的 Secure 由**已驗證的 endpoint scheme** 決定，不信 `X-Forwarded-Proto`。
 22. Host allowlist：{loopback, 本次 exact external host}。
 23. 風險確認只能在 CLI；**無 TTY 一律拒絕**開公網通道。
 24. setup 宿主啟動時自己跑一次 lease reaper；fleet 的 reaper 認得 setup 宿主寫的 lease。
-25. 公網模式縮短 TTL／idle。
+25. 公網模式縮短 TTL／idle，並修掉 `TTL == IDLE` 導致 idle 永不觸發這個既有 bug（§3.7）。
+26. **表單掛在 `/s/<128-bit sid>/` 之下**（§3.3.1）：sid 不是憑證，但沒有它掃描者就能用三次錯碼遠端阻斷設定。sid 不符一律 404，且**不計入 lockout**。
+27. 只做 `cloudflared` 與 `localhost`／`none`（T5）；這票不接 Web Terminal（T4）。
 
 ---
 
@@ -167,11 +178,13 @@ sol 靠「URL 一則 DM、token 另一則 DM」把 URL 降級成非憑證。**se
 - `timingSafeEqual` + 固定長度比較；三次錯誤上限（全宿主計數）；超過即關閉宿主。
 - cookie Secure 由 endpoint scheme 決定。
 - Host allowlist（此 stage 只有 loopback 一個成員）。
-- 憑證交付改成 **T1 裁定的形式**（若採 (ii)：URL 不帶 token，CLI 印短碼，頁面輸入）。
-- TTL／idle 分離，idle 真的比 TTL 短；long-poll 正確 touch。
+- 憑證交付改成 **(ii)**：URL 不帶 token，CLI 印短碼，頁面輸入。
+- 表單改掛在 `/s/<128-bit sid>/` 之下（§3.3.1），sid 不符一律 404 且不計入 lockout。
+- TTL／idle 分離，**修掉 `TTL == IDLE` 導致 idle 永不觸發**；long-poll 正確 touch。
 
 驗收：
 - 錯三次後宿主關閉、第四次得到 gone；**平行三個錯誤只觸發一次關閉**（照 sol §13.9）。
+- **錯的 sid 不消耗 lockout 額度**，且與對的 sid 在回應上不可區分（都是 404）——否則掃描者既能遠端阻斷設定，也能靠差異探測 sid。
 - `GET` 任何路徑都不再消耗嘗試次數、不建立 cookie（連結預覽安全性的回歸測試）。
 - 偽造 `X-Forwarded-Proto` 不能讓 cookie 變 Secure 也不能讓它不變。
 - Origin mismatch、未列入 allowlist 的 Host、重放已用短碼全部拒絕。
@@ -179,7 +192,7 @@ sol 靠「URL 一則 DM、token 另一則 DM」把 URL 降級成非憑證。**se
 
 ### Stage 3 — 用 tunnel front setup 宿主
 
-`agend setup --tunnel`；tunnel 模式改綁 `127.0.0.1:0`（§3.1）；Host allowlist 加入 exact external host；關閉順序改為 撤銷 → 關 listener → **confirmed tunnel death** → spawn fleet；setup 宿主啟動時跑 reaper；收尾 UX 改成「dashboard 連結會發到頻道」。
+`agend setup --tunnel`（與 `--port` 互斥，給了要報錯）；tunnel 模式改綁 `127.0.0.1:0`（§3.1）；Host allowlist 加入 exact external host；關閉順序改為 撤銷 → 關 listener → **confirmed tunnel death** → spawn fleet；setup 宿主啟動時跑 reaper；收尾 UX 改成「dashboard 連結會發到頻道」。
 
 驗收：
 - **埠交接**：finish 後，在 fleet 被 spawn **之前**，tunnel 已 confirmed 死亡；用 fake provider 讓 stop 回 unconfirmed，斷言 **fleet 沒有被 spawn**、lease 保留、訊息說清楚（這條是 §3.1 的核心，mutation：把順序對調或忽略 unconfirmed，必須紅）。
@@ -199,22 +212,19 @@ CLI 互動確認文案（照 sol 的建議文案改寫成 pre-fleet 版本：**�
 
 ---
 
-## 6. 要裁的取捨（我不自己拍）
+## 6. 取捨與裁示
 
-**T1 — 憑證怎麼送到手機？**（§3.3、§3.2）
-pre-fleet 沒有第二條通道，sol 的「URL 與 token 分兩則送」搬不過來。
-- (i) 接受 URL 即憑證（改動最小，但連結預覽問題必須另解，且一條被轉傳的訊息就是完整授權）。
-- (ii) **URL 不帶憑證 + CLI 印短碼、頁面手輸入**（我建議這條）：救回「URL 不是憑證」、順帶解掉預覽消耗 token、代價是手機要打 8 個字。需搭配硬 lockout。
-- (iii) 終端機二次確認：逃生艙情境下使用者可能只有手機，不可行。
+**T1 — 憑證怎麼送到手機？→ 裁定 (ii)**（§3.3）
+URL 不帶憑證，CLI 印短碼，使用者在頁面手輸入。同時解掉「URL 即憑證」與「預覽 bot 燒掉 token」兩個 🔴。**連帶產生 §3.3.1**（表單要掛在隨機 sid 之下），那條是這個裁示的必要配套，不是可選項。
 
-**T2 — tunnel 死亡無法確認時，還要不要 spawn fleet？**（§3.1）
-我的傾向：**不 spawn**（fail closed），設定已寫入，告訴使用者到主機上跑 `agend start`。代價很硬：逃生艙的最後一步在使用者只有手機時失敗。若採 §3.1 的臨時埠設計，殘留 tunnel 只指向死埠，風險大幅下降——**是否因此改為「警告但照常 spawn」，請裁**。
+**T2 — tunnel 死亡無法確認時，還要不要 spawn fleet？→ 待 fable 裁定**（§3.1）
+- fail closed（不 spawn）：設定已寫入，要使用者回主機跑 `agend start`。逃生艙的最後一步在「只有手機」時失敗。
+- warn but spawn：採用臨時埠後，殘留 tunnel 只指向一個不會被重綁的死埠，風險大幅下降。
+兩邊都要寫 `tunnel_cleanup_failed`、保留 lease、明確告知。**我不預設任何一邊，等 fable。**
 
-**T3 — 臨時埠 vs 保留 health port。**（§3.1）
-臨時埠讓「tunnel 活過交接」在結構上不可能，代價是票 5 的 `waitForFleet()` 收尾 UX 要改寫成「連結會發到頻道」。我認為值得且本來就更正確，但這會動到已 merge 的票 5 行為，**請確認**。
+**T3 — 臨時埠 → 裁定採用**（§3.1）
+tunnel 模式綁 `127.0.0.1:0`，health port 從頭到尾不在 tunnel 後面。票 5 的 `waitForFleet()` 改成「dashboard 連結會發到頻道」。`--tunnel` 與 `--port` 互斥。
 
-**T4 — 這票要不要一併做 Web Terminal 的接線？**
-stage 1 的 provider 是 sol 為 Web Terminal 設計的。本計畫只把它接到 setup 宿主，Web Terminal 的 `/login` 接線留給原設計。好處是這票的攻擊面只有一個入口；壞處是 provider 會有一段時間只有一個消費者。**傾向：這票不接 Web Terminal。**
+**T4 — 不接 Web Terminal。** provider 先只有一個消費者，換這票的攻擊面只有一個入口。
 
-**T5 — tailscale／ngrok。**
-sol 設計涵蓋三個 provider。我建議這票只做 cloudflared + localhost/none，tailscale 的 Serve mapping 語意（不得覆寫既有 mapping、不得 `reset`、要查 status 正面確認）是另一組獨立的正確性負擔，混在最敏感的這票裡不利於 review。
+**T5 — 只做 cloudflared + localhost／none。** tailscale 的 Serve mapping 語意是另一組獨立的正確性負擔，不混進最敏感的這票。
