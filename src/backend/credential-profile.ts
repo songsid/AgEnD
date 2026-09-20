@@ -128,6 +128,23 @@ export function credentialProfileHome(dataDir: string, backendName: string, prof
 export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHome: string): void {
   const profileStore = spec.storeSubdir ? join(profileHome, spec.storeSubdir) : profileHome;
   const sharedStore = spec.storeSubdir ? join(spec.sharedRoot(), spec.storeSubdir) : spec.sharedRoot();
+
+  // The same trap one level up: if the profile directory — or the store
+  // directory inside it — is itself a link to the shared home, every file below
+  // is the shared login. `mkdir -p` follows the link and succeeds, and the
+  // store is a real file at the far end, so nothing else here would notice.
+  // Refuse rather than launch: starting would quietly bill the wrong account.
+  for (const level of new Set([profileHome, profileStore])) {
+    try {
+      if (!lstatSync(level).isSymbolicLink()) continue;
+    } catch {
+      continue; // absent; mkdir will create it
+    }
+    throw new Error(
+      `credential profile path is a symlink, so it is not isolated: ${level}. Remove the link and let AgEnD create a real directory.`,
+    );
+  }
+
   mkdirSync(profileStore, { recursive: true, mode: 0o700 });
 
   // A link where a private entry belongs means this profile is not isolated at

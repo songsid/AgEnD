@@ -995,12 +995,41 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   if (patch.auto_pause_after !== undefined) (inst as any).auto_pause_after = patch.auto_pause_after;
   if (patch.display_name !== undefined) (inst as any).display_name = patch.display_name;
   if (patch.description !== undefined) (inst as any).description = patch.description;
+  // backend_options is read when the CLI is launched, so a change to it is not
+  // in effect until the instance restarts. Merged per backend namespace so
+  // setting a kiro option cannot silently drop a codex one.
+  let relaunchNeeded = false;
+  if (patch.backend_options !== undefined) {
+    const before = JSON.stringify((inst as any).backend_options ?? {});
+    const merged: Record<string, Record<string, unknown>> = { ...((inst as any).backend_options ?? {}) };
+    for (const [backendName, options] of Object.entries(patch.backend_options)) {
+      merged[backendName] = { ...(merged[backendName] ?? {}), ...options };
+    }
+    (inst as any).backend_options = merged;
+    relaunchNeeded = JSON.stringify(merged) !== before;
+  }
   try {
     ctx.saveFleetConfig();
-    respond({ success: true, name: v.data.name, applied: patch });
   } catch (err) {
     respond(null, `Failed to save config: ${(err as Error).message}`);
+    return;
   }
+  if (!relaunchNeeded) {
+    respond({ success: true, name: v.data.name, applied: patch });
+    return;
+  }
+  // Saving without restarting would report a subscription switch that has not
+  // happened — the running CLI keeps the credentials it was launched with.
+  ctx.restartSingleInstance(v.data.name).then(
+    () => respond({ success: true, name: v.data.name, applied: patch, restarted: true }),
+    (err: unknown) => respond({
+      success: true,
+      name: v.data.name,
+      applied: patch,
+      restarted: false,
+      warning: `Config saved, but the restart failed: ${(err as Error).message}. The new backend_options take effect on the next start.`,
+    }),
+  );
 };
 
 const updateFleetDefaults: Handler = (ctx, rawArgs, respond) => {
