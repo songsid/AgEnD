@@ -1,4 +1,11 @@
 import { join } from "node:path";
+import { getAgendHome } from "../paths.js";
+import {
+  credentialHomeSpec,
+  credentialProfileHome,
+  prepareCredentialProfileHome,
+  resolveCredentialProfile,
+} from "./credential-profile.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync, unlinkSync, statSync } from "node:fs";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type StartupDialog, type RuntimeDialog, resolveBinary, shellQuote, validateEffort, validateModel, warnIfModelMismatch } from "./types.js";
@@ -264,7 +271,23 @@ export class KiroBackend implements CliBackend {
       }
     }
     if (this.compatibility.supportsRequireMcpStartup) cmd += " --require-mcp-startup";
-    return cmd;
+    return this.withCredentialProfile(config, cmd);
+  }
+
+  /**
+   * Point this instance at its own copy of the kiro credential store.
+   *
+   * Without `credential_profile` nothing is prepended and nothing is created,
+   * so an instance that has not opted in launches byte-for-byte the command it
+   * launched before this existed.
+   */
+  private withCredentialProfile(config: CliBackendConfig, cmd: string): string {
+    const profile = resolveCredentialProfile(config.backendOptions);
+    if (!profile) return cmd;
+    const spec = credentialHomeSpec(this.binaryName)!;
+    const home = credentialProfileHome(getAgendHome(), this.binaryName, profile);
+    prepareCredentialProfileHome(spec, home);
+    return `${spec.env}=${shellQuote(home)} ${cmd}`;
   }
 
   private shouldWarnUnsupportedEffort(): boolean {
