@@ -28,6 +28,15 @@ export interface TunnelLease {
   readonly expiresAt: number;
   /** The process that owns this lease; a live owner means it is not ours to reap. */
   readonly ownerPid: number;
+  /**
+   * The owner's own fingerprint at the time it wrote the lease.
+   *
+   * Without it, "the owner pid is alive" is a guess: after a crash the number
+   * can belong to something entirely unrelated, and the lease would then be
+   * held forever by a process that has never heard of it. Ticket 5 had the same
+   * trap in `fleet.lock`.
+   */
+  readonly ownerIdentity: string | null;
 }
 
 export function leasePath(dataDir: string): string {
@@ -80,6 +89,7 @@ export function readLease(dataDir: string): TunnelLease | null {
       strongIdentity: typeof parsed.strongIdentity === "string" ? parsed.strongIdentity : null,
       expiresAt: Number(parsed.expiresAt ?? 0),
       ownerPid: parsed.ownerPid,
+      ownerIdentity: typeof parsed.ownerIdentity === "string" ? parsed.ownerIdentity : null,
     };
   } catch {
     return CORRUPT;
@@ -95,7 +105,7 @@ export function readLease(dataDir: string): TunnelLease | null {
  */
 const CORRUPT: TunnelLease = {
   sid: "", provider: "unknown", originPort: 0,
-  providerPid: null, strongIdentity: null, expiresAt: 0, ownerPid: 0,
+  providerPid: null, strongIdentity: null, expiresAt: 0, ownerPid: 0, ownerIdentity: null,
 };
 
 export function clearLease(dataDir: string): void {
@@ -141,8 +151,17 @@ export async function reapStaleTunnel(dataDir: string, opts: ReapOptions = {}): 
   // Someone else is using it right now. An expired lease held by a live owner
   // is still theirs: the owner is the one that will prove its child's death,
   // and reaping underneath it would race that proof.
-  if (lease.ownerPid > 0 && lease.ownerPid !== process.pid && probe(lease.ownerPid).kind !== "gone") {
-    return { kind: "held", ownerPid: lease.ownerPid };
+  //
+  // "Alive" means the same process, not the same number. A pid that outlived
+  // its owner and was handed to something unrelated would otherwise hold this
+  // lease forever — which is exactly how ticket 5's setup-host lock became
+  // unreclaimable.
+  if (lease.ownerPid > 0 && lease.ownerPid !== process.pid) {
+    const owner = probe(lease.ownerPid);
+    const sameOwner = owner.kind === "identified" && lease.ownerIdentity
+      ? owner.identity === lease.ownerIdentity
+      : owner.kind !== "gone";
+    if (sameOwner) return { kind: "held", ownerPid: lease.ownerPid };
   }
   void now;
 

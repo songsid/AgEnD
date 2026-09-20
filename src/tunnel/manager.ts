@@ -44,6 +44,12 @@ export class ManagedTunnel {
 
   private log(message: string): void { (this.opts.log ?? (() => {}))(message); }
 
+  /** Our own fingerprint, so a reaper can tell this owner from a reused pid. */
+  private ownerIdentity(): string | null {
+    const probe = (this.opts.probe ?? probeProcess)(process.pid);
+    return probe.kind === "identified" ? probe.identity : null;
+  }
+
   get handle(): TunnelHandle | null { return this.active; }
 
   /** Clear whatever a previous run left behind. Safe to call from any process. */
@@ -99,6 +105,7 @@ export class ManagedTunnel {
       strongIdentity: null,
       expiresAt: ctx.expiresAt,
       ownerPid: process.pid,
+      ownerIdentity: this.ownerIdentity(),
     });
 
     let handle: TunnelHandle;
@@ -118,6 +125,7 @@ export class ManagedTunnel {
           strongIdentity: startError.unconfirmed.identity,
           expiresAt: ctx.expiresAt,
           ownerPid: process.pid,
+          ownerIdentity: this.ownerIdentity(),
         });
         this.blocked = `A tunnel process could not be confirmed stopped after a failed start`
           + `${startError.unconfirmed.pid !== null ? ` (pid ${startError.unconfirmed.pid})` : ""}. `
@@ -144,6 +152,7 @@ export class ManagedTunnel {
       strongIdentity: handle.identity,
       expiresAt: ctx.expiresAt,
       ownerPid: process.pid,
+      ownerIdentity: this.ownerIdentity(),
     });
     this.active = handle;
     return { ok: true, handle };

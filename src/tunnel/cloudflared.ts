@@ -81,20 +81,57 @@ export function validateQuickTunnelUrl(candidate: string): string | null {
 /**
  * Pull candidate URLs out of a chunk of child output.
  *
- * Splits on whitespace and `|` — the box-drawing cloudflared prints its URL
- * inside — and neither can occur within a URL, so a token is the complete thing
- * the child printed. Nothing is trimmed off the ends: trimming punctuation is
- * how `https://evil.example/#.trycloudflare.com` becomes acceptable.
+ * Whatever a token is, it has to be the *complete* thing the child printed —
+ * validating a fragment is how `https://evil.example/?u=https://x.trycloudflare.com/`
+ * becomes acceptable. So the two output shapes are handled as what they are
+ * rather than smashed through one splitter:
+ *
+ * - A JSON log line is parsed as JSON, and each string value is a whole token.
+ *   Splitting it on quotes and commas instead would pull a hostname out of a
+ *   query string and call it the tunnel.
+ * - Plain text is split on whitespace and `|` only, because that is what
+ *   cloudflared draws its box with and neither can occur inside a URL. Quotes
+ *   and commas are deliberately NOT separators: they can appear in a URL, so
+ *   splitting on them shortens a hostile token into an acceptable one.
  */
 export function extractTunnelUrl(text: string): string | null {
   // Strip ANSI first so colouring around the URL does not become part of it.
   const plain = text.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
-  for (const token of plain.split(/[\s|"',]+/)) {
-    if (!token.startsWith("https://")) continue;
+  for (const line of plain.split(/\r?\n/)) {
+    const found = jsonLineUrl(line) ?? plainLineUrl(line);
+    if (found) return found;
+  }
+  return null;
+}
+
+function plainLineUrl(line: string): string | null {
+  for (const token of line.split(/[\s|]+/)) {
     const valid = validateQuickTunnelUrl(token);
     if (valid) return valid;
   }
   return null;
+}
+
+/** Depth-bounded: a log line is not a place to walk an arbitrary object graph. */
+function jsonLineUrl(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("{")) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(trimmed); } catch { return null; }
+  const walk = (value: unknown, depth: number): string | null => {
+    if (depth > 4) return null;
+    if (typeof value === "string") return validateQuickTunnelUrl(value);
+    if (Array.isArray(value)) {
+      for (const item of value) { const hit = walk(item, depth + 1); if (hit) return hit; }
+      return null;
+    }
+    if (value && typeof value === "object") {
+      for (const item of Object.values(value)) { const hit = walk(item, depth + 1); if (hit) return hit; }
+      return null;
+    }
+    return null;
+  };
+  return walk(parsed, 0);
 }
 
 /** Bounded: a child that never prints a URL must not grow our memory. */
@@ -256,6 +293,15 @@ class CloudflaredHandle implements TunnelHandle {
   private urlResolved: ((base: string) => void) | null = null;
   private foundBase: string | null = null;
   private exit: TunnelExit | null = null;
+  /**
+   * A spawn that failed before a process existed.
+   *
+   * Node reports this as `error` and never as `exit`, and leaves `pid`
+   * undefined. Without handling it the start waits out its whole deadline and
+   * then cannot prove a death — for a process that was never created, which
+   * would hold the lease and block every later tunnel over nothing.
+   */
+  private spawnError: Error | null = null;
   private exitListeners = new Set<(exit: TunnelExit) => void>();
   private published = false;
   private stopping: Promise<TunnelStopResult> | null = null;
@@ -285,7 +331,17 @@ class CloudflaredHandle implements TunnelHandle {
       this.exit = { code, signal };
       if (this.published) for (const listener of this.exitListeners) listener(this.exit);
     });
-    child.on("error", () => { /* surfaced through the startup deadline */ });
+    child.on("error", err => {
+      this.spawnError = err as Error;
+      if (this.pid === null) this.spawnFailed?.(this.spawnError);
+    });
+  }
+
+  private spawnFailed: ((err: Error) => void) | null = null;
+
+  /** True when we can prove no process was ever created. */
+  private get neverStarted(): boolean {
+    return this.pid === null && this.spawnError !== null;
   }
 
   publish(base: string, pageUrl: string): void {
@@ -296,6 +352,9 @@ class CloudflaredHandle implements TunnelHandle {
 
   async awaitUrl(deadline: number, signal: AbortSignal, now: () => number): Promise<string> {
     if (this.foundBase) return this.foundBase;
+    if (this.neverStarted) {
+      throw new TunnelStartError("spawn-failed", `could not start cloudflared: ${this.spawnError!.message}`);
+    }
     return new Promise<string>((resolve, reject) => {
       const settle = (fn: () => void) => { cleanup(); fn(); };
       const timer = setTimeout(
@@ -304,16 +363,25 @@ class CloudflaredHandle implements TunnelHandle {
       );
       const onAbort = () => settle(() => reject(new TunnelStartError("cancelled", "cancelled while waiting for the tunnel URL")));
       const onExit = () => settle(() => reject(new TunnelStartError("no-url", "cloudflared exited before printing a tunnel URL")));
+      // A spawn that never produced a process must not wait out the deadline:
+      // there is nothing to wait for, and the delay is what turns a missing
+      // binary into a blocked lease.
+      const onSpawnFail = (err: Error) => settle(() => reject(
+        new TunnelStartError("spawn-failed", `could not start cloudflared: ${err.message}`),
+      ));
       const cleanup = () => {
         clearTimeout(timer);
         signal.removeEventListener("abort", onAbort);
         this.child.off("exit", onExit);
         this.urlResolved = null;
+        this.spawnFailed = null;
       };
       this.urlResolved = base => settle(() => resolve(base));
+      this.spawnFailed = onSpawnFail;
       signal.addEventListener("abort", onAbort, { once: true });
       this.child.on("exit", onExit);
       if (this.exit) onExit();
+      else if (this.neverStarted) onSpawnFail(this.spawnError!);
       else if (signal.aborted) onAbort();
     });
   }
@@ -333,6 +401,10 @@ class CloudflaredHandle implements TunnelHandle {
     void reason;
     this.exitListeners.clear();
     if (this.exit) return { confirmed: true };
+    // Proven, not assumed: Node reported the spawn itself failed and never
+    // handed us a pid, so there is no process. Reporting this as unconfirmed
+    // would hold the lease against a child that does not exist.
+    if (this.neverStarted) return { confirmed: true };
     if (this.pid === null) {
       return { confirmed: false, reason: "the process was never given a pid", pid: null, identity: null };
     }

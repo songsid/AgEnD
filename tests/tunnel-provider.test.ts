@@ -78,6 +78,21 @@ describe("finding the URL in child output", () => {
     expect(extractTunnelUrl("https://abc.trycloudflare.com.evil.example/")).toBeNull();
   });
 
+  it("does not let a quote or a comma shorten a hostile token", () => {
+    // Splitting on quotes and commas — which can appear in a URL — is how
+    // `?u="https://x.trycloudflare.com/"` becomes an acceptable token.
+    expect(extractTunnelUrl('https://evil.example/?u="https://abc.trycloudflare.com/"')).toBeNull();
+    expect(extractTunnelUrl("https://evil.example/?a=1,https://abc.trycloudflare.com/")).toBeNull();
+  });
+
+  it("reads a JSON line as JSON, so a query string is not a hostname", () => {
+    const hostile = JSON.stringify({ level: "info", msg: "https://evil.example/?u=https://abc.trycloudflare.com/" });
+    expect(extractTunnelUrl(hostile)).toBeNull();
+
+    const real = JSON.stringify({ level: "info", url: "https://tidy-bird-78.trycloudflare.com" });
+    expect(extractTunnelUrl(real)).toBe("https://tidy-bird-78.trycloudflare.com");
+  });
+
   it("sees through ANSI colouring but not through a different host", () => {
     expect(extractTunnelUrl("\u001b[32mhttps://abc.trycloudflare.com\u001b[0m")).toBe("https://abc.trycloudflare.com");
     expect(extractTunnelUrl("\u001b[32mhttps://abc.example.com\u001b[0m")).toBeNull();
@@ -105,6 +120,7 @@ describe("what the child is allowed to inherit", () => {
 class FakeChild extends EventEmitter {
   stdout = new Readable({ read() {} });
   stderr = new Readable({ read() {} });
+  /** Null is not hypothetical: a spawn that fails never gets one. */
   pid: number | null = 4242;
   killed: NodeJS.Signals[] = [];
   kill(signal?: NodeJS.Signals): boolean { this.killed.push(signal ?? "SIGTERM"); return true; }
@@ -112,18 +128,25 @@ class FakeChild extends EventEmitter {
   die(code = 0): void { this.emit("exit", code, null); }
 }
 
+interface SpawnCall { file: string; args: string[]; options: Record<string, unknown> }
+
 function providerWith(child: FakeChild, over: Record<string, unknown> = {}) {
   const bin = join(tempDir(), "cloudflared");
   writeFileSync(bin, "#!/bin/sh\n", { mode: 0o755 });
-  return new CloudflaredProvider({
+  const calls: SpawnCall[] = [];
+  const provider = new CloudflaredProvider({
     binaryName: bin,
-    env: { PATH: "/nonexistent" },
-    spawnProcess: (() => child) as never,
+    env: { PATH: "/nonexistent", AWS_SECRET_ACCESS_KEY: "secret", HTTPS_PROXY: "http://proxy:3128" },
+    spawnProcess: ((file: string, args: string[], options: Record<string, unknown>) => {
+      calls.push({ file, args, options });
+      return child;
+    }) as never,
     deadlineMs: 300,
     graceMs: 10,
     probe: () => ({ kind: "gone" }),
     ...over,
   });
+  return Object.assign(provider, { spawnCalls: calls, binaryPath: bin });
 }
 
 function context(over: Partial<TunnelStartContext> = {}): TunnelStartContext {
@@ -224,6 +247,87 @@ describe("a tunnel is not ready until the public URL serves this page", () => {
   });
 });
 
+/** A handle for a provider that never really started anything. */
+function handleStub(pid: number | null, identity: string | null, stop = async () => ({ confirmed: true as const })) {
+  return {
+    provider: "fake", visibility: "public" as const,
+    baseUrl: "https://x.trycloudflare.com", pageUrl: "https://x.trycloudflare.com/s/abc/",
+    pid, identity, stop, onUnexpectedExit: () => () => {},
+  };
+}
+
+describe("a spawn that never produced a process", () => {
+  it("fails fast and does not pretend a process might be out there", async () => {
+    // Node reports a failed spawn as `error`, never as `exit`, and leaves pid
+    // undefined. Waiting it out and then reporting "could not confirm" would
+    // hold the lease against a child that was never created — and block every
+    // later tunnel until a human deleted the file.
+    const child = new FakeChild();
+    child.pid = null;
+    const provider = providerWith(child, { deadlineMs: 10_000 });
+    setTimeout(() => child.emit("error", new Error("spawn ENOENT")), 5);
+
+    const started = Date.now();
+    const err = await provider.start(context()).catch(e => e as TunnelStartError);
+
+    expect(err).toBeInstanceOf(TunnelStartError);
+    expect((err as TunnelStartError).errorKind).toBe("spawn-failed");
+    // No `unconfirmed`, so the manager clears the lease instead of blocking.
+    expect((err as TunnelStartError).unconfirmed).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(3_000);
+  }, 15_000);
+
+  it("leaves no lease behind, because there is nothing to clean up", async () => {
+    const dir = tempDir();
+    const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
+    const child = new FakeChild();
+    child.pid = null;
+    const provider = providerWith(child, { deadlineMs: 10_000 });
+    setTimeout(() => child.emit("error", new Error("spawn EAGAIN")), 5);
+
+    const result = await managed.start(provider, context());
+
+    expect(result).toMatchObject({ ok: false, errorKind: "spawn-failed", leaseHeld: false });
+    expect(existsSync(leasePath(dir))).toBe(false);
+    // And the next attempt is not blocked by the one that never started.
+    const next = await managed.start(
+      fakeProvider({ start: async () => handleStub(1, null) }), context(),
+    );
+    expect(next.ok).toBe(true);
+  }, 15_000);
+});
+
+describe("how the child is started", () => {
+  async function spawnOptionsFor(): Promise<SpawnCall> {
+    const child = new FakeChild();
+    const provider = providerWith(child, {
+      fetchPage: async () => ({ status: 200, contentType: "text/html", body: "agend-setup-marker" }),
+    });
+    setTimeout(() => child.say("https://calm-river-9.trycloudflare.com\n"), 5);
+    await provider.start(context());
+    return provider.spawnCalls[0]!;
+  }
+
+  it("uses a fixed argument list and no shell", async () => {
+    const call = await spawnOptionsFor();
+
+    // Fixed argv is the whole defence against command injection here — one of
+    // these arguments is an origin, and a shell would make it a command.
+    expect(call.args).toEqual([
+      "tunnel", "--no-autoupdate", "--config", "/dev/null", "--url", "http://127.0.0.1:45678",
+    ]);
+    expect(call.options.shell).toBe(false);
+  });
+
+  it("hands the child only the variables on the allow list", async () => {
+    const call = await spawnOptionsFor();
+
+    // The shell that ran `agend setup` routinely holds cloud credentials.
+    expect(Object.keys(call.options.env as object)).toEqual(["HTTPS_PROXY"]);
+    expect(JSON.stringify(call.options.env)).not.toContain("secret");
+  });
+});
+
 describe("stopping is a claim that needs proof", () => {
   async function running(over: Record<string, unknown> = {}) {
     const child = new FakeChild();
@@ -295,7 +399,7 @@ describe("the lease survives the process that wrote it", () => {
   const lease = (over: Record<string, unknown> = {}) => ({
     sid: "abc", provider: "cloudflared", originPort: 45678,
     providerPid: 4242, strongIdentity: "linux:111",
-    expiresAt: Date.now() + 60_000, ownerPid: process.pid,
+    expiresAt: Date.now() + 60_000, ownerPid: process.pid, ownerIdentity: null,
     ...over,
   });
 
@@ -412,6 +516,78 @@ describe("the lease survives the process that wrote it", () => {
     expect(existsSync(leasePath(dir))).toBe(true);
   });
 
+  it("will not signal a pid the lease cannot identify", async () => {
+    // An old lease with no fingerprint names a number and nothing else. Killing
+    // on that basis is the same mistake as killing a reused pid — the reaper
+    // simply cannot tell, so it must not act.
+    const dir = tempDir();
+    writeLease(dir, lease({ strongIdentity: null, ownerPid: 999_999 }));
+    const killed: number[] = [];
+
+    const outcome = await reapStaleTunnel(dir, {
+      probe: pid => pid === 999_999
+        ? { kind: "gone" }
+        : { kind: "identified", identity: "linux:111", comm: "cloudflared" },
+      kill: pid => { killed.push(pid); },
+      wait: async () => {},
+    });
+
+    expect(outcome.kind).toBe("manual");
+    expect(killed).toEqual([]);
+    expect(existsSync(leasePath(dir))).toBe(true);
+  });
+
+  it("treats a lease that parses but is missing its fields as unresolved", async () => {
+    // Valid JSON with a plausible-looking pid in it, but no provider and no
+    // owner. Trusting the fields that happen to be there would send SIGTERM to
+    // a number out of a damaged file — so the whole record is rejected instead.
+    const dir = tempDir();
+    writeFileSync(leasePath(dir), JSON.stringify({ providerPid: 4242, strongIdentity: "linux:111" }));
+    const killed: number[] = [];
+
+    expect(readLease(dir)).not.toBeNull();
+    const outcome = await reapStaleTunnel(dir, {
+      probe: () => ({ kind: "identified", identity: "linux:111", comm: "cloudflared" }),
+      kill: pid => { killed.push(pid); },
+      wait: async () => {},
+    });
+
+    expect(outcome.kind).toBe("manual");
+    expect(killed).toEqual([]);
+    expect(existsSync(leasePath(dir))).toBe(true);
+  });
+
+  it("does not let a reused owner pid hold the lease forever", async () => {
+    // The owner crashed and its number was handed to something unrelated. With
+    // only the number to go on, the reaper would call this "held" for as long
+    // as that innocent process lives — the trap ticket 5 hit with fleet.lock.
+    const dir = tempDir();
+    writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
+
+    const outcome = await reapStaleTunnel(dir, {
+      probe: pid => pid === 999_999
+        ? { kind: "identified", identity: "linux:somebody-else", comm: "postgres" }
+        : { kind: "gone" },
+      kill: () => { throw new Error("the provider pid was already gone"); },
+    });
+
+    expect(outcome).toMatchObject({ kind: "reaped", how: "already-gone" });
+    expect(existsSync(leasePath(dir))).toBe(false);
+  });
+
+  it("still yields to an owner that really is the one that wrote the lease", async () => {
+    const dir = tempDir();
+    writeLease(dir, lease({ ownerPid: 999_999, ownerIdentity: "linux:owner-1" }));
+
+    const outcome = await reapStaleTunnel(dir, {
+      probe: pid => pid === 999_999
+        ? { kind: "identified", identity: "linux:owner-1", comm: "node" }
+        : { kind: "gone" },
+    });
+
+    expect(outcome).toEqual({ kind: "held", ownerPid: 999_999 });
+  });
+
   it("cannot prove anything on a platform with no fingerprint", async () => {
     const dir = tempDir();
     writeLease(dir, lease({ ownerPid: 999_999 }));
@@ -440,14 +616,6 @@ function fakeProvider(over: Partial<TunnelProvider> = {}): TunnelProvider & { st
 }
 
 describe("only one managed tunnel, and only one that is accounted for", () => {
-  function handleStub(pid: number | null, identity: string | null, stop = async () => ({ confirmed: true as const })) {
-    return {
-      provider: "fake", visibility: "public" as const,
-      baseUrl: "https://x.trycloudflare.com", pageUrl: "https://x.trycloudflare.com/s/abc/",
-      pid, identity, stop, onUnexpectedExit: () => () => {},
-    };
-  }
-
   it("records the pid and fingerprint of the tunnel it started", async () => {
     const dir = tempDir();
     const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "gone" }) });
@@ -527,6 +695,7 @@ describe("only one managed tunnel, and only one that is accounted for", () => {
     writeLease(dir, {
       sid: "other", provider: "cloudflared", originPort: 1, providerPid: 5,
       strongIdentity: "linux:1", expiresAt: Date.now() + 60_000, ownerPid: 4321,
+      ownerIdentity: null,
     });
     const managed = new ManagedTunnel({ dataDir: dir, probe: () => ({ kind: "identified", identity: "linux:1", comm: "x" }) });
     const provider = fakeProvider({ start: async () => { throw new Error("must not start"); } });
