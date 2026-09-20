@@ -118,6 +118,7 @@ type ReconcileObserver = (
   status: ApplyTargetStatus,
   error?: string,
 ) => void;
+import { instanceCredentialProfile } from "./backend/credential-profile.js";
 import {
   classifyInstanceChange,
   CLASSIC_HOT_CONFIG_KEYS,
@@ -1460,36 +1461,45 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   getActiveUsageProviderIds(): ReadonlySet<string> {
     const providers = new Set<string>();
-    for (const backend of this.getActiveBackendIds()) {
+    // Per instance, not per backend: two agents on two kiro subscriptions are
+    // two rows, and filtering by the bare backend id would hide both.
+    for (const [name, backend, profile] of this.activeBackendBindings()) {
+      void name;
       const provider = usageProviderIdForBackend(backend);
-      if (provider) providers.add(provider);
+      if (!provider) continue;
+      providers.add(profile ? `${provider}:${profile}` : provider);
     }
     return providers;
   }
 
-  /** Effective backends with a running or persisted-paused fleet/Classic instance. */
-  getActiveBackendIds(): ReadonlySet<string> {
-    const backends = new Set<string>();
-    const add = (name: string, backend: string | undefined) => {
+  /** `[instance, effective backend, credential profile]` for everything that is
+   * running or paused — the one place both usage views agree on who is live. */
+  private activeBackendBindings(): Array<[string, string, string | null]> {
+    const bindings: Array<[string, string, string | null]> = [];
+    const add = (name: string, backend: string | undefined, profile: string | null) => {
       const status = this.getInstanceStatus(name);
       if (status !== "running" && status !== "paused") return;
-      if (backend) backends.add(backend);
+      if (backend) bindings.push([name, backend, profile]);
     };
-
     for (const [name, config] of Object.entries(this.fleetConfig?.instances ?? {})) {
       // loadFleetConfig() has already merged the fleet default into each row.
-      add(name, config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+      const backend = config.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+      add(name, backend, instanceCredentialProfile(config, this.fleetConfig?.defaults, backend));
     }
     for (const channel of this.classicChannels?.getAll() ?? []) {
-      add(
+      const backend = this.classicChannels?.getBackendByInstance(
         channel.instanceName,
-        this.classicChannels?.getBackendByInstance(
-          channel.instanceName,
-          this.fleetConfig?.defaults?.backend,
-        ),
+        this.fleetConfig?.defaults?.backend,
       );
+      // Classic channels carry no backend_options, so they run the shared login.
+      add(channel.instanceName, backend, null);
     }
-    return backends;
+    return bindings;
+  }
+
+  /** Effective backends with a running or persisted-paused fleet/Classic instance. */
+  getActiveBackendIds(): ReadonlySet<string> {
+    return new Set(this.activeBackendBindings().map(([, backend]) => backend));
   }
 
   isClassicInstance(name: string): boolean {

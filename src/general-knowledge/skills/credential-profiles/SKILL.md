@@ -78,6 +78,13 @@ Read it from the instance config (`get_fleet_config` or `describe_instance`):
 login** — the one `kiro-cli login` uses on the host with no environment set.
 Say "the default login", not "no subscription".
 
+## Answer "how much is left on each subscription?"
+
+`get_usage` returns one row per subscription: `Kiro (work)` and
+`Kiro (personal)` rather than a single `Kiro`. Read them out separately — they
+are two quotas, and adding them together would give a number that is true of
+neither. An agent with no profile appears under the plain `Kiro` row.
+
 ## What to tell the user
 
 - Two agents with the same profile name share one login and one quota.

@@ -21,6 +21,13 @@
 import { readFile, writeFile, access, constants } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { getAgendHome } from "../paths.js";
+import { loadFleetConfig } from "../config.js";
+import {
+  credentialHomeSpec,
+  credentialProfileHome,
+  listConfiguredProfiles,
+} from "../backend/credential-profile.js";
 import { homedir } from "node:os";
 import { getProviderRateLimit } from "./provider-alerts.js";
 import {
@@ -1024,8 +1031,10 @@ export function kiroAuthKind(token: KiroToken): KiroAuthKind {
  * IS installed but no login we recognise is stored: a real state the user needs
  * to see, not a reason to hide the row.
  */
-function readKiroToken(): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean; notInstalled?: boolean } {
-  const home = process.env.KIRO_CLI_HOME || join(homedir(), ".local", "share", "kiro-cli");
+function readKiroToken(storeHome?: string): { token?: KiroToken; kind?: KiroAuthKind; missing?: boolean; notInstalled?: boolean } {
+  // A credential profile keeps its own store; without one this is the shared
+  // login, exactly as before.
+  const home = storeHome ?? process.env.KIRO_CLI_HOME ?? join(homedir(), ".local", "share", "kiro-cli");
   let db: Database.Database;
   try {
     db = new Database(join(home, "data.sqlite3"), { readonly: true, fileMustExist: true });
@@ -1075,8 +1084,8 @@ function kiroEpochIso(sec: unknown): string | null {
 }
 
 /** Exported for tests: the Q-Pro and expired paths return without any network call. */
-export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const { token, kind, missing, notInstalled } = readKiroToken();
+export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
+  const { token, kind, missing, notInstalled } = readKiroToken(storeHome);
   if (notInstalled) {
     // The one case that should disappear from the panel: kiro-cli isn't here.
     return { status: "no-credentials", hint: "Log in with the Kiro CLI (`kiro-cli`).", hintI18n: i18n("usage.hint.login_kiro"), metrics: [] };
@@ -1213,7 +1222,7 @@ export async function fetchKiroUsage(): Promise<Omit<ProviderUsage, "id" | "name
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-type UsageProvider = { id: string; name: string; fetch: () => Promise<Omit<ProviderUsage, "id" | "name">> };
+type UsageProvider = { id: string; name: string; fetch: (storeHome?: string) => Promise<Omit<ProviderUsage, "id" | "name">> };
 
 const DEFAULT_PROVIDERS: UsageProvider[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
@@ -1222,6 +1231,59 @@ const DEFAULT_PROVIDERS: UsageProvider[] = [
   { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
   { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
 ];
+
+/**
+ * One row per subscription, not one row per backend.
+ *
+ * A fleet running two kiro logins has two quotas, and a single row could only
+ * ever show one of them — or worse, add them together and show a number that is
+ * true of neither. Each configured credential profile reads its own store and
+ * gets its own row; a backend with no profiles is left exactly as it was, one
+ * row reading the shared login.
+ */
+export function providersForConfig(
+  config: Parameters<typeof listConfiguredProfiles>[0],
+  base: UsageProvider[] = DEFAULT_PROVIDERS,
+): UsageProvider[] {
+  return base.flatMap(provider => {
+    const backendName = usageBackendForProviderId(provider.id);
+    if (!backendName || !credentialHomeSpec(backendName)) return [provider];
+    const profiles = listConfiguredProfiles(config, backendName);
+    if (profiles.length === 0) return [provider];
+    return profiles.map(profile => ({
+      id: `${provider.id}:${profile}`,
+      name: `${provider.name} (${profile})`,
+      fetch: () => provider.fetch(credentialProfileStoreHome(backendName, profile)),
+    }));
+  });
+}
+
+/**
+ * The fleet configuration, for working out which subscriptions exist.
+ *
+ * Usage runs in the fleet process and in the CLI, and it is never worth failing
+ * a usage snapshot over an unreadable config — no config simply means no
+ * profiles, which is the behaviour every fleet had before profiles existed.
+ */
+function readFleetConfigForUsage(): Parameters<typeof listConfiguredProfiles>[0] {
+  try {
+    return loadFleetConfig(join(getAgendHome(), "fleet.yaml"));
+  } catch {
+    return null;
+  }
+}
+
+/** The backend a usage row reads its credentials from. */
+function usageBackendForProviderId(id: string): string | null {
+  return id === "kiro" ? "kiro-cli" : null;
+}
+
+/** Where a profile's store lives, in the shape that backend's home expects. */
+function credentialProfileStoreHome(backendName: string, profile: string): string {
+  const spec = credentialHomeSpec(backendName)!;
+  const home = credentialProfileHome(getAgendHome(), backendName, profile);
+  return spec.storeSubdir ? join(home, spec.storeSubdir) : home;
+}
 
 let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;
 
@@ -1288,8 +1350,15 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | typeof
 
 /** Fetch every provider in parallel. Providers without local credentials are
  * skipped (per the panel's contract: absent CLIs simply don't show). */
-export async function fetchAllUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
-  const results = await Promise.all(PROVIDERS.map(async (p): Promise<ProviderUsage> => {
+export async function fetchAllUsage(
+  config?: Parameters<typeof listConfiguredProfiles>[0],
+): Promise<{ fetchedAt: string; providers: ProviderUsage[] }> {
+  // Expanded per call: a profile added through Settings or General should show
+  // up on the next snapshot, not on the next restart. Callers that already hold
+  // the config pass it; the rest get it read here, behind the same five-minute
+  // cache as the snapshot itself.
+  const providers = providersForConfig(config === undefined ? readFleetConfigForUsage() : config, PROVIDERS);
+  const results = await Promise.all(providers.map(async (p): Promise<ProviderUsage> => {
     try {
       const outcome = await withDeadline(p.fetch(), providerDeadlineMs);
       if (outcome === DEADLINE_EXCEEDED) {
