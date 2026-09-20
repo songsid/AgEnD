@@ -25,9 +25,10 @@ import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
 import {
   credentialHomeSpec,
-  credentialProfileHome,
+  credentialProfileStoreHome,
   listConfiguredProfiles,
 } from "../backend/credential-profile.js";
+import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir } from "node:os";
 import { getProviderRateLimit } from "./provider-alerts.js";
 import {
@@ -35,7 +36,6 @@ import {
   type StatuslineRateLimits,
   type StatuslineWindow,
 } from "./statusline-usage.js";
-import Database from "better-sqlite3";
 import type { UsageI18nKey } from "./i18n-keys.js";
 
 export interface UsageMetric {
@@ -997,16 +997,7 @@ async function fetchGrokUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
 
 const KIRO_TARGET = "AmazonCodeWhispererService.GetUsageLimits";
 
-interface KiroToken {
-  access_token?: string;
-  expires_at?: string;
-  region?: string;
-  profile_arn?: string;
-  /** IAM Identity Center portal URL — present only for Q Developer Pro logins. */
-  start_url?: string;
-  /** Social login provider (google/github/…) — present only for free-tier logins. */
-  provider?: string;
-}
+type KiroToken = KiroStoredToken;
 
 /**
  * Which Kiro login is in use. Verified against a real kiro-cli auth store:
@@ -1041,42 +1032,18 @@ function readKiroToken(storeHome?: string): { token?: KiroToken; kind?: KiroAuth
   // A credential profile keeps its own store; without one this is the shared
   // login, exactly as before.
   const home = storeHome ?? process.env.KIRO_CLI_HOME ?? join(homedir(), ".local", "share", "kiro-cli");
-  let db: Database.Database;
-  try {
-    db = new Database(join(home, "data.sqlite3"), { readonly: true, fileMustExist: true });
-  } catch {
-    return storeHome ? { missing: true } : { notInstalled: true };
-  }
-  try {
-    // Read every token-shaped row rather than a fixed pair of keys: kiro names
-    // its auth rows per login type (`kirocli:social:token`,
-    // `codewhisperer:odic:token`, …), and an unlisted one used to read as
-    // "not logged in" — which then removed Kiro from the panel entirely.
-    const rows = db.prepare("SELECT key, value FROM auth_kv WHERE key LIKE '%:token'").all() as { key: string; value: string }[];
-    const parse = (raw?: string): KiroToken | null => {
-      if (!raw) return null;
-      try {
-        const t = JSON.parse(raw) as KiroToken;
-        return t.access_token ? t : null;
-      } catch { return null; }
-    };
-    const candidates = rows
-      .map(r => parse(r.value))
-      .filter((t): t is KiroToken => t !== null);
-    if (candidates.length === 0) return { missing: true };
-    // Switching login type leaves the old token behind, so "first key wins"
-    // could report a stale account. Prefer a token that has not expired, then
-    // the one that expires latest.
-    const expiry = (t: KiroToken) => (t.expires_at ? new Date(t.expires_at).getTime() : 0);
-    const now = Date.now();
-    const live = candidates.filter(t => expiry(t) > now);
-    const token = (live.length ? live : candidates).sort((a, b) => expiry(b) - expiry(a))[0];
-    return { token, kind: kiroAuthKind(token) };
-  } catch {
-    return { missing: true };
-  } finally {
-    try { db.close(); } catch { /* best-effort */ }
-  }
+  const read = readKiroAuthTokens(home);
+  if (read.kind === "no-store") return storeHome ? { missing: true } : { notInstalled: true };
+  const candidates = read.tokens;
+  if (candidates.length === 0) return { missing: true };
+  // Switching login type leaves the old token behind, so "first key wins"
+  // could report a stale account. Prefer a token that has not expired, then
+  // the one that expires latest.
+  const expiry = (t: KiroToken) => (t.expires_at ? new Date(t.expires_at).getTime() : 0);
+  const now = Date.now();
+  const live = candidates.filter(t => expiry(t) > now);
+  const token = (live.length ? live : candidates).sort((a, b) => expiry(b) - expiry(a))[0];
+  return { token, kind: kiroAuthKind(token) };
 }
 
 function kiroTitleCase(s: string): string {
@@ -1259,7 +1226,7 @@ export function providersForConfig(
     return profiles.map(profile => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
-      fetch: () => provider.fetch(credentialProfileStoreHome(backendName, profile)),
+      fetch: () => provider.fetch(credentialProfileStoreHome(getAgendHome(), backendName, profile)),
     }));
   });
 }
@@ -1282,13 +1249,6 @@ function readFleetConfigForUsage(): Parameters<typeof listConfiguredProfiles>[0]
 /** The backend a usage row reads its credentials from. */
 function usageBackendForProviderId(id: string): string | null {
   return id === "kiro" ? "kiro-cli" : null;
-}
-
-/** Where a profile's store lives, in the shape that backend's home expects. */
-function credentialProfileStoreHome(backendName: string, profile: string): string {
-  const spec = credentialHomeSpec(backendName)!;
-  const home = credentialProfileHome(getAgendHome(), backendName, profile);
-  return spec.storeSubdir ? join(home, spec.storeSubdir) : home;
 }
 
 let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;

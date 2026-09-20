@@ -11,6 +11,8 @@ import { clearPausedMarker, writePausedMarker } from "./pause-marker.js";
 import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
+import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { getAgendHome } from "./paths.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
 import { ContextGuardian } from "./context-guardian.js";
@@ -1480,7 +1482,11 @@ export class Daemon extends EventEmitter {
       this.transcriptMonitor = new TranscriptMonitor(
         this.instanceDir,
         this.logger,
-        createTranscriptSource(this.config.backend ?? "claude-code", this.config.working_directory),
+        createTranscriptSource(
+          this.config.backend ?? "claude-code",
+          this.config.working_directory,
+          this.credentialProfileStore(),
+        ),
       );
 
       // 5. Wire transcript events
@@ -6811,6 +6817,29 @@ export class Daemon extends EventEmitter {
       event_count: snapshot.recent_events?.length ?? 0,
     }, "Snapshot written");
     return snapshot;
+  }
+
+  /**
+   * The credential profile's store this instance's CLI writes to, if any.
+   *
+   * The conversation lives in the same file as the login, so an instance on a
+   * profile keeps its transcript there too — reading the shared store would
+   * follow whichever *other* agent happens to be talking, or find nothing.
+   * Built with the same `getAgendHome()` the launch prefix uses, or the two
+   * would disagree about where the profile is.
+   */
+  private credentialProfileStore(): string | undefined {
+    const backendName = this.config.backend ?? "claude-code";
+    let profile: string | null;
+    try {
+      profile = resolveCredentialProfile(this.config.backend_options?.[backendName]);
+    } catch {
+      // A malformed name is refused where it is written; a transcript reader
+      // must not take the instance down over it.
+      return undefined;
+    }
+    if (!profile) return undefined;
+    return credentialProfileStoreHome(getAgendHome(), backendName, profile);
   }
 
   /** Collect ring buffer data for handover to a replacement instance. */

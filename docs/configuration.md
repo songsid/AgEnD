@@ -280,8 +280,9 @@ the profile sharing the very login it exists to separate.
 
 **A profile starts empty apart from those caches.** Anything the backend keeps
 beside its login and that is not a shared cache — kiro's `knowledge_bases`, its
-shell `history`, its conversation store — belongs to the profile, so an agent
-moved to a new profile starts with none of it. That is the point of the
+shell `history` — belongs to the profile, so an agent moved to a new profile
+starts with none of it. Its conversations are inside the login database itself
+(see [Switching is a new conversation](#switching-is-a-new-conversation)). That is the point of the
 isolation, but `knowledge_bases` disappearing is the part people do not expect;
 copy it across by hand if you want it in both.
 
@@ -297,6 +298,32 @@ for you and says `restarted: true`. A paused or stopped agent is not started:
 its new profile applies when it next comes up. Send `credential_profile: null`
 to put an agent back on the default login. Ask General in plain language — "move
 research-a to the personal subscription" — and it will do this.
+
+**Switching to a profile that has never been logged in is refused**, and the
+error carries the command to log it in. kiro-cli does not start a signed-out
+session: it stops at `Welcome to Kiro CLI, let's get you signed in!` and waits
+for a keypress, so an agent pointed at an empty profile would sit on a login
+screen until its startup budget expired, then restart into the same screen.
+Going *back* to the default login is never refused — that is the way out of a
+bad switch.
+
+### Switching is a new conversation
+
+kiro keeps its conversations in the same `data.sqlite3` as its login, keyed by
+working directory. A different subscription is therefore a different set of
+conversations, and there is nothing to resume — the store the agent was talking
+into is the one being left behind. AgEnD does not try: the first launch after a
+switch skips resume outright, rather than spending the resume startup budget
+waiting for a conversation that is not there.
+
+What does carry across is the *intent*. AgEnD takes the outgoing session's
+context from the daemon (recent messages, recent activity — not from the CLI's
+own store) and delivers it to the new session as a handover, saying which
+subscription it came from and that the conversation did not come with it. The
+reply reports `conversation_carried_over: false` and `handover_chars`.
+
+This is a property of kiro, not a design choice: auth and conversations are
+tables in one file, and a table cannot be symlinked back to the shared store.
 
 ### Seeing both quotas
 

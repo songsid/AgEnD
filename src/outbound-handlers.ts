@@ -15,6 +15,7 @@ import { t } from "./locale.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { readStatuslineModel } from "./topic-commands.js";
+import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -82,7 +83,7 @@ export interface OutboundContext {
   } | null;
   lastActivityMs(name: string): number;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean): Promise<void>;
-  restartSingleInstance(name: string): Promise<void>;
+  restartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void>;
   connectIpcToInstance(name: string): Promise<void>;
   /** FleetManager facade that wakes paused instances before delivery. */
   deliverToInstance?(
@@ -997,6 +998,10 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     return;
   }
   const patch = v.data.config;
+  // Read before anything is mutated: the switch is what decides whether the
+  // next launch may resume, and by then `inst` already holds the new value.
+  const backendBefore = (inst as any).backend ?? "claude-code";
+  const profileBefore = instanceCredentialProfile(inst, ctx.fleetConfig?.defaults, backendBefore);
   // Snapshot enough to undo the whole patch if validation refuses it.
   const beforeEdit = validateFleetConfig(ctx.fleetConfig as never);
   const beforeFields: Record<string, unknown> = {};
@@ -1035,17 +1040,48 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // restarts the instance — restarted into a spawn that could only fail. Only
   // errors this edit introduced count, so a fleet that was already imperfect
   // can still be edited.
-  const after = validateFleetConfig(ctx.fleetConfig as never);
-  const introduced = introducedErrors(beforeEdit, after);
-  if (introduced.length) {
+  const rollback = () => {
     if (previousOptions === undefined) delete (inst as any).backend_options;
     else (inst as any).backend_options = previousOptions;
     for (const [key, value] of Object.entries(beforeFields)) {
       if (value === undefined) delete (inst as any)[key];
       else (inst as any)[key] = value;
     }
+  };
+
+  const after = validateFleetConfig(ctx.fleetConfig as never);
+  const introduced = introducedErrors(beforeEdit, after);
+  if (introduced.length) {
+    rollback();
     respond(null, `Rejected: ${introduced.map(issue => `${issue.path}: ${issue.message}`).join("; ")}`);
     return;
+  }
+
+  const backendAfter = (inst as any).backend ?? "claude-code";
+  const profileAfter = instanceCredentialProfile(inst, ctx.fleetConfig?.defaults, backendAfter);
+  const profileSwitched = profileAfter !== profileBefore;
+
+  // Switching to a profile nobody has logged into does not start a signed-out
+  // session — kiro-cli stops at "let's get you signed in!" and waits for a
+  // keypress that is never coming, the startup budget kills it, and the daemon
+  // restarts into the same prompt. Verified against kiro-cli 2.22.0 on a fresh
+  // profile store. Refuse the switch while the config can still be undone, and
+  // say what to run; the alternative is an agent that looks restarted and is
+  // actually parked on a login screen.
+  //
+  // Only for a named target: going back to the shared login (profile null) is
+  // the escape hatch from a bad switch and must never be the thing that is
+  // blocked, and an unlogged shared store means the CLI was never set up at
+  // all — a state that predates this feature.
+  if (profileSwitched && profileAfter) {
+    // The same root the launcher resolves the profile under, so the store this
+    // probes is the store the CLI will be pointed at.
+    const login = credentialProfileLogin(ctx.dataDir, backendAfter, profileAfter);
+    if (login.state === "signed-out") {
+      rollback();
+      respond(null, `Rejected: credential profile "${profileAfter}" has no ${backendAfter} login yet, and switching to it would leave the agent waiting at a sign-in prompt. Log it in first:\n  ${login.loginCommand}`);
+      return;
+    }
   }
 
   try {
@@ -1073,10 +1109,31 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     });
     return;
   }
+  // A subscription switch is a new conversation, so take the outgoing one's
+  // context while the daemon that holds it is still alive. It comes from the
+  // daemon's in-memory ring buffer, not from the CLI's store — which matters
+  // here, because the store the agent was talking into is the one being left
+  // behind.
+  const handover = profileSwitched
+    ? (ctx.lifecycle.daemons.get(v.data.name)?.collectHandoverContext() ?? "")
+    : "";
+
   // Saving without restarting would report a subscription switch that has not
   // happened — the running CLI keeps the credentials it was launched with.
-  ctx.restartSingleInstance(v.data.name).then(
-    () => respond({ success: true, name: v.data.name, applied: patch, restarted: true }),
+  // A switch also starts fresh: the new store has no conversation for this
+  // directory, so resuming can only spend the resume startup budget waiting for
+  // something that is not there.
+  ctx.restartSingleInstance(v.data.name, profileSwitched ? { freshStart: true } : undefined).then(
+    async () => {
+      const handoverChars = await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
+      respond({
+        success: true,
+        name: v.data.name,
+        applied: patch,
+        restarted: true,
+        ...(profileSwitched ? { credential_profile_switched: true, conversation_carried_over: false, handover_chars: handoverChars } : {}),
+      });
+    },
     (err: unknown) => respond({
       success: true,
       name: v.data.name,
@@ -1086,6 +1143,51 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
     }),
   );
 };
+
+/** Long enough for the relaunched CLI to be listening; matches replace_instance. */
+export const PROFILE_HANDOVER_SETTLE_MS = 3_000;
+
+/**
+ * Hand the outgoing conversation's intent to the session that replaces it.
+ *
+ * Kiro keeps conversations in the same database as the login, so a different
+ * subscription is a different set of conversations and there is nothing to
+ * continue — the agent wakes up with no memory of what it was doing. This is
+ * the same `[system:handover]` path `replace_instance` uses, and it says the
+ * subscription changed rather than pretending the conversation survived.
+ *
+ * Returns how many characters were delivered; 0 when there was nothing to say
+ * or nobody to say it to. Never throws: a missed handover costs context, and
+ * failing the switch over it would be worse.
+ */
+async function deliverProfileHandover(
+  ctx: OutboundContext,
+  name: string,
+  from: string | null,
+  to: string | null,
+  context: string,
+): Promise<number> {
+  if (!context) return 0;
+  try {
+    // The CLI is launched but not yet at its prompt; the same settle the
+    // replace path uses before its first delivery.
+    await new Promise(r => setTimeout(r, PROFILE_HANDOVER_SETTLE_MS));
+    const ipc = ctx.instanceIpcClients.get(name);
+    if (!ipc) return 0;
+    const describe = (profile: string | null) => profile ?? "the default login";
+    ipc.send({
+      type: "fleet_inbound",
+      content: `[system:handover]\nYour subscription changed from ${describe(from)} to ${describe(to)}. `
+        + `That is a different credential store, so this is a brand new session — the previous conversation did not carry over and cannot be resumed.\n\n`
+        + `${context}\n\nPick the work up from this context. Do NOT reply to this message — wait for the next user message.`,
+      meta: { from_instance: "system", source: "handover", user: "system", ts: new Date().toISOString(), chat_id: "", thread_id: "" },
+    });
+    return context.length;
+  } catch {
+    return 0;
+  }
+}
+
 
 const updateFleetDefaults: Handler = (ctx, rawArgs, respond) => {
   const v = validateArgs(UpdateFleetDefaultsArgs, rawArgs, "update_fleet_defaults");

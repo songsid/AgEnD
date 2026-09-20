@@ -7,11 +7,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**One fleet can now run on more than one subscription of the same backend.** An
+instance carries `backend_options.<backend>.credential_profile: <name>`, and
+instances naming the same profile share one login while instances naming
+different profiles have different ones. An instance with no profile is
+untouched: nothing is added to its launch and no directory is created, so a
+fleet that does not use this cannot be affected by it. Implemented for
+`kiro-cli`; the mechanism is one record per backend (`CREDENTIAL_HOMES`), not a
+kiro-shaped design.
+
+A profile lives in `~/.agend/credential-profiles/<backend>/<profile>` and is
+logged in once from the host. Only the login is duplicated — kiro's
+multi-gigabyte runtimes are symlinked back to the shared copy, so a second
+subscription costs megabytes. The credential store itself is never a symlink,
+because SQLite follows a linked database to its target and would leave the
+profile sharing the login it exists to separate.
+
+General can create an agent on a subscription or move one between them, in plain
+language, and `/usage`, `get_usage` and the dashboard show **one row per
+subscription** rather than one per backend — `Kiro (work)` beside
+`Kiro (personal)`, each read from its own store and never added together. A
+profile that is configured but not yet logged in still gets a row, reading
+"Signed out", because that is the row you need to see while setting a second
+subscription up.
+
 Settings now applies changes as a job you can watch. `POST /api/settings/apply` returns one row per affected agent and `GET /api/settings/apply/:jobId` is the authority on it; the job is stored on disk, so a change that restarts AgEnD itself no longer takes the answer down with it. The client generates the idempotency key before its first attempt, so the retry that follows a lost response rejoins the original job instead of applying everything twice.
 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **Switching an agent's subscription starts a new conversation** — kiro keeps
+  its conversations in the same `data.sqlite3` as its login, so a different
+  credential profile is a different set of conversations and there is nothing to
+  resume. The first launch after a switch skips resume outright, and the new
+  session is handed a summary of what the old one was doing (the reply reports
+  `conversation_carried_over: false` and `handover_chars`). Say anything that
+  must survive verbatim in the channel before switching.
+- **Switching to a credential profile that has never been logged in is refused**
+  — kiro-cli does not start a signed-out session, it stops at a sign-in prompt
+  and waits, so the agent would sit on a login screen until its startup budget
+  expired and then restart into the same screen. The error carries the command
+  to log the profile in. Going back to the default login is never refused.
 - **A busy health port no longer terminates whatever `fleet.pid` names** — the takeover used to signal that pid on sight, and a stale or wrong entry names whatever holds it now. The target's command line is checked first, and when it cannot be confirmed the signal is not sent. `fleet.lock` also records whether a fleet or the setup page owns it, so the two refuse each other in both directions instead of one stealing the lock from the other.
 - **Dashboard and Settings links now exchange their token for a session cookie** — opening a link redeems `?token=` once, sets an `HttpOnly; SameSite=Strict` cookie, and redirects to the same page without the token, so the credential stays out of the address bar, browser history and any log that records request URLs. `X-Agend-Token` still works for scripts and the CLI, but a URL token is no longer accepted for a write. `agend web-token rotate` revokes every issued link and cookie at once.
 - **Fewer changes ask for a full AgEnD restart** — "restart AgEnD" used to appear for every cold fleet default, including `backend` and `model`, which the agents absorb by restarting. It is now limited to settings read once when a subsystem is constructed (channel bindings, `health_port`, `defaults.locale`, `cost_guard`, `webhooks`, `daily_summary`, and the two scheduler keys the scheduler captures at startup).

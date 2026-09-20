@@ -16,9 +16,13 @@ setting an option that will be ignored.
 ## Is a profile already set up?
 
 A profile exists once someone has logged into it on the host. AgEnD cannot log
-in for them: the login is a browser device flow. If the profile named in a
-request has never been logged into, the agent will start and report "not logged
-in" — so check before promising it works.
+in for them: the login is a browser device flow.
+
+**A switch to a profile that has never been logged in is refused**, and the
+error carries the exact command to run. This is deliberate: kiro-cli does not
+start a signed-out session, it stops at "let's get you signed in!" and waits for
+a keypress, so the agent would sit on a login screen instead of working. Relay
+the command, do not try to work around the refusal.
 
 Ask the operator to run this on the host once per subscription:
 
@@ -50,9 +54,16 @@ update_instance_config(
 ```
 
 The credentials are read when the CLI starts, so **the instance is restarted
-for you** and the reply says `restarted: true`. Tell the user their agent
-restarted: a turn in flight is interrupted, and conversation history does not
-move with it — the new profile has its own history.
+for you** and the reply says `restarted: true`.
+
+A switch is always a **new conversation**, and the reply says so
+(`conversation_carried_over: false`). kiro keeps its conversations in the same
+database as its login, so a different subscription has a different set of them
+and there is nothing to resume — AgEnD does not even try. What it does instead
+is hand the new session a summary of what the old one was doing
+(`handover_chars` says how much), so the agent can pick the work up without the
+transcript. Tell the user plainly: the agent restarted on the other
+subscription, it knows what it was doing, it cannot quote what was said.
 
 `backend_options` merges per backend, so setting a kiro option leaves a codex
 option on the same instance alone.
@@ -96,12 +107,14 @@ and log it in, so report it as such rather than as a missing subscription.
 - Quotas only add up if the profiles are genuinely different billing accounts.
   Two profiles logged into the same account do not double anything, and it is
   worth saying so before someone sets this up expecting more headroom.
-- Switching a profile does not carry the conversation across. Summarise the
-  work before switching if it matters.
+- Switching a profile does not carry the conversation across; the agent gets a
+  summary of the work, not the transcript. Say anything that must survive
+  verbatim in the channel before switching.
 
 ## Do not
 
-- Do not invent a profile that has never been logged in and report success.
+- Do not invent a profile that has never been logged in and report success —
+  the switch is refused, and the refusal tells you what to relay.
 - Do not set `credential_profile` for a backend other than `kiro-cli`; it is
   ignored, and the config validator warns about it.
 - Do not use a profile name with slashes or spaces — it becomes a directory
