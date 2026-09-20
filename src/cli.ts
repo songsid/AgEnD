@@ -1643,7 +1643,26 @@ program
     }
     const { loadFleetConfig } = await import("./config.js");
     const fleet = existsSync(FLEET_CONFIG_PATH) ? loadFleetConfig(FLEET_CONFIG_PATH) : { defaults: {}, instances: {} };
-    const { SetupHost, resolvePort } = await import("./setup-host.js");
+    const { SetupHost, resolvePort, SETUP_HOST_TTL_MS } = await import("./setup-host.js");
+
+    // Asked before anything is created: no lock taken, no listener bound, no
+    // cloudflared spawned. Every time, because there is no configuration that
+    // makes the consequences smaller, and there is no chat channel yet to put a
+    // confirmation button in.
+    if (opts.tunnel) {
+      const { confirmPublicTunnel } = await import("./setup-tunnel-consent.js");
+      const { createInterface } = await import("node:readline/promises");
+      const consent = await confirmPublicTunnel({
+        isTTY: !!process.stdin.isTTY,
+        say: line => console.log(line),
+        ask: async question => {
+          const rl = createInterface({ input: process.stdin, output: process.stdout });
+          try { return await rl.question(question); } finally { rl.close(); }
+        },
+      }, Math.round(SETUP_HOST_TTL_MS / 60_000));
+      if (!consent.granted) { process.exit(1); }
+    }
+
     // In tunnel mode this ignores `--port`, `health_port` and the default
     // alike: the health port is what the fleet will bind later, and a tunnel
     // that outlived this process would then be pointed at its dashboard.
@@ -1667,6 +1686,14 @@ program
     // forwarded message carries the whole thing.
     const { formatSetupCode } = await import("./setup-auth.js");
     const pageUrl = started.publicUrl ?? `http://127.0.0.1:${started.port}${started.path}`;
+    // A tunnel was asked for and there is no public URL: say why, and say what
+    // that means, rather than printing a loopback link under a flag that
+    // promised a phone could open it.
+    if (opts.tunnel && !started.publicUrl) {
+      const { noTunnelBinaryMessage } = await import("./setup-tunnel-consent.js");
+      console.log("");
+      for (const line of noTunnelBinaryMessage()) console.log(line);
+    }
     console.log(`\n  Setup page: ${pageUrl}`);
     console.log(`  Setup code: ${formatSetupCode(started.code)}`);
     console.log("  Open the page, type the code. Five wrong attempts closes it,");
