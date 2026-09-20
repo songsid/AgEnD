@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import Database from "better-sqlite3";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { credentialHomeSpec, prepareCredentialProfileHome } from "../src/backend/credential-profile.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
@@ -120,20 +121,48 @@ describe("a linked directory level is refused", () => {
 
 // ── What General actually calls ─────────────────────────────────────────────
 
+/**
+ * A kiro store with a login in it, where a profile switch will look for one.
+ *
+ * Switching to a profile nobody has logged into is refused, so a test about
+ * anything else has to have logged in first — exactly as a user would.
+ */
+function loginProfile(dataDir: string, profile: string): void {
+  const store = join(dataDir, "credential-profiles", "kiro-cli", profile, "kiro-cli");
+  mkdirSync(store, { recursive: true });
+  const db = new Database(join(store, "data.sqlite3"));
+  db.exec("CREATE TABLE auth_kv (key TEXT PRIMARY KEY, value TEXT)");
+  db.prepare("INSERT INTO auth_kv (key, value) VALUES (?, ?)").run(
+    "kirocli:odic:token",
+    JSON.stringify({ access_token: "token", expires_at: new Date(Date.now() + 3_600_000).toISOString() }),
+  );
+  db.close();
+}
+
+/** The two subscriptions these tests move agents between are already logged in. */
+const LOGGED_IN_PROFILES = ["work", "personal"];
+
 function outboundContext(instance: Record<string, unknown>, status: "running" | "paused" | "stopped" = "running") {
   const restartSingleInstance = vi.fn(async () => {});
   const saveFleetConfig = vi.fn();
+  const dataDir = tempDir();
+  for (const profile of LOGGED_IN_PROFILES) loginProfile(dataDir, profile);
+  const daemons = new Map<string, { collectHandoverContext(): string }>();
+  const delivered: Array<Record<string, unknown>> = [];
+  const instanceIpcClients = new Map<string, { send(msg: Record<string, unknown>): void }>();
+  instanceIpcClients.set("worker", { send: msg => { delivered.push(msg); } });
   const ctx = {
+    dataDir,
     fleetConfig: { defaults: {}, instances: { worker: instance } },
     classicChannels: { getAll: () => [] },
     saveFleetConfig,
     restartSingleInstance,
-    lifecycle: { daemons: new Map(), isPaused: () => status === "paused" },
-    instanceIpcClients: new Map(),
+    lifecycle: { daemons, isPaused: () => status === "paused" },
+    instanceIpcClients,
     getInstanceStatus: () => status,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as unknown as OutboundContext;
-  return { ctx, restartSingleInstance, saveFleetConfig, instance };
+  return { ctx, restartSingleInstance, saveFleetConfig, instance, dataDir, daemons, delivered };
 }
 
 async function call(ctx: OutboundContext, tool: string, args: unknown): Promise<Record<string, unknown>> {
@@ -164,8 +193,15 @@ describe("moving an agent to another subscription", () => {
     expect(instance.backend_options).toEqual({ "kiro-cli": { credential_profile: "personal" } });
     expect(saveFleetConfig).toHaveBeenCalled();
     // Saving without restarting would report a switch that has not happened.
-    expect(restartSingleInstance).toHaveBeenCalledWith("worker");
-    expect(result).toMatchObject({ success: true, restarted: true });
+    // freshStart because the new store has no conversation for this directory:
+    // resuming can only spend the 60s resume budget waiting for nothing.
+    expect(restartSingleInstance).toHaveBeenCalledWith("worker", { freshStart: true });
+    expect(result).toMatchObject({
+      success: true,
+      restarted: true,
+      credential_profile_switched: true,
+      conversation_carried_over: false,
+    });
   });
 
   it("merges per backend instead of replacing the whole map", async () => {

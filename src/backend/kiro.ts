@@ -252,7 +252,18 @@ export class KiroBackend implements CliBackend {
     this.activeUi = ui === "legacy" && this.compatibility.supportsLegacyUi ? "legacy" : ui === "v3" ? "v3" : "tui";
     this.activeTrustAll = config.skipPermissions !== false;
     if (config.skipPermissions !== false) cmd += " --trust-all-tools";
-    // --resume is boolean: Kiro auto-resumes latest conversation for this working directory
+    // --resume is boolean: Kiro auto-resumes latest conversation for this working directory.
+    //
+    // Deliberately NOT `--resume-id <SESSION_ID>`, which kiro-cli 2.22 also
+    // offers (alongside --resume-picker). Conversations live in the same
+    // data.sqlite3 as the login, keyed by working directory — so a credential
+    // profile has its own set of them, and a session id recorded under one
+    // profile does not exist under another. Holding an id would mean carrying a
+    // stale one across a subscription switch and resuming into nothing; the
+    // boolean form simply finds no conversation for this directory in a new
+    // store, which is the same thing every brand-new instance does on its first
+    // launch. Switching profiles also skips resume outright (crash-state
+    // resumeDisabled), so this never fires against a store that just changed.
     if (!config.skipResume) cmd += " --resume";
     if (config.model) {
       const model = validateModel(config.model);

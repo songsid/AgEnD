@@ -27,6 +27,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { kiroStoreHasLogin } from "./kiro-auth-store.js";
 
 /** Profile names become a directory; keep them boring. */
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
@@ -53,6 +54,17 @@ export interface CredentialHomeSpec {
    * expensive to duplicate and carry no identity.
    */
   share: readonly string[];
+  /**
+   * Whether this store holds a login, given its store directory.
+   *
+   * A profile nobody has logged into is not an empty session — the CLI stops at
+   * an interactive sign-in prompt and waits there, so an agent pointed at one
+   * never starts. A backend that cannot answer this omits it, and the switch is
+   * allowed rather than blocked on a check that does not exist.
+   */
+  hasLogin?: (storeHome: string) => boolean;
+  /** The subcommand that logs a store in, for telling the user what to run. */
+  loginSubcommand: string;
 }
 
 /**
@@ -79,6 +91,8 @@ const KIRO_HOME: CredentialHomeSpec = {
     "bun", "bun.sha256",
     "cli-checkouts",
   ],
+  hasLogin: kiroStoreHasLogin,
+  loginSubcommand: "login",
 };
 
 /** Backends that can hold more than one login. Codex and Claude come later. */
@@ -206,6 +220,51 @@ export function listConfiguredProfiles(
     collect(instance.backend_options);
   }
   return [...found].sort();
+}
+
+/**
+ * The directory the backend's own files sit in, for one profile.
+ *
+ * One level below the profile home whenever the relocating variable points at a
+ * directory of many programs' data — `XDG_DATA_HOME/kiro-cli`, not
+ * `XDG_DATA_HOME`. Everything that reads a profile's store (the usage panel,
+ * the transcript reader, the login check) must agree on this path, so it is
+ * computed here rather than reassembled at each call site.
+ */
+export function credentialProfileStoreHome(dataDir: string, backendName: string, profile: string): string {
+  const spec = credentialHomeSpec(backendName);
+  const home = credentialProfileHome(dataDir, backendName, profile);
+  return spec?.storeSubdir ? join(home, spec.storeSubdir) : home;
+}
+
+/**
+ * Whether a profile can be started, and what to run if it cannot.
+ *
+ * `unknown` is not a failure: a backend with no login probe, or a profile on a
+ * backend that has no credential home at all, is simply not something this can
+ * speak about, and a caller must not treat silence as a refusal.
+ */
+export type CredentialProfileLogin =
+  | { readonly state: "logged-in" }
+  | { readonly state: "signed-out"; readonly loginCommand: string }
+  | { readonly state: "unknown" };
+
+export function credentialProfileLogin(
+  dataDir: string,
+  backendName: string,
+  profile: string,
+): CredentialProfileLogin {
+  const spec = credentialHomeSpec(backendName);
+  if (!spec?.hasLogin) return { state: "unknown" };
+  const storeHome = credentialProfileStoreHome(dataDir, backendName, profile);
+  if (spec.hasLogin(storeHome)) return { state: "logged-in" };
+  return {
+    state: "signed-out",
+    // The whole command, not a description of one: this is read by an agent
+    // relaying it to a person who has to run it, and a paraphrase of a shell
+    // line is how a person ends up logging the wrong profile in.
+    loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${backendName} ${spec.loginSubcommand}`,
+  };
 }
 
 /** The profile one instance runs under, or null for the shared login. */

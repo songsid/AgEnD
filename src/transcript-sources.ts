@@ -208,6 +208,20 @@ export class CodexRolloutSource implements TranscriptSource {
 /* -------------------------------------------------------------------- kiro */
 
 /**
+ * The conversation database for one kiro store.
+ *
+ * With no store given this is the shared login's, exactly as before. A
+ * credential profile has its own store and therefore its own conversations —
+ * they are tables in the same file as the login, so an instance on a profile
+ * writes its transcript somewhere this reader would never have looked.
+ */
+export function kiroStoreDbPath(storeHome?: string): string {
+  const home = storeHome
+    ?? join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "kiro-cli");
+  return join(home, "data.sqlite3");
+}
+
+/**
  * Follows the newest Kiro conversation whose cwd matches this instance.
  * Kiro 2.19 moved primary conversations to conversations_v2 in data.sqlite3;
  * legacy releases use <uuid>.jsonl plus sibling <uuid>.json metadata.
@@ -225,7 +239,7 @@ export class KiroSessionSource implements TranscriptSource {
     private workingDirectory: string,
     private sessionsDir = join(homedir(), ".kiro", "sessions", "cli"),
     now = Date.now(),
-    private dbPath = join(process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), "kiro-cli", "data.sqlite3"),
+    private dbPath = kiroStoreDbPath(),
   ) {
     this.createdAt = now;
     this.snapshotDbBaseline();
@@ -542,10 +556,13 @@ export class OpenCodeDbSource implements TranscriptSource {
 export function createTranscriptSource(
   backend: string,
   workingDirectory: string,
+  /** The credential profile's store, when this instance runs on one. */
+  storeHome?: string,
 ): TranscriptSource | null {
   switch (backend) {
     case "codex": return new CodexRolloutSource(workingDirectory);
-    case "kiro-cli": return new KiroSessionSource(workingDirectory);
+    // undefined keeps each parameter's own default; only the store moves.
+    case "kiro-cli": return new KiroSessionSource(workingDirectory, undefined, undefined, kiroStoreDbPath(storeHome));
     case "opencode": return new OpenCodeDbSource(workingDirectory);
     default: return null;
   }
