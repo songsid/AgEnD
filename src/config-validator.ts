@@ -49,7 +49,12 @@ export function validateFleetConfig(config: unknown): ValidationResult {
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
     if (value.kiro_ui !== undefined && !["legacy", "tui", "v3"].includes(String(value.kiro_ui))) err(`${path}.kiro_ui`, "must be legacy, tui, or v3");
     if (value.agent_mode !== undefined && value.agent_mode !== "mcp" && value.agent_mode !== "cli") err(`${path}.agent_mode`, "must be mcp or cli");
-    if (value.tool_set !== undefined && !["full", "standard", "minimal"].includes(String(value.tool_set))) err(`${path}.tool_set`, "must be full, standard, or minimal");
+    // `general` stays out on purpose: it is an identity, assigned from
+    // `general_topic`, not a profile anyone picks. Everything else that a
+    // refusal or a migration notice tells someone to write has to validate,
+    // or the only widening that passes is `full` — which is where #804 came
+    // from.
+    if (value.tool_set !== undefined && !["full", "coordinator", "worker", "standard", "minimal"].includes(String(value.tool_set))) err(`${path}.tool_set`, "must be full, coordinator, worker, standard, or minimal");
     if (value.log_level !== undefined && !["trace", "debug", "info", "warn", "error"].includes(String(value.log_level))) err(`${path}.log_level`, "must be trace, debug, info, warn, or error");
     if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
     if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");

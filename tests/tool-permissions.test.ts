@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -488,6 +488,7 @@ describe("every typed handler answers, even when it cannot do the work", () => {
     for (const [type, responseType] of [
       ["fleet_decision_create", "fleet_decision_response"],
       ["fleet_task", "fleet_task_response"],
+      ["fleet_schedule_list", "fleet_schedule_response"],
     ] as const) {
       const sent: Array<Record<string, unknown>> = [];
       const fm = {
@@ -496,15 +497,19 @@ describe("every typed handler answers, even when it cannot do the work", () => {
         fleetConfig: { defaults: {}, instances: { w: {} } },
         logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
       };
-      const handler = type === "fleet_task"
-        ? (FleetManager.prototype as unknown as Record<string, (i: string, m: unknown) => void>).handleTaskCrud
-        : (FleetManager.prototype as unknown as Record<string, (i: string, m: unknown) => void>).handleDecisionCrud;
+      const proto = FleetManager.prototype as unknown as Record<string, (i: string, m: unknown) => void>;
+      const handler = type === "fleet_task" ? proto.handleTaskCrud
+        : type === "fleet_schedule_list" ? proto.handleScheduleCrud
+        : proto.handleDecisionCrud;
 
       handler.call(fm as never, "w", { type, fleetRequestId: "r1", payload: {}, meta: {} });
 
       expect(sent, type).toHaveLength(1);
       expect(sent[0]).toMatchObject({ type: responseType, fleetRequestId: "r1" });
       expect(String(sent[0]!.error)).toContain("scheduler is not running");
+      // Not a stack trace wearing an error message: the agent reading this
+      // cannot act on "Cannot read properties of null".
+      expect(String(sent[0]!.error)).not.toContain("Cannot read properties");
     }
   });
 });
@@ -524,5 +529,78 @@ describe("an op the endpoint has never heard of", () => {
 
     expect(err).toBeInstanceOf(UnknownAgentOpError);
     expect((err as { status: number }).status).toBe(400);
+  });
+});
+
+// ── The profile the error messages tell people to write ─────────────────────
+
+describe("what fleet.yaml will accept", () => {
+  it("accepts every profile a refusal or a notice asks for", async () => {
+    // Both the refusal message and the migration notice say "set
+    // `tool_set: coordinator`". If the validator rejects that, the only
+    // widening anyone can actually save is `full` — 47 tools, which is where
+    // #804 came from. Following our own advice has to work.
+    const { validateFleetConfig } = await import("../src/config-validator.js");
+    for (const profile of ["worker", "coordinator", "full", "standard", "minimal"]) {
+      const result = validateFleetConfig({
+        instances: { w: { working_directory: "/tmp/w", tool_set: profile } },
+      } as never);
+      expect(result.errors.filter(e => e.path.endsWith("tool_set")), profile).toEqual([]);
+    }
+  });
+
+  it("still refuses `general`, which is an identity rather than a choice", () => {
+    // It comes from `general_topic`. Letting someone write it would make two
+    // ways of being a general, which can disagree.
+    return import("../src/config-validator.js").then(({ validateFleetConfig }) => {
+      const result = validateFleetConfig({
+        instances: { w: { working_directory: "/tmp/w", tool_set: "general" } },
+      } as never);
+
+      expect(result.errors.map(e => e.path)).toContain("instances.w.tool_set");
+    });
+  });
+
+  it("refuses a name that is not a profile at all", async () => {
+    const { validateFleetConfig } = await import("../src/config-validator.js");
+
+    for (const bad of ["coordinater", "__proto__", "FULL"]) {
+      const result = validateFleetConfig({
+        instances: { w: { working_directory: "/tmp/w", tool_set: bad } },
+      } as never);
+      expect(result.errors.map(e => e.path), bad).toContain("instances.w.tool_set");
+    }
+  });
+
+  it("names the settable profiles in the error, so the fix is in the message", async () => {
+    const { validateFleetConfig } = await import("../src/config-validator.js");
+    const result = validateFleetConfig({
+      instances: { w: { working_directory: "/tmp/w", tool_set: "nope" } },
+    } as never);
+
+    const message = result.errors.find(e => e.path.endsWith("tool_set"))!.message;
+    expect(message).toContain("coordinator");
+    expect(message).toContain("worker");
+    expect(message).not.toContain("general");
+  });
+});
+
+describe("the startup notice is actually wired up", () => {
+  it("is sent when a real fleet finishes starting", async () => {
+    // Removing the call from finishStartup left every other test green.
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    const dir = tempDir();
+    writeFileSync(join(dir, "fleet.yaml"), [
+      "defaults:", "  tool_set: full", "instances:", "  w:", "    working_directory: /tmp/w", "",
+    ].join("\n"));
+    const fm = new FleetManager(dir);
+    fm.loadConfig(join(dir, "fleet.yaml"));
+    const warn = vi.spyOn((fm as unknown as { logger: { warn: (...a: unknown[]) => void } }).logger, "warn");
+
+    (fm as unknown as { finishStartup(): void }).finishStartup();
+
+    const notices = warn.mock.calls.filter(c => String(c[1] ?? "").includes("tool permissions have changed"));
+    expect(notices, "no migration notice was sent").toHaveLength(1);
+    expect(String(notices[0]![1])).toContain("defaults.tool_set: full");
   });
 });

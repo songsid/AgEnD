@@ -5645,6 +5645,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const meta = (msg.meta ?? {}) as Record<string, string>;
     const ipc = this.instanceIpcClients.get(instanceName);
     if (!ipc) return;
+    if (!this.scheduler) {
+      // It did answer before, with whatever TypeError fell out of the try
+      // block — "Cannot read properties of null (reading 'list')" is a stack
+      // trace wearing an error message, and the agent reading it cannot tell
+      // that the fleet simply has no scheduler.
+      ipc.send({ type: "fleet_schedule_response", fleetRequestId, error: "Schedules are unavailable — the fleet scheduler is not running" });
+      return;
+    }
 
     try {
       let result: unknown;

@@ -48,6 +48,10 @@ export interface CoordinatorCandidate {
 export function coordinatorCandidates(input: NoticeInput): CoordinatorCandidate[] {
   const out: CoordinatorCandidate[] = [];
   for (const use of input.recent) {
+    // The activity log outlives the config. An instance that has since been
+    // deleted resolves to `worker` like any other unknown name, and would be
+    // named in a list of things to go and edit that no longer exist.
+    if (!Object.hasOwn(input.instances, use.instance)) continue;
     const config = input.instances[use.instance];
     // An instance that is already explicitly widened, or is a general, is not
     // about to lose anything.

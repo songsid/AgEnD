@@ -56,6 +56,30 @@ describe("who the notice names", () => {
     expect(named).not.toContain("classic-串接");
   });
 
+  it("leaves out an instance that no longer exists", () => {
+    // The activity log outlives the config. Naming a deleted instance sends
+    // someone looking for a line in fleet.yaml that is not there, and every
+    // such name makes the rest of the list look less trustworthy.
+    const named = coordinatorCandidates({
+      ...REAL,
+      recent: [...REAL.recent, use("deleted-last-month", { create_instance: 4 })],
+    }).map(c => c.instance);
+
+    expect(named).not.toContain("deleted-last-month");
+    expect(named).toContain("doupo-leader");
+  });
+
+  it("is not fooled by an instance named after something on Object.prototype", () => {
+    // `"constructor" in {}` is true, so a membership test written with `in`
+    // would decide this deleted instance still exists and name it.
+    const named = coordinatorCandidates({
+      ...REAL,
+      recent: [...REAL.recent, use("constructor", { create_instance: 2 })],
+    }).map(c => c.instance);
+
+    expect(named).not.toContain("constructor");
+  });
+
   it("leaves out a general, which keeps its own profile", () => {
     expect(coordinatorCandidates(REAL).map(c => c.instance)).not.toContain("general");
   });

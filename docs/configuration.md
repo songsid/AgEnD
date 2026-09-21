@@ -107,7 +107,7 @@ All fields from `instances.<name>` can be set here as shared defaults. Additiona
 | `model_failover` | string[] | — | Ordered fallback models on rate limit |
 | `auto_pause_after` | number | `0` (disabled) | Minutes idle before auto-pause. 0 = disabled. |
 | `agent_mode` | `"mcp"` \| `"cli"` | `"mcp"` | Communication mode (`"cli"` for antigravity) |
-| `tool_set` | string | `"full"` | MCP tool profile: `"full"` (47 tools), `"standard"` (18), `"minimal"` (4). Not user-settable: `"general"` (26 tools, dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
+| `tool_set` | string | `"worker"` | Tool profile: `"worker"` (the default — talk, read, do the work), `"coordinator"` (worker plus the verbs that run the fleet: create/delete/restart instances, teams, schedules), `"full"` (every tool), `"standard"` (18), `"minimal"` (4). Not user-settable: `"general"` (dispatcher profile) is assigned internally to General instances only — setting it by hand fails validation. |
 | `tool_progress` | `"off"` \| `"standard"` \| `"verbose"` | `"off"` | Tool-activity detail shown in the channel's processing bubble. `standard` shows semantic labels with no shell arguments; `verbose` adds truncated command previews. Opt-in — the bubble broadcasts activity into the channel. |
 | `effort` | string | — | Default reasoning effort for this instance (`low`/`medium`/`high`/`xhigh`/`max`, clamped per backend). Runtime override via the `/effort` command — see [commands.md](./commands.md). |
 | `backend_options` | object | — | Per-backend options keyed by backend name, e.g. `{ codex: { provider: "glm" } }`. See **Credential profiles** below for `credential_profile`. |
