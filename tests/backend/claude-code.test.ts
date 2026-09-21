@@ -412,6 +412,40 @@ describe("ClaudeCodeBackend", () => {
         message: "Claude login expired — needs re-login (/login)",
       });
     });
+
+    it.each([
+      ["1:50pm", "1:50pm"],
+      ["13:50", "13:50"],
+      ["1:50 pm", "1:50 pm"],
+    ])("matches the hard usage pause line and keeps the resume time: %s", (time, expectedTime) => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const pattern = backend.getErrorPatterns().find(({ pattern }) =>
+        pattern.test(`⚠ Usage limit reached · continuing automatically at ${time} · esc to cancel`));
+
+      expect(pattern).toMatchObject({
+        type: "quota",
+        action: "pause",
+        skipCooldown: true,
+        skipRecoveryWait: true,
+      });
+      const match = `⚠ Usage limit reached · continuing automatically at ${time} · esc to cancel`.match(pattern!.pattern);
+      expect(match).not.toBeNull();
+      expect(pattern!.formatMessage?.(match!)).toContain(`continuing automatically at ${expectedTime}`);
+    });
+
+    it.each([
+      "⚠ Usage limit reached — 25% used",
+      "Usage limit reached · continuing automatically at 1:50pm",
+      "The pane says: ⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel",
+      "⚠ Usage limit reached · continuing automatically at tomorrow · esc to cancel",
+    ])("does not classify non-pause usage prose as a hard pause: %s", output => {
+      const backend = new ClaudeCodeBackend(TEST_DIR);
+      const usagePause = backend.getErrorPatterns().find(({ message }) =>
+        message.startsWith("Claude Code usage limit reached"));
+
+      expect(usagePause).toBeDefined();
+      expect(usagePause!.pattern.test(output)).toBe(false);
+    });
   });
 
   describe("session resume dialog", () => {

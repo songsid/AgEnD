@@ -7,6 +7,7 @@ import {
   type ClaudeQuotaVerdict,
   type LifecycleContext,
 } from "../src/instance-lifecycle.js";
+import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 
 function percentUsage(used: number, hint?: string) {
   return {
@@ -51,6 +52,20 @@ const quotaError = (name: string) => ({
   message: "Insufficient API credits",
 });
 
+const hardUsagePauseError = (name: string) => {
+  const pane = "⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel";
+  const pattern = new ClaudeCodeBackend("/tmp/claude-usage-pause-pattern").getErrorPatterns()
+    .find(candidate => candidate.message.startsWith("Claude Code usage limit reached"));
+  if (!pattern) throw new Error("Claude usage pause pattern is missing");
+  const match = pane.match(pattern.pattern);
+  if (!match) throw new Error("Claude usage pause fixture no longer matches");
+  return {
+    name,
+    ...pattern,
+    message: pattern.formatMessage?.(match) ?? pattern.message,
+  };
+};
+
 describe("Claude quota second opinion", () => {
   it("classifies live percent and dollar limits conservatively", () => {
     expect(claudeQuotaVerdictFromUsage(percentUsage(42))).toBe("available");
@@ -93,6 +108,28 @@ describe("Claude quota second opinion", () => {
       await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1));
     },
   );
+
+  it("surfaces the hard pause line with its automatic resume time", async () => {
+    const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted");
+    daemons[0].emit("pty_error", hardUsagePauseError("worker"));
+
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+    expect(notifyInstanceTopic).toHaveBeenCalledWith(
+      "worker",
+      expect.stringMatching(/paused.*continuing automatically at 1:50pm/s),
+    );
+    await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not surface a stale hard-pause line when live usage has capacity", async () => {
+    const { daemons, notifyInstanceTopic, clearCancelButton } = lifecycle(async () => "available");
+    daemons[0].emit("pty_error", hardUsagePauseError("worker"));
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();
+    expect(clearCancelButton).not.toHaveBeenCalled();
+    expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
+  });
 
   it("joins simultaneous Claude quota alerts to one in-flight live check", async () => {
     let release!: (verdict: ClaudeQuotaVerdict) => void;
