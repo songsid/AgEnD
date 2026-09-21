@@ -50,3 +50,84 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  notify:
+    needs: [build, deploy]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      # Tell Discord how this run ended, whichever way it ended.
+      #
+      # `always()` so a failure is reported at all, and `continue-on-error` so a
+      # webhook that is down or rate-limited cannot turn a green run red — the
+      # notification is about the result, it is not part of it.
+      #
+      # The webhook is a secret, and a secret cannot be read from a step's `if:`,
+      # so the step always starts and the script skips when it is unset: a fork
+      # with no secret gets a line in the log rather than a failure.
+      #
+      # Everything else goes through `env` too, never interpolated into the
+      # script. A commit message is attacker-controlled text and `${{ … }}`
+      # written inline becomes part of the command that runs.
+      - name: Notify Discord
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORDWEBHOOK }}
+          # `job.status` here would only describe the notifying job, which
+          # always succeeds. The result being reported is the other two.
+          STATUS: >-
+            ${{ (contains(needs.*.result, 'failure') && 'failure')
+            || (contains(needs.*.result, 'cancelled') && 'cancelled')
+            || 'success' }}
+          WORKFLOW: ${{ github.workflow }}
+          REPO: ${{ github.repository }}
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.sha }}
+          EVENT: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message || github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DISCORD_WEBHOOK:-}" ]; then
+            echo "DISCORDWEBHOOK is not set - skipping the Discord notification."
+            exit 0
+          fi
+          # Built by a JSON library rather than by string interpolation, so a
+          # commit message carrying quotes, braces or backslashes cannot produce
+          # a payload Discord rejects - and the first time that happened would
+          # be the run somebody needed to hear about.
+          python3 - <<'PY' > payload.json
+          import json, os
+          status = os.environ["STATUS"]
+          look = {
+              "success":   (3066993,  "✅"),   # green
+              "failure":   (15158332, "❌"),   # red
+              "cancelled": (9807270,  "⚪"),   # grey
+          }
+          colour, icon = look.get(status, (15844367, "⚠️"))  # amber for a status we do not know
+          branch = os.environ.get("HEAD_REF") or os.environ.get("REF_NAME") or "(unknown)"
+          # First line only: a commit body would swallow the embed.
+          lines = os.environ.get("COMMIT_MESSAGE", "").splitlines()
+          subject = lines[0] if lines else "(no commit message)"
+          sha = os.environ.get("SHA", "")[:7]
+          print(json.dumps({"embeds": [{
+              "title": f"{icon} {os.environ['WORKFLOW']} - {status}",
+              "url": os.environ["RUN_URL"],
+              "color": colour,
+              "fields": [
+                  {"name": "Repository", "value": os.environ["REPO"], "inline": True},
+                  {"name": "Branch", "value": branch, "inline": True},
+                  {"name": "Event", "value": f"{os.environ['EVENT']} by {os.environ['ACTOR']}", "inline": True},
+                  {"name": "Commit", "value": f"`{sha}` {subject}"[:1024]},
+              ],
+          }]}))
+          PY
+          curl --silent --show-error --fail-with-body \
+            --max-time 20 --retry 2 --retry-connrefused \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "$DISCORD_WEBHOOK"
