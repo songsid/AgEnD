@@ -247,25 +247,20 @@ const mcp = new Server(
 
 // --- Tool definitions (see mcp-tools.ts) ---
 
-import { TOOL_PROFILES } from "../tool-permissions.js";
+import { resolveToolSetFromEnv, toolsFor, TOOL_PROFILES } from "../tool-permissions.js";
 export { TOOLS } from "./mcp-tools.js";
 
-const toolSet = process.env.AGEND_TOOL_SET;
-let activeTools: typeof TOOLS;
-if (!toolSet || toolSet === "full") {
-  activeTools = TOOLS;
-} else if (Object.hasOwn(TOOL_PROFILES, toolSet)) {
-  const allowed = TOOL_PROFILES[toolSet as keyof typeof TOOL_PROFILES];
-  activeTools = TOOLS.filter(t => allowed.includes(t.name));
-} else {
+const requestedToolSet = process.env.AGEND_TOOL_SET;
+const resolvedToolSet = resolveToolSetFromEnv(requestedToolSet);
+if (requestedToolSet && resolvedToolSet !== requestedToolSet) {
   // A misspelling used to be the shortest path to all 47 tools. Whatever a
-  // mistake does, it should not widen what this instance can reach — so an
-  // unrecognised name falls to the smallest useful profile, and the fleet's
-  // own check (which resolves the same way) is what actually decides.
-  process.stderr.write(`agend: ERROR — unknown AGEND_TOOL_SET "${toolSet}", valid: ${Object.keys(TOOL_PROFILES).join(", ")}. Using "worker".\n`);
-  const allowed = TOOL_PROFILES.worker;
-  activeTools = TOOLS.filter(t => allowed.includes(t.name));
+  // mistake does, it should not widen what this instance can reach.
+  process.stderr.write(
+    `agend: ERROR — unknown AGEND_TOOL_SET "${requestedToolSet}", valid: ${Object.keys(TOOL_PROFILES).join(", ")}. Using "${resolvedToolSet}".\n`,
+  );
 }
+const allowedTools = toolsFor(resolvedToolSet);
+const activeTools = TOOLS.filter(t => allowedTools.has(t.name));
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools }));
 

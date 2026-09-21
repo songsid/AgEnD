@@ -170,11 +170,22 @@ export function handleAgentRequest(
     } catch (err) {
       // A refusal is not a malformed request: 403 says "you, specifically, may
       // not", which is what the caller has to act on.
-      const status = err instanceof ToolNotPermittedError ? 403 : 400;
+      const status = err instanceof ToolNotPermittedError ? 403
+        : err instanceof UnknownAgentOpError ? err.status
+        : 400;
       res.writeHead(status);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
   });
+}
+
+/** An op this endpoint has never heard of: the caller's mistake, answered 400. */
+export class UnknownAgentOpError extends Error {
+  readonly status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "UnknownAgentOpError";
+  }
 }
 
 /** Refused by policy, not by a bad request: the endpoint answers this as 403. */
@@ -262,7 +273,9 @@ export async function dispatchAgentOperation(
   // Map CLI op to internal tool name
   const tool = OP_MAP[op];
   if (!tool) {
-    return { error: `Unknown op: ${op}` };
+    // 200 with an error body reads as success to anything checking the status,
+    // and an unknown op is the caller's mistake.
+    throw new UnknownAgentOpError(`Unknown op: ${op}`);
   }
 
   // Channel tools (reply, react, edit, download)

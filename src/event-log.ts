@@ -136,6 +136,29 @@ export class EventLog {
     ).run(event, sender, receiver ?? null, summary, detail ?? null);
   }
 
+  /**
+   * Which tools each instance has called lately, from the activity log.
+   *
+   * `summary` is written as `tool(argument)`, so the name is everything up to
+   * the first bracket. Only the outbound path writes these rows — the agent
+   * endpoint and the typed IPC handlers do not — so this is a floor on what an
+   * instance has used, never a complete account of it.
+   */
+  toolUseByInstance(sinceIso: string): Map<string, Map<string, number>> {
+    const rows = this.db.prepare(
+      "SELECT sender, summary FROM activity WHERE event = 'tool_call' AND timestamp >= ?",
+    ).all(sinceIso) as Array<{ sender: string; summary: string }>;
+    const out = new Map<string, Map<string, number>>();
+    for (const row of rows) {
+      const tool = /^([a-z_]+)/.exec(row.summary ?? "")?.[1];
+      if (!tool || !row.sender) continue;
+      const tools = out.get(row.sender) ?? new Map<string, number>();
+      tools.set(tool, (tools.get(tool) ?? 0) + 1);
+      out.set(row.sender, tools);
+    }
+    return out;
+  }
+
   listActivity(opts?: { since?: string; limit?: number }): ActivityRow[] {
     let sql = "SELECT * FROM activity";
     const params: unknown[] = [];
