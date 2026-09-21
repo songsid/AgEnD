@@ -140,39 +140,9 @@ export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
   inputSchema: toToolInputSchema(schema),
 }));
 
-/** Predefined tool profiles to reduce token overhead per instance. */
-export const TOOL_SETS: Record<string, string[]> = {
-  full: TOOLS.map(t => t.name),
-  standard: [
-    "reply", "react", "edit_message",
-    "send_to_instance", "broadcast", "list_instances", "describe_instance",
-    "list_decisions", "post_decision", "task", "set_display_name", "set_description",
-    "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
-  ],
-  minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
-  /**
-   * Dispatcher profile for general instances. `standard` is NOT usable here — it
-   * lacks delegate_task, request_information, report_result, create_instance,
-   * start_instance, list_teams and download_attachment, i.e. most of the flow
-   * GENERAL_INSTRUCTIONS actually prescribes (list_teams → list_instances →
-   * describe_instance → create_instance → send_to_instance).
-   *
-   * Everything a general needs to route work, and nothing it doesn't: no repo
-   * checkout/release, no deployments, no team mutation, no fleet-config writes,
-   * no delete/replace/stop — destructive or project-local verbs belong to the
-   * instance doing the work, and each omitted tool is schema resent every turn.
-   */
-  general: [
-    // Channel I/O (users talk to general, and send it images/files)
-    "reply", "react", "edit_message", "download_attachment",
-    // Discovery — the documented dispatch preamble
-    "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
-    // Dispatch
-    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
-    // Bring capacity online (reuse-first, but it may need to create/start)
-    "create_instance", "start_instance", "restart_instance", "wake_instance",
-    // Coordination surfaces general is told to use
-    "task", "list_decisions", "post_decision",
-    "create_schedule", "list_schedules", "delete_schedule",
-  ],
-};
+/**
+ * The profiles live in `src/tool-permissions.ts` now, with the permission check
+ * that uses them. A tool list that only one of four entry paths consults is not
+ * a control, so it stopped being defined next to the schemas and moved next to
+ * the thing that enforces it.
+ */

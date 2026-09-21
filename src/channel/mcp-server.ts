@@ -247,17 +247,18 @@ const mcp = new Server(
 
 // --- Tool definitions (see mcp-tools.ts) ---
 
-import { TOOL_SETS } from "./mcp-tools.js";
+import { TOOL_PROFILES } from "../tool-permissions.js";
 export { TOOLS } from "./mcp-tools.js";
 
 const toolSet = process.env.AGEND_TOOL_SET;
 let activeTools: typeof TOOLS;
 if (!toolSet || toolSet === "full") {
   activeTools = TOOLS;
-} else if (TOOL_SETS[toolSet]) {
-  activeTools = TOOLS.filter(t => TOOL_SETS[toolSet].includes(t.name));
+} else if (toolSet in TOOL_PROFILES) {
+  const allowed = TOOL_PROFILES[toolSet as keyof typeof TOOL_PROFILES];
+  activeTools = TOOLS.filter(t => allowed.includes(t.name));
 } else {
-  process.stderr.write(`agend: ERROR — unknown AGEND_TOOL_SET "${toolSet}", valid: ${Object.keys(TOOL_SETS).join(", ")}. Using "full".\n`);
+  process.stderr.write(`agend: ERROR — unknown AGEND_TOOL_SET "${toolSet}", valid: ${Object.keys(TOOL_PROFILES).join(", ")}. Using "full".\n`);
   activeTools = TOOLS;
 }
 

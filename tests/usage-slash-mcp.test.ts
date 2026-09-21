@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { formatUsageSummary, getUsageSnapshot, setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-api.js";
-import { TOOLS, TOOL_SETS } from "../src/channel/mcp-tools.js";
+import { TOOLS } from "../src/channel/mcp-tools.js";
+import { TOOL_PROFILES as TOOL_SETS } from "../src/tool-permissions.js";
 import { GetUsageArgs } from "../src/outbound-schemas.js";
 import { TopicCommands } from "../src/topic-commands.js";
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { sameProjectFamily, selectRelevantDecisions } from "../src/daemon.js";
-import { TOOLS, TOOL_SETS } from "../src/channel/mcp-tools.js";
+import { TOOLS } from "../src/channel/mcp-tools.js";
+import { TOOL_PROFILES as TOOL_SETS } from "../src/tool-permissions.js";
 import { createBackend } from "../src/backend/factory.js";
 
 describe("decisions relevance filter", () => {
