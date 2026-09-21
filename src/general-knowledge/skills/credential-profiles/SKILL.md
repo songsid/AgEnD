@@ -10,8 +10,15 @@ One AgEnD fleet normally shares one login per backend. A **credential profile**
 is a named, separate login for the same backend, so two agents can run on two
 subscriptions at once.
 
-Only `kiro-cli` has profiles today. For any other backend, say so rather than
-setting an option that will be ignored.
+`kiro-cli` and `codex` have profiles today. For any other backend, say so rather
+than setting an option that will be ignored.
+
+**The two behave differently when you switch, and it is not a setting.** Kiro
+keeps its conversations inside the same database as its login, so a different
+subscription is a different set of them: switching is a new conversation. Codex
+keeps its login in one file beside conversation stores that carry no account, so
+switching leaves the history where it is and both subscriptions see it. Say
+which one you are talking about.
 
 ## Is a profile already set up?
 
@@ -28,6 +35,12 @@ Ask the operator to run this on the host once per subscription:
 
 ```
 XDG_DATA_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/kiro-cli/<profile>" kiro-cli login
+```
+
+For codex the variable and the path are different:
+
+```
+CODEX_HOME="${AGEND_HOME:-~/.agend}/credential-profiles/codex/<profile>" codex login
 ```
 
 ## Create a worker on another subscription
@@ -56,7 +69,7 @@ update_instance_config(
 The credentials are read when the CLI starts, so **the instance is restarted
 for you** and the reply says `restarted: true`.
 
-A switch is always a **new conversation**, and the reply says so
+**For kiro**, a switch is always a **new conversation**, and the reply says so
 (`conversation_carried_over: false`). kiro keeps its conversations in the same
 database as its login, so a different subscription has a different set of them
 and there is nothing to resume — AgEnD does not even try. What it does instead
@@ -64,6 +77,15 @@ is hand the new session a summary of what the old one was doing
 (`handover_chars` says how much), so the agent can pick the work up without the
 transcript. Tell the user plainly: the agent restarted on the other
 subscription, it knows what it was doing, it cannot quote what was said.
+
+**For codex** the reply says `conversation_carried_over: true` and carries a
+`conversation_note`. Relay it as what it is — a statement about where the
+history lives, not a promise about what happens next. The accurate sentence is
+"codex keeps its history outside the login, so both subscriptions share it".
+**Do not promise the agent will pick the thread back up**: whether codex reopens
+a conversation recorded under a different account has not been tested yet. If it
+does not, the agent starts a fresh conversation and carries on — nothing breaks,
+it just does not continue.
 
 `backend_options` merges per backend, so setting a kiro option leaves a codex
 option on the same instance alone.
@@ -115,7 +137,9 @@ and log it in, so report it as such rather than as a missing subscription.
 
 - Do not invent a profile that has never been logged in and report success —
   the switch is refused, and the refusal tells you what to relay.
-- Do not set `credential_profile` for a backend other than `kiro-cli`; it is
-  ignored, and the config validator warns about it.
+- Do not set `credential_profile` for a backend other than `kiro-cli` or
+  `codex`; it is ignored, and the config validator warns about it.
+- Do not tell a codex user their conversation will definitely continue across a
+  switch. Say the history is shared; that part is verified.
 - Do not use a profile name with slashes or spaces — it becomes a directory
   name and is rejected.

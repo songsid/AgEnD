@@ -9,6 +9,7 @@ import {
   prepareCredentialProfileHome,
   profilePrivateEntries,
   resolveCredentialProfile,
+  credentialSwitchStartsFresh,
 } from "../src/backend/credential-profile.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
@@ -71,10 +72,24 @@ describe("opting in", () => {
       .toBe("/data/credential-profiles/kiro-cli/work");
   });
 
-  it("knows kiro and, for now, only kiro", () => {
-    expect(credentialHomeSpec("kiro-cli")?.env).toBe("XDG_DATA_HOME");
-    expect(credentialHomeSpec("codex")).toBeNull();
-    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli"]);
+  it("knows the backends whose credential layout has been checked", () => {
+    // One entry per backend somebody actually looked at. The two are different
+    // shapes because their files are: kiro's login is a store entangled with
+    // everything else, codex's is one file beside stores that carry no account.
+    expect(credentialHomeSpec("kiro-cli")).toMatchObject({ kind: "relocate-home", env: "XDG_DATA_HOME" });
+    expect(credentialHomeSpec("codex")).toMatchObject({ kind: "redirect-files", files: ["auth.json"] });
+    expect(credentialHomeSpec("claude-code")).toBeNull();
+    expect(Object.keys(CREDENTIAL_HOMES)).toEqual(["kiro-cli", "codex"]);
+  });
+
+  it("says which switches cost the conversation and which do not", () => {
+    // Not a policy on either side — kiro's conversations live inside the login
+    // database, codex's live outside it.
+    expect(credentialSwitchStartsFresh("kiro-cli")).toBe(true);
+    expect(credentialSwitchStartsFresh("codex")).toBe(false);
+    // A backend nobody has checked is assumed to lose it: guessing the other
+    // way is how an agent resumes into a store that never had the thread.
+    expect(credentialSwitchStartsFresh("claude-code")).toBe(true);
   });
 });
 

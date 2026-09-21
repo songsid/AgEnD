@@ -342,6 +342,34 @@ combined number would be true of neither — which is also the quickest way to s
 whether two logins really are separate billing accounts: spend against one and
 watch only that row move.
 
-Currently implemented for `kiro-cli`. Other backends keep their logins behind
-their own variables (Codex uses `CODEX_HOME`); adding one is a new entry in
-`CREDENTIAL_HOMES`, not a new mechanism.
+### Codex, and why it behaves differently
+
+Codex has profiles too, and switching one **keeps the conversation** — the
+opposite of kiro, for a reason that is nobody's choice. Kiro stores its
+conversations in the same `data.sqlite3` as its login, so a different
+subscription is a different set of them. Codex stores its login in one file,
+`auth.json`, beside conversation stores (`sessions/` and the thread/state/memory
+databases) that carry no account at all. Swapping the file swaps the account and
+leaves the history where it is — which also means **both subscriptions see the
+same history**.
+
+Log a codex profile in with its own variable:
+
+```bash
+CODEX_HOME=~/.agend/credential-profiles/codex/work codex login
+```
+
+AgEnD does not move `CODEX_HOME` for a profile: every instance already has its
+own codex home so its `config.toml` stays private, and a profile only changes
+where that home's `auth.json` points. Everything else — sessions, the databases,
+the caches — still comes from the shared home.
+
+Two things about codex are **not yet verified**, because they need a second
+billing account: whether the two subscriptions really meter separately, and
+whether codex will reopen a conversation that was recorded under the other
+account. If it will not, the agent starts a fresh conversation and carries on;
+nothing breaks, it simply does not continue.
+
+Implemented for `kiro-cli` and `codex`. Other backends keep their logins behind
+their own variables; adding one is a new entry in `CREDENTIAL_HOMES`, not a new
+mechanism.

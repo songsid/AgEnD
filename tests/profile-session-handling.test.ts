@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -74,9 +74,9 @@ describe("switching to a subscription nobody has logged into", () => {
   });
 
   it("says nothing about a backend it cannot check", () => {
-    // codex has no credential home yet, so there is no login to probe. An
-    // unknown answer must not read as "signed out" and block an edit.
-    expect(credentialProfileLogin(tempDir(), "codex", "work")).toEqual({ state: "unknown" });
+    // claude-code has no credential home yet, so there is no login to probe.
+    // An unknown answer must not read as "signed out" and block an edit.
+    expect(credentialProfileLogin(tempDir(), "claude-code", "work")).toEqual({ state: "unknown" });
   });
 });
 
@@ -191,9 +191,9 @@ describe("a profile switch is refused before it can strand the agent", () => {
   });
 
   it("does not block a backend whose login it cannot see", async () => {
-    const h = harness({ working_directory: "/tmp/w", backend: "codex" });
+    const h = harness({ working_directory: "/tmp/w", backend: "claude-code" });
 
-    const { error } = await update(h, { backend_options: { codex: { credential_profile: "work" } } });
+    const { error } = await update(h, { backend_options: { "claude-code": { credential_profile: "work" } } });
 
     expect(error).toBeUndefined();
     expect(h.saveFleetConfig).toHaveBeenCalled();
@@ -224,6 +224,30 @@ describe("a switched agent starts a new session and is told why", () => {
     expect(h.restartSingleInstance).toHaveBeenCalledWith("worker", undefined);
     expect(h.delivered).toEqual([]);
     expect(result).not.toHaveProperty("credential_profile_switched");
+  });
+
+  it("does not throw a codex conversation away, because nothing was lost", async () => {
+    // Codex keeps its login in one file beside conversation stores that carry
+    // no account, so the same switch that costs kiro its history costs codex
+    // nothing. Forcing a fresh start here would be causing the loss the
+    // handover exists to describe.
+    const h = harness({ working_directory: "/tmp/w", backend: "codex" }, { handover: "Recent user messages:\n- keep going" });
+    const dir = join(h.dataDir, "credential-profiles", "codex", "personal");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "auth.json"), JSON.stringify({ auth_mode: "chatgpt", tokens: { access_token: "t" } }));
+
+    const { result } = await update(h, { backend_options: { codex: { credential_profile: "personal" } } });
+
+    // Restarted — auth.json is read at launch — but resuming as usual.
+    expect(h.restartSingleInstance).toHaveBeenCalledWith("worker", undefined);
+    expect(h.delivered).toEqual([]);
+    expect(result).toMatchObject({
+      credential_profile_switched: true,
+      conversation_carried_over: true,
+    });
+    // Described, not promised: where the history lives, not what codex will do
+    // when it reaches for a thread recorded under another account.
+    expect(String(result?.conversation_note)).toContain("shared across profiles");
   });
 
   it("hands the work over, saying the conversation did not come with it", async () => {
@@ -369,7 +393,7 @@ describe("the daemon knows which store its own CLI writes to", () => {
     // A profile written under another backend's namespace is not this one's.
     expect(daemonFor({
       backend: "kiro-cli",
-      backend_options: { codex: { credential_profile: "work" } },
+      backend_options: { "claude-code": { credential_profile: "work" } },
     }).credentialProfileStore()).toBeUndefined();
   });
 
