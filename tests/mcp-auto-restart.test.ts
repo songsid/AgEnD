@@ -70,34 +70,34 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
   it("fires when the pane is already idle — a parked collab instance never gets an idle edge", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "idle";
+    daemon["instanceState"] = "idle";
     const died = vi.fn(); const requested = vi.fn();
     daemon.on("mcp_died", died);
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
     vi.useFakeTimers();
-    daemon.checkMcpServerAlive();
+    daemon["checkMcpServerAlive"]();
     expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: true, authSuspected: false });
     await vi.advanceTimersByTimeAsync(2_500); // bounded replacement grace (#663)
 
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "already_idle" });
-    expect(daemon.mcpRestartPending).toBe(false); // one death, one request
+    expect(daemon["mcpRestartPending"]).toBe(false); // one death, one request
   });
 
   it("defers while the pane is busy, then fires on the idle edge instead of interrupting the turn", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
+    daemon["checkMcpServerAlive"]();
     expect(requested).not.toHaveBeenCalled();
 
     vi.useFakeTimers();
-    daemon.applyInstanceStateSnapshot(idleSnapshot());
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
     await vi.advanceTimersByTimeAsync(2_500);
     expect(requested).toHaveBeenCalledWith({ name: "mcp-test", trigger: "idle_edge" });
   });
@@ -105,18 +105,18 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
   it("waits for the paste queue too — a queued inbound is about to make the pane busy again", async () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "idle";
-    daemon.pasteQueueDepth = 1;
+    daemon["instanceState"] = "idle";
+    daemon["pasteQueueDepth"] = 1;
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
+    daemon["checkMcpServerAlive"]();
     expect(requested).not.toHaveBeenCalled();
 
     vi.useFakeTimers();
-    daemon.pasteQueueDepth = 0;
-    daemon.applyInstanceStateSnapshot(idleSnapshot());
+    daemon["pasteQueueDepth"] = 0;
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
     await vi.advanceTimersByTimeAsync(2_500);
     expect(requested).toHaveBeenCalledOnce();
   });
@@ -124,14 +124,14 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
   it("mcp_auto_restart: false keeps the old notify-only behaviour", () => {
     const made = makeDaemon({ mcp_auto_restart: false }); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "idle";
+    daemon["instanceState"] = "idle";
     const died = vi.fn(); const requested = vi.fn();
     daemon.on("mcp_died", died);
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
-    daemon.applyInstanceStateSnapshot(idleSnapshot());
+    daemon["checkMcpServerAlive"]();
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
 
     expect(died).toHaveBeenCalledWith({ name: "mcp-test", pid: 12345, autoRestart: false, authSuspected: false });
     expect(requested).not.toHaveBeenCalled();
@@ -140,19 +140,19 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
   it("stands down when the server turns up alive again before the pane idles", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
 
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
-    daemon.checkMcpServerAlive();
-    expect(daemon.mcpRestartPending).toBe(true);
+    daemon["checkMcpServerAlive"]();
+    expect(daemon["mcpRestartPending"]).toBe(true);
 
     // Operator restarted by hand / CLI brought a new server up.
     liveness.mockReturnValue({ state: "alive", pid: 54321 } as any);
-    daemon.checkMcpServerAlive();
+    daemon["checkMcpServerAlive"]();
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot());
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
     expect(requested).not.toHaveBeenCalled();
   });
 
@@ -160,12 +160,12 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     vi.useFakeTimers();
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
+    daemon["checkMcpServerAlive"]();
     await vi.advanceTimersByTimeAsync(30 * 60_000 - 1);
     expect(requested).not.toHaveBeenCalled();
     // The stale timer reaches the same chokepoint, so it also serves the
@@ -178,13 +178,13 @@ describe("daemon: MCP death arms an idle-gated restart request", () => {
     vi.useFakeTimers();
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
-    daemon.freezeRuntimeMonitors();
+    daemon["checkMcpServerAlive"]();
+    daemon["freezeRuntimeMonitors"]();
     vi.advanceTimersByTime(31 * 60_000);
     expect(requested).not.toHaveBeenCalled();
   });
@@ -287,35 +287,35 @@ describe("daemon: a recovery in progress cancels the revival restart (sol's revi
     vi.useFakeTimers();
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
-    daemon.healthCheckPaused = true; // crash recovery took over
+    daemon["checkMcpServerAlive"]();
+    daemon["healthCheckPaused"] = true; // crash recovery took over
     vi.advanceTimersByTime(31 * 60_000);
 
     expect(requested).not.toHaveBeenCalled();
     // Cancelled, not deferred: the recovery's own respawn brings a fresh MCP
     // server, so a later idle edge must not restart on top of it either.
-    expect(daemon.mcpRestartPending).toBe(false);
+    expect(daemon["mcpRestartPending"]).toBe(false);
   });
 
   it("an idle edge while a respawn is in flight (spawning) does not restart on top of it", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon } = made;
-    daemon.instanceState = "working";
+    daemon["instanceState"] = "working";
     const requested = vi.fn();
     daemon.on("mcp_restart_requested", requested);
     liveness.mockReturnValue({ state: "dead", pid: 12345 } as any);
 
-    daemon.checkMcpServerAlive();
-    daemon.spawning = true;
-    daemon.applyInstanceStateSnapshot(idleSnapshot());
+    daemon["checkMcpServerAlive"]();
+    daemon["spawning"] = true;
+    daemon["applyInstanceStateSnapshot"](idleSnapshot());
 
     expect(requested).not.toHaveBeenCalled();
-    expect(daemon.mcpRestartPending).toBe(false);
+    expect(daemon["mcpRestartPending"]).toBe(false);
   });
 });
 

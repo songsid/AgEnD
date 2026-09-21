@@ -43,10 +43,10 @@ function makeDaemon(backend = "claude-code") {
     log_level: "silent",
   } as any, dir, true, undefined, undefined, logger) as AnyDaemon;
   const broadcast = vi.fn();
-  daemon.ipcServer = { broadcast, send: vi.fn() };
-  daemon.lastChatId = "chat-1";
-  daemon.lastThreadId = "thread-1";
-  daemon.lastAdapterId = "discord-main";
+  daemon["ipcServer"] = { broadcast, send: vi.fn() };
+  daemon["lastChatId"] = "chat-1";
+  daemon["lastThreadId"] = "thread-1";
+  daemon["lastAdapterId"] = "discord-main";
   return { daemon, broadcast };
 }
 
@@ -98,10 +98,10 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
     const { daemon, broadcast } = makeDaemon();
     const warning = vi.fn();
     daemon.on("malformed_tool_call", warning);
-    daemon.markTurnStarted({ chat_id: "chat-1", correlation_id: "cid-648" }, MARKER);
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-648" }, MARKER);
+    daemon["instanceState"] = "working";
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), MALFORMED_PANE);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), MALFORMED_PANE);
 
     expect(recoveryCalls(broadcast)).toHaveLength(1);
     expect(recoveryCalls(broadcast)[0]).toMatchObject({
@@ -114,8 +114,8 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
       },
     });
     const requestId = recoveryCalls(broadcast)[0].fleetRequestId as string;
-    daemon.pendingIpcRequests.get(requestId)!({ result: { messageId: "recovered-1" } });
-    await daemon.pasteLock;
+    daemon["pendingIpcRequests"].get(requestId)!({ result: { messageId: "recovered-1" } });
+    await daemon["pasteLock"];
     expect(warning).toHaveBeenCalledWith({ name: "worker", correlationId: "cid-648", recovered: true });
   });
 
@@ -123,10 +123,10 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
     const { daemon, broadcast } = makeDaemon();
     const warning = vi.fn();
     daemon.on("malformed_tool_call", warning);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, MARKER);
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, MARKER);
+    daemon["instanceState"] = "working";
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), `${MARKER}\nanswer tail\n</function_calls>\n❯`);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), `${MARKER}\nanswer tail\n</function_calls>\n❯`);
 
     expect(recoveryCalls(broadcast)).toHaveLength(0);
     expect(warning).toHaveBeenCalledWith({ name: "worker", correlationId: undefined, recovered: false });
@@ -134,22 +134,22 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
 
   it("does not recover after a successful reply tool call", () => {
     const { daemon, broadcast } = makeDaemon();
-    daemon.markTurnStarted({ chat_id: "chat-1" }, MARKER);
-    daemon.handleToolCall({ tool: "reply", args: { text: "already sent" }, requestId: 7 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_1_7")!({ result: { messageId: "m1" } });
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, MARKER);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "already sent" }, requestId: 7 }, {} as any);
+    daemon["pendingIpcRequests"].get("tool_1_7")!({ result: { messageId: "m1" } });
+    daemon["instanceState"] = "working";
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), MALFORMED_PANE);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), MALFORMED_PANE);
 
     expect(recoveryCalls(broadcast)).toHaveLength(0);
   });
 
   it("never runs for non-Claude backends", () => {
     const { daemon, broadcast } = makeDaemon("codex");
-    daemon.markTurnStarted({ chat_id: "chat-1" }, MARKER);
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, MARKER);
+    daemon["instanceState"] = "working";
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), MALFORMED_PANE);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), MALFORMED_PANE);
 
     expect(recoveryCalls(broadcast)).toHaveLength(0);
   });
@@ -157,9 +157,9 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
   it("does not recover the same stale pane fragment twice", () => {
     const { daemon, broadcast } = makeDaemon();
     for (let turn = 0; turn < 2; turn++) {
-      daemon.markTurnStarted({ chat_id: "chat-1" }, MARKER);
-      daemon.instanceState = "working";
-      daemon.applyInstanceStateSnapshot(idleSnapshot(), MALFORMED_PANE);
+      daemon["markTurnStarted"]({ chat_id: "chat-1" }, MARKER);
+      daemon["instanceState"] = "working";
+      daemon["applyInstanceStateSnapshot"](idleSnapshot(), MALFORMED_PANE);
     }
 
     expect(recoveryCalls(broadcast)).toHaveLength(1);

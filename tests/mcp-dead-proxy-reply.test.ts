@@ -41,10 +41,10 @@ function makeDaemon(overrides: Record<string, unknown> = {}): { daemon: AnyDaemo
     ...overrides,
   } as any, dir, true, undefined, undefined, rootLogger) as AnyDaemon;
   const broadcast = vi.fn();
-  daemon.ipcServer = { broadcast, send: vi.fn() };
-  daemon.lastChatId = "chat-1";
-  daemon.lastThreadId = "thread-9";
-  daemon.lastAdapterId = "discord-main";
+  daemon["ipcServer"] = { broadcast, send: vi.fn() };
+  daemon["lastChatId"] = "chat-1";
+  daemon["lastThreadId"] = "thread-9";
+  daemon["lastAdapterId"] = "discord-main";
   return { daemon, dir, broadcast };
 }
 
@@ -130,10 +130,10 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
     const proxied = vi.fn();
     daemon.on("mcp_proxy_reply", proxied);
-    daemon.markTurnStarted({ chat_id: "chat-1", correlation_id: "cid-42" }, INBOUND);
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-42" }, INBOUND);
+    daemon["instanceState"] = "working";
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
 
     const calls = proxyCalls(broadcast);
     expect(calls).toHaveLength(1);
@@ -148,7 +148,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     // The inbound echo was cut — only the agent's own output is relayed.
     expect(msg.args.text).not.toContain("[user:han");
     expect(proxied).not.toHaveBeenCalled();
-    daemon.pendingIpcRequests.get(msg.fleetRequestId)!({ result: { messageId: "proxy-1" } });
+    daemon["pendingIpcRequests"].get(msg.fleetRequestId)!({ result: { messageId: "proxy-1" } });
     await vi.waitFor(() => expect(proxied).toHaveBeenCalledOnce());
     expect(proxied).toHaveBeenCalledWith({ name: "proxy-test", correlationId: "cid-42" });
   });
@@ -157,13 +157,13 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(1);
 
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(1);
   });
 
@@ -171,14 +171,14 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
 
     // Agent's reply goes out through handleToolCall and the fleet responds OK.
-    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 7 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_1_7")!({ result: { messageId: "m1" } });
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 7 }, {} as any);
+    daemon["pendingIpcRequests"].get("tool_1_7")!({ result: { messageId: "m1" } });
 
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -186,13 +186,13 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
 
-    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 8 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_1_8")!({ result: null, error: "adapter send failed" });
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 8 }, {} as any);
+    daemon["pendingIpcRequests"].get("tool_1_8")!({ result: null, error: "adapter send failed" });
 
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(1);
   });
 
@@ -200,9 +200,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "alive", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -210,9 +210,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "unknown" } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -220,8 +220,8 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -231,11 +231,11 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
     const proxied = vi.fn();
     daemon.on("mcp_proxy_reply", proxied);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
     const trivialPane = ["[user:han via discord, id:123] status?", INBOUND_MARKER, "", "❯", ""].join("\n");
 
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), trivialPane);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), trivialPane);
 
     expect(proxyCalls(broadcast)).toHaveLength(0);
     expect(proxied).not.toHaveBeenCalled();
@@ -245,9 +245,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon({ mcp_proxy_reply: undefined }); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -255,9 +255,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon({ mcp_proxy_reply: false }); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -265,9 +265,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({ from_instance: "agend-leader", chat_id: "", correlation_id: "cid-task" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ from_instance: "agend-leader", chat_id: "", correlation_id: "cid-task" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -275,9 +275,9 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
-    daemon.markTurnStarted({}, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({}, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
@@ -291,11 +291,11 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     });
     daemon.on("mcp_restart_requested", () => order.push("restart"));
 
-    daemon.instanceState = "working";
-    daemon.checkMcpServerAlive(); // arms the idle-gated revival restart (#485)
+    daemon["instanceState"] = "working";
+    daemon["checkMcpServerAlive"](); // arms the idle-gated revival restart (#485)
     vi.useFakeTimers();
-    daemon.markTurnStarted({ chat_id: "chat-1", correlation_id: "cid-9" }, INBOUND);
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-9" }, INBOUND);
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     // The revival request now waits out a bounded replacement grace (#663),
     // which only widens the gap this test guards — the proxy reply must still
     // be out before the restart tears the pane down.
@@ -311,17 +311,17 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
 
     // Turn 1: agent replied.
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.handleToolCall({ tool: "reply", args: { text: "done" }, requestId: 9 }, {} as any);
-    daemon.pendingIpcRequests.get("tool_1_9")!({ result: { messageId: "m1" } });
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 9 }, {} as any);
+    daemon["pendingIpcRequests"].get("tool_1_9")!({ result: { messageId: "m1" } });
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(0);
 
     // Turn 2: new inbound, no reply.
-    daemon.markTurnStarted({ chat_id: "chat-1" }, INBOUND);
-    daemon.instanceState = "working";
-    daemon.applyInstanceStateSnapshot(idleSnapshot(), PANE);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
     expect(proxyCalls(broadcast)).toHaveLength(1);
   });
 });

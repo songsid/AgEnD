@@ -253,7 +253,7 @@ describe("the restart chokepoint and the deferred report consult the IPC layer t
     idleEdge(daemon);                               // opens the grace window
     const sock = fakeSocket();
     daemon.socketSessionNames.set(sock, "img");     // connection lands inside the grace
-    vi.advanceTimersByTime(Daemon.MCP_REPLACEMENT_GRACE_MS + 50);
+    vi.advanceTimersByTime(Daemon["MCP_REPLACEMENT_GRACE_MS"] + 50);
     expect(restarts).toHaveLength(0);
     expect(daemon.mcpRestartPending).toBe(false);
   });

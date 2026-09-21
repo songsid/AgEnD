@@ -30,9 +30,9 @@ function makeFleet(adapter: ChannelAdapter) {
   const logger = { error: vi.fn() };
   const fleet = Object.create(FleetManager.prototype) as FleetManager & Record<string, any>;
   fleet.adapters = new Map([["discord", adapter]]);
-  fleet.adapterState = new Map([["discord", { status: "connected", retryCount: 0 }]]);
+  fleet["adapterState"] = new Map([["discord", { status: "connected", retryCount: 0 }]]);
   fleet.logger = logger;
-  fleet.getPrimaryAdapterId = () => "discord";
+  fleet["getPrimaryAdapterId"] = () => "discord";
   return { fleet, logger };
 }
 

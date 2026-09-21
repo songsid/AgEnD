@@ -160,9 +160,9 @@ describe("OpenCodeBackend", () => {
         log_level: "silent",
       } as any, TEST_DIR, false, backend, undefined, rootLogger) as Daemon & Record<string, any>;
 
-      daemon.instanceState = "working";
+      daemon["instanceState"] = "working";
       const now = Date.now();
-      daemon.applyInstanceStateSnapshot({
+      daemon["applyInstanceStateSnapshot"]({
         state: "idle",
         unchangedForMs: 0,
         observedAt: now,
