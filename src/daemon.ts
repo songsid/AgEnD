@@ -12,6 +12,7 @@ import { TmuxManager, resolveTmuxLogicalSize } from "./tmux-manager.js";
 import { TranscriptMonitor } from "./transcript-monitor.js";
 import { createTranscriptSource } from "./transcript-sources.js";
 import { credentialProfileStoreHome, resolveCredentialProfile } from "./backend/credential-profile.js";
+import { resolveToolSet } from "./tool-permissions.js";
 import { getAgendHome } from "./paths.js";
 import { LOGIN_FLOWS } from "./login-flows.js";
 import { ProgressAccumulator, summarizeProgress } from "./tool-progress.js";
@@ -5794,9 +5795,13 @@ export class Daemon extends EventEmitter {
     // profile instead of `full`. Every tool's schema is resent on every API call,
     // so full (44 tools) costs a general ~22k chars per turn — the single largest
     // slice of its prompt. Explicit config still wins.
-    const defaultToolSet = this.config.general_topic ? "general" : undefined;
-    const toolSet = this.config.tool_set ?? defaultToolSet;
-    if (toolSet) mcpEnv.AGEND_TOOL_SET = toolSet;
+    // One rule for "is this a general", shared with everywhere else that asks.
+    // The daemon used to read `general_topic` alone while `isGeneralInstance`
+    // also accepted the name, so an instance called `general` without the flag
+    // was a worker here and a general everywhere else.
+    const isGeneral = this.config.general_topic === true || this.name === "general";
+    const toolSet = resolveToolSet(this.config, this.name, isGeneral ? "general" : "full");
+    mcpEnv.AGEND_TOOL_SET = toolSet;
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
     if (this.config.description) mcpEnv.AGEND_DESCRIPTION = this.config.description;
     if (resolvedWorkflow === false) mcpEnv.AGEND_WORKFLOW = "false";
