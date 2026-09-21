@@ -99,6 +99,10 @@ describe("the Notify Discord step", () => {
   });
 });
 
+// Distinctive enough that "this string never appears" means something: a
+// coincidental match is not possible.
+const WEBHOOK = "https://discord.com/api/webhooks/000/s3cr3t-must-never-be-logged";
+
 describe("the Notify Discord step, run for real", () => {
   let bin: string;
 
@@ -127,7 +131,7 @@ describe("the Notify Discord step, run for real", () => {
           ...process.env,
           PATH: `${bin}:${process.env.PATH ?? ""}`,
           CURL_ARGV: argv,
-          DISCORD_WEBHOOK: "https://discord.com/api/webhooks/000/xxx",
+          DISCORD_WEBHOOK: WEBHOOK,
           STATUS: "success",
           WORKFLOW: "CI",
           REPO: "songsid/AgEnD",
@@ -190,8 +194,22 @@ describe("the Notify Discord step, run for real", () => {
     // curl reads the body from a file, so nothing hostile lands on its command
     // line, and the URL is a single argument rather than several.
     expect(r.curl).toContain("@payload.json");
-    expect(r.curl?.at(-1)).toBe("https://discord.com/api/webhooks/000/xxx");
+    expect(r.curl?.at(-1)).toBe(WEBHOOK);
     expect(r.curl?.some(a => a.includes("pwned"))).toBe(false);
+  });
+
+  it("never writes the webhook to the log, on any path it takes", () => {
+    // GitHub masks a secret it recognises, but only the whole value: a step
+    // that echoes the URL while debugging, or interpolates it into a message,
+    // publishes it to anyone who can read the run. The failure path is checked
+    // below; this is the path that actually runs every day.
+    for (const env of [{}, HOSTILE, { STATUS: "failure" }, { STATUS: "neutral" }]) {
+      const r = run(env);
+      expect(r.stdout + r.stderr, JSON.stringify(env)).not.toContain(WEBHOOK);
+      expect(r.stdout + r.stderr, JSON.stringify(env)).not.toContain("s3cr3t");
+      // Nor into the payload, where it would reach Discord's message content.
+      expect(r.payload, JSON.stringify(env)).not.toContain("s3cr3t");
+    }
   });
 
   it("keeps a commit body out of the embed", () => {
