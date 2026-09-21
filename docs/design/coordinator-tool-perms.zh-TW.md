@@ -286,6 +286,28 @@ config 的 default 會蓋過程式碼的 default，所以 S3 只改程式碼，*
 > 你的 fleet.yaml 明寫 `defaults.tool_set: full`，所以每個 worker 都拿到全部 47 個工具，包含 `create_instance` 與 `delete_instance`。建議改成 `worker`，並把真正在調度的 instance 個別標成 `coordinator`。
 
 所以 S3 要同時涵蓋兩種 fleet：**新的吃新預設，既有的收到 notice**。兩者都要有測試。
+
+### 6.2 notice 要點名，不能只是通則
+
+「coordinator 用手設標記」的代價是**忘了標就會靜默壞**——那個 instance 某天想重啟別人，發現不行。通則式的建議（「請把在調度的 instance 標成 coordinator」）把辨識工作丟回給使用者，而**我們手上就有答案**。
+
+notice 要從 `activity` 反推，規則是「**這個 instance 呼叫過新 profile 會拒絕的工具嗎**」——那正好就是「誰會壞」的定義，不是猜測：
+
+```
+你的 fleet 有 4 個 instance 用過 worker 拿不到的工具。改預設之前，
+把它們標成 tool_set: coordinator：
+
+  doupo-leader-t1503382159321464899   restart×6 wake×7 replace×1 delete×1 create×1 start×1
+  agend-leader-t1503382358143799511   restart×2 start×3 wake×3 delete×1 update_instance_config×1
+  claude-fable-t1532671461406277715   start×1
+  classic-鬥破企劃-7393                wake×3        （已不在 fleet.yaml，classicBot 頻道）
+```
+
+（上面是本機 2026-08-22 → 09-21 的實際結果。）
+
+**刻意不點名「只用 delegate_task」的 instance**：`delegate_task` 留在 worker（§2.2），所以 `rd1-a89-dev`（23 次）、`classic-鬥破串接`（18 次）這些**不會壞**，把它們列進來只會讓使用者標一堆不需要標的東西，然後對這則 notice 失去信任。**名單的定義是「會壞的」，不是「看起來像 coordinator 的」。**
+
+一個實作前提：這份反推**只看得到 `handleOutboundFromInstance` 那一條路**（§2.5）。所以 notice 的措辭要留餘地（「用過…的有這些」而不是「只有這些需要標」），而 S1 在三個 sink 都記錄之後，這份名單才會完整。
 4. **被擋下時的回應要能自我解釋**：不是 "unknown tool"，而是「這個 instance 是 worker，`create_instance` 是 coordinator 的工具；請 `report_result` 說明你需要什麼，或由管理者設 `tool_set: full`」。**被擋住的 agent 會把錯誤訊息當指示讀**，所以那句話就是遷移文件。
 5. **先觀察再收**（見 stage 拆分）：S1 只記錄「worker 呼叫了 coordinator 工具」，不擋。跑一輪真實 fleet，看看有沒有我們沒想到的合法用途，再切預設。
 
@@ -319,7 +341,7 @@ config 的 default 會蓋過程式碼的 default，所以 S3 只改程式碼，*
 
 ### S3 — `coordinator` profile + 預設換成 `worker`
 非 general 且未指定 → `worker`；`coordinator` 可手設；`general` 仍然手設會 fail。先標好真 coordinator，再切預設。
-驗收：新 instance 預設沒有 `create_instance`（**MCP 與 CLI 兩面各一條**）；`report_result`／`request_information`／`delegate_task` 在 worker 上可用（§1.3 與 §2.2）；`tool_set: coordinator` 拿得到 orchestration；general 不受影響；明寫 `tool_set: full` 回到舊行為；**顯式寫了 `defaults.tool_set: full` 的 fleet 會收到 notice 而不是被改寫**（§6.1）。
+驗收：新 instance 預設沒有 `create_instance`（**MCP 與 CLI 兩面各一條**）；`report_result`／`request_information`／`delegate_task` 在 worker 上可用（§1.3 與 §2.2）；`tool_set: coordinator` 拿得到 orchestration；general 不受影響；明寫 `tool_set: full` 回到舊行為；**顯式寫了 `defaults.tool_set: full` 的 fleet 會收到 notice 而不是被改寫**（§6.1）；**notice 會點名實際用過被拒工具的 instance，而不是只給通則**（§6.2），且**不會點名只用 `delegate_task` 的 instance**（mutation：把 `delegate_task` 算進去要紅——那會讓名單從 4 個變成 20 幾個）。
 
 ### S4 — 文件與 skill
 `docs/configuration.md` 的 tool_set 一節、General skill、CHANGELOG 的 Upgrade Notes（這是行為改變）。
@@ -338,7 +360,7 @@ config 的 default 會蓋過程式碼的 default，所以 S3 只改程式碼，*
 
 **T5（新）— `delegate_task` → 裁定留給 worker**（§2.2）。這是數據推翻第一版的那一項。
 
-**還沒裁的一項**：真 coordinator 用手設 `tool_set: coordinator` 標記，代表**忘了標就會壞**（那個 instance 靜默失去派工以外的 orchestration）。替代方案是給 `teams` 加 `leader:` 欄位、從結構推導，但那是更大的改動。目前採手設；若日後 coordinator 變多，值得回頭做結構化。
+**T6 — 手設 coordinator「忘了標就會壞」怎麼辦 → 裁定：讓 notice 點名（§6.2）。** 從 activity 反推「用過 worker 拿不到的工具」的 instance 並列出來，遷移就會自我引導，那個代價被壓掉大半。`teams` 加 `leader:` 欄位的結構化做法留著——**日後 coordinator 變多、或 notice 的名單開始失準時再回頭**。
 
 ---
 
