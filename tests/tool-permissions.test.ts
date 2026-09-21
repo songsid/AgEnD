@@ -232,6 +232,16 @@ describe("sink 2 — the typed IPC handlers", () => {
 });
 
 describe("sink 3 — the agent endpoint", () => {
+  /**
+   * Only ops whose handler this context actually stubs.
+   *
+   * Stage 1 records and then lets the call through, so an op that reaches a
+   * real lifecycle handler will run it against a context that has no
+   * lifecycle — and the resulting TypeError escapes as an unhandled rejection
+   * rather than a failed assertion, turning a green report into a non-zero
+   * exit. Which tool each op maps to is covered by the op-table tests; what
+   * these need is a call that finishes.
+   */
   async function callAgent(op: string, toolSet: string | undefined) {
     const warn = vi.fn();
     const ctx = {
@@ -239,28 +249,26 @@ describe("sink 3 — the agent endpoint", () => {
       fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", ...(toolSet ? { tool_set: toolSet } : {}) } } },
       logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
       handleTaskCrudHttp: async () => ({ ok: true }),
+      handleScheduleCrudHttp: async () => ({ ok: true }),
     };
-    // Not awaited for ops whose handler does real work: the permission question
-    // is answered before the first branch, so the record exists by the next
-    // tick and waiting for `spawn` to actually build an instance would only
-    // make the test slow and flaky.
-    const running = dispatchAgentOperation(ctx as never, "worker", op, {}).catch(() => undefined);
-    await new Promise(r => setTimeout(r, 0));
-    return { warn, result: await Promise.race([running, Promise.resolve(undefined)]) };
+    const result = await dispatchAgentOperation(ctx as never, "worker", op, {});
+    return { warn, result };
   }
 
   it("records an op the profile would refuse", async () => {
-    const { warn } = await callAgent("spawn", "minimal");
+    // `schedule-create` is denied under `minimal` and its handler is stubbed
+    // here, so the call completes instead of walking into a real one.
+    const { warn } = await callAgent("schedule-create", "minimal");
 
     expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ sink: "agent-endpoint", instance: "worker", profile: "minimal", tool: "create_instance", enforced: false }),
+      expect.objectContaining({ sink: "agent-endpoint", instance: "worker", profile: "minimal", tool: "create_schedule", enforced: false }),
       expect.stringContaining("would be refused"),
     );
   });
 
   it("records the early-returning ops too, which never reach OP_MAP", async () => {
     // `task` is answered before the map is consulted, so a table built from the
-    // map would never have seen it.
+    // map would never have seen it. `minimal` does not include it.
     const { warn } = await callAgent("task", "minimal");
 
     expect(warn).toHaveBeenCalledWith(
@@ -273,9 +281,10 @@ describe("sink 3 — the agent endpoint", () => {
   });
 
   it("says nothing when the profile allows it", async () => {
-    const { warn } = await callAgent("spawn", "full");
+    const { warn, result } = await callAgent("task", "full");
 
     expect(warn).not.toHaveBeenCalled();
+    expect(result).toEqual({ ok: true });
   });
 
   it("checks before any branch, including the early returns", () => {
