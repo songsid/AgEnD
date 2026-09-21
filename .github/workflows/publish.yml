@@ -39,3 +39,46 @@ jobs:
         run: npm pkg set "version=$VERSION"
       - name: Publish
         run: npm publish --access public --tag "$NPM_TAG"
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORDWEBHOOK }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No webhook configured, skipping Discord notification"
+            exit 0
+          fi
+
+          if [ "$JOB_STATUS" = "success" ]; then
+            COLOR=3066993  # green
+            EMOJI="🚀"
+            TITLE="Published v$VERSION ($NPM_TAG)"
+          else
+            COLOR=15158332  # red
+            EMOJI="❌"
+            TITLE="Publish Failed"
+          fi
+
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          cat > payload.json << EOF
+          {
+            "embeds": [{
+              "title": "$EMOJI $TITLE",
+              "url": "$RUN_URL",
+              "color": $COLOR,
+              "fields": [
+                {"name": "Repository", "value": "${{ github.repository }}", "inline": true},
+                {"name": "Tag", "value": "${{ github.ref_name }}", "inline": true},
+                {"name": "NPM Tag", "value": "$NPM_TAG", "inline": true},
+                {"name": "Commit", "value": "[\`$SHORT_SHA\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true}
+              ],
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            }]
+          }
+          EOF
+
+          curl -sf -H "Content-Type: application/json" -d @payload.json "$DISCORD_WEBHOOK" || echo "Discord notification failed (non-fatal)"

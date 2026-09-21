@@ -21,3 +21,48 @@ jobs:
       - run: npx tsc --noEmit
       - run: npm run build
       - run: npm test
+
+      - name: Notify Discord
+        if: always()
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORDWEBHOOK }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No webhook configured, skipping Discord notification"
+            exit 0
+          fi
+
+          if [ "$JOB_STATUS" = "success" ]; then
+            COLOR=3066993  # green
+            EMOJI="✅"
+            TITLE="CI Passed"
+          else
+            COLOR=15158332  # red
+            EMOJI="❌"
+            TITLE="CI Failed"
+          fi
+
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          COMMIT_MSG=$(git log -1 --pretty=%s | head -c 100)
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          cat > payload.json << EOF
+          {
+            "embeds": [{
+              "title": "$EMOJI $TITLE",
+              "url": "$RUN_URL",
+              "color": $COLOR,
+              "fields": [
+                {"name": "Repository", "value": "${{ github.repository }}", "inline": true},
+                {"name": "Branch", "value": "${{ github.ref_name }}", "inline": true},
+                {"name": "Event", "value": "${{ github.event_name }}", "inline": true},
+                {"name": "Commit", "value": "[\`$SHORT_SHA\`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})", "inline": true},
+                {"name": "Message", "value": "$COMMIT_MSG", "inline": false}
+              ],
+              "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            }]
+          }
+          EOF
+
+          curl -sf -H "Content-Type: application/json" -d @payload.json "$DISCORD_WEBHOOK" || echo "Discord notification failed (non-fatal)"
