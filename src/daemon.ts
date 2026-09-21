@@ -5800,7 +5800,11 @@ export class Daemon extends EventEmitter {
     // also accepted the name, so an instance called `general` without the flag
     // was a worker here and a general everywhere else.
     const isGeneral = this.config.general_topic === true || this.name === "general";
-    const toolSet = resolveToolSet(this.config, this.name, isGeneral ? "general" : "full");
+    // No third argument for an ordinary instance: the default is `worker` now,
+    // and naming it here would be a second place to change it.
+    const toolSet = isGeneral
+      ? resolveToolSet(this.config, this.name, "general")
+      : resolveToolSet(this.config, this.name);
     mcpEnv.AGEND_TOOL_SET = toolSet;
     if (this.config.display_name) mcpEnv.AGEND_DISPLAY_NAME = this.config.display_name;
     if (this.config.description) mcpEnv.AGEND_DESCRIPTION = this.config.description;

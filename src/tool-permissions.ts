@@ -128,10 +128,10 @@ export function mayUseTool(profile: ToolSetName, tool: string): boolean {
  * deliberately widened must stay wide. Only when nothing was written does the
  * role decide.
  *
- * `unsetDefault` is the answer for an ordinary instance that said nothing. It is
- * `"full"` today, which is exactly the problem #804 describes — stage 3 changes
- * it to `"worker"`. Keeping it as a parameter means stage 1 could wire every
- * caller up and prove, in a test, that nothing moved.
+ * `unsetDefault` is the answer for an ordinary instance that said nothing, and
+ * it is `"worker"`. It used to be every tool there is, which is what #804
+ * actually was: nobody chose to give a worker `create_instance`, it arrived by
+ * saying nothing. An instance that needs more says so.
  *
  * A value that is not a profile is not an explicit choice, and falls to the
  * role rather than to the toolbox. Before, an unrecognised `AGEND_TOOL_SET`
@@ -141,12 +141,26 @@ export function mayUseTool(profile: ToolSetName, tool: string): boolean {
 export function resolveToolSet(
   config: { tool_set?: string; general_topic?: boolean } | undefined,
   name: string,
-  unsetDefault: ToolSetName = "full",
+  unsetDefault: ToolSetName = "worker",
 ): ToolSetName {
   const explicit = config?.tool_set;
   if (isToolSetName(explicit)) return explicit;
   if (config?.general_topic === true || name === "general") return "general";
   return unsetDefault;
+}
+
+/**
+ * The profile for a process that only has the environment variable.
+ *
+ * mcp-server runs on the other side of a spawn and never sees fleet.yaml, so it
+ * resolves from `AGEND_TOOL_SET` alone. Same rules, same fallback, one function
+ * — the alternative is two copies of "what does an unknown name mean" that
+ * drift the first time one of them is edited.
+ */
+export function resolveToolSetFromEnv(value: string | undefined): ToolSetName {
+  if (!value) return "full";
+  if (isToolSetName(value)) return value;
+  return "worker";
 }
 
 /**

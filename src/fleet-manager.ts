@@ -84,6 +84,7 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLock } from "./fleet-lock.js";
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
+import { buildToolPermissionsNotice } from "./tool-permissions-notice.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
   mayUseTool,
@@ -909,6 +910,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // watching, and the fleet starting is the moment there is finally a process
     // around to notice. Never throws: a lease that cannot be resolved blocks
     // the next tunnel and says so, it does not block the fleet.
+    this.announceToolPermissionsChange();
+
     void reapStaleTunnel(this.dataDir)
       .then(outcome => {
         if (outcome.kind === "manual") this.logger.warn({ tunnel: outcome }, manualCleanupMessage(outcome));
@@ -5217,6 +5220,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `senderSessionName`, which arrives inside the message: a caller that fills
    * in its own identity has not been identified.
    */
+  /**
+   * Say once, at startup, what the new default means for this fleet.
+   *
+   * Nothing is rewritten: an explicit `tool_set: full` is a choice somebody
+   * made, and marking an instance as a coordinator is a judgement about how
+   * their fleet is organised. Both stay theirs — this only makes sure they are
+   * not discovered by an agent failing at three in the morning.
+   */
+  private announceToolPermissionsChange(): void {
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 19).replace("T", " ");
+      const recent = [...(this.eventLog?.toolUseByInstance(thirtyDaysAgo) ?? new Map())]
+        .map(([instance, tools]) => ({ instance, tools }));
+      const notice = buildToolPermissionsNotice({
+        defaultsToolSet: this.fleetConfig?.defaults?.tool_set,
+        instances: (this.fleetConfig?.instances ?? {}) as never,
+        recent,
+      });
+      if (notice) this.logger.warn({ notice }, notice);
+    } catch (err) {
+      // Advice is not worth failing a startup over.
+      this.logger.debug({ err }, "tool-permissions: could not build the migration notice");
+    }
+  }
+
   private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): { allowed: boolean; message: string } {
     const profile: ToolSetName = resolveToolSet(this.fleetConfig?.instances[instanceName], instanceName);
     const allowed = mayUseTool(profile, tool);
@@ -5661,7 +5689,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
     const meta = (msg.meta ?? {}) as Record<string, string>;
     const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc || !this.scheduler) return;
+    if (!ipc) return;
+    if (!this.scheduler) {
+      // Returning silently left the caller waiting for a response that was
+      // never coming. Over IPC that is a hang, and a hang is a worse answer
+      // than an error.
+      ipc.send({ type: "fleet_decision_response", fleetRequestId, error: "Decisions are unavailable — the fleet scheduler is not running" });
+      return;
+    }
 
     const db = this.scheduler.db;
     const projectRoot = meta.working_directory || this.fleetConfig?.instances[instanceName]?.working_directory || "";
@@ -5938,7 +5973,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const payload = (msg.payload ?? {}) as Record<string, unknown>;
     const meta = (msg.meta ?? {}) as Record<string, string>;
     const ipc = this.instanceIpcClients.get(instanceName);
-    if (!ipc || !this.scheduler) return;
+    if (!ipc) return;
+    if (!this.scheduler) {
+      // Returning silently left the caller waiting for a response that was
+      // never coming. Over IPC that is a hang, and a hang is a worse answer
+      // than an error.
+      ipc.send({ type: "fleet_task_response", fleetRequestId, error: "The task board is unavailable — the fleet scheduler is not running" });
+      return;
+    }
 
     const db = this.scheduler.db;
     const action = payload.action as string;

@@ -10,6 +10,7 @@ import {
   resolveToolSet,
   toolsFor,
   toolForIpcType,
+  resolveToolSetFromEnv,
   toolRefusedMessage,
   TOOL_PROFILES,
 } from "../src/tool-permissions.js";
@@ -62,15 +63,23 @@ describe("the existing profiles are untouched", () => {
     expect([...toolsFor("full")].sort()).toEqual(TOOLS.map(t => t.name).sort());
   });
 
-  it("resolves the same profile the daemon resolved before", () => {
-    // Today: an explicit tool_set wins, a general gets `general`, everything
-    // else gets the whole toolbox. The last one is #804, and stage 3 is where
-    // it changes — stage 1 must leave it exactly where it was.
-    expect(resolveToolSet({}, "worker-1")).toBe("full");
-    expect(resolveToolSet(undefined, "worker-1")).toBe("full");
+  it("gives an instance that said nothing the worker profile", () => {
+    // This is #804. Nobody ever chose to hand a worker `create_instance`; it
+    // arrived by saying nothing, because "unset" meant every tool there is.
+    expect(resolveToolSet({}, "worker-1")).toBe("worker");
+    expect(resolveToolSet(undefined, "worker-1")).toBe("worker");
+    expect(mayUseTool(resolveToolSet({}, "worker-1"), "create_instance")).toBe(false);
+    expect(mayUseTool(resolveToolSet({}, "worker-1"), "report_result")).toBe(true);
+
+    // Unchanged: a general is still a general, and an explicit choice still wins.
     expect(resolveToolSet({ general_topic: true }, "gen")).toBe("general");
     expect(resolveToolSet({}, "general")).toBe("general");
     expect(resolveToolSet({ tool_set: "minimal" }, "worker-1")).toBe("minimal");
+  });
+
+  it("still honours an explicit `full`, because it was somebody's decision", () => {
+    expect(resolveToolSet({ tool_set: "full" }, "worker-1")).toBe("full");
+    expect(mayUseTool(resolveToolSet({ tool_set: "full" }, "worker-1"), "create_instance")).toBe(true);
   });
 
   it("lets an explicit choice beat the role, in both directions", () => {
@@ -85,12 +94,34 @@ describe("the existing profiles are untouched", () => {
     expect(resolveToolSet({ tool_set: "__proto__" }, "worker-1", "worker")).toBe("worker");
   });
 
-  it("has the two new profiles ready but reachable only on request", () => {
-    expect(mayUseTool("worker", "report_result")).toBe(true);
-    expect(mayUseTool("worker", "create_instance")).toBe(false);
+  it("reaches `coordinator` only when somebody asks for it", () => {
     expect(mayUseTool("coordinator", "create_instance")).toBe(true);
-    // Nothing resolves to them by itself yet.
-    expect(resolveToolSet({}, "anyone")).not.toBe("worker");
+    // Never by default: an instance that runs the fleet has to be marked.
+    expect(resolveToolSet({}, "anyone")).not.toBe("coordinator");
+    expect(resolveToolSet({ tool_set: "coordinator" }, "anyone")).toBe("coordinator");
+  });
+
+  it("resolves the same way on the far side of a spawn", () => {
+    // mcp-server never sees fleet.yaml — only AGEND_TOOL_SET. Two copies of
+    // "what does an unknown name mean" would drift the first time one is
+    // edited, so there is one.
+    expect(resolveToolSetFromEnv(undefined)).toBe("full");
+    expect(resolveToolSetFromEnv("minimal")).toBe("minimal");
+    expect(resolveToolSetFromEnv("coordinator")).toBe("coordinator");
+    // A typo is not a request for more.
+    expect(resolveToolSetFromEnv("wroker")).toBe("worker");
+    expect(resolveToolSetFromEnv("constructor")).toBe("worker");
+  });
+
+  it("is what the daemon actually passes on", () => {
+    const source = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
+    const block = source.slice(source.indexOf("One rule for \"is this a general\""), source.indexOf("AGEND_DISPLAY_NAME"));
+
+    // No third argument for an ordinary instance: naming the default here would
+    // be a second place to change it.
+    expect(block).toContain("resolveToolSet(this.config, this.name)");
+    expect(block).toContain('resolveToolSet(this.config, this.name, "general")');
+    expect(block).not.toContain('"full"');
   });
 });
 
@@ -317,7 +348,10 @@ describe("sink 3 — the agent endpoint", () => {
   it("answers 403 rather than 400, because it is not a malformed request", () => {
     const source = readFileSync(new URL("../src/agent-endpoint.ts", import.meta.url), "utf8");
 
-    expect(source).toContain("err instanceof ToolNotPermittedError ? 403 : 400");
+    // Refused by policy is 403; an op nobody has heard of is the caller's
+    // mistake at 400. Both beat 200-with-an-error-body, which reads as success.
+    expect(source).toContain("err instanceof ToolNotPermittedError ? 403");
+    expect(source).toContain("err instanceof UnknownAgentOpError ? err.status");
   });
 
   it("checks the early-returning ops too, which never reach OP_MAP", async () => {
@@ -440,5 +474,55 @@ describe("the general check no longer disagrees with itself", () => {
 
     expect(block).toContain('this.name === "general"');
     expect(block).toContain("resolveToolSet(this.config, this.name");
+  });
+});
+
+// ── The remaining places a call could end without an answer ─────────────────
+
+describe("every typed handler answers, even when it cannot do the work", () => {
+  it("says so when the scheduler is not running, instead of going quiet", async () => {
+    // These are request/response over IPC. `return` with no message leaves the
+    // caller waiting for something that is never coming, which is a hang, not
+    // an error — and a hung agent is the harder failure to diagnose.
+    const { FleetManager } = await import("../src/fleet-manager.js");
+    for (const [type, responseType] of [
+      ["fleet_decision_create", "fleet_decision_response"],
+      ["fleet_task", "fleet_task_response"],
+    ] as const) {
+      const sent: Array<Record<string, unknown>> = [];
+      const fm = {
+        instanceIpcClients: new Map([["w", { send: (m: Record<string, unknown>) => { sent.push(m); return true; } }]]),
+        scheduler: null,
+        fleetConfig: { defaults: {}, instances: { w: {} } },
+        logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      };
+      const handler = type === "fleet_task"
+        ? (FleetManager.prototype as unknown as Record<string, (i: string, m: unknown) => void>).handleTaskCrud
+        : (FleetManager.prototype as unknown as Record<string, (i: string, m: unknown) => void>).handleDecisionCrud;
+
+      handler.call(fm as never, "w", { type, fleetRequestId: "r1", payload: {}, meta: {} });
+
+      expect(sent, type).toHaveLength(1);
+      expect(sent[0]).toMatchObject({ type: responseType, fleetRequestId: "r1" });
+      expect(String(sent[0]!.error)).toContain("scheduler is not running");
+    }
+  });
+});
+
+describe("an op the endpoint has never heard of", () => {
+  it("is a client error, not a success carrying an error message", async () => {
+    // 200 with `{error}` in the body reads as success to anything that checks
+    // the status code.
+    const { UnknownAgentOpError } = await import("../src/agent-endpoint.js");
+    const ctx = {
+      dataDir: tempDir(),
+      fleetConfig: { defaults: {}, instances: { worker: { tool_set: "full" } } },
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    };
+
+    const err = await dispatchAgentOperation(ctx as never, "worker", "not-a-real-op", {}).catch(e => e as Error);
+
+    expect(err).toBeInstanceOf(UnknownAgentOpError);
+    expect((err as { status: number }).status).toBe(400);
   });
 });
