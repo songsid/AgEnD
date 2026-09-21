@@ -383,6 +383,30 @@ export class ClaudeCodeBackend implements CliBackend {
         message: "Selected Claude model unavailable — Claude Code may be using a fallback; use /model to choose another",
       },
       { pattern: /API Error: Overloaded/i, type: "rate_limit", action: "notify", message: "API overloaded" },
+      // Claude Code pauses its own turn (rather than merely warning) when the
+      // current usage window is exhausted. Keep this as a complete line match:
+      // the warning is also visible in pane scrollback, and prose discussing
+      // only part of it must not turn into a pause notification. Claude has
+      // used both `●` and `⚠` prefixes and both cancel-wordings over time.
+      // The time is deliberately captured so the channel notice tells the
+      // operator when Claude is expected to continue.
+      {
+        pattern: /^[ \t]*(?:[●⚠](?:\uFE0F)?[ \t]+)?Usage limit reached[ \t]*·[ \t]*continuing automatically at[ \t]+((?:(?:[01]?\d|2[0-3]):[0-5]\d(?:[ \t]*[ap]m)?|(?:0?[1-9]|1[0-2])(?::[0-5]\d)?[ \t]*[ap]m|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ \t]+(?:[12]?\d|3[01]),[ \t]*(?:[01]?\d|2[0-3])(?::[0-5]\d)?[ \t]*[ap]m))[ \t]*·[ \t]*esc(?: or type)?[ \t]+to[ \t]+cancel[ \t]*$/im,
+        type: "quota",
+        action: "notify",
+        message: "Claude Code usage limit reached — paused until the next usage window",
+        formatMessage: match => `Claude Code usage limit reached — paused; continuing automatically at ${match[1].trim()}`,
+        verifyQuota: true,
+        // Count-based occurrence tracking still suppresses the same line while
+        // it remains visible, but a later pause is a distinct incident even if
+        // it happens within the generic five-minute error cooldown.
+        skipCooldown: true,
+        // The pane stays on this line until the provider's window opens. It
+        // is a self-recovering pause, so do not arm the generic recovery
+        // deadline (which would otherwise re-emit the same visible line every
+        // five minutes while the wait is still in progress).
+        skipRecoveryWait: true,
+      },
       { pattern: /credit balance is too low/i, type: "quota", action: "pause", message: "Insufficient API credits" },
     ];
   }

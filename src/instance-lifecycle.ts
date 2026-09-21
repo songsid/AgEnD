@@ -844,7 +844,7 @@ export class InstanceLifecycle {
       await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
 
-    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string; fleetWide?: boolean }) => {
+    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string; fleetWide?: boolean; verifyQuota?: boolean }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
@@ -876,10 +876,13 @@ export class InstanceLifecycle {
         }
       }
 
-      // Claude's credit-balance message also remains in pane scrollback. Only
-      // a fresh usage API row can prove it stale; provider fallback to a local
-      // statusline, timeout, or missing credentials remains fail-closed.
-      if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "claude-code") {
+      // Claude's credit-balance and hard usage-pause messages can remain in pane
+      // scrollback. Only a fresh usage API row can prove them stale; provider
+      // fallback to a local statusline, timeout, or missing credentials remains
+      // fail-closed. `verifyQuota` lets a notify-only pattern request the same
+      // second opinion without entering the destructive pause action below.
+      if (data.type === "quota" && this.backendOf(name) === "claude-code"
+        && (data.action === "pause" || data.verifyQuota)) {
         const verdict = await this.verifyClaudeQuota();
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "claude-code" },

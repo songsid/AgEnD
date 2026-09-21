@@ -838,6 +838,60 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual(["Codex monthly limit: less than 5% left"]);
   });
 
+  it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {
+    const messages: string[] = [];
+    const actions: string[] = [];
+    daemon.on("pty_error", ({ message, action }) => {
+      messages.push(message);
+      actions.push(action);
+    });
+    const patterns = createBackend("claude-code", tmpDir).getErrorPatterns!();
+    const usagePause = patterns.find(pattern => pattern.message.startsWith("Claude Code usage limit reached"));
+    expect(usagePause).toBeDefined();
+    const pane = "❯\n⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel";
+
+    // The ready marker is intentionally present to exercise recovery
+    // re-baselining too: the same visible pause line must not be emitted again
+    // after the monitor observes that Claude is ready to continue.
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /❯/, 1_000_000);
+    expect((daemon as any).errorWaitingForRecovery).toBe(false);
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /❯/, 1_000_001);
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /❯/, 1_000_002);
+
+    expect(messages).toEqual([
+      "Claude Code usage limit reached — paused; continuing automatically at 1:50pm",
+    ]);
+    expect(actions).toEqual(["notify"]);
+  });
+
+  it("does not re-notify the same Claude usage pause after the recovery deadline", () => {
+    const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const patterns = createBackend("claude-code", tmpDir).getErrorPatterns!();
+    const pane = "⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel";
+    const now = 1_000_000;
+    const timeout = (Daemon as any).ERROR_RECOVERY_TIMEOUT_MS;
+
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /NEVER_READY/, now);
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /NEVER_READY/, now + timeout + 1);
+
+    expect(messages).toHaveLength(1);
+  });
+
+  it("treats a later visible Claude usage pause as a new occurrence", () => {
+    const messages: string[] = [];
+    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const patterns = createBackend("claude-code", tmpDir).getErrorPatterns!();
+    const pane = "⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel";
+    const now = 1_000_000;
+
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /NEVER_READY/, now);
+    (daemon as any).evaluateErrorPatterns("❯", patterns, /❯/, now + 1);
+    (daemon as any).evaluateErrorPatterns(pane, patterns, /NEVER_READY/, now + 2);
+
+    expect(messages).toHaveLength(2);
+  });
+
   it("falls back to the static message when a formatter throws", () => {
     const messages: string[] = [];
     daemon.on("pty_error", ({ message }) => messages.push(message));
