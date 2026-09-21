@@ -720,8 +720,10 @@ function codexPlan(planType: unknown): string | null {
   }
 }
 
-export async function fetchCodexUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
-  const home = process.env.CODEX_HOME || join(homedir(), ".codex");
+export async function fetchCodexUsage(storeHome?: string): Promise<Omit<ProviderUsage, "id" | "name">> {
+  // A credential profile owns its own auth.json; without one this is the shared
+  // login, exactly as before.
+  const home = storeHome ?? process.env.CODEX_HOME ?? join(homedir(), ".codex");
   let auth: { tokens?: { access_token?: string; account_id?: string } };
   try {
     auth = JSON.parse(await readFile(join(home, "auth.json"), "utf8"));
@@ -1248,7 +1250,9 @@ function readFleetConfigForUsage(): Parameters<typeof listConfiguredProfiles>[0]
 
 /** The backend a usage row reads its credentials from. */
 function usageBackendForProviderId(id: string): string | null {
-  return id === "kiro" ? "kiro-cli" : null;
+  if (id === "kiro") return "kiro-cli";
+  if (id === "codex") return "codex";
+  return null;
 }
 
 let PROVIDERS: UsageProvider[] = DEFAULT_PROVIDERS;

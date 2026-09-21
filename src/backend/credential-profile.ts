@@ -24,7 +24,7 @@
  *   the login, a refresh lock, and a runtime socket directory. An entry nobody
  *   has classified stays private, which costs disk and never leaks a session.
  */
-import { existsSync, lstatSync, mkdirSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, symlinkSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { kiroStoreHasLogin } from "./kiro-auth-store.js";
@@ -32,8 +32,27 @@ import { kiroStoreHasLogin } from "./kiro-auth-store.js";
 /** Profile names become a directory; keep them boring. */
 const PROFILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
+/**
+ * The two shapes a credential home comes in.
+ *
+ * `relocate-home` moves the backend's whole home with an environment variable
+ * and links the shareable parts back. `redirect-files` leaves the home exactly
+ * where the backend already has it and swaps a named file or two for the
+ * profile's copy — which is the only option when something else already owns
+ * that backend's home variable, and the cheapest one when the login is a single
+ * file rather than a store entangled with everything else.
+ */
+export type CredentialHomeKind = "relocate-home" | "redirect-files";
+
 export interface CredentialHomeSpec {
-  /** The variable that moves the credential home, prepended at launch. */
+  kind: CredentialHomeKind;
+  /**
+   * The variable that moves the credential home, prepended at launch.
+   *
+   * Only meaningful for `relocate-home`. A `redirect-files` backend names the
+   * variable it already uses, for the login command it prints, and nothing
+   * prepends it.
+   */
   env: string;
   /** The shared home this backend uses when the variable is unset. */
   sharedRoot(): string;
@@ -55,6 +74,15 @@ export interface CredentialHomeSpec {
    */
   share: readonly string[];
   /**
+   * `redirect-files` only: the files the profile owns, relative to the home the
+   * backend is already using.
+   *
+   * Everything not named here keeps coming from wherever it came from before,
+   * which is the point: for a backend whose login is one file, swapping that
+   * file is the entire mechanism and nothing else has to move.
+   */
+  files: readonly string[];
+  /**
    * Whether this store holds a login, given its store directory.
    *
    * A profile nobody has logged into is not an empty session — the CLI stops at
@@ -65,6 +93,16 @@ export interface CredentialHomeSpec {
   hasLogin?: (storeHome: string) => boolean;
   /** The subcommand that logs a store in, for telling the user what to run. */
   loginSubcommand: string;
+  /**
+   * Whether changing profile means the conversation is gone.
+   *
+   * Kiro keeps its conversations in the same database as the login, so a
+   * different subscription is a different set of them: true. Codex keeps its
+   * login in one file beside stores that carry no account, so the conversation
+   * stays put: false. This is not a policy either way — it is what each
+   * backend's files force.
+   */
+  switchStartsFreshSession: boolean;
 }
 
 /**
@@ -74,6 +112,7 @@ export interface CredentialHomeSpec {
  * profile is what makes the naive "just move XDG_DATA_HOME" approach expensive.
  */
 const KIRO_HOME: CredentialHomeSpec = {
+  kind: "relocate-home",
   env: "XDG_DATA_HOME",
   sharedRoot: () => resolve(process.env.XDG_DATA_HOME?.trim() || join(homedir(), ".local", "share")),
   storeSubdir: "kiro-cli",
@@ -91,13 +130,65 @@ const KIRO_HOME: CredentialHomeSpec = {
     "bun", "bun.sha256",
     "cli-checkouts",
   ],
+  files: [],
   hasLogin: kiroStoreHasLogin,
   loginSubcommand: "login",
+  switchStartsFreshSession: true,
 };
+
+/**
+ * Codex keeps its identity in one plain file and nothing else.
+ *
+ * Verified read-only against a real `~/.codex` (2026-09-21): `auth.json` holds
+ * the whole login, and every conversation store — `sessions/` rollout JSONL
+ * plus the thread/state/memory/goal databases — is keyed by thread and project
+ * with no account column anywhere. So swapping that one file swaps the account
+ * and leaves the conversation where it is, which is the opposite of kiro and
+ * for the opposite reason: not a policy, just the file layout.
+ *
+ * It is `redirect-files` rather than `relocate-home` because `CODEX_HOME` is
+ * already taken. Every instance gets its own codex home so its `config.toml`
+ * (which carries AgEnD's MCP wiring) is private, and that home links almost
+ * everything back to the shared one. A profile changes where exactly one of
+ * those links points.
+ */
+const CODEX_HOME: CredentialHomeSpec = {
+  kind: "redirect-files",
+  env: "CODEX_HOME",
+  sharedRoot: () => resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")),
+  storeSubdir: "",
+  isolate: ["auth.json"],
+  share: [],
+  files: ["auth.json"],
+  hasLogin: codexStoreHasLogin,
+  loginSubcommand: "login",
+  switchStartsFreshSession: false,
+};
+
+/**
+ * A codex login is `auth.json` with a token in it.
+ *
+ * Read for shape only — never a value, and never rewritten. An API-key-only
+ * file counts: codex will run with it, and whether it can report usage is a
+ * different question from whether the agent can start.
+ */
+function codexStoreHasLogin(storeHome: string): boolean {
+  try {
+    const parsed = JSON.parse(readFileSync(join(storeHome, "auth.json"), "utf8")) as {
+      tokens?: { access_token?: unknown };
+      OPENAI_API_KEY?: unknown;
+    };
+    return typeof parsed.tokens?.access_token === "string" && parsed.tokens.access_token.length > 0
+      || typeof parsed.OPENAI_API_KEY === "string" && parsed.OPENAI_API_KEY.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 /** Backends that can hold more than one login. Codex and Claude come later. */
 export const CREDENTIAL_HOMES: Readonly<Record<string, CredentialHomeSpec>> = {
   "kiro-cli": KIRO_HOME,
+  "codex": CODEX_HOME,
 };
 
 export function credentialHomeSpec(backendName: string): CredentialHomeSpec | null {
@@ -140,6 +231,10 @@ export function credentialProfileHome(dataDir: string, backendName: string, prof
  * someone's data, and this is not the code that decides to delete it.
  */
 export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHome: string): void {
+  if (spec.kind === "redirect-files") {
+    prepareRedirectedFiles(spec, profileHome);
+    return;
+  }
   const profileStore = spec.storeSubdir ? join(profileHome, spec.storeSubdir) : profileHome;
   const sharedStore = spec.storeSubdir ? join(spec.sharedRoot(), spec.storeSubdir) : spec.sharedRoot();
 
@@ -189,6 +284,43 @@ export function prepareCredentialProfileHome(spec: CredentialHomeSpec, profileHo
       // also what protects anything already in the profile from being replaced.
       // A cache that could not be linked costs a re-download, not correctness.
     }
+  }
+}
+
+/**
+ * Make the directory a `redirect-files` profile owns.
+ *
+ * Nothing is linked *into* it: the backend's home stays where it is and the
+ * files here are the originals, so the only job is to create the directory and
+ * refuse the one arrangement that would silently un-isolate it.
+ */
+function prepareRedirectedFiles(spec: CredentialHomeSpec, profileHome: string): void {
+  try {
+    if (lstatSync(profileHome).isSymbolicLink()) {
+      throw new Error(
+        `credential profile path is a symlink, so it is not isolated: ${profileHome}. `
+        + "Remove the link and let AgEnD create a real directory.",
+      );
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("not isolated")) throw err;
+    // Absent; mkdir will create it.
+  }
+  mkdirSync(profileHome, { recursive: true, mode: 0o700 });
+
+  // A file the profile owns must be the real thing. A link here would point
+  // back at the shared login, and this profile would be that login wearing a
+  // different name — the same trap as a symlinked store, one level down.
+  for (const name of spec.files) {
+    const target = join(profileHome, name);
+    try {
+      if (!lstatSync(target).isSymbolicLink()) continue;
+    } catch {
+      continue; // not there yet: the backend will create it on login
+    }
+    throw new Error(
+      `${name} in ${profileHome} is a symlink, so this profile shares the login it exists to separate. Remove it and log the profile in again.`,
+    );
   }
 }
 
@@ -265,6 +397,17 @@ export function credentialProfileLogin(
     // line is how a person ends up logging the wrong profile in.
     loginCommand: `${spec.env}=${JSON.stringify(credentialProfileHome(dataDir, backendName, profile))} ${backendName} ${spec.loginSubcommand}`,
   };
+}
+
+/**
+ * Does switching this backend's profile cost the conversation?
+ *
+ * Unknown backends answer yes. Assuming a conversation survives when nobody has
+ * checked is how an agent ends up resuming into a store that does not have it;
+ * assuming it is lost only costs a handover message nobody needed.
+ */
+export function credentialSwitchStartsFresh(backendName: string): boolean {
+  return credentialHomeSpec(backendName)?.switchStartsFreshSession ?? true;
 }
 
 /** The profile one instance runs under, or null for the shared login. */

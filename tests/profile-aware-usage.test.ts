@@ -105,12 +105,13 @@ describe("one usage row per subscription", () => {
   });
 
   it("does not touch a backend that has no credential home yet", () => {
-    const withCodex = [...base, { id: "codex", name: "Codex", fetch: async () => ({ status: "ok" as const, metrics: [] }) }];
-    const config = { defaults: {}, instances: { a: { backend: "codex", backend_options: { codex: { credential_profile: "work" } } } } };
+    // claude-code has no credential home yet, so a profile written against
+    // it is configuration with nothing to act on — and must not grow a row.
+    const config = { defaults: {}, instances: { a: { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "work" } } } } };
 
-    const rows = providersForConfig(config as never, withCodex);
+    const rows = providersForConfig(config as never, base);
 
-    expect(rows.map(r => r.id)).toEqual(["claude", "kiro", "codex"]);
+    expect(rows.map(r => r.id)).toEqual(["claude", "kiro"]);
   });
 });
 

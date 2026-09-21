@@ -20,6 +20,13 @@ import { homedir } from "node:os";
 import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
+import {
+  credentialHomeSpec,
+  credentialProfileHome,
+  prepareCredentialProfileHome,
+  resolveCredentialProfile,
+} from "./credential-profile.js";
+import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
 
@@ -115,6 +122,9 @@ function atomicWritePrivate(path: string, content: string): void {
 
 // Account-aware models_cache.json is preferred. These documented Codex models
 // are only a last-resort menu when the TUI has not populated its cache yet.
+/** The whole of a codex identity, and the only file a profile owns. */
+const CODEX_AUTH_FILE = "auth.json";
+
 const CODEX_FALLBACK_MODELS: ModelOption[] = [
   { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", description: "frontier agentic coding" },
   { id: "gpt-5.6-terra", label: "GPT-5.6 Terra", description: "balanced agentic coding" },
@@ -126,6 +136,8 @@ export class CodexBackend implements CliBackend {
   private binaryPath: string;
   private readonly sharedCodexHome: string;
   private readonly isolatedCodexHome: string;
+  /** Which subscription this instance runs on, or null for the shared login. */
+  private credentialProfile: string | null = null;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
@@ -218,6 +230,7 @@ export class CodexBackend implements CliBackend {
 
   buildCommand(config: CliBackendConfig): string {
     this.lastKnownModel = config.model?.trim() || null;
+    this.credentialProfile = this.readProfile(config);
     const approvalFlag = config.skipPermissions !== false
       ? "--dangerously-bypass-approvals-and-sandbox"
       : "--full-auto";
@@ -252,6 +265,9 @@ export class CodexBackend implements CliBackend {
   }
 
   writeConfig(config: CliBackendConfig): void {
+    // Set before the home is prepared: which login this instance gets is a
+    // property of the home, and the home is built here.
+    this.credentialProfile = this.readProfile(config);
     this.prepareIsolatedHome();
     this.cleanSharedConfig();
 
@@ -368,6 +384,34 @@ export class CodexBackend implements CliBackend {
     } catch { /* best effort — never block launch on statusline config */ }
   }
 
+  /** Null when the instance did not ask for a profile — today's behaviour. */
+  private readProfile(config: CliBackendConfig): string | null {
+    try {
+      return resolveCredentialProfile(config.backendOptions);
+    } catch {
+      // A malformed name is refused where it is written; launching is not the
+      // place to discover it, and falling back to the shared login is the
+      // behaviour every instance had before profiles existed.
+      return null;
+    }
+  }
+
+  /**
+   * Where this instance's `auth.json` comes from.
+   *
+   * The shared home unless a profile says otherwise. A profile owns the file
+   * itself — not a copy, not a link — so codex refreshing the token writes
+   * into that subscription and no other.
+   */
+  private authSourceDir(): string {
+    if (!this.credentialProfile) return this.sharedCodexHome;
+    const spec = credentialHomeSpec(this.binaryName);
+    if (!spec) return this.sharedCodexHome;
+    const home = credentialProfileHome(getAgendHome(), this.binaryName, this.credentialProfile);
+    prepareCredentialProfileHome(spec, home);
+    return home;
+  }
+
   preTrust(workDir: string): void {
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
@@ -431,8 +475,15 @@ export class CodexBackend implements CliBackend {
       console.warn(`[agend] removed unsafe Codex SQLite sidecar links: ${healedSidecars.join(", ")}`);
     }
 
+    // One file, possibly from somewhere else. Everything below is unchanged:
+    // sessions, the thread/state/memory databases and every cache still come
+    // from the shared home, which is why switching subscription does not throw
+    // the conversation away.
+    this.linkAuthFile();
+
     for (const name of readdirSync(this.sharedCodexHome)) {
       if (name === "config.toml" || name === AGEND_MCP_CLEANUP_LOCK || name.startsWith(".config.toml.")) continue;
+      if (name === CODEX_AUTH_FILE) continue; // handled above, possibly from a profile
       // SQLite resolves a symlinked base DB to the shared path and creates its
       // own adjacent sidecars there. Linking sidecars separately is redundant
       // for shared bases and corrupts the file set for private bases.
@@ -447,6 +498,54 @@ export class CodexBackend implements CliBackend {
         // State/cache links are compatibility aids; config isolation must not
         // fail merely because a concurrently-created cache entry disappeared.
       }
+    }
+  }
+
+  /**
+   * Point this home's `auth.json` at whichever login it should use.
+   *
+   * Codex refreshes the token by writing through the link rather than replacing
+   * it — observed across every instance home on a machine that has been running
+   * this arrangement for months, with the shared file's mtime moving. That is
+   * behaviour, though, not a contract: a release that starts renaming over the
+   * file would leave a real file here and quietly fork the login, with refreshes
+   * landing somewhere the profile never sees. So a real file where a link
+   * belongs is treated as exactly that — reported, and put back.
+   */
+  private linkAuthFile(): void {
+    const source = join(this.authSourceDir(), CODEX_AUTH_FILE);
+    const target = join(this.isolatedCodexHome, CODEX_AUTH_FILE);
+
+    let existing: ReturnType<typeof lstatSync> | null = null;
+    try { existing = lstatSync(target); } catch { /* absent */ }
+
+    if (existing?.isSymbolicLink()) {
+      let current = "";
+      try { current = resolve(dirname(target), readlinkSync(target)); } catch { /* unreadable */ }
+      if (current === source) return;
+      try { unlinkSync(target); } catch { /* raced */ }
+    } else if (existing) {
+      // Not a link: codex replaced it, or an older AgEnD copied it. Either way
+      // the refreshes it has been collecting are stranded in this instance's
+      // home, so say so rather than deleting them silently.
+      const stranded = `${target}.replaced-${Date.now()}`;
+      try {
+        renameSync(target, stranded);
+        console.warn(
+          `[agend] codex replaced ${CODEX_AUTH_FILE} in ${this.isolatedCodexHome} with a real file — `
+          + `its login was no longer shared. Kept a copy at ${stranded} and re-linked to ${source}.`,
+        );
+      } catch {
+        return; // cannot move it; leave the instance working on what it has
+      }
+    }
+
+    if (!existsSync(source)) return; // not logged in yet; codex will create it
+    try {
+      symlinkSync(source, target, "file");
+    } catch {
+      // EEXIST from a concurrent start is the ordinary case and means the link
+      // is already there.
     }
   }
 

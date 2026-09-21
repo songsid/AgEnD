@@ -62,7 +62,7 @@ describe("a profile is checked where it is entered", () => {
   });
 
   it("warns, rather than fails, for a backend that has no profiles yet", () => {
-    const result = validateFleetConfig(fleetWith({ codex: { credential_profile: "work" } }));
+    const result = validateFleetConfig(fleetWith({ "claude-code": { credential_profile: "work" } }));
 
     expect(result.errors).toEqual([]);
     expect(result.warnings.map(w => w.message).join(" ")).toContain("no credential home yet");

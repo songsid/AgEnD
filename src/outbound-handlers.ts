@@ -15,7 +15,7 @@ import { t } from "./locale.js";
 import { truncatePreview } from "./channel/markdown-chunk.js";
 import { backendSupportsSteer } from "./steer-capability.js";
 import { readStatuslineModel } from "./topic-commands.js";
-import { credentialProfileLogin, instanceCredentialProfile } from "./backend/credential-profile.js";
+import { credentialProfileLogin, credentialSwitchStartsFresh, instanceCredentialProfile } from "./backend/credential-profile.js";
 import {
   formatCrossInstanceInboundMessage,
   MAX_ASSEMBLED_CROSS_INSTANCE_MESSAGE_BYTES,
@@ -1114,7 +1114,15 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // daemon's in-memory ring buffer, not from the CLI's store — which matters
   // here, because the store the agent was talking into is the one being left
   // behind.
-  const handover = profileSwitched
+  // Only where the switch actually costs the conversation. Kiro keeps its
+  // conversations inside the same database as the login, so a different
+  // subscription is a different set of them and there is nothing to resume.
+  // Codex keeps its login in one file beside conversation stores that carry no
+  // account at all, so the same switch leaves the conversation exactly where it
+  // was — taking a handover there would be describing a loss that did not
+  // happen, and starting fresh would be causing one.
+  const switchLosesConversation = profileSwitched && credentialSwitchStartsFresh(backendAfter);
+  const handover = switchLosesConversation
     ? (ctx.lifecycle.daemons.get(v.data.name)?.collectHandoverContext() ?? "")
     : "";
 
@@ -1123,7 +1131,7 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
   // A switch also starts fresh: the new store has no conversation for this
   // directory, so resuming can only spend the resume startup budget waiting for
   // something that is not there.
-  ctx.restartSingleInstance(v.data.name, profileSwitched ? { freshStart: true } : undefined).then(
+  ctx.restartSingleInstance(v.data.name, switchLosesConversation ? { freshStart: true } : undefined).then(
     async () => {
       const handoverChars = await deliverProfileHandover(ctx, v.data.name, profileBefore, profileAfter, handover);
       respond({
@@ -1131,7 +1139,19 @@ const updateInstanceConfig: Handler = (ctx, rawArgs, respond) => {
         name: v.data.name,
         applied: patch,
         restarted: true,
-        ...(profileSwitched ? { credential_profile_switched: true, conversation_carried_over: false, handover_chars: handoverChars } : {}),
+        ...(profileSwitched
+          ? {
+              credential_profile_switched: true,
+              // Stated, not promised: whether codex will pick a thread back up
+              // across accounts is the thing nobody has been able to test yet,
+              // so this says where the history lives rather than what will
+              // happen when the agent reaches for it.
+              conversation_carried_over: !switchLosesConversation,
+              ...(switchLosesConversation
+                ? { handover_chars: handoverChars }
+                : { conversation_note: `${backendAfter} keeps its history outside the login, so it is shared across profiles; switching back to a profile returns to the same history.` }),
+            }
+          : {}),
       });
     },
     (err: unknown) => respond({
