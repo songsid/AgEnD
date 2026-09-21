@@ -73,7 +73,8 @@ The panel can restart AgEnD itself for a change only a fresh process can adopt, 
 
   One gap to know about: General cannot set `tool_set` for you today — its
   `update_instance_config` tool has no such field, so the value is dropped
-  silently. Mark coordinators through Settings or by editing `fleet.yaml`.
+  silently. Mark coordinators through Settings or by editing `fleet.yaml`
+  (#814).
 - **Switching an agent's subscription starts a new conversation** — kiro keeps
   its conversations in the same `data.sqlite3` as its login, so a different
   credential profile is a different set of conversations and there is nothing to

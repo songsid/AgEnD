@@ -200,9 +200,16 @@ fleet rather than by what the model was shown. Three profiles matter:
 
 | profile | how you get it | what it is |
 |---|---|---|
-| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, the read-only queries, `checkout_repo`. |
-| `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
-| `full` | `tool_set: full` | Every tool AgEnD has. The old default, kept for anything that really needs it. |
+| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, `checkout_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. 28 tools. |
+| `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, creating and changing schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
+| `full` | `tool_set: full` | Every tool AgEnD has. |
+
+**`coordinator` and `full` are the same 47 tools today** — the difference is what
+they mean, not what they contain. `coordinator` says "this agent runs the fleet",
+and will be narrowed if a verb turns out not to belong there; `full` says "give
+this one everything regardless", and is the name the old default had. If you want
+an agent to coordinate, write `coordinator` — reaching for `full` to get *more*
+gets you nothing extra and opts you out of every future refinement.
 
 `standard` (18 tools) and `minimal` (4) still exist and are unchanged.
 **`general` is an identity, not a profile you can pick**: it is assigned to
