@@ -28,20 +28,24 @@ const NO_BUTTONS: AlertData = {
   message: "done",
 };
 
+// Both members are private on their adapter, so an intersection cannot widen
+// them — `TelegramAdapter & { bot: … }` collapses to `never`, which is what left
+// every use below unchecked. Naming the shape separately and reaching it through
+// an index access says the same thing and keeps the adapter itself typed.
+type TelegramInternals = { bot: { api: { editMessageText: ReturnType<typeof vi.fn> } } };
+type DiscordInternals = { _fetchTextChannel(id: string): Promise<unknown> };
+
 function makeTelegram() {
-  const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter & {
-    bot: { api: { editMessageText: ReturnType<typeof vi.fn> } };
-  };
-  adapter.bot = { api: { editMessageText: vi.fn().mockResolvedValue(undefined) } };
-  return adapter;
+  const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+  const editMessageText = vi.fn().mockResolvedValue(undefined);
+  (adapter as unknown as TelegramInternals).bot = { api: { editMessageText } };
+  return { adapter, editMessageText };
 }
 
 function makeDiscord() {
   const edit = vi.fn().mockResolvedValue(undefined);
-  const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter & {
-    _fetchTextChannel(id: string): Promise<unknown>;
-  };
-  adapter._fetchTextChannel = async () => ({
+  const adapter = Object.create(DiscordAdapter.prototype) as DiscordAdapter;
+  (adapter as unknown as DiscordInternals)._fetchTextChannel = async () => ({
     messages: { fetch: async () => ({ edit }) },
   });
   return { adapter, edit };
@@ -49,10 +53,10 @@ function makeDiscord() {
 
 describe("editAlert keeps the cancel button on every platform", () => {
   it("Telegram re-sends the keyboard from the alert's choices", async () => {
-    const adapter = makeTelegram();
+    const { adapter, editMessageText } = makeTelegram();
     await adapter.editAlert("123", "456", CANCEL);
 
-    const [, , text, opts] = adapter.bot.api.editMessageText.mock.calls[0];
+    const [, , text, opts] = editMessageText.mock.calls[0];
     expect(text).toBe(CANCEL.message);
     expect(opts.reply_markup.inline_keyboard.flat()).toMatchObject([
       { text: "Cancel", callback_data: "cancel:alpha" },
@@ -73,10 +77,10 @@ describe("editAlert keeps the cancel button on every platform", () => {
 
 describe("editAlert clears buttons the same way on both platforms", () => {
   it("Telegram always sends reply_markup, so absence never means 'keep'", async () => {
-    const adapter = makeTelegram();
+    const { adapter, editMessageText } = makeTelegram();
     await adapter.editAlert("123", "456", NO_BUTTONS);
 
-    const [, , , opts] = adapter.bot.api.editMessageText.mock.calls[0];
+    const [, , , opts] = editMessageText.mock.calls[0];
     expect(opts).toHaveProperty("reply_markup");
     expect(opts.reply_markup.inline_keyboard.flat()).toHaveLength(0);
   });

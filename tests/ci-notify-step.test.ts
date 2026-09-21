@@ -203,7 +203,8 @@ describe("the Notify Discord step, run for real", () => {
     // that echoes the URL while debugging, or interpolates it into a message,
     // publishes it to anyone who can read the run. The failure path is checked
     // below; this is the path that actually runs every day.
-    for (const env of [{}, HOSTILE, { STATUS: "failure" }, { STATUS: "neutral" }]) {
+    const paths: Record<string, string>[] = [{}, HOSTILE, { STATUS: "failure" }, { STATUS: "neutral" }];
+    for (const env of paths) {
       const r = run(env);
       expect(r.stdout + r.stderr, JSON.stringify(env)).not.toContain(WEBHOOK);
       expect(r.stdout + r.stderr, JSON.stringify(env)).not.toContain("s3cr3t");

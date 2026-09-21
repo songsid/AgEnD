@@ -262,6 +262,10 @@ describe("Daemon backend-native input queue delivery", () => {
       pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
       capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
+      // How a paste failure is read back off TmuxManager. A healthy paste
+      // reports no error; the cases that need one reassign these.
+      getLastPasteError: vi.fn((): string | null => null),
+      isLastPasteFailureRecoverable: vi.fn(() => true),
     };
     (daemon as any).tmux = tmux;
     (daemon as any).firstDeliveryDelay = { consume: () => 0 };
@@ -1019,6 +1023,10 @@ describe("Daemon /steer delivery", () => {
       pasteBuffer: vi.fn(async () => { pasted = true; return true; }),
       sendSpecialKey: vi.fn().mockResolvedValue(true),
       capturePane: vi.fn(async () => (paneBeforePaste !== undefined && !pasted ? paneBeforePaste : pane)),
+      // How a paste failure is read back off TmuxManager. A healthy paste
+      // reports no error; the cases that need one reassign these.
+      getLastPasteError: vi.fn((): string | null => null),
+      isLastPasteFailureRecoverable: vi.fn(() => true),
     };
     (daemon as any).tmux = tmux;
     (daemon as any).firstDeliveryDelay = { consume: () => 0 };

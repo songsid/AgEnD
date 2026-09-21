@@ -1035,7 +1035,9 @@ describe("background-session recovery keeps the health loop alive", () => {
 describe("tool_progress opt-in gate", () => {
   function makeGateDaemon(toolProgress?: string) {
     const instanceDir = mkdtempSync(join(tmpdir(), "agend-tp-gate-"));
-    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    // `level` is on the real logger and the daemon writes it when log_level
+    // changes, which is exactly what this case asserts.
+    const logger = { level: "info", debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
     const daemon = new Daemon("tp-gate", {
       working_directory: "/tmp",
       ...(toolProgress ? { tool_progress: toolProgress } : {}),

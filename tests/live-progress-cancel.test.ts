@@ -57,16 +57,19 @@ describe("Telegram editAlert keeps the inline keyboard", () => {
   // editMessageText WITHOUT reply_markup, and the Bot API treats that as "clear the
   // keyboard" — which is exactly how editMessageRemoveButtons works. Editing the
   // cancel button's text with editMessage would delete the cancel button.
+  // `bot` is private, and an intersection cannot widen a private member — the
+  // old `TelegramAdapter & { bot: … }` collapsed to `never`, which silently
+  // switched off checking for every use of the adapter below.
   function makeAdapter() {
-    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter & {
-      bot: { api: { editMessageText: ReturnType<typeof vi.fn> } };
-    };
-    adapter.bot = { api: { editMessageText: vi.fn().mockResolvedValue(undefined) } };
-    return adapter;
+    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+    const editMessageText = vi.fn().mockResolvedValue(undefined);
+    (adapter as unknown as { bot: { api: { editMessageText: typeof editMessageText } } }).bot =
+      { api: { editMessageText } };
+    return { adapter, editMessageText };
   }
 
   it("re-sends the keyboard built from the alert's choices", async () => {
-    const adapter = makeAdapter();
+    const { adapter, editMessageText } = makeAdapter();
     await adapter.editAlert("123", "456", {
       type: "cancel",
       instanceName: "alpha",
@@ -74,7 +77,7 @@ describe("Telegram editAlert keeps the inline keyboard", () => {
       choices: [{ id: "cancel:alpha", label: "Cancel" }],
     });
 
-    const [, , text, opts] = adapter.bot.api.editMessageText.mock.calls[0];
+    const [, , text, opts] = editMessageText.mock.calls[0];
     expect(text).toBe("⏳ working");
     // A non-empty keyboard is what keeps the button alive.
     expect(opts.reply_markup.inline_keyboard.flat()).toHaveLength(1);
@@ -87,9 +90,9 @@ describe("Telegram editAlert keeps the inline keyboard", () => {
   it("always passes reply_markup, even with no choices", async () => {
     // Omitting the field entirely is what clears the keyboard, so it must always
     // be present — an empty keyboard is an explicit choice, an absent one is a bug.
-    const adapter = makeAdapter();
+    const { adapter, editMessageText } = makeAdapter();
     await adapter.editAlert("123", "456", { type: "cancel", instanceName: "alpha", message: "x" });
-    const [, , , opts] = adapter.bot.api.editMessageText.mock.calls[0];
+    const [, , , opts] = editMessageText.mock.calls[0];
     expect(opts).toHaveProperty("reply_markup");
   });
 });

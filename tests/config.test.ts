@@ -50,10 +50,7 @@ instances:
     working_directory: /home/user/mybot
     topic_id: 42
     context_guardian:
-      threshold_percentage: 90
-      max_idle_wait_ms: 300000
-      completion_timeout_ms: 60000
-      grace_period_ms: 600000
+      grace_period_ms: 900000
       max_age_hours: 2
 `
     );
@@ -63,9 +60,11 @@ instances:
     expect(fleet.instances.mybot.restart_policy.max_retries).toBe(3);
     expect(fleet.instances.mybot.restart_policy.backoff).toBe("linear");
 
-    // context_guardian from instance overrides defaults
-    expect(fleet.instances.mybot.context_guardian.threshold_percentage).toBe(90);
-    expect(fleet.instances.mybot.context_guardian.max_idle_wait_ms).toBe(300000);
+    // context_guardian from instance overrides defaults. Both values differ from
+    // the built-in ones (600_000 / 0), so passing means the instance block won
+    // rather than the default happening to match.
+    expect(fleet.instances.mybot.context_guardian.grace_period_ms).toBe(900_000);
+    expect(fleet.instances.mybot.context_guardian.max_age_hours).toBe(2);
 
     // topic_id preserved
     expect(fleet.instances.mybot.topic_id).toBe(42);

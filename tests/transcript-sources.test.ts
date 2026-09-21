@@ -160,7 +160,10 @@ describe("KiroSessionSource", () => {
     const events = await source.poll();
     expect(events.toolUses).toHaveLength(1);
     expect(events.toolUses[0].name).toBe("shell");
-    expect((events.toolUses[0].input as { command: string }).input ?? (events.toolUses[0].input as { command: string }).command).toBe("npm test");
+    // Backends disagree on the field name, hence the fallback — the cast has to
+    // admit both, or it describes a shape the line does not read.
+    const input = events.toolUses[0].input as { input?: string; command?: string };
+    expect(input.input ?? input.command).toBe("npm test");
   });
 
   it("skips subagent-created sessions", async () => {
