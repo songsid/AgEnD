@@ -86,9 +86,10 @@ import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
-  IPC_TYPE_TOOLS,
   mayUseTool,
   resolveToolSet,
+  toolForIpcType,
+  toolRefusedMessage,
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
@@ -4238,12 +4239,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
           await this.handleOutboundFromInstance(name, msg);
-        } else if (typeof msg.type === "string" && msg.type in IPC_TYPE_TOOLS) {
+        } else if (toolForIpcType(msg.type) !== null) {
           // Sink 2 of 3. Each of these types IS a tool and reaches its own
           // handler without passing through the outbound path — which is how
           // `update_decision`, a coordinator-only tool, kept a way through.
-          this.checkToolPermission("ipc-typed", name, IPC_TYPE_TOOLS[msg.type]!);
-          this.dispatchTypedIpc(name, msg);
+          const typed = this.checkToolPermission("ipc-typed", name, toolForIpcType(msg.type)!);
+          if (typed.allowed) this.dispatchTypedIpc(name, msg);
+          else this.refuseTypedIpc(name, msg, typed.message);
         } else if (msg.type === "instance_process_state") {
           this.cacheInstanceProcessStatus(name, msg.status);
         } else if (msg.type === "instance_activity") {
@@ -5215,27 +5217,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * `senderSessionName`, which arrives inside the message: a caller that fills
    * in its own identity has not been identified.
    */
-  private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): boolean {
+  private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): { allowed: boolean; message: string } {
     const profile: ToolSetName = resolveToolSet(this.fleetConfig?.instances[instanceName], instanceName);
     const allowed = mayUseTool(profile, tool);
     if (!allowed) {
-      this.logger.warn(
-        { sink, instance: instanceName, profile, tool, enforced: false },
-        "tool-permissions: this call would be refused once enforcement is on",
-      );
-    } else {
-      this.logger.debug({ sink, instance: instanceName, profile, tool, enforced: false }, "tool-permissions: allowed");
+      this.logger.warn({ sink, instance: instanceName, profile, tool, enforced: true }, "tool-permissions: refused");
+      return { allowed: false, message: toolRefusedMessage(profile, tool) };
     }
-    return allowed;
+    this.logger.debug({ sink, instance: instanceName, profile, tool, enforced: true }, "tool-permissions: allowed");
+    return { allowed: true, message: "" };
   }
 
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
-    // Sink 1 of 3. Every MCP call and every direct write to channel.sock lands
-    // here, whether or not mcp-server was ever involved.
-    this.checkToolPermission("ipc-outbound", instanceName, tool);
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
@@ -5256,6 +5252,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         );
       }
     };
+
+    // Sink 1 of 3, and the first thing decided. Every MCP call and every direct
+    // write to channel.sock lands here, whether or not mcp-server was ever
+    // involved — which is why this is the boundary and the tool list the model
+    // was shown is not.
+    //
+    // Above the adapter check on purpose: "retry shortly" is the wrong answer
+    // to a call that will never be allowed, and an agent that believes it is a
+    // timing problem will keep trying.
+    const permitted = this.checkToolPermission("ipc-outbound", instanceName, tool);
+    if (!permitted.allowed) {
+      respond(null, permitted.message);
+      return;
+    }
 
     if (this.worlds.size === 0) {
       respond(null, "Channel adapters are not ready — retry shortly");
@@ -5572,6 +5582,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * sixth — a new type has to appear in `IPC_TYPE_TOOLS` to be dispatched at
    * all.
    */
+  /**
+   * Answer a refused typed message the way its handler would have.
+   *
+   * These are request/response over IPC: dropping the message silently leaves
+   * the caller waiting for a reply that never comes, and a hung agent is a
+   * worse failure than a refused one.
+   */
+  private refuseTypedIpc(name: string, msg: Record<string, unknown>, message: string): void {
+    const ipc = this.instanceIpcClients.get(name);
+    const fleetRequestId = msg.fleetRequestId as string | undefined;
+    if (!ipc || !fleetRequestId) return;
+    const type = String(msg.type);
+    const responseType = type.startsWith("fleet_schedule_") ? "fleet_schedule_response"
+      : type.startsWith("fleet_decision_") ? "fleet_decision_response"
+      : type === "fleet_task" ? "fleet_task_response"
+      : type === "fleet_set_display_name" ? "fleet_display_name_response"
+      : "fleet_description_response";
+    ipc.send({ type: responseType, fleetRequestId, error: message });
+  }
+
   private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
     const type = String(msg.type);
     if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }

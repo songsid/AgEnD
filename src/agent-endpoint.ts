@@ -22,6 +22,7 @@ import {
   EARLY_AGENT_OP_TOOLS,
   mayUseTool,
   resolveToolSet,
+  toolRefusedMessage,
 } from "./tool-permissions.js";
 
 export interface PersistedReplyContext {
@@ -167,10 +168,22 @@ export function handleAgentRequest(
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(result));
     } catch (err) {
-      res.writeHead(400);
+      // A refusal is not a malformed request: 403 says "you, specifically, may
+      // not", which is what the caller has to act on.
+      const status = err instanceof ToolNotPermittedError ? 403 : 400;
+      res.writeHead(status);
       res.end(JSON.stringify({ error: (err as Error).message }));
     }
   });
+}
+
+/** Refused by policy, not by a bad request: the endpoint answers this as 403. */
+export class ToolNotPermittedError extends Error {
+  readonly status = 403;
+  constructor(message: string) {
+    super(message);
+    this.name = "ToolNotPermittedError";
+  }
 }
 
 /**
@@ -181,7 +194,11 @@ export function handleAgentRequest(
  * would have had holes exactly where the early returns are.
  */
 export function toolForAgentOp(op: string): string | null {
-  return EARLY_AGENT_OP_TOOLS[op] ?? OP_MAP[op] ?? null;
+  // Own-property only: `"constructor"` is in both objects by inheritance, and
+  // would otherwise resolve to a function that then gets treated as a name.
+  if (Object.hasOwn(EARLY_AGENT_OP_TOOLS, op)) return EARLY_AGENT_OP_TOOLS[op]!;
+  if (Object.hasOwn(OP_MAP, op)) return OP_MAP[op]!;
+  return null;
 }
 
 export async function dispatchAgentOperation(
@@ -198,9 +215,10 @@ export async function dispatchAgentOperation(
     const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);
     if (!mayUseTool(profile, requestedTool)) {
       ctx.logger.warn(
-        { sink: "agent-endpoint", instance, profile, tool: requestedTool, enforced: false },
-        "tool-permissions: this call would be refused once enforcement is on",
+        { sink: "agent-endpoint", instance, profile, tool: requestedTool, enforced: true },
+        "tool-permissions: refused",
       );
+      throw new ToolNotPermittedError(toolRefusedMessage(profile, requestedTool));
     }
   }
 

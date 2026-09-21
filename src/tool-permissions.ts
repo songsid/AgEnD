@@ -99,8 +99,17 @@ const PROFILE_SETS = Object.fromEntries(
   Object.entries(TOOL_PROFILES).map(([name, tools]) => [name, new Set(tools)]),
 ) as unknown as Readonly<Record<ToolSetName, ReadonlySet<string>>>;
 
+/**
+ * `Object.hasOwn`, not `in`.
+ *
+ * `"constructor" in PROFILE_SETS` is true — every object inherits it — so an
+ * instance whose `tool_set` was written as `constructor` or `__proto__` used to
+ * pass this check and then reach `PROFILE_SETS[...].has(...)` on a function,
+ * which throws inside the sink. A name that is not a profile has to answer no,
+ * whatever Object.prototype happens to carry.
+ */
 export function isToolSetName(value: unknown): value is ToolSetName {
-  return typeof value === "string" && value in PROFILE_SETS;
+  return typeof value === "string" && Object.hasOwn(PROFILE_SETS, value);
 }
 
 export function toolsFor(profile: ToolSetName): ReadonlySet<string> {
@@ -121,8 +130,13 @@ export function mayUseTool(profile: ToolSetName, tool: string): boolean {
  *
  * `unsetDefault` is the answer for an ordinary instance that said nothing. It is
  * `"full"` today, which is exactly the problem #804 describes — stage 3 changes
- * it to `"worker"`. Keeping it as a parameter means stage 1 can wire every
+ * it to `"worker"`. Keeping it as a parameter means stage 1 could wire every
  * caller up and prove, in a test, that nothing moved.
+ *
+ * A value that is not a profile is not an explicit choice, and falls to the
+ * role rather than to the toolbox. Before, an unrecognised `AGEND_TOOL_SET`
+ * fell back to all 47 tools — a typo was the shortest path to maximum
+ * privilege, which is the wrong direction for a mistake to travel.
  */
 export function resolveToolSet(
   config: { tool_set?: string; general_topic?: boolean } | undefined,
@@ -144,6 +158,17 @@ export function resolveToolSet(
  * question until this table existed, which is how `update_decision` — a tool on
  * the coordinator-only list — kept a way through.
  */
+/**
+ * The tool an IPC message type means, or null if it is not one.
+ *
+ * Own-property only, for the same reason as `isToolSetName`: a message with
+ * `type: "constructor"` would otherwise pass the gate and hand a function to
+ * the permission check.
+ */
+export function toolForIpcType(type: unknown): string | null {
+  return typeof type === "string" && Object.hasOwn(IPC_TYPE_TOOLS, type) ? IPC_TYPE_TOOLS[type]! : null;
+}
+
 export const IPC_TYPE_TOOLS: Readonly<Record<string, string>> = {
   fleet_schedule_create: "create_schedule",
   fleet_schedule_list: "list_schedules",
@@ -168,6 +193,9 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   "schedule-list": "list_schedules",
   "schedule-update": "update_schedule",
   "schedule-delete": "delete_schedule",
+  // `decision-post` is what agent-cli sends; the endpoint only looks at the
+  // prefix, so both spellings reach the same handler and both need a name.
+  "decision-post": "post_decision",
   "decision-create": "post_decision",
   "decision-list": "list_decisions",
   "decision-update": "update_decision",
@@ -176,6 +204,19 @@ export const EARLY_AGENT_OP_TOOLS: Readonly<Record<string, string>> = {
   rename: "set_display_name",
   "set-description": "set_description",
 };
+
+/**
+ * What to say to an agent that was refused.
+ *
+ * It will read this as an instruction, so it says what to do instead rather
+ * than only what went wrong. Naming the profile matters too: "not allowed" with
+ * no reason invites retrying.
+ */
+export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
+  return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} belongs to a coordinator. `
+    + "Report what you need with report_result and let the coordinator do it, "
+    + 'or ask an administrator to set `tool_set: coordinator` for this instance.';
+}
 
 /** Where a permission question came from. Recorded so the gaps stay visible. */
 export type ToolSink = "ipc-outbound" | "ipc-typed" | "agent-endpoint";

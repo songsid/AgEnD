@@ -9,9 +9,11 @@ import {
   mayUseTool,
   resolveToolSet,
   toolsFor,
+  toolForIpcType,
+  toolRefusedMessage,
   TOOL_PROFILES,
 } from "../src/tool-permissions.js";
-import { dispatchAgentOperation, toolForAgentOp } from "../src/agent-endpoint.js";
+import { dispatchAgentOperation, toolForAgentOp, ToolNotPermittedError } from "../src/agent-endpoint.js";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -24,7 +26,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-// ── Stage 1 changes nothing an instance can do ──────────────────────────────
+// ── The profiles themselves did not move ────────────────────────────────────
 
 /**
  * The four profiles exactly as they were before this module existed, written
@@ -49,7 +51,7 @@ const BEFORE: Record<string, string[]> = {
   ],
 };
 
-describe("nothing an instance can do has moved", () => {
+describe("the existing profiles are untouched", () => {
   it("keeps the three existing profiles byte for byte", () => {
     for (const [name, tools] of Object.entries(BEFORE)) {
       expect([...toolsFor(name as never)].sort(), name).toEqual([...tools].sort());
@@ -76,8 +78,11 @@ describe("nothing an instance can do has moved", () => {
     // which is the whole reason `tool_set` is writable.
     expect(resolveToolSet({ general_topic: true, tool_set: "minimal" }, "gen")).toBe("minimal");
     expect(resolveToolSet({ tool_set: "full" }, "worker-1", "worker")).toBe("full");
-    // And an unrecognised value is not an explicit choice.
-    expect(resolveToolSet({ tool_set: "nonsense" }, "worker-1")).toBe("full");
+    // An unrecognised value is not an explicit choice, and falls to the role.
+    // With the stage-3 default in place that is `worker`; a typo must never be
+    // the shortest path to more tools than were asked for.
+    expect(resolveToolSet({ tool_set: "nonsense" }, "worker-1", "worker")).toBe("worker");
+    expect(resolveToolSet({ tool_set: "__proto__" }, "worker-1", "worker")).toBe("worker");
   });
 
   it("has the two new profiles ready but reachable only on request", () => {
@@ -180,32 +185,69 @@ function fleetManagerWith(toolSet: string | undefined) {
 }
 
 describe("sink 1 — the fleet's outbound IPC", () => {
-  it("records a call the profile would refuse, and still runs it", async () => {
+  /** Everything `handleOutboundFromInstance` touches before it decides. */
+  async function outbound(toolSet: string | undefined, tool: string) {
     const { FleetManager } = await import("../src/fleet-manager.js");
-    const { fm, warn } = fleetManagerWith("minimal");
-    const check = (FleetManager.prototype as unknown as {
-      checkToolPermission(sink: string, instance: string, tool: string): boolean;
-    }).checkToolPermission;
+    const sent: Array<Record<string, unknown>> = [];
+    const warn = vi.fn();
+    const fm = {
+      fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", ...(toolSet ? { tool_set: toolSet } : {}) } } },
+      logger: { warn, info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      instanceIpcClients: new Map([["worker", { send: (m: Record<string, unknown>) => { sent.push(m); return true; } }]]),
+      worlds: new Map(),
+      touchActivity: () => {},
+      setTopicIcon: () => {},
+      eventLog: null,
+      checkToolPermission: (FleetManager.prototype as unknown as Record<string, unknown>).checkToolPermission,
+    };
+    const handle = (FleetManager.prototype as unknown as {
+      handleOutboundFromInstance(instance: string, msg: Record<string, unknown>): Promise<void>;
+    }).handleOutboundFromInstance;
+    await handle.call(fm as never, "worker", { tool, args: {}, fleetRequestId: "r1" });
+    return { sent, warn };
+  }
 
-    const allowed = check.call(fm as never, "ipc-outbound", "worker", "create_instance");
+  it("refuses a create_instance written straight to the socket", async () => {
+    // The case that proves the defence does not rest on non-disclosure: this
+    // path never touches mcp-server, so no amount of filtering the tool list
+    // would have stopped it.
+    const { sent, warn } = await outbound("minimal", "create_instance");
 
-    expect(allowed).toBe(false);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ type: "fleet_outbound_response", fleetRequestId: "r1", result: null });
+    expect(String(sent[0]!.error)).toContain("create_instance is not available to this instance");
     expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ sink: "ipc-outbound", instance: "worker", profile: "minimal", tool: "create_instance", enforced: false }),
-      expect.stringContaining("would be refused"),
+      expect.objectContaining({ sink: "ipc-outbound", profile: "minimal", tool: "create_instance", enforced: true }),
+      expect.stringContaining("refused"),
     );
   });
 
-  it("is wired into the outbound handler before the tool is dispatched", () => {
-    // Structural: `handleOutboundFromInstance` is reached through a live unix
-    // socket, and what matters is that the check happens before the handler is
-    // looked up — not after it has already run.
+  it("refuses before the adapters are even consulted", async () => {
+    // `worlds` is empty here, which is the "channel not ready" path. A refusal
+    // that only happens after that check would answer "retry shortly" to a call
+    // that is never going to be allowed.
+    const { sent } = await outbound("minimal", "create_instance");
+
+    expect(String(sent[0]!.error)).not.toContain("retry shortly");
+  });
+
+  it("lets a permitted tool through to the normal path", async () => {
+    // `reply` is in every profile; with no adapters it reaches the existing
+    // "not ready" answer, which is proof it got past the permission check.
+    const { sent } = await outbound("minimal", "reply");
+
+    expect(String(sent[0]!.error)).toContain("adapters are not ready");
+  });
+
+  it("decides permission before anything else can answer first", () => {
     const source = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
     const fn = source.slice(source.indexOf("private async handleOutboundFromInstance"));
     const checkAt = fn.indexOf('this.checkToolPermission("ipc-outbound"');
+    const adaptersAt = fn.indexOf("Channel adapters are not ready");
     const dispatchAt = fn.indexOf("outboundHandlers.get(tool)");
 
     expect(checkAt).toBeGreaterThan(-1);
+    expect(adaptersAt, "an unready adapter answers before a refusal").toBeGreaterThan(checkAt);
     expect(dispatchAt, "the tool is dispatched before it is checked").toBeGreaterThan(checkAt);
   });
 });
@@ -213,12 +255,15 @@ describe("sink 1 — the fleet's outbound IPC", () => {
 describe("sink 2 — the typed IPC handlers", () => {
   it("is checked on the dispatch, before the handler runs", () => {
     const source = readFileSync(new URL("../src/fleet-manager.ts", import.meta.url), "utf8");
-    const branch = source.slice(source.indexOf("msg.type in IPC_TYPE_TOOLS"), source.indexOf("instance_process_state"));
+    const branch = source.slice(source.indexOf("toolForIpcType(msg.type) !== null"), source.indexOf("instance_process_state"));
 
     expect(branch).toContain('this.checkToolPermission("ipc-typed"');
     const checkAt = branch.indexOf("checkToolPermission");
     const dispatchAt = branch.indexOf("dispatchTypedIpc");
     expect(dispatchAt, "dispatched before checked").toBeGreaterThan(checkAt);
+    // And a refusal answers rather than dropping the message: these are
+    // request/response, so silence leaves the caller waiting forever.
+    expect(branch).toContain("refuseTypedIpc");
   });
 
   it("routes every typed message through the one door that is checked", () => {
@@ -235,12 +280,12 @@ describe("sink 3 — the agent endpoint", () => {
   /**
    * Only ops whose handler this context actually stubs.
    *
-   * Stage 1 records and then lets the call through, so an op that reaches a
-   * real lifecycle handler will run it against a context that has no
-   * lifecycle — and the resulting TypeError escapes as an unhandled rejection
-   * rather than a failed assertion, turning a green report into a non-zero
-   * exit. Which tool each op maps to is covered by the op-table tests; what
-   * these need is a call that finishes.
+   * A permitted op still runs, so one that reaches a real lifecycle handler
+   * runs it against a context that has no lifecycle — and the resulting
+   * TypeError escapes as an unhandled rejection rather than a failed
+   * assertion, which turns a green report into a non-zero exit. Which tool
+   * each op maps to is covered by the op-table tests; what these need is a
+   * call that finishes.
    */
   async function callAgent(op: string, toolSet: string | undefined) {
     const warn = vi.fn();
@@ -255,29 +300,51 @@ describe("sink 3 — the agent endpoint", () => {
     return { warn, result };
   }
 
-  it("records an op the profile would refuse", async () => {
-    // `schedule-create` is denied under `minimal` and its handler is stubbed
-    // here, so the call completes instead of walking into a real one.
-    const { warn } = await callAgent("schedule-create", "minimal");
+  it("refuses an op the profile does not allow", async () => {
+    const ctx = {
+      dataDir: tempDir(),
+      fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", tool_set: "minimal" } } },
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    };
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ sink: "agent-endpoint", instance: "worker", profile: "minimal", tool: "create_schedule", enforced: false }),
-      expect.stringContaining("would be refused"),
-    );
+    const err = await dispatchAgentOperation(ctx as never, "worker", "spawn", {}).catch(e => e as Error);
+
+    expect(err).toBeInstanceOf(ToolNotPermittedError);
+    expect((err as ToolNotPermittedError).status).toBe(403);
+    expect((err as Error).message).toContain("create_instance is not available");
   });
 
-  it("records the early-returning ops too, which never reach OP_MAP", async () => {
-    // `task` is answered before the map is consulted, so a table built from the
-    // map would never have seen it. `minimal` does not include it.
-    const { warn } = await callAgent("task", "minimal");
+  it("answers 403 rather than 400, because it is not a malformed request", () => {
+    const source = readFileSync(new URL("../src/agent-endpoint.ts", import.meta.url), "utf8");
 
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ sink: "agent-endpoint", tool: "task" }),
-      expect.anything(),
-    );
-    // Still ran: stage 1 refuses nothing. (The handler is the stub above, so
-    // reaching it at all is the evidence the call was not stopped.)
-    expect(warn.mock.calls.some(c => (c[0] as { enforced?: boolean }).enforced === false)).toBe(true);
+    expect(source).toContain("err instanceof ToolNotPermittedError ? 403 : 400");
+  });
+
+  it("checks the early-returning ops too, which never reach OP_MAP", async () => {
+    // `schedule-create` is answered before the map is consulted, so a table
+    // built from the map alone would have let it straight through.
+    const ctx = {
+      dataDir: tempDir(),
+      fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", tool_set: "worker" } } },
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      handleScheduleCrudHttp: async () => ({ ok: true }),
+    };
+
+    const err = await dispatchAgentOperation(ctx as never, "worker", "schedule-create", {}).catch(e => e as Error);
+
+    expect(err).toBeInstanceOf(ToolNotPermittedError);
+    expect((err as Error).message).toContain("create_schedule");
+  });
+
+  it("still lets a worker do the things a worker does", async () => {
+    const ctx = {
+      dataDir: tempDir(),
+      fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", tool_set: "worker" } } },
+      logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      handleTaskCrudHttp: async () => ({ ok: true }),
+    };
+
+    await expect(dispatchAgentOperation(ctx as never, "worker", "task", {})).resolves.toEqual({ ok: true });
   });
 
   it("says nothing when the profile allows it", async () => {
@@ -285,6 +352,23 @@ describe("sink 3 — the agent endpoint", () => {
 
     expect(warn).not.toHaveBeenCalled();
     expect(result).toEqual({ ok: true });
+  });
+
+  it("names a tool for every op agent-cli can actually send", async () => {
+    // Built from the CLI's own switch, not from the endpoint's map — `usage`
+    // and `decision-post` live only in the CLI, and an op with no name is an op
+    // with no permission check.
+    const cli = readFileSync(new URL("../src/agent-cli.ts", import.meta.url), "utf8");
+    const body = cli.slice(cli.indexOf("switch (op)"));
+    const ops = [...body.matchAll(/^\s*(?:\/\/ .*\n\s*)?case "([a-z][a-z-]*)":/gm)].map(m => m[1]!);
+    // The task sub-actions are arguments, not ops.
+    const subActions = new Set(["create", "list", "claim", "done", "update"]);
+
+    const unnamed = [...new Set(ops)].filter(op => !subActions.has(op) && toolForAgentOp(op) === null);
+
+    expect(unnamed, `these ops reach the endpoint with no permission check: ${unnamed.join(", ")}`).toEqual([]);
+    expect(toolForAgentOp("usage")).toBe("get_usage");
+    expect(toolForAgentOp("decision-post")).toBe("post_decision");
   });
 
   it("checks before any branch, including the early returns", () => {
@@ -295,5 +379,66 @@ describe("sink 3 — the agent endpoint", () => {
 
     expect(checkAt).toBeGreaterThan(-1);
     expect(firstBranch, "an op is handled before it is checked").toBeGreaterThan(checkAt);
+  });
+});
+
+// ── A key that only exists on Object.prototype is not a profile ─────────────
+
+describe("inherited keys are not answers", () => {
+  it("refuses to treat prototype names as tool sets", () => {
+    // `"constructor" in PROFILE_SETS` is true, so this used to pass and then
+    // throw `.has is not a function` inside the sink — a crash reachable by
+    // writing `tool_set: constructor` in fleet.yaml.
+    for (const name of ["constructor", "__proto__", "toString", "hasOwnProperty"]) {
+      expect(resolveToolSet({ tool_set: name }, "w", "worker"), name).toBe("worker");
+      expect(() => mayUseTool(resolveToolSet({ tool_set: name }, "w", "worker"), "reply")).not.toThrow();
+    }
+  });
+
+  it("refuses to treat prototype names as IPC types or ops", () => {
+    for (const name of ["constructor", "__proto__", "toString"]) {
+      expect(toolForIpcType(name), name).toBeNull();
+      expect(toolForAgentOp(name), name).toBeNull();
+    }
+    // And the real ones still resolve.
+    expect(toolForIpcType("fleet_decision_update")).toBe("update_decision");
+    expect(toolForAgentOp("spawn")).toBe("create_instance");
+  });
+});
+
+// ── What a refused agent is told ────────────────────────────────────────────
+
+describe("the refusal explains itself", () => {
+  it("names the profile, the tool, and what to do instead", () => {
+    const message = toolRefusedMessage("worker", "create_instance");
+
+    // A refused agent reads this as an instruction, so it has to contain one.
+    expect(message).toContain("create_instance");
+    expect(message).toContain("worker");
+    expect(message).toContain("report_result");
+    expect(message).toContain("tool_set: coordinator");
+  });
+});
+
+// ── One rule for what a general is ──────────────────────────────────────────
+
+describe("the general check no longer disagrees with itself", () => {
+  it("treats an instance named general as a general, like everywhere else does", async () => {
+    // The daemon read `general_topic` alone while `isGeneralInstance` also
+    // accepted the name, so this instance was a worker in one place and a
+    // general in the other.
+    const { isGeneralInstance } = await import("../src/general-instance.js");
+    const config = { instances: { general: { working_directory: "/tmp/g" } } } as never;
+
+    expect(isGeneralInstance(config, "general")).toBe(true);
+    expect(resolveToolSet({}, "general")).toBe("general");
+  });
+
+  it("is wired that way in the daemon, not just in the helper", () => {
+    const source = readFileSync(new URL("../src/daemon.ts", import.meta.url), "utf8");
+    const block = source.slice(source.indexOf("One rule for \"is this a general\""), source.indexOf("AGEND_DISPLAY_NAME"));
+
+    expect(block).toContain('this.name === "general"');
+    expect(block).toContain("resolveToolSet(this.config, this.name");
   });
 });
