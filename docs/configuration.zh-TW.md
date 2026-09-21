@@ -174,7 +174,7 @@ teams:
 | `auto_pause_after` | number | `0`（停用） | 閒置多少分鐘後自動暫停。0 = 不暫停。 |
 | `model` | string | — | 模型。Claude：`sonnet`、`opus`、`haiku`、`opusplan`。Codex：`gpt-4o`。Gemini：`gemini-2.5-pro`。Kiro：`auto`、`claude-sonnet-4.5`、`claude-haiku-4.5` |
 | `model_failover` | string[] | — | 被限速時的備用模型（例：`["opus", "sonnet"]`）。5 分鐘冷卻期，防止同一時間窗口內重複 failover |
-| `tool_set` | string | `"full"` | MCP tool 設定：`full`（全部）、`standard`（10 個）、`minimal`（4 個） |
+| `tool_set` | string | `"worker"` | 工具組：`worker`（預設 —— 對話、查詢、做事，沒有管理 fleet 的動詞）、`coordinator`（worker 再加上建立／刪除／重啟 instance、deploy、team、schedule 等）、`full`（全部）、`standard`（18 個）、`minimal`（4 個）。`general` 不可手設：它由 `general_topic` 指派，手寫會驗證失敗。 |
 | `systemPrompt` | string | — | 自訂指令，透過 MCP server instructions 注入。內嵌字串或 `file:./path.md` 從外部檔案載入（路徑相對於 `working_directory`）。不會修改 CLI 的內建 system prompt。範例：`systemPrompt: "file:./prompts/role.md"` |
 | `skipPermissions` | boolean | `true` | 跳過 CLI 權限檢查。設 `false` 啟用 |
 | `lightweight` | boolean | `false` | 跳過 transcript monitor、context guardian 等非必要子系統 |

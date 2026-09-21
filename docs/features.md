@@ -193,6 +193,66 @@ Internal sessions get `AGEND_INSTANCE_NAME` injected by the daemon into the tmux
 
 External sessions appear in `list_instances` and can be targeted by `send_to_instance`.
 
+## Tool profiles
+
+What an agent may do is decided per instance by `tool_set`, and enforced by the
+fleet rather than by what the model was shown. Three profiles matter:
+
+| profile | how you get it | what it is |
+|---|---|---|
+| `worker` | **the default** | Talk to people and to peers, read the fleet, do the work. `reply`, `send_to_instance`, `report_result`, `request_information`, `delegate_task`, `task`, `checkout_repo`, and every read-only query — including `list_schedules` and `list_deployments`, so it can see what exists without being able to change it. 28 tools. |
+| `coordinator` | `tool_set: coordinator` | Everything a worker has, plus the verbs that run the fleet: create/delete/replace/start/stop/restart/wake instances, deploy and tear down templates, team CRUD, creating and changing schedules, `update_instance_config`, `update_fleet_defaults`, `update_decision`. |
+| `full` | `tool_set: full` | Every tool AgEnD has. |
+
+**`coordinator` and `full` are the same 47 tools today** — the difference is what
+they mean, not what they contain. `coordinator` says "this agent runs the fleet",
+and will be narrowed if a verb turns out not to belong there; `full` says "give
+this one everything regardless", and is the name the old default had. If you want
+an agent to coordinate, write `coordinator` — reaching for `full` to get *more*
+gets you nothing extra and opts you out of every future refinement.
+
+`standard` (18 tools) and `minimal` (4) still exist and are unchanged.
+**`general` is an identity, not a profile you can pick**: it is assigned to
+instances with `general_topic: true`, and writing it by hand fails validation —
+two ways of being a General would eventually disagree.
+
+`delegate_task` is deliberately a worker tool. It creates nothing, destroys
+nothing, and needs a target that already exists, so an ordinary agent can hand
+work to a peer without being able to spawn one.
+
+### Why the fleet decides, not the tool list
+
+A narrowed profile used to mean the model was shown fewer tools, which is not
+the same as being unable to use them. There are four ways to reach a fleet tool
+and only one of them ever consulted the list: naming a tool directly in a
+`tools/call` worked, writing to the instance's own socket bypassed the MCP
+server entirely, and `POST /agent` checked *which* instance was calling but
+never whether it was allowed. Permission is now answered where those paths
+converge, so the profile is a boundary rather than a suggestion.
+
+A refused call explains itself — the tool, the profile the instance runs under,
+and the two ways forward (report what you need, or be marked `coordinator`) —
+because the agent reads that error as its next instruction.
+
+### Marking a coordinator
+
+```yaml
+instances:
+  team-lead:
+    working_directory: /home/you/projects/app
+    tool_set: coordinator
+```
+
+On the first start after upgrading, AgEnD reads the last thirty days of activity
+and names the instances that have actually used a tool a worker no longer gets,
+with the counts. It never edits your config: which agents coordinate is a
+statement about how your fleet is organised, and an explicit `tool_set: full`
+stays exactly as you wrote it.
+
+**Today this can only be set through Settings or by editing `fleet.yaml`** —
+General's `update_instance_config` has no `tool_set` field yet, so a value sent
+that way is dropped.
+
 ## Permission system
 
 Uses Claude Code's native permission relay — permission requests are forwarded to Telegram as inline buttons (Allow/Deny). When Claude requests a sensitive tool use, the daemon surfaces it to you in Telegram and waits for your response before proceeding.
@@ -205,7 +265,9 @@ Telegram voice messages are transcribed via Groq Whisper API and sent to Claude 
 
 ## Dynamic instance management
 
-Instances are created through the General instance using `create_instance`. Tell the General instance what project you want to work on — it creates a Telegram topic, binds the project directory, and starts Claude automatically. Instances can also be created with `--branch` to spawn a git worktree for feature branch isolation. Deleting a topic auto-unbinds and stops the instance. Use `delete_instance` to fully remove an instance and its topic.
+Instances are created through the General instance using `create_instance` —
+which is a coordinator tool, so an ordinary worker cannot create one (see
+[Tool profiles](#tool-profiles)).  Tell the General instance what project you want to work on — it creates a Telegram topic, binds the project directory, and starts Claude automatically. Instances can also be created with `--branch` to spawn a git worktree for feature branch isolation. Deleting a topic auto-unbinds and stops the instance. Use `delete_instance` to fully remove an instance and its topic.
 
 ## Cost guard
 
