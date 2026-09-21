@@ -56,6 +56,16 @@ jobs:
             echo "DISCORDWEBHOOK is not set - skipping the Discord notification."
             exit 0
           fi
+          # A misconfigured secret should say so. Without this, a URL that
+          # lost a character somewhere between Discord and the secret box fails
+          # as `Protocol "ttps" not supported`, which reads like a curl problem
+          # rather than a secret problem. The value itself is never echoed.
+          case "$DISCORD_WEBHOOK" in
+            https://*) ;;
+            *)
+              echo "DISCORDWEBHOOK is set but does not start with https:// - check the secret value." >&2
+              exit 1 ;;
+          esac
           # Built by a JSON library rather than by string interpolation, so a
           # commit message carrying quotes, braces or backslashes cannot produce
           # a payload Discord rejects - and the first time that happened would
