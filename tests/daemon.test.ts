@@ -840,7 +840,11 @@ describe("Daemon error monitor recovery", () => {
 
   it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {
     const messages: string[] = [];
-    daemon.on("pty_error", ({ message }) => messages.push(message));
+    const actions: string[] = [];
+    daemon.on("pty_error", ({ message, action }) => {
+      messages.push(message);
+      actions.push(action);
+    });
     const patterns = createBackend("claude-code", tmpDir).getErrorPatterns!();
     const usagePause = patterns.find(pattern => pattern.message.startsWith("Claude Code usage limit reached"));
     expect(usagePause).toBeDefined();
@@ -857,6 +861,7 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual([
       "Claude Code usage limit reached — paused; continuing automatically at 1:50pm",
     ]);
+    expect(actions).toEqual(["notify"]);
   });
 
   it("does not re-notify the same Claude usage pause after the recovery deadline", () => {

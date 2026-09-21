@@ -414,21 +414,23 @@ describe("ClaudeCodeBackend", () => {
     });
 
     it.each([
-      ["1:50pm", "1:50pm"],
-      ["13:50", "13:50"],
-      ["1:50 pm", "1:50 pm"],
-    ])("matches the hard usage pause line and keeps the resume time: %s", (time, expectedTime) => {
+      ["⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel", "1:50pm"],
+      ["● Usage limit reached · continuing automatically at 13:50 · esc or type to cancel", "13:50"],
+      ["Usage limit reached · continuing automatically at Sep 23, 9am · esc or type to cancel", "Sep 23, 9am"],
+      ["⚠️ Usage limit reached · continuing automatically at 1:50 pm · esc to cancel", "1:50 pm"],
+    ])("matches the hard usage pause line and keeps the resume time: %s", (output, expectedTime) => {
       const backend = new ClaudeCodeBackend(TEST_DIR);
       const pattern = backend.getErrorPatterns().find(({ pattern }) =>
-        pattern.test(`⚠ Usage limit reached · continuing automatically at ${time} · esc to cancel`));
+        pattern.test(output));
 
       expect(pattern).toMatchObject({
         type: "quota",
-        action: "pause",
+        action: "notify",
+        verifyQuota: true,
         skipCooldown: true,
         skipRecoveryWait: true,
       });
-      const match = `⚠ Usage limit reached · continuing automatically at ${time} · esc to cancel`.match(pattern!.pattern);
+      const match = output.match(pattern!.pattern);
       expect(match).not.toBeNull();
       expect(pattern!.formatMessage?.(match!)).toContain(`continuing automatically at ${expectedTime}`);
     });

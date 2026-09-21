@@ -53,7 +53,7 @@ const quotaError = (name: string) => ({
 });
 
 const hardUsagePauseError = (name: string) => {
-  const pane = "⚠ Usage limit reached · continuing automatically at 1:50pm · esc to cancel";
+  const pane = "● Usage limit reached · continuing automatically at 1:50pm · esc or type to cancel";
   const pattern = new ClaudeCodeBackend("/tmp/claude-usage-pause-pattern").getErrorPatterns()
     .find(candidate => candidate.message.startsWith("Claude Code usage limit reached"));
   if (!pattern) throw new Error("Claude usage pause pattern is missing");
@@ -118,7 +118,7 @@ describe("Claude quota second opinion", () => {
       "worker",
       expect.stringMatching(/paused.*continuing automatically at 1:50pm/s),
     );
-    await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1));
+    expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
   });
 
   it("does not surface a stale hard-pause line when live usage has capacity", async () => {
