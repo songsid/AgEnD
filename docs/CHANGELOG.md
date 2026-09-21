@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+**Tool access is decided by the fleet, not by what a model happens to be shown.**
+Every route into AgEnD's tools — the MCP tool list, a `tools/call` naming a tool
+directly, a write straight to the instance's socket, and `POST /agent` — now
+passes one permission table checked on the server side. Before, only the first
+of those consulted a tool list at all, so narrowing an instance's profile saved
+tokens without denying anything. A refused call says which profile the instance
+is running under and what to do instead, because the agent reads the error as an
+instruction.
+
 **One fleet can now run on more than one subscription of the same backend.** An
 instance carries `backend_options.<backend>.credential_profile: <name>`, and
 instances naming the same profile share one login while instances naming
@@ -36,6 +45,35 @@ Settings now applies changes as a job you can watch. `POST /api/settings/apply` 
 The panel can restart AgEnD itself for a change only a fresh process can adopt, behind its own confirmation, its own idempotency key, and a rate limit of one restart per 10 minutes and three per hour that is written to disk before anything is launched. The restart is announced in the chat channel first and is refused if it cannot be announced, so a panel restart is never invisible to the people who would notice it was not them.
 
 ### Upgrade Notes
+- **[Behaviour change] Agents no longer get every tool by default.** An instance
+  with no `tool_set` in `fleet.yaml` used to be handed all 47 of AgEnD's tools,
+  including `create_instance`, `delete_instance`, `deploy_template` and
+  `update_fleet_defaults`. Nobody chose that; it was what "unset" meant. The
+  default is now `worker`: talk to people and to peers, read everything, do the
+  work — and none of the verbs that run the fleet.
+
+  **What you may need to do.** Instances that genuinely coordinate — a team
+  lead, a General-like dispatcher, anything that restarts or creates other
+  agents — need `tool_set: coordinator` on the instance (or in `defaults`).
+  **On first start after upgrading, AgEnD tells you which ones**: it reads the
+  last thirty days of activity and names the instances that have actually used
+  a tool a worker no longer gets, with what they used. Instances that merely
+  delegate are not on that list, because `delegate_task` stays with the worker
+  and they lose nothing.
+
+  **Nothing is rewritten for you.** An explicit `tool_set: full` is still
+  honoured exactly as written, including `defaults.tool_set: full` — which also
+  means a fleet with that line keeps every agent on every tool until the line is
+  changed. The notice says so rather than editing your file.
+
+  The profiles are `worker` (default) ⊂ `coordinator` (set by hand) and `full`;
+  `standard` and `minimal` are unchanged. `general` remains an identity rather
+  than a choice: it comes from `general_topic` and is still refused if written
+  by hand.
+
+  One gap to know about: General cannot set `tool_set` for you today — its
+  `update_instance_config` tool has no such field, so the value is dropped
+  silently. Mark coordinators through Settings or by editing `fleet.yaml`.
 - **Switching an agent's subscription starts a new conversation** — kiro keeps
   its conversations in the same `data.sqlite3` as its login, so a different
   credential profile is a different set of conversations and there is nothing to
