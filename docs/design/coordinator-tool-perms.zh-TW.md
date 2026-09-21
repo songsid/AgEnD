@@ -2,9 +2,9 @@
 
 狀態：**查證 + 設計 + 一個月真實用量掃描，尚未實作。** 針對回報的真問題——codex worker 自己創 instance 當 subagent。
 
-裁示已折入（§2.4 的 `coordinator` profile、§3 的 `delegate_task`、§5 的遷移、§6 的 stage）。掃描數據在 §2，**它推翻了第一版移／留清單裡最大的一項**。
+裁示已折入。掃描數據在 §2，**它推翻了第一版移／留清單裡最大的一項**；fable 的碼審在 §3，**它推翻了第一版的核心前提**——「MCP 面靠不揭露」不是控制。
 
-**先講結論：這不是 prompt 沒勸住，是我們把能力發給它了。** 而且有兩個獨立的發放管道，**收窄其中一個不會關掉另一個**。
+**先講結論：這不是 prompt 沒勸住，是我們把能力發給它了。** 而且有**四條**獨立的路可以呼叫這些工具，其中三條連工具名單都不看——所以這張票的重點不是「發哪些工具」，而是**在收斂點上拒絕**。
 
 ---
 
@@ -140,30 +140,75 @@ delegate_task   574 total    general 2    非-general 572    橫跨 20 個 insta
 
 ---
 
-## 3. 設計：一份權威，兩個面都吃它
+## 3. 設計：一份權威，在收斂點上拒絕
 
-### 3.1 單一來源
+### 3.1 🔴 第一版的核心前提是錯的：「不揭露」不是控制
+
+第一版寫「MCP 面是不揭露：工具根本不出現在 schema 裡」。**逐行讀碼之後，那句話不成立。**
+
+```
+$ grep -n "activeTools" src/channel/mcp-server.ts
+254: let activeTools: typeof TOOLS;
+256:   activeTools = TOOLS;
+258:   activeTools = TOOLS.filter(...)
+261:   activeTools = TOOLS;
+264: mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools }));
+```
+
+**只有 ListTools 用到它。** CallTool（`mcp-server.ts:268`）拿 `req.params.name` 就直接 `ipcRequest`，從不比對 `activeTools`。所以一個 `tool_set: minimal` 的 MCP worker，**只要模型猜到 `create_instance` 這個名字就執行得了**。tool_set 今天的全部效果是「少花 token、少一點提示」，不是權限。
+
+### 3.2 四條入口，三個 sink
+
+| # | 入口 | 今天檢查什麼 |
+|---|---|---|
+| 1 | MCP `tools/list` → 模型看到的清單 | `activeTools`（**唯一用到名單的地方**） |
+| 2 | MCP `tools/call` 直接指定名字 | **什麼都不檢查** |
+| 3 | **直接寫 `channel.sock`** —— instanceDir 裡 0600 的 unix socket，backend CLI 同使用者有 shell，`{type:"fleet_outbound", tool:"create_instance"}` **連 mcp-server 都不經過** | **什麼都不檢查** |
+| 4 | `POST /agent` 帶 `agent.token` —— 而那個 token **每個 instance 每次 spawn 都會寫**（`daemon.ts:6366`），**不限 cli-mode**，所以 MCP-mode 的 instance 也能 curl | 只驗「你是哪個 instance」 |
+
+第 3 條是關鍵：**它讓「MCP 面」與「CLI 面」這個二分法本身失效**。一個 agent 只要能開檔就能送 IPC，中間沒有任何我們控制的層。
+
+四條路匯進**三個伺服端 sink**：
+
+1. `handleOutboundFromInstance()`（`fleet-manager.ts:5325`）—— 路徑 1/2/3 全部到這裡；
+2. IPC 的其他分派分支（`fleet-manager.ts:4228` 起）—— schedule／decision／task／display-name／description **各有自己的 handler，都不經過 sink 1**；
+3. `dispatchAgentOperation()`（`agent-endpoint.ts:170`）—— 路徑 4。
+
+### 3.3 授權放 sink，不揭露降為 UX
 
 ```ts
 // src/tool-permissions.ts（新）
 export type ToolSetName = "full" | "standard" | "worker" | "coordinator" | "minimal" | "general";
-export function resolveToolSet(config: InstanceConfig, name: string): ToolSetName;
+export function resolveToolSet(config: InstanceConfig | undefined, name: string): ToolSetName;
 export function toolsFor(profile: ToolSetName): ReadonlySet<string>;
 export function mayUseTool(profile: ToolSetName, tool: string): boolean;
 ```
 
-- **MCP 面**：daemon 依 `resolveToolSet()` 設 `AGEND_TOOL_SET`；mcp-server 依 `toolsFor()` 過濾 —— 跟今天一樣，只是名單來自同一張表。**這一面是「不揭露」**：工具根本不出現在 schema 裡。
-- **CLI 面**：`dispatchAgentOperation()` 在 token 驗過之後、執行之前，多問一句 `mayUseTool(profile, tool)`，不通過就回 403 與一句人話。**這一面是「拒絕執行」**：CLI 是個薄客戶端，它想送什麼 op 都行，所以擋必須在伺服端。
+**三處伺服端拒絕**，全部用同一個 `mayUseTool`：
 
-兩面的語意刻意不同，但**名單同一份**，所以不會漂移。
+1. **`handleOutboundFromInstance` 一進來就檢查**，在 `outboundHandlers.get(tool)` 之前。profile 用**socket 擁有者的 `name`** 解——不是 `msg` 裡的 `senderSessionName`，那個是呼叫端自己填的，拿它當身分等於沒檢查。不過就 `respond(null, …)`，**永遠不到 handler**。
+2. **IPC 的其他分派分支同樣檢查**（§3.4）。
+3. **`dispatchAgentOperation` 在 token 驗過之後、任何分流之前**檢查——包含那六個早分流的 op。
 
-### 3.2 為什麼 CLI 面不能只靠「不揭露」
+**mcp-server 的 CallTool 也照 `activeTools` 拒**，但它的角色改寫清楚：**那是讓錯誤更早、更好讀，不是安全邊界**。它跟 ListTools 的過濾一樣屬於 UX——真正的閘門在 sink。路徑 3 完全繞過 mcp-server，這就是為什麼它不能是邊界。
 
-`agent-cli` 是使用者主機上的一支程式，agent 可以直接 `curl` 那個 port。少印一個 op 名字不是控制。**伺服端授權是 CLI 面唯一真正的閘門**，這也是為什麼它該跟 MCP 面用同一份名單、而不是自己維護一份。
+### 3.4 IPC 的每一個分支都是一個 sink
 
-### 3.3 OP_MAP 以外的 op 要補進來
+`fleet-manager.ts:4228` 起的分派，除了 `fleet_outbound` 之外還有：
+
+```
+fleet_schedule_create / list / update / delete   → handleScheduleCrud
+fleet_decision_create / list / update            → handleDecisionCrud
+fleet_task                                       → handleTaskCrud
+fleet_set_display_name / fleet_set_description   → handleSetDisplayName / handleSetDescription
+```
+
+**每一組都繞過 `handleOutboundFromInstance`。** fable 點名了 schedule 四個——不補的話「schedule 是 coordinator-only」在 MCP 面直接有洞。**同樣的形狀也在 decision 上**：我們的移出清單裡有 `update_decision`，而它走 `fleet_decision_update`，所以**它有一模一樣的洞**。權限表要覆蓋這整組 IPC type，不能只補 schedule。
+
+### 3.5 OP_MAP 以外的 op 要補進來
 
 `schedule-*` / `decision-*` / `task` / `usage` / `rename` / `set-description` 要各自映到工具名（`create_schedule`、`update_decision`、`task`、`get_usage`、`set_display_name`、`set_description`），否則授權表會有六個洞。這是實作時最容易漏的一塊。
+
 
 ---
 
@@ -210,7 +255,9 @@ export function mayUseTool(profile: ToolSetName, tool: string): boolean;
 
 - `isGeneralInstance(config, name)` = `name === "general" || config.instances[name].general_topic === true`（`src/general-instance.ts:11`）。
 - `tool_set` 的 validator（`config-validator.ts:52`）只接受 `full|standard|minimal` —— **`general` 手設會 fail validation**，只能由 `general_topic` 內部指派。這條要保留，而且新的 `worker` 應該可以手設（它是一個合理的選擇），`general` 仍然不行。
-- **一個不一致要修**：daemon 判的是 `this.config.general_topic`，`isGeneralInstance` 還接受「名字就叫 general」。一個名為 `general` 但沒有 `general_topic: true` 的 instance，在 daemon 眼中是 worker、在別處是 general。收斂成同一個判定。
+- **一個不一致要修**：daemon（`daemon.ts:5797`）判的是 `this.config.general_topic`，而 `isGeneralInstance()` 還接受「名字就叫 general」（`fleet-manager.ts:1621`、`1906` 都用它）。一個名為 `general` 但沒有 `general_topic: true` 的 instance，在 daemon 眼中是 worker、在別處是 general。**收斂成同一個呼叫**：daemon 那處改用 `isGeneralInstance`。
+- **`resolveToolSet` 的順序有先後**：**先看使用者顯式寫的 `tool_set`（含 `full`），再套 general／worker 的預設**。反過來寫的話，general 就降不了級、worker 也升不了級——顯式設定必須永遠贏過角色推導。
+- **🔴 打錯字等於 `full`**（`mcp-server.ts:253-261`）：不認得的 `AGEND_TOOL_SET` 目前印一行錯誤然後 `activeTools = TOOLS`。**把一個 typo 變成最大權限，方向完全反了。** 改成退回 `worker`，或直接拒絕啟動。同樣的原則要套在新的 sink 檢查：解不出 profile 時給最小的那個，不是最大的那個。
 - classic／一般 instance 沒有 `general_topic`，自然落在 worker。
 
 ---
@@ -249,15 +296,26 @@ config 的 default 會蓋過程式碼的 default，所以 S3 只改程式碼，*
 ### S1 — 單一來源 + 觀察（不改變任何 instance 能做什麼）
 新增 `src/tool-permissions.ts`，把 `TOOL_SETS` 移進去並加上 `worker` 與 `coordinator`；MCP 面改讀它（名單不變）；**CLI 面加上授權檢查但只記錄、不拒絕**；補齊 OP_MAP 以外六個 op 的工具名映射。
 
-CLI 面的記錄**不只是觀察期的產物**：§2.5 說明了 `agent-endpoint` 從來不寫 `tool_call` activity，所以這是在補一個永久的遙測盲點——今天任何 cli-mode fleet，我們都看不見它在用什麼工具。這一條即使 S2／S3 都完成也該留著。
+**記錄要在三個 sink 各記一筆**（sink／instance／profile／tool），不是只在 agent-endpoint。§2 那份掃描只看得到 `handleOutboundFromInstance` 那一條——所以今天的 eventLog **完全看不到 `/agent` 與 schedule／decision IPC 的使用**。只記一處就等於觀察期照樣盲。
 
-驗收：任何 instance 的有效工具集**與今天逐一相同**（對照測試）；CLI 面對每個 op 都算得出工具名（沒有洞）；worker 呼叫 coordinator 工具會留下一筆可查的記錄；**CLI 面的呼叫現在也會進 activity**。
+這也**不只是觀察期的產物**：§2.5 說明了那是一個永久的遙測盲點，這一條即使 S2／S3 都完成也該留著。
+
+驗收：
+- **同一個 `mayUseTool` 被三個 sink 呼叫**——任何一處拿掉，都要有一條測試變紅。
+- 任何 instance 的有效工具集**與今天逐一相同**（對照測試），**包含 CLI 面的每個 op 都解得出工具名**。
+- 三個 sink 各自都會留下記錄。
 
 觀察窗刻意短：§2 已經用一個月的真實數據回答了「誰在用什麼」，S1 的記錄只是確認 CLI 面沒有 MCP 面看不到的用法。
 
-### S2 — CLI 面真的擋
-把 S1 的記錄改成 403 + 那句自我解釋的訊息。**此時預設仍是 `full`**，所以只有已經手設 `standard`/`minimal` 的 instance 會有行為改變——而它們本來就以為自己被限制了。
-驗收：`tool_set: minimal` 的 CLI-mode instance `spawn` 被拒；MCP-mode 同一個 instance 兩面答案一致；mutation：拿掉檢查要紅。
+### S2 — 三個 sink 真的擋
+把 S1 的記錄改成拒絕 + 那句自我解釋的訊息。**此時預設仍是 `full`**，所以行為會改變的只有**已經手設 `standard`／`minimal` 的 instance——而且不分 `agent_mode`**（§3.2 說明了那個二分法本來就不成立）。它們本來就以為自己被限制了，現在才真的是。
+
+驗收：
+- **`tool_set: minimal` 的 MCP-mode instance 直接對 `channel.sock` 送 `{type:"fleet_outbound", tool:"create_instance"}` 被拒。** 這條最重要：它證明防線不靠「不揭露」，因為這條路徑連 mcp-server 都沒經過。
+- 帶合法 `agent.token` 的 `POST /agent` `spawn` 得到 403。
+- MCP `tools/call` 直接指定沒被揭露的名字：被拒。
+- `fleet_schedule_create` 走 IPC：被拒（§3.4）。
+- mutation：任一 sink 的檢查拿掉要紅。
 
 ### S3 — `coordinator` profile + 預設換成 `worker`
 非 general 且未指定 → `worker`；`coordinator` 可手設；`general` 仍然手設會 fail。先標好真 coordinator，再切預設。
@@ -284,7 +342,15 @@ CLI 面的記錄**不只是觀察期的產物**：§2.5 說明了 `agent-endpoin
 
 ---
 
-## 9. 這份設計沒有回答的
+## 9. 記下來、不進這輪
+
+- **`handleScheduleCrud` 的 update／delete 不檢查排程的 source 是不是呼叫者**——任何 instance 刪得掉別人的排程。T2 收掉 worker 那一面，但 `general`／`full` 之間仍然可以互刪。這是所有權檢查，跟 profile 是兩件事。
+- **`broadcast` 留在 worker**：它是一個全 fleet 的 prompt-injection 面。S1 的觀察若顯示沒人用，就收掉。
+- **`get_fleet_config` 留在 worker**：整份 fleet.yaml 讀得到，包含每個 instance 的 `credential_profile` 名字。唯讀，但是資訊面。
+
+---
+
+## 10. 這份設計沒有回答的
 
 - ~~既有 fleet 裡有多少 worker 正在用被移走的工具~~ —— **已量測，見 §2。** 結果推翻了第一版的移／留清單。
 - **CLI 面的用量，任何 fleet**（§2.5）。這不是這次沒做，而是**目前沒有任何資料存在**：`agent-endpoint` 從不寫 activity。S1 補上。
