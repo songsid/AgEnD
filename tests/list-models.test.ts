@@ -206,7 +206,8 @@ describe("list_models handler", () => {
 
 describe("tool registration", () => {
   it("is exposed to general instances", async () => {
-    const { TOOLS, TOOL_SETS } = await import("../src/channel/mcp-tools.js");
+    const { TOOLS } = await import("../src/channel/mcp-tools.js");
+    const { TOOL_PROFILES: TOOL_SETS } = await import("../src/tool-permissions.js");
     expect(TOOLS.some(t => t.name === "list_models")).toBe(true);
     expect(TOOL_SETS.general).toContain("list_models");
   });

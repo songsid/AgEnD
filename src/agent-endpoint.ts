@@ -18,6 +18,11 @@ import { timingSafeEqual } from "node:crypto";
 import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
+import {
+  EARLY_AGENT_OP_TOOLS,
+  mayUseTool,
+  resolveToolSet,
+} from "./tool-permissions.js";
 
 export interface PersistedReplyContext {
   chatId: string;
@@ -168,12 +173,37 @@ export function handleAgentRequest(
   });
 }
 
+/**
+ * The tool an op means, whichever way it is dispatched.
+ *
+ * `OP_MAP` alone would miss six: the schedule, decision, task, usage and rename
+ * ops are answered before it is consulted, so a permission table built from it
+ * would have had holes exactly where the early returns are.
+ */
+export function toolForAgentOp(op: string): string | null {
+  return EARLY_AGENT_OP_TOOLS[op] ?? OP_MAP[op] ?? null;
+}
+
 export async function dispatchAgentOperation(
   ctx: AgentEndpointContext,
   instance: string,
   op: string,
   args: Record<string, unknown>,
 ): Promise<unknown> {
+  // Sink 3 of 3, before any branch below: the early-returning ops are as much
+  // a tool call as the mapped ones. Stage 1 records and continues; the refusal
+  // arrives in stage 2.
+  const requestedTool = toolForAgentOp(op);
+  if (requestedTool) {
+    const profile = resolveToolSet(ctx.fleetConfig?.instances[instance], instance);
+    if (!mayUseTool(profile, requestedTool)) {
+      ctx.logger.warn(
+        { sink: "agent-endpoint", instance, profile, tool: requestedTool, enforced: false },
+        "tool-permissions: this call would be refused once enforcement is on",
+      );
+    }
+  }
+
   // Schedule CRUD
   if (op.startsWith("schedule-")) {
     const subOp = op.replace("schedule-", "");

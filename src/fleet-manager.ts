@@ -85,6 +85,13 @@ import { isFleetStartCommandLine, readProcessCommandLine, releaseProcessFleetLoc
 import { isSetupComplete, markSetupComplete } from "./setup-marker.js";
 import { manualCleanupMessage, reapStaleTunnel } from "./tunnel/lease.js";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
+import {
+  IPC_TYPE_TOOLS,
+  mayUseTool,
+  resolveToolSet,
+  type ToolSetName,
+  type ToolSink,
+} from "./tool-permissions.js";
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
@@ -4231,18 +4238,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             this.logger.info({ sessionName: sender, instanceName: name }, "Registered external session");
           }
           await this.handleOutboundFromInstance(name, msg);
-        } else if (msg.type === "fleet_schedule_create" || msg.type === "fleet_schedule_list" ||
-                   msg.type === "fleet_schedule_update" || msg.type === "fleet_schedule_delete") {
-          this.handleScheduleCrud(name, msg);
-        } else if (msg.type === "fleet_decision_create" || msg.type === "fleet_decision_list" ||
-                   msg.type === "fleet_decision_update") {
-          this.handleDecisionCrud(name, msg);
-        } else if (msg.type === "fleet_task") {
-          this.handleTaskCrud(name, msg);
-        } else if (msg.type === "fleet_set_display_name") {
-          this.handleSetDisplayName(name, msg);
-        } else if (msg.type === "fleet_set_description") {
-          this.handleSetDescription(name, msg);
+        } else if (typeof msg.type === "string" && msg.type in IPC_TYPE_TOOLS) {
+          // Sink 2 of 3. Each of these types IS a tool and reaches its own
+          // handler without passing through the outbound path — which is how
+          // `update_decision`, a coordinator-only tool, kept a way through.
+          this.checkToolPermission("ipc-typed", name, IPC_TYPE_TOOLS[msg.type]!);
+          this.dispatchTypedIpc(name, msg);
         } else if (msg.type === "instance_process_state") {
           this.cacheInstanceProcessStatus(name, msg.status);
         } else if (msg.type === "instance_activity") {
@@ -5201,10 +5202,40 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Handle outbound tool calls from a daemon instance */
+  /**
+   * Would this instance be allowed to use this tool?
+   *
+   * Stage 1 asks and records; nothing is refused yet. The recording is not only
+   * an observation window: `logActivity("tool_call")` sits on the outbound path
+   * only, so today the fleet has no idea what the agent endpoint or the typed
+   * IPC handlers are being asked to do — the one face with no authorization is
+   * also the one face with no telemetry.
+   *
+   * The profile comes from the instance the socket belongs to. Deliberately not
+   * `senderSessionName`, which arrives inside the message: a caller that fills
+   * in its own identity has not been identified.
+   */
+  private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): boolean {
+    const profile: ToolSetName = resolveToolSet(this.fleetConfig?.instances[instanceName], instanceName);
+    const allowed = mayUseTool(profile, tool);
+    if (!allowed) {
+      this.logger.warn(
+        { sink, instance: instanceName, profile, tool, enforced: false },
+        "tool-permissions: this call would be refused once enforcement is on",
+      );
+    } else {
+      this.logger.debug({ sink, instance: instanceName, profile, tool, enforced: false }, "tool-permissions: allowed");
+    }
+    return allowed;
+  }
+
   private async handleOutboundFromInstance(instanceName: string, msg: Record<string, unknown>): Promise<void> {
     this.touchActivity(instanceName);
     this.setTopicIcon(instanceName, "green");
     const tool = msg.tool as string;
+    // Sink 1 of 3. Every MCP call and every direct write to channel.sock lands
+    // here, whether or not mcp-server was ever involved.
+    this.checkToolPermission("ipc-outbound", instanceName, tool);
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
@@ -5530,6 +5561,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter.sendText(schedule.reply_chat_id, text, {
       threadId: schedule.reply_thread_id ?? undefined,
     }).catch((err: unknown) => this.logger.error({ err }, "Failed to send schedule failure notification"));
+  }
+
+  /**
+   * The typed IPC messages, all through one door.
+   *
+   * They used to be five sibling branches on the dispatch, which is why the
+   * permission question had five places to be forgotten. Routing them together
+   * means the check above happens once and cannot be skipped by adding a
+   * sixth — a new type has to appear in `IPC_TYPE_TOOLS` to be dispatched at
+   * all.
+   */
+  private dispatchTypedIpc(name: string, msg: Record<string, unknown>): void {
+    const type = String(msg.type);
+    if (type.startsWith("fleet_schedule_")) { this.handleScheduleCrud(name, msg); return; }
+    if (type.startsWith("fleet_decision_")) { this.handleDecisionCrud(name, msg); return; }
+    if (type === "fleet_task") { this.handleTaskCrud(name, msg); return; }
+    if (type === "fleet_set_display_name") { this.handleSetDisplayName(name, msg); return; }
+    if (type === "fleet_set_description") { this.handleSetDescription(name, msg); return; }
   }
 
   private handleScheduleCrud(instanceName: string, msg: Record<string, unknown>): void {
