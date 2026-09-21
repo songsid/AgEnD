@@ -68,6 +68,17 @@ describe("the Notify Discord step", () => {
     }
   });
 
+  it("names a commit a person can actually find", () => {
+    // On a pull_request run `github.sha` is the merge commit GitHub invents for
+    // the occasion: it is in no branch, and `git show` on it fails for the
+    // reader. Same trap as `ref_name` reading `123/merge` instead of the branch,
+    // which the Branch field already dodges.
+    for (const file of WORKFLOWS) {
+      expect(notifyStep(file).step.env?.SHA, file)
+        .toBe("${{ github.event.pull_request.head.sha || github.sha }}");
+    }
+  });
+
   it("reports on the whole run, not on whatever job happens to hold it", () => {
     for (const file of WORKFLOWS) {
       const { jobs, job, step } = notifyStep(file);

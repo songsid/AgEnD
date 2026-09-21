@@ -45,7 +45,10 @@ jobs:
           REPO: ${{ github.repository }}
           REF_NAME: ${{ github.ref_name }}
           HEAD_REF: ${{ github.head_ref }}
-          SHA: ${{ github.sha }}
+          # On a pull_request run `github.sha` is the synthetic merge
+          # commit, a SHA nobody can find in the repository. Same trap as
+          # `ref_name` saying `123/merge` instead of the branch.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           EVENT: ${{ github.event_name }}
           ACTOR: ${{ github.actor }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
