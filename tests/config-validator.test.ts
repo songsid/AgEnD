@@ -102,12 +102,30 @@ describe("validateFleetConfig kiro_ui", () => {
     instances: { worker: { working_directory: "/tmp/worker", backend: "kiro-cli" } },
   };
 
-  it.each(["legacy", "tui", "v3"])("accepts %s for defaults and instances", (kiro_ui) => {
+  it.each(["legacy", "tui"])("accepts %s for defaults and instances", (kiro_ui) => {
     expect(validateFleetConfig({ ...base, defaults: { kiro_ui } }).errors).toEqual([]);
     expect(validateFleetConfig({
       ...base,
       instances: { worker: { ...base.instances.worker, kiro_ui } },
     }).errors).toEqual([]);
+  });
+
+  it("refuses v3, and says why rather than just listing the allowed values", () => {
+    // Measured on kiro-cli 2.23.0: --v3 stops at two dialogs AgEnD does not
+    // answer, and past them a working instance reads as idle. A value that
+    // can be written but cannot start looks like AgEnD is broken, so this
+    // fails closed with the reason and the issue to read.
+    for (const config of [
+      { ...base, defaults: { kiro_ui: "v3" } },
+      { ...base, instances: { worker: { ...base.instances.worker, kiro_ui: "v3" } } },
+    ]) {
+      const result = validateFleetConfig(config);
+      const kiroError = result.errors.find(e => e.path.endsWith(".kiro_ui"));
+      expect(kiroError, "v3 must not validate").toBeDefined();
+      expect(kiroError!.message).toContain("not supported yet");
+      expect(kiroError!.message, "the message has to say where to read the detail").toContain("#849");
+      expect(kiroError!.message, "and what to write instead").toContain("legacy or tui");
+    }
   });
 
   it("rejects an unknown Kiro UI mode", () => {
@@ -117,7 +135,7 @@ describe("validateFleetConfig kiro_ui", () => {
     });
     expect(result.errors).toContainEqual({
       path: "instances.worker.kiro_ui",
-      message: "must be legacy, tui, or v3",
+      message: "must be legacy or tui",
     });
   });
 });
