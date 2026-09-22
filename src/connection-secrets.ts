@@ -4,9 +4,38 @@ import { redactProviderError } from "./provider-probe.js";
 
 export const SECRET_CHALLENGE_TTL_MS = 5 * 60_000;
 export const SECRET_APPLY_RESULT = [
-  "verified", "applying", "applied", "restart_required", "rolled_back", "rollback_failed",
+  "verified", "applying", "applied", "applied_next_use", "reloaded", "restart_required", "rolled_back", "rollback_failed",
 ] as const;
 export type SecretApplyResult = typeof SECRET_APPLY_RESULT[number];
+
+/** A generic secret-operation challenge is intentionally typed separately from
+ * connection binding: binding mutates routing coordinates, not an env secret. */
+export interface ProviderSecretChallenge {
+  id: string;
+  specId: string;
+  envKey: string;
+  kind: "api_key";
+  sessionBinding: string;
+  generation: number;
+  operation: "provider-secret.apply";
+  idempotencyKey: string;
+  expiresAt: number;
+  /** Retained in memory only until the one-shot apply consumes it. */
+  secret: string;
+}
+
+export interface ProviderSecretApplyJob {
+  id: string;
+  specId: string;
+  envKey: string;
+  idempotencyKey: string;
+  result: SecretApplyResult;
+  status: "running" | "done";
+  stale_consumers?: string[];
+  error?: string;
+  startedAt: number;
+  finishedAt?: number;
+}
 
 export interface ConnectionMetadata {
   id: string;

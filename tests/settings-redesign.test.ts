@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const html = readFileSync(new URL("../src/ui/settings.html", import.meta.url), "utf8");
@@ -83,5 +84,15 @@ describe("Settings P0 redesign shell", () => {
     expect(html).toContain('setValidation(fAutoPause, autoFeedback, !Number.isFinite(auto) || auto < 0 ? t("mustNonNegative") : "")');
     expect(html).toContain('t("changesApplied")');
     expect(html).toContain('confirm(tf("deleteAgent", name))');
+  });
+
+  it("keeps unsupported provider verifiers fail-closed in the UI", () => {
+    const helper = html.match(/function providerSecretInputAllowed\(spec\) \{[^\n]+\}/)?.[0];
+    expect(helper).toBeTruthy();
+    const allowsInput = vm.runInNewContext(`(${helper})`) as (spec: { verifier?: string }) => boolean;
+    expect(allowsInput({ verifier: "unsupported" })).toBe(false);
+    expect(allowsInput({ verifier: "available" })).toBe(true);
+    expect(html).toContain("if (!providerSecretInputAllowed(spec))");
+    expect(html).toContain("no key input is offered");
   });
 });

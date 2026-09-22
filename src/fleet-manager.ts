@@ -108,8 +108,19 @@ import {
   type BindingChallenge,
   type SecretApplyJob,
   type SecretChallenge,
+  type ProviderSecretChallenge,
+  type ProviderSecretApplyJob,
 } from "./connection-secrets.js";
 import { verifyDiscordToken, verifyTelegramToken } from "./provider-probe.js";
+import {
+  PROVIDER_SECRET_SPECS,
+  providerSecretSpec,
+  providerRegistryEnvKeys,
+  isReservedProviderEnvKey,
+  verifyProviderSecret,
+  type ProviderHttpClient,
+  type ProviderSecretStatus,
+} from "./provider-secret-registry.js";
 
 /** What a reconcile has to say for itself beyond "it ran". */
 interface ReconcileOutcome {
@@ -734,6 +745,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * when a new adapter object is constructed, so keep an independent epoch. */
   private connectionSecretAdapterRefs = new Map<string, ChannelAdapter | undefined>();
   private connectionSecretHealthGenerations = new Map<string, number>();
+  /** Generic API-key verifier/apply state.  The challenge scope contains the
+   * resolved spec/env key, so a request can never retarget another provider. */
+  private providerSecretChallenges = new Map<string, ProviderSecretChallenge>();
+  private providerSecretChallengesByKey = new Map<string, string>();
+  private providerSecretJobs = new Map<string, ProviderSecretApplyJob>();
+  private providerSecretJobSession = new Map<string, string>();
+  private providerSecretInFlight = new Map<string, string>();
+  private providerSecretGenerations = new Map<string, number>();
+  /** Test seam only; production always uses the fixed HTTPS client. */
+  private providerSecretHttpClient?: ProviderHttpClient;
+  /** Code-owned activation hooks; never populated from a request. */
+  private providerSecretReloadHooks = new Map<string, (next: string, previous: string | undefined) => Promise<void>>();
+  /** In-memory snapshots for narrow hot consumers (currently Groq voice). */
+  private providerSecretHotSnapshots = new Map<string, string | undefined>();
   /** Web Settings connection-binding step-up challenges and apply jobs. */
   private connectionBindingChallenges = new Map<string, BindingChallenge>();
   private connectionBindingChallengesByKey = new Map<string, string>();
@@ -1104,10 +1129,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (this.rawFleetDocument.errors.length > 0) {
       throw new Error(`Invalid fleet.yaml: ${this.rawFleetDocument.errors[0].message}`);
     }
-    this.rawFleetConfig = loadRawFleetConfig(configPath);
-    this.fleetConfig = loadFleetConfig(configPath);
+    const raw = loadRawFleetConfig(configPath);
+    const loaded = loadFleetConfig(configPath);
+    this.assertProviderSecretEnvKeys(loaded);
+    this.rawFleetConfig = raw;
+    this.fleetConfig = loaded;
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     return this.fleetConfig;
+  }
+
+  /**
+   * A channel's configurable bot_token_env is an env-key writer too.  Refuse
+   * an overlap with a registry API key (or a process-reserved key) before the
+   * config becomes live; otherwise a Discord token could be written into
+   * GROQ_API_KEY by a perfectly valid-looking rotation request.
+   */
+  private assertProviderSecretEnvKeys(config: FleetConfig): void {
+    const registryKeys = providerRegistryEnvKeys();
+    const channels = config.channels ?? (config.channel ? [config.channel] : []);
+    for (const channel of channels) {
+      const key = channel.bot_token_env;
+      if (registryKeys.has(key) || isReservedProviderEnvKey(key)) {
+        throw new Error(`bot_token_env ${key} conflicts with a protected provider secret key`);
+      }
+    }
   }
 
   /** User-authored fleet.yaml, before defaults are merged into instances. */
@@ -12370,6 +12415,227 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.connectionSecretHealthGenerations.set(connectionId, healthGeneration);
     this.connectionSecretGenerations.set(connectionId, generation);
     return generation;
+  }
+
+  /** Provider API-key rows exposed to Settings (never the env key or secret). */
+  providerSecretsEnabled(): boolean {
+    return this.fleetConfig?.web?.provider_secrets === true;
+  }
+
+  listProviderSecrets(): ProviderSecretStatus[] {
+    return PROVIDER_SECRET_SPECS.map(spec => ({
+      id: spec.id,
+      display_name: spec.displayName,
+      kind: spec.kind,
+      token_present: !!process.env[spec.envKey],
+      verifier: spec.verifier ? "available" : "unsupported",
+      activation: spec.activation,
+      stale_consumers: this.providerSecretStaleConsumers(spec.envKey),
+    }));
+  }
+
+  private providerSecretStaleConsumers(envKey: string): string[] {
+    // A child inherits the manager's environment at spawn.  We cannot inspect
+    // a child process's private environment safely, so report the conservative
+    // set of already-running children; the UI can then say "restart these"
+    // rather than claiming an existing process reloaded.
+    if (envKey === "GROQ_API_KEY") return [];
+    return [...this.children.keys()].sort();
+  }
+
+  private providerSecretGeneration(envKey: string): number {
+    return this.providerSecretGenerations.get(envKey) ?? 0;
+  }
+
+  private providerSecretEnvAllowed(envKey: string): boolean {
+    const configured = new Set((this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []))
+      .map(channel => channel.bot_token_env));
+    return !configured.has(envKey) && providerRegistryEnvKeys().has(envKey);
+  }
+
+  async verifyProviderSecret(input: {
+    specId: string;
+    secret: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<
+    | { ok: true; verification_id: string; expires_at: number; spec_id: string; activation: "next_use" | "reload_hook" }
+    | { ok: false; status: "unsupported_verifier" | "provider_rejected" | "provider_unavailable" | "invalid"; error: string }
+  > {
+    const spec = providerSecretSpec(input.specId);
+    if (!spec || !this.providerSecretEnvAllowed(spec.envKey)) {
+      return { ok: false, status: "invalid", error: "provider secret is not configured" };
+    }
+    if (!spec.verifier) return { ok: false, status: "unsupported_verifier", error: "this provider has no supported verifier" };
+    if (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret) || /[^\x20-\x7e]/.test(input.secret)) {
+      return { ok: false, status: "invalid", error: "secret is invalid" };
+    }
+    const challengeKey = `${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`;
+    const existingId = this.providerSecretChallengesByKey.get(challengeKey);
+    const existing = existingId ? this.providerSecretChallenges.get(existingId) : undefined;
+    if (existing && existing.expiresAt > Date.now()) {
+      return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt, spec_id: spec.id, activation: spec.activation };
+    }
+    if (existingId) this.providerSecretChallengesByKey.delete(challengeKey);
+
+    const result = await verifyProviderSecret(spec, input.secret, this.providerSecretHttpClient);
+    if (!result.ok) {
+      // Do not log provider detail: the HTTP verifier already redacted it and
+      // this endpoint has no need to disclose whether a key was close to valid.
+      this.logger.warn({ specId: spec.id, status: result.status }, "Provider API-key verification failed");
+      return { ok: false, status: result.status, error: result.status === "unsupported_verifier" ? "this provider has no supported verifier" : "provider rejected or unavailable" };
+    }
+    const expiresAt = Date.now() + SECRET_CHALLENGE_TTL_MS;
+    const challenge: ProviderSecretChallenge = {
+      id: opaqueId("provider_verify"),
+      specId: spec.id,
+      envKey: spec.envKey,
+      kind: "api_key",
+      sessionBinding: input.sessionBinding,
+      generation: this.providerSecretGeneration(spec.envKey),
+      operation: "provider-secret.apply",
+      idempotencyKey: input.idempotencyKey,
+      expiresAt,
+      secret: input.secret,
+    };
+    this.providerSecretChallenges.set(challenge.id, challenge);
+    this.providerSecretChallengesByKey.set(challengeKey, challenge.id);
+    const expiryTimer = setTimeout(() => {
+      if (this.providerSecretChallenges.get(challenge.id) !== challenge) return;
+      this.providerSecretChallenges.delete(challenge.id);
+      if (this.providerSecretChallengesByKey.get(challengeKey) === challenge.id) this.providerSecretChallengesByKey.delete(challengeKey);
+    }, SECRET_CHALLENGE_TTL_MS);
+    expiryTimer.unref?.();
+    return { ok: true, verification_id: challenge.id, expires_at: expiresAt, spec_id: spec.id, activation: spec.activation };
+  }
+
+  /** Naming aliases used by integrations that call this an API-key operation. */
+  verifyProviderApiKey(input: Parameters<FleetManager["verifyProviderSecret"]>[0]): ReturnType<FleetManager["verifyProviderSecret"]> {
+    return this.verifyProviderSecret(input);
+  }
+
+  startProviderSecretApply(input: {
+    specId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: ProviderSecretApplyJob; reused: boolean } | { busy: ProviderSecretApplyJob | null } | { error: string } {
+    for (const [jobId, job] of this.providerSecretJobs) {
+      if (job.specId === input.specId && job.idempotencyKey === input.idempotencyKey
+        && this.providerSecretJobSession.get(jobId) === input.sessionBinding) return { job, reused: true };
+    }
+    const challenge = this.providerSecretChallenges.get(input.verificationId);
+    const spec = providerSecretSpec(input.specId);
+    if (!challenge || challenge.expiresAt <= Date.now()) {
+      if (challenge) this.providerSecretChallenges.delete(input.verificationId);
+      return { error: "verification expired; verify the secret again" };
+    }
+    if (!spec || challenge.specId !== spec.id || challenge.envKey !== spec.envKey || challenge.kind !== "api_key"
+      || challenge.sessionBinding !== input.sessionBinding || challenge.operation !== "provider-secret.apply"
+      || challenge.idempotencyKey !== input.idempotencyKey || challenge.generation !== this.providerSecretGeneration(challenge.envKey)) {
+      return { error: "verification does not match this provider or session" };
+    }
+    const existingId = this.providerSecretInFlight.get(challenge.envKey);
+    if (existingId) {
+      const existing = this.providerSecretJobs.get(existingId) ?? null;
+      if (existing?.idempotencyKey === input.idempotencyKey) return { job: existing, reused: true };
+      return { busy: existing };
+    }
+    this.providerSecretChallenges.delete(input.verificationId);
+    this.providerSecretChallengesByKey.delete(`${input.sessionBinding}:api_key:${spec.id}:${spec.envKey}:${input.idempotencyKey}`);
+    const job: ProviderSecretApplyJob = {
+      id: opaqueId("provider_apply"), specId: spec.id, envKey: spec.envKey,
+      idempotencyKey: input.idempotencyKey, result: "applying", status: "running", startedAt: Date.now(),
+      stale_consumers: this.providerSecretStaleConsumers(spec.envKey),
+    };
+    this.providerSecretJobs.set(job.id, job);
+    this.providerSecretJobSession.set(job.id, input.sessionBinding);
+    this.providerSecretInFlight.set(spec.envKey, job.id);
+    queueMicrotask(() => void this.runProviderSecretApply(job, challenge.secret));
+    return { job, reused: false };
+  }
+
+  startProviderApiKeyApply(input: Parameters<FleetManager["startProviderSecretApply"]>[0]): ReturnType<FleetManager["startProviderSecretApply"]> {
+    return this.startProviderSecretApply(input);
+  }
+
+  getProviderSecretApply(jobId: string, sessionBinding: string): ProviderSecretApplyJob | null {
+    if (this.providerSecretJobSession.get(jobId) !== sessionBinding) return null;
+    return this.providerSecretJobs.get(jobId) ?? null;
+  }
+
+  getProviderApiKeyApply(jobId: string, sessionBinding: string): ProviderSecretApplyJob | null {
+    return this.getProviderSecretApply(jobId, sessionBinding);
+  }
+
+  private async runProviderSecretApply(job: ProviderSecretApplyJob, secret: string): Promise<void> {
+    const spec = providerSecretSpec(job.specId);
+    const allowed = new Set([
+      ...PROVIDER_SECRET_SPECS.map(item => item.envKey),
+      ...(this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : [])).map(channel => channel.bot_token_env),
+    ]);
+    let store: SecretStore | null = null;
+    let before: import("./secret-store.js").SecretSnapshot | null = null;
+    const previousProcessValue = process.env[job.envKey];
+    let wrote = false;
+    try {
+      if (!spec || !this.providerSecretEnvAllowed(job.envKey)) throw new Error("provider secret is not configured");
+      // Construct inside the transaction: symlink/permission refusal must
+      // settle the job as a safe failure, not escape the queued microtask.
+      store = new SecretStore(join(this.dataDir, ".env"), allowed);
+      before = store.write(job.envKey, secret);
+      wrote = true;
+      process.env[job.envKey] = secret;
+      if (spec.activation === "reload_hook" && spec.reloadHookId) {
+        await this.runProviderSecretReloadHook(spec.reloadHookId, secret, previousProcessValue);
+        job.result = "reloaded";
+      } else {
+        job.result = "applied_next_use";
+      }
+      this.providerSecretGenerations.set(job.envKey, this.providerSecretGeneration(job.envKey) + 1);
+      job.status = "done";
+      job.finishedAt = Date.now();
+    } catch (err) {
+      const safe = safeSecretError(err, secret);
+      this.logger.warn({ specId: job.specId, reason: safe }, "Provider API-key apply failed");
+      try {
+        if (wrote && before && store) store.restore(before);
+        if (previousProcessValue === undefined) delete process.env[job.envKey]; else process.env[job.envKey] = previousProcessValue;
+        // SecretStore.write is itself transactional; when it fails before a
+        // snapshot is returned there is no new value to roll back. Report the
+        // truthful no-op rather than claiming rollback_failed.
+        job.result = "rolled_back";
+        if (!wrote || !before) job.error = "provider secret was not applied";
+      } catch (rollbackErr) {
+        this.logger.error({ specId: job.specId, reason: safeSecretError(rollbackErr, secret, previousProcessValue ? [previousProcessValue] : []) }, "Provider API-key rollback failed");
+        job.result = "rollback_failed";
+        job.error = "provider secret rollback failed; operator attention required";
+      }
+      job.status = "done";
+      job.finishedAt = Date.now();
+    } finally {
+      this.providerSecretInFlight.delete(job.envKey);
+      secret = "";
+    }
+  }
+
+  /** Groq is currently read from process.env per voice request, so the hook is
+   * intentionally a no-op. Keeping it as a named code-owned hook makes the
+   * hot activation contract explicit and gives tests a failure seam; no generic
+   * SIGHUP or caller-provided hook is ever executed. */
+  private async runProviderSecretReloadHook(hookId: string, _next: string, _previous: string | undefined): Promise<void> {
+    if (hookId !== "groq.voice") throw new Error("unknown provider secret reload hook");
+    const before = this.providerSecretHotSnapshots.get(hookId);
+    this.providerSecretHotSnapshots.set(hookId, _next);
+    const hook = this.providerSecretReloadHooks.get(hookId);
+    try {
+      if (hook) await hook(_next, before);
+    } catch (err) {
+      if (before === undefined) this.providerSecretHotSnapshots.delete(hookId);
+      else this.providerSecretHotSnapshots.set(hookId, before);
+      throw err;
+    }
   }
 
   private normalizeConnectionBinding(input: {

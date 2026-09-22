@@ -193,6 +193,7 @@
     <div class="sec-head"><h2>🔌 Connections &amp; Bots</h2><div class="grow"></div><button class="sm" id="newBotBtn" data-i18n="add">+ Add</button></div>
     <div id="newBot"></div>
     <div class="card" id="bots"></div>
+    <div class="card" id="providerSecrets" style="margin-top:12px"></div>
   </section>
 
   <section>
@@ -417,7 +418,7 @@
   }
 
   // ── State ──
-  const state = { schema: { impacts: {}, order: ["now", "instance", "fleet"] }, fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, connections: [], fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
+  const state = { schema: { impacts: {}, order: ["now", "instance", "fleet"] }, fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, connections: [], providerSecrets: [], fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -1169,6 +1170,54 @@
     });
   }
 
+  // Provider API keys use a separate registry endpoint. Unsupported providers
+  // are intentionally rendered without an input: a key that cannot be
+  // positively verified must never be accepted as an "unverified" write.
+  function providerSecretInputAllowed(spec) { return spec?.verifier === "available"; }
+  function renderProviderSecrets() {
+    const host = $("providerSecrets"); if (!host) return;
+    host.innerHTML = "";
+    const rows = Array.isArray(state.providerSecrets) ? state.providerSecrets : [];
+    if (!rows.length) { host.className = "card empty"; host.textContent = "No provider API-key verifiers available."; return; }
+    host.className = "card";
+    rows.forEach(spec => {
+      const row = el("div", { class: "item" });
+      const feedback = el("div", { class: "feedback" });
+      const present = spec.token_present ? "Key configured" : "Not configured";
+      if (!providerSecretInputAllowed(spec)) {
+        row.append(el("div", { class: "item-row" }, el("span", { class: "name" }, spec.display_name), el("span", { class: "tag" }, "Unsupported verifier")), el("div", { class: "hint" }, "This provider cannot be safely verified here; no key input is offered."));
+        host.append(row); return;
+      }
+      const input = el("input", { type: "password", autocomplete: "new-password", placeholder: present });
+      const button = el("button", { class: "sm primary" }, "Verify & apply");
+      button.onclick = async () => {
+        const secret = input.value;
+        if (!secret) { feedback.className = "feedback error"; feedback.textContent = "Enter a key first."; return; }
+        button.disabled = true; feedback.className = "feedback"; feedback.textContent = "Verifying…";
+        const key = crypto.randomUUID ? crypto.randomUUID() : `provider-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        try {
+          const verified = await api(`/api/settings/secrets/${encodeURIComponent(spec.id)}/verify`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ secret, idempotency_key: key }) });
+          if (!verified.ok) { feedback.className = "feedback error"; feedback.textContent = `✗ ${verified.body?.error || "verification failed"}`; return; }
+          feedback.textContent = "Applying…";
+          let result = await api(`/api/settings/secrets/${encodeURIComponent(spec.id)}/apply`, { method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ verification_id: verified.body?.verification_id, idempotency_key: key }) });
+          let body = result.body || {};
+          for (let n = 0; result.ok && body.job_id && body.result === "applying" && n < 60; n++) {
+            await new Promise(resolve => setTimeout(resolve, 250));
+            const status = await api(`/api/settings/secrets/${encodeURIComponent(spec.id)}/apply/${encodeURIComponent(body.job_id)}`);
+            if (status.ok) body = status.body || body;
+          }
+          const labels = { applied_next_use: "✓ Saved — new processes will use it", reloaded: "✓ Applied", rolled_back: "↩ Rolled back", rollback_failed: "✗ Rollback failed" };
+          const ok = body.result === "applied_next_use" || body.result === "reloaded";
+          feedback.className = `feedback ${ok ? "" : "error"}`;
+          feedback.textContent = labels[body.result] || `✗ ${body.error || "Apply failed"}`;
+          if (ok) { input.value = ""; await reload(); }
+        } finally { input.value = ""; button.disabled = false; }
+      };
+      row.append(el("div", { class: "item-row" }, el("span", { class: "name" }, spec.display_name), el("span", { class: "tag" }, present), el("span", { class: "spacer" }, input), button), feedback);
+      host.append(row);
+    });
+  }
+
   // Secret rotation is staged through the same Apply bar as every other
   // Settings mutation. The token is held only in this short-lived closure and
   // is cleared by the caller after the request settles; it never enters
@@ -1749,7 +1798,7 @@
   }
 
   // ── Load / render ──
-  function renderAll() { renderAgents(); renderClassic(); renderBots(); renderGeneral(); renderAdvanced(); applyStaticI18n(); }
+  function renderAll() { renderAgents(); renderClassic(); renderBots(); renderProviderSecrets(); renderGeneral(); renderAdvanced(); applyStaticI18n(); }
   async function reloadLive() {
     const f = await api("/api/fleet");
     state.fleetUp = f.ok;
@@ -1783,6 +1832,10 @@
     const c = await api("/api/settings/classic"); state.classic = c.body || {};
     const connections = await api("/api/settings/connections");
     state.connections = connections.ok && Array.isArray(connections.body) ? connections.body : [];
+    const providerSecrets = await api("/api/settings/provider-secrets");
+    const providerHost = $("providerSecrets");
+    if (providerHost) providerHost.style.display = providerSecrets.ok ? "" : "none";
+    state.providerSecrets = providerSecrets.ok && Array.isArray(providerSecrets.body) ? providerSecrets.body : [];
     await reloadLive();
     renderAll();
   }

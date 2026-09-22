@@ -279,6 +279,8 @@ export interface FleetTemplate {
 export interface WebConfig {
   /** Show the AI subscription usage panel on /view and serve /api/ai-usage (default true). */
   usage_panel?: boolean;
+  /** Expose provider API-key verify/apply endpoints (default false until dark-shipped). */
+  provider_secrets?: boolean;
 }
 
 /** `login:` section — remote /login behaviour. */
