@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { truncatePreview, splitTextFenceAware } from "../src/channel/markdown-chunk.js";
+import { truncatePreview, splitTextFenceAware, fenceBlock } from "../src/channel/markdown-chunk.js";
 
 /** Fences are balanced when an even number of ``` lines are present. */
 function fenceLines(s: string): number {
@@ -206,6 +206,15 @@ describe("a closer may not carry an info string (CommonMark)", () => {
     for (const c of splitTextFenceAware(t, 60)) {
       expect(balanced(c), `unbalanced ~~~: ${JSON.stringify(c)}`).toBe(true);
     }
+  });
+});
+
+describe("fenceBlock", () => {
+  it("uses a marker longer than any backtick run inside", () => {
+    expect(fenceBlock("plain")).toBe("```\nplain\n```");
+    const out = fenceBlock("has ``` inside");
+    expect(out.startsWith("````")).toBe(true);
+    expect(out.endsWith("````")).toBe(true);
   });
 });
 

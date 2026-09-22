@@ -7,9 +7,8 @@
  * path, rejects the whole send with "can't parse entities" and the message is
  * dropped outright.
  *
- * The cross-instance previews, both Discord splitters and the Telegram queue go
- * through these helpers. Several lower-frequency `msg.edit` truncations in the
- * Discord adapter still slice directly and are tracked separately.
+ * Every place that shortens or chunks user-visible text must go through these
+ * helpers instead of `slice()`.
  *
  * Fences follow CommonMark closely enough for chat text: a fence opens on a run
  * of three or more backticks or tildes, and closes only on a run of the *same*
@@ -206,4 +205,15 @@ export function splitTextFenceAware(text: string, limit: number): string[] {
   }
 
   return chunks;
+}
+
+/**
+ * Wrap `content` in a fenced block whose marker is longer than any backtick
+ * run inside it, so content that itself contains ``` cannot break out of the
+ * block.
+ */
+export function fenceBlock(content: string, info = ""): string {
+  const longest = Math.max(0, ...(content.match(/`+/g) ?? []).map(run => run.length));
+  const marker = "`".repeat(Math.max(3, longest + 1));
+  return `${marker}${info}\n${content}\n${marker}`;
 }

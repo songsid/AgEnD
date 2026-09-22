@@ -40,7 +40,7 @@ import type {
 } from "../types.js";
 import type { AccessManager } from "../access-manager.js";
 import { MessageQueue } from "../message-queue.js";
-import { splitTextFenceAware } from "../markdown-chunk.js";
+import { splitTextFenceAware, truncatePreview, fenceBlock } from "../markdown-chunk.js";
 
 const DISCORD_MAX_LENGTH = 2000;
 const GATEWAY_WATCHDOG_INTERVAL_MS = 30_000;
@@ -1135,7 +1135,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
       const msg = await channel.messages.fetch(messageId);
-      await msg.edit(text.slice(0, DISCORD_MAX_LENGTH));
+      await msg.edit(truncatePreview(text, DISCORD_MAX_LENGTH));
       return;
     } catch { /* not in that channel — fall through to scan */ }
     try {
@@ -1147,7 +1147,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         try {
           const textCh = ch as TextChannel;
           const msg = await textCh.messages.fetch(messageId);
-          await msg.edit(text.slice(0, DISCORD_MAX_LENGTH));
+          await msg.edit(truncatePreview(text, DISCORD_MAX_LENGTH));
           return;
         } catch {
           continue;
@@ -1185,7 +1185,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     try {
       const channel = await this._fetchTextChannel(threadId ?? chatId);
       const msg = await channel.messages.fetch(messageId);
-      await msg.edit({ content: text.slice(0, DISCORD_MAX_LENGTH), components: [] });
+      await msg.edit({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [] });
       return;
     } catch { /* not in that channel — fall through to scan */ }
     try {
@@ -1195,7 +1195,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
         try {
           const textCh = ch as TextChannel;
           const msg = await textCh.messages.fetch(messageId);
-          await msg.edit({ content: text.slice(0, DISCORD_MAX_LENGTH), components: [] });
+          await msg.edit({ content: truncatePreview(text, DISCORD_MAX_LENGTH), components: [] });
           return;
         } catch {
           continue;
@@ -1290,10 +1290,10 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
     let text = `⚠️ **Permission Request**\nTool: \`${prompt.tool_name}\``;
     if (prompt.input_preview) {
-      const preview = prompt.input_preview.length > 200
-        ? prompt.input_preview.slice(0, 200) + "…"
-        : prompt.input_preview;
-      text += `\n\`\`\`\n${preview}\n\`\`\``;
+      // The preview is inside a fence. Choose a marker longer than any run in
+      // the tool input so embedded backticks cannot escape the permission block.
+      const preview = truncatePreview(prompt.input_preview, 200);
+      text += `\n${fenceBlock(preview)}`;
     } else if (prompt.description) {
       text += `\n${prompt.description}`;
     }
@@ -1432,7 +1432,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       );
     }
     await msg.edit({
-      content: alert.message.slice(0, DISCORD_MAX_LENGTH),
+      content: truncatePreview(alert.message, DISCORD_MAX_LENGTH),
       components: row.components.length > 0 ? [row] : [],
     });
   }
