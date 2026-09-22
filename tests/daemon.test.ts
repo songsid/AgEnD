@@ -1112,7 +1112,14 @@ describe("Daemon /steer delivery", () => {
 
   it("reports a cross-instance steer that fails after queue acceptance", async () => {
     const { daemon, tmux } = makeSteerDaemon("claude-code", true);
-    (daemon as any).deliverMessage = vi.fn().mockResolvedValue(false);
+    // A real failure records a verdict in the caller's holder — that is what
+    // separates "could not land" from "never attempted", and only the first is
+    // reported to the sender (#826). The stub has to model that contract.
+    (daemon as any).deliverMessage = vi.fn(
+      async (_text: string, _status: unknown, opts?: { verdict?: { reached: boolean } }) => {
+        if (opts?.verdict) opts.verdict.reached = true;
+        return false;
+      });
     (daemon as any).wake = vi.fn(async () => {});
     (tmux as any).getLastPasteError = vi.fn(() => "load-buffer failed: ENOSPC");
     const broadcast = vi.fn();

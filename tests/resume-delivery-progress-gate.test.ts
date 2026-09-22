@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
+import { GrokBackend } from "../src/backend/grok.js";
 
 /**
  * #826: a woken paused codex was reported as a failed delivery while it was
@@ -87,6 +88,17 @@ const SUBMITTED = [
   "  Context 46% left",
 ].join("\n");
 
+/**
+ * grok mid-turn. grok declares no native input queue, which is exactly why the
+ * steer test uses it: on codex `supportsQueuedInput || opts.steer` is already
+ * true without the steer, so codex cannot tell whether the steer fast path is
+ * still wired up.
+ */
+const GROK_BUSY = [
+  "⠋ Thinking… 4.2s",
+  "❯",
+].join("\n");
+
 const dirs: string[] = [];
 
 interface Harness {
@@ -96,19 +108,20 @@ interface Harness {
   events: string[];
 }
 
-function makeHarness(): Harness {
+function makeHarness(backendName: "codex" | "grok" = "codex"): Harness {
   const dir = mkdtempSync(join(tmpdir(), "agend-resume-gate-"));
   dirs.push(dir);
   writeFileSync(join(dir, "window-id"), "@19");
   const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const backend = backendName === "grok" ? new GrokBackend(dir) : new CodexBackend(dir);
   const daemon = new Daemon("codex-test", {
     working_directory: "/tmp",
-    backend: "codex",
+    backend: backendName,
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
     log_level: "silent",
-  } as any, dir, false, new CodexBackend(dir) as any, undefined, { child: () => logger } as any) as any;
+  } as any, dir, false, backend as any, undefined, { child: () => logger } as any) as any;
 
   const state = { pane: resumingFrame("0s"), idle: true, idleAtPaste: null as boolean | null };
   const paste = vi.fn(async () => {
@@ -256,10 +269,14 @@ describe("a steer still interrupts the running turn", () => {
     // stay on the other side: its whole point is to reach the turn that is
     // already running, so a steer that waited for idle would be a steer that
     // did nothing.
-    const h = makeHarness();
-    h.state.pane = BUSY;
+    //
+    // grok, not codex: grok has no native input queue, so `supportsQueuedInput
+    // || opts.steer` is carried by the steer alone and deleting that arm has to
+    // change the outcome.
+    const h = makeHarness("grok");
+    h.state.pane = GROK_BUSY;
     h.state.idle = false;
-    h.daemon.tmux.capturePane = async () => BUSY;
+    h.daemon.tmux.capturePane = async () => GROK_BUSY;
 
     await settle(
       h.daemon.deliverMessage("[from:leader] stop that", STATUS, { steer: true, submissionId: "m" }),
@@ -314,5 +331,104 @@ describe("who gets told a cross-instance delivery failed", () => {
     await settle(h.daemon.pasteLock);
 
     expect(broadcasts.map(b => b.type)).toContain("cross_instance_delivery_failed");
+  });
+  it("says nothing when a STEER could not be attempted", async () => {
+    // Same rule, the other lock. A steer runs on steerLock, and its call site
+    // had the same unconditional report — so standing down during a steer told
+    // the sender its message was lost.
+    const h = makeHarness();
+    const broadcasts = withBroadcastSpy(h);
+    h.daemon.stormWindow = {
+      isStopped: () => true,
+      isDeliveryHeld: () => false,
+      waitForDeliveryAllowed: async () => {},
+    };
+
+    h.daemon.steerMessage("ping", crossInstance);
+    await settle(h.daemon.steerLock);
+
+    expect(broadcasts.map(b => b.type), "a shutdown is not a steer failure")
+      .not.toContain("cross_instance_delivery_failed");
+  });
+
+  it("does not let a steer's verdict answer for a queued delivery", async () => {
+    // The verdict belongs to one delivery, not to the daemon. The two do not
+    // share a lock — an ordinary message is serialised on pasteLock, a steer on
+    // steerLock — so they overlap by design:
+    //
+    //   S steers and reaches its pane write
+    //   D arrives, resets, and parks in the storm hold
+    //   S's write fails unrecoverably — S has a verdict
+    //   the storm ends as a shutdown, so D returns false having tried nothing
+    //
+    // With one flag on the daemon, D's sender is told ITS message failed, under
+    // D's correlation id, because of what happened to S.
+    const h = makeHarness("grok");
+    const broadcasts = withBroadcastSpy(h);
+    h.state.pane = GROK_BUSY;
+    h.state.idle = false;
+    h.daemon.tmux.capturePane = async () => GROK_BUSY;
+
+    let held = false;
+    let stopped = false;
+    let releaseHold!: () => void;
+    const allowed = new Promise<void>(r => { releaseHold = r; });
+    h.daemon.stormWindow = {
+      isStopped: () => stopped,
+      isDeliveryHeld: () => held,
+      waitForDeliveryAllowed: () => allowed,
+    };
+
+    // S's pane write hangs until the test lets it fail, which is the window D
+    // slips into.
+    let failSteerPaste!: (ok: boolean) => void;
+    h.daemon.tmux.pasteBuffer = vi.fn(() => {
+      held = true;  // from here on, anything arriving is held by the storm
+      return new Promise<boolean>(r => { failSteerPaste = r; });
+    });
+    h.daemon.tmux.isLastPasteFailureRecoverable = () => false;
+    h.daemon.tmux.getLastPasteError = () => "no such window";
+
+    h.daemon.steerMessage("steered", { ...crossInstance, correlation_id: "cid-steer" });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(failSteerPaste, "the steer should be parked in its pane write").toBeDefined();
+
+    h.daemon.pushChannelMessage("queued", { ...crossInstance, correlation_id: "cid-queued" });
+    await vi.advanceTimersByTimeAsync(100);
+
+    failSteerPaste(false);                     // S fails for real
+    await settle(h.daemon.steerLock);
+
+    stopped = true;                            // the storm ends as a shutdown
+    releaseHold();
+    await settle(h.daemon.pasteLock);
+
+    expect(broadcasts.map(b => (b as { correlationId?: string }).correlationId),
+      "the queued message never tried, so its sender is told nothing")
+      .not.toContain("cid-queued");
+  });
+});
+
+describe("an unreadable pane under the write lock", () => {
+  it("gives up instead of polling for ever", async () => {
+    // The pre-write transient check lost its flat deadline when the budget
+    // became progress-based. A capture that keeps failing never "changes", so
+    // it has to consume the stall budget too — otherwise this delivery polls
+    // for ever under the pane write lock and nothing else can write either.
+    const h = makeHarness();
+    let reads = 0;
+    h.daemon.tmux.capturePane = async () => {
+      // Readable long enough to clear the outer gate, then the pane goes dark.
+      if (++reads <= 3) return READY;
+      throw new Error("capture-pane: no such pane");
+    };
+
+    const delivered = await settle(
+      h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" }),
+      15 * 60_000,
+    );
+
+    expect(delivered, "a pane nobody can read is not a delivery").toBe(false);
+    expect(h.events).toContain("message_failed");
   });
 });
