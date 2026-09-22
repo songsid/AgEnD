@@ -66,7 +66,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
-import { handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
@@ -721,6 +721,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private fullRestartLauncher: () => Promise<FullRestartHelperHandle> = launchFullRestartHelper;
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
+  private discordPresenceTimer: ReturnType<typeof setInterval> | null = null;
+  private discordPresenceInFlight: Promise<void> | null = null;
+  private static readonly DISCORD_PRESENCE_REFRESH_MS = 15 * 60_000;
   /** Days of event/activity history to keep. */
   private static readonly EVENT_LOG_RETENTION_DAYS = 30;
   private watchdogTimer: ReturnType<typeof setInterval> | null = null;
@@ -3251,6 +3254,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     if (topicMode && (fleet.channel || fleet.channels?.length)) {
       await adapterStartup;
+      this.startDiscordUsagePresence();
 
       // Bind every fleet instance deterministically. Explicit channel_id wins;
       // otherwise channels[0] is authoritative. Do not infer identity from
@@ -3409,6 +3413,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (health.status !== "ok") {
       this.logger.warn({ health }, "Fleet started with problems — see /health");
     }
+  }
+
+  /** Keep Discord profile activity aligned with the same cached usage source as /usage. */
+  private startDiscordUsagePresence(): void {
+    if (this.discordPresenceTimer) clearInterval(this.discordPresenceTimer);
+    void this.refreshDiscordUsagePresence();
+    this.discordPresenceTimer = setInterval(() => {
+      void this.refreshDiscordUsagePresence();
+    }, FleetManager.DISCORD_PRESENCE_REFRESH_MS);
+    this.discordPresenceTimer.unref?.();
+  }
+
+  private refreshDiscordUsagePresence(): Promise<void> {
+    if (this.discordPresenceInFlight) return this.discordPresenceInFlight;
+    const run = (async () => {
+      const targets = [...this.adapters.values()]
+        .filter(adapter => adapter.type === "discord" && typeof adapter.setActivity === "function");
+      if (targets.length === 0) return;
+      try {
+        const payload = await getUsageSnapshot(false, this.getActiveUsageProviderIds());
+        const text = formatDiscordUsageActivity(payload);
+        for (const adapter of targets) {
+          try {
+            adapter.setActivity?.(text);
+          } catch {
+            // Presence is cosmetic; a failed update must not affect delivery.
+          }
+        }
+      } catch {
+        // Usage providers are best-effort and may be offline. Keep the last
+        // activity rather than replacing it with an untruthful blank state.
+        this.logger.debug("Discord usage presence refresh skipped");
+      }
+    })();
+    this.discordPresenceInFlight = run.finally(() => {
+      if (this.discordPresenceInFlight === run) this.discordPresenceInFlight = null;
+    });
+    return this.discordPresenceInFlight;
   }
 
   /**
@@ -3928,6 +3970,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (fleet.channel?.group_id) {
       this.adapter.setChatId(String(fleet.channel.group_id));
     }
+    if (this.discordPresenceTimer && this.adapter.type === "discord") {
+      void this.refreshDiscordUsagePresence();
+    }
 
     this.startTopicCleanupPoller();
 
@@ -4195,6 +4240,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (channelConfig.group_id) {
       adapter.setChatId(String(channelConfig.group_id));
     }
+    if (this.discordPresenceTimer && adapter.type === "discord") {
+      void this.refreshDiscordUsagePresence();
+    }
 
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
   }
@@ -4430,6 +4478,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // watchdog/manual/error triggers must converge here instead of stop/start.
           await adapter.reconnectGateway(previous?.lastError ?? "fleet adapter restart");
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
+          if (this.discordPresenceTimer && adapter.type === "discord") {
+            void this.refreshDiscordUsagePresence();
+          }
           this.logger.info({ id }, "Adapter gateway rebuilt successfully");
         } catch (err) {
           if (!this.ipcStoppingInstances.has("__fleet_stopping__")) {
@@ -4452,6 +4503,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await adapter.start();
           this.logger.info({ id, attempt }, "Adapter restarted successfully");
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
+          if (this.discordPresenceTimer && adapter.type === "discord") {
+            void this.refreshDiscordUsagePresence();
+          }
           return;
         } catch (err) {
           this.adapterState.set(id, {
@@ -11555,6 +11609,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.updateCheckTimer) { clearTimeout(this.updateCheckTimer as any); clearInterval(this.updateCheckTimer as any); this.updateCheckTimer = null; }
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
+    if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
     // Cancel-button timers were never cleared here. The idle-check interval is not
     // unref'd, so it held the event loop open past shutdown and kept retrying
     // deletes against an adapter that was already gone.

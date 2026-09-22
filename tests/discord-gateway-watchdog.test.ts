@@ -9,7 +9,7 @@ class FakeDiscordClient extends EventEmitter {
   loginError: Error | null = null;
   loginGate: Promise<void> | null = null;
   sent: string[] = [];
-  user = { id: "bot-id", username: "bot" };
+  user = { id: "bot-id", username: "bot", setActivity: vi.fn() };
   application = { commands: { set: vi.fn(async () => []) } };
   ws = {
     status: Status.Disconnected,
@@ -80,6 +80,19 @@ afterEach(() => {
 });
 
 describe("Discord gateway watchdog", () => {
+  it("sets a Watching activity only after the client is ready", async () => {
+    const h = harness();
+    expect(h.adapter.setActivity("⚡ Claude 12% weekly")).toBe(false);
+    await h.adapter.start();
+    const client = h.clients.at(-1)!;
+    expect(h.adapter.setActivity("⚡ Claude 12% weekly")).toBe(true);
+    expect(client.user.setActivity).toHaveBeenCalledWith(
+      "⚡ Claude 12% weekly",
+      expect.objectContaining({ type: 3 }),
+    );
+    await h.adapter.stop();
+  });
+
   it("classifies only a current ready generation's explicit Unknown Channel as missing", async () => {
     const h = harness();
     await h.adapter.start();

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { formatUsageSummary, getUsageSnapshot, setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-api.js";
+import { formatDiscordUsageActivity, formatUsageSummary, getUsageSnapshot, setUsageFetcherForTests, type UsagePayload } from "../src/usage/usage-api.js";
 import { TOOLS } from "../src/channel/mcp-tools.js";
 import { TOOL_PROFILES as TOOL_SETS } from "../src/tool-permissions.js";
 import { GetUsageArgs } from "../src/outbound-schemas.js";
@@ -60,6 +60,42 @@ describe("formatUsageSummary", () => {
   it("explains when no active backend has usage tracking", () => {
     expect(formatUsageSummary({ ...PAYLOAD, providers: [] }))
       .toContain("No active backends with usage tracking");
+  });
+});
+
+describe("formatDiscordUsageActivity", () => {
+  it("shows weekly percentages and truthful provider states in one line", () => {
+    const text = formatDiscordUsageActivity(PAYLOAD);
+    expect(text).toContain("Claude 12% weekly");
+    expect(text).toContain("Codex: not logged in");
+    expect(text).toContain("Grok: expired");
+    expect(text).toContain("Kiro: unavailable");
+    expect(text.split("\n")).toHaveLength(1);
+  });
+
+  it("does not expose stale cached percentages as live presence", () => {
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "claude", name: "Claude", status: "ok",
+        hint: "cached 3m ago — live query is rate limited",
+        metrics: [{ label: "Weekly", type: "percent", used: 92 }],
+      }],
+    });
+    expect(text).toBe("⚡ Claude: stale");
+    expect(text).not.toContain("92%");
+  });
+
+  it("keeps the Discord activity within its 128-code-point limit", () => {
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: Array.from({ length: 20 }, (_, i) => ({
+        id: `provider-${i}`, name: `Provider-${i}-${"x".repeat(20)}`, status: "error" as const,
+        error: "temporary outage", metrics: [],
+      })),
+    });
+    expect(Array.from(text).length).toBeLessThanOrEqual(128);
+    expect(text.endsWith("…")).toBe(true);
   });
 });
 

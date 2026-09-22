@@ -18,6 +18,7 @@ import {
   ChannelType,
   MessageFlags,
   Status,
+  ActivityType,
   type TextChannel,
   type Message,
   type MessageReaction,
@@ -877,6 +878,26 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
       lastReconnectReason: this.lastReconnectReason,
       reconnectCount: this.reconnectCount,
     };
+  }
+
+  /**
+   * Update the bot's profile activity without touching any channel messages.
+   * Presence is deliberately best-effort: a reconnecting or not-yet-ready
+   * generation has no user object to update, and the next usage refresh will
+   * try again after it is ready.
+   */
+  setActivity(text: string): boolean {
+    const client = this.client;
+    const isReady = typeof client.isReady === "function" ? client.isReady() : Boolean(client.user);
+    if (!isReady || !client.user || typeof client.user.setActivity !== "function") return false;
+    try {
+      // Watching renders consistently across Discord desktop/mobile and does
+      // not require the special `state` field that Custom activities demand.
+      client.user.setActivity(text, { type: ActivityType.Watching });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async handleClientReady(client: Client, generation: number): Promise<void> {
