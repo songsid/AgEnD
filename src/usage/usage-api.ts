@@ -221,6 +221,42 @@ export function formatUsageSummary(payload: UsagePayload): string {
   return lines.join("\n");
 }
 
+/**
+ * Render the compact, public Discord activity line for the current usage
+ * snapshot.  Only a percentage metric is surfaced; raw provider errors and
+ * hints are intentionally not copied into a public presence (they may contain
+ * URLs or account-specific detail).  Error/expired and missing-login states
+ * remain explicit instead of displaying a stale percentage.
+ *
+ * Discord limits activity names to 128 Unicode code points.  Keep the leading
+ * lightning marker and truncate complete code points so a long profile name or
+ * many credential profiles cannot make the update fail.
+ */
+export function formatDiscordUsageActivity(payload: UsagePayload): string {
+  const rows = payload.providers.map(provider => {
+    const name = provider.name.trim() || provider.id;
+    if (provider.status === "no-credentials") return `${name}: not logged in`;
+    if (provider.status === "error") {
+      const error = `${provider.error ?? ""} ${provider.hint ?? ""}`;
+      return `${name}: ${/expired|token rejected|unauthori[sz]ed/i.test(error) ? "expired" : "unavailable"}`;
+    }
+    // A stale-while-rate-limited row has the old metrics but says so in its
+    // hint.  Do not turn an old number into a falsely live presence.
+    if (/^cached\s+/i.test(provider.hint ?? "")) return `${name}: stale`;
+    const percent = provider.metrics
+      .filter(isVisibleUsageMetric)
+      .filter(metric => metric.type === "percent" && typeof metric.used === "number")
+      .sort((a, b) => Number(/weekly/i.test(b.label)) - Number(/weekly/i.test(a.label)))[0];
+    if (!percent) return `${name}: unavailable`;
+    const window = /weekly/i.test(percent.label) ? " weekly" : "";
+    return `${name} ${Math.round(percent.used ?? 0)}%${window}`;
+  });
+  const raw = rows.length > 0 ? `⚡ ${rows.join(" | ")}` : "⚡ Usage unavailable";
+  const points = Array.from(raw);
+  if (points.length <= 128) return raw;
+  return `${points.slice(0, 127).join("")}…`;
+}
+
 function formatMetric(m: UsageMetric): string {
   const label = usageText(m.label, m.labelI18n);
   const note = m.note ? usageText(m.note, m.noteI18n) : "";

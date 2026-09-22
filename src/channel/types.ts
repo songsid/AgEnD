@@ -73,6 +73,12 @@ export interface ChannelAdapter extends EventEmitter {
   reconnectGateway?(reason: string): Promise<void>;
   /** Optional provider-specific liveness details consumed by /health and doctor. */
   getHealthSnapshot?(): AdapterHealthSnapshot;
+  /**
+   * Set the provider's live activity/presence text when the platform supports
+   * it (currently Discord only).  Adapters without a presence concept simply
+   * leave this unset; callers must treat a false return as a best-effort skip.
+   */
+  setActivity?(text: string): boolean;
 
   sendText(chatId: string, text: string, opts?: SendOpts): Promise<SentMessage>;
   /**
