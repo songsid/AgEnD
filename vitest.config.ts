@@ -36,6 +36,9 @@ export default defineConfig({
       "tests/mcp-slot-collision.test.ts",
       "tests/cli-env-probe-guard.test.ts",
       "tests/tmux-manager.test.ts",
+      "tests/tmux-kill-window-confirmed.test.ts",
+      "tests/view-api.test.ts",
+      "tests/web-terminal-socket-cleanup.test.ts",
     ],
     env: {
       PATH: process.env.PATH ?? "",
