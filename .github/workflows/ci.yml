@@ -26,6 +26,10 @@ jobs:
       - run: npm run typecheck:tests
       - run: npm run build
       - run: npm test
+      # Real tmux/child-process suites run in one worker. The unit suite above
+      # remains file-parallel, while this bounded serial invocation prevents
+      # host scheduler contention from turning diagnostic timing into flakes.
+      - run: npm run test:integration
 
       # Tell Discord how this run ended, whichever way it ended.
       #

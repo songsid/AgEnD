@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   WebTerminalSession, generateAccessToken, nonEmptyTail, shellQuote, segmentInput,
   ACCESS_TOKEN_LENGTH, MAX_TOKEN_ATTEMPTS, MAX_TTL_MS, MAX_PENDING_INPUT_BYTES, MAX_PENDING_JOBS, MAX_PROBE_FAILURES,
+  EXIT_CODE_REPROBE_MAX_MS, EXIT_CODE_REPROBE_INTERVAL_MS,
   type TerminalBackend, type WebTerminalResult, type WebTerminalSpec,
 } from "../src/web-terminal.js";
 
@@ -18,6 +19,8 @@ class FakeBackend implements TerminalBackend {
   killed: string[] = [];
   pane = "";
   status: { alive: boolean; exitCode?: number } | null = { alive: true };
+  statusSequence: Array<{ alive: boolean; exitCode?: number } | null> | null = null;
+  statusCalls = 0;
   failStart = false;
   /** Per-call latency for sendInput, keyed by first byte (ordering tests). */
   inputDelayMs: (bytes: Buffer) => number = () => 0;
@@ -59,7 +62,10 @@ class FakeBackend implements TerminalBackend {
     this.ops.push(`resize:${cols}x${rows}`);
   }
   async capture(): Promise<string> { return this.pane; }
-  async paneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> { return this.status; }
+  async paneStatus(): Promise<{ alive: boolean; exitCode?: number } | null> {
+    this.statusCalls++;
+    return this.statusSequence?.length ? this.statusSequence.shift()! : this.status;
+  }
   async kill(socket: string): Promise<void> {
     this.killed.push(socket);
     if (this.killHangs) await new Promise(() => { /* never */ });
@@ -288,6 +294,32 @@ describe("lifecycle", () => {
     expect(b.done[0].ok).toBe(false);
     expect(b.done[0].detail).toContain("Already logged in");
     expect(b.done[0].detail).not.toMatch(/\/ \/ /);
+  });
+  it("re-probes a dead pane to fill a temporarily missing exit code", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.statusSequence = [{ alive: false }, { alive: false, exitCode: 7 }];
+    backend.pane = "you typed: hello";
+
+    await session.poll();
+
+    expect(backend.statusCalls).toBe(2); // initial dead observation + one bounded re-probe
+    expect(done[0]).toMatchObject({ ok: false, reason: "exit", exitCode: 7 });
+  });
+  it("does not wait forever when pane_dead_status never becomes available", async () => {
+    const { session, backend, done } = make();
+    await session.start();
+    backend.status = { alive: false };
+    backend.pane = "you typed: hello";
+
+    const polling = session.poll();
+    await vi.advanceTimersByTimeAsync(EXIT_CODE_REPROBE_MAX_MS + EXIT_CODE_REPROBE_INTERVAL_MS);
+    await polling;
+
+    expect(done[0]).toMatchObject({ ok: false, reason: "exit" });
+    expect(done[0].exitCode).toBeUndefined();
+    expect(backend.statusCalls).toBeGreaterThan(1);
+    expect(backend.statusCalls).toBeLessThanOrEqual(6);
   });
   it("known failure strings map to a message and a suggestion", async () => {
     const { session, backend, done } = make({ observe: { failures: [

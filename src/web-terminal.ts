@@ -126,6 +126,14 @@ export const MIN_COLS = 20, MAX_COLS = 250, MIN_ROWS = 5, MAX_ROWS = 100;
 const REPLAY_BUFFER_LIMIT = 256 * 1024;
 const POLL_INTERVAL_MS = 1_000;
 const SUCCESS_EXIT_GRACE_MS = 15_000;
+/**
+ * tmux can report pane_dead before pane_dead_status has been populated when
+ * the host is under scheduler pressure.  Re-probe only the optional exit
+ * diagnostic; the session is already known to have ended.  The total budget
+ * is deliberately bounded so a wedged tmux cannot hold completion forever.
+ */
+export const EXIT_CODE_REPROBE_MAX_MS = 1_000;
+export const EXIT_CODE_REPROBE_INTERVAL_MS = 250;
 /** Bytes of browser input allowed to wait for tmux before the session is ended as wedged (B4). */
 export const MAX_PENDING_INPUT_BYTES = 64 * 1024;
 /** Queued tmux operations allowed to wait (input batches + at most one resize); more means tmux is stuck. */
@@ -461,7 +469,8 @@ export class WebTerminalSession extends EventEmitter {
         this.probeFailures = 0;
       }
       if (status && !status.alive) {
-        await this.finishFromExit(status.exitCode, pane);
+        const exitCode = status.exitCode ?? await this.reProbeExitCode();
+        await this.finishFromExit(exitCode, pane);
         return;
       }
       if (this.successSeenAt !== null && this.now() - this.successSeenAt > SUCCESS_EXIT_GRACE_MS) {
@@ -474,6 +483,47 @@ export class WebTerminalSession extends EventEmitter {
       this.polling = false;
     }
     this.schedulePoll();
+  }
+
+  /**
+   * Fill in tmux's optional pane-dead status after the pane is already known
+   * dead.  This is diagnostic enrichment only: timeout still completes with
+   * an undefined exit code and never retries the terminal/session itself.
+   */
+  private async reProbeExitCode(): Promise<number | undefined> {
+    const deadline = Date.now() + EXIT_CODE_REPROBE_MAX_MS;
+    while (this.state === "running") {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return undefined;
+      const status = await this.paneStatusWithin(Math.min(EXIT_CODE_REPROBE_INTERVAL_MS, remaining));
+      if (status && !status.alive && status.exitCode !== undefined) return status.exitCode;
+      if (this.state !== "running") return undefined;
+      const afterProbe = deadline - Date.now();
+      if (afterProbe <= 0) return undefined;
+      await this.delay(Math.min(EXIT_CODE_REPROBE_INTERVAL_MS, afterProbe));
+    }
+    return undefined;
+  }
+
+  /** A single re-probe cannot consume more than its share of the total budget. */
+  private async paneStatusWithin(timeoutMs: number): Promise<{ alive: boolean; exitCode?: number } | null> {
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<null>(resolve => {
+      timer = setTimeout(() => resolve(null), timeoutMs);
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([this.backend.paneStatus(this.socketName).catch(() => null), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => {
+      const timer = setTimeout(resolve, ms);
+      timer.unref?.();
+    });
   }
 
   private observe(pane: string): void {
