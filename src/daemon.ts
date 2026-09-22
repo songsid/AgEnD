@@ -527,7 +527,23 @@ export class BackendUnreachableStartupError extends Error {
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
 /** A passive startup phase must clear within this bound before an Enter is sent. */
-const INPUT_TRANSIENT_WAIT_MS = 30_000;
+/**
+ * How long a passive startup/resume transient may sit WITHOUT REPAINTING before
+ * delivery gives up. It is a stall budget, not a total: a CLI that is still
+ * painting its resume is making progress, and #826 is what happens when the two
+ * are confused — codex's resume is the only declared transient in the fleet
+ * (backend/codex.ts), a woken paused codex routinely takes longer than this to
+ * come back, and the flat 30s cap turned that into ❌ plus a discarded message
+ * on a pane that was seconds from ready.
+ */
+const INPUT_TRANSIENT_STALL_MS = 30_000;
+/**
+ * The absolute ceiling for the same wait, so a transient that repaints forever
+ * (a spinner on a wedged resume) still ends in an honest failure. Bounded, as
+ * every other delivery wait is — just bounded by "no progress", not by a guess
+ * at how long a resume takes.
+ */
+const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
@@ -4450,8 +4466,39 @@ export class Daemon extends EventEmitter {
   }
 
   /** Capture failure is unknown, never evidence that input is available. */
+  /**
+   * The budget for waiting out a passive transient, measured in progress rather
+   * than in wall clock.
+   *
+   * `observe(pane)` answers "may I keep waiting?". The stall timer restarts
+   * every time the pane text changes, so a resume that is still painting never
+   * runs out; a screen that has not changed for INPUT_TRANSIENT_STALL_MS, or a
+   * transient that outlives the ceiling, does. Both ends stay bounded — the
+   * point of #826 was never that the wait should be unlimited, it was that a
+   * flat 30s could not tell "slow" from "stuck".
+   */
+  private transientProgressBudget(overallDeadline: number): { observe(pane: string): boolean; stalled: boolean } {
+    const ceiling = Math.min(overallDeadline, Date.now() + INPUT_TRANSIENT_WAIT_MS);
+    let lastPane: string | null = null;
+    let stallDeadline = 0;
+    const budget = {
+      stalled: false,
+      observe(pane: string): boolean {
+        const now = Date.now();
+        if (pane !== lastPane) {
+          lastPane = pane;
+          stallDeadline = now + INPUT_TRANSIENT_STALL_MS;
+        }
+        if (now >= ceiling) return false;
+        budget.stalled = now >= stallDeadline;
+        return !budget.stalled;
+      },
+    };
+    return budget;
+  }
+
   private async probeInputTransient(): Promise<
-    | { state: "active"; transient: InputUnavailableTransient }
+    | { state: "active"; transient: InputUnavailableTransient; pane: string }
     | { state: "clear" }
     | { state: "unknown" }
   > {
@@ -4459,7 +4506,10 @@ export class Daemon extends EventEmitter {
     try {
       const pane = await this.tmux.capturePane();
       const transient = this.inputTransientInPane(pane);
-      return transient ? { state: "active", transient } : { state: "clear" };
+      // The pane text comes back with the verdict: a transient that is still
+      // repainting is still working, and that is the only thing separating a
+      // slow resume from a wedged one.
+      return transient ? { state: "active", transient, pane } : { state: "clear" };
     } catch (err) {
       this.logger.debug({ err }, "capture-pane failed during the input-transient probe — pane state unknown");
       return { state: "unknown" };
@@ -4475,7 +4525,12 @@ export class Daemon extends EventEmitter {
     const generation = this.inputTransientGuardGeneration;
     if (generation === null || generation !== this.spawnGeneration) return true;
 
-    const deadline = Date.now() + timeoutMs;
+    // Same progress rule as the outer readiness wait, for the same reason: this
+    // runs under the pane write lock, so a flat cap here turned a resume that
+    // repainted one second too late into a discarded message. Holding the lock
+    // while the pane is still painting costs nothing — every other writer is
+    // waiting on the same screen.
+    const budget = this.transientProgressBudget(Date.now() + timeoutMs);
     let observedDescription: string | null = null;
     for (;;) {
       if (this.inputTransientGuardGeneration !== generation || this.spawnGeneration !== generation) {
@@ -4493,13 +4548,18 @@ export class Daemon extends EventEmitter {
         this.logger.info({ phase, transient: probe.transient.description, generation },
           "CLI is still completing startup — waiting before sending Enter");
       }
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        this.logger.error({ phase, generation, timeoutMs, transient: observedDescription },
-          "CLI input stayed unavailable — refusing to send Enter");
+      // "unknown" (capture-pane failed) has to consume the budget too, or an
+      // unreadable pane would loop forever now that the flat deadline is gone.
+      // It never "changes", so it stalls out on the same rule.
+      if (!budget.observe(probe.state === "active" ? probe.pane : "\u0000unreadable")) {
+        this.logger.error({
+          phase, generation, transient: observedDescription,
+          stalledForMs: budget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
+          ceilingMs: timeoutMs,
+        }, "CLI input stayed unavailable — refusing to send Enter");
         return false;
       }
-      await new Promise(r => setTimeout(r, Math.min(INPUT_TRANSIENT_POLL_MS, remaining)));
+      await new Promise(r => setTimeout(r, INPUT_TRANSIENT_POLL_MS));
     }
   }
 
@@ -4658,7 +4718,7 @@ export class Daemon extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true;
     let unknownStreak = 0;
-    let transientDeadline = 0;
+    let transientBudget: ReturnType<Daemon["transientProgressBudget"]> | null = null;
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
@@ -4669,16 +4729,19 @@ export class Daemon extends EventEmitter {
       const transient = await this.probeInputTransient();
       if (transient.state === "active") {
         unknownStreak = 0;
-        transientDeadline ||= Math.min(deadline, Date.now() + INPUT_TRANSIENT_WAIT_MS);
-        if (Date.now() >= transientDeadline) {
-          this.logger.error({ transient: transient.transient.description, timeoutMs: INPUT_TRANSIENT_WAIT_MS },
-            "CLI input stayed unavailable during the delivery-readiness wait");
+        transientBudget ||= this.transientProgressBudget(deadline);
+        if (!transientBudget.observe(transient.pane)) {
+          this.logger.error({
+            transient: transient.transient.description,
+            stalledForMs: transientBudget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
+            ceilingMs: INPUT_TRANSIENT_WAIT_MS,
+          }, "CLI input stayed unavailable during the delivery-readiness wait");
           return false;
         }
         await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
         continue;
       }
-      transientDeadline = 0;
+      transientBudget = null;
       if (transient.state === "unknown") {
         if (++unknownStreak >= DIALOG_PROBE_UNKNOWN_MAX) {
           this.logger.error({ probes: unknownStreak }, "Pane stayed unreadable during the input-transient probe — refusing to deliver blind");

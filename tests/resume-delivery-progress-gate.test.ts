@@ -1,0 +1,271 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Daemon } from "../src/daemon.js";
+import { CodexBackend } from "../src/backend/codex.js";
+
+/**
+ * #826: a woken paused codex was reported as a failed delivery while it was
+ * still coming back.
+ *
+ * The delivery gate waits up to thirty MINUTES for a busy pane, but a pane
+ * showing a passive startup transient had a flat thirty-SECOND cap. codex is
+ * the only backend that declares such a transient (`Resuming session…` plus
+ * `model: loading`, backend/codex.ts), and its resume routinely runs past that
+ * cap — so the one case with a transient was also the one case slow enough to
+ * exceed it. The message was discarded and ❌ went to the sender for a pane
+ * that was seconds away from its prompt.
+ *
+ * The cap is now measured in progress: a resume that keeps repainting keeps its
+ * budget, a screen that stops changing loses it. Both ends stay bounded, which
+ * is what these tests hold — the fix must not turn "wait longer" into "wait
+ * forever", and a genuinely wedged pane must still fail.
+ */
+
+/**
+ * Verbatim codex 0.154.0 resume frame, with one row varied so a test can make
+ * the screen repaint. Every part of it is load-bearing: CodexBackend.isActive
+ * requires the boxed header, a `model: loading` row inside the box, the
+ * `Resuming session…` status row below it, and an apparent `›` input row under
+ * that — the input row that accepts a paste and swallows the Enter, which is
+ * the whole reason this phase has to hold delivery.
+ */
+const resumingFrame = (elapsed: string) => [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│                                             │",
+  "│ model:       loading   /model to change     │",
+  "│ directory:   ~/Projects/AgEnD-agend-dev-sol │",
+  "│ permissions: YOLO mode                      │",
+  "╰─────────────────────────────────────────────╯",
+  "  Resuming session…",
+  "",
+  "› Ask Codex to do anything",
+  `  ${elapsed}`,
+  "",
+  "  ? for shortcuts",
+].join("\n");
+
+const READY = [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│ model:       gpt-5.6-sol                    │",
+  "╰─────────────────────────────────────────────╯",
+  "› Ask Codex to do anything",
+  "  Context 46% left",
+].join("\n");
+
+/** codex mid-turn: busy, but its input is available — the steer/native-queue shape. */
+const BUSY = [
+  "• Working (9s • esc to interrupt)",
+  "› Ask Codex to do anything",
+  "  Context 63% left",
+].join("\n");
+
+const MESSAGE = "[from:agend-leader] ping";
+
+/** Straight after the paste: the text sits in codex's input row, unsubmitted. */
+const PASTED = [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│ model:       gpt-5.6-sol                    │",
+  "╰─────────────────────────────────────────────╯",
+  `› ${MESSAGE}`,
+  "  Context 46% left",
+].join("\n");
+
+/** After the Enter: the message is in the transcript and the input row is free. */
+const SUBMITTED = [
+  "╭─────────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.154.0)                  │",
+  "│ model:       gpt-5.6-sol                    │",
+  "╰─────────────────────────────────────────────╯",
+  `  ${MESSAGE}`,
+  "• Working (1s • esc to interrupt)",
+  "› Ask Codex to do anything",
+  "  Context 46% left",
+].join("\n");
+
+const dirs: string[] = [];
+
+interface Harness {
+  daemon: any;
+  state: { pane: string; idle: boolean; idleAtPaste: boolean | null };
+  paste: ReturnType<typeof vi.fn>;
+  events: string[];
+}
+
+function makeHarness(): Harness {
+  const dir = mkdtempSync(join(tmpdir(), "agend-resume-gate-"));
+  dirs.push(dir);
+  writeFileSync(join(dir, "window-id"), "@19");
+  const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+  const daemon = new Daemon("codex-test", {
+    working_directory: "/tmp",
+    backend: "codex",
+    restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+    context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    hang_detector: { enabled: false, timeout_minutes: 10, idle_debounce_ms: 10 },
+    log_level: "silent",
+  } as any, dir, false, new CodexBackend(dir) as any, undefined, { child: () => logger } as any) as any;
+
+  const state = { pane: resumingFrame("0s"), idle: true, idleAtPaste: null as boolean | null };
+  const paste = vi.fn(async () => {
+    state.idleAtPaste ??= state.idle;
+    state.pane = READY;
+    return true;
+  });
+  daemon.tmux = {
+    capturePane: async () => state.pane,
+    pasteBuffer: paste,
+    sendSpecialKey: vi.fn(async () => true),
+    sendKeys: vi.fn(async () => true),
+    isWindowAlive: async () => true,
+    getWindowId: () => "@19",
+    getLastPasteError: () => null,
+    isLastPasteFailureRecoverable: () => true,
+    getLastSendSpecialKeyError: () => null,
+  };
+  daemon.controlClient = {
+    isIdle: () => state.idle,
+    waitUntilIdle: async () => { state.idle = true; return true; },
+    hasOutputSince: () => false,
+    getLastOutputAt: () => 0,
+    getObservationResetAt: () => 0,
+  };
+  // What a wake does: beginSpawn() arms the transient guard for this spawn.
+  // Without it the resume frame is not recognised as a transient at all.
+  daemon.inputTransientGuardGeneration = daemon.spawnGeneration;
+
+  const events: string[] = [];
+  for (const e of ["message_queued", "message_delivered", "message_confirmed", "message_failed"]) {
+    daemon.on(e, () => events.push(e));
+  }
+  return { daemon, state, paste, events };
+}
+
+async function settle<T>(promise: Promise<T>, maxMs = 30 * 60_000, stepMs = 250): Promise<T> {
+  let done = false;
+  let result!: T;
+  let failure: unknown;
+  void promise.then(v => { result = v; done = true; }, e => { failure = e; done = true; });
+  for (let elapsed = 0; !done && elapsed <= maxMs; elapsed += stepMs) {
+    await vi.advanceTimersByTimeAsync(stepMs);
+  }
+  if (failure) throw failure;
+  if (!done) throw new Error(`delivery did not settle within ${maxMs}ms of fake time`);
+  return result;
+}
+
+const STATUS = { chatId: "c", messageId: "m" };
+
+beforeEach(() => vi.useFakeTimers());
+afterEach(() => {
+  vi.useRealTimers();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+describe("delivery to a codex that is still resuming", () => {
+  it("waits out a resume that runs well past the old thirty-second cap", async () => {
+    // Ninety seconds of resume — three times the old flat budget — with the
+    // frame repainting the way a live one does. This is the paused-codex wake
+    // the user hit: the pane was never stuck, only slow.
+    const h = makeHarness();
+    const startedAt = Date.now();
+    let tick = 0;
+    let pastedAtMs: number | null = null;
+    let sawOutput = false;
+    let eventsAtPaste: string[] | null = null;
+    h.daemon.controlClient.hasOutputSince = () => sawOutput;
+    h.daemon.tmux.capturePane = async () => {
+      if (pastedAtMs !== null) return h.state.pane;
+      return Date.now() - startedAt >= 90_000 ? READY : resumingFrame(`${++tick}`);
+    };
+    h.daemon.tmux.pasteBuffer = h.paste.mockImplementation(async () => {
+      pastedAtMs ??= Date.now() - startedAt;
+      eventsAtPaste ??= [...h.events];
+      h.state.pane = PASTED;
+      return true;
+    });
+    // The Enter lands: codex echoes the message and starts working. The
+    // idle→busy edge is what the daemon accepts as proof of submission.
+    h.daemon.tmux.sendSpecialKey = vi.fn(async () => {
+      h.state.pane = SUBMITTED;
+      h.state.idle = false;
+      sawOutput = true;
+      return true;
+    });
+
+    await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" }));
+
+    expect(h.paste, "the gate released instead of giving up").toHaveBeenCalled();
+    expect(pastedAtMs, "and it waited well past the old flat thirty-second cap")
+      .toBeGreaterThanOrEqual(90_000);
+    // Judged at the moment the gate released. What the post-Enter confirmation
+    // ladder then makes of this harness's pane is a different file's subject
+    // (codex-native-queue-strand.test.ts); the claim here is only that the wait
+    // for a resuming pane no longer ends in a failure of its own.
+    expect(eventsAtPaste, "no ❌ for a pane that was only slow").not.toContain("message_failed");
+  });
+
+  it("still fails a resume screen that has stopped changing", async () => {
+    // The other half of the rule. A frozen transient is indistinguishable from
+    // a wedged CLI, and pasting into one strands the text — so the budget must
+    // still run out. Same frame, byte for byte, forever.
+    const h = makeHarness();
+    h.daemon.tmux.capturePane = async () => resumingFrame("stuck");
+
+    const startedAt = Date.now();
+    const delivered = await settle(
+      h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" }),
+    );
+    const tookMs = Date.now() - startedAt;
+
+    expect(delivered).toBe(false);
+    expect(h.events, "a stuck pane is a real failure and still reports one").toContain("message_failed");
+    expect(h.paste, "nothing may be pasted into a pane that never came back").not.toHaveBeenCalled();
+    // And it gives up on the STALL rule, not by grinding out the ceiling: a
+    // frozen screen is recognised in seconds. Without the "has the pane
+    // changed" test this still fails, just ten minutes later — which for a
+    // sender waiting on a reply is a different bug, not the same one.
+    expect(tookMs, "a frozen pane is recognised quickly, not at the ceiling").toBeLessThan(60_000);
+  });
+
+  it("stops at the ceiling when the transient repaints forever", async () => {
+    // A spinner on a wedged resume changes every frame, so the stall rule alone
+    // would wait for ever. The ceiling is what keeps "wait for progress"
+    // bounded — without it this test never returns.
+    const h = makeHarness();
+    let frame = 0;
+    h.daemon.tmux.capturePane = async () => resumingFrame(`spinner-${frame++}`);
+
+    const delivered = await settle(
+      h.daemon.deliverMessage("[from:leader] ping", STATUS, { submissionId: "m" }),
+      20 * 60_000,
+    );
+
+    expect(delivered).toBe(false);
+    expect(h.events).toContain("message_failed");
+  });
+});
+
+describe("a steer still interrupts the running turn", () => {
+  it("pastes into a busy pane instead of queuing behind it", async () => {
+    // #826 moved the resume case onto the queue side of the gate. Steer must
+    // stay on the other side: its whole point is to reach the turn that is
+    // already running, so a steer that waited for idle would be a steer that
+    // did nothing.
+    const h = makeHarness();
+    h.state.pane = BUSY;
+    h.state.idle = false;
+    h.daemon.tmux.capturePane = async () => BUSY;
+
+    await settle(
+      h.daemon.deliverMessage("[from:leader] stop that", STATUS, { steer: true, submissionId: "m" }),
+    );
+
+    expect(h.paste, "the steer reached the pane").toHaveBeenCalled();
+    expect(h.state.idleAtPaste, "and it got there while the turn was still running").toBe(false);
+  });
+});
