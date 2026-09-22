@@ -1199,6 +1199,47 @@
     return { ok: result.result === "applied" || result.result === "restart_required", status: result.result === "applied" ? 200 : 409, body: result };
   }
 
+  // Binding changes use a separate verified challenge. They never go through
+  // PUT /fleet/channels: the provider probe proves the target first, and the
+  // apply job updates only group/general coordinates after the replacement
+  // adapter is ready.
+  async function verifyAndApplyConnectionBinding(connectionId, groupId, generalChannelId, feedback) {
+    const key = crypto.randomUUID ? crypto.randomUUID() : `binding-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const binding = { group_id: String(groupId).trim(), general_channel_id: String(generalChannelId || "").trim() || null };
+    feedback.className = "feedback"; feedback.textContent = "Verifying target…";
+    const verified = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/binding/verify`, {
+      method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ ...binding, idempotency_key: key }),
+    });
+    if (!verified.ok) { feedback.className = "feedback error"; feedback.textContent = `✗ ${verified.body?.error || "binding verification failed"}`; return verified; }
+    const probe = verified.body?.probe || {};
+    const target = [probe.group_name || binding.group_id, probe.channel_name || probe.channel_id].filter(Boolean).join(" / ");
+    const perms = [probe.can_view ? "view" : null, probe.can_send ? "send" : null, probe.can_manage_topics ? "topics" : null].filter(Boolean).join(", ");
+    feedback.textContent = `✓ Verified ${target}${perms ? ` (${perms})` : ""}`;
+    if (!window.confirm(`Rebind this connection to ${target || binding.group_id}?`)) {
+      feedback.textContent = "Verified; not applied.";
+      return { ok: false, status: 409, body: { result: "verified" } };
+    }
+    feedback.textContent = "Applying binding…";
+    const applied = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/binding/apply`, {
+      method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ verification_id: verified.body?.verification_id, idempotency_key: key }),
+    });
+    if (!applied.ok && applied.status !== 409) { feedback.className = "feedback error"; feedback.textContent = `✗ ${applied.body?.error || "binding apply failed"}`; return applied; }
+    let result = applied.body || {};
+    if (result.job_id && result.result === "applying") {
+      for (let n = 0; n < 60; n++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        const status = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/binding/apply/${encodeURIComponent(result.job_id)}`);
+        if (status.ok) { result = status.body || result; if (result.result !== "applying") break; }
+      }
+    }
+    const labels = { applied: "✓ Binding applied", rolled_back: "↩ Binding rolled back", rollback_failed: "✗ Binding rollback failed", applying: "…Still applying — check status" };
+    const ok = result.result === "applied";
+    feedback.className = `feedback ${ok ? "" : "error"}`;
+    feedback.textContent = labels[result.result] || "✗ Unknown binding result";
+    if (ok) await reload();
+    return { ok, status: ok ? 200 : 409, body: result };
+  }
+
   function botEditForm(ch, i) {
     ch.access = ch.access || { mode: "locked", allowed_users: [] };
     ch.access.allowed_users = ch.access.allowed_users || [];
@@ -1210,6 +1251,13 @@
     const accessFeedback = el("div", { class: "feedback" });
     const tokenInput = el("input", { type: "password", autocomplete: "new-password", placeholder: "Paste a new bot token to rotate it" });
     const secretFeedback = el("div", { class: "feedback" });
+    const bindingFeedback = el("div", { class: "feedback" });
+    const fGroup = el("input", { type: "text", value: ch.group_id != null ? String(ch.group_id) : "", autocomplete: "off" });
+    const fGeneral = el("input", { type: "text", value: ch.options?.general_channel_id != null ? String(ch.options.general_channel_id) : "", autocomplete: "off", placeholder: type === "discord" ? "General channel id (optional)" : "Forum topic id (optional)" });
+    const bindingVerify = el("button", { class: "sm primary", onclick: async () => {
+      if (!fGroup.value.trim()) { bindingFeedback.className = "feedback error"; bindingFeedback.textContent = "✗ group/guild id required"; return; }
+      await verifyAndApplyConnectionBinding(connectionId, fGroup.value, fGeneral.value, bindingFeedback);
+    } }, "Verify new binding → Confirm rebind");
     const connectionId = ch.id || ch.type || chLabel(i);
     let pendingSecret = "";
     const stageSecret = () => {
@@ -1237,10 +1285,12 @@
       el("div", { class: "grid2" },
         el("div", {}, el("label", {}, t("accessMode"), impact("fleet.channel.access.mode")), fMode, accessFeedback),
         el("div", {}, el("label", {}, t("allowedUsers"), impact("fleet.channel.access.allowed_users")), chipList(users, validateAccess, "user id"))),
-      // Only the field that platform actually has, the way quickstart asks.
       el("div", { class: "field" },
         el("label", {}, type === "discord" ? t("guildIdField") : t("groupIdField"), impact("fleet.channels")),
-        el("div", { class: "sub" }, ch.group_id ? String(ch.group_id) : t("notSet"))),
+        fGroup,
+        el("label", {}, type === "discord" ? "General channel id" : "Forum topic id"), fGeneral,
+        el("div", { class: "hint" }, "The target is checked with the existing bot token before any binding is changed."),
+        el("div", { class: "actions" }, bindingVerify, bindingFeedback)),
       drawer(t("advancedSection"),
         el("div", { class: "field" }, el("label", {}, t("tokenEnv")), el("div", { class: "sub" }, ch.bot_token_env || "(no token env)")),
         el("div", { class: "field" },

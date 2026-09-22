@@ -14,8 +14,40 @@ export interface ConnectionMetadata {
   token_env: string;
   token_present: boolean;
   group_id: string | number | null;
+  general_channel_id?: string | null;
   status: string;
   identity?: { id: string | null; username: string | null };
+}
+
+/** The only mutable coordinates exposed by the Connections rebind flow. */
+export interface ConnectionBinding {
+  /** Provider group/guild/chat id. Always normalized to a string before persistence. */
+  group_id: string;
+  /** Optional Discord general channel or Telegram forum/topic coordinate. */
+  general_channel_id?: string | null;
+}
+
+/** Positive provider evidence returned by a binding verification. */
+export interface BindingProbe {
+  group_id: string;
+  group_name?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+  can_view: boolean;
+  can_send: boolean;
+  can_manage_topics?: boolean;
+}
+
+export interface BindingChallenge {
+  id: string;
+  connectionId: string;
+  sessionBinding: string;
+  generation: number;
+  operation: "binding.apply";
+  idempotencyKey: string;
+  expiresAt: number;
+  binding: ConnectionBinding;
+  probe: BindingProbe;
 }
 
 export interface SecretChallenge {

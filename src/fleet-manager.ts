@@ -103,6 +103,9 @@ import {
   safeSecretError,
   SECRET_CHALLENGE_TTL_MS,
   type ConnectionMetadata,
+  type ConnectionBinding,
+  type BindingProbe,
+  type BindingChallenge,
   type SecretApplyJob,
   type SecretChallenge,
 } from "./connection-secrets.js";
@@ -731,6 +734,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * when a new adapter object is constructed, so keep an independent epoch. */
   private connectionSecretAdapterRefs = new Map<string, ChannelAdapter | undefined>();
   private connectionSecretHealthGenerations = new Map<string, number>();
+  /** Web Settings connection-binding step-up challenges and apply jobs. */
+  private connectionBindingChallenges = new Map<string, BindingChallenge>();
+  private connectionBindingChallengesByKey = new Map<string, string>();
+  private connectionBindingJobs = new Map<string, SecretApplyJob>();
+  private connectionBindingJobSession = new Map<string, string>();
+  private connectionBindingInFlight = new Map<string, string>();
   private collabInstances = new Set<string>();
 
   // Health endpoint
@@ -12330,7 +12339,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         type: channel.type,
         token_env: channel.bot_token_env,
         token_present: !!process.env[channel.bot_token_env],
-        group_id: channel.group_id ?? null,
+        group_id: channel.group_id != null ? String(channel.group_id) : null,
+        general_channel_id: channel.options?.general_channel_id != null
+          ? String(channel.options.general_channel_id)
+          : null,
         status: state?.status ?? (world ? "starting" : "stopped"),
         ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
       };
@@ -12358,6 +12370,258 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     this.connectionSecretHealthGenerations.set(connectionId, healthGeneration);
     this.connectionSecretGenerations.set(connectionId, generation);
     return generation;
+  }
+
+  private normalizeConnectionBinding(input: {
+    group_id?: unknown;
+    general_channel_id?: unknown;
+  }): ConnectionBinding | null {
+    if (typeof input.group_id !== "string" && typeof input.group_id !== "number") return null;
+    const groupId = String(input.group_id).trim();
+    if (!groupId || groupId.length > 128 || /[\r\n\0]/.test(groupId)) return null;
+    let general: string | null | undefined;
+    if (input.general_channel_id === null || input.general_channel_id === undefined || input.general_channel_id === "") {
+      general = input.general_channel_id === null ? null : undefined;
+    } else if (typeof input.general_channel_id === "string" || typeof input.general_channel_id === "number") {
+      general = String(input.general_channel_id).trim();
+      if (!general || general.length > 128 || /[\r\n\0]/.test(general)) return null;
+    } else {
+      return null;
+    }
+    return general === undefined ? { group_id: groupId } : { group_id: groupId, general_channel_id: general };
+  }
+
+  private connectionBindingChannelConfig(channel: ChannelConfig, binding: ConnectionBinding): ChannelConfig {
+    const candidate = structuredClone(channel);
+    // IDs are intentionally normalized to strings at this boundary. Discord
+    // snowflakes must never become YAML numbers (precision loss is silent).
+    candidate.group_id = String(binding.group_id);
+    if (binding.general_channel_id !== undefined) {
+      const options = { ...(candidate.options ?? {}) };
+      if (binding.general_channel_id === null) delete options.general_channel_id;
+      else options.general_channel_id = String(binding.general_channel_id);
+      if (Object.keys(options).length === 0) delete candidate.options;
+      else candidate.options = options;
+    }
+    return candidate;
+  }
+
+  /** Verify a prospective group/guild binding without mutating fleet state. */
+  async verifyConnectionBinding(input: {
+    connectionId: string;
+    binding: { group_id?: unknown; general_channel_id?: unknown };
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<{ ok: true; verification_id: string; expires_at: number; binding: ConnectionBinding; probe: BindingProbe } | { ok: false; error: string }> {
+    const channel = this.secureConnectionChannel(input.connectionId);
+    const binding = this.normalizeConnectionBinding(input.binding);
+    const adapter = this.adapters.get(input.connectionId);
+    if (!channel || !binding || !adapter?.verifyBinding) {
+      return { ok: false, error: "connection binding is unsupported or invalid" };
+    }
+    const key = `${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`;
+    const existingId = this.connectionBindingChallengesByKey.get(key);
+    const existing = existingId ? this.connectionBindingChallenges.get(existingId) : undefined;
+    if (existing && existing.expiresAt > Date.now()) {
+      return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt, binding: existing.binding, probe: existing.probe };
+    }
+    if (existingId) this.connectionBindingChallengesByKey.delete(key);
+
+    const beforeGeneration = this.secureConnectionGeneration(input.connectionId);
+    let probe: BindingProbe;
+    try {
+      probe = await adapter.verifyBinding(binding.group_id, binding.general_channel_id ?? undefined);
+    } catch (err) {
+      this.logger.warn({ connectionId: input.connectionId, reason: safeSecretError(err) }, "Settings connection binding verification failed");
+      return { ok: false, error: "binding verification failed" };
+    }
+    const afterGeneration = this.secureConnectionGeneration(input.connectionId);
+    if (beforeGeneration !== afterGeneration || this.adapters.get(input.connectionId) !== adapter) {
+      return { ok: false, error: "connection changed while binding was verified" };
+    }
+    if (probe.group_id !== binding.group_id || !probe.can_view || !probe.can_send) {
+      return { ok: false, error: "provider did not confirm the requested binding" };
+    }
+    const expiresAt = Date.now() + SECRET_CHALLENGE_TTL_MS;
+    const challenge: BindingChallenge = {
+      id: opaqueId("binding_verify"),
+      connectionId: input.connectionId,
+      sessionBinding: input.sessionBinding,
+      generation: afterGeneration,
+      operation: "binding.apply",
+      idempotencyKey: input.idempotencyKey,
+      expiresAt,
+      binding,
+      probe,
+    };
+    this.connectionBindingChallenges.set(challenge.id, challenge);
+    this.connectionBindingChallengesByKey.set(key, challenge.id);
+    const expiryTimer = setTimeout(() => {
+      if (this.connectionBindingChallenges.get(challenge.id) !== challenge) return;
+      this.connectionBindingChallenges.delete(challenge.id);
+      if (this.connectionBindingChallengesByKey.get(key) === challenge.id) this.connectionBindingChallengesByKey.delete(key);
+    }, SECRET_CHALLENGE_TTL_MS);
+    expiryTimer.unref?.();
+    return { ok: true, verification_id: challenge.id, expires_at: expiresAt, binding, probe };
+  }
+
+  startConnectionBindingApply(input: {
+    connectionId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string } {
+    for (const [jobId, job] of this.connectionBindingJobs) {
+      if (job.connectionId === input.connectionId && job.idempotencyKey === input.idempotencyKey
+        && this.connectionBindingJobSession.get(jobId) === input.sessionBinding) return { job, reused: true };
+    }
+    const challenge = this.connectionBindingChallenges.get(input.verificationId);
+    if (!challenge || challenge.expiresAt <= Date.now()) {
+      this.connectionBindingChallenges.delete(input.verificationId);
+      return { error: "binding verification expired; verify the binding again" };
+    }
+    if (challenge.connectionId !== input.connectionId || challenge.sessionBinding !== input.sessionBinding
+      || challenge.operation !== "binding.apply" || challenge.idempotencyKey !== input.idempotencyKey
+      || challenge.generation !== this.secureConnectionGeneration(input.connectionId)) {
+      return { error: "binding verification does not match this connection or session" };
+    }
+    const existingId = this.connectionBindingInFlight.get(input.connectionId);
+    if (existingId) {
+      const existing = this.connectionBindingJobs.get(existingId) ?? null;
+      if (existing?.idempotencyKey === input.idempotencyKey) return { job: existing, reused: true };
+      return { busy: existing };
+    }
+    this.connectionBindingChallenges.delete(input.verificationId);
+    this.connectionBindingChallengesByKey.delete(`${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`);
+    const job: SecretApplyJob = {
+      id: opaqueId("binding_apply"), connectionId: input.connectionId, idempotencyKey: input.idempotencyKey,
+      result: "applying", status: "running", startedAt: Date.now(),
+    };
+    this.connectionBindingJobs.set(job.id, job);
+    this.connectionBindingJobSession.set(job.id, input.sessionBinding);
+    this.connectionBindingInFlight.set(input.connectionId, job.id);
+    queueMicrotask(() => void this.runConnectionBindingApply(job, challenge.binding));
+    return { job, reused: false };
+  }
+
+  getConnectionBindingApply(jobId: string, sessionBinding: string): SecretApplyJob | null {
+    if (this.connectionBindingJobSession.get(jobId) !== sessionBinding) return null;
+    return this.connectionBindingJobs.get(jobId) ?? null;
+  }
+
+  private async runConnectionBindingApply(job: SecretApplyJob, binding: ConnectionBinding): Promise<void> {
+    try {
+      await this.rebuildAdapterForBinding(job.connectionId, binding);
+      job.result = "applied";
+    } catch (err) {
+      const reason = safeSecretError(err);
+      job.result = /rollback failed/i.test(reason) ? "rollback_failed" : "rolled_back";
+      job.error = job.result === "rollback_failed"
+        ? "binding rollback failed; adapter requires operator attention"
+        : "binding was not applied; previous binding was restored";
+      this.logger.warn({ connectionId: job.connectionId, reason: safeSecretError(err) }, "Settings connection binding apply failed");
+    } finally {
+      job.status = "done";
+      job.finishedAt = Date.now();
+      this.connectionBindingInFlight.delete(job.connectionId);
+    }
+  }
+
+  /** Stop, rebuild and wait for a new adapter before committing YAML binding. */
+  private async rebuildAdapterForBinding(connectionId: string, binding: ConnectionBinding): Promise<void> {
+    const channel = this.secureConnectionChannel(connectionId);
+    if (!channel || !this.fleetConfig) throw new Error("connection not found");
+    const candidate = this.connectionBindingChannelConfig(channel, binding);
+    const oldAdapter = this.adapters.get(connectionId);
+    const oldWorld = this.worlds.get(connectionId);
+    const oldPrimary = this.adapter;
+    const oldAccess = this.accessManager;
+    const oldState = this.adapterState.get(connectionId);
+    const oldChannel = structuredClone(channel);
+    const primary = this.getPrimaryAdapterId() === connectionId;
+    if (primary && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+
+    let fresh: ChannelAdapter | undefined;
+    try {
+      this.adapterState.set(connectionId, { status: "retrying", retryCount: oldState?.retryCount ?? 0 });
+      if (oldAdapter) {
+        oldAdapter.removeAllListeners();
+        await oldAdapter.stop().catch(() => {});
+        if (this.adapters.get(connectionId) === oldAdapter) this.adapters.delete(connectionId);
+        if (this.worlds.get(connectionId)?.adapter === oldAdapter) this.worlds.delete(connectionId);
+        if (primary && this.adapter === oldAdapter) this.adapter = null;
+      }
+      let startedResolve: (() => void) | null = null;
+      const started = new Promise<void>(resolve => { startedResolve = resolve; });
+      const onStarted = (): void => { startedResolve?.(); };
+      if (primary) await this.startSingleAdapter(this.fleetConfig, candidate, onStarted);
+      else await this.startAdditionalAdapter(candidate, true, onStarted);
+      fresh = this.adapters.get(connectionId);
+      if (!fresh) throw new Error("new adapter did not start");
+      const deadline = Date.now() + 15_000;
+      if (!fresh.getHealthSnapshot) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error("new adapter did not become ready")), Math.max(1, deadline - Date.now()));
+          timer.unref?.();
+        });
+        try { await Promise.race([started, timeout]); } finally { if (timer) clearTimeout(timer); }
+      } else {
+        while (Date.now() < deadline) {
+          const health = fresh.getHealthSnapshot?.();
+          if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") break;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        const health = fresh.getHealthSnapshot?.();
+        if (health && health.status !== "connected" && this.adapterState.get(connectionId)?.status !== "connected") {
+          throw new Error("new adapter did not become connected");
+        }
+      }
+      if (fresh.setChatId) fresh.setChatId(String(candidate.group_id));
+      // Commit only after the replacement adapter is ready. No allowlist,
+      // topic, instance or schedule fields are touched here.
+      channel.group_id = String(binding.group_id);
+      if (binding.general_channel_id !== undefined) {
+        const options = { ...(channel.options ?? {}) };
+        if (binding.general_channel_id === null) delete options.general_channel_id;
+        else options.general_channel_id = String(binding.general_channel_id);
+        if (Object.keys(options).length === 0) delete channel.options;
+        else channel.options = options;
+      }
+      this.saveFleetConfig();
+      this.routing.rebuild(this.fleetConfig);
+      this.reregisterClassicChannels();
+      this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
+    } catch (err) {
+      if (fresh && fresh !== oldAdapter) await fresh.stop().catch(() => {});
+      // Restore only the binding object in memory; unrelated connection and
+      // instance state remains exactly as it was before the attempt.
+      for (const key of Object.keys(channel) as Array<keyof ChannelConfig>) {
+        if (!(key in oldChannel)) delete (channel as any)[key];
+      }
+      Object.assign(channel, oldChannel);
+      this.adapters.delete(connectionId);
+      this.worlds.delete(connectionId);
+      this.adapterState.delete(connectionId);
+      if (oldAdapter) {
+        try {
+          const onStarted = (): void => {};
+          if (primary) await this.startSingleAdapter(this.fleetConfig, oldChannel, onStarted);
+          else await this.startAdditionalAdapter(oldChannel, true, onStarted);
+          this.adapterState.set(connectionId, oldState ?? { status: "connected", retryCount: 0 });
+        } catch (restoreErr) {
+          throw new Error(`binding rollback failed: ${safeSecretError(restoreErr)}`);
+        }
+      } else {
+        if (primary) this.adapter = oldPrimary;
+        if (oldWorld) this.worlds.set(connectionId, oldWorld);
+        if (oldAdapter) this.adapters.set(connectionId, oldAdapter);
+        this.accessManager = oldAccess;
+      }
+      this.routing.rebuild(this.fleetConfig);
+      this.reregisterClassicChannels();
+      throw err;
+    }
   }
 
   async verifyConnectionSecret(input: {

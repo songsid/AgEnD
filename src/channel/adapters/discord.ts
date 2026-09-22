@@ -16,6 +16,7 @@ import {
   StringSelectMenuBuilder,
   ApplicationCommandOptionType,
   ChannelType,
+  PermissionFlagsBits,
   MessageFlags,
   Status,
   ActivityType,
@@ -1369,6 +1370,41 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
 
   getChatId(): string | null { return this.lastChatId; }
   setChatId(chatId: string): void { this.lastChatId = chatId; }
+
+  /**
+   * Verify a prospective guild/general-channel binding using the already
+   * authenticated gateway client.  This is deliberately read-only: the
+   * FleetManager only commits the YAML binding after this positive probe and a
+   * second, fenced adapter rebuild succeeds.
+   */
+  async verifyBinding(groupId: string, generalChannelId?: string): Promise<import("../types.js").BindingProbe> {
+    const client = await this.readyClient();
+    const guild = await client.guilds.fetch(String(groupId));
+    if (!guild) throw new Error("guild not found");
+    if (!generalChannelId) {
+      return {
+        group_id: String(guild.id),
+        group_name: guild.name ?? null,
+        can_view: true,
+        can_send: true,
+      };
+    }
+    const channel = await guild.channels.fetch(String(generalChannelId));
+    if (!channel || !channel.isTextBased()) throw new Error("target channel not found or not text-based");
+    const member = guild.members.me ?? (client.user ? await guild.members.fetch(client.user.id) : null);
+    const permissions = member ? channel.permissionsFor(member) : null;
+    const canView = !!permissions?.has(PermissionFlagsBits.ViewChannel);
+    const canSend = !!permissions?.has(PermissionFlagsBits.SendMessages);
+    if (!canView || !canSend) throw new Error("bot lacks view/send permission in target channel");
+    return {
+      group_id: String(guild.id),
+      group_name: guild.name ?? null,
+      channel_id: String(channel.id),
+      channel_name: "name" in channel && typeof channel.name === "string" ? channel.name : null,
+      can_view: canView,
+      can_send: canSend,
+    };
+  }
 
   // ── File download ──────────────────────────────────────────────────────
 
