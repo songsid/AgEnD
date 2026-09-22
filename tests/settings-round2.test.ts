@@ -99,6 +99,71 @@ describe("Settings manual lifecycle API", () => {
     expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
   });
 
+  it("canonicalizes safe numeric binding IDs before broad channel persistence", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic" as const,
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: "-1002",
+      options: { general_channel_id: "123" },
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }];
+
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: -1002,
+      options: { general_channel_id: 123 },
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }]);
+
+    expect(response.status).toBe(200);
+    const saved = ctx.fleetConfig!.channels![0];
+    expect(saved.group_id).toBe("-1002");
+    expect(typeof saved.group_id).toBe("string");
+    expect(saved.options?.general_channel_id).toBe("123");
+    expect(typeof saved.options?.general_channel_id).toBe("string");
+  });
+
+  it("rejects a new channel reusing an existing bot token without verified binding", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic" as const,
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: "-1001",
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }];
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [
+      {
+        id: "discord-primary",
+        type: "discord",
+        mode: "topic",
+        bot_token_env: "DISCORD_TOKEN",
+        group_id: "-1001",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+      {
+        id: "discord-secondary",
+        type: "discord",
+        mode: "topic",
+        bot_token_env: "DISCORD_TOKEN",
+        group_id: "-1003",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+    ]);
+
+    expect(response.status).toBe(409);
+    expect(String(response.body.error)).toContain("reusing an existing bot token");
+    expect(ctx.fleetConfig!.channels).toHaveLength(1);
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
   it("pauses a configured instance", async () => {
     const { ctx, pause } = context();
     const response = await request("/api/settings/instances/worker/pause", ctx);

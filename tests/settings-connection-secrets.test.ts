@@ -79,6 +79,18 @@ describe("Settings secure connection endpoints", () => {
     expect(bindingVerify).toHaveBeenCalledWith(expect.objectContaining({ connectionId: "primary", binding: { group_id: "123456789012345678", general_channel_id: "987654321098765432" } }));
   });
 
+  it("rejects JSON-number binding IDs before provider verification", async () => {
+    const { ctx, bindingVerify } = context();
+    const response = await request("/api/settings/connections/primary/binding/verify", ctx, "POST", {
+      group_id: 999999999999999999,
+      general_channel_id: 123,
+      idempotency_key: "key_number",
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toContain("binding IDs must be strings");
+    expect(bindingVerify).not.toHaveBeenCalled();
+  });
+
   it("applies a binding only with the verified challenge", async () => {
     const { ctx, bindingApply } = context();
     const response = await request("/api/settings/connections/primary/binding/apply", ctx, "POST",

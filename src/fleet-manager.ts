@@ -12376,14 +12376,18 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     group_id?: unknown;
     general_channel_id?: unknown;
   }): ConnectionBinding | null {
-    if (typeof input.group_id !== "string" && typeof input.group_id !== "number") return null;
-    const groupId = String(input.group_id).trim();
+    // IDs arrive from JSON and may be Discord snowflakes.  Do not accept a
+    // number here: JSON.parse may already have rounded it before verification.
+    // IDs arrive from JSON and may be Discord snowflakes.  Do not accept a
+    // number here: JSON.parse may already have rounded it before verification.
+    if (typeof input.group_id !== "string") return null;
+    const groupId = input.group_id.trim();
     if (!groupId || groupId.length > 128 || /[\r\n\0]/.test(groupId)) return null;
     let general: string | null | undefined;
     if (input.general_channel_id === null || input.general_channel_id === undefined || input.general_channel_id === "") {
       general = input.general_channel_id === null ? null : undefined;
-    } else if (typeof input.general_channel_id === "string" || typeof input.general_channel_id === "number") {
-      general = String(input.general_channel_id).trim();
+    } else if (typeof input.general_channel_id === "string") {
+      general = input.general_channel_id.trim();
       if (!general || general.length > 128 || /[\r\n\0]/.test(general)) return null;
     } else {
       return null;
@@ -12542,6 +12546,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (primary && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
 
     let fresh: ChannelAdapter | undefined;
+    let persistedBinding = false;
     try {
       this.adapterState.set(connectionId, { status: "retrying", retryCount: oldState?.retryCount ?? 0 });
       if (oldAdapter) {
@@ -12589,6 +12594,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         else channel.options = options;
       }
       this.saveFleetConfig();
+      persistedBinding = true;
       this.routing.rebuild(this.fleetConfig);
       this.reregisterClassicChannels();
       this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
@@ -12618,6 +12624,15 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (oldAdapter) this.adapters.set(connectionId, oldAdapter);
         this.accessManager = oldAccess;
       }
+      // The binding is committed to YAML before routing is rebuilt.  If the
+      // post-commit rebuild fails, restore the durable document as well as the
+      // in-memory channel; otherwise a reload would resurrect the failed
+      // binding that the running fleet just rolled back.
+      // The binding is committed to YAML before routing is rebuilt. If the
+      // post-commit rebuild fails, restore the durable document as well as the
+      // in-memory channel; otherwise a reload would resurrect the failed
+      // binding that the running fleet just rolled back.
+      if (persistedBinding) this.saveFleetConfig();
       this.routing.rebuild(this.fleetConfig);
       this.reregisterClassicChannels();
       throw err;
