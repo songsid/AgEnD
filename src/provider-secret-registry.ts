@@ -205,6 +205,7 @@ interface ProviderHttpClientTestOptions {
 }
 
 export function createProviderHttpClientForTests(options: ProviderHttpClientTestOptions): ProviderHttpClient {
+  if (process.env.NODE_ENV !== "test") throw new Error("provider HTTP test transport is unavailable outside tests");
   return FixedProviderHttpClient.createForTests(options);
 }
 
