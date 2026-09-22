@@ -4612,7 +4612,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     const target = this.routing.resolve(threadId);
     if (!target) return "fleet topic: no instance routed for this thread";
-    // Fleet topic: allow if collab enabled OR access mode is open
+    // Fleet topic: this gate lets the copy through when the adapter is open OR
+    // collab is on for the instance. "Through" is not "delivered" — access
+    // control runs next, and the two arms are not symmetric there:
+    //
+    //   open adapter   → isAllowed() returns true outright: really admitted.
+    //   locked + collab → the bot's user id still has to be on the allowlist,
+    //                     so the message is normally refused a few lines later
+    //                     under "Access DENIED for non-allowed user".
+    //
+    // Collab alone therefore does not admit a bot on a locked adapter; it only
+    // declines to drop the copy here and leaves the decision to access control.
     const isOpen = this.getChannelConfig(msg.adapterId)?.access?.mode === "open";
     if (!isOpen && !this.collabInstances.has(target.name)) {
       return `fleet topic: adapter not open and collab off for ${target.name}`;
