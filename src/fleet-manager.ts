@@ -3690,7 +3690,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start the primary adapter (backward-compatible, sets this.adapter) */
-  private async startSingleAdapter(fleet: FleetConfig, channelConfig: ChannelConfig): Promise<void> {
+  private async startSingleAdapter(
+    fleet: FleetConfig,
+    channelConfig: ChannelConfig,
+    onStarted?: () => void,
+  ): Promise<void> {
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
       this.logger.warn({ env: channelConfig.bot_token_env }, "Bot token env not set, skipping shared adapter");
@@ -3980,6 +3984,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (userId) w.botUserId = userId;
       }
       if (userId) this.botUserId = userId;
+      onStarted?.();
     }, this.logger, "adapter.started"));
     this.adapter.on("polling_conflict", safeHandler(({ attempt, delay }: { attempt: number; delay: number }) => {
       this.logger.warn(`409 Conflict (attempt ${attempt}), retry in ${delay / 1000}s`);
@@ -4020,7 +4025,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Start an additional (non-primary) adapter */
-  private async startAdditionalAdapter(channelConfig: ChannelConfig, registerCommands = true): Promise<void> {
+  private async startAdditionalAdapter(
+    channelConfig: ChannelConfig,
+    registerCommands = true,
+    onStarted?: () => void,
+  ): Promise<void> {
     const adapterId = channelConfig.id ?? channelConfig.type;
     const botToken = process.env[channelConfig.bot_token_env];
     if (!botToken) {
@@ -4265,6 +4274,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         world.botUsername = username;
         if (userId) world.botUserId = userId;
       }
+      onStarted?.();
     }, this.logger, `adapter[${adapterId}].started`));
 
     adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
@@ -12545,17 +12555,32 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       if (this.worlds.get(connectionId)?.adapter === old) this.worlds.delete(connectionId);
       if (primary && this.adapter === old) this.adapter = null;
     }
-    if (primary) await this.startSingleAdapter(this.fleetConfig!, channel);
-    else await this.startAdditionalAdapter(channel);
+    let startedResolve: (() => void) | null = null;
+    const started = new Promise<void>(resolve => { startedResolve = resolve; });
+    const onStarted = (): void => { startedResolve?.(); };
+    if (primary) await this.startSingleAdapter(this.fleetConfig!, channel, onStarted);
+    else await this.startAdditionalAdapter(channel, true, onStarted);
     const fresh = this.adapters.get(connectionId);
     if (!fresh) throw new Error("new adapter did not start");
-    // Telegram has no gateway health snapshot; adapter.start() resolves only
-    // after its polling loop is established, so that completion is the
-    // provider's connected signal for this adapter family.
-    if (!fresh.getHealthSnapshot) {
-      this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
-    }
     const deadline = Date.now() + 15_000;
+    // Telegram has no gateway health snapshot. Its start() method launches the
+    // grammY polling loop in the background, so completion of start() is not a
+    // connected signal. The adapter's `started` event is emitted only after the
+    // first provider getMe succeeds; require that event before claiming apply.
+    if (!fresh.getHealthSnapshot) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("new adapter did not emit started before deadline")), Math.max(1, deadline - Date.now()));
+        timer.unref?.();
+      });
+      try {
+        await Promise.race([started, timeout]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
+      return true;
+    }
     while (Date.now() < deadline) {
       const health = fresh.getHealthSnapshot?.();
       if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
