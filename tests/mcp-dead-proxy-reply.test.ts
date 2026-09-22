@@ -182,7 +182,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
 
     // Agent's reply goes out through handleToolCall and the fleet responds OK.
-    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 7 }, {} as any);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 7 }, standingIn<import("node:net").Socket>({}));
     daemon["pendingIpcRequests"].get("tool_1_7")!({ result: { messageId: "m1" } });
 
     daemon["instanceState"] = "working";
@@ -196,7 +196,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
     daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
 
-    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 8 }, {} as any);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 8 }, standingIn<import("node:net").Socket>({}));
     daemon["pendingIpcRequests"].get("tool_1_8")!({ result: null, error: "adapter send failed" });
 
     daemon["instanceState"] = "working";
@@ -320,7 +320,7 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
 
     // Turn 1: agent replied.
     daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
-    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 9 }, {} as any);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "done" }, requestId: 9 }, standingIn<import("node:net").Socket>({}));
     daemon["pendingIpcRequests"].get("tool_1_9")!({ result: { messageId: "m1" } });
     daemon["instanceState"] = "working";
     daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);

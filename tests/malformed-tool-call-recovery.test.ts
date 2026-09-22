@@ -143,7 +143,7 @@ describe("Claude malformed tool-call idle-edge recovery", () => {
   it("does not recover after a successful reply tool call", () => {
     const { daemon, broadcast } = makeDaemon();
     daemon["markTurnStarted"]({ chat_id: "chat-1" }, MARKER);
-    daemon["handleToolCall"]({ tool: "reply", args: { text: "already sent" }, requestId: 7 }, {} as any);
+    daemon["handleToolCall"]({ tool: "reply", args: { text: "already sent" }, requestId: 7 }, standingIn<import("node:net").Socket>({}));
     daemon["pendingIpcRequests"].get("tool_1_7")!({ result: { messageId: "m1" } });
     daemon["instanceState"] = "working";
 
