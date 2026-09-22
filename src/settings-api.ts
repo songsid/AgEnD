@@ -132,6 +132,23 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   });
 }
 
+/**
+ * Channel/group identifiers are opaque provider coordinates.  JSON numbers
+ * are accepted only while they are still exactly representable, then
+ * canonicalized to strings before validation/persistence.  An unsafe number
+ * is rejected rather than silently rounding a Discord snowflake.
+ */
+function normalizeChannelIdValue(value: unknown, path: string):
+  { ok: true; value: unknown } | { ok: false; error: string } {
+  if (value === undefined || value === null || typeof value === "string") {
+    return { ok: true, value };
+  }
+  if (typeof value === "number" && Number.isSafeInteger(value)) {
+    return { ok: true, value: String(value) };
+  }
+  return { ok: false, error: `${path} must be a string (or a safe integer)` };
+}
+
 export function isSettingsPath(path: string): boolean {
   return path === "/settings" || path.startsWith("/api/settings/");
 }
@@ -345,6 +362,14 @@ export function handleSettingsRequest(
       let body: Record<string, unknown>;
       try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
       catch { return json(res, 400, { error: "invalid JSON" }); }
+      // Provider IDs must arrive as strings. Accepting a JSON number here can
+      // round a Discord snowflake before the verifier ever sees it.
+      if (typeof body.group_id !== "string"
+        || (body.general_channel_id !== undefined
+          && body.general_channel_id !== null
+          && typeof body.general_channel_id !== "string")) {
+        return json(res, 400, { error: "binding IDs must be strings" }, true);
+      }
       const key = typeof req.headers["idempotency-key"] === "string"
         ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
       if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
@@ -437,17 +462,42 @@ export function handleSettingsRequest(
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!Array.isArray(body)) return json(res, 400, { error: "expected an array of channels" });
+      const normalizedBody: unknown[] = [];
       // Rebinding an existing provider connection is security-sensitive: a
       // broad channel replace must not bypass the positive provider probe and
       // ready-adapter fence exposed by /connections/:id/binding/*.
       const currentChannels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []);
       const currentById = new Map(currentChannels.map((channel, index) => [channel.id ?? channel.type ?? `channel-${index}`, channel]));
+      const currentTokenEnvs = new Set(currentChannels.map(channel => channel.bot_token_env).filter(Boolean));
       for (const [index, raw] of (body as unknown[]).entries()) {
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
-        const candidate = raw as Record<string, unknown>;
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          normalizedBody.push(raw);
+          continue;
+        }
+        const candidate = { ...(raw as Record<string, unknown>) };
+        const group = normalizeChannelIdValue(candidate.group_id, `channels[${index}].group_id`);
+        if (!group.ok) return json(res, 400, { ok: false, error: group.error }, true);
+        if (group.value !== undefined) candidate.group_id = group.value;
+        if (candidate.options && typeof candidate.options === "object" && !Array.isArray(candidate.options)) {
+          const options = { ...(candidate.options as Record<string, unknown>) };
+          const general = normalizeChannelIdValue(options.general_channel_id, `channels[${index}].options.general_channel_id`);
+          if (!general.ok) return json(res, 400, { ok: false, error: general.error }, true);
+          if (general.value !== undefined) options.general_channel_id = general.value;
+          candidate.options = options;
+        }
+        normalizedBody.push(candidate);
         const id = typeof candidate.id === "string" ? candidate.id
           : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
         const previous = currentById.get(id);
+        const tokenEnv = typeof candidate.bot_token_env === "string" ? candidate.bot_token_env : null;
+        const reusedByAnotherChannel = tokenEnv !== null && currentChannels.some((channel, channelIndex) => {
+          const ownerId = channel.id ?? channel.type ?? `channel-${channelIndex}`;
+          return ownerId !== id && channel.bot_token_env === tokenEnv;
+        });
+        if ((!previous && tokenEnv !== null && currentTokenEnvs.has(tokenEnv))
+          || (previous && tokenEnv !== previous.bot_token_env && reusedByAnotherChannel)) {
+          return json(res, 409, { ok: false, error: "new connections reusing an existing bot token require verified rebind" }, true);
+        }
         if (!previous) continue;
         const oldGeneral = previous.options?.general_channel_id == null ? null : String(previous.options.general_channel_id);
         const nextOptions = candidate.options && typeof candidate.options === "object" && !Array.isArray(candidate.options)
@@ -459,12 +509,12 @@ export function handleSettingsRequest(
           return json(res, 409, { ok: false, error: "connection binding changes require verified rebind" }, true);
         }
       }
-      const next = { ...cfg, channels: body as FleetConfig["channels"] };
+      const next = { ...cfg, channels: normalizedBody as FleetConfig["channels"] };
       delete (next as { channel?: unknown }).channel; // channels[] supersedes the legacy single channel
       const before = validateFleetConfig(cfg);
       const after = validateFleetConfig(next);
       if (rejectIfWorse(res, before, after)) return;
-      cfg.channels = body as FleetConfig["channels"];
+      cfg.channels = normalizedBody as FleetConfig["channels"];
       delete (cfg as { channel?: unknown }).channel;
       ctx.saveFleetConfig();
       json(res, 200, { ok: true, warnings: saveWarnings(before, after) });

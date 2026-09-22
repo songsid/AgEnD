@@ -62,6 +62,28 @@ describe("connection binding rebind", () => {
     expect(result).toEqual({ error: expect.stringContaining("expired") });
   });
 
+  it("rejects a numeric group ID before the provider probe", async () => {
+    const { fm } = manager();
+    const result = await fm.verifyConnectionBinding({
+      connectionId: "primary",
+      binding: { group_id: 999999999999999999, general_channel_id: "123" },
+      sessionBinding: "session",
+      idempotencyKey: "binding_group_number",
+    });
+    expect(result).toEqual({ ok: false, error: "connection binding is unsupported or invalid" });
+  });
+
+  it("rejects a numeric general channel ID before the provider probe", async () => {
+    const { fm } = manager();
+    const result = await fm.verifyConnectionBinding({
+      connectionId: "primary",
+      binding: { group_id: "999999999999999999", general_channel_id: 123 },
+      sessionBinding: "session",
+      idempotencyKey: "binding_general_number",
+    });
+    expect(result).toEqual({ ok: false, error: "connection binding is unsupported or invalid" });
+  });
+
   it("keeps the old binding and unrelated config while the replacement is not ready", async () => {
     const { fm, old } = manager();
     const checked = await verify(fm);
@@ -107,6 +129,41 @@ describe("connection binding rebind", () => {
     expect(fm.fleetConfig.channels[0].access.allowed_users).toEqual(["admin"]);
     expect(fm.fleetConfig.instances.agent.topic_id).toBe("333333333333333333");
     expect(readFileSync(join(fm.configPath), "utf8")).toContain("111111111111111111");
+  });
+
+  it("restores fleet.yaml when routing rebuild fails after the binding commit", async () => {
+    const { fm } = manager();
+    const checked = await verify(fm, "binding_routing_failure");
+    let starts = 0;
+    fm.startSingleAdapter = vi.fn(async (_fleet: unknown, _candidate: unknown, onStarted?: () => void) => {
+      starts++;
+      const replacement = makeAdapter();
+      fm.adapters.set("primary", replacement);
+      fm.adapter = replacement;
+      onStarted?.();
+    });
+
+    const originalRebuild = fm.routing.rebuild.bind(fm.routing);
+    let rebuilds = 0;
+    fm.routing.rebuild = vi.fn((config: unknown) => {
+      rebuilds++;
+      if (rebuilds === 1) throw new Error("routing rebuild failed");
+      return originalRebuild(config);
+    });
+
+    const result = fm.startConnectionBindingApply({
+      connectionId: "primary", verificationId: checked.verification_id,
+      sessionBinding: "session", idempotencyKey: "binding_routing_failure",
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(result.job.result).toBe("rolled_back");
+    expect(starts).toBe(2);
+    expect(rebuilds).toBeGreaterThanOrEqual(2);
+    expect(fm.fleetConfig.channels[0].group_id).toBe("111111111111111111");
+    const saved = readFileSync(join(fm.configPath), "utf8");
+    expect(saved).toContain("111111111111111111");
+    expect(saved).not.toContain("999999999999999999");
   });
 
   it("rejects a challenge when the adapter generation changes after verify", async () => {
