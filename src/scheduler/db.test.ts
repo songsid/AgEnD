@@ -101,6 +101,39 @@ describe("SchedulerDb", () => {
     expect(db.getRuns("legacy")).toHaveLength(0);
   });
 
+  it("adds the adapter column on a post-timing-migration schema", () => {
+    const dbPath = join(dir, "scheduler.db");
+    db.close();
+    const existing = new Database(dbPath);
+    existing.exec(`
+      DROP TABLE IF EXISTS schedule_runs;
+      DROP TABLE schedules;
+      CREATE TABLE schedules (
+        id TEXT PRIMARY KEY, cron TEXT, at TEXT, message TEXT NOT NULL,
+        source TEXT NOT NULL, target TEXT NOT NULL, reply_chat_id TEXT NOT NULL,
+        reply_thread_id TEXT, label TEXT, enabled INTEGER DEFAULT 1,
+        timezone TEXT DEFAULT 'Asia/Taipei', silent INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL, last_triggered_at TEXT, last_status TEXT
+      );
+    `);
+    existing.close();
+
+    db = new SchedulerDb(dbPath);
+    const columns = db["db"].prepare("PRAGMA table_info(schedules)").all() as Array<{ name: string }>;
+    expect(columns.some(column => column.name === "reply_adapter_id")).toBe(true);
+
+    const created = db.create({
+      cron: "0 9 * * *",
+      message: "post-migration",
+      source: "a",
+      target: "a",
+      reply_chat_id: "chat",
+      reply_thread_id: null,
+      reply_adapter_id: "discord",
+    });
+    expect(created.reply_adapter_id).toBe("discord");
+  });
+
   it("lists schedules with optional target filter", () => {
     db.create({ cron: "0 7 * * *", message: "a", source: "a", target: "a", reply_chat_id: "1", reply_thread_id: null });
     db.create({ cron: "0 8 * * *", message: "b", source: "a", target: "b", reply_chat_id: "1", reply_thread_id: null });
