@@ -32,6 +32,7 @@ describe("SchedulerDb", () => {
       target: "proj-a",
       reply_chat_id: "-100123",
       reply_thread_id: "42",
+      reply_adapter_id: "telegram",
       label: "daily test",
       timezone: "Asia/Taipei",
     });
@@ -39,6 +40,7 @@ describe("SchedulerDb", () => {
     expect(s.id).toBeTruthy();
     expect(s.cron).toBe("0 7 * * *");
     expect(s.enabled).toBe(true);
+    expect(s.reply_adapter_id).toBe("telegram");
 
     const fetched = db.get(s.id);
     expect(fetched).toEqual(s);
@@ -91,7 +93,8 @@ describe("SchedulerDb", () => {
     const columns = db["db"].prepare("PRAGMA table_info(schedules)").all() as Array<{ name: string; notnull: number }>;
     expect(columns.find(column => column.name === "cron")?.notnull).toBe(0);
     expect(columns.some(column => column.name === "at")).toBe(true);
-    expect(db.get("legacy")).toMatchObject({ cron: "0 7 * * *", at: null });
+    expect(columns.some(column => column.name === "reply_adapter_id")).toBe(true);
+    expect(db.get("legacy")).toMatchObject({ cron: "0 7 * * *", at: null, reply_adapter_id: null });
     expect(db.getRuns("legacy")).toHaveLength(1);
 
     db.delete("legacy");

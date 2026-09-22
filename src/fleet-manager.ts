@@ -5588,6 +5588,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private scheduleSourceAdapter(schedule: Schedule): ChannelAdapter | undefined {
     const chatId = String(schedule.reply_chat_id);
+    // New schedules carry the adapter that owned the source chat at creation.
+    // Keep that persona across source-instance rebinding, but never trust a
+    // stale adapter after the chat has moved to another world.
+    const persistedWorld = schedule.reply_adapter_id
+      ? this.worlds.get(schedule.reply_adapter_id)
+      : undefined;
+    if (persistedWorld && String(persistedWorld.groupId) === chatId) {
+      return persistedWorld.adapter;
+    }
     const sourceAdapterId = schedule.source ? this.getInstanceAdapterId(schedule.source) : undefined;
     const sourceWorld = sourceAdapterId ? this.worlds.get(sourceAdapterId) : undefined;
     if (sourceWorld && String(sourceWorld.groupId) === chatId) return sourceWorld.adapter;
@@ -5689,6 +5698,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             target: (payload.target as string) || instanceName,
             reply_chat_id: meta.chat_id,
             reply_thread_id: meta.thread_id || null,
+            reply_adapter_id: meta.adapter_id || null,
             label: payload.label as string | undefined,
             timezone: payload.timezone as string | undefined,
             silent: !!(payload.silent),
