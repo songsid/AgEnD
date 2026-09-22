@@ -67,34 +67,53 @@ export function rotateLogIfNeeded(logPath: string, maxSize = MAX_LOG_SIZE, maxFi
   } catch { /* best effort */ }
 }
 
+/**
+ * One transport per process, shared by every logger built here.
+ *
+ * `pino({ transport })` builds a fresh transport per logger, and a transport
+ * spawns a worker thread per target and registers a `process.on("exit")`
+ * handler. FleetManager creates its logger in a field initializer, so a process
+ * that builds several of them — which is every test run — accumulated both, and
+ * past ten listeners Node reported an exit-listener leak it was right about.
+ *
+ * Sharing the STREAM rather than the logger is deliberate: callers still get
+ * their own logger object, so a test that spies on one fleet's `logger.debug`
+ * does not see another fleet's calls. Memoising the logger itself broke exactly
+ * that.
+ */
+let sharedTransport: ReturnType<typeof pino.transport> | undefined;
+
+function transportStream() {
+  // Typed loosely on purpose: pino.transport()'s own option type narrows
+  // `destination` to a file descriptor, while pino-pretty takes a path.
+  const targets: { target: string; options: Record<string, unknown>; level: string }[] = [
+      {
+        target: "pino-pretty",
+        options: getStdoutPrettyOptions(),
+        // The root/child logger level performs per-component filtering. Keep
+        // transports permissive so a debug-level daemon child is not filtered
+        // by an info-level fleet root before it reaches the shared worker.
+        level: "trace",
+      },
+      {
+        target: "pino-pretty",
+        options: {
+          destination: LOG_FILE,
+          colorize: false,
+          translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
+          ignore: "pid,hostname",
+        },
+        level: "trace",
+      },
+  ];
+  sharedTransport ??= pino.transport({ targets });
+  return sharedTransport;
+}
+
 export function createLogger(level: string = "info") {
   mkdirSync(DATA_DIR, { recursive: true });
   rotateLogIfNeeded(LOG_FILE);
-  return pino({
-    level,
-    transport: {
-      targets: [
-        {
-          target: "pino-pretty",
-          options: getStdoutPrettyOptions(),
-          // The root/child logger level performs per-component filtering. Keep
-          // transports permissive so a debug-level daemon child is not filtered
-          // by an info-level fleet root before it reaches the shared worker.
-          level: "trace",
-        },
-        {
-          target: "pino-pretty",
-          options: {
-            destination: LOG_FILE,
-            colorize: false,
-            translateTime: "SYS:yyyy-mm-dd HH:MM:ss",
-            ignore: "pid,hostname",
-          },
-          level: "trace",
-        },
-      ],
-    },
-  });
+  return pino({ level }, transportStream());
 }
 
 export type Logger = ReturnType<typeof createLogger>;
