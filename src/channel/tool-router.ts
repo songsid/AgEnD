@@ -55,10 +55,19 @@ export function routeToolCall(
         replyTo: args.reply_to as string,
         format,
       }).then(async (sent) => {
+        // Text and attachments are separate platform messages, so `messageId`
+        // — the text's — is not the one carrying the image. A caller that GETs
+        // it to confirm delivery or to read the CDN url finds `attachments: []`
+        // and cannot tell that from a dropped attachment. The ids already come
+        // back from sendFile; they were being thrown away.
+        const attachmentMessageIds: string[] = [];
         for (const filePath of files) {
-          await adapter.sendFile(chatId, filePath, { threadId: replyThreadId });
+          const file = await adapter.sendFile(chatId, filePath, { threadId: replyThreadId });
+          if (file?.messageId) attachmentMessageIds.push(file.messageId);
         }
-        respond(sent);
+        // Omitted entirely for a reply with no files, so the ordinary result
+        // shape does not grow an empty array the model has to read past.
+        respond(attachmentMessageIds.length ? { ...sent, attachment_message_ids: attachmentMessageIds } : sent);
       }).catch(e => respond(null, e.message));
       return true;
     }
