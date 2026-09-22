@@ -189,6 +189,27 @@ export class MuseBackend implements CliBackend {
     }
   }
 
+  requiresDeliveryEnterRetry(): boolean {
+    // Measured, not inferred. An Enter that arrives in the same keystroke burst
+    // as the text is taken as a NEWLINE: `tmux send-keys "probe N" Enter`
+    // failed to submit three times out of three, and the drafts stacked up in
+    // the input box —
+    //
+    //   ❯ probe 1
+    //     probe 2
+    //     probe 3
+    //
+    // The damage is not a lost message but a merged one: the next Enter submits
+    // the whole draft as a single turn. The daemon's waitForPasteSettle already
+    // opens the gap muse needs (a paste followed by Enter a second later
+    // submitted every time, including mid-turn), so this is insurance against
+    // the case where the settle wait is blind and falls back to a fixed delay.
+    //
+    // Safe on every delivery, both preconditions verified live: a bare Enter is
+    // a no-op at an empty idle prompt, and a no-op mid-turn with empty input.
+    return true;
+  }
+
   getReadyPattern(): RegExp {
     // The ready screen carries the `Muse Code <version>` header and an empty
     // `❯` input row. Both survive scrollback, which is fine — this pattern only
