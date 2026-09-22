@@ -20,6 +20,12 @@ export class AccessManager {
   private statePath: string;
   private state: AccessState;
   private failedAttempts: Map<string, { count: number; lastAttempt: number }> = new Map();
+  /**
+   * The mode that came out of the state file, or undefined when the file had
+   * none. Kept separately because the constructor fills `state.mode` in from
+   * the config when the file is silent, after which the two are indistinguishable.
+   */
+  private persistedMode?: "pairing" | "locked" | "open";
 
   constructor(config: AccessConfig, statePath: string) {
     this.config = config;
@@ -30,6 +36,7 @@ export class AccessManager {
       try {
         const raw = readFileSync(statePath, "utf8");
         const saved = JSON.parse(raw) as Partial<AccessState>;
+        this.persistedMode = saved.mode;
         this.state = {
           mode: saved.mode,
           allowed_users: saved.allowed_users ?? [],
@@ -177,6 +184,24 @@ export class AccessManager {
 
   getMode(): "pairing" | "locked" | "open" {
     return this.state.mode ?? this.config.mode;
+  }
+
+  /**
+   * The configured mode that the state file is overriding, or null when they
+   * agree or nothing was persisted.
+   *
+   * State wins on purpose — a pairing that happened at runtime must survive a
+   * fleet restart — but the first `persist()` freezes whatever the mode was at
+   * the time, and from then on editing `access.mode` in fleet.yaml changes
+   * nothing. Without this, that reads as "my config edit did nothing" with no
+   * way to find out why.
+   *
+   * Reported rather than logged from here: the CLI also builds an AccessManager
+   * with a synthetic config, where a mismatch means nothing.
+   */
+  overriddenConfigMode(): "pairing" | "locked" | "open" | null {
+    if (this.persistedMode === undefined) return null;
+    return this.persistedMode === this.config.mode ? null : this.config.mode;
   }
 
   getAllowedUsers(): (number | string)[] {
