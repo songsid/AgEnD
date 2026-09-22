@@ -1173,6 +1173,7 @@
   // Provider API keys use a separate registry endpoint. Unsupported providers
   // are intentionally rendered without an input: a key that cannot be
   // positively verified must never be accepted as an "unverified" write.
+  function providerSecretInputAllowed(spec) { return spec?.verifier === "available"; }
   function renderProviderSecrets() {
     const host = $("providerSecrets"); if (!host) return;
     host.innerHTML = "";
@@ -1183,7 +1184,7 @@
       const row = el("div", { class: "item" });
       const feedback = el("div", { class: "feedback" });
       const present = spec.token_present ? "Key configured" : "Not configured";
-      if (spec.verifier !== "available") {
+      if (!providerSecretInputAllowed(spec)) {
         row.append(el("div", { class: "item-row" }, el("span", { class: "name" }, spec.display_name), el("span", { class: "tag" }, "Unsupported verifier")), el("div", { class: "hint" }, "This provider cannot be safely verified here; no key input is offered."));
         host.append(row); return;
       }
@@ -1832,6 +1833,8 @@
     const connections = await api("/api/settings/connections");
     state.connections = connections.ok && Array.isArray(connections.body) ? connections.body : [];
     const providerSecrets = await api("/api/settings/provider-secrets");
+    const providerHost = $("providerSecrets");
+    if (providerHost) providerHost.style.display = providerSecrets.ok ? "" : "none";
     state.providerSecrets = providerSecrets.ok && Array.isArray(providerSecrets.body) ? providerSecrets.body : [];
     await reloadLive();
     renderAll();

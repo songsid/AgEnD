@@ -12418,6 +12418,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }
 
   /** Provider API-key rows exposed to Settings (never the env key or secret). */
+  providerSecretsEnabled(): boolean {
+    return this.fleetConfig?.web?.provider_secrets === true;
+  }
+
   listProviderSecrets(): ProviderSecretStatus[] {
     return PROVIDER_SECRET_SPECS.map(spec => ({
       id: spec.id,

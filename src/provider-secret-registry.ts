@@ -1,5 +1,5 @@
 import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
+import { BlockList, isIP } from "node:net";
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import type { IncomingMessage } from "node:http";
 import { redactProviderError } from "./provider-probe.js";
@@ -157,16 +157,28 @@ export function validateSecretHeaderValue(secret: string): void {
   }
 }
 
+const PRIVATE_IPV4 = new BlockList();
+for (const [address, prefix] of [
+  ["0.0.0.0", 8], ["10.0.0.0", 8], ["100.64.0.0", 10], ["127.0.0.0", 8],
+  ["169.254.0.0", 16], ["172.16.0.0", 12], ["192.0.0.0", 24], ["192.0.2.0", 24],
+  ["192.168.0.0", 16], ["198.18.0.0", 15], ["198.51.100.0", 24], ["203.0.113.0", 24],
+  ["224.0.0.0", 4], ["240.0.0.0", 4],
+] as const) PRIVATE_IPV4.addSubnet(address, prefix, "ipv4");
+
+const PRIVATE_IPV6 = new BlockList();
+for (const [address, prefix] of [
+  ["::", 128], ["::1", 128], ["::ffff:0:0", 96], ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
+] as const) PRIVATE_IPV6.addSubnet(address, prefix, "ipv6");
+
+/**
+ * BlockList handles IPv4-mapped IPv6 spellings (including hex tails) without
+ * relying on string prefixes. Unknown address families fail closed.
+ */
 function isPrivateAddress(address: string): boolean {
-  address = address.toLowerCase();
-  if (address.startsWith("::ffff:")) return isPrivateAddress(address.slice("::ffff:".length));
-  if (address === "::1" || address === "0.0.0.0" || address === "::") return true;
-  if (address.startsWith("fc") || address.startsWith("fd") || address.startsWith("fe8") || address.startsWith("fe9") || address.startsWith("fea") || address.startsWith("feb")) return true;
-  const parts = address.split(".").map(Number);
-  if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return false;
-  return parts[0] === 10 || parts[0] === 127 || parts[0] === 0 || (parts[0] === 169 && parts[1] === 254)
-    || (parts[0] === 172 && parts[1]! >= 16 && parts[1]! <= 31)
-    || (parts[0] === 192 && parts[1] === 168);
+  const family = isIP(address);
+  if (family === 4) return PRIVATE_IPV4.check(address, "ipv4");
+  if (family === 6) return PRIVATE_IPV6.check(address, "ipv6");
+  return true;
 }
 
 export interface ProviderHttpResponse {
@@ -178,6 +190,22 @@ export interface ProviderHttpResponse {
 
 export interface ProviderHttpClient {
   request(spec: ProviderSecretSpec, secret: string): Promise<ProviderHttpResponse>;
+}
+
+/**
+ * Test-only transport hooks. They are deliberately reachable only through the
+ * factory below; Settings requests never carry a dispatcher, CA, or resolver.
+ */
+interface ProviderHttpClientTestOptions {
+  ca: string | Buffer;
+  dnsLookup: (hostname: string, options: { all?: boolean; verbatim?: boolean }) => Promise<{ address: string; family: 4 | 6 }>;
+  allowPrivateAddress?: boolean;
+  onConnectLookup?: (options: { all?: boolean }) => void;
+  onRequest?: (options: RequestOptions) => void;
+}
+
+export function createProviderHttpClientForTests(options: ProviderHttpClientTestOptions): ProviderHttpClient {
+  return FixedProviderHttpClient.createForTests(options);
 }
 
 function responseBodyText(response: IncomingMessage, maxBytes: number, timeoutMs: number): Promise<string> {
@@ -221,6 +249,16 @@ function responseBodyText(response: IncomingMessage, maxBytes: number, timeoutMs
  * preventing a check/connect TOCTOU window.
  */
 export class FixedProviderHttpClient implements ProviderHttpClient {
+  private constructor(private readonly testOptions?: ProviderHttpClientTestOptions) {}
+
+  static create(): FixedProviderHttpClient {
+    return new FixedProviderHttpClient();
+  }
+
+  static createForTests(options: ProviderHttpClientTestOptions): FixedProviderHttpClient {
+    return new FixedProviderHttpClient(options);
+  }
+
   async request(spec: ProviderSecretSpec, secret: string): Promise<ProviderHttpResponse> {
     const verifier = spec.verifier;
     if (!verifier) throw new Error("unsupported verifier");
@@ -229,14 +267,20 @@ export class FixedProviderHttpClient implements ProviderHttpClient {
     const origin = new URL(verifier.origin);
     if (!spec.allowedHosts.includes(origin.origin)) throw new Error("provider origin is not allowlisted");
     const deadline = Date.now() + verifier.timeoutMs;
-    const address = await Promise.race([
-      dnsLookup(origin.hostname, { all: false, verbatim: true }),
+    const resolved = await Promise.race([
+      (this.testOptions?.dnsLookup
+        ? this.testOptions.dnsLookup(origin.hostname, { all: false, verbatim: true })
+        : dnsLookup(origin.hostname, { all: false, verbatim: true })),
       new Promise<never>((_, reject) => {
         const timer = setTimeout(() => reject(new Error("provider DNS lookup timeout")), verifier.timeoutMs);
         timer.unref?.();
       }),
     ]);
-    if (!address?.address || isPrivateAddress(address.address)) throw new Error("provider address is not public");
+    const address = Array.isArray(resolved) ? resolved[0] : resolved;
+    if (!address?.address) throw new Error("provider DNS returned no address");
+    if (this.testOptions?.allowPrivateAddress !== true && isPrivateAddress(address.address)) {
+      throw new Error("provider address is not public");
+    }
     const headers: Record<string, string> = { Accept: "application/json" };
     if (verifier.auth === "bearer") headers.Authorization = `Bearer ${secret}`;
     else if (verifier.auth === "x-api-key") headers["x-api-key"] = secret;
@@ -252,11 +296,20 @@ export class FixedProviderHttpClient implements ProviderHttpClient {
       method: "GET",
       headers,
       rejectUnauthorized: true,
+      ca: this.testOptions?.ca,
       servername: origin.hostname,
       // Explicitly bypass any agent/proxy supplied by ambient config.
       agent: false,
-      lookup: (_hostname, _options, callback) => callback(null, address.address, address.family),
+      lookup: (_hostname, options, callback) => {
+        this.testOptions?.onConnectLookup?.(options);
+        if (options.all) callback(null, [{ address: address.address, family: address.family }]);
+        else callback(null, address.address, address.family);
+      },
     };
+    // Node 20+ may request an all-address lookup when autoSelectFamily is
+    // enabled by the runtime. Keep this explicit in the transport so the
+    // callback below is exercised consistently across supported Node releases.
+    (requestOptions as RequestOptions & { autoSelectFamily?: boolean }).autoSelectFamily = true;
     const raw = await new Promise<{ response: IncomingMessage; body: string }>((resolve, reject) => {
       let settled = false;
       const remaining = Math.max(1, deadline - Date.now());
@@ -267,6 +320,7 @@ export class FixedProviderHttpClient implements ProviderHttpClient {
         reject(new Error("provider request timeout"));
       }, remaining);
       timer.unref?.();
+      this.testOptions?.onRequest?.(requestOptions);
       const request = httpsRequest(requestOptions, response => {
         responseBodyText(response, verifier.maxResponseBytes, Math.max(1, deadline - Date.now())).then(body => {
           if (settled) return;
@@ -299,7 +353,7 @@ export class FixedProviderHttpClient implements ProviderHttpClient {
 export async function verifyProviderSecret(
   spec: ProviderSecretSpec | undefined,
   secret: string,
-  client: ProviderHttpClient = new FixedProviderHttpClient(),
+  client: ProviderHttpClient = FixedProviderHttpClient.create(),
 ): Promise<ProviderProbeResult> {
   if (!spec?.verifier) return { ok: false, status: "unsupported_verifier" };
   try {

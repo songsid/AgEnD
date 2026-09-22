@@ -91,6 +91,7 @@ export interface SettingsApiContext {
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
   /** Generic provider API-key verifier registry (#861). */
+  providerSecretsEnabled?(): boolean;
   listProviderSecrets?(): ProviderSecretStatus[];
   verifyProviderSecret?(input: {
     specId: string;
@@ -296,7 +297,9 @@ export function handleSettingsRequest(
   // auth header and verifier are resolved server-side.  The body is consumed
   // once and no secret-bearing value is ever placed in a URL, job, SSE frame,
   // or response.
+  const providerSecretsEnabled = ctx.providerSecretsEnabled?.() === true;
   if (method === "GET" && (path === "/api/settings/provider-secrets" || path === "/api/settings/secrets")) {
+    if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.listProviderSecrets) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     json(res, 200, ctx.listProviderSecrets().map(item => ({
       id: item.id,
@@ -312,6 +315,7 @@ export function handleSettingsRequest(
 
   const providerSecretVerifyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
   if (method === "POST" && providerSecretVerifyMatch) {
+    if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
@@ -335,6 +339,7 @@ export function handleSettingsRequest(
 
   const providerSecretApplyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   if (method === "POST" && providerSecretApplyMatch) {
+    if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
@@ -356,6 +361,7 @@ export function handleSettingsRequest(
 
   const providerSecretStatusMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/[^/]+\/apply\/([A-Za-z0-9_-]+)$/);
   if (method === "GET" && providerSecretStatusMatch) {
+    if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.getProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const job = ctx.getProviderSecretApply(providerSecretStatusMatch[1]!, requestSessionBinding(req));
     if (!job) { json(res, 404, { error: "job not found" }, true); return true; }

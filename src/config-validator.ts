@@ -234,6 +234,9 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     if (config.web.usage_panel !== undefined && typeof config.web.usage_panel !== "boolean") {
       err("web.usage_panel", "must be a boolean");
     }
+    if (config.web.provider_secrets !== undefined && typeof config.web.provider_secrets !== "boolean") {
+      err("web.provider_secrets", "must be a boolean");
+    }
   }
 
   // ── Defaults ──────────────────────────────────────────────

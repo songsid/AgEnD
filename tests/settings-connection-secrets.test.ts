@@ -29,6 +29,7 @@ function context() {
     lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     listSecureConnections: () => [{ id: "primary", type: "discord", token_env: "DISCORD_BOT_TOKEN", token_present: true, group_id: "1", status: "connected" }],
     verifyConnectionSecret: verify, startConnectionSecretApply: apply,
+    providerSecretsEnabled: () => true,
     verifyConnectionBinding: bindingVerify, startConnectionBindingApply: bindingApply,
     getConnectionSecretApply: () => null,
   } as unknown as SettingsApiContext;
@@ -53,6 +54,15 @@ describe("Settings secure connection endpoints", () => {
     expect(JSON.stringify(response.body)).not.toContain("GROQ_API_KEY");
   });
 
+  it("preserves unsupported-verifier status without offering an unverified write", async () => {
+    const { ctx } = context();
+    ctx.listProviderSecrets = () => [{ id: "test.unsupported", display_name: "Test provider", kind: "api_key", token_present: false, verifier: "unsupported", activation: "next_use", stale_consumers: [] }];
+    const response = await request("/api/settings/provider-secrets", ctx, "GET");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([expect.objectContaining({ id: "test.unsupported", verifier: "unsupported" })]);
+    expect(JSON.stringify(response.body)).not.toContain("input");
+  });
+
   it("uses the server-resolved spec id for provider verify/apply", async () => {
     const { ctx } = context();
     ctx.verifyProviderSecret = vi.fn(async () => ({ ok: true as const, verification_id: "provider_verify", expires_at: Date.now() + 60_000, spec_id: "openai.api_key", activation: "next_use" as const }));
@@ -66,6 +76,21 @@ describe("Settings secure connection endpoints", () => {
     const applied = await request("/api/settings/secrets/openai.api_key/apply", ctx, "POST", { verification_id: "provider_verify", idempotency_key: "provider_key", envKey: "PATH" }, { cookie: "agend_session=session" });
     expect(applied.status).toBe(202);
     expect(applied.body).not.toHaveProperty("envKey");
+  });
+
+  it("keeps provider secret endpoints dark when the feature flag is off", async () => {
+    const { ctx } = context();
+    ctx.providerSecretsEnabled = () => false;
+    ctx.listProviderSecrets = vi.fn();
+    ctx.verifyProviderSecret = vi.fn();
+    const listed = await request("/api/settings/provider-secrets", ctx, "GET");
+    expect(listed.status).toBe(404);
+    const verified = await request("/api/settings/provider-secrets/openai.api_key/verify", ctx, "POST", {
+      secret: "sk-never-written", idempotency_key: "flag-off",
+    });
+    expect(verified.status).toBe(404);
+    expect(ctx.listProviderSecrets).not.toHaveBeenCalled();
+    expect(ctx.verifyProviderSecret).not.toHaveBeenCalled();
   });
 
   it("accepts a token only in the verify body and binds the request session", async () => {
@@ -132,5 +157,15 @@ describe("Settings secure connection endpoints", () => {
     }]);
     expect(response.status).toBe(409);
     expect(response.body.error).toContain("verified rebind");
+  });
+
+  it("rejects provider API-key env collisions in broad channel CRUD", async () => {
+    const { ctx } = context();
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      id: "primary", type: "discord", mode: "topic", bot_token_env: "GROQ_API_KEY", group_id: "1",
+      access: { mode: "open", allowed_users: [] },
+    }]);
+    expect(response.status).toBe(409);
+    expect(response.body.error).toContain("protected provider secret key");
   });
 });
