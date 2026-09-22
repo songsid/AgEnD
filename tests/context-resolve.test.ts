@@ -11,13 +11,63 @@ import {
   TopicCommands,
 } from "../src/topic-commands.js";
 
-describe("context parsers for kiro / grok / codex", () => {
+// Captured from a live muse 1.3.0 `/status` pane (2026-09-22). Keep the
+// panel below the CONTEXT row: parseContextPercent scans bottom-up and the
+// real capture must prove the lower status bar does not steal the answer.
+const MUSE_STATUS_PANE = `┌─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│  MUSE CODE 1.3.0 / amber-stellar                                                                              COMPLETED │
+│                                                                                                                         │
+│  MODEL          muse-spark-1.3-contributor · high                                                                       │
+│                 meta · native-basic                                                                                     │
+│                                                                                                                         │
+│  ACCESS         Launch overrides                                                                                        │
+│                 Meta account                                                                                            │
+│                                                                                                                         │
+│  USAGE          23,058 tokens · 1 turn · 0 subagents                                                                    │
+│  CONTEXT        98% left · 23.2K used / 1008K · normal                                                                  │
+│                                                                                                                         │
+│  ACTIVITY       no tasks                                                                                                │
+│                 0 terminals · inbox clear                                                                               │
+│                                                                                                                         │
+│  BILLING        Subscription · Muse Code Everyday Usage                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  muse-spark-1.3-contributor · high · /t/c/-/c/scratchpad/muse-cap · Launch overrides`;
+
+// Captured from the same live session's `/usage` panel. The top frame had
+// scrolled out; unlike `/status`, this pane contains no context percentage.
+const MUSE_USAGE_PANE = `│                                                      │
+│    Input      22,942                                 │
+│    Cached     17,521                                 │
+│    Output        116                                 │
+│    Total      23,058                                 │
+│                                                      │
+│    Turns            1                                │
+│    Subagents     none                                │
+│                                                      │
+│  Subscription · Muse Code Everyday Usage             │
+│    Current        0% used · Resets at 2:37 AM        │
+│    Weekly         0% used · Resets Sep 28 at 8:00 AM │
+└──────────────────────────────────────────────────────┘`;
+
+describe("context parsers for kiro / grok / codex / muse", () => {
   it("kiro pie statusline → used %", () => {
     expect(parseContextPercent("kiro_default · auto · ◕ 63% · λ")).toBe(63);
   });
 
   it("codex Context N% left → inverted used %", () => {
     expect(parseContextPercent("  Context 33% left")).toBe(67);
+  });
+
+  it("muse /status live pane → inverted used %", () => {
+    expect(parseContextPercent(MUSE_STATUS_PANE)).toBe(2);
+  });
+
+  it("muse /usage live pane has no context reading", () => {
+    expect(parseContextPercent(MUSE_USAGE_PANE)).toBeNull();
   });
 
   it("grok token ratio → used %", () => {
