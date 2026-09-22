@@ -29,7 +29,7 @@
 import { EventEmitter } from "node:events";
 import { execFile } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, openSync, rmSync, readFileSync, constants as fsConstants } from "node:fs";
+import { mkdtempSync, openSync, rmSync, readFileSync, unlinkSync, constants as fsConstants } from "node:fs";
 import { Socket as NetSocket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -586,6 +586,18 @@ export class TmuxTerminalBackend implements TerminalBackend {
    * command" scope would be violated against an unrelated process.
    */
   private readonly servers = new Map<string, { pid: number; identity: string }>();
+  /**
+   * Where tmux actually put each socket, asked for while the server was alive.
+   *
+   * tmux does not unlink its socket when the server exits — verified on this
+   * tmux for a clean `kill-server` as well as for SIGKILL — so every session
+   * used to leave a file behind. Reconstructing the path instead would be a
+   * guess: the layout depends on TMUX_TMPDIR and the uid, and a wrong guess
+   * either deletes nothing or deletes something else. Recorded separately from
+   * `servers` because that map is only written when the PID fingerprint is
+   * strong, and a platform without one still deserves its socket cleaned up.
+   */
+  private readonly socketPaths = new Map<string, string>();
   private readonly probe: (pid: number) => ProcessProbe;
 
   constructor(private readonly tmuxBin = "tmux", opts: { probeProcess?: (pid: number) => ProcessProbe } = {}) {
@@ -647,6 +659,10 @@ export class TmuxTerminalBackend implements TerminalBackend {
         // all: kill-server or a loud cleanupFailed — never a guess.
         if (probe.kind === "identified") this.servers.set(socket, { pid, identity: probe.identity });
       }
+      // Ask while the server is up; after it dies there is nobody to ask.
+      const socketPath = (await this.tmux(socket, "display-message", ["-p", "#{socket_path}"])
+        .catch(() => "")).trim();
+      if (socketPath) this.socketPaths.set(socket, socketPath);
       await this.tmux(socket, "set-option", ["-g", "window-size", "manual"]);
       if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
@@ -821,12 +837,22 @@ export class TmuxTerminalBackend implements TerminalBackend {
       // Keep the identity so a later retry can still reach the process.
       throw new Error(`tmux server on socket ${socket} could not be confirmed dead (${state})`);
     }
+    // Only now: the socket is how every command reaches the server, including
+    // the kill above, so removing it earlier would cut off our own retries and
+    // leave a live server nothing can talk to.
+    const socketPath = this.socketPaths.get(socket);
+    this.socketPaths.delete(socket);
+    if (socketPath) {
+      try { unlinkSync(socketPath); }
+      catch { /* already gone, or never ours to remove */ }
+    }
     this.servers.delete(socket);
   }
 
   /** Test seam: adopt a server identity as if captured at start. */
-  rememberServerForTests(socket: string, pid: number, identity: string): void {
+  rememberServerForTests(socket: string, pid: number, identity: string, socketPath?: string): void {
     this.servers.set(socket, { pid, identity });
+    if (socketPath) this.socketPaths.set(socket, socketPath);
   }
 }
 
