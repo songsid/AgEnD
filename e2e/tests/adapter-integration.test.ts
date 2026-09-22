@@ -35,7 +35,9 @@ function createTestAdapter(allowedUsers: number[] = [TEST_USER_ID]): TelegramAda
   const accessDir = join(testDir, "access");
   mkdirSync(accessDir, { recursive: true });
   const accessManager = new AccessManager(
-    { mode: "locked", allowed_users: allowedUsers },
+    // AccessConfig carries the pairing limits too. They are irrelevant to a
+    // locked channel, but stating them keeps the literal a real AccessConfig.
+    { mode: "locked", allowed_users: allowedUsers, max_pending_codes: 5, code_expiry_minutes: 10 },
     join(accessDir, "access.json"),
   );
   const adapter = new TelegramAdapter({

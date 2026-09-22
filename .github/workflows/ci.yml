@@ -19,6 +19,11 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npx tsc --noEmit
+      # The test suites are excluded from tsconfig.json (it emits dist/ from
+      # src/ only), so nothing above sees them. Without this line the check
+      # exists in package.json and runs nowhere, which is how it drifted to
+      # 308 errors before anyone looked.
+      - run: npm run typecheck:tests
       - run: npm run build
       - run: npm test
 

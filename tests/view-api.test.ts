@@ -150,7 +150,6 @@ describe("/api/profiles new fields (B2 wiring)", () => {
         }],
       }),
       resolveInstanceModel: () => ({ model: "configured-model", display: "configured-model", source: "instance" }),
-      effortStrategyFor: () => "restart",
     };
 
     const { res, out } = fakeRes();

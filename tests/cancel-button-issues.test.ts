@@ -13,6 +13,17 @@ import { FleetManager } from "../src/fleet-manager.js";
  * a button that was mid-workflow.
  */
 
+// Mirrors the module-local `CancelButtonPublication` in fleet-manager.ts. That
+// interface is not exported, so the shape is restated here; stating it is still
+// better than the `as never` casts it replaces, which turned off checking at
+// exactly the call sites these tests exist to pin.
+type CancelButtonPublication = {
+  generation: number;
+  correlationId?: string;
+  inFlight: boolean;
+  retirePending: boolean;
+};
+
 type Internals = {
   getInstanceIdle(name: string): boolean;
   getInstanceStatus(name: string): string;
@@ -30,6 +41,8 @@ type Internals = {
   startProgressTicker(entry: unknown): void;
   getGroupIdForInstance(name: string): string;
   logger: { warn: ReturnType<typeof vi.fn>; info: ReturnType<typeof vi.fn> };
+  cancelButtonPublications: Map<string, CancelButtonPublication>;
+  markCancelButtonPublicationForRetirement(name: string, expected?: CancelButtonPublication): void;
 };
 
 const dirs: string[] = [];
@@ -191,15 +204,15 @@ describe("cancel-button publication generation fence (#782)", () => {
   it("an idle edge only marks the publication it was bound to", () => {
     const { internals } = makeFleet();
     const current = { generation: 2, inFlight: true, retirePending: false };
-    internals.cancelButtonPublications.set("alpha", current as never);
+    internals.cancelButtonPublications.set("alpha", current);
 
     // A stale edge, bound to the publication that preceded this one.
     const superseded = { generation: 1, inFlight: true, retirePending: false };
-    internals.markCancelButtonPublicationForRetirement("alpha", superseded as never);
+    internals.markCancelButtonPublicationForRetirement("alpha", superseded);
     expect(current.retirePending, "a superseded edge must not retire the live button").toBe(false);
 
     // The edge bound to THIS publication still works.
-    internals.markCancelButtonPublicationForRetirement("alpha", current as never);
+    internals.markCancelButtonPublicationForRetirement("alpha", current);
     expect(current.retirePending).toBe(true);
   });
 

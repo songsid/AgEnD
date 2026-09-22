@@ -113,7 +113,7 @@ describe("listApiModels", () => {
       ok: true,
       json: async () => ({ data: [{ id: "claude-opus-5" }] }),
     })));
-    const env = await new ClaudeCodeBackend("/tmp/test").probeCLIEnv!({} as any);
+    const env = await new ClaudeCodeBackend("/tmp/test").probeCLIEnv!();
     expect(env.models!.map(m => m.id)).toContain("opus");        // quick-pick aliases
     expect(env.models!.map(m => m.id)).not.toContain("claude-opus-5");
     expect((env as any).apiModels.map((m: any) => m.id)).toEqual(["claude-opus-5", "claude-opus-5[1m]"]);

@@ -8,6 +8,7 @@ import { CloudflaredProvider, extractTunnelUrl, minimalChildEnv, validateQuickTu
 import { ManagedTunnel } from "../src/tunnel/manager.js";
 import { clearLease, leasePath, manualCleanupMessage, reapStaleTunnel, readLease, writeLease } from "../src/tunnel/lease.js";
 import { TunnelStartError, type TunnelProvider, type TunnelStartContext } from "../src/tunnel/types.js";
+import type { TunnelHandle } from "../src/tunnel/types.js";
 
 const dirs: string[] = [];
 
@@ -269,7 +270,10 @@ describe("a tunnel is not ready until the public URL serves this page", () => {
 });
 
 /** A handle for a provider that never really started anything. */
-function handleStub(pid: number | null, identity: string | null, stop = async () => ({ confirmed: true as const })) {
+// The default narrowed `stop` to the confirmed case, which is the one thing
+// several of these tests are NOT about. Use the handle's own result type.
+function handleStub(pid: number | null, identity: string | null,
+                    stop: TunnelHandle["stop"] = async () => ({ confirmed: true as const })) {
   return {
     provider: "fake", visibility: "public" as const,
     baseUrl: "https://x.trycloudflare.com", pageUrl: "https://x.trycloudflare.com/s/abc/",

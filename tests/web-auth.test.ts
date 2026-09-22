@@ -86,7 +86,7 @@ describe("persistent dashboard token", () => {
       expect.stringContaining("Dashboard unavailable"),
     ), { timeout: 4_000, interval: 25 });
     expect(fm.getDashboardAccess().ready).toBe(false);
-    expect(fm.topicCommands.getDashboardText()).toContain("Dashboard starting");
+    expect(fm["topicCommands"].getDashboardText()).toContain("Dashboard starting");
 
     const failedServer = (fm as any).healthServer as Server | null;
     failedServer?.removeAllListeners();

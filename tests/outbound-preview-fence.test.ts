@@ -52,7 +52,7 @@ describe("cross-instance topic notifications never emit a dangling code fence", 
     // Precondition: the old behaviour really did produce an unbalanced preview.
     expect(fenceLines(FENCED.slice(0, 100)) % 2).toBe(1);
 
-    const sendText = vi.fn(async () => ({ messageId: "1", chatId: "42" }));
+    const sendText = vi.fn(async (_chatId: string, _text: string) => ({ messageId: "1", chatId: "42" }));
     const ctx = makeContext(sendText);
     await outboundHandlers.get("send_to_instance")!(
       ctx, { instance_name: "target", message: FENCED }, () => {}, meta as any,

@@ -5,6 +5,15 @@ import { join } from "node:path";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
 import type { Logger } from "../src/logger.js";
+import type { CliBackend } from "../src/backend/types.js";
+import type { TmuxManager } from "../src/tmux-manager.js";
+
+/**
+ * A stand-in with only the members this test's path touches. Widening through
+ * `unknown` names what it substitutes for; `as any` would also stop checking
+ * every later use of it.
+ */
+const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 /**
  * Silent conversation loss (external report: 3-core host, 22 instances, CPU
@@ -41,16 +50,16 @@ describe("a startup that merely ran out of budget must not cost the conversation
   it("does not treat a timeout as proof that the session is gone", () => {
     const d = makeDaemon();
     // What a slow cold start actually leaves on the pane: no verdict at all.
-    expect(d.paneSaysNoConversation("Loading…\n$ claude --continue --model opus")).toBe(false);
-    expect(d.paneSaysNoConversation(undefined)).toBe(false);
-    expect(d.paneSaysNoConversation("")).toBe(false);
+    expect(d["paneSaysNoConversation"]("Loading…\n$ claude --continue --model opus")).toBe(false);
+    expect(d["paneSaysNoConversation"](undefined)).toBe(false);
+    expect(d["paneSaysNoConversation"]("")).toBe(false);
   });
 
   it("a bare --continue in the pane is not a verdict either", () => {
     // The old pattern matched this, so any pane merely showing the flag — a
     // usage error, an echoed invocation — could discard the session.
     const d = makeDaemon();
-    expect(d.paneSaysNoConversation("error: unrecognized option '--continue'")).toBe(false);
+    expect(d["paneSaysNoConversation"]("error: unrecognized option '--continue'")).toBe(false);
   });
 
   it("still recognises the CLI actually saying there is nothing to resume", () => {
@@ -60,7 +69,7 @@ describe("a startup that merely ran out of budget must not cost the conversation
       "no conversation to continue",
       "No previous session found",
     ]) {
-      expect(d.paneSaysNoConversation(said), said).toBe(true);
+      expect(d["paneSaysNoConversation"](said), said).toBe(true);
     }
   });
 });
@@ -69,7 +78,7 @@ describe("setting a session aside is recoverable, not destructive", () => {
   it("keeps the id on disk under a dated name instead of deleting it", () => {
     const d = makeDaemon();
 
-    d.setSessionAside("cli_reported_no_conversation");
+    d["setSessionAside"]("cli_reported_no_conversation");
 
     expect(sessionExists(), "the live id is cleared").toBe(false);
     expect(setAside(), "but it is still on disk").toHaveLength(1);
@@ -79,7 +88,7 @@ describe("setting a session aside is recoverable, not destructive", () => {
     const d = makeDaemon();
     for (let i = 0; i < 9; i++) {
       writeFileSync(join(dir, "session-id"), `conversation-${i}`);
-      d.setSessionAside("test");
+      d["setSessionAside"]("test");
     }
     expect(setAside().length, "bounded").toBeLessThanOrEqual(5);
   });
@@ -88,7 +97,7 @@ describe("setting a session aside is recoverable, not destructive", () => {
     const d = makeDaemon();
     rmSync(join(dir, "session-id"));
 
-    d.setSessionAside("test");
+    d["setSessionAside"]("test");
 
     expect(setAside()).toHaveLength(0);
   });
@@ -96,22 +105,22 @@ describe("setting a session aside is recoverable, not destructive", () => {
 
 /** Drive the real failure path in spawnClaudeWindow, not just its helpers. */
 function armForFailedResume(d: AnyDaemon, opts: { paneText?: string } = {}) {
-  d.backend = {
+  d["backend"] = standingIn<CliBackend>({
     binaryName: "claude",
     writeConfig: vi.fn(),
     buildCommand: vi.fn(() => "claude"),
     getStartupBudgetMs: vi.fn(() => 60_000),
-  };
-  d.tmux = {
+  });
+  d["tmux"] = standingIn<TmuxManager>({
     killWindow: vi.fn().mockResolvedValue(undefined),
     capturePaneWithHistory: vi.fn().mockResolvedValue(opts.paneText ?? "Loading…"),
-  };
-  d.killProcessTree = vi.fn().mockResolvedValue(undefined);
-  d.noteStartupPaneForBackendOutage = vi.fn().mockResolvedValue(undefined);
-  d.failStartupIfBackendUnreachable = vi.fn().mockResolvedValue(undefined);
-  d.beginSpawn = vi.fn(); d.endSpawn = vi.fn();
-  d.trySpawn = vi.fn().mockResolvedValue(false);          // every launch misses its budget
-  d.skipResume = false;
+  });
+  d["killProcessTree"] = vi.fn().mockResolvedValue(undefined);
+  d["noteStartupPaneForBackendOutage"] = vi.fn().mockResolvedValue(undefined);
+  d["failStartupIfBackendUnreachable"] = vi.fn().mockResolvedValue(undefined);
+  d["beginSpawn"] = vi.fn(); d["endSpawn"] = vi.fn();
+  d["trySpawn"] = vi.fn().mockResolvedValue(false);          // every launch misses its budget
+  d["skipResume"] = false;
 }
 
 describe("giving up is bounded and never silent (through spawnClaudeWindow)", () => {
@@ -119,7 +128,7 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     const d = makeDaemon();
     armForFailedResume(d);
 
-    await expect(d.spawnClaudeWindow(), "the attempt must fail, not fake success").rejects.toThrow(/session kept/);
+    await expect(d["spawnClaudeWindow"](), "the attempt must fail, not fake success").rejects.toThrow(/session kept/);
 
     expect(sessionExists(), "the conversation is still there for the fleet's retry").toBe(true);
     expect(setAside(), "and nothing was set aside yet").toHaveLength(0);
@@ -132,13 +141,13 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     d.on("context_lost", lost);
 
     // Earlier attempts keep the session…
-    await expect(d.spawnClaudeWindow()).rejects.toThrow();
-    await expect(d.spawnClaudeWindow()).rejects.toThrow();
+    await expect(d["spawnClaudeWindow"]()).rejects.toThrow();
+    await expect(d["spawnClaudeWindow"]()).rejects.toThrow();
     expect(sessionExists(), "still kept").toBe(true);
     expect(lost, "nothing announced yet").not.toHaveBeenCalled();
 
     // …until the bound is reached, and then it is announced rather than silent.
-    await expect(d.spawnClaudeWindow()).rejects.toThrow(/failed to start after retry/);
+    await expect(d["spawnClaudeWindow"]()).rejects.toThrow(/failed to start after retry/);
 
     expect(sessionExists(), "the live id is cleared").toBe(false);
     expect(setAside(), "but recoverable on disk").toHaveLength(1);
@@ -153,7 +162,7 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     const lost = vi.fn();
     d.on("context_lost", lost);
 
-    await expect(d.spawnClaudeWindow()).rejects.toThrow();
+    await expect(d["spawnClaudeWindow"]()).rejects.toThrow();
 
     expect(sessionExists(), "proven gone, so it is set aside on the first failure").toBe(false);
     expect(setAside()).toHaveLength(1);

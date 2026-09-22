@@ -531,8 +531,8 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       if (!pasted && captures > 2) throw new Error("no server running");
       return h.state.pane;
     };
-    const origPaste = h.paste.getMockImplementation()!;
-    h.paste.mockImplementation(async (...args: unknown[]) => { pasted = true; return origPaste(...args as []); });
+    const origPaste = h.paste.getMockImplementation()! as (...a: unknown[]) => Promise<unknown>;
+    h.paste.mockImplementation(async (...args: unknown[]) => { pasted = true; return origPaste(...args); });
     h.state.afterPaste = SUBMITTED; // m-1 echoed into the transcript, input row clear
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));

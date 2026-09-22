@@ -70,7 +70,7 @@ describe("MCP react world routing", () => {
     fm.adapter = primary;
     fm.worlds.set("discord-primary", { adapter: primary } as any);
     fm.worlds.set("discord-secondary", { adapter: secondary } as any);
-    fm.instanceWorldBinding.set("general-secondary", "discord-primary");
+    fm["instanceWorldBinding"].set("general-secondary", "discord-primary");
     fm.fleetConfig = {
       defaults: {},
       instances: {

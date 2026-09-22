@@ -56,8 +56,9 @@ describe("Settings manual lifecycle API", () => {
     ctx.fleetConfig!.channels = [{
       id: "discord-primary",
       type: "discord",
+      mode: "topic" as const,
       bot_token_env: "DISCORD_TOKEN",
-      access: { mode: "locked", allowed_users: ["admin"] },
+      access: { mode: "locked", allowed_users: ["admin"], max_pending_codes: 5, code_expiry_minutes: 10 },
     }];
 
     const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
@@ -82,8 +83,9 @@ describe("Settings manual lifecycle API", () => {
     const { ctx } = context();
     ctx.fleetConfig!.channels = [{
       type: "discord",
+      mode: "topic" as const,
       bot_token_env: "DISCORD_TOKEN",
-      access: { mode: "locked", allowed_users: ["admin"] },
+      access: { mode: "locked", allowed_users: ["admin"], max_pending_codes: 5, code_expiry_minutes: 10 },
     }];
 
     const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{

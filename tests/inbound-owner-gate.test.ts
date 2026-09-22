@@ -17,8 +17,10 @@ describe("inbound messages are settled by the owning adapter", () => {
   beforeEach(() => { tmpDir = join(tmpdir(), `ccd-og-${Date.now()}-${Math.random()}`); mkdirSync(tmpDir, { recursive: true }); });
   afterEach(() => rmSync(tmpDir, { recursive: true, force: true }));
 
-  const OPEN = { mode: "open" as const, allowed_users: [] as string[] };
-  const LOCKED = { mode: "locked" as const, allowed_users: [] as string[] };
+  // AccessConfig also declares the pairing limits; stating the defaults keeps
+  // these literals real AccessConfigs rather than just the two fields in play.
+  const OPEN = { mode: "open" as const, allowed_users: [] as string[], max_pending_codes: 5, code_expiry_minutes: 10 };
+  const LOCKED = { mode: "locked" as const, allowed_users: [] as string[], max_pending_codes: 5, code_expiry_minutes: 10 };
 
   function setup(opts: { primary: any; persona: any; boundTo?: string }) {
     const fm = new FleetManager(tmpDir);
@@ -36,7 +38,7 @@ describe("inbound messages are settled by the owning adapter", () => {
       accessManager: new AccessManager(opts.primary, join(tmpDir, "a1.json")) } as any);
     fm.worlds.set("grok-persona", { id: "grok-persona", adapter: a2, channelConfig: personaCfg, groupId: "guild",
       accessManager: new AccessManager(opts.persona, join(tmpDir, "a2.json")) } as any);
-    fm.routing.rebuild(fm.fleetConfig);
+    fm.routing.rebuild(fm.fleetConfig!);
     vi.spyOn((fm as any).topicCommands, "handleInstanceCommand").mockResolvedValue(false);
     vi.spyOn((fm as any).topicCommands, "handleGeneralCommand").mockResolvedValue(false);
     vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);

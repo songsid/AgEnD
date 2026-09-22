@@ -150,7 +150,7 @@ describe("tip button flow", () => {
       "fleet", expect.objectContaining({ type: "tip" }), { threadId: "general-topic" },
     );
 
-    fm.fleetConfig.defaults.tips = false;
+    fm.fleetConfig!.defaults.tips = false;
     await (fm as any).sendTipToGeneral();
     expect(notifyAlert).toHaveBeenCalledTimes(1);
   });
@@ -342,7 +342,7 @@ describe("tip button flow", () => {
         worker: { topic_id: "worker-topic" },
       },
     } as any;
-    fm.routing.rebuild(fm.fleetConfig);
+    fm.routing.rebuild(fm.fleetConfig!);
     const adapter = { id: "discord-main", type: "discord" } as any;
     fm.adapters.set(adapter.id, adapter);
     fm.worlds.set("discord-main", { id: "discord-main", adapter, groupId: "guild-id" } as any);
@@ -394,7 +394,7 @@ describe("tip button flow", () => {
         worker: { topic_id: "worker-topic" },
       },
     } as any;
-    fm.routing.rebuild(fm.fleetConfig);
+    fm.routing.rebuild(fm.fleetConfig!);
     fm.adapters.set(adapter.id, adapter);
     fm.worlds.set("discord-main", { id: "discord-main", adapter, groupId: "guild-id" } as any);
 

@@ -75,7 +75,7 @@ describe("buildFleetInstructions", () => {
     const params = {
       ...base,
       runtimeIdentity: { kind: "fleet-topic" as const, backend: "codex", model: "gpt-5.6-sol" },
-      workflow: false,
+      workflow: false as const,
     };
     const full = buildFleetInstructions(params);
     const core = buildMcpCoreInstructions(params);
@@ -91,7 +91,7 @@ describe("buildFleetInstructions", () => {
     const params = {
       ...base,
       runtimeIdentity: { kind: "classic" as const, backend: "codex", model: "gpt-5.6-sol" },
-      workflow: false,
+      workflow: false as const,
     };
     const full = buildFleetInstructions(params);
     const core = buildMcpCoreInstructions(params);
@@ -131,13 +131,13 @@ describe("buildFleetInstructions", () => {
       ...base,
       runtimeIdentity: { kind: "classic", backend: "grok", model: "grok-code-fast-1" },
       cliInstructions,
-      workflow: false,
+      workflow: false as const,
     });
     const fleetTopic = buildFleetInstructions({
       ...base,
       runtimeIdentity: { kind: "fleet-topic", backend: "grok", model: "grok-code-fast-1" },
       cliInstructions,
-      workflow: false,
+      workflow: false as const,
     });
 
     expect(classic).toContain("This is a ClassicBot instance");

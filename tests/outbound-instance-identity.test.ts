@@ -44,7 +44,7 @@ describe("outbound instance identity", () => {
       ctx,
       {},
       (result: unknown) => { response = result; },
-      { instanceName: "sender" },
+      { instanceName: "sender", requestId: undefined, fleetRequestId: undefined, senderSessionName: undefined },
     );
 
     expect(response.instances).toEqual([
@@ -67,7 +67,7 @@ describe("outbound instance identity", () => {
       ctx,
       { name: "classic-no-override" },
       (result: unknown) => { response = result; },
-      { instanceName: "sender" },
+      { instanceName: "sender", requestId: undefined, fleetRequestId: undefined, senderSessionName: undefined },
     );
 
     expect(response).toEqual(expect.objectContaining({

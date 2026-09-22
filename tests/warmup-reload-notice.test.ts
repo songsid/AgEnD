@@ -6,6 +6,16 @@ import pino from "pino";
 import { Daemon, backendNeedsPaneReloadNotice, warmupNoticeAction } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import type { Logger } from "../src/logger.js";
+import type { CliBackend } from "../src/backend/types.js";
+import type { TmuxManager } from "../src/tmux-manager.js";
+
+/**
+ * These tests drive one code path through a daemon whose collaborators are
+ * stubs with only the members that path touches. Widening through `unknown`
+ * names what each stub stands in for — `as any` would also switch off checking
+ * for every use of it afterwards.
+ */
+const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 /**
  * Two places can tell an agent its instructions moved: the warmup paste, and the
@@ -128,26 +138,30 @@ function makeDaemon(opts: {
   let pane = "";
   const pasteText = vi.fn(async (text: string) => { pane = text; return true; });
   const enter = vi.fn(async () => true);
-  daemon.backend = {
+  daemon["backend"] = standingIn<CliBackend>({
     binaryName: opts.binaryName ?? "kiro-cli",
     ...(opts.instructionsReloadedOnResume !== undefined
       ? { instructionsReloadedOnResume: opts.instructionsReloadedOnResume }
       : {}),
-  };
-  daemon.tmux = {
+  });
+  daemon["tmux"] = standingIn<TmuxManager>({
     pasteBuffer: pasteText,
     sendSpecialKey: enter,
     capturePane: async () => pane,
     getLastSendSpecialKeyError: () => null,
-  };
-  daemon.paneWriteLock = { run: async (fn: () => Promise<unknown>) => await fn() };
+  });
+  // paneWriteLock is readonly on the daemon, so the write goes through a view
+  // that says so rather than through `any`.
+  (daemon as unknown as { paneWriteLock: { run: (fn: () => Promise<unknown>) => Promise<unknown> } })
+    .paneWriteLock = { run: async (fn: () => Promise<unknown>) => await fn() };
   // A real daemon has a control client; stubbing it takes the same branch
   // production does and skips the 5s fallback timer.
   writeFileSync(join(dir, "window-id"), "warmup-win");
-  daemon.controlClient = { waitForIdle: vi.fn().mockResolvedValue(undefined) };
-  daemon.warmupNeeded = opts.warmupNeeded ?? true;
-  daemon.pasteQueueDepth = opts.pasteQueueDepth ?? 1;
-  daemon.lastBuiltInstructions = "INSTRUCTIONS-v2";
+  daemon["controlClient"] = standingIn<NonNullable<Daemon["controlClient"]>>(
+    { waitForIdle: vi.fn().mockResolvedValue(undefined) });
+  daemon["warmupNeeded"] = opts.warmupNeeded ?? true;
+  daemon["pasteQueueDepth"] = opts.pasteQueueDepth ?? 1;
+  daemon["lastBuiltInstructions"] = "INSTRUCTIONS-v2";
   return { daemon, pasteText, enter, dir };
 }
 
@@ -157,10 +171,10 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
   it("does not paste to a backend that reloads instructions on resume", async () => {
     const { daemon, pasteText, dir } = makeDaemon({ instructionsReloadedOnResume: true, binaryName: "claude" });
 
-    await daemon.runWarmupInstructionNotice();
+    await daemon["runWarmupInstructionNotice"]();
 
     expect(pasteText, "claude-code already has the new instructions").not.toHaveBeenCalled();
-    expect(daemon.pendingInstructionsNotice, "and must not be queued one either").toBeFalsy();
+    expect(daemon["pendingInstructionsNotice"], "and must not be queued one either").toBeFalsy();
     // The snapshot still advances: the resume delivered the instructions.
     expect(existsSync(prevFile(dir))).toBe(true);
     expect(readFileSync(prevFile(dir), "utf-8")).toBe("INSTRUCTIONS-v2");
@@ -169,7 +183,7 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
   it("pastes to a backend that cannot reload on its own, and submits it", async () => {
     const { daemon, pasteText, enter, dir } = makeDaemon({ binaryName: "kiro-cli" });
 
-    await daemon.runWarmupInstructionNotice();
+    await daemon["runWarmupInstructionNotice"]();
 
     expect(pasteText, "kiro must still be told").toHaveBeenCalledTimes(1);
     expect(String(pasteText.mock.calls[0][0])).toContain(".kiro/steering/agend-warmup-test.md");
@@ -189,12 +203,12 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
     const { daemon, pasteText, enter, dir } = makeDaemon({ binaryName: "codex" });
     const codexDir = mkdtempSync(join(tmpdir(), "agend-warmup-codex-"));
     dirs.push(codexDir);
-    daemon.backend = new CodexBackend(codexDir);
+    daemon["backend"] = new CodexBackend(codexDir);
     // Codex's input row still holds the notice: the Enter never submitted it.
-    daemon.tmux.capturePane = async () =>
+    daemon["tmux"]!.capturePane = async () =>
       `› ${String(pasteText.mock.calls[0]?.[0] ?? "")}\n  Context 63% left`;
 
-    await daemon.runWarmupInstructionNotice();
+    await daemon["runWarmupInstructionNotice"]();
 
     expect(pasteText, "the notice is pasted once, not re-pasted on top of itself").toHaveBeenCalledTimes(1);
     expect(enter, "an unsubmitted notice gets one more Enter").toHaveBeenCalledTimes(2);
@@ -203,34 +217,34 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
     // Recording the new instructions here would mark the agent as told about a
     // notice it never received, and every later restart would skip the reload.
     expect(existsSync(prevFile(dir)), "an unsubmitted notice must not be recorded as delivered").toBe(false);
-    expect(daemon.pendingInstructionsNotice, "it is handed to the next real message instead").toBe(true);
+    expect(daemon["pendingInstructionsNotice"], "it is handed to the next real message instead").toBe(true);
   });
 
   it("defers instead of pasting when nobody is talking to the instance", async () => {
     const { daemon, pasteText, dir } = makeDaemon({ pasteQueueDepth: 0 });
 
-    await daemon.runWarmupInstructionNotice();
+    await daemon["runWarmupInstructionNotice"]();
 
     expect(pasteText, "an idle instance must not be provoked").not.toHaveBeenCalled();
-    expect(daemon.pendingInstructionsNotice, "it fires on the next real message").toBe(true);
+    expect(daemon["pendingInstructionsNotice"], "it fires on the next real message").toBe(true);
     expect(readFileSync(prevFile(dir), "utf-8")).toBe("INSTRUCTIONS-v2");
   });
 
   it("does nothing at all when the instructions did not change", async () => {
     const { daemon, pasteText, dir } = makeDaemon({ warmupNeeded: false });
 
-    await daemon.runWarmupInstructionNotice();
+    await daemon["runWarmupInstructionNotice"]();
 
     expect(pasteText).not.toHaveBeenCalled();
-    expect(daemon.pendingInstructionsNotice).toBeFalsy();
+    expect(daemon["pendingInstructionsNotice"]).toBeFalsy();
     // Nothing was told to anyone, so nothing is recorded as told.
     expect(existsSync(prevFile(dir)), "an unchanged restart must not rewrite the snapshot").toBe(false);
   });
 
   it("survives a paste failure rather than failing the spawn", async () => {
     const { daemon } = makeDaemon({});
-    daemon.tmux = { pasteText: vi.fn().mockRejectedValue(new Error("pane gone")) };
+    daemon["tmux"] = standingIn<TmuxManager>({ pasteText: vi.fn().mockRejectedValue(new Error("pane gone")) });
 
-    await expect(daemon.runWarmupInstructionNotice()).resolves.toBeUndefined();
+    await expect(daemon["runWarmupInstructionNotice"]()).resolves.toBeUndefined();
   });
 });
