@@ -97,6 +97,16 @@ import {
 import { decideWebGate, loadOrCreateWebToken, readWebToken } from "./web-auth.js";
 import { fleetLevelDifferences, fleetLevelSignature } from "./fleet-level-config.js";
 import { checkSelfRestartAllowance, recordSelfRestartAttempt } from "./self-restart-limit.js";
+import { SecretStore } from "./secret-store.js";
+import {
+  opaqueId,
+  safeSecretError,
+  SECRET_CHALLENGE_TTL_MS,
+  type ConnectionMetadata,
+  type SecretApplyJob,
+  type SecretChallenge,
+} from "./connection-secrets.js";
+import { verifyDiscordToken, verifyTelegramToken } from "./provider-probe.js";
 
 /** What a reconcile has to say for itself beyond "it ran". */
 interface ReconcileOutcome {
@@ -707,6 +717,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private adapterRestarting = new Set<string>();
   // Adapter isolation: track state per adapter for retry + visibility
   private adapterState = new Map<string, { status: "connected" | "retrying" | "failed"; retryCount: number; lastError?: string; retryTimer?: ReturnType<typeof setTimeout> }>();
+  /** Web Settings secret rotation is deliberately separate from reconnect
+   * recovery: a rotation must build a fresh provider client with the new token,
+   * and stale callbacks from the old client must not win. */
+  private connectionSecretChallenges = new Map<string, SecretChallenge>();
+  private connectionSecretChallengesByKey = new Map<string, string>();
+  private connectionSecretJobs = new Map<string, SecretApplyJob>();
+  private connectionSecretJobSession = new Map<string, string>();
+  private connectionSecretInFlight = new Map<string, string>();
+  private connectionSecretGenerations = new Map<string, number>();
+  /** Local epoch that fences a challenge across adapter replacement and
+   * provider reconnect generations. The adapter's own generation can reset
+   * when a new adapter object is constructed, so keep an independent epoch. */
+  private connectionSecretAdapterRefs = new Map<string, ChannelAdapter | undefined>();
+  private connectionSecretHealthGenerations = new Map<string, number>();
   private collabInstances = new Set<string>();
 
   // Health endpoint
@@ -3575,6 +3599,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private bindAdapterHealth(adapter: ChannelAdapter, adapterId: string): void {
     adapter.on("gateway_health", (snapshot: AdapterHealthSnapshot) => {
+      // A token rotation tears down the old EventEmitter before constructing
+      // the replacement. A late health frame from that old client must never
+      // make a failed/new-generation adapter look connected.
+      if (this.adapters.get(adapterId) !== adapter) return;
       const previous = this.adapterState.get(adapterId);
       const status = snapshot.status === "connected" ? "connected"
         : snapshot.status === "stopped" ? "failed"
@@ -3693,16 +3721,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
     this.bindAdapterHealth(adapter, adapterId);
+    const isCurrentAdapter = (): boolean => this.adapters.get(adapterId) === adapter;
 
     this.adapter.on("message", safeHandler(async (msg: InboundMessage) => {
+      if (!isCurrentAdapter()) return;
       await this.handleInboundMessage(msg);
     }, this.logger, "adapter.message"));
 
     this.adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
+      if (!isCurrentAdapter()) return;
       await this.handleInboundReaction(r);
     }, this.logger, "adapter.reaction"));
 
     this.adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (!isCurrentAdapter()) return;
       if (await this.handleTipDismiss(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleTipUnlock(data, adapterId, this.adapter ?? undefined)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, this.adapter ?? undefined)) return;
@@ -3729,6 +3761,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Handle classic bot slash commands (/start, /stop, /chat, /compact, /save, /load)
     this.adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
+      if (!isCurrentAdapter()) return;
       if (data.command === "start") {
         await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
@@ -3937,6 +3970,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.probeCliEnvs();
 
     this.adapter.on("started", safeHandler((username: string, userId?: string) => {
+      if (!isCurrentAdapter()) return;
       this.logger.info(`Bot @${username} polling started. Ensure no other service is polling this bot token.`);
       // Concurrent startup can insert a secondary world first. Update the
       // configured primary world, not Map insertion order.
@@ -3954,11 +3988,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger.warn({ err: err instanceof Error ? err.message : String(err) }, "Adapter handler error");
     }, this.logger, "adapter.handler_error"));
     this.adapter.on("error", (err: unknown) => {
+      if (!isCurrentAdapter()) return;
       this.logger.error({ err }, "Primary adapter fatal error");
       this.restartAdapter(this.adapter!, adapterId).catch(() => {});
     });
 
     this.adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
+      if (!isCurrentAdapter()) return;
       const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance();
       // No user to promote: the bot was just added, nobody has run /start yet.
@@ -4014,17 +4050,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.worlds.set(adapterId, world);
     (this.adapters as Map<string, ChannelAdapter>).set(adapterId, adapter);
     this.bindAdapterHealth(adapter, adapterId);
+    const isCurrentAdapter = (): boolean => this.adapters.get(adapterId) === adapter;
 
     // Wire up event handlers (same as primary, routes through shared handleInboundMessage)
     adapter.on("message", safeHandler(async (msg: InboundMessage) => {
+      if (!isCurrentAdapter()) return;
       await this.handleInboundMessage(msg);
     }, this.logger, `adapter[${adapterId}].message`));
 
     adapter.on("reaction", safeHandler(async (r: InboundReaction) => {
+      if (!isCurrentAdapter()) return;
       await this.handleInboundReaction(r);
     }, this.logger, `adapter[${adapterId}].reaction`));
 
     adapter.on("callback_query", safeHandler(async (data: AdapterCallbackData) => {
+      if (!isCurrentAdapter()) return;
       if (await this.handleTipDismiss(data, adapterId, adapter)) return;
       if (await this.handleTipUnlock(data, adapterId, adapter)) return;
       if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return;
@@ -4051,6 +4091,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Slash commands: classic bot + admin commands
     adapter.on("slash_command", safeHandler(async (data: ClassicStartSlashData) => {
+      if (!isCurrentAdapter()) return;
       if (data.command === "start") {
         await this.handleClassicStartSlash(data, adapterId);
       } else if (data.command === "stop") {
@@ -4217,6 +4258,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].slash_command`));
 
     adapter.on("started", safeHandler((username: string, userId?: string) => {
+      if (!isCurrentAdapter()) return;
       this.logger.info(`[${adapterId}] Bot @${username} polling started.`);
       const world = this.worlds.get(adapterId);
       if (world) {
@@ -4226,11 +4268,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }, this.logger, `adapter[${adapterId}].started`));
 
     adapter.on("new_group_detected", safeHandler(async (data: { groupId: string; groupTitle: string; source: string }) => {
+      if (!isCurrentAdapter()) return;
       const adminMsg = t("alert.bot_added", data.groupTitle, data.groupId, data.source);
       const generalId = this.findGeneralInstance(adapterId);
       if (generalId) await this.promptClassicApproval({ generalName: generalId, message: adminMsg, groupId: data.groupId, scope: data.source === "telegram" ? "group" : "guild" });
     }, this.logger, `adapter[${adapterId}].new_group_detected`));
     adapter.on("error", (err: unknown) => {
+      if (!isCurrentAdapter()) return;
       this.logger.error({ err, adapterId }, "Additional adapter fatal error");
       this.restartAdapter(adapter, adapterId).catch(() => {});
     });
@@ -12261,6 +12305,263 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   /** Jobs outlive this process on purpose; see apply-job.ts. */
   get applyJobs(): ApplyJobStore {
     return (this.applyJobStoreCache ??= new ApplyJobStore(this.dataDir, Date.now, this.logger));
+  }
+
+  /** The only channel metadata exposed to the Settings secret UI. */
+  listSecureConnections(): ConnectionMetadata[] {
+    const channels = this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return channels.map((channel, index) => {
+      const id = channel.id ?? channel.type ?? `channel-${index}`;
+      const world = this.worlds.get(id);
+      const state = this.adapterState.get(id);
+      return {
+        id,
+        type: channel.type,
+        token_env: channel.bot_token_env,
+        token_present: !!process.env[channel.bot_token_env],
+        group_id: channel.group_id ?? null,
+        status: state?.status ?? (world ? "starting" : "stopped"),
+        ...(world ? { identity: { id: world.botUserId ?? null, username: world.botUsername ?? null } } : {}),
+      };
+    });
+  }
+
+  private secureConnectionChannel(connectionId: string): ChannelConfig | undefined {
+    const channels = this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    const matches = channels.filter((channel, index) => (channel.id ?? channel.type ?? `channel-${index}`) === connectionId);
+    // Ambiguous fallback IDs (for example two unlabelled Discord channels)
+    // must fail closed rather than rotating the first matching token.
+    return matches.length === 1 ? matches[0] : undefined;
+  }
+
+  private secureConnectionGeneration(connectionId: string): number {
+    const adapter = this.adapters.get(connectionId);
+    const healthGeneration = adapter?.getHealthSnapshot?.().generation ?? 0;
+    let generation = this.connectionSecretGenerations.get(connectionId) ?? 0;
+    const previousAdapter = this.connectionSecretAdapterRefs.get(connectionId);
+    const previousHealthGeneration = this.connectionSecretHealthGenerations.get(connectionId);
+    if (this.connectionSecretAdapterRefs.has(connectionId) && previousAdapter !== adapter) generation++;
+    if (this.connectionSecretHealthGenerations.has(connectionId) && previousHealthGeneration !== healthGeneration) generation++;
+    this.connectionSecretAdapterRefs.set(connectionId, adapter);
+    this.connectionSecretHealthGenerations.set(connectionId, healthGeneration);
+    this.connectionSecretGenerations.set(connectionId, generation);
+    return generation;
+  }
+
+  async verifyConnectionSecret(input: {
+    connectionId: string;
+    secret: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<{ ok: true; verification_id: string; expires_at: number; identity?: { id: string | null; username: string | null } } | { ok: false; error: string }> {
+    const channel = this.secureConnectionChannel(input.connectionId);
+    if (!channel || (channel.type !== "discord" && channel.type !== "telegram")) {
+      return { ok: false, error: "connection not found or unsupported" };
+    }
+    if (!input.secret || input.secret.length > 4096 || /[\r\n\0]/.test(input.secret)) {
+      return { ok: false, error: "secret is invalid" };
+    }
+    const challengeKey = `${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`;
+    const existingId = this.connectionSecretChallengesByKey.get(challengeKey);
+    const existing = existingId ? this.connectionSecretChallenges.get(existingId) : undefined;
+    if (existing && existing.expiresAt > Date.now()) {
+      return { ok: true, verification_id: existing.id, expires_at: existing.expiresAt };
+    }
+    if (existingId) this.connectionSecretChallengesByKey.delete(challengeKey);
+
+    // Fixed provider endpoints only. Never use a user-supplied URL and never
+    // call Telegram getUpdates (the running adapter owns that long poll).
+    const identity = channel.type === "discord"
+      ? await verifyDiscordToken(input.secret)
+      : await verifyTelegramToken(input.secret);
+    if (!identity.valid) {
+      this.logger.warn({ connectionId: input.connectionId, provider: channel.type }, "Settings connection secret verification failed");
+      return { ok: false, error: "provider rejected the secret" };
+    }
+
+    const expiresAt = Date.now() + SECRET_CHALLENGE_TTL_MS;
+    const challenge: SecretChallenge = {
+      id: opaqueId("verify"),
+      connectionId: input.connectionId,
+      sessionBinding: input.sessionBinding,
+      generation: this.secureConnectionGeneration(input.connectionId),
+      operation: "secret.apply",
+      idempotencyKey: input.idempotencyKey,
+      expiresAt,
+      secret: input.secret,
+    };
+    this.connectionSecretChallenges.set(challenge.id, challenge);
+    this.connectionSecretChallengesByKey.set(challengeKey, challenge.id);
+    const expiryTimer = setTimeout(() => {
+      if (this.connectionSecretChallenges.get(challenge.id) !== challenge) return;
+      this.connectionSecretChallenges.delete(challenge.id);
+      if (this.connectionSecretChallengesByKey.get(challengeKey) === challenge.id) {
+        this.connectionSecretChallengesByKey.delete(challengeKey);
+      }
+    }, SECRET_CHALLENGE_TTL_MS);
+    expiryTimer.unref?.();
+    return {
+      ok: true,
+      verification_id: challenge.id,
+      expires_at: expiresAt,
+      identity: { id: identity.id, username: identity.username },
+    };
+  }
+
+  startConnectionSecretApply(input: {
+    connectionId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string } {
+    for (const [jobId, job] of this.connectionSecretJobs) {
+      if (job.connectionId === input.connectionId
+        && job.idempotencyKey === input.idempotencyKey
+        && this.connectionSecretJobSession.get(jobId) === input.sessionBinding) {
+        return { job, reused: true };
+      }
+    }
+    const challenge = this.connectionSecretChallenges.get(input.verificationId);
+    if (!challenge || challenge.expiresAt <= Date.now()) {
+      this.connectionSecretChallenges.delete(input.verificationId);
+      return { error: "verification expired; verify the secret again" };
+    }
+    if (challenge.connectionId !== input.connectionId
+      || challenge.sessionBinding !== input.sessionBinding
+      || challenge.operation !== "secret.apply"
+      || challenge.idempotencyKey !== input.idempotencyKey
+      || challenge.generation !== this.secureConnectionGeneration(input.connectionId)) {
+      return { error: "verification does not match this connection or session" };
+    }
+    const existingId = this.connectionSecretInFlight.get(input.connectionId);
+    if (existingId) {
+      const existing = this.connectionSecretJobs.get(existingId) ?? null;
+      if (existing?.idempotencyKey === input.idempotencyKey) return { job: existing, reused: true };
+      return { busy: existing };
+    }
+    // Consume the challenge before scheduling work. A lost HTTP response can
+    // retry with the same idempotency key and rejoin the job, but a second
+    // request cannot replay the secret into a second adapter.
+    this.connectionSecretChallenges.delete(input.verificationId);
+    this.connectionSecretChallengesByKey.delete(`${input.sessionBinding}:${input.connectionId}:${input.idempotencyKey}`);
+    const job: SecretApplyJob = {
+      id: opaqueId("secret_apply"),
+      connectionId: input.connectionId,
+      idempotencyKey: input.idempotencyKey,
+      result: "applying",
+      status: "running",
+      startedAt: Date.now(),
+    };
+    this.connectionSecretJobs.set(job.id, job);
+    this.connectionSecretJobSession.set(job.id, input.sessionBinding);
+    this.connectionSecretInFlight.set(input.connectionId, job.id);
+    queueMicrotask(() => void this.runConnectionSecretApply(job, challenge.secret));
+    return { job, reused: false };
+  }
+
+  getConnectionSecretApply(jobId: string, sessionBinding: string): SecretApplyJob | null {
+    if (this.connectionSecretJobSession.get(jobId) !== sessionBinding) return null;
+    return this.connectionSecretJobs.get(jobId) ?? null;
+  }
+
+  private async runConnectionSecretApply(job: SecretApplyJob, secret: string): Promise<void> {
+    const channel = this.secureConnectionChannel(job.connectionId);
+    const envKey = channel?.bot_token_env;
+    const allowed = new Set((this.fleetConfig?.channels
+      ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []))
+      .map(item => item.bot_token_env));
+    let before: import("./secret-store.js").SecretSnapshot | null = null;
+    let oldToken: string | undefined;
+    let replaced = false;
+    try {
+      if (!channel || !envKey || !allowed.has(envKey)) throw new Error("connection is not configured for secret rotation");
+      const owners = (this.fleetConfig?.channels
+        ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []))
+        .filter(item => item.bot_token_env === envKey);
+      if (owners.length !== 1) throw new Error("secret key is shared by multiple connections");
+      const store = new SecretStore(join(this.dataDir, ".env"), allowed);
+      before = store.write(envKey, secret);
+      replaced = true;
+      oldToken = process.env[envKey];
+      process.env[envKey] = secret;
+      const generation = this.secureConnectionGeneration(job.connectionId) + 1;
+      this.connectionSecretGenerations.set(job.connectionId, generation);
+      const applied = await this.rebuildAdapterForSecret(job.connectionId, channel);
+      if (!applied) {
+        job.result = "restart_required";
+        job.status = "done";
+        job.finishedAt = Date.now();
+        return;
+      }
+      job.result = "applied";
+      job.status = "done";
+      job.finishedAt = Date.now();
+    } catch (err) {
+      const message = safeSecretError(err, secret);
+      this.logger.warn({ connectionId: job.connectionId, reason: message }, "Settings connection secret apply failed");
+      if (!replaced || !before || !envKey) {
+        job.result = "rollback_failed";
+        job.error = "secret was not applied";
+      } else {
+        try {
+          const store = new SecretStore(join(this.dataDir, ".env"), new Set([envKey]));
+          store.restore(before);
+          if (oldToken === undefined) delete process.env[envKey]; else process.env[envKey] = oldToken;
+          // Build a fresh adapter from the restored token. If the old adapter
+          // was stopped already, this is the only safe way to return to the
+          // previous runtime without claiming a disk-only rollback succeeded.
+          const restored = await this.rebuildAdapterForSecret(job.connectionId, channel!, true);
+          if (!restored) throw new Error("adapter rollback did not become connected");
+          job.result = "rolled_back";
+        } catch (rollbackErr) {
+          this.logger.error({ connectionId: job.connectionId, reason: safeSecretError(rollbackErr, oldToken, [secret]) }, "Settings connection secret rollback failed");
+          job.result = "rollback_failed";
+          job.error = "secret rollback failed; adapter is disabled";
+        }
+      }
+      job.status = "done";
+      job.finishedAt = Date.now();
+    } finally {
+      this.connectionSecretInFlight.delete(job.connectionId);
+      // Do not retain the token after the apply (success or rollback).
+      secret = "";
+    }
+  }
+
+  /** Stop the old provider client and construct a new one from process.env. */
+  private async rebuildAdapterForSecret(connectionId: string, channel: ChannelConfig, force = false): Promise<boolean> {
+    const old = this.adapters.get(connectionId);
+    if (!old && !force) return false; // The secret is valid on disk; the next start adopts it.
+    const primary = this.getPrimaryAdapterId() === connectionId;
+    const previousState = this.adapterState.get(connectionId);
+    this.adapterState.set(connectionId, { status: "retrying", retryCount: previousState?.retryCount ?? 0 });
+    if (primary && this.sessionPruneTimer) { clearInterval(this.sessionPruneTimer); this.sessionPruneTimer = null; }
+    if (old) {
+      old.removeAllListeners();
+      await old.stop().catch(() => {});
+      if (this.adapters.get(connectionId) === old) this.adapters.delete(connectionId);
+      if (this.worlds.get(connectionId)?.adapter === old) this.worlds.delete(connectionId);
+      if (primary && this.adapter === old) this.adapter = null;
+    }
+    if (primary) await this.startSingleAdapter(this.fleetConfig!, channel);
+    else await this.startAdditionalAdapter(channel);
+    const fresh = this.adapters.get(connectionId);
+    if (!fresh) throw new Error("new adapter did not start");
+    // Telegram has no gateway health snapshot; adapter.start() resolves only
+    // after its polling loop is established, so that completion is the
+    // provider's connected signal for this adapter family.
+    if (!fresh.getHealthSnapshot) {
+      this.adapterState.set(connectionId, { status: "connected", retryCount: 0 });
+    }
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const health = fresh.getHealthSnapshot?.();
+      if (health?.status === "connected" || this.adapterState.get(connectionId)?.status === "connected") return true;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    throw new Error("new adapter did not become connected");
   }
 
   /**

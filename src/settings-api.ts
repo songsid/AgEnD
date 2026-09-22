@@ -35,6 +35,12 @@ import { clearPausedMarker } from "./pause-marker.js";
 import { buildSettingsImpactSchema, CLASSIC_HOT_CONFIG_KEYS } from "./instance-config-impact.js";
 import { viewOf, type ApplyJob, type ApplyJobStore, type SelfRestartResult } from "./apply-job.js";
 import { handleQuickstartRequest } from "./quickstart-api.js";
+import {
+  requestSessionBinding,
+  type ConnectionMetadata,
+  type SecretApplyJob,
+  type SecretApplyResult,
+} from "./connection-secrets.js";
 
 
 
@@ -63,6 +69,22 @@ export interface SettingsApiContext {
   fleetSignatureMismatchKeys?(): string[] | null;
   /** True when a running adapter is already long-polling this bot token. */
   isBotTokenInUse?(token: string): boolean;
+  /** Secure Connections & Bots operations. The outer fleet HTTP server has
+   * already authenticated the Settings web session before this handler runs. */
+  listSecureConnections?(): ConnectionMetadata[];
+  verifyConnectionSecret?(input: {
+    connectionId: string;
+    secret: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<{ ok: true; verification_id: string; expires_at: number; identity?: { id: string | null; username: string | null } } | { ok: false; error: string }>;
+  startConnectionSecretApply?(input: {
+    connectionId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
+  getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -73,8 +95,11 @@ export interface RawConfigPatch {
   remove?: boolean;
 }
 
-function json(res: ServerResponse, code: number, body: unknown): void {
-  res.writeHead(code, { "Content-Type": "application/json" });
+function json(res: ServerResponse, code: number, body: unknown, noStore = false): void {
+  res.writeHead(code, {
+    "Content-Type": "application/json",
+    ...(noStore ? { "Cache-Control": "no-store" } : {}),
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -199,6 +224,101 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/classic") {
     try { json(res, 200, readClassic(ctx)); }
     catch (err) { json(res, 409, { error: (err as Error).message }); }
+    return true;
+  }
+
+  // ── Secure Connections & Bots ──
+  // These routes deliberately do not reuse the broad fleet/channel CRUD API:
+  // a token is accepted only in a body, verified server-side, and never echoed
+  // or written to a log/SSE frame. Adapter replacement is owned by FleetManager
+  // so writing .env alone can never be reported as "applied".
+  if (method === "GET" && path === "/api/settings/connections") {
+    if (!ctx.listSecureConnections) { json(res, 501, { error: "connection secrets unavailable" }); return true; }
+    json(res, 200, ctx.listSecureConnections().map(connection => ({
+      ...connection,
+      token_present: !!connection.token_present,
+    })), true);
+    return true;
+  }
+
+  const secretVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/verify$/);
+  if (method === "POST" && secretVerifyMatch) {
+    const verifyConnectionSecret = ctx.verifyConnectionSecret;
+    if (!verifyConnectionSecret) { json(res, 501, { error: "connection secret verification unavailable" }); return true; }
+    const connectionId = decodeURIComponent(secretVerifyMatch[1]!);
+    readBody(req, 16 * 1024).then(async buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }); }
+      const secret = typeof body.secret === "string" ? body.secret : "";
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!secret) return json(res, 400, { error: "secret required" }, true);
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = await verifyConnectionSecret({
+        connectionId,
+        secret,
+        sessionBinding: requestSessionBinding(req),
+        idempotencyKey: key,
+      });
+      // The provider may have echoed request material in an SDK error. Keep
+      // the HTTP contract deliberately generic; FleetManager logs only a
+      // redacted diagnostic and the browser has no need for the raw reason.
+      if (!result.ok) return json(res, 422, { ok: false, error: "secret verification failed" }, true);
+      json(res, 200, {
+        ok: true,
+        result: "verified" satisfies SecretApplyResult,
+        verification_id: result.verification_id,
+        expires_at: result.expires_at,
+        identity: result.identity,
+      }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  const secretApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/apply$/);
+  if (method === "POST" && secretApplyMatch) {
+    if (!ctx.startConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
+    const connectionId = decodeURIComponent(secretApplyMatch[1]!);
+    readBody(req, 16 * 1024).then(buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }); }
+      const verificationId = typeof body.verification_id === "string" ? body.verification_id : "";
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = ctx.startConnectionSecretApply!({
+        connectionId,
+        verificationId,
+        sessionBinding: requestSessionBinding(req),
+        idempotencyKey: key,
+      });
+      if ("error" in result) return json(res, 422, { ok: false, error: "secret apply rejected" }, true);
+      if ("busy" in result) return json(res, 409, {
+        ok: false,
+        result: "applying" satisfies SecretApplyResult,
+        job_id: result.busy?.id ?? null,
+      }, true);
+      json(res, result.reused ? 200 : 202, {
+        ok: true,
+        result: result.job.result,
+        job_id: result.job.id,
+        reused: result.reused,
+      }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  const secretApplyStatusMatch = path.match(/^\/api\/settings\/connections\/[^/]+\/secret\/apply\/([A-Za-z0-9_-]+)$/);
+  if (method === "GET" && secretApplyStatusMatch) {
+    if (!ctx.getConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
+    const job = ctx.getConnectionSecretApply(secretApplyStatusMatch[1]!, requestSessionBinding(req));
+    if (!job) { json(res, 404, { error: "job not found" }, true); return true; }
+    // Job errors are already provider-redacted by FleetManager. Never add raw
+    // request data here, and never expose a secret-bearing provider response.
+    json(res, 200, job, true);
     return true;
   }
 

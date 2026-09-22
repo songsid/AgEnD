@@ -49,7 +49,7 @@
   button.danger:hover { background: #fef2f2; }
   button.sm { padding: 4px 9px; font-size: 12px; }
   label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); margin: 10px 0 4px; }
-  input[type=text], input[type=number], select { width: 100%; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--fg); }
+  input[type=text], input[type=password], input[type=number], select { width: 100%; font-family: inherit; font-size: 13px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; color: var(--fg); }
   input:focus, select:focus { outline: 2px solid #bfdbfe; border-color: var(--accent); }
   .edit { padding: 14px 16px; background: #fff; border-top: 1px solid var(--border); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -417,7 +417,7 @@
   }
 
   // ── State ──
-  const state = { schema: { impacts: {}, order: ["now", "instance", "fleet"] }, fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
+  const state = { schema: { impacts: {}, order: ["now", "instance", "fleet"] }, fleet: {}, classic: {}, classicStatus: {}, classicLive: {}, live: {}, connections: [], fleetUp: false, advFmt: "yaml", advEdit: false, collapsedGroups: new Set(), version: "", newAgentOpen: false, newBotOpen: false, pending: new Map() };
   const channels = () => state.fleet.channels || (state.fleet.channel ? [state.fleet.channel] : []);
   const channelIds = () => channels().map(c => c.id || c.type).filter(Boolean);
   const chLabel = (i) => i === 0 ? "primary" : "persona";
@@ -707,8 +707,10 @@
       catch (error) { result = { ok: false, body: { error: error.message } }; }
       if (!result?.ok) {
         showBanner(`${change.label}: ${result?.body?.error || t("applyFailed")}`, true);
+        change.cleanup?.();
         button.disabled = false; return;
       }
+      change.cleanup?.();
       state.pending.delete(key); updatePendingBar();
     }
     // The key is generated here, before the first attempt, and reused by every
@@ -1156,6 +1158,7 @@
             ? (ch.access.allowed_users).slice(0, 3).join(", ") + ((ch.access.allowed_users).length > 3 ? ` +${(ch.access.allowed_users).length - 3}` : "")
             : t("noAllowedUsers")),
         el("span", { class: "spacer" }),
+        el("span", { class: "tag", title: "secret status" }, state.connections.find(c => (c.id || c.type) === (ch.id || ch.type))?.token_present ? "Token configured" : "Token missing"),
         el("span", { style: `color:${state.fleetUp ? "var(--green)" : "var(--red)"};font-size:13px` }, state.fleetUp ? "Connected" : "Problem"),
         el("button", { class: "sm ghost", onclick: () => {
           const form = botEditForm(ch, i);
@@ -1164,6 +1167,36 @@
       ));
       host.append(item);
     });
+  }
+
+  // Secret rotation is staged through the same Apply bar as every other
+  // Settings mutation. The token is held only in this short-lived closure and
+  // is cleared by the caller after the request settles; it never enters
+  // localStorage, the URL, a label, or the staged change's display text.
+  async function applyConnectionSecret(connectionId, secret, feedback) {
+    const key = crypto.randomUUID ? crypto.randomUUID() : `secret-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    feedback.className = "feedback"; feedback.textContent = "Verifying…";
+    const verified = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/secret/verify`, {
+      method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ secret, idempotency_key: key }),
+    });
+    if (!verified.ok) { feedback.className = "feedback error"; feedback.textContent = `✗ ${verified.body?.error || "verification failed"}`; return verified; }
+    feedback.textContent = "Applying…";
+    const applied = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/secret/apply`, {
+      method: "POST", headers: { "Idempotency-Key": key }, body: JSON.stringify({ verification_id: verified.body?.verification_id, idempotency_key: key }),
+    });
+    if (!applied.ok && applied.status !== 409) { feedback.className = "feedback error"; feedback.textContent = `✗ ${applied.body?.error || "apply failed"}`; return applied; }
+    let result = applied.body || {};
+    if (result.job_id && result.result === "applying") {
+      for (let n = 0; n < 60; n++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        const status = await api(`/api/settings/connections/${encodeURIComponent(connectionId)}/secret/apply/${encodeURIComponent(result.job_id)}`);
+        if (status.ok) { result = status.body || result; if (result.result !== "applying") break; }
+      }
+    }
+    const labels = { applying: "…Still applying — check status", applied: "✓ Applied", restart_required: "↻ Saved — restart required", rolled_back: "↩ Rolled back", rollback_failed: "✗ Rollback failed" };
+    feedback.className = `feedback ${result.result === "applied" || result.result === "restart_required" ? "" : "error"}`;
+    feedback.textContent = labels[result.result] || "✗ Unknown apply result";
+    return { ok: result.result === "applied" || result.result === "restart_required", status: result.result === "applied" ? 200 : 409, body: result };
   }
 
   function botEditForm(ch, i) {
@@ -1175,6 +1208,29 @@
     const fMode = select(ch.access.mode || "locked", ["open", "locked", "pairing"]);
     const users = [...ch.access.allowed_users];
     const accessFeedback = el("div", { class: "feedback" });
+    const tokenInput = el("input", { type: "password", autocomplete: "new-password", placeholder: "Paste a new bot token to rotate it" });
+    const secretFeedback = el("div", { class: "feedback" });
+    const connectionId = ch.id || ch.type || chLabel(i);
+    let pendingSecret = "";
+    const stageSecret = () => {
+      const secret = tokenInput.value;
+      if (!secret) { secretFeedback.className = "feedback error"; secretFeedback.textContent = "✗ token required"; return; }
+      pendingSecret = secret;
+      tokenInput.value = "";
+      stageChange(`secret:${connectionId}`, {
+        // Secret rotation is an immediate adapter operation. Use the server's
+        // published impact ordering rather than duplicating an impact literal
+        // in this page (hot/cold parity guards reject such copies).
+        label: `Rotate ${type} token`, impact: state.schema.order[0],
+        apply: async () => {
+          const value = pendingSecret; pendingSecret = "";
+          try { return await applyConnectionSecret(connectionId, value, secretFeedback); }
+          finally { pendingSecret = ""; }
+        },
+        cleanup: () => { pendingSecret = ""; },
+      });
+      secretFeedback.className = "feedback"; secretFeedback.textContent = "Queued — click Apply changes.";
+    };
     const validateAccess = () => setValidation(fMode, accessFeedback, "", fMode.value === "locked" && users.length === 0 ? t("accessLockedEmpty") : "");
     fMode.addEventListener("change", validateAccess);
     box.append(
@@ -1187,6 +1243,10 @@
         el("div", { class: "sub" }, ch.group_id ? String(ch.group_id) : t("notSet"))),
       drawer(t("advancedSection"),
         el("div", { class: "field" }, el("label", {}, t("tokenEnv")), el("div", { class: "sub" }, ch.bot_token_env || "(no token env)")),
+        el("div", { class: "field" },
+          el("label", {}, "Bot token (never stored in the browser)"), tokenInput,
+          el("div", { class: "hint" }, "The token is verified by AgEnD, then applied by replacing the running adapter. It is never echoed."),
+          el("div", { class: "actions" }, el("button", { class: "sm primary", onclick: stageSecret }, "Verify & apply token"), secretFeedback)),
         el("div", { class: "actions" },
           el("button", { class: "sm danger", onclick: () => { closeModal(); delBot(i); } }, t("deleteBot")))),
     );
@@ -1671,6 +1731,8 @@
     if (!f.ok) { $("banner").style.display = "block"; $("banner").style.background = "#fef2f2"; $("banner").style.color = "var(--red)"; $("banner").textContent = t("configLoadFailed"); return; }
     state.fleet = f.body || {};
     const c = await api("/api/settings/classic"); state.classic = c.body || {};
+    const connections = await api("/api/settings/connections");
+    state.connections = connections.ok && Array.isArray(connections.body) ? connections.body : [];
     await reloadLive();
     renderAll();
   }
@@ -1692,7 +1754,7 @@
   document.addEventListener("keydown", e => { if (e.key === "Escape" && modalState) closeModal(); });
   $("wizardBtn").onclick = () => openWizard();
   $("applyChanges").onclick = applyPendingChanges;
-  $("discardChanges").onclick = async () => { state.pending.clear(); updatePendingBar(); await reload(); };
+  $("discardChanges").onclick = async () => { for (const change of state.pending.values()) change.cleanup?.(); state.pending.clear(); updatePendingBar(); await reload(); };
 
   reload();
 })();
