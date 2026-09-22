@@ -39,6 +39,54 @@ function recordTmux(): string[] {
 beforeEach(() => { execFile.mockReset(); });
 
 describe("pasteText Enter retry", () => {
+  it("retries a transient EAGAIN load-buffer failure without recovering the window", async () => {
+    let loadAttempts = 0;
+    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+      if (args.includes("load-buffer")) {
+        loadAttempts++;
+        if (loadAttempts === 1) cb(Object.assign(new Error("spawn failed"), { code: "EAGAIN" }), "");
+        else cb(null, "");
+      } else cb(null, "");
+    });
+    const tmux = new TmuxManager("s", "@1");
+
+    expect(await tmux.pasteBuffer("hello")).toBe(true);
+    expect(loadAttempts).toBe(2);
+    expect(tmux.isLastPasteFailureRecoverable()).toBe(false);
+  });
+
+  it("retries a transient EMFILE load-buffer failure and preserves the final error", async () => {
+    let loadAttempts = 0;
+    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+      if (args.includes("load-buffer")) {
+        loadAttempts++;
+        cb(Object.assign(new Error("fd table exhausted"), { code: "EMFILE" }), "");
+      } else cb(null, "");
+    });
+    const tmux = new TmuxManager("s", "@1");
+
+    expect(await tmux.pasteBuffer("hello")).toBe(false);
+    expect(loadAttempts).toBe(3);
+    expect(tmux.getLastPasteError()).toContain("EMFILE");
+    expect(tmux.isLastPasteFailureRecoverable()).toBe(false);
+  });
+
+  it("does not retry a permanent load-buffer error", async () => {
+    let loadAttempts = 0;
+    execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
+      if (args.includes("load-buffer")) {
+        loadAttempts++;
+        cb(Object.assign(new Error("argument list too long"), { code: "E2BIG", stderr: "E2BIG" }), "", "E2BIG");
+      } else cb(null, "");
+    });
+    const tmux = new TmuxManager("s", "@1");
+
+    expect(await tmux.pasteBuffer("hello")).toBe(false);
+    expect(loadAttempts).toBe(1);
+    expect(tmux.getLastPasteError()).toContain("E2BIG");
+    expect(tmux.isLastPasteFailureRecoverable()).toBe(false);
+  });
+
   it("preserves tmux stderr and classifies load failures as non-retryable", async () => {
     execFile.mockImplementation((_cmd: string, args: string[], cb: (e: Error | null, out: string, stderr?: string) => void) => {
       if (args.includes("load-buffer")) cb(new Error("tmux exited 1"), "", "buffer storage unavailable");
