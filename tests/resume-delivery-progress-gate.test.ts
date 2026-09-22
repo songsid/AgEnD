@@ -269,3 +269,50 @@ describe("a steer still interrupts the running turn", () => {
     expect(h.state.idleAtPaste, "and it got there while the turn was still running").toBe(false);
   });
 });
+
+/**
+ * The other half of #826: a ❌ is a verdict, and `deliverMessage` returns false
+ * for two unrelated things — a delivery that cannot land, and a delivery that
+ * was never attempted because AgEnD is standing down. Reporting the second told
+ * a sending agent its message was lost during a tmux storm or a shutdown.
+ */
+describe("who gets told a cross-instance delivery failed", () => {
+  const crossInstance = { from_instance: "agend-leader", correlation_id: "cid-1", user: "leader" };
+
+  function withBroadcastSpy(h: Harness) {
+    const broadcasts: { type?: string }[] = [];
+    h.daemon.ipcServer = { broadcast: (m: { type?: string }) => broadcasts.push(m) };
+    return broadcasts;
+  }
+
+  it("says nothing when the fleet is standing down", async () => {
+    // The pane was never even asked. Nothing failed — AgEnD stopped.
+    const h = makeHarness();
+    const broadcasts = withBroadcastSpy(h);
+    h.daemon.stormWindow = {
+      isStopped: () => true,
+      isDeliveryHeld: () => false,
+      waitForDeliveryAllowed: async () => {},
+    };
+
+    h.daemon.pushChannelMessage("ping", crossInstance);
+    await settle(h.daemon.pasteLock);
+
+    expect(broadcasts.map(b => b.type), "a shutdown is not a delivery failure")
+      .not.toContain("cross_instance_delivery_failed");
+    expect(h.paste).not.toHaveBeenCalled();
+  });
+
+  it("reports the pane that really never came back", async () => {
+    // And the verdict still travels: a frozen resume means the sender's message
+    // is not arriving, and the sender is the one who has to know.
+    const h = makeHarness();
+    const broadcasts = withBroadcastSpy(h);
+    h.daemon.tmux.capturePane = async () => resumingFrame("stuck");
+
+    h.daemon.pushChannelMessage("ping", crossInstance);
+    await settle(h.daemon.pasteLock);
+
+    expect(broadcasts.map(b => b.type)).toContain("cross_instance_delivery_failed");
+  });
+});
