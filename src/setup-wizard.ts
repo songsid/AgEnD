@@ -266,6 +266,10 @@ export const BACKENDS: Array<{
     installUrl: "https://docs.x.ai/build/cli",
     install: "curl -fsSL https://x.ai/cli/install.sh | bash",
     auth: "grok (x.ai OAuth device flow)" },
+  { id: "muse", binary: "muse", label: "Meta Muse Code",
+    installUrl: "https://api.meta.ai/muse-launcher.sh",
+    install: "curl -fsSL https://api.meta.ai/muse-launcher.sh | bash",
+    auth: "muse login (Meta account device flow)" },
 ];
 
 interface PrereqResult {

@@ -56,6 +56,7 @@ export const DISCORD_START_BACKEND_CHOICES = [
   { name: "OpenCode", value: "opencode" },
   { name: "Antigravity", value: "antigravity" },
   { name: "Grok Build", value: "grok" },
+  { name: "Meta Muse Code", value: "muse" },
 ] as const;
 
 const CLASSIC_START_BACKEND_SELECT_ID = "classic-start-backend";
@@ -967,6 +968,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
                   { name: "codex", value: "codex" },
                   { name: "kiro-cli", value: "kiro-cli" },
                   { name: "grok", value: "grok" },
+                  { name: "muse", value: "muse" },
                   { name: "antigravity", value: "antigravity" },
                 ],
               },
@@ -985,6 +987,7 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
                   { name: "codex", value: "codex" },
                   { name: "kiro-cli", value: "kiro-cli" },
                   { name: "grok", value: "grok" },
+                  { name: "muse", value: "muse" },
                   { name: "antigravity", value: "antigravity" },
                   { name: "opencode", value: "opencode" },
                 ],

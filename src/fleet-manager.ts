@@ -9596,6 +9596,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Grok reads AGENTS.md project docs; agy reads .agents/agents.md — the
     // same files their writeConfig() appends fleet instructions to.
     "grok": "AGENTS.md",
+    // muse init scaffolds AGENTS.md and the binary reads it as project rules.
+    "muse": "AGENTS.md",
     "antigravity": ".agents/agents.md",
     "mock": "CLAUDE.md",
   };
@@ -9673,6 +9675,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // vendor-canonical location is .grok/skills.
     "opencode": [".agents", "skills"],
     "grok": [".grok", "skills"],
+    // Live-verified on muse 1.3.0: `muse skills list --source project` sees
+    // .agents/skills and ignores .muse/skills.
+    "muse": [".agents", "skills"],
     "antigravity": [".agents", "skills"],
   };
 

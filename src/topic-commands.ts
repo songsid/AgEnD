@@ -114,6 +114,7 @@ export function clearCommandForBackend(backend: string): string | null {
     case "kiro-cli":
     case "antigravity":
     case "opencode":
+    case "muse":
     case "mock":
       return "/clear";
     case "grok":
