@@ -489,7 +489,13 @@ export function handleSettingsRequest(
         const id = typeof candidate.id === "string" ? candidate.id
           : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
         const previous = currentById.get(id);
-        if (!previous && typeof candidate.bot_token_env === "string" && currentTokenEnvs.has(candidate.bot_token_env)) {
+        const tokenEnv = typeof candidate.bot_token_env === "string" ? candidate.bot_token_env : null;
+        const reusedByAnotherChannel = tokenEnv !== null && currentChannels.some((channel, channelIndex) => {
+          const ownerId = channel.id ?? channel.type ?? `channel-${channelIndex}`;
+          return ownerId !== id && channel.bot_token_env === tokenEnv;
+        });
+        if ((!previous && tokenEnv !== null && currentTokenEnvs.has(tokenEnv))
+          || (previous && tokenEnv !== previous.bot_token_env && reusedByAnotherChannel)) {
           return json(res, 409, { ok: false, error: "new connections reusing an existing bot token require verified rebind" }, true);
         }
         if (!previous) continue;

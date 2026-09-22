@@ -12378,8 +12378,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   }): ConnectionBinding | null {
     // IDs arrive from JSON and may be Discord snowflakes.  Do not accept a
     // number here: JSON.parse may already have rounded it before verification.
-    // IDs arrive from JSON and may be Discord snowflakes.  Do not accept a
-    // number here: JSON.parse may already have rounded it before verification.
     if (typeof input.group_id !== "string") return null;
     const groupId = input.group_id.trim();
     if (!groupId || groupId.length > 128 || /[\r\n\0]/.test(groupId)) return null;
@@ -12625,10 +12623,6 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         this.accessManager = oldAccess;
       }
       // The binding is committed to YAML before routing is rebuilt.  If the
-      // post-commit rebuild fails, restore the durable document as well as the
-      // in-memory channel; otherwise a reload would resurrect the failed
-      // binding that the running fleet just rolled back.
-      // The binding is committed to YAML before routing is rebuilt. If the
       // post-commit rebuild fails, restore the durable document as well as the
       // in-memory channel; otherwise a reload would resurrect the failed
       // binding that the running fleet just rolled back.

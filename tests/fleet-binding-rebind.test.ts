@@ -62,13 +62,24 @@ describe("connection binding rebind", () => {
     expect(result).toEqual({ error: expect.stringContaining("expired") });
   });
 
-  it("rejects numeric binding IDs before the provider probe", async () => {
+  it("rejects a numeric group ID before the provider probe", async () => {
     const { fm } = manager();
     const result = await fm.verifyConnectionBinding({
       connectionId: "primary",
-      binding: { group_id: 999999999999999999, general_channel_id: 123 },
+      binding: { group_id: 999999999999999999, general_channel_id: "123" },
       sessionBinding: "session",
-      idempotencyKey: "binding_number",
+      idempotencyKey: "binding_group_number",
+    });
+    expect(result).toEqual({ ok: false, error: "connection binding is unsupported or invalid" });
+  });
+
+  it("rejects a numeric general channel ID before the provider probe", async () => {
+    const { fm } = manager();
+    const result = await fm.verifyConnectionBinding({
+      connectionId: "primary",
+      binding: { group_id: "999999999999999999", general_channel_id: 123 },
+      sessionBinding: "session",
+      idempotencyKey: "binding_general_number",
     });
     expect(result).toEqual({ ok: false, error: "connection binding is unsupported or invalid" });
   });

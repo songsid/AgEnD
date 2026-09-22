@@ -129,6 +129,32 @@ describe("Settings manual lifecycle API", () => {
     expect(typeof saved.options?.general_channel_id).toBe("string");
   });
 
+  it("rejects unsafe numeric binding IDs before broad channel persistence", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic" as const,
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: "999999999999999999",
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }];
+
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: 999999999999999999,
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }]);
+
+    expect(response.status).toBe(400);
+    expect(String(response.body.error)).toContain("group_id");
+    expect(ctx.fleetConfig!.channels![0].group_id).toBe("999999999999999999");
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
   it("rejects a new channel reusing an existing bot token without verified binding", async () => {
     const { ctx } = context();
     ctx.fleetConfig!.channels = [{
@@ -162,6 +188,74 @@ describe("Settings manual lifecycle API", () => {
     expect(String(response.body.error)).toContain("reusing an existing bot token");
     expect(ctx.fleetConfig!.channels).toHaveLength(1);
     expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects an existing channel switching to another channel's bot token", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [
+      {
+        id: "discord-primary",
+        type: "discord",
+        mode: "topic" as const,
+        bot_token_env: "DISCORD_TOKEN",
+        group_id: "-1001",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+      {
+        id: "discord-secondary",
+        type: "discord",
+        mode: "topic" as const,
+        bot_token_env: "DISCORD_TOKEN_2",
+        group_id: "-1002",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+    ];
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [
+      {
+        id: "discord-primary",
+        type: "discord",
+        mode: "topic",
+        bot_token_env: "DISCORD_TOKEN",
+        group_id: "-1001",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+      {
+        id: "discord-secondary",
+        type: "discord",
+        mode: "topic",
+        bot_token_env: "DISCORD_TOKEN",
+        group_id: "-1002",
+        access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+      },
+    ]);
+
+    expect(response.status).toBe(409);
+    expect(String(response.body.error)).toContain("reusing an existing bot token");
+    expect(ctx.fleetConfig!.channels![1].bot_token_env).toBe("DISCORD_TOKEN_2");
+    expect(ctx.saveFleetConfig).not.toHaveBeenCalled();
+  });
+
+  it("allows an existing channel to switch to an unused bot token env", async () => {
+    const { ctx } = context();
+    ctx.fleetConfig!.channels = [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic" as const,
+      bot_token_env: "DISCORD_TOKEN",
+      group_id: "-1001",
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }];
+    const response = await request("/api/settings/fleet/channels", ctx, "PUT", [{
+      id: "discord-primary",
+      type: "discord",
+      mode: "topic",
+      bot_token_env: "NEW_DISCORD_TOKEN",
+      group_id: "-1001",
+      access: { mode: "open", allowed_users: [], max_pending_codes: 5, code_expiry_minutes: 10 },
+    }]);
+
+    expect(response.status).toBe(200);
+    expect(ctx.fleetConfig!.channels![0].bot_token_env).toBe("NEW_DISCORD_TOKEN");
   });
 
   it("pauses a configured instance", async () => {
