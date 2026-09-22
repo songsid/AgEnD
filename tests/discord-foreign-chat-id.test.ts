@@ -111,4 +111,38 @@ describe("daemon keeps chat context and its adapter paired", () => {
     d.pushChannelMessage("again", { chat_id: "1496407196106494055", user: "u" });
     expect(d.lastAdapterId, "same chat — the binding still holds").toBe("discord");
   });
+
+  it("carries the bound adapter into schedule creation IPC metadata", () => {
+    const d = daemon();
+    const socket = {} as any;
+    const broadcasts: any[] = [];
+    d.socketSessionNames.set(socket, d.name);
+    d.lastChatId = "guild-1";
+    d.lastThreadId = "channel-1";
+    d.lastAdapterId = "persona-discord";
+    d.ipcServer = {
+      broadcast: vi.fn((message: any) => {
+        broadcasts.push(message);
+        // Complete the request so the production timeout does not keep this
+        // test alive and the response path is exercised too.
+        d.pendingIpcRequests.get(message.fleetRequestId)?.({ result: "ok" });
+      }),
+      send: vi.fn(),
+    };
+
+    d.handleToolCall({
+      tool: "create_schedule",
+      requestId: 1,
+      args: { cron: "0 9 * * *", message: "ping" },
+    }, socket);
+
+    expect(broadcasts[0]).toMatchObject({
+      type: "fleet_schedule_create",
+      meta: {
+        chat_id: "guild-1",
+        thread_id: "channel-1",
+        adapter_id: "persona-discord",
+      },
+    });
+  });
 });

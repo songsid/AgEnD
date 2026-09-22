@@ -5610,7 +5610,12 @@ export class Daemon extends EventEmitter {
       this.ipcServer?.broadcast({
         type: typeMap[tool],
         payload: args,
-        meta: { chat_id: this.lastChatId, thread_id: this.lastThreadId, instance_name: this.name },
+        meta: {
+          chat_id: this.lastChatId,
+          thread_id: this.lastThreadId,
+          adapter_id: this.lastAdapterId,
+          instance_name: this.name,
+        },
         fleetRequestId: fleetReqId,
       });
       return;

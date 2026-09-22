@@ -22,6 +22,7 @@ export class SchedulerDb {
         target          TEXT NOT NULL,
         reply_chat_id   TEXT NOT NULL,
         reply_thread_id TEXT,
+        reply_adapter_id TEXT,
         label           TEXT,
         enabled         INTEGER DEFAULT 1,
         timezone        TEXT DEFAULT 'Asia/Taipei',
@@ -86,6 +87,15 @@ export class SchedulerDb {
       }
     }
 
+    // Migration: preserve the adapter/world that owned a schedule's reply chat.
+    // Existing rows intentionally remain NULL and use the legacy resolver.
+    {
+      const scheduleCols = this.db.prepare("PRAGMA table_info(schedules)").all() as { name: string }[];
+      if (scheduleCols.length > 0 && !scheduleCols.some(c => c.name === "reply_adapter_id")) {
+        this.db.exec("ALTER TABLE schedules ADD COLUMN reply_adapter_id TEXT");
+      }
+    }
+
     // Migration: add scope column to existing decisions tables that lack it
     const cols = this.db.prepare("PRAGMA table_info(decisions)").all() as { name: string }[];
     if (cols.length > 0 && !cols.some(c => c.name === "scope")) {
@@ -127,6 +137,7 @@ export class SchedulerDb {
     }>;
     const cron = columns.find(column => column.name === "cron");
     const hasAt = columns.some(column => column.name === "at");
+    const hasReplyAdapterId = columns.some(column => column.name === "reply_adapter_id");
 
     if (cron?.notnull !== 1) {
       if (!hasAt) this.db.exec("ALTER TABLE schedules ADD COLUMN at TEXT");
@@ -147,6 +158,7 @@ export class SchedulerDb {
             target            TEXT NOT NULL,
             reply_chat_id     TEXT NOT NULL,
             reply_thread_id   TEXT,
+            reply_adapter_id  TEXT,
             label             TEXT,
             enabled           INTEGER DEFAULT 1,
             timezone          TEXT DEFAULT 'Asia/Taipei',
@@ -155,11 +167,11 @@ export class SchedulerDb {
             last_status       TEXT
           );
           INSERT INTO schedules_timing_migration
-            (id, cron, at, message, source, target, reply_chat_id, reply_thread_id,
+            (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, reply_adapter_id,
              label, enabled, timezone, created_at, last_triggered_at, last_status)
           SELECT
             id, cron, ${hasAt ? "at" : "NULL"}, message, source, target, reply_chat_id,
-            reply_thread_id, label, enabled, timezone, created_at,
+            reply_thread_id, ${hasReplyAdapterId ? "reply_adapter_id" : "NULL"}, label, enabled, timezone, created_at,
             last_triggered_at, last_status
           FROM schedules;
           DROP TABLE schedules;
@@ -181,6 +193,7 @@ export class SchedulerDb {
       target: row.target as string,
       reply_chat_id: row.reply_chat_id as string,
       reply_thread_id: row.reply_thread_id as string | null,
+      reply_adapter_id: row.reply_adapter_id as string | null,
       label: row.label as string | null,
       enabled: row.enabled === 1,
       timezone: row.timezone as string,
@@ -200,9 +213,9 @@ export class SchedulerDb {
     const id = randomUUID();
     const now = new Date().toISOString();
     this.db.prepare(`
-      INSERT INTO schedules (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, label, timezone, silent, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, params.cron ?? null, params.at ?? null, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.label ?? null, params.timezone ?? "Asia/Taipei", params.silent ? 1 : 0, now);
+      INSERT INTO schedules (id, cron, at, message, source, target, reply_chat_id, reply_thread_id, reply_adapter_id, label, timezone, silent, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, params.cron ?? null, params.at ?? null, params.message, params.source, params.target, params.reply_chat_id, params.reply_thread_id, params.reply_adapter_id ?? null, params.label ?? null, params.timezone ?? "Asia/Taipei", params.silent ? 1 : 0, now);
 
     return this.get(id)!;
   }

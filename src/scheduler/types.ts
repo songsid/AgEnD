@@ -8,6 +8,8 @@ export interface Schedule {
   target: string;
   reply_chat_id: string;
   reply_thread_id: string | null;
+  /** Adapter/world that owned reply_chat_id when the schedule was created. */
+  reply_adapter_id: string | null;
   label: string | null;
   enabled: boolean;
   timezone: string;
@@ -33,6 +35,8 @@ export interface CreateScheduleParams {
   target: string;
   reply_chat_id: string;
   reply_thread_id: string | null;
+  /** Optional for legacy/API callers without a bound channel context. */
+  reply_adapter_id?: string | null;
   label?: string;
   timezone?: string;
   silent?: boolean;

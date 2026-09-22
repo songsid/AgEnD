@@ -301,4 +301,62 @@ describe("schedule notices route to the source chat", () => {
     expect(sent(fm, "grok-persona"), "the persona created it and must answer").toHaveBeenCalledTimes(1);
     expect(sent(fm, "discord"), "the primary must not speak for it").not.toHaveBeenCalled();
   });
+
+  it("persists the adapter from schedule-create IPC metadata", () => {
+    const fm = makeFleet();
+    const create = vi.fn().mockReturnValue({ id: "created" });
+    const send = vi.fn();
+    fm.scheduler = { create };
+    fm.instanceIpcClients.set("tg-maker", { send });
+
+    fm.handleScheduleCrud("tg-maker", {
+      fleetRequestId: "req-1",
+      type: "fleet_schedule_create",
+      payload: { message: "nightly", cron: "0 9 * * *" },
+      meta: { chat_id: "-100777", thread_id: "245", adapter_id: "telegram" },
+    });
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      source: "tg-maker",
+      reply_chat_id: "-100777",
+      reply_thread_id: "245",
+      reply_adapter_id: "telegram",
+    }));
+  });
+
+  it("prefers the persisted source adapter after the creator is rebound", () => {
+    // The source was created through the persona, then rebound to the primary.
+    // The schedule's persisted identity must keep the original voice.
+    const fm = makeFleet({ "classic-persona-maker": { channel_id: "discord" } });
+    const schedule = {
+      ...base,
+      source: "classic-persona-maker",
+      reply_chat_id: "guild-1",
+      reply_thread_id: "chan-p",
+      reply_adapter_id: "grok-persona",
+    };
+
+    fm.notifySourceTopic(schedule);
+
+    expect(sent(fm, "grok-persona"), "the persisted creator adapter must answer").toHaveBeenCalledTimes(1);
+    expect(sent(fm, "discord"), "a rebinding must not switch the persona").not.toHaveBeenCalled();
+  });
+
+  it("falls back when a persisted adapter no longer owns the reply chat", () => {
+    const fm = makeFleet({ "classic-persona-maker": { channel_id: "grok-persona" } });
+    const schedule = {
+      ...base,
+      source: "classic-persona-maker",
+      reply_chat_id: "guild-1",
+      reply_thread_id: "chan-p",
+      // Telegram is live but does not own the Discord guild. The current
+      // source->chat fallback should still select the bound persona.
+      reply_adapter_id: "telegram",
+    };
+
+    fm.notifySourceTopic(schedule);
+
+    expect(sent(fm, "grok-persona"), "the valid source/chat fallback must survive").toHaveBeenCalledTimes(1);
+    expect(sent(fm, "telegram")).not.toHaveBeenCalled();
+  });
 });
