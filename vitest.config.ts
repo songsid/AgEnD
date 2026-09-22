@@ -29,6 +29,12 @@ export default defineConfig({
       // ran under this config's 10s timeout, in parallel — slow and flaky. Run it
       // deliberately with `npm run test:e2e`.
       "e2e/**",
+      // These suites own real tmux/child-process resources. They run in a
+      // dedicated, serial invocation so the normal unit suite can stay
+      // parallel without scheduler contention making CI nondeterministic.
+      "tests/web-terminal-integration.test.ts",
+      "tests/mcp-slot-collision.test.ts",
+      "tests/cli-env-probe-guard.test.ts",
     ],
     env: {
       PATH: process.env.PATH ?? "",
