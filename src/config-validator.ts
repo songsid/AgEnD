@@ -47,7 +47,18 @@ export function validateFleetConfig(config: unknown): ValidationResult {
     }
   };
   const validateInstanceOptions = (value: Record<string, unknown>, path: string) => {
-    if (value.kiro_ui !== undefined && !["legacy", "tui", "v3"].includes(String(value.kiro_ui))) err(`${path}.kiro_ui`, "must be legacy, tui, or v3");
+    // `v3` is refused rather than merely undocumented. Measured on kiro-cli
+    // 2.23.0: `--v3` stops at two dialogs AgEnD does not answer — a config
+    // migration prompt, then a trust screen whose default option is "No,
+    // exit" — so the instance never reaches a prompt. Past those, the busy
+    // pattern does not match v3's working line either, so a working instance
+    // reads as idle. A value that can be written but cannot start looks like
+    // AgEnD is broken; failing here says what is actually wrong. See #849.
+    if (value.kiro_ui === "v3") {
+      err(`${path}.kiro_ui`, "v3 is not supported yet: it stops at startup dialogs AgEnD cannot answer, and its working state reads as idle (see #849). Use legacy or tui.");
+    } else if (value.kiro_ui !== undefined && !["legacy", "tui"].includes(String(value.kiro_ui))) {
+      err(`${path}.kiro_ui`, "must be legacy or tui");
+    }
     if (value.agent_mode !== undefined && value.agent_mode !== "mcp" && value.agent_mode !== "cli") err(`${path}.agent_mode`, "must be mcp or cli");
     // `general` stays out on purpose: it is an identity, assigned from
     // `general_topic`, not a profile anyone picks. Everything else that a
