@@ -480,6 +480,8 @@ const CLEAR_CONFIRM_TIMEOUT_MS = 15_000;
 /** Default lifetime for long-lived nonce prompts (clear overrides this to 15s). */
 const NONCE_BUTTON_TIMEOUT_MS = 15 * 60_000;
 const TIP_BUTTON_TIMEOUT_MS = 24 * 60 * 60_000;
+/** How long shutdown will spend retiring still-armed button prompts. */
+const NONCE_RETIRE_BUDGET_MS = 5_000;
 const CLI_ENV_TTL_MS = 24 * 60 * 60 * 1000; // hard validity bound for the cached CLI env
 /**
  * How old the cached CLI env may be before `/model` re-probes it live.
@@ -7577,6 +7579,44 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (or an assist for one they stopped) must not stay clickable for the rest
    * of its 15 minutes.
    */
+  /**
+   * Collapse every still-armed button prompt, for a fleet that is going away.
+   *
+   * The map is in memory; the buttons are in the chat for up to 24 hours. A
+   * restart therefore leaves them looking live — pressing one takes the stale
+   * branch, which acknowledges the click and drops the dismissal without
+   * saying so. Retiring them here means the user meets a spent prompt instead
+   * of a live-looking dead one.
+   *
+   * Best effort and bounded. Each collapse is a platform call, a day of tips
+   * can be many of them, and shutdown still has instances to stop. Whatever
+   * has not finished by the deadline is abandoned — that is exactly today's
+   * behaviour, so the budget can only leave things no worse than before.
+   */
+  private async retirePendingNoncePrompts(budgetMs = NONCE_RETIRE_BUDGET_MS): Promise<void> {
+    const entries = [...this.pendingNonceButtons.values()];
+    this.pendingNonceButtons.clear();
+    for (const entry of entries) if (entry.timer) clearTimeout(entry.timer);
+
+    const collapses = entries
+      .filter(entry => entry.messageId && entry.adapter.editMessageRemoveButtons)
+      .map(entry => entry.adapter.editMessageRemoveButtons!(
+        entry.chatId, entry.messageId!, entry.expiredText, entry.threadId,
+      ).catch(err => this.logger.debug(
+        { err, instanceName: entry.instanceName, prefix: entry.prefix },
+        "Failed to retire button prompt during shutdown",
+      )));
+    if (!collapses.length) return;
+
+    await Promise.race([
+      Promise.allSettled(collapses),
+      new Promise<void>(resolve => {
+        const timer = setTimeout(resolve, budgetMs);
+        timer.unref?.();
+      }),
+    ]);
+  }
+
   clearNoncePromptsForInstance(instanceName: string): void {
     for (const [nonce, entry] of this.pendingNonceButtons) {
       if (entry.instanceName !== instanceName) continue;
@@ -11481,10 +11521,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
     for (const pending of this.pendingClassicStarts.values()) clearTimeout(pending.timer);
     this.pendingClassicStarts.clear();
-    for (const pending of this.pendingNonceButtons.values()) {
-      if (pending.timer) clearTimeout(pending.timer);
-    }
-    this.pendingNonceButtons.clear();
+    // Adapters are still connected here — they are stopped further down — so
+    // this is the last moment the prompts can be collapsed.
+    await this.retirePendingNoncePrompts();
     this.topicArchiver.stop();
 
     this.scheduler?.shutdown();
