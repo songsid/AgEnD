@@ -21,6 +21,14 @@ export default defineConfig({
       "tests/mcp-slot-collision.test.ts",
       "tests/cli-env-probe-guard.test.ts",
       "tests/tmux-manager.test.ts",
+      // Each of these starts a real tmux SERVER, not just a client call:
+      // `new-session` on an isolated socket, or TmuxTerminalBackend.start().
+      // A file moves here whole, because fileParallelism is per file — the
+      // unit tests that share the file come along, which is cheaper than
+      // splitting them out and losing the context they sit in.
+      "tests/tmux-kill-window-confirmed.test.ts",
+      "tests/view-api.test.ts",
+      "tests/web-terminal-socket-cleanup.test.ts",
     ],
     exclude: ["**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**"],
     env: {
