@@ -12,9 +12,9 @@
  * idempotency key and the same disk-backed recovery across a restart.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { writeSecretFile, type SecretWriteResult } from "./secret-file.js";
+import type { SecretWriteResult } from "./secret-file.js";
+import { SecretStore } from "./secret-store.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import type { FleetConfig } from "./types.js";
 import {
@@ -157,8 +157,15 @@ export function upsertEnvLine(existing: string, key: string, value: string): str
 
 export function writeQuickstartSecret(dataDir: string, key: string, value: string): SecretWriteResult {
   const path = join(dataDir, ".env");
-  const existing = existsSync(path) ? readFileSync(path, "utf-8") : "";
-  return writeSecretFile(path, upsertEnvLine(existing, key, value));
+  try {
+    const store = new SecretStore(path, new Set([key]));
+    store.write(key, value);
+    return { ok: true, mode: 0o600 };
+  } catch {
+    // Keep the old return shape for the wizard UI, but a failed mode/atomic
+    // write is now handled as a hard commit error by the endpoint below.
+    return { ok: false, mode: null, reason: "secret write failed" };
+  }
 }
 
 export type ProbeRequest =
@@ -390,6 +397,9 @@ export function handleQuickstartRequest(
       }
 
       const secret = writeQuickstartSecret(ctx.dataDir, body.token_env, body.token);
+      if (!secret.ok) {
+        return json(res, 500, { error: "secret could not be stored securely" });
+      }
       const before = {
         channels: cfg.channels,
         channel: (cfg as { channel?: unknown }).channel,

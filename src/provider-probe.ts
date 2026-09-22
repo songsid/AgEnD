@@ -29,6 +29,16 @@ export interface TelegramStartResult {
 
 const DISCORD_API = "https://discord.com/api/v10";
 
+/** Provider errors are not safe to surface verbatim: Telegram's HTTP client
+ * commonly includes the full bot URL (and therefore the token) in FetchError. */
+export function redactProviderError(error: unknown, secret?: string): string {
+  let message = error instanceof Error ? error.message : String(error);
+  if (secret) message = message.split(secret).join("[redacted]");
+  message = message.replace(/(https?:\/\/[^\s/]+\/bot)[^\s/?]+/gi, "$1[redacted]");
+  message = message.replace(/\b(Bot|Bearer)\s+[^\s]+/gi, "$1 [redacted]");
+  return message.slice(0, 240);
+}
+
 export async function verifyDiscordToken(token: string, doFetch = fetch): Promise<BotIdentity> {
   try {
     const res = await doFetch(`${DISCORD_API}/users/@me`, { headers: { Authorization: `Bot ${token}` } });
@@ -37,7 +47,7 @@ export async function verifyDiscordToken(token: string, doFetch = fetch): Promis
     const data = (await res.json()) as { username?: string; id?: string };
     return { valid: true, username: data.username ?? null, id: data.id ?? null };
   } catch (err) {
-    return { valid: false, username: null, id: null, reason: (err as Error).message };
+    return { valid: false, username: null, id: null, reason: redactProviderError(err, token) };
   }
 }
 
@@ -58,7 +68,7 @@ export async function verifyTelegramToken(token: string, doFetch = fetch): Promi
     }
     return { valid: true, username: data.result?.username ?? null, id: data.result?.id != null ? String(data.result.id) : null };
   } catch (err) {
-    return { valid: false, username: null, id: null, reason: (err as Error).message };
+    return { valid: false, username: null, id: null, reason: redactProviderError(err, token) };
   }
 }
 
