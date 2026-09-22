@@ -23,6 +23,16 @@ function inbound(userId: string): InboundMessage {
   };
 }
 
+/**
+ * The choices off a captured notifyAlert call. `mock.calls` is typed `unknown`,
+ * and every one of these tests reads the same two fields out of it, so the
+ * shape is stated once instead of being asserted away at each site.
+ */
+function alertChoices(notifyAlert: { mock: { calls: unknown[][] } }): { id: string }[] {
+  const alert = notifyAlert.mock.calls[0][1] as { choices: { id: string }[] };
+  return alert.choices;
+}
+
 describe("backend clear commands", () => {
   it.each([
     ["claude-code", "/clear"],
@@ -165,7 +175,7 @@ describe("/clear nonce confirmation", () => {
       id: `${type}-main`,
       adapter,
       groupId: "fleet-group",
-      channelConfig: fm.fleetConfig.channels![0],
+      channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     fm.instanceIpcClients.set("worker", { connected: true, send: ipcSend } as any);
     return { fm, adapter, ipcSend, notifyAlert, editMessageRemoveButtons, editMessage };
@@ -202,7 +212,7 @@ describe("/clear nonce confirmation", () => {
       }),
       { threadId: "worker-topic" },
     );
-    const ids = notifyAlert.mock.calls[0][1].choices.map((choice: { id: string }) => choice.id);
+    const ids = alertChoices(notifyAlert).map(choice => choice.id);
     expect(ids[0]).toMatch(/^clear-confirm:[0-9a-f]{32}:confirm$/);
     expect(ids[1]).toMatch(/^clear-confirm:[0-9a-f]{32}:cancel$/);
     expect(ipcSend).not.toHaveBeenCalled();
@@ -213,7 +223,7 @@ describe("/clear nonce confirmation", () => {
     await fm.promptClearConfirmation(
       "worker", "worker-topic", adapter, "fleet-group", "worker-topic",
     );
-    const confirmId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const confirmId = alertChoices(notifyAlert)[0].id;
 
     await (fm as any).handleClearConfirmation(callback(confirmId), "telegram-main");
     await (fm as any).handleClearConfirmation(callback(confirmId), "telegram-main");
@@ -233,7 +243,7 @@ describe("/clear nonce confirmation", () => {
     await fm.promptClearConfirmation(
       "worker", "worker-topic", adapter, "fleet-group", "worker-topic",
     );
-    const cancelId = notifyAlert.mock.calls[0][1].choices[1].id as string;
+    const cancelId = alertChoices(notifyAlert)[1].id;
 
     await (fm as any).handleClearConfirmation(callback(cancelId), "telegram-main");
 
@@ -252,7 +262,7 @@ describe("/clear nonce confirmation", () => {
     await fm.promptClearConfirmation(
       "worker", "worker-topic", adapter, "fleet-group", "worker-topic",
     );
-    const confirmId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const confirmId = alertChoices(notifyAlert)[0].id;
 
     await vi.advanceTimersByTimeAsync(15_000);
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
@@ -271,7 +281,7 @@ describe("/clear nonce confirmation", () => {
     await fm.promptClearConfirmation(
       "worker", "worker-topic", adapter, "fleet-group", "worker-topic",
     );
-    const confirmId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const confirmId = alertChoices(notifyAlert)[0].id;
 
     await (fm as any).handleClearConfirmation(callback(confirmId, "telegram", "user"), "telegram-main");
     expect(ipcSend).not.toHaveBeenCalled();
@@ -292,7 +302,7 @@ describe("/clear nonce confirmation", () => {
     await fm.promptClearConfirmation(
       "classic-worker", "classic-room", adapter, "classic-room",
     );
-    const confirmId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const confirmId = alertChoices(notifyAlert)[0].id;
 
     await (fm as any).handleClearConfirmation({
       callbackData: confirmId,

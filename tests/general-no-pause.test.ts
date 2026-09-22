@@ -44,7 +44,7 @@ describe("General manual pause guard", () => {
         fm,
         { name: "coordinator" },
         respond,
-        { instanceName: "caller" },
+        { instanceName: "caller", requestId: undefined, fleetRequestId: undefined, senderSessionName: undefined },
       );
 
       expect(respond).toHaveBeenCalledWith(null, "General cannot be paused");

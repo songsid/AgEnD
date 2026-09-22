@@ -9,6 +9,20 @@ import yaml from "js-yaml";
 import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivityAt } from "../src/classic-channel-manager.js";
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
+import type { InstanceConfig } from "../src/types.js";
+
+/**
+ * An InstanceConfig as loadFleetConfig would hand it over: the three fields
+ * below are always filled from defaults, so a test assigning fleetConfig
+ * directly has to supply them too or it is describing a shape the fleet never
+ * actually sees.
+ */
+const instance = (over: Partial<InstanceConfig> & { working_directory: string }): InstanceConfig => ({
+  restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+  context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+  log_level: "info",
+  ...over,
+});
 
 describe("FleetManager", () => {
   let tmpDir: string;
@@ -243,7 +257,7 @@ describe("FleetManager", () => {
       fm.adapter = primary;
       addWorld(fm, secondaryConfig, secondary);
       addWorld(fm, primaryConfig, primary);
-      fm.routing.rebuild(fm.fleetConfig);
+      fm.routing.rebuild(fm.fleetConfig!);
 
       vi.spyOn((fm as any).topicCommands, "handleInstanceCommand").mockResolvedValue(false);
       vi.spyOn((fm as any).topicCommands, "handleGeneralCommand").mockResolvedValue(false);
@@ -262,7 +276,7 @@ describe("FleetManager", () => {
         timestamp: new Date(),
       });
 
-      const inbound = deliver.mock.calls[0][1];
+      const inbound = deliver.mock.calls[0][1] as { meta: { adapter_id: string } };
       expect(inbound.meta.adapter_id).toBe("discord-primary");
 
       await (fm as any).handleOutboundFromInstance("implicit", {
@@ -316,7 +330,7 @@ describe("FleetManager", () => {
         timestamp: new Date(),
       });
 
-      expect(deliver.mock.calls[0][1].meta.adapter_id).toBe("discord-primary");
+      expect((deliver.mock.calls[0][1] as { meta: { adapter_id: string } }).meta.adapter_id).toBe("discord-primary");
     });
 
     /**
@@ -570,7 +584,7 @@ describe("FleetManager", () => {
         timestamp: new Date(),
       });
 
-      expect(deliver.mock.calls[0][1].meta.adapter_id).toBe("discord-secondary");
+      expect((deliver.mock.calls[0][1] as { meta: { adapter_id: string } }).meta.adapter_id).toBe("discord-secondary");
     });
 
     it("warns only for an unbound general in a multi-channel fleet", () => {
@@ -1235,7 +1249,7 @@ describe("FleetManager", () => {
 
   it("caches daemon execution-state snapshots for status surfaces", async () => {
     const fm = new FleetManager(tmpDir);
-    fm.fleetConfig = { defaults: {}, instances: { test: { working_directory: "/tmp" } } };
+    fm.fleetConfig = { defaults: {}, instances: { test: instance({ working_directory: "/tmp" }) } };
     vi.spyOn(fm.lifecycle, "isPaused").mockReturnValue(false);
 
     (fm as any).cacheInstanceExecutionState("test", {
@@ -1778,14 +1792,12 @@ instances:
       topic_id: 1,
       general_topic: true,
       restart_policy: { max_retries: 1, backoff: "linear", reset_after: 1 },
+      // threshold_percentage / max_idle_wait_ms / completion_timeout_ms were
+      // removed from InstanceConfig; nothing in src/ reads them any more.
       context_guardian: {
-        threshold_percentage: 60,
-        max_idle_wait_ms: 300_000,
-        completion_timeout_ms: 60_000,
         grace_period_ms: 600_000,
         max_age_hours: 8,
       },
-      memory: { auto_summarize: true, watch_memory_dir: true, backup_to_sqlite: true },
       log_level: "info",
     });
     expect(threadId).toBeUndefined();
@@ -1796,14 +1808,12 @@ instances:
       working_directory: "/tmp/proj",
       topic_id: 42,
       restart_policy: { max_retries: 1, backoff: "linear", reset_after: 1 },
+      // threshold_percentage / max_idle_wait_ms / completion_timeout_ms were
+      // removed from InstanceConfig; nothing in src/ reads them any more.
       context_guardian: {
-        threshold_percentage: 60,
-        max_idle_wait_ms: 300_000,
-        completion_timeout_ms: 60_000,
         grace_period_ms: 600_000,
         max_age_hours: 8,
       },
-      memory: { auto_summarize: true, watch_memory_dir: true, backup_to_sqlite: true },
       log_level: "info",
     });
     expect(threadId).toBe("42");
@@ -1949,7 +1959,7 @@ instances:
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
       defaults: { model: "claude-sonnet-4-6" },
-      instances: { worker: { working_directory: "/tmp/worker" } },
+      instances: { worker: instance({ working_directory: "/tmp/worker" }) },
     };
     vi.spyOn(fm, "isFleetAdmin").mockReturnValue(true);
     vi.spyOn(fm as any, "resolveSlashTarget").mockReturnValue("worker");
@@ -1980,7 +1990,7 @@ instances:
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
       defaults: {},
-      instances: { worker: { working_directory: "/tmp/worker", model: "gpt-5.6" } },
+      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6" }) },
     };
     vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
       { id: "gpt-5.6", label: "GPT-5.6" },
@@ -2008,7 +2018,7 @@ instances:
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
       defaults: {},
-      instances: { worker: { working_directory: "/tmp/worker", model: "gpt-5.6" } },
+      instances: { worker: instance({ working_directory: "/tmp/worker", model: "gpt-5.6" }) },
     };
     vi.spyOn(fm as any, "getModelOptions").mockResolvedValue([
       { id: "gpt-5.6", label: "GPT-5.6" },
@@ -2089,7 +2099,7 @@ instances:
     const reloaded = new FleetManager(tmpDir);
     reloaded.loadConfig(configPath);
     expect(reloaded.fleetConfig!.instances.worker.auto_pause_after).toBe(30);
-    expect(reloaded.fleetConfig!.instances.worker.hang_detector.timeout_minutes).toBe(15);
+    expect(reloaded.fleetConfig!.instances.worker.hang_detector?.timeout_minutes).toBe(15);
     expect(reloaded.fleetConfig!.instances.worker.tool_set).toBe("full");
     expect(reloaded.fleetConfig!.instances.worker.log_level).toBe("info");
   });

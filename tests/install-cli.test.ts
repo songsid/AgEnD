@@ -34,6 +34,11 @@ vi.mock("../src/instance-lifecycle.js", async (importOriginal) => {
 import { FleetManager } from "../src/fleet-manager.js";
 import { setLocale, t } from "../src/locale.js";
 
+/** The part of a captured notifyAlert payload these tests read. */
+type Alert = { choices: { id: string }[] };
+const alertAt = (notifyAlert: { mock: { calls: unknown[][] } }, i = 0): Alert =>
+  notifyAlert.mock.calls[i][1] as Alert;
+
 describe("/install-cli", () => {
   let tmpDir: string;
   beforeEach(() => {
@@ -73,7 +78,7 @@ describe("/install-cli", () => {
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(verify).toHaveBeenCalledWith("codex");
     expect(notifyAlert).toHaveBeenCalledTimes(1);
-    const ids = notifyAlert.mock.calls[0][1].choices.map((c: { id: string }) => c.id);
+    const ids = alertAt(notifyAlert).choices.map(c => c.id);
     expect(ids[0]).toMatch(/^install-login:[0-9a-f]{32}:go$/);
   });
 
@@ -130,7 +135,7 @@ describe("/install-cli", () => {
     const login = vi.spyOn(fm, "startLoginSession").mockResolvedValue("login-started");
     await fm.startInstallSession("codex", chat);
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
-    const goId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const goId = alertAt(notifyAlert).choices[0].id;
     const click = { chatId: "chat", threadId: "topic", messageId: "prompt-1", userId: "admin", callbackData: goId } as any;
     expect(await (fm as any).handleInstallLoginConfirm(click, "discord", adapter)).toBe(true);
     expect(login).toHaveBeenCalledWith("codex", expect.objectContaining({ chatId: "chat" }));

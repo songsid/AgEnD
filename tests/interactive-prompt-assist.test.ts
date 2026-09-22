@@ -55,7 +55,7 @@ describe("interactive prompt General assistance", () => {
       id: "telegram-main",
       adapter,
       groupId: "fleet-group",
-      channelConfig: fm.fleetConfig.channels![0],
+      channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     // findGeneralInstance intentionally requires a live coordinator.
     fm.lifecycle.daemons.set("general", {} as any);

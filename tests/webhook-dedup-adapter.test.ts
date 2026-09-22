@@ -38,7 +38,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
     const w1 = ["discord", { id: "discord", adapter: a1, channelConfig: fleetCfg, groupId: "guild" }] as const;
     const w2 = ["grok-persona", { id: "grok-persona", adapter: a2, channelConfig: personaCfg, groupId: "guild" }] as const;
     for (const [k, v] of (opts.worldOrder === "reverse" ? [w2, w1] : [w1, w2])) fm.worlds.set(k, v as any);
-    fm.routing.rebuild(fm.fleetConfig);
+    fm.routing.rebuild(fm.fleetConfig!);
     vi.spyOn((fm as any).topicCommands, "handleInstanceCommand").mockResolvedValue(false);
     vi.spyOn((fm as any).topicCommands, "handleGeneralCommand").mockResolvedValue(false);
     vi.spyOn(fm as any, "sendCancelButton").mockResolvedValue(undefined);
@@ -224,7 +224,7 @@ describe("webhook messages survive whichever adapter wins the dedup race", () =>
       fm.fleetConfig = { defaults: {}, channels: [cfg], instances: {} } as any;
       fm.adapter = adapter;
       fm.worlds.set("telegram", { id: "telegram", adapter, channelConfig: cfg, groupId: "-100", botUsername: "OurBot" } as any);
-      fm.routing.rebuild(fm.fleetConfig);
+      fm.routing.rebuild(fm.fleetConfig!);
       return fm;
     }
     const tgMsg = (text: string) => ({

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { ServerResponse, type IncomingMessage } from "node:http";
+import { ServerResponse, type IncomingMessage, type OutgoingHttpHeader, type OutgoingHttpHeaders } from "node:http";
 import { Readable } from "node:stream";
 import { broadcastSseEvent, handleWebRequest, type WebApiContext } from "../src/web-api.js";
 
@@ -78,9 +78,18 @@ class CaptureRes extends ServerResponse {
 
   constructor(req: IncomingMessage) { super(req); }
 
-  writeHead(status: number, headers?: Record<string, string>): this {
+  // ServerResponse.writeHead also takes a status message in the middle slot, so
+  // an override that only accepts headers is not the method it is replacing —
+  // and a caller passing the three-argument form would land in the wrong
+  // parameter. Accept the real shape and pick the headers out of it.
+  writeHead(
+    status: number,
+    headersOrMessage?: string | OutgoingHttpHeaders | OutgoingHttpHeader[],
+    maybeHeaders?: OutgoingHttpHeaders | OutgoingHttpHeader[],
+  ): this {
     this.status = status;
-    if (headers) this.headers = headers;
+    const headers = typeof headersOrMessage === "string" ? maybeHeaders : headersOrMessage;
+    if (headers && !Array.isArray(headers)) this.headers = headers as Record<string, string>;
     return this;
   }
 
@@ -133,7 +142,10 @@ function makeSseCtx(sseClients: Set<ServerResponse>): WebApiContext {
     lifecycle: { handleCreate: async () => {} },
     connectIpcToInstance: async () => {},
     scheduler,
-  } as WebApiContext;
+  // A hand-built stand-in for a context with two dozen members; only the few
+  // the SSE path touches are real. Widened through `unknown` rather than
+  // `any` so everything read off it below still has to typecheck.
+  } as unknown as WebApiContext;
 }
 
 describe("/ui/events SSE handler cleanup", () => {

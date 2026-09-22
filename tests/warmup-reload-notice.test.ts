@@ -6,6 +6,16 @@ import pino from "pino";
 import { Daemon, backendNeedsPaneReloadNotice, warmupNoticeAction } from "../src/daemon.js";
 import { CodexBackend } from "../src/backend/codex.js";
 import type { Logger } from "../src/logger.js";
+import type { CliBackend } from "../src/backend/types.js";
+import type { TmuxManager } from "../src/tmux-manager.js";
+
+/**
+ * These tests drive one code path through a daemon whose collaborators are
+ * stubs with only the members that path touches. Widening through `unknown`
+ * names what each stub stands in for — `as any` would also switch off checking
+ * for every use of it afterwards.
+ */
+const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 /**
  * Two places can tell an agent its instructions moved: the warmup paste, and the
@@ -128,23 +138,27 @@ function makeDaemon(opts: {
   let pane = "";
   const pasteText = vi.fn(async (text: string) => { pane = text; return true; });
   const enter = vi.fn(async () => true);
-  daemon["backend"] = {
+  daemon["backend"] = standingIn<CliBackend>({
     binaryName: opts.binaryName ?? "kiro-cli",
     ...(opts.instructionsReloadedOnResume !== undefined
       ? { instructionsReloadedOnResume: opts.instructionsReloadedOnResume }
       : {}),
-  };
-  daemon["tmux"] = {
+  });
+  daemon["tmux"] = standingIn<TmuxManager>({
     pasteBuffer: pasteText,
     sendSpecialKey: enter,
     capturePane: async () => pane,
     getLastSendSpecialKeyError: () => null,
-  };
-  daemon["paneWriteLock"] = { run: async (fn: () => Promise<unknown>) => await fn() };
+  });
+  // paneWriteLock is readonly on the daemon, so the write goes through a view
+  // that says so rather than through `any`.
+  (daemon as unknown as { paneWriteLock: { run: (fn: () => Promise<unknown>) => Promise<unknown> } })
+    .paneWriteLock = { run: async (fn: () => Promise<unknown>) => await fn() };
   // A real daemon has a control client; stubbing it takes the same branch
   // production does and skips the 5s fallback timer.
   writeFileSync(join(dir, "window-id"), "warmup-win");
-  daemon["controlClient"] = { waitForIdle: vi.fn().mockResolvedValue(undefined) };
+  daemon["controlClient"] = standingIn<NonNullable<Daemon["controlClient"]>>(
+    { waitForIdle: vi.fn().mockResolvedValue(undefined) });
   daemon["warmupNeeded"] = opts.warmupNeeded ?? true;
   daemon["pasteQueueDepth"] = opts.pasteQueueDepth ?? 1;
   daemon["lastBuiltInstructions"] = "INSTRUCTIONS-v2";
@@ -191,7 +205,7 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
     dirs.push(codexDir);
     daemon["backend"] = new CodexBackend(codexDir);
     // Codex's input row still holds the notice: the Enter never submitted it.
-    daemon["tmux"].capturePane = async () =>
+    daemon["tmux"]!.capturePane = async () =>
       `› ${String(pasteText.mock.calls[0]?.[0] ?? "")}\n  Context 63% left`;
 
     await daemon["runWarmupInstructionNotice"]();
@@ -229,7 +243,7 @@ describe("runWarmupInstructionNotice (through the real call site)", () => {
 
   it("survives a paste failure rather than failing the spawn", async () => {
     const { daemon } = makeDaemon({});
-    daemon["tmux"] = { pasteText: vi.fn().mockRejectedValue(new Error("pane gone")) };
+    daemon["tmux"] = standingIn<TmuxManager>({ pasteText: vi.fn().mockRejectedValue(new Error("pane gone")) });
 
     await expect(daemon["runWarmupInstructionNotice"]()).resolves.toBeUndefined();
   });

@@ -226,11 +226,12 @@ describe("/ui/instance/:name new fields (B2 wiring)", () => {
         channel: { group_id: 1 },
         defaults: { backend: "kiro-cli", effort: "high" },
         instances: {
+          // model/effort are deliberately absent: WebApiContext declares only
+          // what web-api reads off the config, and the values under test come
+          // from resolveInstanceModel / resolveInstanceEffort below.
           "test-inst": {
             working_directory: "/tmp/test",
             display_name: "Test Instance",
-            model: "configured-model",
-            effort: "max",
           },
         },
         teams: {},

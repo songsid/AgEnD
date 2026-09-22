@@ -14,6 +14,14 @@ import {
   type LifecycleContext,
 } from "../src/instance-lifecycle.js";
 import type { Logger } from "../src/logger.js";
+import type { IpcServer } from "../src/channel/ipc-bridge.js";
+
+/**
+ * A stand-in with only the members this test's path touches. Widening through
+ * `unknown` names what it substitutes for; `as any` would also stop checking
+ * every later use of it.
+ */
+const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 const logger = pino({ level: "silent" }) as Logger;
 const dirs: string[] = [];
@@ -43,7 +51,7 @@ function makeDaemon(backend = "claude-code") {
     log_level: "silent",
   } as any, dir, true, undefined, undefined, logger) as AnyDaemon;
   const broadcast = vi.fn();
-  daemon["ipcServer"] = { broadcast, send: vi.fn() };
+  daemon["ipcServer"] = standingIn<IpcServer>({ broadcast, send: vi.fn() });
   daemon["lastChatId"] = "chat-1";
   daemon["lastThreadId"] = "thread-1";
   daemon["lastAdapterId"] = "discord-main";

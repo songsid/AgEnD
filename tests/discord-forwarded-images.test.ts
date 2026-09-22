@@ -79,7 +79,11 @@ describe("Discord forwarded message images", () => {
 
   function realDiscordJsForward(content = "look at this"): Message {
     const now = new Date().toISOString();
-    return new Message(client, {
+    // discord.js marks the constructor private. This test is specifically
+    // about parsing a real gateway payload, so it builds the real object
+    // rather than a look-alike; the alias names the shape it is calling.
+    const RawMessage = Message as unknown as new (client: unknown, data: object) => Message;
+    return new RawMessage(client, {
       id: "1500000000000000001",
       channel_id: "topic-1",
       guild_id: "guild-1",

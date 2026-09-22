@@ -9,13 +9,23 @@ import {
 } from "../src/pane-input-residue.js";
 import { KiroBackend } from "../src/backend/kiro.js";
 
+/**
+ * Both patterns are optional on the interface. This whole file is about what
+ * they match, so a null one is a failure rather than a thing to work around:
+ * say so at import instead of letting `!` turn the rest of the file into
+ * assertions about undefined.
+ */
+function required(pattern: RegExp | null | undefined, what: string): RegExp {
+  if (!pattern) throw new Error(`kiro legacy UI should define ${what}`);
+  return pattern;
+}
+
 // Kiro legacy-UI prompt marker, as implemented by the backend.
-const PROMPT = new KiroBackend("/tmp/kiro-residue-test", {
+const legacyKiro = () => new KiroBackend("/tmp/kiro-residue-test", {
   version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version",
-}).getBottomReadyPattern();
-const BUSY = new KiroBackend("/tmp/kiro-residue-test", {
-  version: "kiro-cli 2.21.0", supportsRequireMcpStartup: true, supportsLegacyUi: true, supportsEffortFlag: true, source: "version",
-}).getBusyPattern();
+});
+const PROMPT = required(legacyKiro().getBottomReadyPattern(), "a bottom-row ready pattern");
+const BUSY = required(legacyKiro().getBusyPattern(), "a busy pattern");
 
 // Frames below are verbatim `tmux capture-pane -p` tails from the live
 // reproduction on kiro-cli 2.21.0 (--legacy-ui), 2026-09-03.

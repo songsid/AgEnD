@@ -85,11 +85,15 @@ vi.mock("grammy", () => {
   // Expose handlers map so tests can fire them
   (globalThis as Record<string, unknown>).__grammyHandlers = handlers;
 
+  // Mirrors grammY's real constructor — (message, ApiError, method, payload) —
+  // so a call written against the published types behaves the same here. It
+  // used to take a bare status code, which typechecked nowhere and let the one
+  // test that builds an error drift from the shape the adapter reads.
   class MockGrammyError extends Error {
     error_code: number;
-    constructor(message: string, error_code: number) {
+    constructor(message: string, err: { error_code: number }, readonly method = "", readonly payload = {}) {
       super(message);
-      this.error_code = error_code;
+      this.error_code = err.error_code;
     }
   }
 
@@ -241,9 +245,14 @@ describe("TelegramAdapter", () => {
     vi.useFakeTimers();
     try {
       const grammy = await import("grammy");
-      const GrammyError = (grammy as unknown as { GrammyError: new (m: string, c: number) => Error & { error_code: number } }).GrammyError;
+      // Same constructor grammY publishes: (message, ApiError, method, payload).
+      const GrammyError = (grammy as unknown as {
+        GrammyError: new (m: string, err: { ok?: boolean; error_code: number; description?: string },
+                          method?: string, payload?: object)
+          => Error & { error_code: number };
+      }).GrammyError;
       const bot = (adapter as unknown as { bot: { start: ReturnType<typeof vi.fn> } }).bot;
-      bot.start = vi.fn(() => Promise.reject(new GrammyError("conflict", 409)));
+      bot.start = vi.fn(() => Promise.reject(new GrammyError("conflict", { ok: false, error_code: 409, description: "conflict" }, "getUpdates", {})));
 
       const errors: Error[] = [];
       const conflicts: number[] = [];
@@ -330,7 +339,9 @@ describe("TelegramAdapter", () => {
   it("falls back once when Telegram explicitly rejects the rich-message request", async () => {
     const bot = (adapter as unknown as { bot: { api: Record<string, any> } }).bot;
     bot.api.raw.sendRichMessage = vi.fn().mockRejectedValue(
-      new GrammyError("Bad Request: method not found", 404, "sendRichMessage", {}),
+      new GrammyError("Bad Request: method not found",
+        { ok: false, error_code: 404, description: "Bad Request: method not found" },
+        "sendRichMessage", {}),
     );
     bot.api.sendMessage.mockResolvedValueOnce({ message_id: 78 });
 

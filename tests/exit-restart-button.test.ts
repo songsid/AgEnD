@@ -59,7 +59,7 @@ describe("normal CLI exit restart controls", () => {
       id: "telegram-main",
       adapter,
       groupId: "fleet-group",
-      channelConfig: fm.fleetConfig.channels![0],
+      channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     fm.lifecycle.daemons.set("general", {} as any);
     const restartSingleInstance = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);

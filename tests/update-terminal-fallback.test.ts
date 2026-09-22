@@ -29,9 +29,11 @@ function health(isReady: boolean) {
 function makeFleet(adapter: ChannelAdapter) {
   const logger = { error: vi.fn() };
   const fleet = Object.create(FleetManager.prototype) as FleetManager & Record<string, any>;
-  fleet.adapters = new Map([["discord", adapter]]);
+  // `adapters` is readonly on FleetManager; the view says what is being
+  // written instead of switching off checking for the whole object.
+  (fleet as unknown as { adapters: Map<string, ChannelAdapter> }).adapters = new Map([["discord", adapter]]);
   fleet["adapterState"] = new Map([["discord", { status: "connected", retryCount: 0 }]]);
-  fleet.logger = logger;
+  fleet.logger = logger as unknown as FleetManager["logger"];
   fleet["getPrimaryAdapterId"] = () => "discord";
   return { fleet, logger };
 }

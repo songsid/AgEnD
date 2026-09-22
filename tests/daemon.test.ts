@@ -15,8 +15,7 @@ const rootLogger = pino({ level: "silent" }) as Logger;
 const makeConfig = (): InstanceConfig => ({
   working_directory: "/tmp/test",
   restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
-  context_guardian: { restart_threshold_pct: 80, max_age_hours: 4, grace_period_ms: 600_000 },
-  memory: { auto_summarize: false, watch_memory_dir: false, backup_to_sqlite: false },
+  context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
   log_level: "info",
 });
 
@@ -242,7 +241,7 @@ describe("Daemon backend-native input queue delivery", () => {
       hasOutputSince: vi.fn(() => false),
       // Adaptive paste settle: no observable output → it degrades to the fixed
       // fallback delay, which these tests already zero via firstDeliveryDelay.
-      getLastOutputAt: vi.fn(() => undefined),
+      getLastOutputAt: vi.fn((): number | undefined => undefined),
       getObservationResetAt: vi.fn(() => 0),
     };
     const daemon = new Daemon(
@@ -1004,7 +1003,7 @@ describe("Daemon /steer delivery", () => {
       isIdle: vi.fn(() => idle),
       waitUntilIdle: vi.fn().mockResolvedValue(true),
       hasOutputSince: vi.fn(() => true),
-      getLastOutputAt: vi.fn(() => undefined),
+      getLastOutputAt: vi.fn((): number | undefined => undefined),
       getObservationResetAt: vi.fn(() => 0),
     };
     const daemon = new Daemon(

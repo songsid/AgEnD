@@ -5,6 +5,15 @@ import { join } from "node:path";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
 import type { Logger } from "../src/logger.js";
+import type { CliBackend } from "../src/backend/types.js";
+import type { TmuxManager } from "../src/tmux-manager.js";
+
+/**
+ * A stand-in with only the members this test's path touches. Widening through
+ * `unknown` names what it substitutes for; `as any` would also stop checking
+ * every later use of it.
+ */
+const standingIn = <T,>(stub: object): T => stub as unknown as T;
 
 /**
  * Silent conversation loss (external report: 3-core host, 22 instances, CPU
@@ -96,16 +105,16 @@ describe("setting a session aside is recoverable, not destructive", () => {
 
 /** Drive the real failure path in spawnClaudeWindow, not just its helpers. */
 function armForFailedResume(d: AnyDaemon, opts: { paneText?: string } = {}) {
-  d["backend"] = {
+  d["backend"] = standingIn<CliBackend>({
     binaryName: "claude",
     writeConfig: vi.fn(),
     buildCommand: vi.fn(() => "claude"),
     getStartupBudgetMs: vi.fn(() => 60_000),
-  };
-  d["tmux"] = {
+  });
+  d["tmux"] = standingIn<TmuxManager>({
     killWindow: vi.fn().mockResolvedValue(undefined),
     capturePaneWithHistory: vi.fn().mockResolvedValue(opts.paneText ?? "Loading…"),
-  };
+  });
   d["killProcessTree"] = vi.fn().mockResolvedValue(undefined);
   d["noteStartupPaneForBackendOutage"] = vi.fn().mockResolvedValue(undefined);
   d["failStartupIfBackendUnreachable"] = vi.fn().mockResolvedValue(undefined);

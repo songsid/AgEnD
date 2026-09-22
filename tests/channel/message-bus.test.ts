@@ -153,8 +153,8 @@ describe("MessageBus", () => {
 
       const result = await bus.requestApproval({ tool_name: "Bash", description: "Allow this?" });
       expect(result.decision).toBe("approve");
-      expect(result.respondedBy.channelType).toBe("telegram");
-      expect(result.respondedBy.userId).toBe("a1");
+      expect(result.respondedBy?.channelType).toBe("telegram");
+      expect(result.respondedBy?.userId).toBe("a1");
     });
 
     it("resolves with first response (deny wins race)", async () => {
@@ -193,7 +193,7 @@ describe("MessageBus", () => {
       bus.register(a1);
       bus.register(a2);
 
-      await bus.requestApproval("Allow?");
+      await bus.requestApproval({ tool_name: "Bash", description: "Allow?" });
 
       // Give a tick for handle promises to resolve and cancel to be called
       await new Promise(r => setTimeout(r, 20));
@@ -215,8 +215,8 @@ describe("MessageBus", () => {
       const result = await promise;
 
       expect(result.decision).toBe("deny");
-      expect(result.respondedBy.channelType).toBe("timeout");
-      expect(result.respondedBy.userId).toBe("");
+      expect(result.respondedBy?.channelType).toBe("timeout");
+      expect(result.respondedBy?.userId).toBe("");
 
       vi.useRealTimers();
     });
@@ -224,7 +224,7 @@ describe("MessageBus", () => {
     it("immediately denies when no adapters registered", async () => {
       const result = await bus.requestApproval({ tool_name: "Bash", description: "Allow?" });
       expect(result.decision).toBe("deny");
-      expect(result.respondedBy.channelType).toBe("none");
+      expect(result.respondedBy?.channelType).toBe("none");
     });
   });
 });

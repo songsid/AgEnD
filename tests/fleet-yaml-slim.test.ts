@@ -36,7 +36,7 @@ function settingsRequest(
       end(payload: string) { resolve({ status, body: JSON.parse(payload) }); },
     };
     try {
-      expect(handleSettingsRequest(req as never, res as never, new URL(`http://localhost${path}`), fm)).toBe(true);
+      expect(handleSettingsRequest(req as never, res as never, new URL(`http://localhost${path}`), fm as unknown as Parameters<typeof handleSettingsRequest>[3])).toBe(true);
       if (body !== undefined) queueMicrotask(() => {
         req.emit("data", Buffer.from(JSON.stringify(body)));
         req.emit("end");

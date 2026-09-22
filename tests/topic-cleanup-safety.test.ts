@@ -74,7 +74,9 @@ describe("topic cleanup data-loss firewall", () => {
 
   it("keeps config, route, and real files when the owning adapter is offline", async () => {
     const fm = fleet();
-    const { adapter } = fakeAdapter("owner", async () => ({ status: "missing", evidence: "should-not-run" }), {
+    const { adapter } = fakeAdapter("owner", // If this probe ever runs, a real "missing" verdict is what trips the
+    // cleanup the assertions below forbid.
+    async () => ({ status: "missing" as const, evidence: "telegram-topic-not-found" as const }), {
       status: "retrying", isReady: false, generation: 4,
     });
     install(fm, adapter);
@@ -121,7 +123,7 @@ describe("topic cleanup data-loss firewall", () => {
       worker: { working_directory: workDir, topic_id: "topic-1", channel_id: "secondary" },
     });
     fm.fleetConfig!.channels!.push({ id: "secondary", type: "discord", mode: "topic", bot_token_env: "BOT2", group_id: "guild-2" } as any);
-    const primary = fakeAdapter("owner", async () => ({ status: "missing", evidence: "wrong-owner" }));
+    const primary = fakeAdapter("owner", async () => ({ status: "missing" as const, evidence: "telegram-topic-not-found" as const }));
     const secondary = fakeAdapter("secondary", async () => ({ status: "present", generation: 1 }));
     install(fm, primary.adapter);
     (fm.adapters as Map<string, any>).set("secondary", secondary.adapter);

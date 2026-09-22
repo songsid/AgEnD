@@ -15,6 +15,9 @@ import { setLocale } from "../src/locale.js";
 // through the primary adapter regardless of which bot posted the alert. These
 // tests pin the hardened behavior to the shared helper.
 
+/** The part of a notifyAlert payload these tests read. */
+type Alert = { choices: { id: string }[] };
+
 describe("hang notification buttons", () => {
   let dir: string;
 
@@ -67,7 +70,7 @@ describe("hang notification buttons", () => {
       id: "telegram-main",
       adapter,
       groupId: "fleet-group",
-      channelConfig: fm.fleetConfig.channels![0],
+      channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     const restartSingleInstance = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
     return { fm, notifyAlert, editMessageRemoveButtons, editMessage, restartSingleInstance };
@@ -112,7 +115,7 @@ describe("hang notification buttons", () => {
   it("admin Force-restart is consumed once and goes through restartSingleInstance", async () => {
     const { fm, notifyAlert, editMessage, restartSingleInstance } = setup();
     await fm.sendHangNotification("worker");
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
 
     await (fm as any).handleHangPrompt(callback(restartId), "telegram-main");
     await (fm as any).handleHangPrompt(callback(restartId), "telegram-main");
@@ -132,7 +135,7 @@ describe("hang notification buttons", () => {
   it("a non-admin click neither restarts nor consumes the nonce", async () => {
     const { fm, notifyAlert, restartSingleInstance } = setup();
     await fm.sendHangNotification("worker");
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
 
     await (fm as any).handleHangPrompt(callback(restartId, "bystander"), "telegram-main");
     expect(restartSingleInstance).not.toHaveBeenCalled();
@@ -162,7 +165,7 @@ describe("hang notification buttons", () => {
     vi.useFakeTimers();
     const { fm, notifyAlert, editMessageRemoveButtons, restartSingleInstance } = setup();
     await fm.sendHangNotification("worker");
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
 
     await vi.advanceTimersByTimeAsync(15 * 60_000);
     expect(editMessageRemoveButtons).toHaveBeenCalledWith(
@@ -202,7 +205,7 @@ describe("hang notification buttons", () => {
     const { fm, notifyAlert, editMessage, restartSingleInstance } = setup();
     restartSingleInstance.mockRejectedValueOnce(new Error("Instance not found: worker"));
     await fm.sendHangNotification("worker");
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
 
     await (fm as any).handleHangPrompt(callback(restartId), "telegram-main");
 
@@ -217,7 +220,7 @@ describe("hang notification buttons", () => {
   it("stopInstance clears the pending prompt so it cannot outlive the instance", async () => {
     const { fm, notifyAlert, editMessageRemoveButtons, restartSingleInstance } = setup();
     await fm.sendHangNotification("worker");
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
     vi.spyOn(fm.lifecycle, "stop").mockResolvedValue(undefined);
 
     await fm.stopInstance("worker");
@@ -309,7 +312,7 @@ describe("sol review findings — regression pins", () => {
     fm.adapter = adapter;
     fm.worlds.set("telegram-main", {
       id: "telegram-main", adapter, groupId: "fleet-group",
-      channelConfig: fm.fleetConfig.channels![0],
+      channelConfig: fm.fleetConfig!.channels![0],
     } as any);
     fm.lifecycle.daemons.set("general", {} as any);
     return { fm, adapter, notifyAlert, editMessageRemoveButtons };
@@ -350,7 +353,7 @@ describe("sol review findings — regression pins", () => {
     expect(notifyAlert).toHaveBeenCalledTimes(1);
     expect(editMessageRemoveButtons).toHaveBeenCalled();
     // The strongest assertion: nothing pending survives, so a click does nothing.
-    const restartId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const restartId = (notifyAlert.mock.calls[0][1] as Alert).choices[0].id;
     await (fm as any).handleHangPrompt({
       callbackData: restartId, chatId: "fleet-group", threadId: "worker-topic",
       messageId: "m1", userId: "admin",
@@ -365,7 +368,7 @@ describe("sol review findings — regression pins", () => {
     const { fm, notifyAlert } = baseFm();
     const restartSingleInstance = vi.spyOn(fm, "restartSingleInstance").mockResolvedValue(undefined);
     await fm.notifyNormalExit("worker");
-    const exitRestartId = notifyAlert.mock.calls.at(-1)![1].choices[0].id as string;
+    const exitRestartId = (notifyAlert.mock.calls.at(-1)![1] as Alert).choices[0].id;
     const nonce = exitRestartId.split(":")[1];
 
     await (fm as any).handleHangPrompt({
@@ -381,7 +384,7 @@ describe("sol review findings — regression pins", () => {
     const { fm, notifyAlert, editMessageRemoveButtons } = baseFm();
     const deliverToInstance = vi.spyOn(fm, "deliverToInstance").mockResolvedValue(undefined);
     await fm.notifyInteractivePrompt("worker", "login");
-    const confirmId = notifyAlert.mock.calls.at(-1)![1].choices[0].id as string;
+    const confirmId = (notifyAlert.mock.calls.at(-1)![1] as Alert).choices[0].id;
     // Simulate entry confusion: the field a correct posting always sets is gone.
     const entry = (fm as any).pendingNonceButtons.get(confirmId.split(":")[1]);
     delete entry.generalName;

@@ -82,8 +82,10 @@ describe("Classic effective backend surfaces", () => {
       fleetConfig: {
         defaults: { backend: "kiro-cli", model: "gpt-5.6-sol" },
         instances: {},
-      } as ViewApiContext["fleetConfig"],
-      logger: { debug() {}, info() {}, warn() {}, error() {} } as ViewApiContext["logger"],
+      // Only the two fields View reads; widened through `unknown` so the cast
+      // states what it stands in for instead of silencing the whole object.
+      } as unknown as ViewApiContext["fleetConfig"],
+      logger: { debug() {}, info() {}, warn() {}, error() {} } as unknown as ViewApiContext["logger"],
       classicChannels: {
         getAll: () => [{ instanceName: "classic-room", name: "Room", channelId: "room" }],
         getBackendByInstance,
@@ -126,8 +128,10 @@ describe("Classic effective backend surfaces", () => {
           // inherits defaults.backend — previously View hard-coded "claude-code"
           "agend-leader-t1": { working_directory: "/tmp" },
         },
-      } as ViewApiContext["fleetConfig"],
-      logger: { debug() {}, info() {}, warn() {}, error() {} } as ViewApiContext["logger"],
+      // Only the two fields View reads; widened through `unknown` so the cast
+      // states what it stands in for instead of silencing the whole object.
+      } as unknown as ViewApiContext["fleetConfig"],
+      logger: { debug() {}, info() {}, warn() {}, error() {} } as unknown as ViewApiContext["logger"],
       classicChannels: null,
       getInstanceStatus: () => "running",
       getUiStatus: () => ({

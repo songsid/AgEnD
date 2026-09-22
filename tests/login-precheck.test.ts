@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { FleetManager, LOGIN_CALLBACK_PREFIX } from "../src/fleet-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
+/** The part of a captured notifyAlert payload these tests read. */
+type Alert = { choices: { id: string }[] };
+const alertAt = (notifyAlert: { mock: { calls: unknown[][] } }, i = 0): Alert =>
+  notifyAlert.mock.calls[i][1] as Alert;
+
 describe("/login auth pre-check", () => {
   let tmpDir: string;
   beforeEach(() => {
@@ -70,7 +75,7 @@ describe("/login auth pre-check", () => {
     expect(result).toBeNull();
     expect(launch).not.toHaveBeenCalled();
     expect(notifyAlert).toHaveBeenCalledTimes(1);
-    const alert = notifyAlert.mock.calls[0][1];
+    const alert = alertAt(notifyAlert);
     expect(alert.choices.map((c: { id: string }) => c.id))
       .toEqual([expect.stringMatching(/^login-confirm:[0-9a-f]{32}:go$/), expect.stringMatching(/^login-confirm:[0-9a-f]{32}:cancel$/)]);
   });
@@ -95,7 +100,7 @@ describe("/login auth pre-check", () => {
     const runner = vi.fn(async () => ({ code: 0, output: "ok" }));
     setAuthCheckRunnerForTests(runner);
     await fm.startLoginSession("codex", chat);
-    const goId = notifyAlert.mock.calls[0][1].choices[0].id as string;
+    const goId = alertAt(notifyAlert).choices[0].id;
 
     const click = { chatId: "chat", threadId: "topic", messageId: "prompt-1", userId: "admin", callbackData: goId } as any;
     expect(await (fm as any).handleLoginConfirm(click, "discord", adapter)).toBe(true);
@@ -108,7 +113,7 @@ describe("/login auth pre-check", () => {
     launch.mockClear();
     (fm as any).loginWindow.release((fm as any).loginWindow.current);
     await fm.startLoginSession("codex", chat);
-    const cancelId = notifyAlert.mock.calls[1][1].choices[1].id as string;
+    const cancelId = alertAt(notifyAlert, 1).choices[1].id;
     expect(await (fm as any).handleLoginConfirm({ ...click, callbackData: cancelId }, "discord", adapter)).toBe(true);
     expect(launch).not.toHaveBeenCalled();
     expect(adapter.editMessageRemoveButtons).toHaveBeenCalled();
@@ -275,7 +280,7 @@ describe("/login auth pre-check", () => {
 
     await fm.promptLoginBackends(chat);
 
-    const choiceIds = notifyAlert.mock.calls[0][1].choices.map((choice: { id: string }) => choice.id);
+    const choiceIds = alertAt(notifyAlert).choices.map(choice => choice.id);
     expect(choiceIds).toEqual([
       expect.stringMatching(/:codex$/),
       expect.stringMatching(/:kiro-cli$/),
