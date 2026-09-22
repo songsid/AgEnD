@@ -20,6 +20,7 @@ export default defineConfig({
       "tests/web-terminal-integration.test.ts",
       "tests/mcp-slot-collision.test.ts",
       "tests/cli-env-probe-guard.test.ts",
+      "tests/tmux-manager.test.ts",
     ],
     exclude: ["**/node_modules/**", "dist/**", ".worktrees/**", ".claude/worktrees/**"],
     env: {

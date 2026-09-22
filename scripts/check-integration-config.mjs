@@ -7,6 +7,7 @@ const required = [
   "tests/web-terminal-integration.test.ts",
   "tests/mcp-slot-collision.test.ts",
   "tests/cli-env-probe-guard.test.ts",
+  "tests/tmux-manager.test.ts",
 ];
 const missing = required.filter(file => !config.includes(`\"${file}\"`));
 if (!config.includes("fileParallelism: false")) missing.push("fileParallelism: false");
