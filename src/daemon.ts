@@ -527,10 +527,29 @@ export class BackendUnreachableStartupError extends Error {
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
 /** A passive startup phase must clear within this bound before an Enter is sent. */
-const INPUT_TRANSIENT_WAIT_MS = 30_000;
+/**
+ * How long a passive startup/resume transient may sit WITHOUT REPAINTING before
+ * delivery gives up. It is a stall budget, not a total: a CLI that is still
+ * painting its resume is making progress, and #826 is what happens when the two
+ * are confused — codex's resume is the only declared transient in the fleet
+ * (backend/codex.ts), a woken paused codex routinely takes longer than this to
+ * come back, and the flat 30s cap turned that into ❌ plus a discarded message
+ * on a pane that was seconds from ready.
+ */
+const INPUT_TRANSIENT_STALL_MS = 30_000;
+/**
+ * The absolute ceiling for the same wait, so a transient that repaints forever
+ * (a spinner on a wedged resume) still ends in an honest failure. Bounded, as
+ * every other delivery wait is — just bounded by "no progress", not by a guess
+ * at how long a resume takes.
+ */
+const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
 /** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
+
+/** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
+type DeliveryVerdict = { reached: boolean };
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
@@ -4032,6 +4051,28 @@ export class Daemon extends EventEmitter {
     return formatted;
   }
 
+  /**
+   * Whether ONE delivery reached a verdict, carried by that delivery.
+   *
+   * `deliverMessage` returns false for two unrelated things: a delivery that
+   * cannot land (window gone, a pane that never came back, an unanswered
+   * dialog) and a delivery that was never attempted (user cancel, a tmux storm,
+   * shutdown). Only the first is a failure to tell the sender about; reporting
+   * the second told a sending agent its message was lost while the fleet was
+   * merely standing down (#826).
+   *
+   * It is per call and not a field on the daemon because deliveries do NOT all
+   * share one lock: an ordinary delivery is serialised on `pasteLock`, a steer
+   * on `steerLock`, and the two run concurrently by design. A field would let a
+   * steer's verdict decide whether a queued message's sender is told its
+   * delivery failed — a false ❌ carrying the wrong correlation id.
+   */
+  private failDelivery(verdict: DeliveryVerdict, status?: { chatId: string; messageId: string }): false {
+    verdict.reached = true;
+    if (status) this.emit("message_failed", status); // ❌
+    return false;
+  }
+
   /** Tell the fleet when an already-accepted cross-instance pane write failed. */
   private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, error?: string): void {
     if (!meta.from_instance) return;
@@ -4086,9 +4127,13 @@ export class Daemon extends EventEmitter {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
       await this.wake();
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id })) {
+      const verdict: DeliveryVerdict = { reached: false };
+      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id, verdict })) {
         this.markTurnStarted(meta, formatted);
-      } else if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
+      } else if (verdict.reached && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        // Same rule as the queued path: a steer that never got to try is not a
+        // delivery failure. This holder is the steer's own, which is the point
+        // — it runs on steerLock while a queued delivery runs on pasteLock.
         this.reportCrossInstanceDeliveryFailure(meta);
       }
     }).catch(err => {
@@ -4228,9 +4273,15 @@ export class Daemon extends EventEmitter {
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
-        if (await this.deliverMessage(formatted, status, { deliveryEpoch, submissionId: meta.message_id })) {
+        const verdict: DeliveryVerdict = { reached: false };
+        if (await this.deliverMessage(formatted, status, { deliveryEpoch, submissionId: meta.message_id, verdict })) {
           this.markTurnStarted(meta, formatted);
-        } else if (meta.from_instance && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        } else if (meta.from_instance && verdict.reached
+          && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          // Only a delivery that reached a verdict is reported. A pane that is
+          // not ready yet, a cancel, a storm hold or a shutdown all return
+          // false without one, and telling the sender its message was lost
+          // there would be the false ❌ of #826 in its other form.
           this.reportCrossInstanceDeliveryFailure(meta);
         }
       } finally {
@@ -4264,8 +4315,11 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(
     formatted: string,
     status?: { chatId: string; messageId: string },
-    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string },
+    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict },
   ): Promise<boolean> {
+    // The caller passes its own holder when it needs the answer; a system paste
+    // that ignores the outcome gets a throwaway.
+    const verdict = opts?.verdict ?? { reached: false };
     const cancelled = () => opts?.deliveryEpoch !== undefined
       && !this.isDeliveryEpochCurrent(opts.deliveryEpoch);
     if (cancelled() || this.stormWindow?.isStopped()) return false;
@@ -4288,7 +4342,7 @@ export class Daemon extends EventEmitter {
     // Before anything reads the window id: a spawn in progress is about to change it.
     await this.waitForSpawnToSettle();
     if (cancelled()) return false;
-    if (this.refuseFatalStartupDelivery(status)) return false;
+    if (this.refuseFatalStartupDelivery(verdict, status)) return false;
 
     let windowId = this.getWindowId();
 
@@ -4330,8 +4384,7 @@ export class Daemon extends EventEmitter {
           // wedged CLI (where the text would sit unsubmitted and the next message
           // would land on top of it) — and instead of holding the queue silently.
           this.logger.error("Pane still busy after the idle wait — reporting delivery failure");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
       }
     }
@@ -4353,23 +4406,20 @@ export class Daemon extends EventEmitter {
         // recovery Enter, so exactly STRANDED_INPUT_MAX_ROUNDS of them go out.
         if (round >= STRANDED_INPUT_MAX_ROUNDS) {
           this.logger.error({ round }, "Input row still not clear after the stranded-text recovery budget — reporting delivery failure");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
         const stranded = await this.submitStrandedInputIfAny(windowId);
         if (cancelled()) return false;
         if (stranded === "idle") break;
         if (stranded === "failed") {
           this.logger.error({ round }, "Could not submit the stranded text — reporting delivery failure");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
         const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
         if (cancelled()) return false;
         if (!readyAgain) {
           this.logger.error("Pane never returned to its prompt after submitting stranded input — reporting delivery failure");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
       }
     }
@@ -4381,13 +4431,12 @@ export class Daemon extends EventEmitter {
     for (let round = 0; ; round++) {
       const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog"> => {
         if (cancelled()) return false;
-        if (this.refuseFatalStartupDelivery(status)) return false;
+        if (this.refuseFatalStartupDelivery(verdict, status)) return false;
         // A passive startup phase may paint after the outer readiness probe.
         // It clears without input, so waiting under the pane lock cannot starve
         // a dialog dismisser and closes the final clear→paste TOCTOU window.
         if (!(await this.waitForInputTransientToClear("pre-write"))) {
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
         // TOCTOU: the probes above ran outside this lock, and the CLI repaints
         // whenever it likes — a resume prompt can be painted between "clear" and
@@ -4397,7 +4446,7 @@ export class Daemon extends EventEmitter {
           const probe = await this.probeBlockingDialog();
           if (probe.state !== "clear") return "dialog";
         }
-        return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId);
+        return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId, verdict);
       });
       if (outcome !== "dialog") return outcome;
       // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
@@ -4405,15 +4454,13 @@ export class Daemon extends EventEmitter {
       // an honest failure rather than a message that never lands.
       if (round + 1 >= LATE_DIALOG_WRITE_ROUNDS) {
         this.logger.error({ rounds: round + 1 }, "A dialog kept appearing before the pane write — reporting delivery failure");
-        if (status) this.emit("message_failed", status); // ❌
-        return false;
+        return this.failDelivery(verdict, status);
       }
       this.logger.info("Dialog appeared before the pane write — waiting for it to clear");
       const clear = gateWindowId ? await this.waitForPaneReadyForDelivery(gateWindowId) : false;
       if (cancelled()) return false;
       if (!clear) {
-        if (status) this.emit("message_failed", status); // ❌
-        return false;
+        return this.failDelivery(verdict, status);
       }
     }
   }
@@ -4450,8 +4497,39 @@ export class Daemon extends EventEmitter {
   }
 
   /** Capture failure is unknown, never evidence that input is available. */
+  /**
+   * The budget for waiting out a passive transient, measured in progress rather
+   * than in wall clock.
+   *
+   * `observe(pane)` answers "may I keep waiting?". The stall timer restarts
+   * every time the pane text changes, so a resume that is still painting never
+   * runs out; a screen that has not changed for INPUT_TRANSIENT_STALL_MS, or a
+   * transient that outlives the ceiling, does. Both ends stay bounded — the
+   * point of #826 was never that the wait should be unlimited, it was that a
+   * flat 30s could not tell "slow" from "stuck".
+   */
+  private transientProgressBudget(overallDeadline: number): { observe(pane: string): boolean; stalled: boolean } {
+    const ceiling = Math.min(overallDeadline, Date.now() + INPUT_TRANSIENT_WAIT_MS);
+    let lastPane: string | null = null;
+    let stallDeadline = 0;
+    const budget = {
+      stalled: false,
+      observe(pane: string): boolean {
+        const now = Date.now();
+        if (pane !== lastPane) {
+          lastPane = pane;
+          stallDeadline = now + INPUT_TRANSIENT_STALL_MS;
+        }
+        if (now >= ceiling) return false;
+        budget.stalled = now >= stallDeadline;
+        return !budget.stalled;
+      },
+    };
+    return budget;
+  }
+
   private async probeInputTransient(): Promise<
-    | { state: "active"; transient: InputUnavailableTransient }
+    | { state: "active"; transient: InputUnavailableTransient; pane: string }
     | { state: "clear" }
     | { state: "unknown" }
   > {
@@ -4459,7 +4537,10 @@ export class Daemon extends EventEmitter {
     try {
       const pane = await this.tmux.capturePane();
       const transient = this.inputTransientInPane(pane);
-      return transient ? { state: "active", transient } : { state: "clear" };
+      // The pane text comes back with the verdict: a transient that is still
+      // repainting is still working, and that is the only thing separating a
+      // slow resume from a wedged one.
+      return transient ? { state: "active", transient, pane } : { state: "clear" };
     } catch (err) {
       this.logger.debug({ err }, "capture-pane failed during the input-transient probe — pane state unknown");
       return { state: "unknown" };
@@ -4475,7 +4556,12 @@ export class Daemon extends EventEmitter {
     const generation = this.inputTransientGuardGeneration;
     if (generation === null || generation !== this.spawnGeneration) return true;
 
-    const deadline = Date.now() + timeoutMs;
+    // Same progress rule as the outer readiness wait, for the same reason: this
+    // runs under the pane write lock, so a flat cap here turned a resume that
+    // repainted one second too late into a discarded message. Holding the lock
+    // while the pane is still painting costs nothing — every other writer is
+    // waiting on the same screen.
+    const budget = this.transientProgressBudget(Date.now() + timeoutMs);
     let observedDescription: string | null = null;
     for (;;) {
       if (this.inputTransientGuardGeneration !== generation || this.spawnGeneration !== generation) {
@@ -4493,13 +4579,18 @@ export class Daemon extends EventEmitter {
         this.logger.info({ phase, transient: probe.transient.description, generation },
           "CLI is still completing startup — waiting before sending Enter");
       }
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) {
-        this.logger.error({ phase, generation, timeoutMs, transient: observedDescription },
-          "CLI input stayed unavailable — refusing to send Enter");
+      // "unknown" (capture-pane failed) has to consume the budget too, or an
+      // unreadable pane would loop forever now that the flat deadline is gone.
+      // It never "changes", so it stalls out on the same rule.
+      if (!budget.observe(probe.state === "active" ? probe.pane : "\u0000unreadable")) {
+        this.logger.error({
+          phase, generation, transient: observedDescription,
+          stalledForMs: budget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
+          ceilingMs: timeoutMs,
+        }, "CLI input stayed unavailable — refusing to send Enter");
         return false;
       }
-      await new Promise(r => setTimeout(r, Math.min(INPUT_TRANSIENT_POLL_MS, remaining)));
+      await new Promise(r => setTimeout(r, INPUT_TRANSIENT_POLL_MS));
     }
   }
 
@@ -4658,7 +4749,7 @@ export class Daemon extends EventEmitter {
     const deadline = Date.now() + timeoutMs;
     const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true;
     let unknownStreak = 0;
-    let transientDeadline = 0;
+    let transientBudget: ReturnType<Daemon["transientProgressBudget"]> | null = null;
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) return false;
@@ -4669,16 +4760,19 @@ export class Daemon extends EventEmitter {
       const transient = await this.probeInputTransient();
       if (transient.state === "active") {
         unknownStreak = 0;
-        transientDeadline ||= Math.min(deadline, Date.now() + INPUT_TRANSIENT_WAIT_MS);
-        if (Date.now() >= transientDeadline) {
-          this.logger.error({ transient: transient.transient.description, timeoutMs: INPUT_TRANSIENT_WAIT_MS },
-            "CLI input stayed unavailable during the delivery-readiness wait");
+        transientBudget ||= this.transientProgressBudget(deadline);
+        if (!transientBudget.observe(transient.pane)) {
+          this.logger.error({
+            transient: transient.transient.description,
+            stalledForMs: transientBudget.stalled ? INPUT_TRANSIENT_STALL_MS : undefined,
+            ceilingMs: INPUT_TRANSIENT_WAIT_MS,
+          }, "CLI input stayed unavailable during the delivery-readiness wait");
           return false;
         }
         await new Promise(r => setTimeout(r, BOTTOM_READY_POLL_MS));
         continue;
       }
-      transientDeadline = 0;
+      transientBudget = null;
       if (transient.state === "unknown") {
         if (++unknownStreak >= DIALOG_PROBE_UNKNOWN_MAX) {
           this.logger.error({ probes: unknownStreak }, "Pane stayed unreadable during the input-transient probe — refusing to deliver blind");
@@ -4802,10 +4896,10 @@ export class Daemon extends EventEmitter {
    * what to fix, and holding would only build a queue that floods the pane the
    * moment the flag clears.
    */
-  private refuseFatalStartupDelivery(status?: { chatId: string; messageId: string }): boolean {
+  private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: { chatId: string; messageId: string }): boolean {
     if (!this.fatalStartupBlocked) return false;
     this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
-    if (status) this.emit("message_failed", status); // ❌
+    this.failDelivery(verdict, status);
     return true;
   }
 
@@ -4888,6 +4982,9 @@ export class Daemon extends EventEmitter {
     handingOffToNativeQueue: boolean,
     status?: { chatId: string; messageId: string },
     submissionId?: string,
+    // Last and defaulted so the positional callers that ignore the outcome stay
+    // readable; deliverMessage, the only one that reports, always passes its own.
+    verdict: DeliveryVerdict = { reached: false },
   ): Promise<boolean> {
     const signature = this.submissionSignature(formatted, submissionId);
     let windowId = initialWindowId;
@@ -4910,8 +5007,9 @@ export class Daemon extends EventEmitter {
             : "pasteBuffer failed — non-retryable tmux error",
         );
         if (!recoverable) {
-          if (status) this.emit("message_failed", status);
-          return false;
+          // A tmux error the window cannot be recovered from: the text will
+          // never reach this pane, so it is a verdict like the others.
+          return this.failDelivery(verdict, status);
         }
         windowId = (await this.recoverWindow()) ?? windowId;
         if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
@@ -4940,8 +5038,7 @@ export class Daemon extends EventEmitter {
       }
       let enterAt = Date.now();
       if (!(await this.sendDeliveryEnter("initial-submit"))) {
-        if (status) this.emit("message_failed", status); // ❌
-        return false;
+        return this.failDelivery(verdict, status);
       }
 
       // Kiro's legacy TUI can swallow Enter while it is still processing a large
@@ -5024,8 +5121,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Message still in the input row after idle — submitting the existing text instead of pasting it again");
           const strandedAt = Date.now();
           if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
+            return this.failDelivery(verdict, status);
           }
           const afterEnter = await this.confirmSubmitted(signature, pasteBaseline);
           if (afterEnter === "submitted") {
@@ -5040,8 +5136,7 @@ export class Daemon extends EventEmitter {
           // the input row is disqualifying, and disqualifying evidence wins.
           this.logger.error({ afterEnter, strandedAt },
             "Stranded message could not be submitted by Enter");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
 
         // "unproven": nothing of ours is on screen — the paste itself was lost,
@@ -5051,14 +5146,12 @@ export class Daemon extends EventEmitter {
           this.logger.error({
             tmuxError: this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure",
           }, "Idle-gated redelivery paste failed after native-queue silent loss");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
         await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
         const retryAt = Date.now();
         if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery"))) {
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
         if (windowId && this.controlClient) {
           if (await this.confirmAfterEnter(windowId, retryAt, signature, pasteBaseline, "native-queue-idle-redelivery-retry")) {
@@ -5070,8 +5163,7 @@ export class Daemon extends EventEmitter {
           return true;
         }
         this.logger.error("Idle-gated redelivery also failed after native-queue silent loss");
-        if (status) this.emit("message_failed", status); // ❌
-        return false;
+        return this.failDelivery(verdict, status);
       }
 
       if (windowId && this.controlClient && this.backend?.dropsEnterWhileBusy?.() === true) {
@@ -5086,8 +5178,7 @@ export class Daemon extends EventEmitter {
           const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
           const retryAt = Date.now();
           if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry"))) {
-            if (status) this.emit("message_failed", status); // ❌
-            return false;
+            return this.failDelivery(verdict, status);
           }
           submitted = promptBack && await this.confirmSubmittedAfterEnter(windowId, retryAt, formatted);
         }
@@ -5095,8 +5186,7 @@ export class Daemon extends EventEmitter {
           if (status) this.emit("message_confirmed", status); // ✅
         } else {
           this.logger.error("Message pasted but never submitted (text still in the input row after Enter retry)");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
       } else if (windowId && this.controlClient) {
         // An idle delivery used to be judged by output alone: anything the pane
@@ -5118,8 +5208,7 @@ export class Daemon extends EventEmitter {
           // forever and the next delivery pasted on top — submitting two messages
           // as one. Say so instead.
           this.logger.error("Message pasted but never submitted (no idle→busy after two Enters)");
-          if (status) this.emit("message_failed", status); // ❌
-          return false;
+          return this.failDelivery(verdict, status);
         }
       } else {
         // No control client to observe output: fall back to the legacy double-Enter.
@@ -5131,8 +5220,7 @@ export class Daemon extends EventEmitter {
     }
 
     this.logger.error("Message delivery failed after retries — window not ready");
-    if (status) this.emit("message_failed", status); // ❌
-    return false;
+    return this.failDelivery(verdict, status);
   }
 
   /**
