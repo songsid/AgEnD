@@ -42,7 +42,10 @@ import {
   type BindingProbe,
   type SecretApplyJob,
   type SecretApplyResult,
+  type ProviderSecretApplyJob,
 } from "./connection-secrets.js";
+import type { ProviderSecretStatus } from "./provider-secret-registry.js";
+import { providerRegistryEnvKeys, isReservedProviderEnvKey } from "./provider-secret-registry.js";
 
 
 
@@ -87,6 +90,21 @@ export interface SettingsApiContext {
     idempotencyKey: string;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
+  /** Generic provider API-key verifier registry (#861). */
+  listProviderSecrets?(): ProviderSecretStatus[];
+  verifyProviderSecret?(input: {
+    specId: string;
+    secret: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<{ ok: true; verification_id: string; expires_at: number; spec_id: string; activation: "next_use" | "reload_hook" } | { ok: false; status: string; error: string }>;
+  startProviderSecretApply?(input: {
+    specId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: ProviderSecretApplyJob; reused: boolean } | { busy: ProviderSecretApplyJob | null } | { error: string };
+  getProviderSecretApply?(jobId: string, sessionBinding: string): ProviderSecretApplyJob | null;
   verifyConnectionBinding?(input: {
     connectionId: string;
     binding: { group_id?: unknown; general_channel_id?: unknown };
@@ -270,6 +288,78 @@ export function handleSettingsRequest(
       ...connection,
       token_present: !!connection.token_present,
     })), true);
+    return true;
+  }
+
+  // Generic provider API-key registry.  Unlike the legacy connection token
+  // routes, this endpoint accepts a code-owned spec id only; env key, origin,
+  // auth header and verifier are resolved server-side.  The body is consumed
+  // once and no secret-bearing value is ever placed in a URL, job, SSE frame,
+  // or response.
+  if (method === "GET" && (path === "/api/settings/provider-secrets" || path === "/api/settings/secrets")) {
+    if (!ctx.listProviderSecrets) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
+    json(res, 200, ctx.listProviderSecrets().map(item => ({
+      id: item.id,
+      display_name: item.display_name,
+      kind: item.kind,
+      token_present: item.token_present,
+      verifier: item.verifier,
+      activation: item.activation,
+      stale_consumers: item.stale_consumers,
+    })), true);
+    return true;
+  }
+
+  const providerSecretVerifyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
+  if (method === "POST" && providerSecretVerifyMatch) {
+    if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
+    const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
+    readBody(req, 16 * 1024).then(async buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }, true); }
+      const secret = typeof body.secret === "string" ? body.secret : "";
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!secret) return json(res, 400, { error: "secret required" }, true);
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = await ctx.verifyProviderSecret!({ specId, secret, sessionBinding: requestSessionBinding(req), idempotencyKey: key });
+      if (!result.ok) {
+        const code = result.status === "unsupported_verifier" ? 422 : result.status === "provider_unavailable" ? 503 : 422;
+        return json(res, code, { ok: false, result: result.status, error: result.status === "unsupported_verifier" ? "unsupported verifier" : "provider secret verification failed" }, true);
+      }
+      json(res, 200, { ok: true, result: "verified", verification_id: result.verification_id, expires_at: result.expires_at, spec_id: result.spec_id, activation: result.activation }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }, true));
+    return true;
+  }
+
+  const providerSecretApplyMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
+  if (method === "POST" && providerSecretApplyMatch) {
+    if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
+    const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
+    readBody(req, 16 * 1024).then(buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }, true); }
+      const verificationId = typeof body.verification_id === "string" ? body.verification_id : "";
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = ctx.startProviderSecretApply!({ specId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key });
+      if ("error" in result) return json(res, 422, { ok: false, error: "provider secret apply rejected" }, true);
+      if ("busy" in result) return json(res, 409, { ok: false, result: "applying", job_id: result.busy?.id ?? null }, true);
+      json(res, result.reused ? 200 : 202, { ok: true, result: result.job.result, job_id: result.job.id, reused: result.reused, stale_consumers: result.job.stale_consumers ?? [] }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }, true));
+    return true;
+  }
+
+  const providerSecretStatusMatch = path.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/[^/]+\/apply\/([A-Za-z0-9_-]+)$/);
+  if (method === "GET" && providerSecretStatusMatch) {
+    if (!ctx.getProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
+    const job = ctx.getProviderSecretApply(providerSecretStatusMatch[1]!, requestSessionBinding(req));
+    if (!job) { json(res, 404, { error: "job not found" }, true); return true; }
+    json(res, 200, job, true);
     return true;
   }
 
@@ -490,6 +580,9 @@ export function handleSettingsRequest(
           : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
         const previous = currentById.get(id);
         const tokenEnv = typeof candidate.bot_token_env === "string" ? candidate.bot_token_env : null;
+        if (tokenEnv && (providerRegistryEnvKeys().has(tokenEnv) || isReservedProviderEnvKey(tokenEnv))) {
+          return json(res, 409, { ok: false, error: "bot token env conflicts with a protected provider secret key" }, true);
+        }
         const reusedByAnotherChannel = tokenEnv !== null && currentChannels.some((channel, channelIndex) => {
           const ownerId = channel.id ?? channel.type ?? `channel-${channelIndex}`;
           return ownerId !== id && channel.bot_token_env === tokenEnv;

@@ -44,6 +44,30 @@ describe("Settings secure connection endpoints", () => {
     expect(JSON.stringify(response.body)).not.toContain("secret");
   });
 
+  it("exposes provider secret specs without env keys or accepting URL input", async () => {
+    const { ctx } = context();
+    ctx.listProviderSecrets = () => [{ id: "groq.api_key", display_name: "Groq API key", kind: "api_key", token_present: false, verifier: "available", activation: "reload_hook", stale_consumers: [] }];
+    const response = await request("/api/settings/provider-secrets", ctx, "GET");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([expect.objectContaining({ id: "groq.api_key", verifier: "available" })]);
+    expect(JSON.stringify(response.body)).not.toContain("GROQ_API_KEY");
+  });
+
+  it("uses the server-resolved spec id for provider verify/apply", async () => {
+    const { ctx } = context();
+    ctx.verifyProviderSecret = vi.fn(async () => ({ ok: true as const, verification_id: "provider_verify", expires_at: Date.now() + 60_000, spec_id: "openai.api_key", activation: "next_use" as const }));
+    ctx.startProviderSecretApply = vi.fn(() => ({ job: { id: "provider_job", specId: "openai.api_key", envKey: "OPENAI_API_KEY", idempotencyKey: "provider_key", result: "applying" as const, status: "running" as const, startedAt: Date.now(), stale_consumers: [] }, reused: false }));
+    ctx.getProviderSecretApply = vi.fn(() => null);
+    const verified = await request("/api/settings/secrets/openai.api_key/verify", ctx, "POST", { secret: "sk-realistic", envKey: "PATH", url: "https://evil.invalid", idempotency_key: "provider_key" }, { cookie: "agend_session=session" });
+    expect(verified.status).toBe(200);
+    expect(verified.body).not.toHaveProperty("secret");
+    expect((ctx.verifyProviderSecret as any).mock.calls[0][0]).not.toHaveProperty("envKey");
+    expect((ctx.verifyProviderSecret as any).mock.calls[0][0]).not.toHaveProperty("url");
+    const applied = await request("/api/settings/secrets/openai.api_key/apply", ctx, "POST", { verification_id: "provider_verify", idempotency_key: "provider_key", envKey: "PATH" }, { cookie: "agend_session=session" });
+    expect(applied.status).toBe(202);
+    expect(applied.body).not.toHaveProperty("envKey");
+  });
+
   it("accepts a token only in the verify body and binds the request session", async () => {
     const { ctx, verify } = context();
     const response = await request("/api/settings/connections/primary/secret/verify", ctx, "POST", { secret: "super-secret", idempotency_key: "key_test" }, { cookie: "agend_session=session" });
