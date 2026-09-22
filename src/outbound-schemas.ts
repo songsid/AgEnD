@@ -267,7 +267,7 @@ export const CreateInstanceArgs = z.object({
   model: z.string().optional().describe(
     "Model to use. Claude: sonnet, opus, haiku, opusplan, best, Fable, sonnet[1m], opus[1m]. Codex: gpt-4o, o3. Gemini: gemini-2.5-pro. Omit for default.",
   ),
-  backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok"]).optional()
+  backend: z.enum(["claude-code", "gemini-cli", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"]).optional()
     .describe("CLI backend to use. Defaults to claude-code."),
   backend_options: z.record(z.string(), z.record(z.string(), z.unknown())).optional().describe(
     "Backend-specific options keyed by backend name. For a Codex custom provider, use { codex: { provider: \"glm\" } }.",

@@ -38,6 +38,7 @@ export const WIZARD_BACKENDS = [
   { name: "kiro-cli", binary: "kiro-cli" },
   { name: "antigravity", binary: "agy" },
   { name: "grok", binary: "grok" },
+  { name: "muse", binary: "muse" },
 ] as const;
 
 export interface WizardEnvironment {

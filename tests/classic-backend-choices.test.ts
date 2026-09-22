@@ -11,6 +11,7 @@ describe("ClassicBot backend choices", () => {
       { name: "OpenCode", value: "opencode" },
       { name: "Antigravity", value: "antigravity" },
       { name: "Grok Build", value: "grok" },
+      { name: "Meta Muse Code", value: "muse" },
     ]);
   });
 
@@ -26,5 +27,6 @@ describe("ClassicBot backend choices", () => {
     expect(ids).not.toContain("gemini-cli");
     expect(ids).not.toContain("mock");
     expect(ids).toContain("grok");
+    expect(ids).toContain("muse");
   });
 });

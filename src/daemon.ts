@@ -58,7 +58,7 @@ const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {
-  const source = binaryName === "codex" || binaryName === "grok"
+  const source = binaryName === "codex" || binaryName === "grok" || binaryName === "muse"
     ? "AGENTS.md"
     : binaryName === "kiro-cli"
       ? `.kiro/steering/agend-${instanceName}.md`

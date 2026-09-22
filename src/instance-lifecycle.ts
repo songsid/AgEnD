@@ -44,6 +44,7 @@ export const BACKEND_INSTALLATION_INFO: Readonly<Record<string, BackendInstallat
   opencode: { binary: "opencode", install: "curl -fsSL https://opencode.ai/install | bash" },
   antigravity: { binary: "agy", install: "curl -fsSL https://antigravity.google/cli/install.sh | bash" },
   grok: { binary: "grok", install: "curl -fsSL https://x.ai/cli/install.sh | bash" },
+  muse: { binary: "muse", install: "curl -fsSL https://api.meta.ai/muse-launcher.sh | bash" },
 };
 
 /** Check one executable using the same PATH visible to the fleet process. */

@@ -46,7 +46,7 @@ describe("bare /install-cli offers a backend chooser", () => {
     );
     expect(offered).toContain("opencode");   // install-only backend, still offered
     expect(offered).not.toContain("gemini-cli");
-    expect(offered).toHaveLength(6);
+    expect(offered).toHaveLength(7);
   });
 
   it("keeps every callback id inside Telegram's 64-byte callback_data cap", async () => {
@@ -67,7 +67,7 @@ describe("bare /install-cli offers a backend chooser", () => {
     const { fm, adapter, notifyAlert } = makeFleet();
     fm.fleetConfig.instances = { only: { backend: "claude-code" } };
     await fm.promptInstallBackends(chat(adapter, "t1"));
-    expect(notifyAlert.mock.calls[0][1].choices).toHaveLength(6);
+    expect(notifyAlert.mock.calls[0][1].choices).toHaveLength(7);
   });
 
   it("login keeps its own 5-backend list, with no opencode", () => {
