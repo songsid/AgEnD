@@ -4,6 +4,10 @@ import type { TerminalConfig } from "./types.js";
 
 const exec = promisify(execFile);
 
+/** A load-buffer write can transiently fail under fleet-wide fd/pipe pressure. */
+const LOAD_BUFFER_MAX_ATTEMPTS = 3;
+const LOAD_BUFFER_RETRY_BACKOFF_MS = 25;
+
 function formatExecError(err: unknown): string {
   const error = err instanceof Error ? err : new Error(String(err));
   const stderr = String((error as Error & { stderr?: string }).stderr ?? "").trim();
@@ -11,6 +15,13 @@ function formatExecError(err: unknown): string {
   return [error.message, stderr && !error.message.includes(stderr) ? stderr : "", code ? `code=${code}` : ""]
     .filter(Boolean)
     .join("; ");
+}
+
+/** Only retry OS resource exhaustion; tmux/content/target errors are permanent. */
+function isTransientLoadBufferError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: unknown }).code;
+  return code === "EAGAIN" || code === "EMFILE";
 }
 
 /** Feed a tmux buffer through stdin so payload bytes never become an argv element. */
@@ -441,10 +452,24 @@ export class TmuxManager {
     const bufName = `paste-${this.windowId}-${Date.now()}`;
     this.lastPasteError = null;
     this.lastPasteFailureRecoverable = false;
-    try {
-      await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text);
-    } catch (err) {
-      this.lastPasteError = formatExecError(err);
+    let loadError: unknown;
+    let loaded = false;
+    for (let attempt = 1; attempt <= LOAD_BUFFER_MAX_ATTEMPTS; attempt++) {
+      try {
+        await execTmuxWithInput(TmuxManager.tmuxArgs(["load-buffer", "-b", bufName, "-"]), text);
+        loaded = true;
+        break;
+      } catch (err) {
+        loadError = err;
+        if (!isTransientLoadBufferError(err) || attempt === LOAD_BUFFER_MAX_ATTEMPTS) break;
+        await new Promise(resolve => setTimeout(resolve, LOAD_BUFFER_RETRY_BACKOFF_MS * attempt));
+      }
+    }
+    if (!loaded) {
+      // Preserve the final errno/stderr for the daemon's delivery-failure
+      // report. A load-buffer failure is not a stale target-pane failure, so it
+      // must never enter the window-recovery retry loop.
+      this.lastPasteError = formatExecError(loadError);
       return false;
     }
     try {
