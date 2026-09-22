@@ -2384,6 +2384,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * Probe the same executable set exposed by the web backend catalog.
+   *
+   * This deliberately has no cache: an `/install-cli` completion can add a
+   * binary to PATH while the fleet process remains alive, and the next bare
+   * `/login` must see it without requiring a restart or an explicit cache
+   * invalidation call.
+   */
+  private probeInstalledBackends(): Set<string> {
+    const installed = new Set<string>();
+    for (const [backend, info] of Object.entries(BACKEND_INSTALLATION_INFO)) {
+      if (checkBinaryInstalled(info.binary)) installed.add(backend);
+    }
+    return installed;
+  }
+
+  /**
    * One fleet-level notice per burst, not one per instance: a post-update herd
    * fails many instances within the same second. Two notices per incident at
    * most — "N failed, retrying in X" and, if it comes to that, "gave up on N".
@@ -8703,12 +8719,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const name of this.configuredBackendInstanceNames()) {
       configured.add(this.backendNameOf(name));
     }
-    const choices = Object.keys(LOGIN_FLOWS)
-      .filter(backend => configured.size === 0 || configured.has(backend))
-      .map(backend => ({ action: backend, label: backend }));
+    const installed = this.probeInstalledBackends();
+    const candidates = new Set<string>([...installed, ...configured]);
+    const unsupported: Array<{ backend: string; flow?: LoginFlow; status: string[] }> = [];
+    const choices = [...candidates].sort().flatMap(backend => {
+      const flow = LOGIN_FLOWS[backend];
+      const remoteLogin = !!flow && flow.remoteLogin !== "unsupported";
+      const status: string[] = [];
+      if (installed.has(backend)) status.push(t("login.status_installed"));
+      if (configured.has(backend)) status.push(t("login.status_configured"));
+      if (remoteLogin) status.push(t("login.status_auth"));
+      else status.push(t("login.status_unsupported"));
+      if (!remoteLogin) {
+        unsupported.push({ backend, flow, status });
+        return [];
+      }
+      return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
+    });
+    if (unsupported.length) {
+      const guidance = unsupported.map(({ backend, flow, status }) => `${backend} · ${status.join(" · ")} — ${flow?.remoteLogin === "unsupported"
+        ? t("login.remote_unsupported_agent_cli", backend, flow.command)
+        : backend === "opencode" ? t("login.unsupported", backend) : t("login.no_remote_flow", backend)}`).join("\n");
+      await chat.adapter.sendText(chat.chatId, guidance, { threadId: chat.threadId })
+        .catch(err => this.logger.warn({ err }, "Failed to post unsupported login guidance"));
+    }
     if (choices.length === 0) {
-      await chat.adapter.sendText(chat.chatId, t("login.unsupported", [...configured].join(", ")),
-        { threadId: chat.threadId });
+      if (!unsupported.length) {
+        await chat.adapter.sendText(chat.chatId, t("login.none_available"), { threadId: chat.threadId })
+          .catch(err => this.logger.warn({ err }, "Failed to post empty login chooser guidance"));
+      }
       return;
     }
     await this.postNonceButtonPrompt({
@@ -9381,6 +9420,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             { threadId: chat.threadId }).catch(() => {});
           return;
         }
+        // The button is deliberately best-effort: it is a short-lived
+        // capability and can be lost during an adapter reconnect.  Always
+        // publish a durable completion line first so a successful install can
+        // never look like it silently disappeared.  Include the binary that
+        // passed the fresh-login-shell verification and the exact next step.
+        await chat.adapter.sendText(chat.chatId, t("install.success", backend, info.binary),
+          { threadId: chat.threadId }).catch(err => this.logger.warn({ err, backend },
+            "Failed to send durable install success notification"));
         await this.postNonceButtonPrompt({
           prefix: INSTALL_LOGIN_CALLBACK_PREFIX,
           alertType: "login",

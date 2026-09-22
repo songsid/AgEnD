@@ -6,7 +6,7 @@ import { FleetManager, LOGIN_CALLBACK_PREFIX } from "../src/fleet-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
 /** The part of a captured notifyAlert payload these tests read. */
-type Alert = { choices: { id: string }[] };
+type Alert = { choices: { id: string; label?: string }[] };
 const alertAt = (notifyAlert: { mock: { calls: unknown[][] } }, i = 0): Alert =>
   notifyAlert.mock.calls[i][1] as Alert;
 
@@ -269,6 +269,7 @@ describe("/login auth pre-check", () => {
 
   it("the bare /login chooser includes a backend used only by a ClassicBot", async () => {
     const { fm, notifyAlert, chat } = setup();
+    vi.spyOn(fm as any, "probeInstalledBackends").mockReturnValue(new Set(["codex", "kiro-cli"]));
     fm.fleetConfig = {
       defaults: { backend: "codex" },
       instances: { worker: { working_directory: "/tmp/worker" } },
@@ -285,6 +286,33 @@ describe("/login auth pre-check", () => {
       expect.stringMatching(/:codex$/),
       expect.stringMatching(/:kiro-cli$/),
     ]);
+  });
+
+  it("shows a freshly installed but not-yet-configured backend", async () => {
+    const { fm, notifyAlert, chat } = setup();
+    fm.fleetConfig = { defaults: {}, instances: {} } as any;
+    vi.spyOn(fm as any, "probeInstalledBackends").mockReturnValue(new Set(["grok"]));
+
+    await fm.promptLoginBackends(chat);
+
+    const alert = alertAt(notifyAlert);
+    expect(alert.choices).toHaveLength(1);
+    expect(alert.choices[0].id).toMatch(/:grok$/);
+    expect(alert.choices[0].label).toContain("Installed");
+    expect(alert.choices[0].label).toContain("Auth");
+  });
+
+  it("explains installed backends without a remote login flow", async () => {
+    const { fm, notifyAlert, sendText, chat } = setup();
+    fm.fleetConfig = { defaults: {}, instances: {} } as any;
+    vi.spyOn(fm as any, "probeInstalledBackends").mockReturnValue(new Set(["opencode"]));
+
+    await fm.promptLoginBackends(chat);
+
+    expect(notifyAlert).not.toHaveBeenCalled();
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(String(sendText.mock.calls[0][1])).toContain("OpenCode");
+    expect(String(sendText.mock.calls[0][1])).toContain("opencode auth");
   });
 
   it("the post-login restart rebuilds a ClassicBot with its own runtime settings", async () => {

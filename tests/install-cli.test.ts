@@ -67,7 +67,7 @@ describe("/install-cli", () => {
   }
 
   it("runs the shared install command in a session and offers login on success", async () => {
-    const { fm, notifyAlert, chat } = setup();
+    const { fm, notifyAlert, sendText, chat } = setup();
     const verify = vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
     const started = await fm.startInstallSession("codex", chat);
     expect(started).toContain("codex");
@@ -77,9 +77,28 @@ describe("/install-cli", () => {
 
     await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
     expect(verify).toHaveBeenCalledWith("codex");
+    expect(sendText).toHaveBeenCalledWith(
+      "chat",
+      expect.stringMatching(/codex.*verified.*codex.*login codex/i),
+      { threadId: "topic" },
+    );
     expect(notifyAlert).toHaveBeenCalledTimes(1);
+    expect(sendText.mock.invocationCallOrder[0]).toBeLessThan(notifyAlert.mock.invocationCallOrder[0]);
     const ids = alertAt(notifyAlert).choices.map(c => c.id);
     expect(ids[0]).toMatch(/^install-login:[0-9a-f]{32}:go$/);
+  });
+
+  it("keeps the durable success feedback when the optional login buttons fail", async () => {
+    const { fm, notifyAlert, sendText, chat } = setup();
+    vi.spyOn(fm as any, "verifyBinaryOnLoginShell").mockReturnValue(true);
+    notifyAlert.mockRejectedValueOnce(new Error("adapter offline"));
+
+    await fm.startInstallSession("codex", chat);
+    await fakeSessions[0].events.onDone({ ok: true, detail: "clean exit" });
+
+    expect(sendText).toHaveBeenCalledTimes(1);
+    expect(String(sendText.mock.calls[0][1])).toContain("/login codex");
+    expect(notifyAlert).toHaveBeenCalledTimes(1);
   });
 
   it("reports a PATH-verification failure instead of offering login", async () => {
