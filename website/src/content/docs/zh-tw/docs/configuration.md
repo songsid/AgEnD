@@ -55,6 +55,8 @@ Token 本身永遠不會寫進檔案 — `bot_token_env` 指的是要去讀哪�
 
 `open` 會讓 bot 訊息直接進到 fleet topic。要開請確定是故意的。
 
+**只要有人配對過，`mode` 就被記住了。** 配對、確認配對碼、或 `agend access lock`/`unlock` 都會把當下的 mode 寫進 `~/.agend/access/access.json`（多 channel 時是 `access-<adapter-id>.json`），從那之後這個檔案的值就蓋過 `fleet.yaml` — 因為執行期間完成的配對必須撐過重啟。所以那之後再改 `access.mode` 不會有任何效果。Fleet 啟動時會在 log 裡講這件事並指出是哪個檔案；刪掉它就會回到設定檔的值。
+
 #### options
 
 Discord 吃 `general_channel_id` — General instance 回話的那個頻道。

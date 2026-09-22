@@ -55,6 +55,8 @@ The token itself never goes in the file — `bot_token_env` names the variable t
 
 `open` lets bot messages reach fleet topics directly. Use it deliberately.
 
+**`mode` is remembered once anyone pairs.** Pairing, confirming a code, or `agend access lock`/`unlock` writes the current mode to `~/.agend/access/access.json` (or `access-<adapter-id>.json`), and the file wins over `fleet.yaml` from then on — a pairing done at runtime has to survive a restart. So an edit to `access.mode` after that point changes nothing. The fleet says so in the log at startup, and names the file; delete it to go back to the configured value.
+
 #### options
 
 Discord takes `general_channel_id` — the channel the General instance answers in.

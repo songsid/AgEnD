@@ -3611,10 +3611,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
+    const accessStatePath = join(accessDir, "access.json");
     const accessManager = new AccessManager(
       channelConfig.access ?? DEFAULT_OPEN_ACCESS,
-      join(accessDir, "access.json"),
+      accessStatePath,
     );
+    this.warnIfAccessModeOverridden(accessManager, accessStatePath);
     this.accessManager = accessManager;
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
@@ -3929,10 +3931,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const accessDir = join(this.dataDir, "access");
     mkdirSync(accessDir, { recursive: true });
+    const accessStatePath = join(accessDir, `access-${adapterId}.json`);
     const accessManager = new AccessManager(
       channelConfig.access ?? DEFAULT_OPEN_ACCESS,
-      join(accessDir, `access-${adapterId}.json`),
+      accessStatePath,
     );
+    this.warnIfAccessModeOverridden(accessManager, accessStatePath);
     const inboxDir = join(this.dataDir, "inbox");
     mkdirSync(inboxDir, { recursive: true });
 
@@ -4612,6 +4616,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return `fleet topic: adapter not open and collab off for ${target.name}`;
     }
     return null;
+  }
+
+  /**
+   * Say so when an adapter's access mode is coming from its state file rather
+   * than from fleet.yaml. The state file wins by design — a pairing done at
+   * runtime has to survive a restart — but that also means an edit to
+   * `access.mode` silently does nothing, which is indistinguishable from the
+   * fleet not having reloaded. Naming the file is what makes it fixable.
+   */
+  private warnIfAccessModeOverridden(accessManager: AccessManager, statePath: string): void {
+    const configured = accessManager.overriddenConfigMode();
+    if (!configured) return;
+    this.logger.warn(
+      { statePath, configured, inEffect: accessManager.getMode() },
+      `access mode "${accessManager.getMode()}" comes from the state file and overrides "${configured}" in fleet.yaml; delete ${statePath} to go back to the configured value`,
+    );
   }
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {

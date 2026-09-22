@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { AccessManager } from "../../src/channel/access-manager.js";
 import { join } from "node:path";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 describe("AccessManager", () => {
@@ -117,5 +117,72 @@ describe("AccessManager", () => {
       join(tmpDir, "cross-dedup.json"),
     );
     expect(am2.getAllowedUsers()).toHaveLength(2); // 111 and 222, not 111, "111", 222
+  });
+});
+
+describe("AccessManager state vs fleet.yaml", () => {
+  let tmpDir: string;
+  let statePath: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `ccd-access-override-${Date.now()}-${Math.random()}`);
+    mkdirSync(tmpDir, { recursive: true });
+    statePath = join(tmpDir, "access.json");
+  });
+  afterEach(() => { rmSync(tmpDir, { recursive: true, force: true }); });
+
+  const config = (mode: "pairing" | "locked" | "open") =>
+    ({ mode, allowed_users: [], max_pending_codes: 3, code_expiry_minutes: 60 });
+
+  const manager = (mode: "pairing" | "locked" | "open") => new AccessManager(config(mode), statePath);
+
+  it("says which configured mode the state file is overriding", () => {
+    // What a user hits: they paired someone while the fleet was open, which
+    // wrote the mode into the file, then edited fleet.yaml to locked and saw
+    // nothing change.
+    writeFileSync(statePath, JSON.stringify({ mode: "open", allowed_users: [], pending_codes: [] }));
+    const am = manager("locked");
+
+    expect(am.getMode()).toBe("open");
+    expect(am.overriddenConfigMode()).toBe("locked");
+  });
+
+  it("reports nothing when the two agree", () => {
+    writeFileSync(statePath, JSON.stringify({ mode: "locked", allowed_users: [], pending_codes: [] }));
+    expect(manager("locked").overriddenConfigMode()).toBeNull();
+  });
+
+  it("reports nothing when the state file has no mode of its own", () => {
+    // Written by an older version, or by a persist that predates any setMode.
+    writeFileSync(statePath, JSON.stringify({ allowed_users: [222], pending_codes: [] }));
+    const am = manager("pairing");
+
+    expect(am.getMode()).toBe("pairing");
+    expect(am.overriddenConfigMode()).toBeNull();
+  });
+
+  it("reports nothing before anything has been persisted", () => {
+    expect(manager("open").overriddenConfigMode()).toBeNull();
+  });
+
+  it("starts reporting an override once the mode is changed at runtime and reloaded", () => {
+    // The trap is not the first process; it is the next one. setMode persists,
+    // and from then on fleet.yaml is not what decides.
+    manager("open").setMode("locked");
+
+    const reloaded = manager("open");
+    expect(reloaded.getMode()).toBe("locked");
+    expect(reloaded.overriddenConfigMode()).toBe("open");
+  });
+
+  it("keeps the persisted mode in effect — the report does not change behaviour", () => {
+    // State winning is deliberate: a pairing done at runtime must survive a
+    // restart. This test exists so a future "fix" that flips the precedence
+    // has to change it on purpose.
+    writeFileSync(statePath, JSON.stringify({ mode: "open", allowed_users: [], pending_codes: [] }));
+    const am = manager("locked");
+
+    expect(am.getMode()).toBe("open");
+    expect(am.isAllowed(999), "open mode admits an unknown user").toBe(true);
   });
 });
