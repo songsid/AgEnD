@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { connect as netConnect } from "node:net";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -36,6 +36,22 @@ afterEach(async () => {
   for (const s of sessions.splice(0)) if (s.state === "running") await s.cancel("test teardown");
   for (const s of servers.splice(0)) await s.close();
 }, 20_000);
+
+/**
+ * Kill a server this test started by hand, and remove its socket file.
+ *
+ * `tmux kill-server` does not unlink the socket — the reason #730 existed — and
+ * these cases start their servers with execFileSync rather than through the
+ * backend, so the backend's own cleanup never sees them. Building the path is
+ * safe here in a way it is not in src/: this is a socket the test created
+ * seconds ago under a name it chose.
+ */
+function killServerAndSocket(socket: string): void {
+  try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* already gone */ }
+  try {
+    unlinkSync(join(process.env.TMUX_TMPDIR || "/tmp", `tmux-${process.getuid?.() ?? 0}`, socket));
+  } catch { /* tmux removed it, or it was never created */ }
+}
 
 function tmuxServerAlive(socket: string): boolean {
   try { execFileSync("tmux", ["-L", socket, "list-sessions"], { stdio: "ignore" }); return true; } catch { return false; }
@@ -314,7 +330,7 @@ describe.skipIf(!tmuxAvailable)("web terminal — real tmux, real HTTP, real Web
       await expect(new TmuxTerminalBackend(bin).start({ socket, command: "sleep 30", cwd: "/tmp", cols: 80, rows: 24, onOutput: () => {} })).rejects.toThrow(/new-session failed/);
       expect(tmuxServerAlive(socket)).toBe(false);
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -379,7 +395,7 @@ exec tmux "$@"
       await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead/);
       expect(tmuxServerAlive(socket)).toBe(true);
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -401,7 +417,7 @@ exec tmux "$@"
       expect(tmuxServerAlive(socket)).toBe(true);
       expect(await backend.serverState(socket)).toBe("unknown");
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -425,7 +441,7 @@ exec tmux "$@"
       await expect(new TmuxTerminalBackend(bin).kill(socket)).rejects.toThrow(/could not be confirmed dead \(alive\)/);
       expect(tmuxServerAlive(socket)).toBe(true);
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -446,7 +462,7 @@ exec tmux "$@"
       await expect(backend.kill(socket)).resolves.toBeUndefined();   // SIGTERM to the captured PID, ESRCH afterwards
       expect(tmuxServerAlive(socket)).toBe(false);
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -586,7 +602,7 @@ exit 75
       await expect(backend.kill(socket)).resolves.toBeUndefined();         // kill-server + tmux's own no-server answer suffice here
       expect(tmuxServerAlive(socket)).toBe(false);
     } finally {
-      try { execFileSync("tmux", ["-L", socket, "kill-server"]); } catch { /* gone */ }
+      killServerAndSocket(socket);
     }
   });
 
