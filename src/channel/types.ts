@@ -46,6 +46,17 @@ export interface AdapterHealthSnapshot {
   reconnectCount: number;
 }
 
+/** Positive provider-side evidence used by the Settings connection rebind flow. */
+export interface BindingProbe {
+  group_id: string;
+  group_name?: string | null;
+  channel_id?: string | null;
+  channel_name?: string | null;
+  can_view: boolean;
+  can_send: boolean;
+  can_manage_topics?: boolean;
+}
+
 /**
  * Result of an adapter topology probe.
  *
@@ -73,6 +84,8 @@ export interface ChannelAdapter extends EventEmitter {
   reconnectGateway?(reason: string): Promise<void>;
   /** Optional provider-specific liveness details consumed by /health and doctor. */
   getHealthSnapshot?(): AdapterHealthSnapshot;
+  /** Verify a prospective group/guild binding without mutating this adapter. */
+  verifyBinding?(groupId: string, generalChannelId?: string): Promise<BindingProbe>;
   /**
    * Set the provider's live activity/presence text when the platform supports
    * it (currently Discord only).  Adapters without a presence concept simply

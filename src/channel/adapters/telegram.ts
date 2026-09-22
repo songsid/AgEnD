@@ -1050,6 +1050,41 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   getChatId(): string | null { return this.lastChatId; }
   setChatId(chatId: string): void { this.lastChatId = chatId; }
 
+  /**
+   * Verify a prospective Telegram group/forum binding with the current bot
+   * token.  This uses getChat/getMe/getChatMember only; it never starts a
+   * second getUpdates consumer and does not mutate the running adapter.
+   */
+  async verifyBinding(groupId: string, generalChannelId?: string): Promise<import("../types.js").BindingProbe> {
+    const chatId = Number(groupId);
+    if (!Number.isSafeInteger(chatId)) throw new Error("group id must be a Telegram chat id");
+    const chat = await this.bot.api.getChat(chatId);
+    const me = this.bot.botInfo ?? await this.bot.api.getMe();
+    const member = await this.bot.api.getChatMember(chat.id, me.id);
+    const canSend = member.status === "creator"
+      || (member.status === "administrator" && member.can_post_messages !== false)
+      || member.status === "member"
+      || (member.status === "restricted" && member.can_send_messages === true);
+    const canManageTopics = member.status === "creator"
+      || (member.status === "administrator" && member.can_manage_topics === true);
+    if (!canSend) throw new Error("bot lacks permission to send in target group");
+    if (generalChannelId && chat.type !== "supergroup") {
+      throw new Error("target forum/topic requires a Telegram supergroup");
+    }
+    if (generalChannelId && !canManageTopics) {
+      throw new Error("bot lacks permission to manage Telegram forum topics");
+    }
+    return {
+      group_id: String(chat.id),
+      group_name: "title" in chat ? (chat.title ?? null) : ((chat as { username?: string }).username ?? null),
+      channel_id: generalChannelId ? String(generalChannelId) : null,
+      channel_name: generalChannelId ? "forum topic" : null,
+      can_view: true,
+      can_send: canSend,
+      can_manage_topics: canManageTopics,
+    };
+  }
+
   // ── File download ─────────────────────────────────────────────────────────
 
   async downloadAttachment(fileId: string): Promise<string> {

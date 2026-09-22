@@ -38,6 +38,8 @@ import { handleQuickstartRequest } from "./quickstart-api.js";
 import {
   requestSessionBinding,
   type ConnectionMetadata,
+  type ConnectionBinding,
+  type BindingProbe,
   type SecretApplyJob,
   type SecretApplyResult,
 } from "./connection-secrets.js";
@@ -85,6 +87,19 @@ export interface SettingsApiContext {
     idempotencyKey: string;
   }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
   getConnectionSecretApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
+  verifyConnectionBinding?(input: {
+    connectionId: string;
+    binding: { group_id?: unknown; general_channel_id?: unknown };
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): Promise<{ ok: true; verification_id: string; expires_at: number; binding: ConnectionBinding; probe: BindingProbe } | { ok: false; error: string }>;
+  startConnectionBindingApply?(input: {
+    connectionId: string;
+    verificationId: string;
+    sessionBinding: string;
+    idempotencyKey: string;
+  }): { job: SecretApplyJob; reused: boolean } | { busy: SecretApplyJob | null } | { error: string };
+  getConnectionBindingApply?(jobId: string, sessionBinding: string): SecretApplyJob | null;
 }
 
 /** An explicit user-authored YAML mutation that must be persisted even when
@@ -322,6 +337,65 @@ export function handleSettingsRequest(
     return true;
   }
 
+  const bindingVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/verify$/);
+  if (method === "POST" && bindingVerifyMatch) {
+    if (!ctx.verifyConnectionBinding) { json(res, 501, { error: "connection binding verification unavailable" }); return true; }
+    const connectionId = decodeURIComponent(bindingVerifyMatch[1]!);
+    readBody(req, 16 * 1024).then(async buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }); }
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = await ctx.verifyConnectionBinding!({
+        connectionId,
+        binding: { group_id: body.group_id, general_channel_id: body.general_channel_id },
+        sessionBinding: requestSessionBinding(req),
+        idempotencyKey: key,
+      });
+      if (!result.ok) return json(res, 422, { ok: false, error: "binding verification failed" }, true);
+      json(res, 200, {
+        ok: true, result: "verified" satisfies SecretApplyResult,
+        verification_id: result.verification_id, expires_at: result.expires_at,
+        binding: result.binding, probe: result.probe,
+      }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  const bindingApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/apply$/);
+  if (method === "POST" && bindingApplyMatch) {
+    if (!ctx.startConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
+    const connectionId = decodeURIComponent(bindingApplyMatch[1]!);
+    readBody(req, 16 * 1024).then(buf => {
+      let body: Record<string, unknown>;
+      try { body = JSON.parse(buf.toString("utf-8") || "{}") as Record<string, unknown>; }
+      catch { return json(res, 400, { error: "invalid JSON" }); }
+      const verificationId = typeof body.verification_id === "string" ? body.verification_id : "";
+      const key = typeof req.headers["idempotency-key"] === "string"
+        ? req.headers["idempotency-key"] : typeof body.idempotency_key === "string" ? body.idempotency_key : "";
+      if (!verificationId) return json(res, 400, { error: "verification_id required" }, true);
+      if (!/^[A-Za-z0-9_.:-]{8,128}$/.test(key)) return json(res, 400, { error: "Idempotency-Key required" }, true);
+      const result = ctx.startConnectionBindingApply!({
+        connectionId, verificationId, sessionBinding: requestSessionBinding(req), idempotencyKey: key,
+      });
+      if ("error" in result) return json(res, 422, { ok: false, error: "binding apply rejected" }, true);
+      if ("busy" in result) return json(res, 409, { ok: false, result: "applying" satisfies SecretApplyResult, job_id: result.busy?.id ?? null }, true);
+      json(res, result.reused ? 200 : 202, { ok: true, result: result.job.result, job_id: result.job.id, reused: result.reused }, true);
+    }).catch(() => json(res, 400, { error: "bad request" }));
+    return true;
+  }
+
+  const bindingApplyStatusMatch = path.match(/^\/api\/settings\/connections\/[^/]+\/binding\/apply\/([A-Za-z0-9_-]+)$/);
+  if (method === "GET" && bindingApplyStatusMatch) {
+    if (!ctx.getConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
+    const job = ctx.getConnectionBindingApply(bindingApplyStatusMatch[1]!, requestSessionBinding(req));
+    if (!job) { json(res, 404, { error: "job not found" }, true); return true; }
+    json(res, 200, job, true);
+    return true;
+  }
+
   // Everything below mutates — needs an in-memory fleet config.
   const cfg = ctx.fleetConfig;
 
@@ -363,6 +437,28 @@ export function handleSettingsRequest(
       let body: unknown;
       try { body = JSON.parse(buf.toString("utf-8") || "[]"); } catch { return json(res, 400, { error: "invalid JSON" }); }
       if (!Array.isArray(body)) return json(res, 400, { error: "expected an array of channels" });
+      // Rebinding an existing provider connection is security-sensitive: a
+      // broad channel replace must not bypass the positive provider probe and
+      // ready-adapter fence exposed by /connections/:id/binding/*.
+      const currentChannels = cfg.channels ?? (cfg.channel ? [cfg.channel] : []);
+      const currentById = new Map(currentChannels.map((channel, index) => [channel.id ?? channel.type ?? `channel-${index}`, channel]));
+      for (const [index, raw] of (body as unknown[]).entries()) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const candidate = raw as Record<string, unknown>;
+        const id = typeof candidate.id === "string" ? candidate.id
+          : typeof candidate.type === "string" ? candidate.type : `channel-${index}`;
+        const previous = currentById.get(id);
+        if (!previous) continue;
+        const oldGeneral = previous.options?.general_channel_id == null ? null : String(previous.options.general_channel_id);
+        const nextOptions = candidate.options && typeof candidate.options === "object" && !Array.isArray(candidate.options)
+          ? candidate.options as Record<string, unknown> : {};
+        const nextGeneral = nextOptions.general_channel_id == null ? null : String(nextOptions.general_channel_id);
+        const oldGroup = previous.group_id == null ? null : String(previous.group_id);
+        const nextGroup = candidate.group_id == null ? null : String(candidate.group_id);
+        if (oldGroup !== nextGroup || oldGeneral !== nextGeneral) {
+          return json(res, 409, { ok: false, error: "connection binding changes require verified rebind" }, true);
+        }
+      }
       const next = { ...cfg, channels: body as FleetConfig["channels"] };
       delete (next as { channel?: unknown }).channel; // channels[] supersedes the legacy single channel
       const before = validateFleetConfig(cfg);
