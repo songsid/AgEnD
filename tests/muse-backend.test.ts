@@ -5,8 +5,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { MuseBackend, museSessionCwd } from "../src/backend/muse.js";
 import { createBackend } from "../src/backend/factory.js";
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
+import { backendSupportsSteer } from "../src/steer-capability.js";
 import { PaneStateMachine } from "../src/daemon.js";
-import type { CliBackendConfig } from "../src/backend/types.js";
+import type { CliBackend, CliBackendConfig } from "../src/backend/types.js";
 
 /**
  * Frames captured from live muse 1.3.0 sessions on 2026-09-22, not invented.
@@ -228,6 +229,24 @@ describe("MuseBackend keys and commands", () => {
   it("offers the slash commands muse actually has", () => {
     expect(backend.getCompactCommand()).toBe("/compact");
     expect(backend.getClearCommand()).toBe("/clear");
+  });
+
+  it("asks for a second Enter on every delivery", () => {
+    // An Enter arriving in the same burst as the text is taken as a newline,
+    // and the next one then submits the accumulated draft as one message. The
+    // retry is safe because a bare Enter is a no-op both at an idle prompt and
+    // mid-turn — both verified live.
+    expect(backend.requiresDeliveryEnterRetry()).toBe(true);
+  });
+
+  it("steers a running turn rather than queueing for the next one", () => {
+    // Submitting mid-turn is taken INTO that turn ("steering the running
+    // turn"), which is not what supportsQueuedInput describes.
+    expect(backendSupportsSteer("muse")).toBe(true);
+    // Optional on the interface and deliberately not implemented, so the
+    // default applies — read it through the interface, which is where the
+    // absence means something.
+    expect((backend as CliBackend).supportsQueuedInput?.() ?? false).toBe(false);
   });
 
   it("changes effort in place and the model by restart", () => {
