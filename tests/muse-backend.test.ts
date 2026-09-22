@@ -227,6 +227,8 @@ describe("MuseBackend keys and commands", () => {
   });
 
   it("offers the slash commands muse actually has", () => {
+    // Live: `/compact` prints "compacted" and the status bar then reads
+    // "compacted context"; `/clear` empties the transcript.
     expect(backend.getCompactCommand()).toBe("/compact");
     expect(backend.getClearCommand()).toBe("/clear");
   });
@@ -249,12 +251,28 @@ describe("MuseBackend keys and commands", () => {
     expect((backend as CliBackend).supportsQueuedInput?.() ?? false).toBe(false);
   });
 
-  it("changes effort in place and the model by restart", () => {
+  it("changes effort in place, with the levels muse actually took", () => {
+    // Verified against a live session by sending the exact string AgEnD pastes
+    // (`pasteRawToClassicInstance(name, "/effort " + level)`): low, xhigh, max
+    // and high each moved the status bar. muse also accepts none/minimal/ultra,
+    // which AgEnD has no canonical level for.
     expect(backend.getEffortStrategy()).toBe("runtime");
+    expect(backend.getEffortLevels()).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("switches model by restart, because the in-session command ignores its argument", () => {
+    // `/model muse-spark-1.3` does not set the model — muse opens its picker and
+    // drops the argument. A "runtime" strategy would paste a command that looks
+    // accepted and changes nothing, so the restart path is the only honest one.
     expect(backend.getModelSwitchStrategy()).toBe("restart");
   });
 
   it("reports no context reading, because muse only shows it inside /status", () => {
+    // The persistent status bar carries model, effort and path — no context —
+    // so there is nothing a passive reader can see between turns. /ctx answers
+    // only while a `/status` panel is still inside the 60 lines AgEnD captures,
+    // and that limit is deliberate: injecting `/status` before every reading
+    // would drop a panel into the user's transcript each time anyone asked.
     expect(backend.getContextUsage()).toBeNull();
   });
 
