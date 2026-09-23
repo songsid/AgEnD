@@ -6075,7 +6075,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean },
   ): unknown {
     const scheduler = this.scheduler!;
-    const requestedTarget = typeof args.target === "string" ? args.target : undefined;
+    // Shape first, so the value the permission decision reads is the value the
+    // scheduler gets. `target` used to be filtered through typeof for the
+    // decision and passed raw to the scheduler, whose `target.startsWith`
+    // then threw a TypeError for `target: 123` (#897). A non-string is refused
+    // — never coerced: turning 123 into "123" would decide an identity
+    // question on a value the caller did not send. `null` means absent, as
+    // omitting it always did, and is removed before the scheduler sees it.
+    if (args.target === null) {
+      args = { ...args };
+      delete args.target;
+    }
+    if (args.target !== undefined && typeof args.target !== "string") {
+      throw new Error(`${op}_schedule: "target" must be an instance name (a string), not ${typeof args.target}.`);
+    }
+    if ((op === "update" || op === "delete") && typeof args.id !== "string") {
+      throw new Error(`${op}_schedule: "id" must be a schedule id (a string) — get one from list_schedules.`);
+    }
+    const requestedTarget = args.target as string | undefined;
     if (op !== "list") {
       const profile = resolveToolSet(this.fleetConfig?.instances[caller], caller);
       const existing = op === "create" ? null : scheduler.get(args.id as string);
