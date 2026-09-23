@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
@@ -12,6 +12,53 @@ import {
 import { TmuxControlClient } from "../src/tmux-control.js";
 
 const exec = promisify(execFile);
+
+const PASTE_BYTES = 64 * 1024;
+
+/**
+ * How a 64 KiB paste is judged: it either arrives in full, or its size stops
+ * growing for STALL_MS and it is called a stall — within CAP_MS either way.
+ *
+ * Growth is the only honest signal, and it cannot tell "slow" from "cut off"
+ * quickly: a reader starved of CPU plateaus exactly like a truncated paste.
+ * Measured, not assumed — a reader that stops draining at 28672 bytes for 8s
+ * sits at 28672 the whole time, and tmux delivers the other 36864 the moment
+ * it reads again. tmux holds undelivered paste bytes; it does not drop them.
+ * A 5s window called that a truncation on a loaded CI runner ("stalled at
+ * 28672 of 65536"), so the window is 20s. The truncation test below pins that
+ * a real cut-off is still reported as a stall, well before the cap.
+ */
+const STALL_MS = 20_000;
+const CAP_MS = 60_000;
+const POLL_MS = 250;
+const PASTE_TEST_TIMEOUT_MS = CAP_MS + 15_000;   // the integration default (30s) would cut the wait short
+
+type Transfer = { size: number; stalled: boolean; plateauMs: number; elapsedMs: number };
+
+async function waitForTransfer(output: string, expected: number): Promise<Transfer> {
+  // The file is created by the shell INSIDE the pane (`> file`), and
+  // createWindow resolves when tmux has the window, not when that shell has
+  // run its redirect — so a missing file is 0 bytes so far, not an error.
+  const bytesSoFar = () => statSync(output, { throwIfNoEntry: false })?.size ?? 0;
+  const startedAt = Date.now();
+  let last = -1;
+  let lastChangeAt = startedAt;
+  for (;;) {
+    const now = Date.now();
+    const size = bytesSoFar();
+    if (size >= expected) return { size, stalled: false, plateauMs: 0, elapsedMs: now - startedAt };
+    if (size !== last) { last = size; lastChangeAt = now; }
+    const plateauMs = now - lastChangeAt;
+    if (plateauMs >= STALL_MS) return { size, stalled: true, plateauMs, elapsedMs: now - startedAt };
+    if (now - startedAt >= CAP_MS) return { size, stalled: false, plateauMs, elapsedMs: now - startedAt };
+    await new Promise(r => setTimeout(r, POLL_MS));
+  }
+}
+
+const describeTransfer = (t: Transfer) => t.stalled
+  ? `transfer stalled at ${t.size} of ${PASTE_BYTES} bytes after ${Math.round(t.plateauMs / 1000)}s without growth — truncated, not merely slow`
+  : `transfer reached ${t.size} of ${PASTE_BYTES} bytes in ${Math.round(t.elapsedMs / 1000)}s`
+    + (t.size < PASTE_BYTES ? ` (hit the ${CAP_MS / 1000}s cap, last growth ${Math.round(t.plateauMs / 1000)}s before)` : "");
 
 describe("TmuxManager", () => {
   const session = `ccd-test-${Date.now()}`;
@@ -134,59 +181,64 @@ describe("TmuxManager", () => {
     }
   });
 
-  it("loads a 64 KiB paste through stdin without the tmux argv ceiling", async () => {
+  /**
+   * Paste 64 KiB into a pane running `reader`, which writes what it receives to
+   * `payload` in a fresh dir, and report how the transfer ended. Raw mode
+   * avoids the terminal's canonical 4096-byte line limit, so what is measured
+   * is the tmux buffer transport itself.
+   */
+  async function pasteInto(reader: (output: string, dir: string) => string, name: string): Promise<Transfer> {
     const dir = mkdtempSync(join(tmpdir(), "agend-large-paste-"));
     const output = join(dir, "payload");
     const tm = new TmuxManager(session, "");
     try {
-      // Raw mode avoids the terminal's canonical 4096-byte line limit; the
-      // assertion then measures the tmux buffer transport itself.
-      await tm.createWindow(`stty raw -echo; head -c 65536 > '${output}'`, "/tmp", "large-paste");
-      const payload = "x".repeat(64 * 1024);
-      expect(await tm.pasteBuffer(payload)).toBe(true);
-
-      // Wait for the transfer to finish OR to stall, rather than for a fixed
-      // 5s. That budget was flaky on CI: the assertion failed at 32768 with
-      // "Matcher did not succeed in time" — the bytes were still arriving when
-      // the clock ran out. Locally this completes in under half a second even
-      // with the CPU saturated, so the old budget was tuned to a fast machine.
-      //
-      // Deliberately NOT just a bigger timeout: that would also hide a genuine
-      // truncation behind a long wait. This separates the two — a size that
-      // stops changing is reported as a stall with the byte count, while a slow
-      // runner simply takes as long as it needs. Verified by pointing the pane
-      // at `head -c 32768`, which reports the stall rather than timing out.
-      // The file is created by the shell INSIDE the pane (`> '${output}'`), and
-      // createWindow resolves when tmux has the window, not when that shell has
-      // run its redirect. Reading it at once threw ENOENT whenever the shell was
-      // a moment late. A file that does not exist yet has received 0 bytes —
-      // which the stall check below still reports if it never appears.
-      const bytesSoFar = () => statSync(output, { throwIfNoEntry: false })?.size ?? 0;
-      const settled = await (async () => {
-        let last = -1;
-        let unchanged = 0;
-        for (let i = 0; i < 120; i++) {          // up to ~30s
-          const size = bytesSoFar();
-          if (size >= payload.length) return { size, stalled: false };
-          unchanged = size === last ? unchanged + 1 : 0;
-          if (unchanged >= 20) return { size, stalled: true };   // ~5s of no progress
-          last = size;
-          await new Promise(r => setTimeout(r, 250));
-        }
-        return { size: bytesSoFar(), stalled: false };
-      })();
-
-      expect(
-        settled.size,
-        settled.stalled
-          ? `transfer stalled at ${settled.size} of ${payload.length} bytes — paste-buffer truncated, not merely slow`
-          : `transfer reached ${settled.size} of ${payload.length} bytes`,
-      ).toBe(payload.length);
+      await tm.createWindow(`stty raw -echo; ${reader(output, dir)}`, "/tmp", name);
+      expect(await tm.pasteBuffer("x".repeat(PASTE_BYTES))).toBe(true);
+      return await waitForTransfer(output, PASTE_BYTES);
     } finally {
       await tm.killWindow();
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }
+
+  it("loads a 64 KiB paste through stdin without the tmux argv ceiling", async () => {
+    const t = await pasteInto(output => `head -c ${PASTE_BYTES} > '${output}'`, "large-paste");
+    expect(t.size, describeTransfer(t)).toBe(PASTE_BYTES);
+  }, PASTE_TEST_TIMEOUT_MS);
+
+  it("still completes a paste whose reader stops draining for a while", async () => {
+    // The CI failure, reproduced on purpose: the reader takes 28 KiB, then
+    // stops reading for 7s — past the old 5s window — then drains the rest.
+    // A plateau that ends is a slow paste, and must not be called a stall.
+    const t = await pasteInto((output, dir) => {
+      const script = join(dir, "reader.py");
+      writeFileSync(script, [
+        "import os, time",
+        `f = open(${JSON.stringify(output)}, "wb"); got = 0`,
+        "while got < 28672:",
+        "    b = os.read(0, min(4096, 28672 - got)); f.write(b); f.flush(); got += len(b)",
+        "time.sleep(7)",
+        `while got < ${PASTE_BYTES}:`,
+        `    b = os.read(0, ${PASTE_BYTES} - got)`,
+        "    if not b: break",
+        "    f.write(b); f.flush(); got += len(b)",
+      ].join("\n"));
+      return `exec python3 '${script}'`;
+    }, "starved-paste");
+    expect(t.stalled, describeTransfer(t)).toBe(false);
+    expect(t.size, describeTransfer(t)).toBe(PASTE_BYTES);
+  }, PASTE_TEST_TIMEOUT_MS);
+
+  it("still reports a truncated paste as a stall, before the cap", async () => {
+    // The other half, which a longer window must not buy away: a reader that
+    // takes half and stops for good is what a cut-off paste looks like. It has
+    // to be called a stall at the byte it stopped, by the stall rule — not
+    // discovered only when the overall cap runs out.
+    const t = await pasteInto(output => `head -c 32768 > '${output}'; sleep 120`, "truncated-paste");
+    expect(t.stalled, describeTransfer(t)).toBe(true);
+    expect(t.size).toBe(32768);
+    expect(t.elapsedMs, "judged by the stall window, not by the cap").toBeLessThan(CAP_MS);
+  }, PASTE_TEST_TIMEOUT_MS);
 
   it("kills window", async () => {
     const tm = new TmuxManager(session, "");
