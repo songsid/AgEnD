@@ -44,6 +44,10 @@ const WORKER: readonly string[] = [
   "list_decisions", "list_schedules", "list_deployments", "validate_config",
   // Its own things.
   "task", "post_decision", "set_display_name", "set_description",
+  // Its own schedules. Present here, but not a free hand: scheduleOpRefusal
+  // limits a non-coordinator to schedules that target itself and that it
+  // created (#895). The target is the control, not whether the tool is listed.
+  "create_schedule", "update_schedule", "delete_schedule",
   // The repo it works in: a lease on the work itself, not a way to run the fleet.
   "checkout_repo", "release_repo",
 ];
@@ -62,8 +66,6 @@ const ORCHESTRATION: readonly string[] = [
   "update_fleet_defaults", "update_instance_config",
   // Changing a decision somebody else recorded; `post_decision` adds, and stays.
   "update_decision",
-  // An agent that can schedule things can make something that wakes itself up.
-  "create_schedule", "update_schedule", "delete_schedule",
 ];
 
 const ALL_TOOLS = TOOLS.map(t => t.name);
@@ -84,14 +86,18 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
-    "create_schedule", "list_schedules", "delete_schedule",
+    "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
   standard: [
     "reply", "react", "edit_message",
     "send_to_instance", "broadcast", "list_instances", "describe_instance",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
+    // Self-scheduling, same scope as worker (#895).
+    "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
+  // No schedules: an explicit `minimal` is a deliberate narrowing, and three
+  // more schemas would cost the one profile whose point is having few.
   minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
 };
 
@@ -230,6 +236,70 @@ export function toolRefusedMessage(profile: ToolSetName, tool: string): string {
   return `${tool} is not available to this instance: it runs with the "${profile}" tool set, and ${tool} belongs to a coordinator. `
     + "Report what you need with report_result and let the coordinator do it, "
     + 'or ask an administrator to set `tool_set: coordinator` for this instance.';
+}
+
+/**
+ * The profiles that may schedule work for, or manage the schedules of, OTHER
+ * instances. Everyone else may still schedule — for itself only.
+ */
+const SCHEDULES_OTHERS: ReadonlySet<ToolSetName> = new Set<ToolSetName>(["full", "coordinator", "general"]);
+
+export type ScheduleOp = "create" | "update" | "delete";
+
+/**
+ * Whether a schedule write is allowed, decided on its TARGET (#895).
+ *
+ * Having the tool is not the control: a worker holds create/update/delete so it
+ * can schedule its own heartbeats and follow-ups. The control is here, and it
+ * is pure so every case can be enumerated in a test.
+ *
+ * - `caller` is the instance the SERVER resolved for the request — the IPC
+ *   connection or the agent token. Never a field of the request.
+ * - create: the target is `requestedTarget`, or the caller when omitted.
+ * - update: the existing schedule, AND `requestedTarget` when present. Checking
+ *   only the existing one would let a worker create a schedule for itself and
+ *   then `update {target: other}` — a bypass in two calls.
+ * - update/delete: a non-coordinator may only touch a schedule it OWNS, meaning
+ *   it targets the caller AND the caller created it. A heartbeat a coordinator
+ *   put on a worker stays the coordinator's to change.
+ *
+ * Returns null when allowed, or the refusal to hand back to the agent.
+ */
+export function scheduleOpRefusal(
+  profile: ToolSetName,
+  caller: string,
+  op: ScheduleOp,
+  subject: { requestedTarget?: string | null; existing?: { target: string; source: string } | null },
+): string | null {
+  if (SCHEDULES_OTHERS.has(profile)) return null;
+  const tool = `${op}_schedule`;
+  const requested = subject.requestedTarget?.trim() || null;
+  if (op === "create") {
+    const target = requested ?? caller;
+    return target === caller ? null : scheduleRefusedMessage(profile, tool, caller, `schedule work for "${target}"`);
+  }
+  const existing = subject.existing;
+  // A schedule that does not exist is the scheduler's error to report; there
+  // is nothing here to own or not own.
+  if (!existing) return null;
+  if (existing.target !== caller || existing.source !== caller) {
+    return scheduleRefusedMessage(profile, tool, caller,
+      existing.target !== caller
+        ? `change a schedule that targets "${existing.target}"`
+        : `change a schedule "${existing.source}" set for you`);
+  }
+  if (op === "update" && requested && requested !== caller) {
+    return scheduleRefusedMessage(profile, tool, caller, `move a schedule onto "${requested}"`);
+  }
+  return null;
+}
+
+/** A schedule refusal the agent can act on, in the #884 shape: why, and what to do instead. */
+function scheduleRefusedMessage(profile: ToolSetName, tool: string, caller: string, attempted: string): string {
+  return `${tool} refused: under the "${profile}" tool set an instance may only manage its own schedules — `
+    + `ones that target it ("${caller}") and that it created — so it cannot ${attempted}. `
+    + "To schedule work for another instance, or change one set for you, ask a coordinator "
+    + "with report_result or send_to_instance.";
 }
 
 /** Where a permission question came from. Recorded so the gaps stay visible. */

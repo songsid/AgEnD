@@ -139,10 +139,10 @@ instances:
 
 | 權限組 | 怎麼拿到 | 是什麼 |
 |---|---|---|
-| `worker` | 預設 | 跟人和同儕說話、讀 fleet、把工作做完 |
-| `coordinator` | `tool_set: coordinator` | worker 再加上經營 fleet 的動詞：建立、刪除、重啟 instance、team、排程 |
+| `worker` | 預設 | 跟人和同儕說話、讀 fleet、把工作做完、替自己排程 |
+| `coordinator` | `tool_set: coordinator` | worker 再加上經營 fleet 的動詞：建立、刪除、重啟 instance、team、替其他 instance 排程 |
 | `full` | `tool_set: full` | 所有工具 |
-| `standard` / `minimal` | 手動設定 | 18 個 / 4 個工具 |
+| `standard` / `minimal` | 手動設定 | 22 個 / 4 個工具 |
 
 `general` 是指派給 General instance 的，不能手動設定 — 手寫會驗證失敗。
 

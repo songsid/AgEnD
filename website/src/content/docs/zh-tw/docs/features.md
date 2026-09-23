@@ -105,7 +105,7 @@ Agent 自己建排程，存在 SQLite 裡，重啟後還在：
 Agent：→ create_schedule(cron: "0 9 * * *", …)
 ```
 
-排程觸發時，訊息會像你自己送的一樣抵達。排程可以指向建立它的 agent，也可以指向別的。
+排程觸發時，訊息會像你自己送的一樣抵達。每個 agent 都能替自己排程（heartbeat、提醒、「30 分鐘後回來看」），也能修改或刪除自己替自己建的排程。要替別的 agent 排工作，或修改別人設下的排程，需要 coordinator（`coordinator`、`general` 或 `full`）；`minimal` 則完全沒有排程功能。
 
 在終端機用 [`agend schedule`](/AgEnD/zh-tw/docs/cli/#排程) 管理。
 

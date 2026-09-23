@@ -105,7 +105,7 @@ You: every morning at 9, check for open PRs that need review
 Agent: → create_schedule(cron: "0 9 * * *", …)
 ```
 
-When a schedule fires, the message arrives as though you had sent it. A schedule can target the agent that made it, or another one.
+When a schedule fires, the message arrives as though you had sent it. Every agent can schedule for itself — heartbeats, reminders, "check back in 30 minutes" — and can change or remove the schedules it made for itself. Scheduling work for another agent, or changing a schedule someone else set, takes a coordinator (`coordinator`, `general` or `full`); a `minimal` agent has no schedules at all.
 
 Manage them from the terminal with [`agend schedule`](/AgEnD/docs/cli/#schedules).
 

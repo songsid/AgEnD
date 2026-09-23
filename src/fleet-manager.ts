@@ -74,7 +74,7 @@ import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock, type LoginWindowClaim } from "./login-window-lock.js";
 import { handleSettingsRequest, type RawConfigPatch } from "./settings-api.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
-import { handleAgentRequest, type AgentEndpointContext } from "./agent-endpoint.js";
+import { handleAgentRequest, ToolNotPermittedError, type AgentEndpointContext } from "./agent-endpoint.js";
 import { ClassicChannelManager, getClassicBackendChoices, isSelectableClassicBackend, readClassicLastActivityAt } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { validateFleetConfig } from "./config-validator.js";
@@ -89,6 +89,7 @@ import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import {
   mayUseTool,
   resolveToolSet,
+  scheduleOpRefusal,
   toolForIpcType,
   toolRefusedMessage,
   type ToolSetName,
@@ -5891,38 +5892,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     try {
-      let result: unknown;
-
-      switch (msg.type) {
-        case "fleet_schedule_create": {
-          const params = {
-            cron: payload.cron as string | undefined,
-            at: payload.at as string | undefined,
-            message: payload.message as string,
-            source: instanceName,
-            target: (payload.target as string) || instanceName,
-            reply_chat_id: meta.chat_id,
-            reply_thread_id: meta.thread_id || null,
-            reply_adapter_id: meta.adapter_id || null,
-            label: payload.label as string | undefined,
-            timezone: payload.timezone as string | undefined,
-            silent: !!(payload.silent),
-          };
-          result = this.scheduler!.create(params);
-          break;
-        }
-        case "fleet_schedule_list":
-          result = this.scheduler!.list(payload.target as string | undefined);
-          break;
-        case "fleet_schedule_update":
-          result = this.scheduler!.update(payload.id as string, payload as Record<string, unknown>);
-          break;
-        case "fleet_schedule_delete":
-          this.scheduler!.delete(payload.id as string);
-          result = "ok";
-          break;
-      }
-
+      const op = String(msg.type).replace("fleet_schedule_", "") as "create" | "list" | "update" | "delete";
+      const result = this.performScheduleOp(instanceName, op, payload, {
+        // The daemon sends its last chat id, which is unset until the instance
+        // has had a chat message — and cross-instance traffic never sets it. So
+        // a worker that only takes delegated tasks, the very instance #895 lets
+        // self-schedule, hit "NOT NULL constraint failed: schedules.reply_chat_id".
+        // No chat means no reply chat, exactly as on the agent endpoint.
+        chatId: meta.chat_id ?? "",
+        threadId: meta.thread_id || null,
+        adapterId: meta.adapter_id || null,
+        silent: !!(payload.silent),
+      });
       ipc.send({ type: "fleet_schedule_response", fleetRequestId, result });
     } catch (err) {
       ipc.send({ type: "fleet_schedule_response", fleetRequestId, error: (err as Error).message });
@@ -6067,21 +6048,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   async handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown> {
     if (!this.scheduler) return { error: "Scheduler not available" };
+    if (op !== "create" && op !== "list" && op !== "update" && op !== "delete") {
+      return { error: `Unknown schedule op: ${op}` };
+    }
+    // No bound chat on this path, as before: a schedule made through the agent
+    // endpoint has nowhere of its own to reply.
+    return this.performScheduleOp(instance, op, args, { chatId: "", threadId: null });
+  }
+
+  /**
+   * The only place an agent's request creates, changes or removes a schedule
+   * (#895). The IPC handler (MCP calls, direct channel.sock writes) and the
+   * agent endpoint (agent-cli, HTTP agent mode) are adapters over this, so the
+   * target check cannot be present on one face and missing on the other — the
+   * shape #804 had to close twice.
+   *
+   * `caller` is the instance the server resolved for the request; any
+   * `source` in `args` is ignored, and a schedule's source is always its caller.
+   * A refusal is a ToolNotPermittedError: 403 on the agent endpoint, the error
+   * of the schedule response on IPC.
+   */
+  private performScheduleOp(
+    caller: string,
+    op: "create" | "list" | "update" | "delete",
+    args: Record<string, unknown>,
+    reply: { chatId: string; threadId: string | null; adapterId?: string | null; silent?: boolean },
+  ): unknown {
+    const scheduler = this.scheduler!;
+    const requestedTarget = typeof args.target === "string" ? args.target : undefined;
+    if (op !== "list") {
+      const profile = resolveToolSet(this.fleetConfig?.instances[caller], caller);
+      const existing = op === "create" ? null : scheduler.get(args.id as string);
+      const refusal = scheduleOpRefusal(profile, caller, op, { requestedTarget, existing });
+      if (refusal) {
+        this.logger.warn({ instance: caller, profile, op, target: requestedTarget ?? existing?.target, scheduleId: args.id },
+          "tool-permissions: schedule op refused");
+        throw new ToolNotPermittedError(refusal);
+      }
+    }
     switch (op) {
       case "create":
-        return this.scheduler.create({
+        return scheduler.create({
           cron: args.cron as string | undefined,
           at: args.at as string | undefined,
           message: args.message as string,
-          source: instance, target: (args.target as string) || instance,
-          reply_chat_id: "", reply_thread_id: null,
+          source: caller,
+          target: requestedTarget || caller,
+          reply_chat_id: reply.chatId,
+          reply_thread_id: reply.threadId,
+          ...(reply.adapterId !== undefined ? { reply_adapter_id: reply.adapterId } : {}),
           label: args.label as string | undefined,
           timezone: args.timezone as string | undefined,
+          ...(reply.silent !== undefined ? { silent: reply.silent } : {}),
         });
-      case "list": return this.scheduler.list(args.target as string | undefined);
-      case "update": return this.scheduler.update(args.id as string, args);
-      case "delete": this.scheduler.delete(args.id as string); return "ok";
-      default: return { error: `Unknown schedule op: ${op}` };
+      case "list":
+        return scheduler.list(requestedTarget);
+      case "update":
+        return scheduler.update(args.id as string, args as Record<string, unknown>);
+      case "delete":
+        scheduler.delete(args.id as string);
+        return "ok";
     }
   }
 

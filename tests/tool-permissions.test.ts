@@ -40,6 +40,8 @@ const BEFORE: Record<string, string[]> = {
     "send_to_instance", "broadcast", "list_instances", "describe_instance",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
+    // #895: self-scheduling, scoped by target in scheduleOpRefusal.
+    "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
   minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
   general: [
@@ -48,7 +50,8 @@ const BEFORE: Record<string, string[]> = {
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
-    "create_schedule", "list_schedules", "delete_schedule",
+    // #895 added update_schedule: general could already create and delete.
+    "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
 };
 
@@ -145,11 +148,20 @@ describe("the worker profile", () => {
       "deploy_template", "teardown_deployment",
       "create_team", "delete_team", "update_team",
       "update_fleet_defaults", "update_instance_config", "update_decision",
-      "create_schedule", "update_schedule", "delete_schedule",
     ]) {
       expect(mayUseTool("worker", tool), tool).toBe(false);
       expect(mayUseTool("coordinator", tool), `coordinator should have ${tool}`).toBe(true);
     }
+  });
+
+  it("holds the schedule tools, because the control on them is the target (#895)", () => {
+    // A worker schedules its own heartbeats and follow-ups. What it cannot do —
+    // schedule for another instance, or change one set for it — is decided by
+    // scheduleOpRefusal, not by the tool being absent.
+    for (const tool of ["create_schedule", "update_schedule", "delete_schedule"]) {
+      expect(mayUseTool("worker", tool), tool).toBe(true);
+    }
+    expect(mayUseTool("minimal", "create_schedule"), "an explicit minimal stays minimal").toBe(false);
   });
 
   it("keeps the repo lease, which is the work rather than the running of it", () => {
@@ -355,19 +367,21 @@ describe("sink 3 — the agent endpoint", () => {
   });
 
   it("checks the early-returning ops too, which never reach OP_MAP", async () => {
-    // `schedule-create` is answered before the map is consulted, so a table
-    // built from the map alone would have let it straight through.
+    // `decision-update` is answered before the map is consulted, so a table
+    // built from the map alone would have let it straight through. (This used
+    // to be `schedule-create`; since #895 a worker may schedule for itself, and
+    // its target is checked further in, by performScheduleOp.)
     const ctx = {
       dataDir: tempDir(),
       fleetConfig: { defaults: {}, instances: { worker: { working_directory: "/tmp/w", tool_set: "worker" } } },
       logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-      handleScheduleCrudHttp: async () => ({ ok: true }),
+      handleDecisionCrudHttp: async () => ({ ok: true }),
     };
 
-    const err = await dispatchAgentOperation(ctx as never, "worker", "schedule-create", {}).catch(e => e as Error);
+    const err = await dispatchAgentOperation(ctx as never, "worker", "decision-update", {}).catch(e => e as Error);
 
     expect(err).toBeInstanceOf(ToolNotPermittedError);
-    expect((err as Error).message).toContain("create_schedule");
+    expect((err as Error).message).toContain("update_decision");
   });
 
   it("still lets a worker do the things a worker does", async () => {
