@@ -64,13 +64,24 @@ describe("formatUsageSummary", () => {
 });
 
 describe("formatDiscordUsageActivity", () => {
-  it("shows weekly percentages and truthful provider states in one line", () => {
+  it("shows percentages while omitting unavailable provider noise", () => {
     const text = formatDiscordUsageActivity(PAYLOAD);
-    expect(text).toContain("Claude 12% weekly");
-    expect(text).toContain("Codex: not logged in");
-    expect(text).toContain("Grok: expired");
-    expect(text).toContain("Kiro: unavailable");
+    expect(text).toBe("⚡ Claude 12% weekly");
+    expect(text).not.toContain("Codex");
+    expect(text).not.toContain("Grok");
+    expect(text).not.toContain("Kiro");
     expect(text.split("\n")).toHaveLength(1);
+  });
+
+  it("keeps each configured Codex source as its own activity entry", () => {
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [
+        { id: "codex:personal", name: "Codex (personal)", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 15 }] },
+        { id: "codex:work", name: "Codex (work)", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 32 }] },
+      ],
+    });
+    expect(text).toBe("⚡ Codex (personal) 15% weekly | Codex (work) 32% weekly");
   });
 
   it("does not expose stale cached percentages as live presence", () => {
@@ -90,12 +101,22 @@ describe("formatDiscordUsageActivity", () => {
     const text = formatDiscordUsageActivity({
       fetchedAt: PAYLOAD.fetchedAt,
       providers: Array.from({ length: 20 }, (_, i) => ({
-        id: `provider-${i}`, name: `Provider-${i}-${"x".repeat(20)}`, status: "error" as const,
-        error: "temporary outage", metrics: [],
+        id: `provider-${i}`, name: `Provider-${i}-${"x".repeat(20)}`, status: "ok" as const,
+        metrics: [{ label: "Weekly", type: "percent" as const, used: i + 1 }],
       })),
     });
     expect(Array.from(text).length).toBeLessThanOrEqual(128);
     expect(text.endsWith("…")).toBe(true);
+  });
+
+  it("uses a non-empty generic fallback when every provider is unavailable", () => {
+    expect(formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [
+        { id: "kiro", name: "Kiro", status: "error", error: "temporary outage", metrics: [] },
+        { id: "codex", name: "Codex", status: "no-credentials", metrics: [] },
+      ],
+    })).toBe("⚡ Usage unavailable");
   });
 });
 
