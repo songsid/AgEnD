@@ -66,7 +66,7 @@ import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-w
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
-import { formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
+import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
 import { LOGIN_FLOWS, LOGIN_BACKEND_ALIASES, checkAuthStatus, type LoginFlow, type AuthCheckResult } from "./login-flows.js";
 import { LoginSession } from "./login-manager.js";
 import { LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, announcePostLoginRecovery, type PostLoginRecovery } from "./login-controller.js";
@@ -1571,6 +1571,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // two rows, and filtering by the bare backend id would hide both.
     for (const [name, backend, profile] of this.activeBackendBindings()) {
       void name;
+      const provider = usageProviderIdForBackend(backend);
+      if (!provider) continue;
+      providers.add(profile ? `${provider}:${profile}` : provider);
+    }
+    return providers;
+  }
+
+  /** Subscription providers used by the running/paused instances owned by one adapter. */
+  getUsageProviderIdsForAdapter(adapterId: string): ReadonlySet<string> {
+    const providers = new Set<string>();
+    for (const [name, backend, profile] of this.activeBackendBindings()) {
+      if (this.getInstanceAdapterId(name) !== adapterId) continue;
       const provider = usageProviderIdForBackend(backend);
       if (!provider) continue;
       providers.add(profile ? `${provider}:${profile}` : provider);
@@ -3510,11 +3522,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         .filter(adapter => adapter.type === "discord" && typeof adapter.setActivity === "function");
       if (targets.length === 0) return;
       try {
-        const payload = await getUsageSnapshot(false, this.getActiveUsageProviderIds());
-        const text = formatDiscordUsageActivity(payload);
+        // Fetch the shared snapshot once, then scope the projection to each
+        // adapter's own fleet/Classic instances.  Passing the fleet-wide active
+        // set here would make every bot advertise providers owned by a sibling
+        // bot (notably ClassicBot's Grok/Antigravity rows).
+        const payload = await getUsageSnapshot(false);
         for (const adapter of targets) {
           try {
-            adapter.setActivity?.(text);
+            const scoped = filterUsageProviders(payload, this.getUsageProviderIdsForAdapter(adapter.id));
+            adapter.setActivity?.(formatDiscordUsageActivity(scoped));
           } catch {
             // Presence is cosmetic; a failed update must not affect delivery.
           }
@@ -3525,10 +3541,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.debug("Discord usage presence refresh skipped");
       }
     })();
-    this.discordPresenceInFlight = run.finally(() => {
-      if (this.discordPresenceInFlight === run) this.discordPresenceInFlight = null;
+    const done = run.finally(() => {
+      if (this.discordPresenceInFlight === done) this.discordPresenceInFlight = null;
     });
-    return this.discordPresenceInFlight;
+    this.discordPresenceInFlight = done;
+    return done;
   }
 
   /**

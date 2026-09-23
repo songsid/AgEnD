@@ -10,6 +10,7 @@ import { ClassicChannelManager, getClassicBackendChoices, readClassicLastActivit
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import type { InstanceConfig } from "../src/types.js";
+import { setUsageFetcherForTests } from "../src/usage/usage-api.js";
 
 /**
  * An InstanceConfig as loadFleetConfig would hand it over: the three fields
@@ -123,6 +124,80 @@ describe("FleetManager", () => {
       "claude-code", "codex", "grok", "kiro-cli", "opencode",
     ]);
     expect(fm.getActiveBackendIds().has("antigravity")).toBe(false);
+  });
+
+  it("scopes Discord usage presence to each adapter's fleet and Classic instances", async () => {
+    const fm = new FleetManager(tmpDir);
+    fm.fleetConfig = {
+      defaults: { backend: "claude-code" },
+      channels: [
+        { id: "discord-primary", type: "discord" },
+        { id: "discord-secondary", type: "discord" },
+      ],
+      instances: {
+        "primary-claude": { working_directory: tmpDir, channel_id: "discord-primary", backend: "claude-code" },
+        "primary-codex": { working_directory: tmpDir, channel_id: "discord-primary", backend: "codex" },
+        "secondary-grok": { working_directory: tmpDir, channel_id: "discord-secondary", backend: "grok" },
+        "unavailable-kiro": { working_directory: tmpDir, channel_id: "discord-unavailable", backend: "kiro-cli" },
+      },
+    } as any;
+    vi.spyOn(fm, "getInstanceStatus").mockReturnValue("running");
+
+    const classic = new ClassicChannelManager(tmpDir, fm.logger);
+    classic.setPrimaryAdapterId("discord-primary");
+    classic.register("classic-primary", "discord-primary", "classic-codex", "Classic", "owner", "codex");
+    classic.register("classic-secondary", "discord-secondary", "classic-antigravity", "Classic 2", "owner", "antigravity");
+    fm.classicChannels = classic;
+
+    const primaryActivity = vi.fn<(text: string) => boolean>(() => true);
+    const secondaryActivity = vi.fn<(text: string) => boolean>(() => true);
+    const emptyActivity = vi.fn<(text: string) => boolean>(() => true);
+    const unavailableActivity = vi.fn<(text: string) => boolean>(() => true);
+    fm.adapters.set("discord-primary", {
+      id: "discord-primary", type: "discord", setActivity: primaryActivity,
+    } as any);
+    fm.adapters.set("discord-secondary", {
+      id: "discord-secondary", type: "discord", setActivity: secondaryActivity,
+    } as any);
+    fm.adapters.set("discord-empty", {
+      id: "discord-empty", type: "discord", setActivity: emptyActivity,
+    } as any);
+    fm.adapters.set("discord-unavailable", {
+      id: "discord-unavailable", type: "discord", setActivity: unavailableActivity,
+    } as any);
+
+    let claudePercent = 81;
+    const usagePayload = async () => ({
+      fetchedAt: "2026-09-23T00:00:00.000Z",
+      providers: [
+        { id: "claude", name: "Claude", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: claudePercent }] },
+        { id: "codex", name: "Codex", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 35 }] },
+        { id: "grok", name: "Grok", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 58 }] },
+        { id: "antigravity", name: "Antigravity", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 13 }] },
+        { id: "kiro", name: "Kiro", status: "error" as const, error: "provider unavailable", metrics: [] },
+      ],
+    });
+    setUsageFetcherForTests(usagePayload);
+    try {
+      await (fm as any).refreshDiscordUsagePresence();
+
+      expect(primaryActivity).toHaveBeenCalledWith("⚡ Claude 81% weekly | Codex 35% weekly");
+      expect(secondaryActivity).toHaveBeenCalledWith("⚡ Grok 58% weekly | Antigravity 13% weekly");
+      expect(emptyActivity).toHaveBeenCalledWith("⚡ Usage unavailable");
+      expect(unavailableActivity).toHaveBeenCalledWith("⚡ Usage unavailable");
+      expect(primaryActivity.mock.calls[0][0]).not.toContain("Grok");
+      expect(secondaryActivity.mock.calls[0][0]).not.toContain("Claude");
+
+      // The in-flight promise must be cleared after completion so the next
+      // scheduled tick publishes a fresh snapshot rather than returning the
+      // already-resolved first refresh promise.
+      claudePercent = 82;
+      setUsageFetcherForTests(usagePayload);
+      await (fm as any).refreshDiscordUsagePresence();
+      expect(primaryActivity).toHaveBeenNthCalledWith(2, "⚡ Claude 82% weekly | Codex 35% weekly");
+    } finally {
+      setUsageFetcherForTests(null);
+    }
   });
 
   it("uses claude-code when neither the instance nor fleet defaults specify a backend", () => {
