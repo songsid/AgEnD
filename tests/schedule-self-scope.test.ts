@@ -85,7 +85,7 @@ afterEach(() => {
 });
 
 type Face = (caller: string, op: "create" | "update" | "delete", args: Record<string, unknown>) =>
-  Promise<{ ok: boolean; result?: unknown; error?: string }>;
+  Promise<{ ok: boolean; result?: unknown; error?: string; status?: number }>;
 
 /**
  * MCP / channel.sock: the typed IPC message, answered on the caller's IPC.
@@ -100,14 +100,16 @@ const viaIpc: Face = async (caller, op, args) => {
   return reply.error ? { ok: false, error: String(reply.error) } : { ok: true, result: reply.result };
 };
 
-/** agent-cli / HTTP agent mode: the agent endpoint, which throws a 403 on refusal. */
+/**
+ * agent-cli / HTTP agent mode: the agent endpoint. It answers a refusal with
+ * 403 and any other thrown error with 400, which is what `status` mirrors.
+ */
 const viaAgentEndpoint: Face = async (caller, op, args) => {
   try {
     const result = await dispatchAgentOperation(fm as never, caller, `schedule-${op}`, args);
     return { ok: true, result };
   } catch (err) {
-    if (!(err instanceof ToolNotPermittedError)) throw err;
-    return { ok: false, error: err.message };
+    return { ok: false, error: (err as Error).message, status: err instanceof ToolNotPermittedError ? 403 : 400 };
   }
 };
 
@@ -166,6 +168,44 @@ for (const [faceName, face] of [["MCP (typed IPC)", viaIpc], ["agent endpoint (C
       expect((await face("w", "delete", { id: placed.id })).ok).toBe(false);
       expect(scheduler.get(placed.id)).not.toBeNull();
       expect((await face("coord", "delete", { id: placed.id })).ok).toBe(true);
+    });
+
+    it("refuses a non-string target outright instead of crashing or coercing it (#897)", async () => {
+      // The decision used to read `target` through typeof while the scheduler
+      // got the raw value: update threw "startsWith is not a function", and
+      // create quietly scheduled for the CALLER. Both are now one clean refusal.
+      const mine = seed("w", "w");
+      for (const r of [
+        await face("w", "update", { id: mine.id, target: 123 }),
+        await face("w", "update", { id: mine.id, target: { name: "other" } }),
+        await face("w", "create", { cron: "0 9 * * *", message: "x", target: 123 }),
+      ]) {
+        expect(r.ok).toBe(false);
+        expect(r.error).toContain('"target" must be an instance name');
+        expect(r.error).not.toContain("is not a function");
+        // On the agent endpoint a malformed request is a 400, not a 403: the
+        // caller's mistake, not a refusal that asking a coordinator would fix.
+        if (r.status !== undefined) expect(r.status).toBe(400);
+      }
+      expect(scheduler.get(mine.id)!.target).toBe("w");
+      expect(scheduler.list(), "a rejected create must not become a self-schedule").toHaveLength(1);
+    });
+
+    it("refuses a non-string id with a message that says where ids come from", async () => {
+      for (const r of [
+        await face("w", "update", { id: 42, message: "x" }),
+        await face("w", "delete", { id: { $ne: "" } }),
+      ]) {
+        expect(r.ok).toBe(false);
+        expect(r.error).toContain('"id" must be a schedule id');
+      }
+    });
+
+    it("treats a null target as absent, as omitting it always did", async () => {
+      const mine = seed("w", "w");
+      expect((await face("w", "update", { id: mine.id, target: null, message: "kept" })).ok).toBe(true);
+      expect(scheduler.get(mine.id)).toMatchObject({ target: "w", message: "kept" });
+      expect((await face("w", "create", { cron: "0 9 * * *", message: "y", target: null })).ok).toBe(true);
     });
 
     it("lets a coordinator schedule for, and manage, another instance", async () => {
