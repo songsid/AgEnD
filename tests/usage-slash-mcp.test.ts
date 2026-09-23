@@ -73,6 +73,19 @@ describe("formatDiscordUsageActivity", () => {
     expect(text.split("\n")).toHaveLength(1);
   });
 
+  it("renders Q Developer Pro as an explicit unlimited entitlement", () => {
+    const payload: UsagePayload = {
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "kiro", name: "Kiro", plan: "Q Developer Pro", status: "ok",
+        unlimited: true, hint: "♾️ Unlimited", metrics: [],
+      }],
+    };
+    expect(formatUsageSummary(payload)).toContain("Kiro (Q Developer Pro): ♾️ Unlimited");
+    expect(formatUsageSummary(payload)).not.toContain("no credit usage");
+    expect(formatDiscordUsageActivity(payload)).toBe("⚡ Kiro ♾️ Unlimited");
+  });
+
   it("keeps each configured Codex source as its own activity entry", () => {
     const text = formatDiscordUsageActivity({
       fetchedAt: PAYLOAD.fetchedAt,

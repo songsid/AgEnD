@@ -214,6 +214,10 @@ export function formatUsageSummary(payload: UsagePayload): string {
       lines.push(`· ${name}: ⚠️ ${usageText(provider.error ?? t("usage.error_fallback"), provider.errorI18n)}`);
       continue;
     }
+    if (provider.unlimited) {
+      lines.push(`· ${name}: ${t("usage.value.unlimited")}`);
+      continue;
+    }
     const parts = provider.metrics.filter(isVisibleUsageMetric).map(formatMetric).filter(Boolean);
     const staleness = provider.hint ? ` (${usageText(provider.hint, provider.hintI18n)})` : "";
     lines.push(`· ${name}: ${parts.length ? parts.join(" | ") : t("usage.no_data")}${staleness}`);
@@ -223,10 +227,11 @@ export function formatUsageSummary(payload: UsagePayload): string {
 
 /**
  * Render the compact, public Discord activity line for the current usage
- * snapshot.  Only a percentage metric is surfaced; raw provider errors and
- * hints are intentionally not copied into a public presence (they may contain
- * URLs or account-specific detail).  Error/expired and missing-login states
- * remain explicit instead of displaying a stale percentage.
+ * snapshot.  Percentage metrics and explicit non-metered entitlements are
+ * surfaced; raw provider errors and hints are intentionally not copied into a
+ * public presence (they may contain URLs or account-specific detail).
+ * Error/expired and missing-login states remain omitted instead of displaying
+ * a stale percentage.
  *
  * Discord limits activity names to 128 Unicode code points.  Keep the leading
  * lightning marker and truncate complete code points so a long profile name or
@@ -237,8 +242,12 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
     const name = provider.name.trim() || provider.id;
     // Presence is a compact live signal, not a diagnostic surface.  Missing
     // credentials, provider errors, and rows without a percentage are omitted
-    // entirely; the full /usage output retains those actionable details.
+    // entirely, except for explicit unlimited entitlements below; the full
+    // /usage output retains other actionable details.
     if (provider.status !== "ok") return [];
+    if (provider.unlimited) {
+      return [{ text: `${name} ${t("usage.value.unlimited")}`, stale: false, index }];
+    }
     // A stale-while-rate-limited row has the old metrics but says so in its
     // hint.  Do not turn an old number into a falsely live presence.
     const percent = provider.metrics
