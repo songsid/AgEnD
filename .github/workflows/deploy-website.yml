@@ -75,6 +75,10 @@ jobs:
         continue-on-error: true
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORDWEBHOOK }}
+          # Post only when something went wrong. A green run is the normal
+          # case, and a channel that announces every one of them buries the
+          # red ones it exists for.
+          NOTIFY_ON: failure
           # `job.status` here would only describe the notifying job, which
           # always succeeds. The result being reported is the other two.
           STATUS: >-
@@ -109,6 +113,16 @@ jobs:
               echo "DISCORDWEBHOOK is set but does not start with https:// - check the secret value." >&2
               exit 1 ;;
           esac
+          # NOTIFY_ON=failure is how a workflow opts out of success posts.
+          # The check lives here and not in a step-level `if: failure()`
+          # for the same reason the webhook check does: the step must start
+          # on every run so a broken secret is still reported, and the
+          # shape check above runs first so it is. One script for all four
+          # workflows; which runs post is the workflow's env, not a fork.
+          if [ "${NOTIFY_ON:-always}" = "failure" ] && [ "$STATUS" = "success" ]; then
+            echo "Run succeeded - skipping the success notification (NOTIFY_ON=failure)."
+            exit 0
+          fi
           # Built by a JSON library rather than by string interpolation, so a
           # commit message carrying quotes, braces or backslashes cannot produce
           # a payload Discord rejects - and the first time that happened would

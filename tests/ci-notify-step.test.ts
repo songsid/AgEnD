@@ -68,6 +68,15 @@ describe("the Notify Discord step", () => {
     }
   });
 
+  it("posts only failures from CI, gitleaks and the website deploy, and every release", () => {
+    // A green CI run is the normal case; a channel that announces every one
+    // buries the red ones. A release is rare and its ✅ is the confirmation
+    // someone is waiting for, so publish keeps posting both.
+    const onlyFailures = WORKFLOWS.filter(f => notifyStep(f).step.env?.NOTIFY_ON === "failure");
+    expect(onlyFailures.sort()).toEqual(["ci.yml", "deploy-website.yml", "gitleaks.yml"]);
+    expect(notifyStep("publish.yml").step.env?.NOTIFY_ON).toBeUndefined();
+  });
+
   it("names a commit a person can actually find", () => {
     // On a pull_request run `github.sha` is the merge commit GitHub invents for
     // the occasion: it is in no branch, and `git show` on it fails for the
@@ -227,6 +236,35 @@ describe("the Notify Discord step, run for real", () => {
     expect(r.status).toBe(0);
     expect(r.curl).toBeNull();
     expect(r.stdout).toContain("skipping");
+  });
+
+  it("does not post a success when the workflow asks for failures only", () => {
+    const r = run({ NOTIFY_ON: "failure", STATUS: "success" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.curl, "a green run must not reach Discord").toBeNull();
+    expect(r.stdout).toContain("skipping the success notification");
+  });
+
+  it("still posts the failure when the workflow asks for failures only", () => {
+    // The other half: the switch must not silence the post it exists to keep.
+    const r = run({ NOTIFY_ON: "failure", STATUS: "failure" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.curl?.at(-1)).toBe(WEBHOOK);
+    expect(JSON.parse(r.payload as string).embeds[0].title).toContain("failure");
+  });
+
+  it("still posts a success for a workflow that did not opt out", () => {
+    // publish.yml sets no NOTIFY_ON: its release ✅ must keep arriving.
+    const r = run({ STATUS: "success" });
+    expect(r.curl?.at(-1)).toBe(WEBHOOK);
+  });
+
+  it("still reports a broken secret on a green run that skips its post", () => {
+    // The shape check runs before the success skip, so a secret that went bad
+    // shows up on the next run rather than on the first failure nobody hears.
+    const r = run({ NOTIFY_ON: "failure", STATUS: "success", DISCORD_WEBHOOK: "ttps://discord.com/api/webhooks/000/secret-token" });
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("check the secret value");
   });
 
   it("says so when the webhook is configured wrongly, without printing it", () => {
