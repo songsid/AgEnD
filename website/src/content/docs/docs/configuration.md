@@ -139,10 +139,10 @@ instances:
 
 | Profile | How you get it | What it is |
 |---|---|---|
-| `worker` | the default | Talk to people and peers, read the fleet, do the work |
-| `coordinator` | `tool_set: coordinator` | Worker, plus the verbs that run the fleet: create, delete, restart instances, teams, schedules |
+| `worker` | the default | Talk to people and peers, read the fleet, do the work, and schedule for itself |
+| `coordinator` | `tool_set: coordinator` | Worker, plus the verbs that run the fleet: create, delete, restart instances, teams, and schedules for other instances |
 | `full` | `tool_set: full` | Every tool |
-| `standard` / `minimal` | set by hand | 18 tools / 4 tools |
+| `standard` / `minimal` | set by hand | 22 tools / 4 tools |
 
 `general` is assigned to General instances and cannot be set by hand — writing it fails validation.
 
