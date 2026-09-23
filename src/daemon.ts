@@ -2461,7 +2461,10 @@ export class Daemon extends EventEmitter {
             }
             if (dialog.verifyAfterKeys) {
               const afterKeysPane = await this.tmux!.capturePane();
-              if (Daemon.dialogMatches(dialog, afterKeysPane)) {
+              const dialogStillActive = dialog.inputBlocked
+                ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
+                : Daemon.dialogMatches(dialog, afterKeysPane);
+              if (dialogStillActive) {
                 this.logger.warn({ dialog: dialog.description }, "Runtime dialog remained after its safety choice");
                 return;
               }

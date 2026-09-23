@@ -171,13 +171,13 @@ const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeM
 const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).active;
 
 /**
- * Claude Code's destructive shell-command confirmation menu.  The warning
- * line is deliberately part of the identity: a quoted `Do you want to
- * proceed?` in a transcript is not a live menu.  The active-region predicate
- * below adds the stronger bottom anchor and option/footer checks before any
- * key can be sent.
+ * Claude Code's destructive shell-command confirmation menu.  Claude renders
+ * the dangerous-operation warning and the question on separate rows; the
+ * question row is the stable identity.  The active-region predicate below
+ * adds the stronger bottom anchor and option/footer checks before any key can
+ * be sent.
  */
-export const CLAUDE_DANGEROUS_COMMAND_PROMPT = /^[ \t]*[⚠][\uFE0F]?[ \t]+[^\n]*Do you want to proceed\?[ \t]*$/im;
+export const CLAUDE_DANGEROUS_COMMAND_PROMPT = /^[ \t]*Do you want to proceed\?[ \t]*$/im;
 const DANGER_OPTION_ROW = /^[ \t]*([❯›])?[ \t]*([12])\.[ \t]*(Yes|No)\b[^\n]*$/i;
 const DANGER_FOOTER = /Esc(?:ape)?[ \t]+to[ \t]+cancel/i;
 
@@ -188,31 +188,28 @@ export interface ClaudeDangerousCommandPromptState {
 }
 
 /**
- * Return the current interactive danger menu shape.  The menu must be
+ * Return the current interactive danger menu shape.  The menu must have the
+ * question immediately followed by exactly the canonical two options and be
  * bottom-anchored: after the two option rows there may only be its footer and
- * blank rows.  This rejects normal output and transcript/code snippets that
- * happen to contain the same words.  Unknown cursor/order is deliberately a
- * positive detection but is never auto-answered.
+ * blank rows.  This rejects normal output, the three-option permissions menu,
+ * and transcript/code snippets that happen to contain the same words.
+ * Unknown cursor/order is deliberately a positive detection but is never
+ * auto-answered.
  */
 export function claudeDangerousCommandPromptState(pane: string): ClaudeDangerousCommandPromptState {
   const rows = pane.replace(/\r/g, "").split("\n");
-  let warning = -1;
+  let question = -1;
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (/^[ \t]*[⚠][\uFE0F]?[ \t]+[^\n]*Do you want to proceed\?[ \t]*$/i.test(rows[i])) {
-      warning = i;
+    if (/^[ \t]*Do you want to proceed\?[ \t]*$/i.test(rows[i])) {
+      question = i;
       break;
     }
   }
-  if (warning < 0) return { active: false, cursor: "unknown" };
-
-  let optionStart = -1;
-  for (let i = warning + 1; i < rows.length - 1; i++) {
-    if (DANGER_OPTION_ROW.test(rows[i]) && DANGER_OPTION_ROW.test(rows[i + 1])) {
-      optionStart = i;
-      break;
-    }
+  if (question < 0) return { active: false, cursor: "unknown" };
+  const optionStart = question + 1;
+  if (optionStart + 1 >= rows.length || !DANGER_OPTION_ROW.test(rows[optionStart]) || !DANGER_OPTION_ROW.test(rows[optionStart + 1])) {
+    return { active: false, cursor: "unknown" };
   }
-  if (optionStart < 0) return { active: false, cursor: "unknown" };
   const first = DANGER_OPTION_ROW.exec(rows[optionStart]);
   const second = DANGER_OPTION_ROW.exec(rows[optionStart + 1]);
   if (!first || !second) return { active: false, cursor: "unknown" };
@@ -564,7 +561,7 @@ export class ClaudeCodeBackend implements CliBackend {
         inputBlocked: true,
         verifyAfterKeys: true,
         postDismissNotice: { text: CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE, label: "dangerous-command-blocked" },
-        autoResolutionKey: "claude-dangerous-command",
+        autoResolutionKey: "claude-dangerous-command-yes",
       },
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
@@ -575,7 +572,7 @@ export class ClaudeCodeBackend implements CliBackend {
         inputBlocked: true,
         verifyAfterKeys: true,
         postDismissNotice: { text: CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE, label: "dangerous-command-blocked" },
-        autoResolutionKey: "claude-dangerous-command",
+        autoResolutionKey: "claude-dangerous-command-no",
       },
       {
         pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,

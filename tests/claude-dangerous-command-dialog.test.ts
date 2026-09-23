@@ -5,16 +5,20 @@ import { tmpdir } from "node:os";
 import { ClaudeCodeBackend, CLAUDE_DANGEROUS_COMMAND_PROMPT, claudeDangerousCommandPromptState } from "../src/backend/claude-code.js";
 import { Daemon } from "../src/daemon.js";
 
-const WARNING = "⚠️ The command may be dangerous. Do you want to proceed?";
+const WARNING = "Dangerous rm operation on possibly-empty variable path: rewrite it as \"${TARGET:?}\"/* or use a literal path";
+const QUESTION = "Do you want to proceed?";
 const DANGER_YES = [
   " command preview: rm -rf -- \"$TARGET\"/*",
   WARNING,
+  QUESTION,
   " ❯ 1. Yes",
   "   2. No",
   " Esc to cancel",
 ].join("\n");
 const DANGER_NO = DANGER_YES.replace(" ❯ 1. Yes", "   1. Yes").replace("   2. No", " ❯ 2. No");
 const DANGER_UNKNOWN = DANGER_YES.replace(" ❯ 1. Yes", "   1. Yes").replace("   2. No", "   2. No");
+const DANGER_THREE_OPTIONS = DANGER_YES.replace("   2. No", "   2. Yes\n   3. No");
+const DANGER_REVERSED = DANGER_YES.replace(" ❯ 1. Yes", " ❯ 1. No").replace("   2. No", "   2. Yes");
 const READY = "───\n❯\n───\n  ok";
 
 const dirs: string[] = [];
@@ -59,16 +63,18 @@ function makeDaemon(initialPane = DANGER_YES) {
 }
 
 describe("Claude dangerous-command prompt recognition", () => {
-  it("requires the warning, canonical Yes/No menu, selector, and bottom Esc footer", () => {
+  it("requires the question, canonical Yes/No menu, selector, and bottom Esc footer", () => {
     expect(CLAUDE_DANGEROUS_COMMAND_PROMPT.test(DANGER_YES)).toBe(true);
     expect(claudeDangerousCommandPromptState(DANGER_YES)).toEqual({ active: true, cursor: "yes" });
     expect(claudeDangerousCommandPromptState(DANGER_NO)).toEqual({ active: true, cursor: "no" });
     expect(claudeDangerousCommandPromptState(DANGER_UNKNOWN)).toEqual({ active: true, cursor: "unknown" });
+    expect(claudeDangerousCommandPromptState(DANGER_THREE_OPTIONS).active).toBe(false);
+    expect(claudeDangerousCommandPromptState(DANGER_REVERSED)).toEqual({ active: true, cursor: "unknown" });
     expect(claudeDangerousCommandPromptState(`${DANGER_YES}\n❯ ordinary prompt`)).toEqual({ active: false, cursor: "unknown" });
   });
 
   it("does not match prose or code that quotes the warning", () => {
-    const prose = "The program printed: ⚠️ The command may be dangerous. Do you want to proceed? 1. Yes / 2. No";
+    const prose = "The program printed: Do you want to proceed? 1. Yes / 2. No";
     expect(claudeDangerousCommandPromptState(prose).active).toBe(false);
     expect(claudeDangerousCommandPromptState("const x = 'Do you want to proceed?';\n1. Yes\n2. No\nEsc to cancel").active).toBe(false);
   });
@@ -122,9 +128,29 @@ describe("runtime dangerous-command self-heal", () => {
     daemon.freezeRuntimeMonitors();
   });
 
+  it("waits for every menu variant after Down when the first Enter is swallowed", async () => {
+    vi.useFakeTimers();
+    const { daemon, keys, state } = makeDaemon();
+    let enters = 0;
+    daemon.tmux.sendSpecialKey.mockImplementation(async (key: string) => {
+      keys.push(key);
+      if (key === "Down") state.pane = DANGER_NO;
+      if (key === "Enter" && ++enters >= 2) state.pane = READY;
+      return true;
+    });
+    daemon.startErrorMonitor();
+    await vi.advanceTimersByTimeAsync(5_500);
+    expect(keys).toEqual(["Down", "Enter"]);
+    expect(daemon.submitSystemPaste).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5_500);
+    expect(keys).toEqual(["Down", "Enter", "Enter"]);
+    expect(daemon.submitSystemPaste).toHaveBeenCalledOnce();
+    daemon.freezeRuntimeMonitors();
+  });
+
   it("does not answer a normal transcript containing the same words", async () => {
     vi.useFakeTimers();
-    const { daemon, keys } = makeDaemon("The docs say: ⚠️ The command may be dangerous. Do you want to proceed?\n1. Yes\n2. No\nEsc to cancel\n❯");
+    const { daemon, keys } = makeDaemon("The docs say: Do you want to proceed?\n1. Yes\n2. No\nEsc to cancel\n❯");
     daemon.startErrorMonitor();
     await vi.advanceTimersByTimeAsync(5_500);
     expect(keys).toEqual([]);
@@ -137,10 +163,15 @@ describe("runtime dangerous-command self-heal", () => {
     daemon.inputBlockedDialogKey = "claude-dangerous-command";
     daemon.instanceState = "working";
     daemon.autoPauseController.observe = vi.fn(() => true);
+    daemon.hangDetector = { emit: vi.fn() };
     daemon.applyInstanceStateSnapshot({
       state: "idle", unchangedForMs: 4_000, stateChangedAt: 1, observedAt: 2,
     });
     expect(daemon.instanceState).toBe("working");
     expect(daemon.autoPauseController.observe).not.toHaveBeenCalled();
+    daemon.handleStuckTransition(DANGER_YES, {
+      state: "stuck", unchangedForMs: 60_000, stateChangedAt: 1, observedAt: 2,
+    }, /❯/);
+    expect(daemon.hangDetector.emit).not.toHaveBeenCalled();
   });
 });
