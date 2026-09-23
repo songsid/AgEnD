@@ -73,6 +73,32 @@ describe("formatDiscordUsageActivity", () => {
     expect(text.split("\n")).toHaveLength(1);
   });
 
+  it("includes a reset countdown when one backend owns the adapter", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-24T00:00:00.000Z"));
+      expect(formatDiscordUsageActivity({
+        fetchedAt: PAYLOAD.fetchedAt,
+        providers: [{
+          id: "muse", name: "Muse", status: "ok",
+          metrics: [{ label: "Weekly", type: "percent", used: 6, resetsAt: "2026-09-28T00:00:00.000Z" }],
+        }],
+      })).toBe("⚡ Muse 6% weekly (resets in 4d 0h)");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps multi-backend activity compact without reset countdowns", () => {
+    expect(formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [
+        { id: "muse", name: "Muse", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 6, resetsAt: "2099-09-28T00:00:00.000Z" }] },
+        { id: "codex", name: "Codex", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 12, resetsAt: "2099-09-28T00:00:00.000Z" }] },
+      ],
+    })).toBe("⚡ Muse 6% weekly | Codex 12% weekly");
+  });
+
   it("renders Q Developer Pro as an explicit unlimited entitlement", () => {
     const payload: UsagePayload = {
       fetchedAt: PAYLOAD.fetchedAt,
