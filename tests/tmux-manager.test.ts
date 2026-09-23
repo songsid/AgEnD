@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
@@ -24,9 +24,10 @@ const PASTE_BYTES = 64 * 1024;
  * Measured, not assumed — a reader that stops draining at 28672 bytes for 8s
  * sits at 28672 the whole time, and tmux delivers the other 36864 the moment
  * it reads again. tmux holds undelivered paste bytes; it does not drop them.
- * A 5s window called that a truncation on a loaded CI runner ("stalled at
- * 28672 of 65536"), so the window is 20s. The truncation test below pins that
- * a real cut-off is still reported as a stall, well before the cap.
+ * The truncation test below pins that a real cut-off is still reported as a
+ * stall, well before the cap. (CI's stalls at 28672 and 53248 were first read
+ * as starvation and the window widened for them; they were bytes pasted before
+ * the pane entered raw mode — see pasteInto.)
  */
 const STALL_MS = 20_000;
 const CAP_MS = 60_000;
@@ -34,6 +35,16 @@ const POLL_MS = 250;
 const PASTE_TEST_TIMEOUT_MS = CAP_MS + 15_000;   // the integration default (30s) would cut the wait short
 
 type Transfer = { size: number; stalled: boolean; plateauMs: number; elapsedMs: number };
+
+/** Wait for the pane to report raw mode, or fail saying that is what never happened. */
+async function waitForRawMode(ready: string, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!existsSync(ready)) {
+    if (Date.now() >= deadline) throw new Error(`the pane never confirmed raw mode within ${timeoutMs / 1000}s`);
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
 
 async function waitForTransfer(output: string, expected: number): Promise<Transfer> {
   // The file is created by the shell INSIDE the pane (`> file`), and
@@ -186,13 +197,29 @@ describe("TmuxManager", () => {
    * `payload` in a fresh dir, and report how the transfer ended. Raw mode
    * avoids the terminal's canonical 4096-byte line limit, so what is measured
    * is the tmux buffer transport itself.
+   *
+   * The paste waits until the pane has CONFIRMED raw mode. createWindow resolves
+   * when tmux has the window, not when its shell has run `stty raw -echo`, and a
+   * paste that lands before that is dropped for good — measured: with the stty
+   * delayed 0.3s, 0 of 65536 bytes ever arrived; landing mid-paste loses part
+   * of it. That, not a starved reader, is what CI's "stalled at 28672" and
+   * "stalled at 53248 … after 20s" were: bytes that no longer existed, which no
+   * stall window can wait out. The shell writes `ready` only after stty
+   * succeeds, and nothing is pasted until it exists.
    */
-  async function pasteInto(reader: (output: string, dir: string) => string, name: string): Promise<Transfer> {
+  async function pasteInto(
+    reader: (output: string, dir: string) => string,
+    name: string,
+    opts: { shellStartDelaySeconds?: number } = {},
+  ): Promise<Transfer> {
     const dir = mkdtempSync(join(tmpdir(), "agend-large-paste-"));
     const output = join(dir, "payload");
+    const ready = join(dir, "ready");
     const tm = new TmuxManager(session, "");
     try {
-      await tm.createWindow(`stty raw -echo; ${reader(output, dir)}`, "/tmp", name);
+      const slowStart = opts.shellStartDelaySeconds ? `sleep ${opts.shellStartDelaySeconds}; ` : "";
+      await tm.createWindow(`${slowStart}stty raw -echo && : > '${ready}'; ${reader(output, dir)}`, "/tmp", name);
+      await waitForRawMode(ready);
       expect(await tm.pasteBuffer("x".repeat(PASTE_BYTES))).toBe(true);
       return await waitForTransfer(output, PASTE_BYTES);
     } finally {
@@ -203,6 +230,16 @@ describe("TmuxManager", () => {
 
   it("loads a 64 KiB paste through stdin without the tmux argv ceiling", async () => {
     const t = await pasteInto(output => `head -c ${PASTE_BYTES} > '${output}'`, "large-paste");
+    expect(t.size, describeTransfer(t)).toBe(PASTE_BYTES);
+  }, PASTE_TEST_TIMEOUT_MS);
+
+  it("does not paste into a pane that has not entered raw mode yet", async () => {
+    // What CI actually hit. A shell that takes a second to run `stty raw -echo`
+    // is still in canonical mode when a paste arrives, and those bytes are gone
+    // — no wait brings them back. With the paste gated on the pane's own
+    // confirmation, a slow start costs a second, not the payload.
+    const t = await pasteInto(output => `head -c ${PASTE_BYTES} > '${output}'`, "slow-raw-paste",
+      { shellStartDelaySeconds: 1 });
     expect(t.size, describeTransfer(t)).toBe(PASTE_BYTES);
   }, PASTE_TEST_TIMEOUT_MS);
 
