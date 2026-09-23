@@ -18,8 +18,28 @@ function assertSendable(filePath: string): void {
     throw new Error(`Blocked: cannot resolve path ${filePath}`);
   }
   if (resolved.startsWith(STATE_DIR) && !resolved.includes(INBOX_SEG)) {
-    throw new Error(`Blocked: refusing to send state file ${filePath}`);
+    throw new Error(stateFileRefusal(filePath));
   }
+}
+
+/**
+ * Why a file was refused, written for the agent that has to act on it.
+ *
+ * The rule itself stays as strict as it is: the state dir holds fleet config
+ * and credentials, and nothing under it leaves except inbox/ downloads. What
+ * changed is only the answer. "refusing to send state file <path>" told an
+ * agent nothing it could do, and the common case is not a secret at all but
+ * an artifact it built in its own workspace, which lives under the state dir
+ * too (#884). So the refusal names the way out for that case — and says, in
+ * the same breath, which files it is not for.
+ */
+function stateFileRefusal(filePath: string): string {
+  return `Blocked: refusing to send ${filePath} — it is inside the AgEnD state directory `
+    + `(${STATE_DIR}), which holds fleet config and credentials, so nothing under it is sent `
+    + `except inbox/ downloads. If this is something you produced (a build artifact, a `
+    + `screenshot, a report), copy it out first — e.g. \`cp '${filePath}' /tmp/\` — and attach `
+    + `the copy under /tmp instead. Do not do this for config, credentials, or anything else `
+    + `AgEnD keeps there.`;
 }
 
 /**
