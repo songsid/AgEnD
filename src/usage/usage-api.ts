@@ -15,6 +15,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
 import { fetchAllUsage, type ProviderUsage, type UsageMetric } from "./providers.js";
+import { museUsageRevision } from "../muse-usage-relay.js";
 import { t } from "../locale.js";
 import { usageResetText, usageText } from "./i18n.js";
 
@@ -43,6 +44,7 @@ export function usageProviderIdForBackend(backend: string | undefined): string |
     case "grok": return "grok";
     case "kiro-cli": return "kiro";
     case "antigravity": return "antigravity";
+    case "muse": return "muse";
     default: return null;
   }
 }
@@ -80,7 +82,7 @@ const FORCE_FLOOR_MS = 30 * 1000;
 /** How old a last-good snapshot may be and still stand in for a rate-limited row. */
 const STALE_MAX_MS = 60 * 60 * 1000;
 
-let cache: { at: number; ttlMs: number; payload: UsagePayload } | null = null;
+let cache: { at: number; ttlMs: number; payload: UsagePayload; museRevision: number } | null = null;
 let inflight: Promise<UsagePayload> | null = null;
 let lastForcedFetchStartedAt: number | null = null;
 /** Last successful per-provider rows, for stale-while-rate-limited. */
@@ -162,7 +164,8 @@ async function usage(force: boolean): Promise<UsagePayload> {
     lastForcedFetchStartedAt === null
     || now - lastForcedFetchStartedAt >= FORCE_FLOOR_MS
   );
-  if (!effectiveForce && cache && now - cache.at < cache.ttlMs) return cache.payload;
+  const museRevision = museUsageRevision();
+  if (!effectiveForce && cache && now - cache.at < cache.ttlMs && cache.museRevision === museRevision) return cache.payload;
   inflight ??= (() => {
     if (effectiveForce) lastForcedFetchStartedAt = Date.now();
     return fetcher()
@@ -173,6 +176,7 @@ async function usage(force: boolean): Promise<UsagePayload> {
           at: Date.now(),
           ttlMs: transient ? TRANSIENT_CACHE_MS : CACHE_MS,
           payload: resolved,
+          museRevision,
         };
         return resolved;
       })

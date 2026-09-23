@@ -187,6 +187,13 @@ describe("MuseBackend launch command", () => {
     expect(cmd).toContain("--reasoning-effort 'xhigh'");
   });
 
+  it("adds the daemon-owned relay base URL only when one was prepared", () => {
+    const { backend } = makeBackend();
+    const cmd = backend.buildCommand(config({ museBaseUrl: "http://127.0.0.1:43127" }));
+    expect(cmd).toContain("--base-url 'http://127.0.0.1:43127'");
+    expect(backend.buildCommand(config())).not.toContain("--base-url");
+  });
+
   it("resumes the session it stored, with resume last so root flags precede it", () => {
     const { backend, instanceDir } = makeBackend();
     writeFileSync(join(instanceDir, "session-id"), "01a0c787-ed6b-7050-90a6-ee040d396302\n");

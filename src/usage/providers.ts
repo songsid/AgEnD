@@ -19,7 +19,7 @@
  *   refresh at all when the file isn't writable, rather than risk the login.
  */
 import { readFile, writeFile, access, constants } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { getAgendHome } from "../paths.js";
 import { loadFleetConfig } from "../config.js";
@@ -32,6 +32,7 @@ import {
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir } from "node:os";
 import { getProviderRateLimit } from "./provider-alerts.js";
+import { readMuseUsageSnapshot } from "../muse-usage-relay.js";
 import {
   readStatuslineRateLimits,
   type StatuslineRateLimits,
@@ -1208,10 +1209,61 @@ type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
 const DEFAULT_PROVIDERS: UsageProvider[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
+  { id: "muse", name: "Muse", fetch: fetchMuseUsage },
   { id: "grok", name: "Grok", fetch: fetchGrokUsage },
   { id: "kiro", name: "Kiro", fetch: fetchKiroUsage },
   { id: "antigravity", name: "Antigravity", fetch: fetchAntigravityUsage },
 ];
+
+const MUSE_SESSION_MS = 5 * 60 * 60 * 1000;
+
+/** Read the daemon-written, token-free Muse relay snapshot for active Muse instances. */
+export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name">> {
+  let config: ReturnType<typeof loadFleetConfig> | null = null;
+  try { config = loadFleetConfig(join(getAgendHome(), "fleet.yaml")); } catch { /* unavailable config is an honest empty row */ }
+  const instanceRoot = join(getAgendHome(), "instances");
+  const configuredMuseNames = Object.entries(config?.instances ?? {})
+    .filter(([, instance]) => ((instance as { backend?: string }).backend ?? config?.defaults?.backend) === "muse")
+    .map(([name]) => name);
+  // Classic channels may own an instance that is not present in fleet.yaml.
+  // Reading only daemon-written, token-free state files is not credential
+  // discovery and keeps the usage row useful for those instances too.
+  let stateNames = configuredMuseNames;
+  try {
+    const names = readdirSync(instanceRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => entry.name);
+    stateNames = [...new Set([...configuredMuseNames, ...names])];
+  } catch { /* no instances directory yet */ }
+  const snapshots = stateNames
+    .map(name => readMuseUsageSnapshot(join(instanceRoot, name)))
+    .filter((snapshot): snapshot is NonNullable<typeof snapshot> => snapshot !== null)
+    .sort((a, b) => b.observedAt - a.observedAt);
+  const snapshot = snapshots[0];
+  if (!snapshot) {
+    return { status: "ok", plan: "Subscription", hint: "Muse usage unavailable — no response frame observed.", metrics: [] };
+  }
+  const metric = (label: string, window: { usedPercent: number; resetsAt: number; windowMs?: number } | undefined, windowMs: number): UsageMetric | null => {
+    if (!window) return null;
+    return {
+      label,
+      type: "percent",
+      used: window.usedPercent,
+      resetsAt: new Date(window.resetsAt * 1000).toISOString(),
+      windowMs: window.windowMs ?? windowMs,
+    };
+  };
+  const metrics = [
+    metric("Session", snapshot.session, MUSE_SESSION_MS),
+    metric("Weekly", snapshot.weekly, WEEK_MS),
+  ].filter((m): m is UsageMetric => m !== null);
+  return {
+    status: "ok",
+    plan: snapshot.plan || "Subscription",
+    hint: metrics.length ? undefined : "Muse usage unavailable — no response frame observed.",
+    metrics,
+  };
+}
 
 /**
  * One row per subscription, not one row per backend.

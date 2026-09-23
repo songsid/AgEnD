@@ -58,6 +58,11 @@ export class MuseBackend implements CliBackend {
     // guard (a non-numeric value also disables it, but undocumented).
     let cmd = `MUSE_UPDATE_INTERVAL_SECONDS=31536000 ${this.binaryPath}`;
 
+    // The daemon may prepare a localhost-only usage relay before spawning Muse.
+    // If relay preparation fails this remains unset and Muse connects directly;
+    // usage must never become a prerequisite for a working conversation.
+    if (config.museBaseUrl) cmd += ` --base-url ${shellQuote(config.museBaseUrl)}`;
+
     // Verified: `--disable-approval` on its own leaves the session parked on
     // "Do you trust this workspace?" forever. Trust is a separate axis, so both
     // flags are needed to reach the prompt unattended.
@@ -297,33 +302,10 @@ export class MuseBackend implements CliBackend {
     return null;
   }
 
-  /*
-   * No usage provider, deliberately — and this is the record of why, so the next
-   * person does not repeat the search.
-   *
-   * `/usage` (alias `/cost`) does exist, and it is real: inside the TUI it
-   * prints "Subscription · Muse Code Everyday Usage" with "Current 0% used ·
-   * Resets at 2:37 AM" and a weekly line beside it. Every route to that number
-   * from outside the TUI was checked on 2026-09-22 against muse 1.3.0:
-   *
-   *   - No subcommand. `muse --help` lists resume, exec, config, export, trace,
-   *     skills, plugins, sandbox, schema, serve, session-message, mcp, auth,
-   *     login, logout, init — and nothing for usage, quota or cost.
-   *   - Nothing on disk. Every other provider in src/usage/providers.ts reads a
-   *     store its vendor writes; muse writes none. ~/.local/share/muse and
-   *     ~/.config/muse hold sessions, skills, plugins and credentials, and the
-   *     only files mentioning a quota are prompts that happen to use the word.
-   *   - Fetched on demand. The panel is empty until the session has been to
-   *     Meta at least once, so the number lives in the running process, not in
-   *     anything a second process could read.
-   *   - The endpoint is not ours to guess. The recorded trace carries no
-   *     request URL, and an invented one would break silently the day Meta
-   *     moved it — a usage row that is quietly wrong is worse than no row.
-   *
-   * So muse is absent from the usage list on purpose, tracked in #851. If Meta
-   * ships a non-interactive surface, a `fetchMuseUsage` slots into
-   * DEFAULT_PROVIDERS beside the others and nothing here has to change.
-   */
+  // Muse usage is collected by the daemon-owned localhost relay in
+  // muse-usage-relay.ts.  Keeping this backend free of direct Meta requests is
+  // deliberate: the relay observes only response.subscription_usage frames and
+  // the model conversation remains byte-for-byte transparent.
 
   getSessionId(): string | null {
     // Sessions live at ~/.local/share/muse/sessions/<YYYY>/<MM>/<DD>/<uuid>/,

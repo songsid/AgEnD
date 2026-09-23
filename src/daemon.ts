@@ -41,6 +41,7 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
+import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1112,6 +1113,11 @@ export class Daemon extends EventEmitter {
   private fatalStartupBlocked = false;
   /** model_error seen mid-turn: notify only if it survives to the idle screen. */
   private pendingModelErrorKey: string | null = null;
+  /** Optional per-instance localhost relay used to observe Muse usage events. */
+  private museUsageRelay: MuseUsageRelay | null = null;
+  /** Set after an in-run relay failure so subsequent Muse respawns go direct. */
+  private museRelayFallback = false;
+  private museRelayFallbackInFlight: Promise<void> | null = null;
   /**
    * Let the next pause() proceed from a stuck pane. Set only for the auth-deferred
    * pause — see the pausePending consumption site for why waiting for idle there
@@ -2811,6 +2817,12 @@ export class Daemon extends EventEmitter {
     this.inputTransientGuardGeneration = null;
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
+    if (this.museUsageRelay) {
+      await this.museUsageRelay.stop().catch(() => {});
+      this.museUsageRelay = null;
+    } else if (this.backend?.binaryName === "muse") {
+      clearMuseUsageSnapshot(this.instanceDir);
+    }
     if (this.adapter) await this.adapter.stop();
 
     // Notify MCP servers of graceful shutdown (prevents reconnect attempts)
@@ -6417,6 +6429,10 @@ export class Daemon extends EventEmitter {
     this.startupAborted = true;
     this.freezeRuntimeMonitors();
     this.pendingIpcRequests.clear();
+    if (this.museUsageRelay) {
+      await this.museUsageRelay.stop().catch(() => {});
+      this.museUsageRelay = null;
+    }
     try { await this.killProcessTree(); } catch { /* nothing running */ }
     if (this.tmux) {
       const windowId = this.tmux.getWindowId();
@@ -6455,6 +6471,32 @@ export class Daemon extends EventEmitter {
       workingDirectory: this.config.working_directory,
       reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
     }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+  }
+
+  /**
+   * A relay crash must not make the daemon kill a live Muse process. The
+   * supervisor normally reclaims the same port; when that bounded recovery
+   * fails, mark usage unavailable and leave Muse untouched. A later natural
+   * spawn sees museRelayFallback and starts direct, without interrupting the
+   * current conversation or destroying its session.
+   */
+  private switchMuseToDirect(): Promise<void> {
+    if (this.museRelayFallbackInFlight || this.startupAborted || this.backend?.binaryName !== "muse") {
+      return this.museRelayFallbackInFlight ?? Promise.resolve();
+    }
+    this.museRelayFallbackInFlight = (async () => {
+      this.museRelayFallback = true;
+      this.logger.warn("Muse usage relay could not recover — usage is unavailable until the next natural Muse restart");
+      try {
+        if (this.museUsageRelay) {
+          await this.museUsageRelay.stop().catch(() => {});
+          this.museUsageRelay = null;
+        }
+      } catch (err) {
+        this.logger.warn({ reason: err instanceof Error ? err.message : "relay stop failed" }, "Muse usage relay cleanup failed");
+      }
+    })().finally(() => { this.museRelayFallbackInFlight = null; });
+    return this.museRelayFallbackInFlight;
   }
 
   /**
@@ -6589,7 +6631,29 @@ export class Daemon extends EventEmitter {
     if (backendConfig.agentMode === "cli" && backendConfig.agentPort) {
       envPrefix += ` AGEND_PORT=${backendConfig.agentPort}`;
     }
-    const cmd = `${envPrefix} ` + this.backend!.buildCommand(backendConfig);
+    // Muse's usage relay must be listening before its command is assembled.
+    // Preparation is best-effort: if the loopback port cannot be bound, leave
+    // museBaseUrl unset and let Muse connect directly so usage never blocks a
+    // conversation.
+    let launchConfig = backendConfig;
+    if (this.backend?.binaryName === "muse" && !this.museRelayFallback) {
+      try {
+        this.museUsageRelay ??= new MuseUsageRelay({
+          instanceDir: this.instanceDir,
+          onUnavailable: () => { void this.switchMuseToDirect(); },
+        });
+        const baseUrl = await this.museUsageRelay.start();
+        launchConfig = { ...backendConfig, museBaseUrl: baseUrl };
+      } catch (err) {
+        this.logger.warn({ reason: err instanceof Error ? err.message : "relay unavailable" }, "Muse usage relay unavailable — using direct connection");
+        if (this.museUsageRelay) {
+          await this.museUsageRelay.stop().catch(() => {});
+          this.museUsageRelay = null;
+        }
+        clearMuseUsageSnapshot(this.instanceDir);
+      }
+    }
+    const cmd = `${envPrefix} ` + this.backend!.buildCommand(launchConfig);
 
     // Ensure tmux session exists (may have been destroyed if all windows died)
     await TmuxManager.ensureSession(this.tmuxSessionName);
