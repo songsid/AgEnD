@@ -781,6 +781,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private eventLogPruneTimer: ReturnType<typeof setInterval> | null = null;
   private logRotateTimer: ReturnType<typeof setInterval> | null = null;
   private discordPresenceTimer: ReturnType<typeof setInterval> | null = null;
+  private discordPresenceEagerTimer: ReturnType<typeof setTimeout> | null = null;
+  private discordPresenceEagerPending = false;
   private discordPresenceInFlight: Promise<void> | null = null;
   private static readonly DISCORD_PRESENCE_REFRESH_MS = 15 * 60_000;
   /** Days of event/activity history to keep. */
@@ -2203,6 +2205,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { unlinkSync(join(this.getInstanceDir(name), "crash-state.json")); } catch { /* consumed or absent */ }
     // Auto-connect IPC — daemon.start() ensures socket is ready before resolving
     await this.connectIpcToInstance(name);
+    this.requestDiscordUsagePresenceRefresh();
   }
 
   /** Recreate a daemon for a marker-only paused instance after an explicit wake/delivery. */
@@ -3509,11 +3512,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Keep Discord profile activity aligned with the same cached usage source as /usage. */
   private startDiscordUsagePresence(): void {
     if (this.discordPresenceTimer) clearInterval(this.discordPresenceTimer);
+    if (this.discordPresenceEagerTimer) {
+      clearTimeout(this.discordPresenceEagerTimer);
+      this.discordPresenceEagerTimer = null;
+    }
+    this.discordPresenceEagerPending = false;
     void this.refreshDiscordUsagePresence();
     this.discordPresenceTimer = setInterval(() => {
       void this.refreshDiscordUsagePresence();
     }, FleetManager.DISCORD_PRESENCE_REFRESH_MS);
     this.discordPresenceTimer.unref?.();
+  }
+
+  /**
+   * Request one prompt presence refresh after an instance/adapter comes online.
+   * Startup can bring several instances up together; a short coalescing window
+   * keeps that herd on the existing shared refresh path and one usage fetch.
+   */
+  private requestDiscordUsagePresenceRefresh(): void {
+    this.discordPresenceEagerPending = true;
+    // During early fleet startup the interval is not installed yet; its first
+    // refresh in startDiscordUsagePresence already covers all pending starts.
+    if (!this.discordPresenceTimer || this.discordPresenceEagerTimer) return;
+    this.discordPresenceEagerTimer = setTimeout(() => {
+      this.discordPresenceEagerTimer = null;
+      if (!this.discordPresenceEagerPending || !this.discordPresenceTimer) return;
+      this.discordPresenceEagerPending = false;
+      void this.refreshDiscordUsagePresence();
+    }, 50);
+    this.discordPresenceEagerTimer.unref?.();
   }
 
   private refreshDiscordUsagePresence(): Promise<void> {
@@ -4084,7 +4111,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.adapter.setChatId(String(fleet.channel.group_id));
     }
     if (this.discordPresenceTimer && this.adapter.type === "discord") {
-      void this.refreshDiscordUsagePresence();
+      this.requestDiscordUsagePresenceRefresh();
     }
 
     this.startTopicCleanupPoller();
@@ -4367,7 +4394,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapter.setChatId(String(channelConfig.group_id));
     }
     if (this.discordPresenceTimer && adapter.type === "discord") {
-      void this.refreshDiscordUsagePresence();
+      this.requestDiscordUsagePresenceRefresh();
     }
 
     this.logger.info({ adapterId, type: channelConfig.type }, "Additional adapter started");
@@ -4605,7 +4632,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           await adapter.reconnectGateway(previous?.lastError ?? "fleet adapter restart");
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
           if (this.discordPresenceTimer && adapter.type === "discord") {
-            void this.refreshDiscordUsagePresence();
+            this.requestDiscordUsagePresenceRefresh();
           }
           this.logger.info({ id }, "Adapter gateway rebuilt successfully");
         } catch (err) {
@@ -4630,7 +4657,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.info({ id, attempt }, "Adapter restarted successfully");
           this.adapterState.set(id, { status: "connected", retryCount: 0 });
           if (this.discordPresenceTimer && adapter.type === "discord") {
-            void this.refreshDiscordUsagePresence();
+            this.requestDiscordUsagePresenceRefresh();
           }
           return;
         } catch (err) {
@@ -11889,6 +11916,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     if (this.eventLogPruneTimer) { clearInterval(this.eventLogPruneTimer); this.eventLogPruneTimer = null; }
     if (this.logRotateTimer) { clearInterval(this.logRotateTimer); this.logRotateTimer = null; }
     if (this.discordPresenceTimer) { clearInterval(this.discordPresenceTimer); this.discordPresenceTimer = null; }
+    if (this.discordPresenceEagerTimer) { clearTimeout(this.discordPresenceEagerTimer); this.discordPresenceEagerTimer = null; }
+    this.discordPresenceEagerPending = false;
     // Cancel-button timers were never cleared here. The idle-check interval is not
     // unref'd, so it held the event loop open past shutdown and kept retrying
     // deletes against an adapter that was already gone.

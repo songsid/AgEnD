@@ -242,6 +242,13 @@ export function formatUsageSummary(payload: UsagePayload): string {
  * many credential profiles cannot make the update fail.
  */
 export function formatDiscordUsageActivity(payload: UsagePayload): string {
+  // The scoped payload contains all providers owned by this adapter, including
+  // rows that are currently unavailable. Use logical provider ids (profile
+  // suffixes such as codex:work still count as the Codex backend) so a single
+  // backend can afford a useful reset countdown without leaking it into a
+  // crowded multi-backend activity line.
+  const backendIds = new Set(payload.providers.map(provider => provider.id.split(":", 1)[0]));
+  const singleBackend = backendIds.size === 1;
   const rows = payload.providers.flatMap((provider, index) => {
     const name = provider.name.trim() || provider.id;
     // Presence is a compact live signal, not a diagnostic surface.  Missing
@@ -262,7 +269,8 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
     const stale = /^cached\s+/i.test(provider.hint ?? "");
     if (stale) return [{ text: `${name}: stale`, stale: true, index }];
     const window = /weekly/i.test(percent.label) ? " weekly" : "";
-    return [{ text: `${name} ${Math.round(percent.used ?? 0)}%${window}`, stale: false, index }];
+    const reset = singleBackend ? usageResetText(percent.resetsAt) : "";
+    return [{ text: `${name} ${Math.round(percent.used ?? 0)}%${window}${reset ? ` (${reset})` : ""}`, stale: false, index }];
   });
   rows.sort((a, b) => Number(a.stale) - Number(b.stale) || a.index - b.index);
   if (rows.length === 0) return "⚡ Usage unavailable";

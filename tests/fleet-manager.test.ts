@@ -200,6 +200,36 @@ describe("FleetManager", () => {
     }
   });
 
+  it("coalesces eager presence refresh requests from a startup herd", async () => {
+    vi.useFakeTimers();
+    try {
+      const fm = new FleetManager(tmpDir);
+      const refresh = vi.spyOn(fm as any, "refreshDiscordUsagePresence").mockResolvedValue(undefined);
+      const interval = setInterval(() => {}, 60_000);
+      (fm as any).discordPresenceTimer = interval;
+      for (let i = 0; i < 8; i++) (fm as any).requestDiscordUsagePresenceRefresh();
+      await vi.advanceTimersByTimeAsync(49);
+      expect(refresh).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(refresh).toHaveBeenCalledTimes(1);
+      clearInterval(interval);
+      if ((fm as any).discordPresenceEagerTimer) clearTimeout((fm as any).discordPresenceEagerTimer);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("requests an eager presence refresh after an instance comes online", async () => {
+    const fm = new FleetManager(tmpDir);
+    const request = vi.spyOn(fm as any, "requestDiscordUsagePresenceRefresh");
+    vi.spyOn(fm.lifecycle, "start").mockResolvedValue(undefined);
+    vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
+
+    await fm.startInstance("eager-worker", instance({ working_directory: tmpDir }), false);
+
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("uses claude-code when neither the instance nor fleet defaults specify a backend", () => {
     const fm = new FleetManager(tmpDir);
     fm.fleetConfig = {
