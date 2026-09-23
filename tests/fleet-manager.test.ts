@@ -166,16 +166,18 @@ describe("FleetManager", () => {
       id: "discord-unavailable", type: "discord", setActivity: unavailableActivity,
     } as any);
 
-    setUsageFetcherForTests(async () => ({
+    let claudePercent = 81;
+    const usagePayload = async () => ({
       fetchedAt: "2026-09-23T00:00:00.000Z",
       providers: [
-        { id: "claude", name: "Claude", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 81 }] },
+        { id: "claude", name: "Claude", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: claudePercent }] },
         { id: "codex", name: "Codex", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 35 }] },
         { id: "grok", name: "Grok", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 58 }] },
         { id: "antigravity", name: "Antigravity", status: "ok" as const, metrics: [{ label: "Weekly", type: "percent" as const, used: 13 }] },
         { id: "kiro", name: "Kiro", status: "error" as const, error: "provider unavailable", metrics: [] },
       ],
-    }));
+    });
+    setUsageFetcherForTests(usagePayload);
     try {
       await (fm as any).refreshDiscordUsagePresence();
 
@@ -185,6 +187,14 @@ describe("FleetManager", () => {
       expect(unavailableActivity).toHaveBeenCalledWith("⚡ Usage unavailable");
       expect(primaryActivity.mock.calls[0][0]).not.toContain("Grok");
       expect(secondaryActivity.mock.calls[0][0]).not.toContain("Claude");
+
+      // The in-flight promise must be cleared after completion so the next
+      // scheduled tick publishes a fresh snapshot rather than returning the
+      // already-resolved first refresh promise.
+      claudePercent = 82;
+      setUsageFetcherForTests(usagePayload);
+      await (fm as any).refreshDiscordUsagePresence();
+      expect(primaryActivity).toHaveBeenNthCalledWith(2, "⚡ Claude 82% weekly | Codex 35% weekly");
     } finally {
       setUsageFetcherForTests(null);
     }

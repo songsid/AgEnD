@@ -3541,10 +3541,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         this.logger.debug("Discord usage presence refresh skipped");
       }
     })();
-    this.discordPresenceInFlight = run.finally(() => {
-      if (this.discordPresenceInFlight === run) this.discordPresenceInFlight = null;
+    const done = run.finally(() => {
+      if (this.discordPresenceInFlight === done) this.discordPresenceInFlight = null;
     });
-    return this.discordPresenceInFlight;
+    this.discordPresenceInFlight = done;
+    return done;
   }
 
   /**
