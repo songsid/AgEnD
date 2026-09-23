@@ -233,28 +233,44 @@ export function formatUsageSummary(payload: UsagePayload): string {
  * many credential profiles cannot make the update fail.
  */
 export function formatDiscordUsageActivity(payload: UsagePayload): string {
-  const rows = payload.providers.map(provider => {
+  const rows = payload.providers.flatMap((provider, index) => {
     const name = provider.name.trim() || provider.id;
-    if (provider.status === "no-credentials") return `${name}: not logged in`;
-    if (provider.status === "error") {
-      const error = `${provider.error ?? ""} ${provider.hint ?? ""}`;
-      return `${name}: ${/expired|token rejected|unauthori[sz]ed/i.test(error) ? "expired" : "unavailable"}`;
-    }
+    // Presence is a compact live signal, not a diagnostic surface.  Missing
+    // credentials, provider errors, and rows without a percentage are omitted
+    // entirely; the full /usage output retains those actionable details.
+    if (provider.status !== "ok") return [];
     // A stale-while-rate-limited row has the old metrics but says so in its
     // hint.  Do not turn an old number into a falsely live presence.
-    if (/^cached\s+/i.test(provider.hint ?? "")) return `${name}: stale`;
     const percent = provider.metrics
       .filter(isVisibleUsageMetric)
       .filter(metric => metric.type === "percent" && typeof metric.used === "number")
       .sort((a, b) => Number(/weekly/i.test(b.label)) - Number(/weekly/i.test(a.label)))[0];
-    if (!percent) return `${name}: unavailable`;
+    if (!percent) return [];
+    const stale = /^cached\s+/i.test(provider.hint ?? "");
+    if (stale) return [{ text: `${name}: stale`, stale: true, index }];
     const window = /weekly/i.test(percent.label) ? " weekly" : "";
-    return `${name} ${Math.round(percent.used ?? 0)}%${window}`;
+    return [{ text: `${name} ${Math.round(percent.used ?? 0)}%${window}`, stale: false, index }];
   });
-  const raw = rows.length > 0 ? `⚡ ${rows.join(" | ")}` : "⚡ Usage unavailable";
-  const points = Array.from(raw);
-  if (points.length <= 128) return raw;
-  return `${points.slice(0, 127).join("")}…`;
+  rows.sort((a, b) => Number(a.stale) - Number(b.stale) || a.index - b.index);
+  if (rows.length === 0) return "⚡ Usage unavailable";
+
+  // Keep complete provider entries whenever possible.  Provider/profile names
+  // are bounded by config validation, so an individual entry fits; truncation
+  // only drops later entries and never exposes a half-written percentage.
+  const prefix = "⚡ ";
+  const kept: string[] = [];
+  let truncated = false;
+  for (const row of rows) {
+    const candidate = `${prefix}${kept.concat(row.text).join(" | ")}`;
+    if (Array.from(candidate).length + 1 > 128) {
+      truncated = true;
+      break;
+    }
+    kept.push(row.text);
+  }
+  if (kept.length === 0) return "⚡ Usage unavailable";
+  const body = `${prefix}${kept.join(" | ")}`;
+  return truncated ? `${body}…` : body;
 }
 
 function formatMetric(m: UsageMetric): string {

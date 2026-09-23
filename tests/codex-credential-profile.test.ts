@@ -251,8 +251,27 @@ describe("one usage row per codex subscription", () => {
 
     const rows = providersForConfig(config as never, base);
 
-    expect(rows.map(r => r.id)).toEqual(["codex:personal", "codex:work"]);
-    expect(rows.map(r => r.name)).toEqual(["Codex (personal)", "Codex (work)"]);
+    expect(rows.map(r => r.id)).toEqual(["codex", "codex:personal", "codex:work"]);
+    expect(rows.map(r => r.name)).toEqual(["Codex (default)", "Codex (personal)", "Codex (work)"]);
+  });
+
+  it("keeps a legacy shared binding alongside named profiles", async () => {
+    const config = {
+      defaults: {},
+      instances: {
+        shared: { backend: "codex" },
+        work: { backend: "codex", backend_options: { codex: { credential_profile: "work" } } },
+      },
+    };
+
+    const rows = providersForConfig(config as never, base);
+
+    expect(rows.map(r => r.id)).toEqual(["codex", "codex:work"]);
+    expect(rows.map(r => r.name)).toEqual(["Codex (default)", "Codex (work)"]);
+    expect(rows.every(r => !r.name.includes("/") && !r.name.includes("\\"))).toBe(true);
+    const plans = await Promise.all(rows.map(async row => (await row.fetch() as { plan?: string }).plan));
+    expect(plans[0]).toBe("shared");
+    expect(plans[1]).toContain("credential-profiles/codex/work");
   });
 
   it("points each row at the profile directory itself, with no store subdir", async () => {
@@ -263,7 +282,7 @@ describe("one usage row per codex subscription", () => {
       defaults: {}, instances: { a: { backend: "codex", backend_options: { codex: { credential_profile: "work" } } } },
     } as never, base);
 
-    const plan = (await rows[0]!.fetch()) as { plan: string };
+    const plan = (await rows.find(row => row.id === "codex:work")!.fetch()) as { plan: string };
 
     expect(plan.plan).toBe("/data/credential-profiles/codex/work");
   });

@@ -26,6 +26,7 @@ import { loadFleetConfig } from "../config.js";
 import {
   credentialHomeSpec,
   credentialProfileStoreHome,
+  instanceCredentialProfile,
   listConfiguredProfiles,
 } from "../backend/credential-profile.js";
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
@@ -1199,6 +1200,8 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
 
 type UsageProvider = { id: string; name: string; fetch: (storeHome?: string) => Promise<Omit<ProviderUsage, "id" | "name">> };
 
+type UsageFleetConfig = Parameters<typeof listConfiguredProfiles>[0];
+
 const DEFAULT_PROVIDERS: UsageProvider[] = [
   { id: "claude", name: "Claude", fetch: fetchClaudeUsage },
   { id: "codex", name: "Codex", fetch: fetchCodexUsage },
@@ -1210,27 +1213,97 @@ const DEFAULT_PROVIDERS: UsageProvider[] = [
 /**
  * One row per subscription, not one row per backend.
  *
- * A fleet running two kiro logins has two quotas, and a single row could only
- * ever show one of them — or worse, add them together and show a number that is
- * true of neither. Each configured credential profile reads its own store and
- * gets its own row; a backend with no profiles is left exactly as it was, one
- * row reading the shared login.
+ * A fleet running two kiro/codex logins has two quotas, and a single row could
+ * only ever show one of them — or worse, add them together and show a number
+ * that is true of neither. Each effective credential profile reads its own
+ * store and gets its own row; a mixed fleet also keeps one row for effective
+ * legacy shared bindings. Instance-private homes are never scanned: their
+ * auth files point at these same logical sources.
  */
 export function providersForConfig(
-  config: Parameters<typeof listConfiguredProfiles>[0],
+  config: UsageFleetConfig,
   base: UsageProvider[] = DEFAULT_PROVIDERS,
 ): UsageProvider[] {
   return base.flatMap(provider => {
     const backendName = usageBackendForProviderId(provider.id);
     if (!backendName || !credentialHomeSpec(backendName)) return [provider];
-    const profiles = listConfiguredProfiles(config, backendName);
+    const profiles = effectiveCredentialProfiles(config, backendName);
     if (profiles.length === 0) return [provider];
-    return profiles.map(profile => ({
+
+    // A fleet can mix profiled and legacy instances.  The old expansion
+    // returned only profile rows whenever *any* profile existed, which hid the
+    // shared subscription from a running legacy instance.  Include the shared
+    // source only when an effective binding actually uses it; active-provider
+    // filtering then removes sources that are stopped or otherwise unused.
+    const rows: UsageProvider[] = [];
+    // Classic channels are stored separately from fleet.yaml and always use
+    // the shared Codex login today.  Keep the shared Codex row available so
+    // active-provider filtering can retain that binding; unlike filesystem
+    // scanning this row is harmless when no classic/shared instance is live.
+    if (provider.id === "codex" || hasEffectiveSharedBinding(config, backendName)) {
+      rows.push({
+        id: provider.id,
+        name: provider.id === "codex" ? `${provider.name} (default)` : provider.name,
+        fetch: () => provider.fetch(),
+      });
+    }
+    rows.push(...profiles.map(profile => ({
       id: `${provider.id}:${profile}`,
       name: `${provider.name} (${profile})`,
       fetch: () => provider.fetch(credentialProfileStoreHome(getAgendHome(), backendName, profile)),
-    }));
+    })));
+    return rows;
   });
+}
+
+/**
+ * Whether at least one effective fleet binding uses the legacy shared login.
+ *
+ * This deliberately follows effective backend/profile inheritance instead of
+ * looking at directories on disk.  Instance-private Codex homes are config
+ * homes whose auth file points at this same shared/profile source; scanning
+ * them would duplicate one quota and make usage depend on stale instance
+ * directories.  A missing/unknown config keeps the legacy shared row for
+ * backwards compatibility.
+ */
+function hasEffectiveSharedBinding(config: UsageFleetConfig, backendName: string): boolean {
+  if (!config) return true;
+  const defaults = config.defaults;
+  const instances = config.instances ?? {};
+  let sawEffectiveBinding = false;
+  for (const instance of Object.values(instances)) {
+    const backend = instance.backend ?? defaults?.backend;
+    if (backend !== backendName) continue;
+    sawEffectiveBinding = true;
+    if (!instanceCredentialProfile(instance, defaults, backendName)) return true;
+  }
+
+  // A defaults-only fleet has one effective shared binding when the default
+  // backend is this provider and no profile was configured.  With no known
+  // binding at all, preserve the pre-profile shared-provider behaviour.
+  if (!sawEffectiveBinding) {
+    if (defaults?.backend === backendName && !instanceCredentialProfile(undefined, defaults, backendName)) return true;
+    return Object.keys(instances).length === 0;
+  }
+  return false;
+}
+
+/** Profiles on effective bindings only (not dormant backend_options on another backend). */
+function effectiveCredentialProfiles(config: UsageFleetConfig, backendName: string): string[] {
+  if (!config) return [];
+  const found = new Set<string>();
+  const defaults = config.defaults;
+  for (const instance of Object.values(config.instances ?? {})) {
+    const backend = instance.backend ?? defaults?.backend;
+    if (backend !== backendName) continue;
+    const profile = instanceCredentialProfile(instance, defaults, backendName);
+    if (profile) found.add(profile);
+  }
+  if (Object.keys(config.instances ?? {}).length === 0 && defaults?.backend === backendName) {
+    const profile = instanceCredentialProfile(undefined, defaults, backendName);
+    if (profile) found.add(profile);
+  }
+  return [...found].sort();
 }
 
 /**
