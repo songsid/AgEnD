@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, it } from "vitest";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -49,6 +49,8 @@ function fakeRes() {
 
 describe("GET /api/pane/:instance", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "view-api-"));
+  // Nothing writes here in the background, so plain removal after the block is safe.
+  afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
 
   it("404s an unknown instance", async () => {
     const { res, out } = fakeRes();
@@ -116,6 +118,8 @@ describe("GET /api/pane/:instance", () => {
 
 describe("/api/profiles new fields (B2 wiring)", () => {
   const dataDir = mkdtempSync(join(tmpdir(), "view-api-profiles-"));
+  // Nothing writes here in the background, so plain removal after the block is safe.
+  afterAll(() => rmSync(dataDir, { recursive: true, force: true }));
 
   it("returns model_source, effort_source, display_name in roster", async () => {
     const ctx: ViewApiContext = {

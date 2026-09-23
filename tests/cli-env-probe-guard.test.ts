@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -20,20 +20,38 @@ vi.mock("../src/backend/factory.js", () => ({
   createBackend: () => ({ probeCLIEnv }),
 }));
 
+/**
+ * Every temp dir here lives UNDER the AGEND_HOME the vitest config injects, and
+ * this file never deletes one itself — the config removes that whole tree at
+ * process exit.
+ *
+ * That is the fix for an intermittent `ENOTEMPTY: rmdir` in teardown. The
+ * logger's transport runs in a worker thread and writes `daemon.log` into the
+ * AGEND_HOME that was current when `logger.ts` was first imported, on its own
+ * schedule: measured, the file is absent right after a FleetManager logs and
+ * present 300ms later. When this file happened to be the first in the serial
+ * pool to import the logger, that home was one of these per-test dirs, and a
+ * worker creating `daemon.log` while `rmSync` was walking the directory is
+ * exactly ENOTEMPTY. Nothing about the tests was wrong; they deleted a
+ * directory another thread was still writing into, and whether they did
+ * depended on file order.
+ *
+ * So the dirs outlive every writer, and per-test isolation comes from clearing
+ * the one subtree the tests assert on, which the logger never touches.
+ */
+const realHome = process.env.AGEND_HOME;
+const tempRoot = realHome ?? tmpdir();
 let home: string;
 let dataDir: string;
-const realHome = process.env.AGEND_HOME;
 
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), "agend-probeguard-"));
+  home = mkdtempSync(join(tempRoot, "probeguard-"));
   process.env.AGEND_HOME = home;
-  dataDir = mkdtempSync(join(tmpdir(), "agend-probeguard-data-"));
+  dataDir = mkdtempSync(join(tempRoot, "probeguard-data-"));
   probeCLIEnv.mockReset();
 });
 afterEach(() => {
   if (realHome === undefined) delete process.env.AGEND_HOME; else process.env.AGEND_HOME = realHome;
-  rmSync(home, { recursive: true, force: true });
-  rmSync(dataDir, { recursive: true, force: true });
 });
 
 function seed(models: Array<{ id: string }>) {
