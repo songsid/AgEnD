@@ -1038,6 +1038,11 @@ export class Daemon extends EventEmitter {
   /** Identity of that dialog: its pattern, not its description (two tables may describe one screen differently). */
   private dialogParkedKey: string | null = null;
   private dialogParkedReported = false;
+  /** Current stdin-owning runtime dialog, independent from execution state. */
+  private inputBlockedDialogKey: string | null = null;
+  /** Generation/signature fence for safety dialogs while their screen is still visible. */
+  private autoResolvedDialogKey: string | null = null;
+  private autoResolvedDialogGeneration = 0;
   private backgroundSessionRecoveryAttempted = false;
   /** Whether the last spawn started a fresh session (not resumed). */
   isNewSession = false;
@@ -2364,6 +2369,7 @@ export class Daemon extends EventEmitter {
         if (!alive) return;
 
         const pane = await this.tmux.capturePane();
+        const inputBlockedDialog = this.updateInputBlockedState(pane, dialogs);
 
         const interactivePrompt = this.interactivePromptDetector.observe(
           pane,
@@ -2385,7 +2391,7 @@ export class Daemon extends EventEmitter {
           : this.currentActivity;
         const hasPendingWork = this.pendingWork.hasPendingWork();
         if (!hasPendingWork) this.blockingProcessDetector.reset();
-        const blockingProcess = hasPendingWork
+        const blockingProcess = hasPendingWork && !inputBlockedDialog
           ? this.blockingProcessDetector.observe(pane, paneActivity, Date.now())
           : null;
         if (blockingProcess) {
@@ -2405,25 +2411,75 @@ export class Daemon extends EventEmitter {
           if (!Daemon.dialogMatches(dialog, pane)) continue;
           if (dialog.blocksDelivery || dialog.holdOnly) blockingSeen = dialog;
           if (dialog.holdOnly) break; // recognised, deliberately not answered; trackDialogParked reports it
+          const autoKey = dialog.autoResolutionKey;
+          if (dialog.verifyAfterKeys && autoKey
+            && this.autoResolvedDialogGeneration === this.spawnGeneration
+            && this.autoResolvedDialogKey === autoKey) {
+            // A previous poll sent the safety choice but the CLI has not
+            // repainted yet. Never send another Enter into the same screen.
+            continue;
+          }
           // These keys go straight into the pane. Sent while a message delivery is
           // mid-transaction, an `Escape` wipes the pasted text and an `Enter`
           // submits it half-composed — the user sees a message that vanished. Skip
           // (not queue) when the pane is busy: this poller runs every 5s, and the
           // dialog will still be on screen next tick.
+          let resolved = false;
           const dismissed = await this.paneWriteLock.tryRun(async () => {
+            // Re-read under the lock: the first capture may have gone stale
+            // while a delivery was finishing. A stale danger menu must never
+            // receive a blind key sequence.
+            const currentPane = await this.tmux!.capturePane();
+            if (!Daemon.dialogMatches(dialog, currentPane)) {
+              this.updateInputBlockedState(currentPane, dialogs);
+              return;
+            }
+            if (dialog.verifyAfterKeys && autoKey
+              && this.autoResolvedDialogGeneration === this.spawnGeneration
+              && this.autoResolvedDialogKey === autoKey) return;
+            if (dialog.verifyAfterKeys && autoKey) {
+              this.autoResolvedDialogGeneration = this.spawnGeneration;
+              this.autoResolvedDialogKey = autoKey;
+            }
             this.logger.info(`Auto-dismissing runtime dialog: ${dialog.description}`);
             const SPECIAL_KEYS = new Set(["Up", "Down", "Enter", "Escape", "Right", "Left"]);
             for (const key of dialog.keys) {
+              let sent = false;
               if (SPECIAL_KEYS.has(key)) {
-                await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
+                sent = await this.tmux!.sendSpecialKey(key as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left");
               } else {
-                await this.tmux!.pasteText(key, this.systemPasteOptions());
+                sent = await this.tmux!.pasteText(key, this.systemPasteOptions());
+              }
+              if (!sent) {
+                if (dialog.verifyAfterKeys && autoKey) {
+                  this.autoResolvedDialogGeneration = 0;
+                  this.autoResolvedDialogKey = null;
+                }
+                return;
               }
               await new Promise(r => setTimeout(r, 200));
+            }
+            if (dialog.verifyAfterKeys) {
+              const afterKeysPane = await this.tmux!.capturePane();
+              const dialogStillActive = dialog.inputBlocked
+                ? dialogs.some(candidate => candidate.inputBlocked && Daemon.dialogMatches(candidate, afterKeysPane))
+                : Daemon.dialogMatches(dialog, afterKeysPane);
+              if (dialogStillActive) {
+                this.logger.warn({ dialog: dialog.description }, "Runtime dialog remained after its safety choice");
+                return;
+              }
+              this.updateInputBlockedState(afterKeysPane, dialogs);
+              if (dialog.postDismissNotice) {
+                resolved = await this.submitSystemPaste(dialog.postDismissNotice.text, dialog.postDismissNotice.label);
+              } else {
+                resolved = true;
+              }
             }
           });
           if (!dismissed) {
             this.logger.info({ dialog: dialog.description }, "Dialog dismissal deferred — pane write in flight");
+          } else if (dialog.verifyAfterKeys && !resolved) {
+            this.logger.warn({ dialog: dialog.description }, "Safety dialog choice was sent but follow-up verification or notice submission failed");
           }
           this.trackDialogParked(blockingSeen);
           return; // Dialog handled (or deliberately deferred): skip error checks this cycle
@@ -3020,6 +3076,15 @@ export class Daemon extends EventEmitter {
 
   private applyInstanceStateSnapshot(snapshot: InstanceStateSnapshot, pane?: string): void {
     const previous = this.instanceState;
+    // A live safety menu owns stdin.  It may still contain Claude's persistent
+    // `❯` ready marker, but that is not an idle turn and must not clear pending
+    // work, retire Cancel, arm auto-pause, or enter the generic stuck path.
+    // Keep the public execution state unchanged until the menu disappears; the
+    // dedicated input_blocked event carries the reason to observers.
+    if (this.inputBlockedDialogKey !== null) {
+      this.logger.debug({ dialog: this.inputBlockedDialogKey }, "Suppressing execution-state edge while CLI input is blocked by a dialog");
+      return;
+    }
     this.instanceState = snapshot.state;
 
     // OpenCode creates its session lazily on the first submitted message.
@@ -3524,6 +3589,7 @@ export class Daemon extends EventEmitter {
     const captureStartedAt = Date.now();
     try {
       const pane = await this.tmux.capturePane();
+      this.updateInputBlockedState(pane);
       // Output received while capture-pane was in flight makes this snapshot
       // stale. Its output handler has already armed a new debounce.
       const outputMovedDuringCapture =
@@ -3765,6 +3831,10 @@ export class Daemon extends EventEmitter {
   }
 
   private handleStuckTransition(pane: string, snapshot: InstanceStateSnapshot, readyPattern: RegExp): void {
+    if (this.inputBlockedDialogKey !== null) {
+      this.logger.debug({ dialog: this.inputBlockedDialogKey }, "Suppressing stuck notification while CLI input is blocked by a dialog");
+      return;
+    }
     const deterministicReadyPattern = new RegExp(readyPattern.source, readyPattern.flags.replace(/[gy]/g, ""));
     const diagnostic = {
       backend: this.backend?.binaryName ?? this.config.backend ?? "unknown",
@@ -4600,7 +4670,34 @@ export class Daemon extends EventEmitter {
 
   /** A dialog counts only when it is the CURRENT interactive region, if the backend can tell; else by pattern. */
   private static dialogMatches(dialog: RuntimeDialog, pane: string): boolean {
+    dialog.pattern.lastIndex = 0;
     return dialog.isActive ? dialog.isActive(pane) : dialog.pattern.test(pane);
+  }
+
+  /** Refresh the separate stdin-blocked observation from one pane capture. */
+  private updateInputBlockedState(pane: string, dialogs = this.backend?.getRuntimeDialogs?.() ?? []): RuntimeDialog | null {
+    const active = dialogs.find(dialog => dialog.inputBlocked && Daemon.dialogMatches(dialog, pane)) ?? null;
+    const nextKey = active ? Daemon.dialogKey(active) : null;
+    if (nextKey !== this.inputBlockedDialogKey) {
+      this.inputBlockedDialogKey = nextKey;
+      this.emit("input_blocked", {
+        name: this.name,
+        blocked: active !== null,
+        description: active?.description,
+      });
+    }
+    if (!active && this.autoResolvedDialogGeneration === this.spawnGeneration) {
+      // The old screen is gone.  A later dangerous command in the same spawn
+      // must get its own one-shot answer.
+      this.autoResolvedDialogKey = null;
+      this.autoResolvedDialogGeneration = 0;
+    }
+    return active;
+  }
+
+  /** Whether a runtime prompt currently owns the pane's stdin. */
+  public isInputBlocked(): boolean {
+    return this.inputBlockedDialogKey !== null;
   }
 
   /**

@@ -175,6 +175,30 @@ export interface RuntimeDialog {
    * ignored.
    */
   holdOnly?: boolean;
+  /**
+   * This dialog owns stdin while it is visible.  Unlike a generic runtime
+   * dialog, the daemon exposes the state separately so the pane monitor can
+   * suppress false stuck/auto-pause decisions while a CLI is waiting for a
+   * human choice.
+   */
+  inputBlocked?: boolean;
+  /**
+   * The daemon may re-read the pane under the write lock after sending these
+   * keys.  This is intentionally opt-in: most dialogs are fire-and-forget,
+   * while safety-critical dialogs must prove that the prompt disappeared
+   * before any follow-up system message is submitted.
+   */
+  verifyAfterKeys?: boolean;
+  /**
+   * Send the notice only after {@link verifyAfterKeys} observes this dialog
+   * gone.  The text is code-owned and must never include command arguments.
+   */
+  postDismissNotice?: { text: string; label: string };
+  /**
+   * A key used only for the daemon's generation fence.  Implementations must
+   * return a stable, non-secret value; never include pane contents or tokens.
+   */
+  autoResolutionKey?: string;
 }
 
 /**

@@ -170,6 +170,82 @@ export function claudeResumeMenuState(pane: string): { active: boolean; defaultC
 const resumeDefaultActive = (pane: string): boolean => { const s = claudeResumeMenuState(pane); return s.active && s.defaultCursor; };
 const resumeMenuActive = (pane: string): boolean => claudeResumeMenuState(pane).active;
 
+/**
+ * Claude Code's destructive shell-command confirmation menu.  Claude renders
+ * the dangerous-operation warning and the question on separate rows; the
+ * question row is the stable identity.  The active-region predicate below
+ * adds the stronger bottom anchor and option/footer checks before any key can
+ * be sent.
+ */
+export const CLAUDE_DANGEROUS_COMMAND_PROMPT = /^[ \t]*Do you want to proceed\?[ \t]*$/im;
+const DANGER_OPTION_ROW = /^[ \t]*([❯›])?[ \t]*([12])\.[ \t]*(Yes|No)\b[^\n]*$/i;
+const DANGER_FOOTER = /Esc(?:ape)?[ \t]+to[ \t]+cancel/i;
+
+export type ClaudeDangerousCommandCursor = "yes" | "no" | "unknown";
+export interface ClaudeDangerousCommandPromptState {
+  active: boolean;
+  cursor: ClaudeDangerousCommandCursor;
+}
+
+/**
+ * Return the current interactive danger menu shape.  The menu must have the
+ * question immediately followed by exactly the canonical two options and be
+ * bottom-anchored: after the two option rows there may only be its footer and
+ * blank rows.  This rejects normal output, the three-option permissions menu,
+ * and transcript/code snippets that happen to contain the same words.
+ * Unknown cursor/order is deliberately a positive detection but is never
+ * auto-answered.
+ */
+export function claudeDangerousCommandPromptState(pane: string): ClaudeDangerousCommandPromptState {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let question = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (/^[ \t]*Do you want to proceed\?[ \t]*$/i.test(rows[i])) {
+      question = i;
+      break;
+    }
+  }
+  if (question < 0) return { active: false, cursor: "unknown" };
+  const optionStart = question + 1;
+  if (optionStart + 1 >= rows.length || !DANGER_OPTION_ROW.test(rows[optionStart]) || !DANGER_OPTION_ROW.test(rows[optionStart + 1])) {
+    return { active: false, cursor: "unknown" };
+  }
+  const first = DANGER_OPTION_ROW.exec(rows[optionStart]);
+  const second = DANGER_OPTION_ROW.exec(rows[optionStart + 1]);
+  if (!first || !second) return { active: false, cursor: "unknown" };
+
+  const trailing = rows.slice(optionStart + 2).filter(row => row.trim().length > 0);
+  const active = trailing.length > 0 && trailing.length <= 2 && trailing.every(row => DANGER_FOOTER.test(row));
+  if (!active) return { active: false, cursor: "unknown" };
+
+  // Only the canonical 1. Yes / 2. No order is safe to navigate.  A missing
+  // or duplicated cursor is an unknown variant and must remain human-held.
+  const canonical = first[2] === "1" && first[3].toLowerCase() === "yes"
+    && second[2] === "2" && second[3].toLowerCase() === "no";
+  if (!canonical) return { active: true, cursor: "unknown" };
+  const firstCursor = first[1] !== undefined;
+  const secondCursor = second[1] !== undefined;
+  if (firstCursor === secondCursor) return { active: true, cursor: "unknown" };
+  return { active: true, cursor: firstCursor ? "yes" : "no" };
+}
+
+const dangerPromptOnYes = (pane: string): boolean => {
+  const state = claudeDangerousCommandPromptState(pane);
+  return state.active && state.cursor === "yes";
+};
+const dangerPromptOnNo = (pane: string): boolean => {
+  const state = claudeDangerousCommandPromptState(pane);
+  return state.active && state.cursor === "no";
+};
+const dangerPromptUnknown = (pane: string): boolean => {
+  const state = claudeDangerousCommandPromptState(pane);
+  return state.active && state.cursor === "unknown";
+};
+
+/** This text is code-owned and intentionally never includes the command. */
+export const CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE =
+  "[system:dangerous-command-blocked]\nThe previous command was classified as dangerous and was automatically denied. Do not retry it. Use a safe form instead (for example `${VAR:?}` validation, a literal path, or skip the destructive operation).";
+
 /** Startup budget for a resuming claude-code launch (fresh starts keep the default). */
 export const CLAUDE_RESUME_STARTUP_BUDGET_MS = 60_000;
 
@@ -472,6 +548,41 @@ export class ClaudeCodeBackend implements CliBackend {
         holdOnly: true,
         blocksDelivery: true,
         description: "Claude session resume prompt (unrecognised variant) — holding for a human, never auto-selecting",
+      },
+      // Claude's shell-command safety menu is the one runtime prompt AgEnD is
+      // allowed to answer automatically. Keep cursor-known entries ahead of
+      // the hold-only guard; unknown shapes are always held for a human.
+      {
+        pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
+        isActive: dangerPromptOnYes,
+        keys: ["Down", "Enter"],
+        description: "Claude dangerous-command prompt — select No",
+        blocksDelivery: true,
+        inputBlocked: true,
+        verifyAfterKeys: true,
+        postDismissNotice: { text: CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE, label: "dangerous-command-blocked" },
+        autoResolutionKey: "claude-dangerous-command-yes",
+      },
+      {
+        pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
+        isActive: dangerPromptOnNo,
+        keys: ["Enter"],
+        description: "Claude dangerous-command prompt — confirm No",
+        blocksDelivery: true,
+        inputBlocked: true,
+        verifyAfterKeys: true,
+        postDismissNotice: { text: CLAUDE_DANGEROUS_COMMAND_BLOCKED_NOTICE, label: "dangerous-command-blocked" },
+        autoResolutionKey: "claude-dangerous-command-no",
+      },
+      {
+        pattern: CLAUDE_DANGEROUS_COMMAND_PROMPT,
+        isActive: dangerPromptUnknown,
+        keys: [],
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        description: "Claude dangerous-command prompt (unknown cursor) — holding for a human, never auto-selecting",
+        autoResolutionKey: "claude-dangerous-command",
       },
     ];
   }
