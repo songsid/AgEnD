@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
@@ -156,18 +156,24 @@ describe("TmuxManager", () => {
       // stops changing is reported as a stall with the byte count, while a slow
       // runner simply takes as long as it needs. Verified by pointing the pane
       // at `head -c 32768`, which reports the stall rather than timing out.
+      // The file is created by the shell INSIDE the pane (`> '${output}'`), and
+      // createWindow resolves when tmux has the window, not when that shell has
+      // run its redirect. Reading it at once threw ENOENT whenever the shell was
+      // a moment late. A file that does not exist yet has received 0 bytes —
+      // which the stall check below still reports if it never appears.
+      const bytesSoFar = () => statSync(output, { throwIfNoEntry: false })?.size ?? 0;
       const settled = await (async () => {
         let last = -1;
         let unchanged = 0;
         for (let i = 0; i < 120; i++) {          // up to ~30s
-          const size = readFileSync(output, "utf8").length;
+          const size = bytesSoFar();
           if (size >= payload.length) return { size, stalled: false };
           unchanged = size === last ? unchanged + 1 : 0;
           if (unchanged >= 20) return { size, stalled: true };   // ~5s of no progress
           last = size;
           await new Promise(r => setTimeout(r, 250));
         }
-        return { size: readFileSync(output, "utf8").length, stalled: false };
+        return { size: bytesSoFar(), stalled: false };
       })();
 
       expect(
