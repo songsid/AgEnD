@@ -14,7 +14,7 @@ export const USAGE_I18N_KEYS = [
   "usage.metric.pay_as_you_go", "usage.metric.bonus_credits", "usage.metric.overage_charges",
   "usage.metric.pay_per_use", "usage.unit.available", "usage.unit.credits",
   "usage.metric.usage_monthly", "usage.note.used_limit_unit", "usage.note.bonus_codes",
-  "usage.value.disabled", "usage.value.cap", "usage.note.binding",
+  "usage.value.disabled", "usage.value.cap", "usage.value.unlimited", "usage.note.binding",
   "usage.note.binding_severity", "usage.note.busiest_model", "usage.note.busiest_models",
   "usage.metric.agy_claude_others", "usage.metric.agy_claude_others_session", "usage.metric.agy_claude_others_weekly",
   "usage.hint.statusline_now", "usage.hint.statusline_minutes", "usage.hint.claude_api_key",

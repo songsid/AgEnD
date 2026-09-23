@@ -62,6 +62,8 @@ export interface ProviderUsage {
   id: string;
   name: string;
   status: "ok" | "error" | "no-credentials";
+  /** A non-metered subscription whose entitlement is unlimited (not 0/100%). */
+  unlimited?: boolean;
   plan?: string | null;
   error?: string;
   errorI18n?: UsageI18nRef;
@@ -1085,8 +1087,9 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
     return {
       status: "ok",
       plan: "Q Developer Pro",
-      hint: "Subscription — no credit usage to report.",
-      hintI18n: i18n("usage.hint.subscription_no_credit"),
+      unlimited: true,
+      hint: "♾️ Unlimited",
+      hintI18n: i18n("usage.value.unlimited"),
       metrics: [],
     };
   }

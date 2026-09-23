@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -61,7 +61,9 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     const r = await fetchKiroUsage();
     expect(r.status).toBe("ok");
     expect(r.plan).toBe("Q Developer Pro");
-    expect(r.hint).toMatch(/subscription/i);
+    expect(r.unlimited).toBe(true);
+    expect(r.hint).toMatch(/unlimited/i);
+    expect(r.hint).not.toMatch(/no credit/i);
     expect(r.metrics).toEqual([]);   // nothing metered → no credit bars
     expect(r.error).toBeUndefined(); // and never a red error
   });
@@ -75,6 +77,21 @@ describe("fetchKiroUsage (no network on these paths)", () => {
     expect(r.status).toBe("ok");
     expect(r.error).toBeUndefined();
     expect(r.hint).toMatch(/token refreshing/i);
+  });
+
+  it("does not mark Builder ID usage as unlimited", async () => {
+    seed({ "kirocli:social:token": { ...SOCIAL, expires_at: future() } });
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      usageBreakdownList: [{ displayName: "Credits", currentUsage: 1, usageLimit: 10 }],
+    }), { status: 200 })) as unknown as typeof fetch;
+    try {
+      const r = await fetchKiroUsage();
+      expect(r.unlimited).not.toBe(true);
+      expect(r.metrics.length).toBeGreaterThan(0);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   it("stays visible, signed out, when kiro-cli is installed with no login", async () => {
