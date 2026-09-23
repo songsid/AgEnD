@@ -44,6 +44,8 @@ export interface CliBackendConfig {
   agentPort?: number;
   /** Per-backend options merged from fleet defaults + instance config (e.g. { provider: "glm" }). */
   backendOptions?: Record<string, unknown>;
+  /** Daemon-owned localhost Muse usage relay, prepared before spawn. */
+  museBaseUrl?: string;
 }
 
 /** Action to take when an error pattern is detected in PTY output. */
