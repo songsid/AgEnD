@@ -149,10 +149,10 @@ describe("FleetManager", () => {
     classic.register("classic-secondary", "discord-secondary", "classic-antigravity", "Classic 2", "owner", "antigravity");
     fm.classicChannels = classic;
 
-    const primaryActivity = vi.fn(() => true);
-    const secondaryActivity = vi.fn(() => true);
-    const emptyActivity = vi.fn(() => true);
-    const unavailableActivity = vi.fn(() => true);
+    const primaryActivity = vi.fn<(text: string) => boolean>(() => true);
+    const secondaryActivity = vi.fn<(text: string) => boolean>(() => true);
+    const emptyActivity = vi.fn<(text: string) => boolean>(() => true);
+    const unavailableActivity = vi.fn<(text: string) => boolean>(() => true);
     fm.adapters.set("discord-primary", {
       id: "discord-primary", type: "discord", setActivity: primaryActivity,
     } as any);
