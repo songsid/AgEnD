@@ -10572,8 +10572,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * A model list is an aid: a vendor that stops answering must degrade to the
    * previous list, never stall the command that asked for it.
    */
-  private async probeBackendBounded(backend: string): Promise<import("./backend/types.js").CliEnv | null> {
-    const work = this.probeBackend(backend);
+  private async probeBackendBounded(
+    backend: string,
+    opts: { refreshVendorCatalog?: boolean } = {},
+  ): Promise<import("./backend/types.js").CliEnv | null> {
+    const work = this.probeBackend(backend, opts);
     work.catch(() => { /* surfaced through the race, or already too late to matter */ });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<null>(resolve => {
@@ -10647,11 +10650,24 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     return option.id === currentModel ? `✓ ${label}` : label;
   }
 
-  /** Probe one backend's CLI env and cache it. Best-effort; never throws. */
-  private async probeBackend(backend: string): Promise<import("./backend/types.js").CliEnv | null> {
+  /**
+   * Probe one backend's CLI env and cache it. Best-effort; never throws.
+   *
+   * `refreshVendorCatalog` is the "🔄 Refresh models" path only (#886): first
+   * ask the CLI to refetch its own catalog, for backends whose probe merely
+   * reads a file the CLI maintains. Every other caller leaves it off, so the
+   * startup and /model probes behave exactly as before. A failed vendor
+   * refresh fails the probe (null), which the menu reports instead of passing
+   * the old list off as fresh.
+   */
+  private async probeBackend(
+    backend: string,
+    opts: { refreshVendorCatalog?: boolean } = {},
+  ): Promise<import("./backend/types.js").CliEnv | null> {
     try {
       const be = createBackend(backend, join(getAgendHome(), "cli-env"));
       if (!be.probeCLIEnv) return null;
+      if (opts.refreshVendorCatalog && be.refreshModelCatalog) await be.refreshModelCatalog();
       const probed = await be.probeCLIEnv({ workingDirectory: "", instanceDir: join(getAgendHome(), "cli-env"), instanceName: `probe-${backend}`, mcpServers: {} });
       const env: import("./backend/types.js").CliEnv = { backend, probedAt: Date.now(), ...probed };
       // An empty result must never overwrite a catalog we already have. Some
@@ -10696,20 +10712,56 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     refresh = false,
     onLiveProbe?: () => void,
   ): Promise<import("./backend/types.js").ModelOption[]> {
+    return (await this.getModelOptionsWithSource(instanceName, { refresh, onLiveProbe })).models;
+  }
+
+  /**
+   * The model list plus where it came from. `source` is "live" only when a probe
+   * actually ran and answered; a refresh that failed or ran out of time reports
+   * "cache" with the previous list, so a menu can say "could not refresh"
+   * instead of presenting an old list as a fresh one.
+   */
+  private async getModelOptionsWithSource(
+    instanceName: string,
+    opts: { refresh?: boolean; refreshVendorCatalog?: boolean; onLiveProbe?: () => void } = {},
+  ): Promise<{ models: import("./backend/types.js").ModelOption[]; source: "live" | "cache" }> {
     const backendName = this.backendNameForInstance(instanceName);
     const cached = this.readCliEnv(backendName);
-    if (!refresh && cached?.models.length && !this.cliEnvNeedsRefresh(cached)) return cached.models;
+    if (!opts.refresh && cached?.models.length && !this.cliEnvNeedsRefresh(cached)) {
+      return { models: cached.models, source: "cache" };
+    }
     // About to go to the vendor: let the caller say so. A silent 1–10s pause on
     // an interactive command reads as another hang, which is the wrong lesson to
     // teach a user who has just been bitten by one.
-    onLiveProbe?.();
+    opts.onLiveProbe?.();
     // Stale, missing, or a forced refresh → probe live (also refreshes the cache).
     // A newly released model is invisible until this runs, which is why staleness
     // triggers it rather than waiting for the 24h hard expiry or a cold start.
-    const env = await this.probeBackendBounded(backendName);
-    if (env?.models.length) return env.models;
+    const env = await this.probeBackendBounded(backendName, { refreshVendorCatalog: opts.refreshVendorCatalog });
+    if (env?.models.length) return { models: env.models, source: "live" };
     // Probe failed or timed out: the previous list is still the best answer.
-    return cached?.models ?? [];
+    return { models: cached?.models ?? [], source: "cache" };
+  }
+
+  /**
+   * The /model menu's choices, in the one order all three pickers share:
+   * 🔄 Refresh first, then models, then (claude) "More models…". Refresh takes
+   * a slot inside Discord's 25-option select cap, so it is paid for from the
+   * model rows, never from "More models…".
+   */
+  private modelMenuChoices(
+    instanceName: string,
+    nonce: string,
+    options: import("./backend/types.js").ModelOption[],
+    currentModel: string,
+  ): { id: string; label: string }[] {
+    const isClaude = this.backendNameForInstance(instanceName) === "claude-code";
+    const choices = [{ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__refresh__`, label: t("model.refresh") }];
+    for (const o of options.slice(0, isClaude ? 23 : 24)) {
+      choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`, label: this.modelChoiceLabel(o, currentModel) });
+    }
+    if (isClaude) choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__more__`, label: t("model.more") });
+    return choices;
   }
 
   /**
@@ -11000,14 +11052,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // Raw id for ✓-matching options; display resolves an inherited CLI default.
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(name);
     const nonce = randomBytes(6).toString("hex");
-    const isClaude = this.backendNameForInstance(name) === "claude-code";
-    const choices = options.slice(0, isClaude ? 24 : 25).map(o => ({
-      id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
-      label: this.modelChoiceLabel(o, currentModel),
-    }));
-    if (isClaude) {
-      choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__more__`, label: t("model.more") });
-    }
+    const choices = this.modelMenuChoices(name, nonce, options, currentModel);
     const timer = setTimeout(() => this.pendingModelSelects.delete(nonce), CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
     timer.unref?.();
     this.pendingModelSelects.set(nonce, { instanceName: name, model: "", userId: data.userId, channelId: data.channelId, timer, respond: data.respond, respondChoices: data.respondChoices });
@@ -11041,15 +11086,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
     const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(instanceName);
     const nonce = randomBytes(6).toString("hex");
-    const isClaude = this.backendNameForInstance(instanceName) === "claude-code";
-    // Keep the more-models entry inside Discord's 25-option select cap.
-    const choices = options.slice(0, isClaude ? 24 : 25).map(o => ({
-      id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:${o.id}`,
-      label: this.modelChoiceLabel(o, currentModel),
-    }));
-    if (isClaude) {
-      choices.push({ id: `${MODEL_SELECT_CALLBACK_PREFIX}${nonce}:__more__`, label: t("model.more") });
-    }
+    const choices = this.modelMenuChoices(instanceName, nonce, options, currentModel);
 
     const respond = async (text: string): Promise<string | undefined> => {
       await adapter.sendText(chatId, text, { threadId });
@@ -11151,6 +11188,74 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
   }
 
+  /**
+   * "🔄 Refresh models" (#886): probe live past both caches and redraw the menu.
+   *
+   * Past AgEnD's cli-env cache (refresh=true) and, where the backend supports
+   * it, past the CLI's own catalog cache too (codex: `codex debug models`).
+   * Without the second half, a codex refresh re-read the same models_cache.json
+   * and showed the old list as new.
+   *
+   * A failed refresh keeps the previous list and says so. It never blanks the
+   * menu, because a picker with no rows cannot even offer another refresh.
+   */
+  private async refreshModelMenu(pending: {
+    instanceName: string; userId: string; channelId: string;
+    respond: (t: string) => Promise<string | undefined>;
+    adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
+    respondChoices?: (text: string, choices: { id: string; label: string }[]) => Promise<string | undefined>;
+  }): Promise<void> {
+    const { models, source } = await this.getModelOptionsWithSource(pending.instanceName, {
+      refresh: true, refreshVendorCatalog: true,
+    });
+    if (models.length === 0) {
+      await pending.respond(t("model.list_unavailable", pending.instanceName)).catch(() => {});
+      return;
+    }
+    const { model: currentModel, display: currentDisplay } = this.resolveInstanceModel(pending.instanceName);
+    const nonce = randomBytes(6).toString("hex");
+    const choices = this.modelMenuChoices(pending.instanceName, nonce, models, currentModel);
+    const status = source === "live" ? t("model.refreshed") : t("model.refresh_failed");
+    const timer = setTimeout(() => {
+      const p = this.pendingModelSelects.get(nonce);
+      if (p) {
+        this.pendingModelSelects.delete(nonce);
+        p.respond(t("model.selection_expired")).catch(() => {});
+      }
+    }, CLASSIC_BACKEND_SELECTION_TIMEOUT_MS);
+    timer.unref?.();
+    this.pendingModelSelects.set(nonce, { ...pending, model: "", timer });
+
+    try {
+      if (pending.respondChoices) {
+        // Discord select menu: edit the same interaction reply in place.
+        await pending.respondChoices(`${status}\n${t("model.menu", `**${currentDisplay}**`)}`, choices);
+        return;
+      }
+      if (pending.adapter && pending.adapterChatId) {
+        // Telegram: retire the consumed keyboard, then post the redrawn menu.
+        if (pending.menuMessageId && pending.adapter.editMessageRemoveButtons) {
+          await pending.adapter.editMessageRemoveButtons(
+            pending.adapterChatId, pending.menuMessageId, t("model.refresh"), pending.adapterThreadId,
+          ).catch(() => {});
+        }
+        const menuMessageId = await pending.adapter.promptUser(
+          pending.adapterChatId, `${status}\n${t("model.menu", currentDisplay)}`, choices,
+          { threadId: pending.adapterThreadId },
+        );
+        const fresh = this.pendingModelSelects.get(nonce);
+        if (fresh) fresh.menuMessageId = menuMessageId;
+        return;
+      }
+      await pending.respond(t("model.usage")).catch(() => {});
+    } catch (err) {
+      this.pendingModelSelects.delete(nonce);
+      clearTimeout(timer);
+      this.logger.warn({ err, instanceName: pending.instanceName }, "Refreshed model menu failed");
+      await pending.respond(t("model.usage")).catch(() => {});
+    }
+  }
+
   /** Consume a `/model` selection callback. Returns true for all model-select ids (incl. stale). */
   private async handleModelSelection(data: AdapterCallbackData): Promise<boolean> {
     if (!data.callbackData.startsWith(MODEL_SELECT_CALLBACK_PREFIX)) return false;
@@ -11170,6 +11275,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // full account catalog (live /v1/models with [1m] variants).
     if (model === "__more__") {
       await this.expandClaudeModelMenu(pending);
+      return true;
+    }
+    // "🔄 Refresh models" is navigation too: re-probe past every cache and
+    // redraw the same menu with what came back.
+    if (model === "__refresh__") {
+      await this.refreshModelMenu(pending);
       return true;
     }
 

@@ -17,6 +17,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
@@ -124,6 +126,10 @@ function atomicWritePrivate(path: string, content: string): void {
 // are only a last-resort menu when the TUI has not populated its cache yet.
 /** The whole of a codex identity, and the only file a profile owns. */
 const CODEX_AUTH_FILE = "auth.json";
+
+/** Upper bound on `codex debug models`; it is one HTTPS round trip plus startup. */
+const CODEX_CATALOG_REFRESH_TIMEOUT_MS = 20_000;
+const execFileAsync = promisify(execFile);
 
 const CODEX_FALLBACK_MODELS: ModelOption[] = [
   { id: "gpt-5.6-sol", label: "GPT-5.6 Sol", description: "frontier agentic coding" },
@@ -939,6 +945,33 @@ export class CodexBackend implements CliBackend {
     } catch { /* missing/stale/unknown cache format — use documented fallback */ }
 
     return CODEX_FALLBACK_MODELS.map(model => ({ ...model }));
+  }
+
+  /**
+   * Make codex refetch its account catalog into models_cache.json.
+   *
+   * listModels() only reads that file; codex writes it. Measured on 0.156.0:
+   * `codex debug models` fetches the catalog when the cache is older than
+   * codex's own TTL (about five minutes — a 4-minute-old cache was served as
+   * is, a 6-minute-old one was refetched) and rewrites the file with a new
+   * `fetched_at`. `--bundled` would skip the fetch, so it is not passed.
+   *
+   * What this does NOT force: a cache codex fetched in the last ~5 minutes is
+   * trusted by codex and returned unchanged. There is no flag to bypass that,
+   * and a list at most five minutes old is not the staleness this exists for.
+   *
+   * Targets the same CODEX_HOME listModels() reads, so the refetch lands in the
+   * file that is read next.
+   */
+  async refreshModelCatalog(): Promise<void> {
+    const home = existsSync(join(this.isolatedCodexHome, "models_cache.json"))
+      ? this.isolatedCodexHome
+      : this.sharedCodexHome;
+    await execFileAsync(this.binaryPath, ["debug", "models"], {
+      env: { ...process.env, CODEX_HOME: home },
+      timeout: CODEX_CATALOG_REFRESH_TIMEOUT_MS,
+      maxBuffer: CODEX_MODELS_CACHE_MAX_BYTES * 2,
+    });
   }
 
   async probeCLIEnv(): Promise<{ version?: string; models: ModelOption[]; currentModel?: string }> {

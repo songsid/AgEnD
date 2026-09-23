@@ -523,6 +523,17 @@ export interface CliBackend {
    * status views read it without re-running the CLI. Must never throw.
    */
   probeCLIEnv?(config: CliBackendConfig): Promise<{ version?: string; authenticated?: boolean; currentModel?: string; models: ModelOption[] }>;
+
+  /**
+   * Ask the CLI to refresh its OWN model catalog before the next probe reads it.
+   *
+   * For a backend whose probe only reads a file the CLI maintains (codex's
+   * models_cache.json), re-reading that file is not a refresh: the list is as
+   * old as the last time the CLI itself fetched it. This makes the CLI fetch.
+   * Called only by an explicit refresh — never by the startup or /model probe —
+   * and it may throw; the caller reports a failed refresh and keeps the old list.
+   */
+  refreshModelCatalog?(): Promise<void>;
 }
 
 /**
