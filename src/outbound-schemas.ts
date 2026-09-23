@@ -20,7 +20,7 @@ export const ReplyArgs = z.object({
   reply_to: z.string().optional()
     .describe("Message ID to thread under. Use message_id from the inbound block."),
   files: z.array(z.string()).optional()
-    .describe("Absolute file paths to attach."),
+    .describe("Absolute file paths to attach. Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that."),
   format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
 });
 
