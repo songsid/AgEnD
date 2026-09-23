@@ -242,7 +242,15 @@ describe("the Notify Discord step, run for real", () => {
     const r = run({ NOTIFY_ON: "failure", STATUS: "success" });
     expect(r.status, r.stderr).toBe(0);
     expect(r.curl, "a green run must not reach Discord").toBeNull();
-    expect(r.stdout).toContain("skipping the success notification");
+    expect(r.stdout).toContain("posting failures only");
+  });
+
+  it("does not post a cancelled run when the workflow asks for failures only", () => {
+    // A run cancelled by a newer push was superseded on purpose — not
+    // something anyone has to act on.
+    const r = run({ NOTIFY_ON: "failure", STATUS: "cancelled" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.curl, "a cancelled run must not reach Discord").toBeNull();
   });
 
   it("still posts the failure when the workflow asks for failures only", () => {
@@ -253,10 +261,12 @@ describe("the Notify Discord step, run for real", () => {
     expect(JSON.parse(r.payload as string).embeds[0].title).toContain("failure");
   });
 
-  it("still posts a success for a workflow that did not opt out", () => {
-    // publish.yml sets no NOTIFY_ON: its release ✅ must keep arriving.
-    const r = run({ STATUS: "success" });
-    expect(r.curl?.at(-1)).toBe(WEBHOOK);
+  it("still posts every outcome for a workflow that did not opt out", () => {
+    // publish.yml sets no NOTIFY_ON: its release ✅ must keep arriving, and so
+    // must a cancelled release.
+    for (const status of ["success", "cancelled", "failure"]) {
+      expect(run({ STATUS: status }).curl?.at(-1), status).toBe(WEBHOOK);
+    }
   });
 
   it("still reports a broken secret on a green run that skips its post", () => {
