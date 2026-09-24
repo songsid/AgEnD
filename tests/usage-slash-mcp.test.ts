@@ -66,7 +66,7 @@ describe("formatUsageSummary", () => {
 describe("formatDiscordUsageActivity", () => {
   it("shows percentages while omitting unavailable provider noise", () => {
     const text = formatDiscordUsageActivity(PAYLOAD);
-    expect(text).toBe("⚡ Claude 12% weekly");
+    expect(text).toBe("⚡ Claude 12%");
     expect(text).not.toContain("Codex");
     expect(text).not.toContain("Grok");
     expect(text).not.toContain("Kiro");
@@ -83,7 +83,7 @@ describe("formatDiscordUsageActivity", () => {
           id: "muse", name: "Muse", status: "ok",
           metrics: [{ label: "Weekly", type: "percent", used: 6, resetsAt: "2026-09-28T00:00:00.000Z" }],
         }],
-      })).toBe("⚡ Muse 6% weekly (resets in 4d 0h)");
+      })).toBe("⚡ Muse 6% (4d0h)");
     } finally {
       vi.useRealTimers();
     }
@@ -96,7 +96,38 @@ describe("formatDiscordUsageActivity", () => {
         { id: "muse", name: "Muse", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 6, resetsAt: "2099-09-28T00:00:00.000Z" }] },
         { id: "codex", name: "Codex", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 12, resetsAt: "2099-09-28T00:00:00.000Z" }] },
       ],
-    })).toBe("⚡ Muse 6% weekly | Codex 12% weekly");
+    })).toBe("⚡ Muse 6% | Codex 12%");
+  });
+
+  it("renders a single backend as `<Backend> <pct>% (<XdYh>)` with no window or reset words", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-09-24T00:00:00.000Z"));
+      const text = formatDiscordUsageActivity({
+        fetchedAt: PAYLOAD.fetchedAt,
+        providers: [{
+          id: "grok", name: "Grok", status: "ok",
+          metrics: [{ label: "Weekly", type: "percent", used: 76, resetsAt: "2026-09-29T00:00:00.000Z" }],
+        }],
+      });
+      expect(text).toBe("⚡ Grok 76% (5d0h)");
+      expect(text).not.toMatch(/weekly|reset|重置/i);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders several backends as `<B> <p>%` joined by ` | ` with no countdowns", () => {
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [
+        { id: "claude", name: "Claude", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 95, resetsAt: "2099-09-28T00:00:00.000Z" }] },
+        { id: "codex", name: "Codex", status: "ok", metrics: [{ label: "Session", type: "percent", used: 65, resetsAt: "2099-09-28T00:00:00.000Z" }] },
+        { id: "grok", name: "Grok", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 76, resetsAt: "2099-09-28T00:00:00.000Z" }] },
+      ],
+    });
+    expect(text).toBe("⚡ Claude 95% | Codex 65% | Grok 76%");
+    expect(text).not.toMatch(/weekly|reset|重置|\(.*d.*h.*\)/i);
   });
 
   it("renders Q Developer Pro as an explicit unlimited entitlement", () => {
@@ -120,7 +151,7 @@ describe("formatDiscordUsageActivity", () => {
         { id: "codex:work", name: "Codex (work)", status: "ok", metrics: [{ label: "Weekly", type: "percent", used: 32 }] },
       ],
     });
-    expect(text).toBe("⚡ Codex (personal) 15% weekly | Codex (work) 32% weekly");
+    expect(text).toBe("⚡ Codex (personal) 15% | Codex (work) 32%");
   });
 
   it("does not expose stale cached percentages as live presence", () => {

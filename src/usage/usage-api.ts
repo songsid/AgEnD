@@ -241,6 +241,23 @@ export function formatUsageSummary(payload: UsagePayload): string {
  * lightning marker and truncate complete code points so a long profile name or
  * many credential profiles cannot make the update fail.
  */
+/**
+ * Compact locale-neutral `XdYh` reset countdown for the activity line. Same
+ * resetsAt countdown as usageResetText, without window names or reset verbs —
+ * the activity line must read identically in every locale.
+ */
+function activityCountdown(resetsAt?: string | null): string {
+  if (!resetsAt) return "";
+  const at = new Date(resetsAt);
+  if (Number.isNaN(at.getTime())) return "";
+  const remainingMs = at.getTime() - Date.now();
+  if (remainingMs <= 0) return "";
+  const totalMinutes = Math.max(1, Math.ceil(remainingMs / 60_000));
+  const days = Math.floor(totalMinutes / 1_440);
+  const hours = Math.floor((totalMinutes % 1_440) / 60);
+  return `${days}d${hours}h`;
+}
+
 export function formatDiscordUsageActivity(payload: UsagePayload): string {
   // The scoped payload contains all providers owned by this adapter, including
   // rows that are currently unavailable. Use logical provider ids (profile
@@ -268,9 +285,11 @@ export function formatDiscordUsageActivity(payload: UsagePayload): string {
     if (!percent) return [];
     const stale = /^cached\s+/i.test(provider.hint ?? "");
     if (stale) return [{ text: `${name}: stale`, stale: true, index }];
-    const window = /weekly/i.test(percent.label) ? " weekly" : "";
-    const reset = singleBackend ? usageResetText(percent.resetsAt) : "";
-    return [{ text: `${name} ${Math.round(percent.used ?? 0)}%${window}${reset ? ` (${reset})` : ""}`, stale: false, index }];
+    // A glance, not a report: `<Backend> <pct>%` plus a compact `(<XdYh>)`
+    // countdown for a single backend, entries joined by ` | ` for several. No
+    // window names, no reset verbs — the /usage output keeps the long form.
+    const countdown = singleBackend ? activityCountdown(percent.resetsAt) : "";
+    return [{ text: `${name} ${Math.round(percent.used ?? 0)}%${countdown ? ` (${countdown})` : ""}`, stale: false, index }];
   });
   rows.sort((a, b) => Number(a.stale) - Number(b.stale) || a.index - b.index);
   if (rows.length === 0) return "⚡ Usage unavailable";
