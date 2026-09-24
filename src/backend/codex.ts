@@ -33,7 +33,7 @@ import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
-import { CODEX_SESSION_ID, codexRolloutForId, codexSessionForPane, codexSessionOwners, hasCodexHistoryForCwd, readCodexRolloutMeta, type CodexSessionRecord } from "./codex-session.js";
+import { CODEX_SESSION_ID, CodexResumeIdentityError, codexRolloutForId, codexSessionForPane, codexSessionOwners, readCodexRolloutMeta, type CodexSessionRecord } from "./codex-session.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
@@ -371,7 +371,10 @@ export function codexResumeClaimCommand(platform: NodeJS.Platform, lockPath: str
   const guarded = platform === "darwin"
     ? `lockf -s -t 0 -k -w ${shellQuote(lockPath)} ${child}`
     : `flock -n -E 75 ${shellQuote(lockPath)} ${child}`;
-  return `( ${guarded}; agend_resume_status=$?; if [ "$agend_resume_status" -eq 75 ]; then printf '%s\\n' '[agend:codex-session-held]'; fi; exit "$agend_resume_status" )`;
+  // Daemon prefixes this command with TERM/AGEND_* assignments. A shell
+  // subshell is not a simple command (`VAR=x ( ... )` is a syntax error), but
+  // `sh -c` is, so the same claim works in the real daemon launch line.
+  return `sh -c ${shellQuote(`${guarded}; agend_resume_status=$?; if [ "$agend_resume_status" -eq 75 ]; then printf '%s\\n' '[agend:codex-session-held]'; fi; exit "$agend_resume_status"`)}`;
 }
 
 /** Explicit, stopped-instance recovery for an old conversation without an AgEnD owner record. */
@@ -538,6 +541,10 @@ export class CodexBackend implements CliBackend {
     // Never select by CWD: two instances can share a worktree and --last may
     // select a session still owned by another app. A sidecar written from the
     // actual pane's open rollout + writer lock is the only automatic identity.
+    // A present but unreadable/unknown-version record is NOT legacy absence.
+    // Do not overwrite it with a fresh session even if a caller requested a
+    // skip-resume recovery; a human must resolve this identity first.
+    if (this.hasInvalidSessionIdentity(config.workingDirectory)) throw new CodexResumeIdentityError();
     this.resumeRecord = config.skipResume ? null : this.validResumeRecord(config.workingDirectory);
     let cmd: string;
     if (!this.resumeRecord) {
@@ -575,10 +582,12 @@ export class CodexBackend implements CliBackend {
 
   /** A fresh launch has no resume identity; it must not be counted as --resume. */
   canResume(workingDirectory: string): boolean { return this.validResumeRecord(workingDirectory) !== null; }
-  hasLegacyHistory(workingDirectory: string): boolean {
-    return hasCodexHistoryForCwd(this.sharedCodexHome, workingDirectory);
+  hasSessionIdentity(): boolean {
+    return existsSync(join(this.instanceDir, "codex-session.json")) || existsSync(join(this.instanceDir, "session-id"));
   }
-
+  hasInvalidSessionIdentity(workingDirectory: string): boolean {
+    return this.hasSessionIdentity() && !this.validResumeRecord(workingDirectory);
+  }
   /** Positive owner evidence, not merely a stale lock-file name on disk. */
   resumeOwner(workingDirectory: string): number | null {
     const record = this.validResumeRecord(workingDirectory);

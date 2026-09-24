@@ -379,10 +379,12 @@ export interface CliBackend {
   setActivePanePid?(pid: number | null): void;
   /** Whether this launch has an explicitly owned conversation to resume. */
   canResume?(workingDirectory: string): boolean;
+  /** An owned marker exists, even when its current rollout cannot be verified. */
+  hasSessionIdentity?(): boolean;
+  /** Existing identity must hold rather than be treated as first-run history. */
+  hasInvalidSessionIdentity?(workingDirectory: string): boolean;
   /** Live foreign owner PID for an explicitly owned conversation, if any. */
   resumeOwner?(workingDirectory: string): number | null;
-  /** One-time upgrade warning, never permission to infer a resume target. */
-  hasLegacyHistory?(workingDirectory: string): boolean;
 
   /** Regex to detect when the CLI is ready to accept input. */
   getReadyPattern(): RegExp;

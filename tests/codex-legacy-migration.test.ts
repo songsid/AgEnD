@@ -31,7 +31,7 @@ function legacyFleet() {
   const fleet = new FleetManager(dir);
   fleet.fleetConfig = { defaults: { backend: "codex" }, instances: { legacy: { working_directory: cwd, backend: "codex" } } } as any;
   vi.spyOn(Daemon.prototype, "start").mockResolvedValue(undefined);
-  const notify = vi.spyOn(fleet, "notifyInstanceTopic").mockReturnValue(true);
+  const notify = vi.spyOn(fleet, "notifyInstanceTopicConfirmed").mockResolvedValue(true);
   const config = {
     working_directory: cwd, backend: "codex",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
@@ -41,6 +41,21 @@ function legacyFleet() {
 }
 
 describe("safety-first Codex upgrade", () => {
+  it("does not count a dispatched but rejected platform send as a migration notice", async () => {
+    const f = legacyFleet();
+    const sendText = vi.fn().mockRejectedValueOnce(new Error("platform refused"))
+      .mockResolvedValueOnce(undefined);
+    vi.spyOn(f.fleet as any, "getAdapterForInstance").mockReturnValue({ sendText });
+    vi.spyOn(f.fleet as any, "getInstanceAdapterId").mockReturnValue("discord");
+    vi.spyOn(f.fleet as any, "getChannelConfig").mockReturnValue({ group_id: "guild" });
+    f.fleet.fleetConfig!.instances.legacy.topic_id = "topic";
+    f.notify.mockRestore();
+    expect(await f.fleet.notifyInstanceTopicConfirmed("legacy", "notice")).toBe(false);
+    expect(await f.fleet.notifyInstanceTopicConfirmed("legacy", "notice")).toBe(true);
+    expect(sendText).toHaveBeenCalledTimes(2);
+    expect(sendText).toHaveBeenCalledWith("guild", "notice", { threadId: "topic" });
+  });
+
   it("lets a verified live pane override an old crash-loop skip, but never guesses an ID", () => {
     const f = legacyFleet();
     const id = "01a0d2a2-325b-7d61-be56-f23c0470c199";
@@ -80,22 +95,29 @@ describe("safety-first Codex upgrade", () => {
 
   it("does not mark an undelivered upgrade notice as delivered", async () => {
     const f = legacyFleet();
-    f.notify.mockReturnValueOnce(false).mockReturnValueOnce(true);
+    f.notify.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     await f.fleet.lifecycle.start("legacy", f.config, true);
+    expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(true);
     expect(existsSync(join(f.instance, "codex-migration-notified"))).toBe(false);
     f.fleet.lifecycle.daemons.delete("legacy");
     await f.fleet.lifecycle.start("legacy", f.config, true);
     expect(f.notify).toHaveBeenCalledTimes(2);
     expect(existsSync(join(f.instance, "codex-migration-notified"))).toBe(true);
+    expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(false);
   });
 
-  it("warns when an old session-id cannot be verified even if its rollout moved", async () => {
+  it("holds an existing but unverifiable identity; never treats it as migration", async () => {
     const f = legacyFleet();
     rmSync(f.rollout);
     writeFileSync(join(f.instance, "session-id"), "old-unverified-id");
+    const held = vi.spyOn(f.fleet, "notifyInstanceTopic").mockReturnValue(true);
     await f.fleet.lifecycle.start("legacy", f.config, true);
-    expect(f.notify).toHaveBeenCalledOnce();
-    expect(existsSync(join(f.instance, "codex-migration-notified"))).toBe(true);
+    expect(held).toHaveBeenCalledOnce();
+    expect(held.mock.calls[0][1]).toContain("identity could not be verified");
+    expect(f.notify).not.toHaveBeenCalled();
+    expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(false);
+    expect(existsSync(join(f.instance, "session-id"))).toBe(true);
+    expect(f.fleet.lifecycle.daemons.has("legacy")).toBe(false);
   });
 
   it("does not mistake a newly created ID for proof that the old pane was resumed", async () => {
@@ -109,6 +131,39 @@ describe("safety-first Codex upgrade", () => {
     });
     await f.fleet.lifecycle.start("legacy", f.config, true);
     expect(f.notify).toHaveBeenCalledOnce();
+  });
+
+  it("retains a pending notice even after a fresh session acquired a valid ID", async () => {
+    const f = legacyFleet();
+    const id = "01a0d2a2-325b-7d61-be56-f23c0470c199";
+    f.notify.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    vi.spyOn(Daemon.prototype, "start").mockImplementation(async function () {
+      writeFileSync(join(f.instance, "session-id"), id);
+      writeFileSync(join(f.instance, "codex-session.json"), JSON.stringify({
+        id, owner: "legacy", cwd: f.cwd, rolloutPath: f.rollout,
+      }));
+    });
+    await f.fleet.lifecycle.start("legacy", f.config, true);
+    expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(true);
+    f.fleet.lifecycle.daemons.delete("legacy");
+    await f.fleet.lifecycle.start("legacy", f.config, true);
+    expect(f.notify).toHaveBeenCalledTimes(2);
+    expect(existsSync(join(f.instance, "codex-migration-notified"))).toBe(true);
+    expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(false);
+  });
+
+  it("retries a rejected upgrade notice while the new instance stays running", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = legacyFleet();
+      f.notify.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      await f.fleet.lifecycle.start("legacy", f.config, true);
+      expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(true);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(f.notify).toHaveBeenCalledTimes(2);
+      expect(existsSync(join(f.instance, "codex-migration-notified"))).toBe(true);
+      expect(existsSync(join(f.instance, "codex-migration-pending"))).toBe(false);
+    } finally { vi.useRealTimers(); }
   });
 
   it("continues silently only when the live old pane supplied a verified ID", async () => {

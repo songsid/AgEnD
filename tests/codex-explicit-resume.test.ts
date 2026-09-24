@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, closeSync, copyFileSync, existsSync, mkdtempSync, mkdirSync, openSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CodexBackend, attachCodexSession, codexResumeClaimCommand, codexResumeDirectoryPromptState, codexResumeDirectoryVisible, codexResumeLockActive, codexResumeLockVisible } from "../src/backend/codex.js";
 import { codexSessionForPane, codexSessionOwners, type CodexSessionRecord } from "../src/backend/codex-session.js";
+import { Daemon } from "../src/daemon.js";
+import { TmuxManager } from "../src/tmux-manager.js";
+import { InstanceLifecycle } from "../src/instance-lifecycle.js";
 
 const SESSION = "01a0d2a2-325b-7d61-be56-f23c0470c199";
 const dirs: string[] = [];
@@ -81,6 +84,83 @@ describe("Codex explicit session identity", () => {
     }
   });
 
+  it.skipIf(process.platform !== "linux")("accepts the daemon environment prefix as a real shell command", () => {
+    const f = fixture();
+    const launch = codexResumeClaimCommand("linux", join(f.dir, "claim.lock"), "printf AGEND_READY");
+    const prefixed = `TERM=xterm-256color AGEND_INSTANCE_NAME='instance-a' AGEND_HOME='${f.dir}' ${launch}`;
+    const result = spawnSync("sh", ["-c", prefixed], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("AGEND_READY");
+    expect(result.stderr).not.toContain("syntax error");
+  });
+
+  it.skipIf(process.platform !== "linux" || spawnSync("tmux", ["-V"]).status !== 0)(
+    "starts an explicit resume through the daemon command builder and a real tmux pane", async () => {
+      const f = fixture(); persist(f);
+      const socketName = `agend913-${process.pid}-${Date.now()}`;
+      const session = `agend913-${process.pid}`;
+      const fakeCodex = join(f.dir, "fake-codex");
+      writeFileSync(fakeCodex, "#!/bin/sh\nprintf 'AGEND_READY\\n'\nsleep 5\n", { mode: 0o755 });
+      (f.backend as any).binaryPath = fakeCodex;
+      vi.spyOn(f.backend, "getReadyPattern").mockReturnValue(/AGEND_READY/);
+      const logger = { child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } as any;
+      const control = { registerWindow: async () => {}, waitForOutput: async () => {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return false;
+      } } as any;
+      const daemon = new Daemon("instance-a", {
+        working_directory: f.cwd, backend: "codex", log_level: "silent",
+        restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+        context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      } as any, f.instance, false, f.backend, control, logger);
+      TmuxManager.setSocketName(socketName);
+      (daemon as any).tmuxSessionName = session;
+      (daemon as any).tmux = new TmuxManager(session, "");
+      try {
+        expect(await (daemon as any).trySpawnInsideGate(false, 2_000)).toBe(true);
+        const pane = await (daemon as any).tmux.capturePane();
+        expect(pane).toContain("AGEND_READY");
+        expect(pane).not.toContain("syntax error");
+      } finally {
+        await TmuxManager.killSession(session).catch(() => {});
+        TmuxManager.setSocketName(null);
+      }
+    },
+  );
+
+  it("checkpoints the replacement pane after a wake and resumes its new UUID", async () => {
+    const f = fixture(); persist(f);
+    const nextId = "01a0d2a2-325b-7d61-be56-f23c0470c200";
+    const nextRollout = join(f.shared, "sessions", "2026", "09", "24", `rollout-${nextId}.jsonl`);
+    writeFileSync(nextRollout, JSON.stringify({ type: "session_meta", payload: { id: nextId, cwd: f.cwd } }) + "\n");
+    const lock = join(f.shared, "thread-writer-locks", `${nextId}.lock`);
+    mkdirSync(join(f.shared, "thread-writer-locks"), { recursive: true });
+    writeFileSync(lock, "");
+    processFixture(f.proc, 4422, 888, [lock, nextRollout]);
+    f.backend.setActivePanePid(777); // the pane that was paused is gone
+    const logger = { child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } as any;
+    const daemon = new Daemon("instance-a", {
+      working_directory: f.cwd, backend: "codex", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, f.instance, false, f.backend, undefined, logger);
+    (daemon as any).tmux = { getWindowId: () => "@wake" };
+    vi.spyOn(daemon as any, "trySpawnInsideGate").mockResolvedValue(true);
+    vi.spyOn(daemon as any, "resumeRuntimeMonitors").mockImplementation(() => {});
+    (daemon as any).pauseWakeState = "paused";
+    (daemon as any).autoPauseController.markPaused();
+    const panePid = vi.spyOn(TmuxManager, "getPanePid").mockResolvedValue(888);
+    try {
+      await daemon.wake(1_000);
+      expect(daemon.isPaused).toBe(false);
+      expect(panePid).toHaveBeenCalled();
+      expect(readFileSync(join(f.instance, "session-id"), "utf8")).toBe(nextId);
+      expect(f.backend.buildCommand(config(f))).toContain("codex resume");
+      expect(f.backend.buildCommand(config(f))).toContain(nextId);
+      expect(f.backend.buildCommand(config(f))).not.toContain(SESSION);
+    } finally { panePid.mockRestore(); }
+  });
+
   it.skipIf(process.platform !== "linux")("atomically refuses a second concurrent resumer", async () => {
     const f = fixture();
     const lock = join(f.dir, "claim.lock");
@@ -97,6 +177,45 @@ describe("Codex explicit session identity", () => {
     }
   });
 
+  it.skipIf(process.platform !== "darwin")("smoke-tests macOS lockf contention and ps/lsof live-owner release", async () => {
+    const f = fixture();
+    const claim = join(f.dir, "claim.lock");
+    const ready = join(f.dir, "ready");
+    const holder = spawn("sh", ["-c", codexResumeClaimCommand("darwin", claim,
+      `touch '${ready}'; sleep 2`)], { stdio: "ignore" });
+    try {
+      for (let n = 0; n < 50 && !existsSync(ready); n++) await new Promise(r => setTimeout(r, 20));
+      expect(existsSync(ready)).toBe(true);
+      expect(spawnSync("sh", ["-c", codexResumeClaimCommand("darwin", claim, "true")]).status).toBe(75);
+    } finally {
+      if (holder.exitCode === null) await new Promise<void>(resolve => holder.once("exit", () => resolve()));
+    }
+    expect(spawnSync("sh", ["-c", codexResumeClaimCommand("darwin", claim, "true")]).status).toBe(0);
+
+    const fakeCodex = join(f.dir, "codex");
+    const writerLock = join(f.dir, `${SESSION}.lock`);
+    writeFileSync(writerLock, "");
+    copyFileSync("/bin/sleep", fakeCodex); chmodSync(fakeCodex, 0o755);
+    const rolloutFd = openSync(f.rollout, "r");
+    const lockFd = openSync(writerLock, "r");
+    const owner = spawn(fakeCodex, ["2"], { stdio: ["ignore", "ignore", "ignore", rolloutFd, lockFd] });
+    closeSync(rolloutFd); closeSync(lockFd);
+    try {
+      let seen = false;
+      for (let n = 0; n < 30 && !seen; n++) {
+        seen = codexSessionOwners(SESSION).includes(owner.pid!);
+        if (!seen) await new Promise(r => setTimeout(r, 30));
+      }
+      expect(seen).toBe(true);
+    } finally {
+      if (owner.exitCode === null) {
+        owner.kill();
+        await new Promise<void>(resolve => owner.once("exit", () => resolve()));
+      }
+    }
+    expect(codexSessionOwners(SESSION)).not.toContain(owner.pid);
+  });
+
   it("rejects a copied owner record or a rollout whose metadata was changed", () => {
     const f = fixture(); persist(f);
     writeFileSync(join(f.instance, "codex-session.json"), JSON.stringify({ ...f.record, owner: "instance-b" }));
@@ -104,6 +223,28 @@ describe("Codex explicit session identity", () => {
     persist(f);
     writeFileSync(f.rollout, JSON.stringify({ type: "session_meta", payload: { id: SESSION, cwd: "/other/project" } }) + "\n");
     expect(f.backend.canResume(f.cwd)).toBe(false);
+  });
+
+  it("holds an owned UUID when the rollout format becomes unknown, without overwriting identity", async () => {
+    const f = fixture(); persist(f);
+    const original = readFileSync(join(f.instance, "codex-session.json"), "utf8");
+    writeFileSync(f.rollout, JSON.stringify({ type: "session_meta_vNext", payload: { id: SESSION, cwd: f.cwd } }) + "\n");
+    expect(f.backend.hasSessionIdentity()).toBe(true);
+    expect(f.backend.hasInvalidSessionIdentity(f.cwd)).toBe(true);
+    expect(f.backend.canResume(f.cwd)).toBe(false);
+    expect(() => f.backend.buildCommand(config(f))).toThrow("identity could not be verified");
+    expect(() => f.backend.buildCommand({ ...config(f), skipResume: true })).toThrow("identity could not be verified");
+    writeFileSync(join(f.instance, "window-id"), "@old");
+    const logger = { child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }), warn: vi.fn() } as any;
+    const daemon = new Daemon("instance-a", {
+      working_directory: f.cwd, backend: "codex", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, f.instance, false, f.backend, undefined, logger);
+    await expect(InstanceLifecycle.startOrDispose(daemon, "instance-a", logger)).rejects.toThrow("identity could not be verified");
+    expect(readFileSync(join(f.instance, "window-id"), "utf8")).toBe("@old");
+    expect(readFileSync(join(f.instance, "codex-session.json"), "utf8")).toBe(original);
+    expect(readFileSync(join(f.instance, "session-id"), "utf8")).toBe(SESSION);
   });
 
   it("discovers the actual pane's lock+rollout, not the latest session by CWD", () => {

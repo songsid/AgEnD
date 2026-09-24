@@ -14,9 +14,16 @@ export class CodexResumeConflictError extends Error {
 }
 
 export class CodexResumeUnavailableError extends Error {
-  constructor() {
-    super("Codex could not resume the verified session. It was preserved; automatic restart is paused. Check the pane and restart this instance after resolving the cause.");
+  constructor(message = "Codex could not resume the verified session. It was preserved; automatic restart is paused. Check the pane and restart this instance after resolving the cause.") {
+    super(message);
     this.name = "CodexResumeUnavailableError";
+  }
+}
+
+export class CodexResumeIdentityError extends CodexResumeUnavailableError {
+  constructor() {
+    super("Stored Codex session identity could not be verified. Its record and rollout were preserved; no new session was started. Inspect the session ID and rollout before a manual restart.");
+    this.name = "CodexResumeIdentityError";
   }
 }
 
@@ -109,14 +116,6 @@ export function codexRolloutForId(home: string, id: string): { id: string; cwd: 
     if (meta?.id === id) return { ...meta, rolloutPath: realpathSync(path) };
   }
   return null;
-}
-
-/** A one-time upgrade notice is warranted only if this CWD had real history. */
-export function hasCodexHistoryForCwd(home: string, cwd: string): boolean {
-  for (const path of rolloutFiles(join(home, "sessions"))) {
-    if (readCodexRolloutMeta(path)?.cwd === cwd) return true;
-  }
-  return false;
 }
 
 /** A pane's process group gives exact session identity even if two TUIs share a CWD. */

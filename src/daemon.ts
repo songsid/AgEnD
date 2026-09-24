@@ -42,7 +42,7 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
-import { CodexResumeConflictError, CodexResumeUnavailableError } from "./backend/codex-session.js";
+import { CodexResumeConflictError, CodexResumeIdentityError, CodexResumeUnavailableError } from "./backend/codex-session.js";
 import { codexResumeLockVisible } from "./backend/codex.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1352,6 +1352,11 @@ export class Daemon extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    // Do this before touching daemon.pid or a pre-existing window. An unknown
+    // rollout format with an owned marker must not become a fresh session.
+    if (this.backend?.hasInvalidSessionIdentity?.(this.config.working_directory)) {
+      throw new CodexResumeIdentityError();
+    }
     mkdirSync(this.instanceDir, { recursive: true });
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -2142,7 +2147,8 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
-          if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (this.backend?.binaryName !== "codex" && lastOutput
+            && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
             if (!this.backgroundSessionRecoveryAttempted) {
               this.backgroundSessionRecoveryAttempted = true;
               this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
@@ -2180,6 +2186,14 @@ export class Daemon extends EventEmitter {
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
           if (this.paneSaysNoConversation(lastOutput)) {
+            if (this.backend?.binaryName === "codex" && this.backend.hasSessionIdentity?.()) {
+              // Codex may have changed its rollout format or emitted an error
+              // that only resembles this generic pattern. A persisted UUID is
+              // never discarded by a text heuristic; preserve and hold.
+              this.healthCheckPaused = true;
+              this.emitSupervisionEnded("Codex could not resume its owned session", "Inspect the preserved session ID/rollout and restart this instance manually.");
+              return;
+            }
             this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
@@ -6569,10 +6583,6 @@ export class Daemon extends EventEmitter {
 
     this.lastSpawnAt = Date.now();
     this.skipResume = false; // CLI started successfully — reset for next spawn
-    if (this.backend.binaryName === "codex") {
-      this.backend.setActivePanePid?.(await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux!.getWindowId()));
-      this.saveSessionId();
-    }
     this.backgroundSessionRecoveryAttempted = false;
     } finally {
       this.endSpawn();
@@ -6678,7 +6688,9 @@ export class Daemon extends EventEmitter {
     }
     try { await this.ipcServer?.close(); } catch (err) { this.logger.debug({ err }, "IPC server close failed during startup abort"); }
     this.ipcServer = null;
-    for (const file of ["daemon.pid", "window-id"]) {
+    // A rejection before tmux setup did not create a replacement window; its
+    // pre-existing window-id still belongs to the old pane and must survive.
+    for (const file of this.tmux ? ["daemon.pid", "window-id"] : ["daemon.pid"]) {
       try { unlinkSync(join(this.instanceDir, file)); } catch { /* absent */ }
     }
   }
@@ -6702,12 +6714,21 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
-    return this.spawnGate.run({
-      instanceName: this.name,
-      workingDirectory: this.config.working_directory,
-      reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
-    }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    const ready = !this.spawnGate
+      ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs)
+      : await this.spawnGate.run({
+        instanceName: this.name,
+        workingDirectory: this.config.working_directory,
+        reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
+      }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    // All successful launches, including wake's trySpawn(true), cross this
+    // point. The previous checkpoint in spawnClaudeWindow missed wake and
+    // kept reading the dead pane PID after a resumed session changed.
+    if (ready && !this.fatalStartupBlocked && this.backend?.binaryName === "codex" && this.tmux) {
+      this.backend.setActivePanePid?.(await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux.getWindowId()));
+      this.saveSessionId();
+    }
+    return ready;
   }
 
   /**
