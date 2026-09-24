@@ -130,4 +130,141 @@ describe("pane write exclusion", () => {
       rmSync(instanceDir, { recursive: true, force: true });
     }
   }, 20_000);
+
+  it("backs out and retries a delivery when a spawn starts after its settle wait", async () => {
+    // Exit 1: a delivery that passed waitForSpawnToSettle queues behind the
+    // pane lock; a spawn (e.g. a concurrent wake) completes while it waits.
+    // Pasting on would write into the replacement process's first screen, so
+    // the delivery must detect the generation change inside the lock, exit
+    // without waiting (startup dismissal needs the lock), and redo itself
+    // from the top — exactly once, with no duplicate paste.
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-race-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon("spawn-race", CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    const lock = internals.paneWriteLock;
+    const origRun = lock.run.bind(lock);
+    let lockRuns = 0;
+    lock.run = async (fn: any) => { lockRuns++; return origRun(fn); };
+    const origSettle = internals.waitForSpawnToSettle.bind(internals);
+    let settles = 0;
+    // Preserve the real boolean: a post-increment counter alone would return 0
+    // (falsy) on the first call and fake an unsettled wait.
+    internals.waitForSpawnToSettle = async () => { const r = await origSettle(); settles++; return r; };
+    try {
+      // Hold the lock so the delivery queues behind it.
+      let release!: () => void;
+      const holder = lock.run(async () => { await new Promise<void>(r => { release = r; }); });
+      await Promise.resolve();
+      const delivered = internals.deliverMessage("hello race");
+      await vi.waitFor(() => expect(settles).toBe(1), { timeout: 5_000 });
+      // A concurrent spawn completes while the delivery is queued.
+      internals.beginSpawn();
+      internals.endSpawn();
+      release();
+      await expect(delivered).resolves.toBe(true);
+      await holder;
+      // Re-settled and redone from the top: fresh window id, fresh probes.
+      expect(settles).toBe(2);
+      expect(lockRuns).toBeGreaterThanOrEqual(2);
+      // And still exactly one paste — the retry redoes, never duplicates.
+      expect(pastes).toEqual(["hello race"]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  function makeSpawnCapDaemon(name: string) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-spawncap-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon(name, CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    return { internals, instanceDir, pastes };
+  }
+
+  it("never pastes while a spawn runs past the settle cap in one generation", async () => {
+    // Round-4 exit: the spawn neither finishes nor bumps the generation again,
+    // so every settle wait times out with spawning still true. Each round must
+    // back out and the delivery must end in honest failure — zero pastes, even
+    // though the generation never changes (the churn test above cannot see this).
+    const { internals, instanceDir, pastes } = makeSpawnCapDaemon("spawn-stuck");
+    try {
+      internals.beginSpawn();
+      const realSettle = internals.waitForSpawnToSettle.bind(internals);
+      internals.waitForSpawnToSettle = () => realSettle(150);
+      await expect(internals.deliverMessage("hello stuck")).resolves.toBe(false);
+      expect(pastes).toEqual([]);
+    } finally {
+      internals.endSpawn();
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("still backs out when the spawn completes right after the settle cap", async () => {
+    // The settle wait timed out, but the spawn finished before the pane write:
+    // spawning is false and the generation matches, yet nothing ever observed
+    // the completed spawn — so the current generation is still not settled
+    // evidence and the delivery must redo itself, not paste on stale verdicts.
+    const { internals, instanceDir, pastes } = makeSpawnCapDaemon("spawn-late-finish");
+    let calls = 0;
+    try {
+      internals.waitForSpawnToSettle = async () => { calls++; return false; };
+      await expect(internals.deliverMessage("hello late")).resolves.toBe(false);
+      expect(calls).toBeGreaterThanOrEqual(2);
+      expect(pastes).toEqual([]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("fails loudly instead of retrying forever when spawns keep churning", async () => {
+    // The spawn-race retry must terminate: every lock acquisition sees a new
+    // generation, so after the bounded rounds the delivery reports failure
+    // with nothing ever pasted — not a hang, not a write into churn.
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-churn-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon("spawn-churn", CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    const lock = internals.paneWriteLock;
+    const origRun = lock.run.bind(lock);
+    lock.run = async (fn: any) => {
+      internals.beginSpawn();
+      internals.endSpawn();
+      return origRun(fn);
+    };
+    try {
+      await expect(internals.deliverMessage("hello churn")).resolves.toBe(false);
+      expect(pastes).toEqual([]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

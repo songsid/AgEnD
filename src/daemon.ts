@@ -517,6 +517,16 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
+/** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
+const DELIVERY_SPAWN_RACE_MAX_ROUNDS = 3;
+/**
+ * After relay exhaustion, how long to wait for an authoritatively idle pane
+ * before giving up the immediate resume-direct (the fallback flag and the
+ * notification already cover the next natural restart). Muse turns can run
+ * for many minutes; polling keeps each check a fresh capture.
+ */
+const MUSE_DIRECT_RESUME_IDLE_BUDGET_MS = 10 * 60_000;
+const MUSE_DIRECT_RESUME_IDLE_POLL_MS = 5_000;
 
 /**
  * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
@@ -4410,7 +4420,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(
     formatted: string,
     status?: { chatId: string; messageId: string },
-    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict },
+    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict; spawnRetry?: number },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
     // that ignores the outcome gets a throwaway.
@@ -4435,7 +4445,14 @@ export class Daemon extends EventEmitter {
     }
 
     // Before anything reads the window id: a spawn in progress is about to change it.
-    await this.waitForSpawnToSettle();
+    // A false return means the cap expired with a spawn STILL running — the
+    // generation captured below is in-progress evidence, not settled evidence,
+    // so the critical section must still back out (see settledClean).
+    const settledClean = await this.waitForSpawnToSettle();
+    // Everything captured below (window id, readiness verdicts) belongs to
+    // this spawn generation. A spawn that starts afterwards is detected inside
+    // the critical section, where this delivery backs out and redoes itself.
+    const settleGeneration = this.spawnGeneration;
     if (cancelled()) return false;
     if (this.refuseFatalStartupDelivery(verdict, status)) return false;
 
@@ -4525,8 +4542,16 @@ export class Daemon extends EventEmitter {
     // what makes progress. The one under-lock wait below is explicitly passive:
     // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
-      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog"> => {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started"> => {
         if (cancelled()) return false;
+        // A spawn that started after the settle wait above invalidates the
+        // window id and every readiness verdict since: the pane about to be
+        // written may already belong to a replacement process. The same holds
+        // when the settle wait itself timed out (!settledClean) or a spawn is
+        // running right now — none of those is settled evidence. Never wait
+        // here (startup dismissal needs this lock) — back out and redo the
+        // delivery from the top, where the settle wait runs again outside it.
+        if (!settledClean || settleGeneration !== this.spawnGeneration || this.spawning) return "spawn-started";
         if (this.refuseFatalStartupDelivery(verdict, status)) return false;
         // A passive startup phase may paint after the outer readiness probe.
         // It clears without input, so waiting under the pane lock cannot starve
@@ -4545,6 +4570,18 @@ export class Daemon extends EventEmitter {
         if (!(await this.hasPositiveDeliveryInput())) return "dialog";
         return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId, verdict);
       });
+      if (outcome === "spawn-started") {
+        // The pane changed under this delivery: its queued paste must not land
+        // in the replacement process's first screen. Redo the whole delivery
+        // (fresh window id, fresh probes) — bounded, so spawn churn ends in an
+        // honest failure rather than a message that never lands.
+        const retries = (opts?.spawnRetry ?? 0) + 1;
+        if (retries > DELIVERY_SPAWN_RACE_MAX_ROUNDS) {
+          this.logger.error({ rounds: retries }, "A spawn kept starting before the pane write — reporting delivery failure");
+          return this.failDelivery(verdict, status);
+        }
+        return this.deliverMessage(formatted, status, { ...opts, spawnRetry: retries });
+      }
       if (outcome !== "dialog") return outcome;
       // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
       // then try the write again — bounded, so a dialog nobody answers ends in
@@ -6325,22 +6362,29 @@ export class Daemon extends EventEmitter {
    * Bounded, and called BEFORE the pane lock is taken — waiting on the spawn while
    * holding the lock the spawn itself needs would deadlock.
    */
-  private async waitForSpawnToSettle(): Promise<void> {
+  /**
+   * Wait for an in-flight spawn to finish, up to the cap. Returns true when no
+   * spawn is in flight afterwards; false when the cap expired with one still
+   * running. A false return is NOT settled evidence — the caller must not
+   * treat the current generation as a completed spawn.
+   */
+  private async waitForSpawnToSettle(capMs = SPAWN_SETTLE_MAX_WAIT_MS): Promise<boolean> {
     const settled = this.spawnSettled;
-    if (!settled) return;
+    if (!settled) return true;
     this.logger.debug("Holding delivery until the CLI has finished starting up");
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const cap = new Promise<void>(resolve => {
-      timer = setTimeout(resolve, SPAWN_SETTLE_MAX_WAIT_MS);
+    const cap = new Promise<false>(resolve => {
+      timer = setTimeout(() => resolve(false), capMs);
       timer.unref?.();
     });
     try {
-      await Promise.race([settled, cap]);
+      const finished = await Promise.race([settled.then(() => true as const), cap]);
+      if (!finished) {
+        this.logger.warn("CLI still starting after the delivery hold — the pane is not settled evidence");
+      }
+      return finished;
     } finally {
       if (timer) clearTimeout(timer);
-    }
-    if (this.spawning) {
-      this.logger.warn("CLI still starting after the delivery hold — delivering anyway");
     }
   }
 
@@ -6631,19 +6675,63 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * One fresh pane capture judged as ready && !busy && !dialog. Transcript
+   * silence is deliberately NOT the gate: its monitor is inert for muse, so a
+   * quiet-but-working pane would read as idle and the respawn below would kill
+   * a live turn. Fail closed: an unreadable pane is never idle.
+   */
+  private async isPaneAuthoritativelyIdle(): Promise<boolean> {
+    const backend = this.backend;
+    if (!this.tmux || !backend) return false;
+    let pane: string;
+    try {
+      pane = await this.tmux.capturePane();
+    } catch {
+      return false;
+    }
+    if (backend.getBusyPattern?.()?.test(pane)) return false;
+    for (const dialog of this.deliveryBlockingDialogs()) {
+      if (Daemon.dialogMatches(dialog, pane)) return false;
+    }
+    if (!backend.getReadyPattern().test(pane)) return false;
+    return true;
+  }
+
+  /**
+   * Poll the authoritative pane check until it reports idle or the budget runs
+   * out. Each poll is a fresh capture, so a turn that ends mid-wait is seen.
+   */
+  private async waitForAuthoritativePaneIdle(
+    budgetMs = MUSE_DIRECT_RESUME_IDLE_BUDGET_MS,
+    pollMs = MUSE_DIRECT_RESUME_IDLE_POLL_MS,
+  ): Promise<boolean> {
+    const deadline = Date.now() + budgetMs;
+    for (;;) {
+      if (await this.isPaneAuthoritativelyIdle()) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+  }
+
+  /**
    * A relay crash must not make the daemon kill a live Muse process. The
    * supervisor normally reclaims the same port; when that bounded recovery
-   * fails, mark usage unavailable and leave Muse untouched. A later natural
-   * spawn sees museRelayFallback and starts direct, without interrupting the
-   * current conversation or destroying its session.
+   * fails, move Muse back to a direct connection once it is authoritatively
+   * idle (session preserved via the existing resume path) and mark usage
+   * unavailable. The fallback flag also covers every later natural spawn.
+   * Never throws: the floor is the old behavior (flag set, relay stopped,
+   * next restart direct).
    */
-  private switchMuseToDirect(): Promise<void> {
+  private switchMuseToDirect(
+    idleBudgetMs = MUSE_DIRECT_RESUME_IDLE_BUDGET_MS,
+    idlePollMs = MUSE_DIRECT_RESUME_IDLE_POLL_MS,
+  ): Promise<void> {
     if (this.museRelayFallbackInFlight || this.startupAborted || this.backend?.binaryName !== "muse") {
       return this.museRelayFallbackInFlight ?? Promise.resolve();
     }
     this.museRelayFallbackInFlight = (async () => {
       this.museRelayFallback = true;
-      this.logger.warn("Muse usage relay could not recover — usage is unavailable until the next natural Muse restart");
+      this.logger.warn("Muse usage relay could not recover — usage is unavailable until Muse restarts direct");
       try {
         if (this.museUsageRelay) {
           await this.museUsageRelay.stop().catch(() => {});
@@ -6651,6 +6739,48 @@ export class Daemon extends EventEmitter {
         }
       } catch (err) {
         this.logger.warn({ reason: err instanceof Error ? err.message : "relay stop failed" }, "Muse usage relay cleanup failed");
+      }
+      // Say so where the operator is looking: without this, muse keeps running
+      // with --base-url pointed at the dead relay port and every turn fails.
+      this.emit("muse_relay_exhausted", { name: this.name });
+      // An idle muse can be moved now; a busy, paused, or supervised-paused one
+      // is left alone — pausing/wake respawns direct anyway via the fallback
+      // flag, and interrupting a live turn (or fighting supervision) would be
+      // worse than waiting for the next natural restart.
+      if (this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" || !this.tmux) return;
+      const generation = this.spawnGeneration;
+      const idle = await this.waitForAuthoritativePaneIdle(idleBudgetMs, idlePollMs);
+      // Another spawn (wake/restart) completed while waiting — it owns the pane
+      // now, and respawning here would kill its fresh process mid-turn.
+      if (generation !== this.spawnGeneration) return;
+      if (!idle) return;
+      if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+      // Final re-verification under pane-write exclusion: no delivery can paste
+      // a new turn between this verdict and the respawn it authorizes. The
+      // spawn itself runs outside the lock (its dialog dismissal re-takes it).
+      let claimed = false;
+      await this.paneWriteLock.run(async () => {
+        const stillIdle = await this.isPaneAuthoritativelyIdle();
+        if (generation !== this.spawnGeneration) return;
+        if (!stillIdle) return;
+        // The final capture awaited above: re-check the full guards here, not
+        // just generation and idle — pause needs no generation bump to take
+        // effect, and respawning a freshly paused pane strands its state.
+        if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+        this.beginSpawn();
+        claimed = true;
+      });
+      if (!claimed) return;
+      try {
+        this.saveSessionId();
+        const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
+        this.transcriptMonitor?.resetOffset();
+        if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
+        else this.logger.warn("Muse direct resume after relay exhaustion did not become ready — next natural restart retries");
+      } catch (err) {
+        this.logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "Muse direct resume after relay exhaustion failed — next natural restart retries");
+      } finally {
+        this.endSpawn();
       }
     })().finally(() => { this.museRelayFallbackInFlight = null; });
     return this.museRelayFallbackInFlight;
