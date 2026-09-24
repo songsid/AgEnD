@@ -449,6 +449,8 @@ export class PendingWorkTracker {
 const NORMAL_ENTER_SETTLE_MS = 500;
 /** How long to keep looking for proof after a retry Enter before failing it. */
 const POST_ENTER_PROOF_WINDOW_MS = 3_000;
+/** A final bounded observation before an ambiguous Codex submit can be classified. */
+const CODEX_LATE_PROOF_MS = 5_000;
 const POST_ENTER_PROOF_POLL_MS = 250;
 /** Attempts to read the pre-paste pane before a delivery gives up on a baseline. */
 const BASELINE_CAPTURE_ATTEMPTS = 3;
@@ -465,8 +467,9 @@ const BASELINE_CAPTURE_RETRY_MS = 150;
  *  - "unverifiable": our text reached the pane, but this backend exposes no
  *                    input row to read, so submitted and stranded cannot be told
  *                    apart. The caller keeps that backend's prior best effort.
- *  - "unproven":     nothing of ours reached the pane (unreadable, or the paste
- *                    was swallowed). Never a ✅; re-pasting is safe here.
+ *  - "unproven":     no conclusive evidence in the current pane. For Codex a
+ *                    missing viewport echo is NOT proof of loss and must not
+ *                    authorize a duplicate paste.
  */
 type SubmitProof = "submitted" | "stranded" | "unproven" | "unverifiable";
 
@@ -550,7 +553,7 @@ const INPUT_TRANSIENT_POLL_MS = 250;
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 
 /** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
-type DeliveryVerdict = { reached: boolean };
+type DeliveryVerdict = { reached: boolean; phase?: string; proof?: string };
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
@@ -4149,21 +4152,31 @@ export class Daemon extends EventEmitter {
    * steer's verdict decide whether a queued message's sender is told its
    * delivery failed — a false ❌ carrying the wrong correlation id.
    */
-  private failDelivery(verdict: DeliveryVerdict, status?: { chatId: string; messageId: string }): false {
+  private failDelivery(
+    verdict: DeliveryVerdict,
+    status?: { chatId: string; messageId: string },
+    phase = "unknown",
+    proof = "undelivered",
+  ): false {
     verdict.reached = true;
+    verdict.phase = phase;
+    verdict.proof = proof;
     if (status) this.emit("message_failed", status); // ❌
     return false;
   }
 
   /** Tell the fleet when an already-accepted cross-instance pane write failed. */
-  private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, error?: string): void {
+  private reportCrossInstanceDeliveryFailure(meta: Record<string, string>, verdict?: DeliveryVerdict, error?: string): void {
     if (!meta.from_instance) return;
     this.ipcServer?.broadcast({
       type: "cross_instance_delivery_failed",
       senderSession: meta.from_instance,
       targetInstance: this.name,
       correlationId: meta.correlation_id ?? "unknown",
-      error: error ?? this.tmux?.getLastPasteError?.() ?? "target pane rejected the delivery",
+      // Never use getLastPasteError as a generic fallback: it may describe an
+      // earlier paste, and #910 was a post-submit proof failure, not a paste
+      // rejection. Keep the sender diagnostic phase-specific and non-secret.
+      error: `delivery failed: phase=${verdict?.phase ?? (error ? "exception" : "unknown")}; proof=${verdict?.proof ?? (error ? "threw" : "none")}`,
     });
   }
 
@@ -4216,12 +4229,12 @@ export class Daemon extends EventEmitter {
         // Same rule as the queued path: a steer that never got to try is not a
         // delivery failure. This holder is the steer's own, which is the point
         // — it runs on steerLock while a queued delivery runs on pasteLock.
-        this.reportCrossInstanceDeliveryFailure(meta);
+        this.reportCrossInstanceDeliveryFailure(meta, verdict);
       }
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "steer delivery error");
       if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
-        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+        this.reportCrossInstanceDeliveryFailure(meta, undefined, (err as Error).message);
       }
     });
   }
@@ -4364,7 +4377,7 @@ export class Daemon extends EventEmitter {
           // not ready yet, a cancel, a storm hold or a shutdown all return
           // false without one, and telling the sender its message was lost
           // there would be the false ❌ of #826 in its other form.
-          this.reportCrossInstanceDeliveryFailure(meta);
+          this.reportCrossInstanceDeliveryFailure(meta, verdict);
         }
       } finally {
         this.pasteQueueDepth--;
@@ -4372,7 +4385,7 @@ export class Daemon extends EventEmitter {
     }).catch(err => {
       this.logger.warn({ err: (err as Error).message }, "pasteLock delivery error — chain continues");
       if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
-        this.reportCrossInstanceDeliveryFailure(meta, (err as Error).message);
+        this.reportCrossInstanceDeliveryFailure(meta, undefined, (err as Error).message);
       }
     });
     this.logger.debug({ user: meta.user, text: content.slice(0, 100) }, "Queued channel message for delivery");
@@ -4446,7 +4459,8 @@ export class Daemon extends EventEmitter {
       // fall through to the wait.
       const canHandOff = (supportsQueuedInput || opts?.steer)
         && readiness === "busy"
-        && (await this.probeBlockingDialog()).state === "clear";
+        && (await this.probeBlockingDialog()).state === "clear"
+        && await this.hasPositiveDeliveryInput();
       if (canHandOff) {
         // Native queue (codex), or an explicit /steer: hand the complete
         // paste+Enter transaction to the busy CLI now. For steer this is the
@@ -4466,7 +4480,7 @@ export class Daemon extends EventEmitter {
           // wedged CLI (where the text would sit unsubmitted and the next message
           // would land on top of it) — and instead of holding the queue silently.
           this.logger.error("Pane still busy after the idle wait — reporting delivery failure");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "readiness", "timeout-before-write");
         }
       }
     }
@@ -4488,20 +4502,20 @@ export class Daemon extends EventEmitter {
         // recovery Enter, so exactly STRANDED_INPUT_MAX_ROUNDS of them go out.
         if (round >= STRANDED_INPUT_MAX_ROUNDS) {
           this.logger.error({ round }, "Input row still not clear after the stranded-text recovery budget — reporting delivery failure");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "stranded-input", "retry-budget-exhausted");
         }
         const stranded = await this.submitStrandedInputIfAny(windowId);
         if (cancelled()) return false;
         if (stranded === "idle") break;
         if (stranded === "failed") {
           this.logger.error({ round }, "Could not submit the stranded text — reporting delivery failure");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "stranded-input", "enter-failed");
         }
         const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
         if (cancelled()) return false;
         if (!readyAgain) {
           this.logger.error("Pane never returned to its prompt after submitting stranded input — reporting delivery failure");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "stranded-input", "prompt-timeout");
         }
       }
     }
@@ -4518,7 +4532,7 @@ export class Daemon extends EventEmitter {
         // It clears without input, so waiting under the pane lock cannot starve
         // a dialog dismisser and closes the final clear→paste TOCTOU window.
         if (!(await this.waitForInputTransientToClear("pre-write"))) {
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "pre-write", "input-transient-timeout");
         }
         // TOCTOU: the probes above ran outside this lock, and the CLI repaints
         // whenever it likes — a resume prompt can be painted between "clear" and
@@ -4528,6 +4542,7 @@ export class Daemon extends EventEmitter {
           const probe = await this.probeBlockingDialog();
           if (probe.state !== "clear") return "dialog";
         }
+        if (!(await this.hasPositiveDeliveryInput())) return "dialog";
         return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId, verdict);
       });
       if (outcome !== "dialog") return outcome;
@@ -4536,13 +4551,13 @@ export class Daemon extends EventEmitter {
       // an honest failure rather than a message that never lands.
       if (round + 1 >= LATE_DIALOG_WRITE_ROUNDS) {
         this.logger.error({ rounds: round + 1 }, "A dialog kept appearing before the pane write — reporting delivery failure");
-        return this.failDelivery(verdict, status);
+        return this.failDelivery(verdict, status, "pre-write", "dialog-or-input-not-ready");
       }
-      this.logger.info("Dialog appeared before the pane write — waiting for it to clear");
+      this.logger.info("Dialog or input transition appeared before the pane write — waiting for readiness");
       const clear = gateWindowId ? await this.waitForPaneReadyForDelivery(gateWindowId) : false;
       if (cancelled()) return false;
       if (!clear) {
-        return this.failDelivery(verdict, status);
+        return this.failDelivery(verdict, status, "pre-write", "readiness-timeout");
       }
     }
   }
@@ -4802,6 +4817,25 @@ export class Daemon extends EventEmitter {
     return (await this.paneReadinessForDelivery(windowId)) === "ready";
   }
 
+  private needsStartupInputProof(): boolean {
+    return !!this.backend?.isDeliveryInputReadyPane
+      && this.inputTransientGuardGeneration === this.spawnGeneration;
+  }
+
+  /** Codex can paint a prompt before the TTY enters raw mode. Both are required. */
+  private async hasPositiveDeliveryInput(): Promise<boolean> {
+    if (!this.needsStartupInputProof()) return true;
+    const check = this.backend?.isDeliveryInputReadyPane;
+    if (!check || !this.tmux) return !check;
+    try {
+      const mode = await this.tmux.getPaneInputMode?.();
+      if (mode !== "raw") return false;
+      return check.call(this.backend, await this.tmux.capturePane());
+    } catch {
+      return false;
+    }
+  }
+
   /**
    * Why a pane is not deliverable matters. "busy" may be handed to a native
    * input queue or steered (after its own dialog probe); "dialog", "transient"
@@ -4816,6 +4850,9 @@ export class Daemon extends EventEmitter {
     const transient = await this.probeInputTransient();
     if (transient.state === "active") return "transient";
     if (transient.state === "unknown") return "unknown";
+    if (this.needsStartupInputProof()) {
+      return await this.hasPositiveDeliveryInput() ? "ready" : "transient";
+    }
     if (this.backend?.dropsEnterWhileBusy?.() !== true) return "ready";
     const prompt = this.backend.getBottomReadyPattern?.();
     if (!prompt || !this.tmux) return "ready";
@@ -4856,7 +4893,8 @@ export class Daemon extends EventEmitter {
     // screen", and a dialog disappears without any output edge the silence
     // gate could see.
     const deadline = Date.now() + timeoutMs;
-    const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true;
+    const bottomGated = this.backend?.dropsEnterWhileBusy?.() === true
+      || this.needsStartupInputProof();
     let unknownStreak = 0;
     let transientBudget: ReturnType<Daemon["transientProgressBudget"]> | null = null;
     for (;;) {
@@ -4961,10 +4999,10 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
+    if (this.backend?.isDeliveryInputReadyPane && !this.backend.isDeliveryInputReadyPane(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
-    // Kiro needs a bottom-anchored prompt as positive readiness evidence. Codex
-    // does not: this preflight runs only after its ordinary silence gate and is
-    // enabled solely to recover a positively identified old AgEnD strand.
+    // Kiro uses the bottom row; Codex's positive prompt/footer check above
+    // rules out a historical transcript echo or a transition/modal screen.
     return !requireBottomReady || bottomRowIsReady(pane, prompt) ? "clear" : "busy";
   }
 
@@ -5008,7 +5046,7 @@ export class Daemon extends EventEmitter {
   private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: { chatId: string; messageId: string }): boolean {
     if (!this.fatalStartupBlocked) return false;
     this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
-    this.failDelivery(verdict, status);
+    this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
     return true;
   }
 
@@ -5118,7 +5156,7 @@ export class Daemon extends EventEmitter {
         if (!recoverable) {
           // A tmux error the window cannot be recovered from: the text will
           // never reach this pane, so it is a verdict like the others.
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "paste", "non-retryable-tmux-error");
         }
         windowId = (await this.recoverWindow()) ?? windowId;
         if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
@@ -5147,7 +5185,7 @@ export class Daemon extends EventEmitter {
       }
       let enterAt = Date.now();
       if (!(await this.sendDeliveryEnter("initial-submit"))) {
-        return this.failDelivery(verdict, status);
+        return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
 
       // Kiro's legacy TUI can swallow Enter while it is still processing a large
@@ -5230,7 +5268,7 @@ export class Daemon extends EventEmitter {
           this.logger.warn("Message still in the input row after idle — submitting the existing text instead of pasting it again");
           const strandedAt = Date.now();
           if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
-            return this.failDelivery(verdict, status);
+            return this.failDelivery(verdict, status, "native-queue-submit", "tmux-send-keys-failed");
           }
           const afterEnter = await this.confirmSubmitted(signature, pasteBaseline);
           if (afterEnter === "submitted") {
@@ -5245,7 +5283,18 @@ export class Daemon extends EventEmitter {
           // the input row is disqualifying, and disqualifying evidence wins.
           this.logger.error({ afterEnter, strandedAt },
             "Stranded message could not be submitted by Enter");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "native-queue-submit", afterEnter);
+        }
+
+        if (this.backend?.isDeliveryInputReadyPane) {
+          // In Codex a missing viewport echo is inconclusive, not a proof of
+          // loss. Another paste could run the same request twice. Leave the
+          // already-pasted delivery at 👀 and let the next observation decide.
+          this.logger.warn({ phase: "native-queue-proof", proof: settled },
+            "Codex native-queue outcome uncertain — not re-pasting");
+          verdict.phase = "native-queue-proof";
+          verdict.proof = settled;
+          return false;
         }
 
         // "unproven": nothing of ours is on screen — the paste itself was lost,
@@ -5255,12 +5304,12 @@ export class Daemon extends EventEmitter {
           this.logger.error({
             tmuxError: this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure",
           }, "Idle-gated redelivery paste failed after native-queue silent loss");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "native-queue-redelivery", "tmux-paste-failed");
         }
         await new Promise(r => setTimeout(r, NORMAL_ENTER_SETTLE_MS));
         const retryAt = Date.now();
         if (!(await this.sendDeliveryEnter("native-queue-idle-redelivery"))) {
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "native-queue-redelivery", "tmux-send-keys-failed");
         }
         if (windowId && this.controlClient) {
           if (await this.confirmAfterEnter(windowId, retryAt, signature, pasteBaseline, "native-queue-idle-redelivery-retry")) {
@@ -5272,7 +5321,7 @@ export class Daemon extends EventEmitter {
           return true;
         }
         this.logger.error("Idle-gated redelivery also failed after native-queue silent loss");
-        return this.failDelivery(verdict, status);
+        return this.failDelivery(verdict, status, "native-queue-redelivery", "not-submitted");
       }
 
       if (windowId && this.controlClient && this.backend?.dropsEnterWhileBusy?.() === true) {
@@ -5287,7 +5336,7 @@ export class Daemon extends EventEmitter {
           const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
           const retryAt = Date.now();
           if (promptBack && !(await this.sendDeliveryEnter("stranded-text-retry"))) {
-            return this.failDelivery(verdict, status);
+            return this.failDelivery(verdict, status, "stranded-text-retry", "tmux-send-keys-failed");
           }
           submitted = promptBack && await this.confirmSubmittedAfterEnter(windowId, retryAt, formatted);
         }
@@ -5295,7 +5344,7 @@ export class Daemon extends EventEmitter {
           if (status) this.emit("message_confirmed", status); // ✅
         } else {
           this.logger.error("Message pasted but never submitted (text still in the input row after Enter retry)");
-          return this.failDelivery(verdict, status);
+          return this.failDelivery(verdict, status, "stranded-text-retry", "stranded");
         }
       } else if (windowId && this.controlClient) {
         // An idle delivery used to be judged by output alone: anything the pane
@@ -5312,12 +5361,26 @@ export class Daemon extends EventEmitter {
         if (becameBusy) {
           if (status) this.emit("message_confirmed", status); // ✅
         } else {
-          // Both Enters were swallowed: the text is sitting UNSUBMITTED in the
-          // CLI's input box. This used to return true, so the reaction stayed at 👀
-          // forever and the next delivery pasted on top — submitting two messages
-          // as one. Say so instead.
-          this.logger.error("Message pasted but never submitted (no idle→busy after two Enters)");
-          return this.failDelivery(verdict, status);
+          const proof = this.backend?.isDeliveryInputReadyPane
+            ? await this.lateCodexSubmissionProof(signature, pasteBaseline)
+            : await this.confirmSubmitted(signature, pasteBaseline);
+          if (proof === "submitted") {
+            if (status) this.emit("message_confirmed", status);
+            return true;
+          }
+          if (this.backend?.isDeliveryInputReadyPane && proof !== "stranded") {
+            // This is the observed #910 race: the CLI processed the message
+            // although its echo had not appeared within the proof window. A
+            // missing viewport signature cannot establish non-delivery; keep
+            // 👀 and never emit the sender's hard ❌ or re-paste blindly.
+            this.logger.warn({ phase: "post-submit-proof", proof },
+              "Codex delivery outcome uncertain — no hard failure or duplicate paste");
+            verdict.phase = "post-submit-proof";
+            verdict.proof = proof;
+            return false;
+          }
+          this.logger.error({ phase: "post-submit-proof", proof }, "Message remains unsubmitted after Enter retry");
+          return this.failDelivery(verdict, status, "post-submit-proof", proof);
         }
       } else {
         // No control client to observe output: fall back to the legacy double-Enter.
@@ -5329,7 +5392,7 @@ export class Daemon extends EventEmitter {
     }
 
     this.logger.error("Message delivery failed after retries — window not ready");
-    return this.failDelivery(verdict, status);
+    return this.failDelivery(verdict, status, "paste", "retry-budget-exhausted");
   }
 
   /**
@@ -5396,6 +5459,34 @@ export class Daemon extends EventEmitter {
       return busy;
     }
 
+    if (this.backend?.isDeliveryInputReadyPane) {
+      // Codex's first post-wake redraw may hide the echo for a few seconds.
+      // Absence from a viewport is NOT proof the paste was lost, so only a
+      // positively identified strand authorizes another Enter. Never re-paste
+      // here: the CLI may already be processing the unique message_id.
+      let proof: SubmitProof = "unproven";
+      const firstDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      for (;;) {
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (proof === "submitted") return true;
+        if (proof === "stranded" || Date.now() >= firstDeadline) break;
+        await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+      }
+      if (proof !== "stranded") return false;
+      if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
+      proof = await this.confirmSubmitted(signature, baseline);
+      if (proof === "submitted") return true;
+      if (proof !== "stranded") return false;
+      if (!(await this.sendDeliveryEnter(retryPhase))) return false;
+      const retryDeadline = Date.now() + POST_ENTER_PROOF_WINDOW_MS;
+      for (;;) {
+        proof = await this.confirmSubmitted(signature, baseline);
+        if (proof === "submitted") return true;
+        if (Date.now() >= retryDeadline) return false;
+        await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+      }
+    }
+
     if (await this.confirmSubmitted(signature, baseline) === "submitted") return true;
 
     // Retry once the prompt is back — an Enter sent into a mid-redraw TUI is
@@ -5437,6 +5528,15 @@ export class Daemon extends EventEmitter {
     }
     const after = this.paneEvidence(pane, signature);
 
+    // A Codex layout without its current input/footer pair may show a quoted
+    // or historical `›` row. Unless its active Working banner corroborates a
+    // real turn, text on that unknown screen cannot prove it left stdin.
+    if (this.backend?.isDeliveryInputReadyPane
+      && !this.backend.isDeliveryInputReadyPane(pane)
+      && !this.backend.getBusyPattern?.()?.test(pane)) {
+      return after.payload > 0 ? "unverifiable" : "unproven";
+    }
+
     // 1. Disqualifying evidence, checked FIRST and never overridden by the
     //    corroborating evidence below: our text is sitting in the input row, so
     //    it was not submitted — whatever else is on screen.
@@ -5475,6 +5575,28 @@ export class Daemon extends EventEmitter {
     return "unverifiable";
   }
 
+  /** Only positive echo/queue evidence may turn an ambiguous Codex write into ✅. */
+  private async lateCodexSubmissionProof(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
+    const deadline = Date.now() + CODEX_LATE_PROOF_MS;
+    let proof: SubmitProof = "unproven";
+    for (;;) {
+      proof = await this.confirmSubmitted(signature, baseline);
+      if (proof === "submitted" || proof === "stranded") return proof;
+      if (signature.unique && this.tmux?.capturePaneWithHistory) {
+        try {
+          const history = await this.tmux.capturePaneWithHistory(300);
+          const seen = this.paneEvidence(history, signature);
+          const known = !this.backend?.isDeliveryInputReadyPane
+            || this.backend.isDeliveryInputReadyPane(history)
+            || this.backend.getBusyPattern?.()?.test(history);
+          if (known && seen.payload > 0 && !seen.strandedInput) return this.submittedProof();
+        } catch { /* a failed history read proves neither delivery nor loss */ }
+      }
+      if (Date.now() >= deadline) return proof;
+      await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
+    }
+  }
+
   /**
    * What the pane currently shows of a given message. Taken once before the
    * paste and once after, so confirmSubmitted can require a NEW marker or a NEW
@@ -5489,7 +5611,8 @@ export class Daemon extends EventEmitter {
         const pane = await this.tmux.capturePane();
         const evidence = this.paneEvidence(pane, signature);
         const prompt = this.backend?.getBottomReadyPattern?.();
-        if (prompt && strandedAgendMessageInInput(pane, prompt)) {
+        if (prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
+          && strandedAgendMessageInInput(pane, prompt)) {
           // Whatever we paste now lands after it, and one Enter submits both as
           // a single message. Nothing here can undo that; saying so beats
           // letting two messages silently merge.
@@ -5509,7 +5632,8 @@ export class Daemon extends EventEmitter {
   private paneEvidence(pane: string, signature: SubmissionSignature): PaneEvidence {
     const marker = this.backend?.getQueuedInputMarker?.();
     const prompt = this.backend?.getBottomReadyPattern?.();
-    const input = prompt ? inputAreaText(pane, prompt) : null;
+    const input = prompt && (!this.backend?.isDeliveryInputReadyPane || this.backend.isDeliveryInputReadyPane(pane))
+      ? inputAreaText(pane, prompt) : null;
     return {
       queued: marker ? pane.split(/\r?\n/).filter(row => marker.test(row)).length : 0,
       payload: countOccurrences(pane.replace(/\s+/g, ""), signature.value),
@@ -5560,6 +5684,13 @@ export class Daemon extends EventEmitter {
 
     let proof = await this.confirmSubmitted(signature, baseline);
     if (proof === "unverifiable") {
+      if (this.backend?.isDeliveryInputReadyPane) {
+        // A Codex screen without a structurally current input/footer pair is
+        // not a successful snapshot restore. The old best-effort rule below
+        // is only for backends that expose no readable input row at all.
+        this.logger.warn({ label }, "Codex system paste could not be verified");
+        return false;
+      }
       // No input row to read: this backend gets exactly what the old pasteText
       // path gave it, including the unconditional second Enter for queue-less
       // TUIs that swallow the first. Narrowing that to one Enter on the grounds

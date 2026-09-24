@@ -1,0 +1,14 @@
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.156.0)                     │
+│                                                │
+│ model:     GPT-6-Luna xhigh   /model to change │
+│ directory: ~/Projects/AgEnD-agend-dev-sol      │
+╰────────────────────────────────────────────────╯
+
+  Tip: Use the OpenAI docs MCP for API questions; enable it with codex mcp add
+  openaiDeveloperDocs --url https://developers.openai.com/mcp.
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                    ⚠ 1 warning · f2 to view

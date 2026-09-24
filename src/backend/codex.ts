@@ -175,6 +175,22 @@ export class CodexBackend implements CliBackend {
     return /^\s*›\s?/;
   }
 
+  /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
+  isDeliveryInputReadyPane(pane: string): boolean {
+    const rows = pane.replace(/\r/g, "").split("\n");
+    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    const footer = rows.pop() ?? "";
+    if (!/^\s*Context\s+\d+%\s+(?:left|used)(?:\s+⚠\s+\d+\s+warnings?\b.*)?\s*$/i.test(footer)) return false;
+    // Pasted text may wrap over several continuation rows before the footer.
+    // Search only its immediate tail, not a historical transcript prompt.
+    for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
+      if (/^[>›]\s+\d+\./.test(rows[i])) return false;
+      if (/^[>›]\s+\S/.test(rows[i])) return true;
+      if (/^[•■⚠]/.test(rows[i])) return false;
+    }
+    return false;
+  }
+
   /** Live status chrome that must veto the broad prompt/context ready match. */
   getBusyPattern(): RegExp {
     return /(?:^|\n)•\s+Working\b[^\n]*\besc to interrupt\b/i;

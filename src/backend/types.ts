@@ -294,6 +294,13 @@ export interface CliBackend {
   getBottomReadyPattern?(): RegExp | null;
 
   /**
+   * Positive current-screen input evidence for backends whose prompt is above
+   * a footer (Codex). A header, percentage or historical prompt alone is not
+   * enough to write into a pane that may still be changing terminal modes.
+   */
+  isDeliveryInputReadyPane?(pane: string): boolean;
+
+  /**
    * Marker the CLI paints when it has accepted input into its own pending
    * queue rather than starting a turn (codex: the `↳` row under "Messages to
    * be submitted after next tool call"). Only meaningful for
