@@ -181,8 +181,8 @@ describe("FleetManager", () => {
     try {
       await (fm as any).refreshDiscordUsagePresence();
 
-      expect(primaryActivity).toHaveBeenCalledWith("⚡ Claude 81% weekly | Codex 35% weekly");
-      expect(secondaryActivity).toHaveBeenCalledWith("⚡ Grok 58% weekly | Antigravity 13% weekly");
+      expect(primaryActivity).toHaveBeenCalledWith("⚡ Claude 81% | Codex 35%");
+      expect(secondaryActivity).toHaveBeenCalledWith("⚡ Grok 58% | Antigravity 13%");
       expect(emptyActivity).toHaveBeenCalledWith("⚡ Usage unavailable");
       expect(unavailableActivity).toHaveBeenCalledWith("⚡ Usage unavailable");
       expect(primaryActivity.mock.calls[0][0]).not.toContain("Grok");
@@ -194,7 +194,7 @@ describe("FleetManager", () => {
       claudePercent = 82;
       setUsageFetcherForTests(usagePayload);
       await (fm as any).refreshDiscordUsagePresence();
-      expect(primaryActivity).toHaveBeenNthCalledWith(2, "⚡ Claude 82% weekly | Codex 35% weekly");
+      expect(primaryActivity).toHaveBeenNthCalledWith(2, "⚡ Claude 82% | Codex 35%");
     } finally {
       setUsageFetcherForTests(null);
     }
