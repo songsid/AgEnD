@@ -130,4 +130,86 @@ describe("pane write exclusion", () => {
       rmSync(instanceDir, { recursive: true, force: true });
     }
   }, 20_000);
+
+  it("backs out and retries a delivery when a spawn starts after its settle wait", async () => {
+    // Exit 1: a delivery that passed waitForSpawnToSettle queues behind the
+    // pane lock; a spawn (e.g. a concurrent wake) completes while it waits.
+    // Pasting on would write into the replacement process's first screen, so
+    // the delivery must detect the generation change inside the lock, exit
+    // without waiting (startup dismissal needs the lock), and redo itself
+    // from the top — exactly once, with no duplicate paste.
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-race-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon("spawn-race", CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    const lock = internals.paneWriteLock;
+    const origRun = lock.run.bind(lock);
+    let lockRuns = 0;
+    lock.run = async (fn: any) => { lockRuns++; return origRun(fn); };
+    const origSettle = internals.waitForSpawnToSettle.bind(internals);
+    let settles = 0;
+    internals.waitForSpawnToSettle = async () => { await origSettle(); settles++; };
+    try {
+      // Hold the lock so the delivery queues behind it.
+      let release!: () => void;
+      const holder = lock.run(async () => { await new Promise<void>(r => { release = r; }); });
+      await Promise.resolve();
+      const delivered = internals.deliverMessage("hello race");
+      await vi.waitFor(() => expect(settles).toBe(1), { timeout: 5_000 });
+      // A concurrent spawn completes while the delivery is queued.
+      internals.beginSpawn();
+      internals.endSpawn();
+      release();
+      await expect(delivered).resolves.toBe(true);
+      await holder;
+      // Re-settled and redone from the top: fresh window id, fresh probes.
+      expect(settles).toBe(2);
+      expect(lockRuns).toBeGreaterThanOrEqual(2);
+      // And still exactly one paste — the retry redoes, never duplicates.
+      expect(pastes).toEqual(["hello race"]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("fails loudly instead of retrying forever when spawns keep churning", async () => {
+    // The spawn-race retry must terminate: every lock acquisition sees a new
+    // generation, so after the bounded rounds the delivery reports failure
+    // with nothing ever pasted — not a hang, not a write into churn.
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-churn-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon("spawn-churn", CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    const lock = internals.paneWriteLock;
+    const origRun = lock.run.bind(lock);
+    lock.run = async (fn: any) => {
+      internals.beginSpawn();
+      internals.endSpawn();
+      return origRun(fn);
+    };
+    try {
+      await expect(internals.deliverMessage("hello churn")).resolves.toBe(false);
+      expect(pastes).toEqual([]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

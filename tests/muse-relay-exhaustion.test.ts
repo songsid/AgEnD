@@ -167,6 +167,28 @@ describe("relay exhaustion moves muse direct once idle", () => {
     expect(internals.trySpawn).toHaveBeenCalledWith(true, expect.any(Number));
   });
 
+  it("aborts when the instance pauses during the final verification", async () => {
+    // Exit 2: pause takes effect without bumping the generation, so the fence
+    // alone cannot see it. The flip lands on the second capture — after the
+    // outer guards, inside the pane-write exclusion — where the full guards
+    // must catch it. Respawning a freshly paused pane strands its state.
+    const made = makeDaemon({ realBackend: true, realIdleWait: true });
+    let captures = 0;
+    (made.internals as unknown as { tmux: unknown }).tmux = {
+      killWindow: vi.fn(async () => {}),
+      getWindowId: () => "@1",
+      capturePane: async () => {
+        if (++captures >= 2) made.internals.pauseWakeState = "paused";
+        return MUSE_IDLE;
+      },
+    };
+
+    await made.internals.switchMuseToDirect(5000, 50);
+
+    expect(made.internals.trySpawn).not.toHaveBeenCalled();
+    expect(made.internals.museRelayFallback).toBe(true);
+  });
+
   it("aborts when another spawn wins the pane before the final claim (generation fence)", async () => {
     // B2's repro: a wake/restart completes while this recovery is in flight.
     // The bump lands on the second capture — after the post-wait check, inside

@@ -517,6 +517,8 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
+/** How many times a delivery redoes itself when a spawn starts between its settle wait and its pane write. */
+const DELIVERY_SPAWN_RACE_MAX_ROUNDS = 3;
 /**
  * After relay exhaustion, how long to wait for an authoritatively idle pane
  * before giving up the immediate resume-direct (the fallback flag and the
@@ -4418,7 +4420,7 @@ export class Daemon extends EventEmitter {
   private async deliverMessage(
     formatted: string,
     status?: { chatId: string; messageId: string },
-    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict },
+    opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict; spawnRetry?: number },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
     // that ignores the outcome gets a throwaway.
@@ -4444,6 +4446,10 @@ export class Daemon extends EventEmitter {
 
     // Before anything reads the window id: a spawn in progress is about to change it.
     await this.waitForSpawnToSettle();
+    // Everything captured below (window id, readiness verdicts) belongs to
+    // this spawn generation. A spawn that starts afterwards is detected inside
+    // the critical section, where this delivery backs out and redoes itself.
+    const settleGeneration = this.spawnGeneration;
     if (cancelled()) return false;
     if (this.refuseFatalStartupDelivery(verdict, status)) return false;
 
@@ -4533,8 +4539,14 @@ export class Daemon extends EventEmitter {
     // what makes progress. The one under-lock wait below is explicitly passive:
     // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
-      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog"> => {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started"> => {
         if (cancelled()) return false;
+        // A spawn that started after the settle wait above invalidates the
+        // window id and every readiness verdict since: the pane about to be
+        // written may already belong to a replacement process. Never wait
+        // here (startup dismissal needs this lock) — back out and redo the
+        // delivery from the top, where the settle wait runs again outside it.
+        if (settleGeneration !== this.spawnGeneration) return "spawn-started";
         if (this.refuseFatalStartupDelivery(verdict, status)) return false;
         // A passive startup phase may paint after the outer readiness probe.
         // It clears without input, so waiting under the pane lock cannot starve
@@ -4553,6 +4565,18 @@ export class Daemon extends EventEmitter {
         if (!(await this.hasPositiveDeliveryInput())) return "dialog";
         return this.writeMessageToPane(formatted, windowId, handingOffToNativeQueue, status, opts?.submissionId, verdict);
       });
+      if (outcome === "spawn-started") {
+        // The pane changed under this delivery: its queued paste must not land
+        // in the replacement process's first screen. Redo the whole delivery
+        // (fresh window id, fresh probes) — bounded, so spawn churn ends in an
+        // honest failure rather than a message that never lands.
+        const retries = (opts?.spawnRetry ?? 0) + 1;
+        if (retries > DELIVERY_SPAWN_RACE_MAX_ROUNDS) {
+          this.logger.error({ rounds: retries }, "A spawn kept starting before the pane write — reporting delivery failure");
+          return this.failDelivery(verdict, status);
+        }
+        return this.deliverMessage(formatted, status, { ...opts, spawnRetry: retries });
+      }
       if (outcome !== "dialog") return outcome;
       // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
       // then try the write again — bounded, so a dialog nobody answers ends in
@@ -6727,6 +6751,10 @@ export class Daemon extends EventEmitter {
         const stillIdle = await this.isPaneAuthoritativelyIdle();
         if (generation !== this.spawnGeneration) return;
         if (!stillIdle) return;
+        // The final capture awaited above: re-check the full guards here, not
+        // just generation and idle — pause needs no generation bump to take
+        // effect, and respawning a freshly paused pane strands its state.
+        if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
         this.beginSpawn();
         claimed = true;
       });
