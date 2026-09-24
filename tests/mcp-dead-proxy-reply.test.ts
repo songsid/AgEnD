@@ -67,6 +67,12 @@ const INBOUND_MARKER = "(Reply using the reply tool — do NOT respond with dire
 const INBOUND = `[user:han via discord, id:123] status?\n${INBOUND_MARKER}`;
 const resumedCodexPane = readFileSync(new URL("./fixtures/codex-01561-inline-resumed.pane.txt", import.meta.url), "utf8");
 const CODEX_CHROME = resumedCodexPane.slice(resumedCodexPane.lastIndexOf("› Ask Codex to do anything")).trim().split("\n");
+// Observed on a real Codex 0.156.1 120-column tmux pane; only the session UUID
+// is anonymized. Its status item and warning badge are intentionally retained.
+const CODEX_SESSION_CHROME = [
+  CODEX_CHROME[0],
+  "  01a0d452-378b-78b2-b38a-0123456789ab · Context 100% left · GPT-6-Luna xhigh                 ⚠ 2 warnings · f2 to view",
+];
 const PANE = [
   "some earlier scrollback",
   "[user:han via discord, id:123] status?",
@@ -119,6 +125,26 @@ describe("extractProxyReplyText", () => {
       readyPattern: codex.getReadyPattern(),
       isChromeLine: line => codex.isProxyReplyChromeLine?.(line) ?? false,
     })).toBe("• The answer is 42.");
+  });
+
+  it("filters a session-id footer before redaction without losing a real answer", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const options = {
+      inboundMarker: INBOUND_MARKER,
+      readyPattern: codex.getReadyPattern(),
+      isChromeLine: (line: string) => codex.isProxyReplyChromeLine?.(line) ?? false,
+    };
+    expect(codex.getReadyPattern().test(CODEX_SESSION_CHROME.join("\n"))).toBe(true);
+    expect(extractProxyReplyText([INBOUND_MARKER, ...CODEX_SESSION_CHROME].join("\n"), options)).toBeNull();
+    const reply = extractProxyReplyText([
+      INBOUND_MARKER,
+      "• The actual answer is 42. Authorization: Bearer sk-FAKE-TOKEN-FOR-TEST",
+      ...CODEX_SESSION_CHROME,
+    ].join("\n"), options);
+    expect(reply).toContain("The actual answer is 42.");
+    expect(reply).toContain("[REDACTED]");
+    expect(reply).not.toContain("sk-FAKE-TOKEN-FOR-TEST");
+    expect(reply).not.toContain("Context 100% left");
   });
 
   it("ignores a marker too short to be distinctive instead of slicing at a false match", () => {
@@ -189,9 +215,27 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     daemon["instanceStateReadyPattern"] = codex.getReadyPattern();
     daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-codex-chrome" }, INBOUND);
     daemon["instanceState"] = "working";
-    const pane = [INBOUND_MARKER, ...CODEX_CHROME].join("\n");
+    const pane = [INBOUND_MARKER, ...CODEX_SESSION_CHROME].join("\n");
     daemon["applyInstanceStateSnapshot"](idleSnapshot(), pane);
     expect(proxyCalls(broadcast)).toHaveLength(0);
+  });
+
+  it("broadcasts the Codex answer without leaking its session-id footer", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const made = makeDaemon({ backend: "codex" }, codex); dir = made.dir;
+    const { daemon, broadcast } = made;
+    liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
+    daemon["instanceStateReadyPattern"] = codex.getReadyPattern();
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-codex-answer" }, INBOUND);
+    daemon["instanceState"] = "working";
+    const pane = [INBOUND_MARKER, "• The answer is 42.", ...CODEX_SESSION_CHROME].join("\n");
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), pane);
+    const calls = proxyCalls(broadcast);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args.text).toContain("The answer is 42.");
+    expect(calls[0].args.text).not.toContain("Context 100% left");
+    expect(calls[0].args.text).not.toContain("[REDACTED] · Context");
+    expect(calls[0].args.text).not.toContain("01a0d452");
   });
 
   it("fires at most once per turn — a second idle edge without a new inbound stays silent", () => {

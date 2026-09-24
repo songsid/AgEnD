@@ -704,7 +704,7 @@ export async function waitForPasteSettle(
 }
 
 /** Redact likely credentials and control sequences before pane text reaches logs. */
-export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
+export function sanitizePaneTail(pane: string, lineCount = 5, excludeLine?: (line: string) => boolean): string[] {
   const secretAssignment = /\b(token|secret|password|passwd|api[_-]?key|authorization)\b\s*[:=]\s*\S+/gi;
   const bearer = /\bBearer\s+\S+/gi;
   const knownToken = /\b(?:sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16})\b/g;
@@ -718,6 +718,10 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
 
   return lines
     .slice(-lineCount)
+    // The proxy-reply chrome predicate sees only control-normalized lines,
+    // but must run BEFORE redaction. Redaction can replace a status-footer
+    // session UUID with [REDACTED], destroying its structural signature.
+    .filter(line => !excludeLine?.(line))
     .map(line => line
       .replace(bearer, "Bearer [REDACTED]")
       .replace(secretAssignment, "$1=[REDACTED]")
@@ -748,7 +752,7 @@ export function extractProxyReplyText(pane: string, opts: {
   maxLines?: number;
   maxChars?: number;
 } = {}): string | null {
-  const lines = sanitizePaneTail(pane, opts.maxLines ?? 40);
+  const lines = sanitizePaneTail(pane, opts.maxLines ?? 40, opts.isChromeLine);
   const marker = opts.inboundMarker?.trim();
   // Require a distinctive marker: a short one ("ok") would match agent text.
   if (marker && marker.length >= 8) {
@@ -763,7 +767,6 @@ export function extractProxyReplyText(pane: string, opts: {
     const t = line.trim();
     if (!t) return true; // keep paragraph breaks; collapsed below
     if (!/[\p{L}\p{N}]/u.test(t)) return false;
-    if (opts.isChromeLine?.(line)) return false;
     if (ready && ready.test(line)) return false;
     return true;
   });
