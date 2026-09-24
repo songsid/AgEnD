@@ -111,6 +111,22 @@ describe("TmuxManager", () => {
     });
   });
 
+  it("distinguishes a ready-looking cooked shell from a raw TUI pane", async () => {
+    await TmuxManager.ensureSession(session);
+    const tm = new TmuxManager(session, "");
+    await tm.createWindow("sleep 2; stty raw -echo; sleep 10", "/tmp", "termios-gate");
+    try {
+      expect(await tm.getPaneInputMode()).toBe("cooked");
+      const deadline = Date.now() + 5_000;
+      while (await tm.getPaneInputMode() !== "raw" && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      expect(await tm.getPaneInputMode()).toBe("raw");
+    } finally {
+      await tm.killWindow();
+    }
+  }, 10_000);
+
   it("reuses one window id instead of leaving duplicate same-name windows", async () => {
     const first = new TmuxManager(session, "");
     const firstId = await first.createWindow("sleep 30", "/tmp", "dedupe-window");

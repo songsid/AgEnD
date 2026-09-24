@@ -93,6 +93,16 @@ const READY_EMPTY = [
   "  Context 46% left",
 ].join("\n");
 
+/** Codex 0.156.0 with user status-line chrome retained after context. */
+const READY_WITH_CHROME = [
+  "╭───────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.156.0)                │",
+  "│ model:     GPT-6-Astra   /model to change │",
+  "╰───────────────────────────────────────────╯",
+  "› Ask Codex to do anything",
+  "  Context 100% left · GPT-6-Astra",
+].join("\n");
+
 /**
  * The pane BEFORE we paste: codex is working on something else. Submission is
  * judged by what the pane gains, so every test starts from a frame that holds
@@ -150,6 +160,7 @@ function makeHarness(): Harness {
   });
   daemon.tmux = {
     capturePane: async () => state.pane,
+    getPaneInputMode: async () => "raw" as const,
     pasteBuffer: paste,
     sendSpecialKey: enter,
     sendKeys: vi.fn(async () => true),
@@ -197,6 +208,99 @@ afterEach(() => {
 });
 
 describe("codex native-queue handoff: text left in the input row is NOT a delivery", () => {
+  it("accepts the real 0.156 context footer with additional status-line chrome", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;
+    h.state.pane = READY_WITH_CHROME;
+    h.state.afterPaste = [
+      "› [from:agend-dev-claude-t1519896892392083558] " + BODY,
+      "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
+      "• Working (1s • esc to interrupt)",
+      READY_WITH_CHROME,
+    ].join("\n");
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.events).toContain("message_confirmed");
+  });
+
+  it("keeps native-queue recovery unconfirmed while its accepted Enter has not painted the echo", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.afterEnter = READY_EMPTY;
+    // The recovery Enter was accepted, but Codex paints the transcript later.
+    setTimeout(() => { h.state.pane = SUBMITTED; }, 5_000);
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not report a hard failure when native-queue recovery remains unknowable", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.afterEnter = READY_EMPTY;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not confirm a native queue submission from an unknown Codex pane layout", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = RESUMING_WITH_MESSAGE;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not report a false failure while a submitted 0.156 message appears after the first proof window", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;
+    h.state.pane = READY_EMPTY;
+    h.state.afterPaste = READY_EMPTY; // redraw hides the echo for several seconds
+    setTimeout(() => { h.state.pane = SUBMITTED; }, 5_000);
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledOnce();
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("keeps an unproven post-Enter outcome uncertain, without ❌ or duplicate paste", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;
+    h.state.pane = READY_EMPTY;
+    h.state.afterPaste = READY_EMPTY;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledOnce();
+    expect(h.events).not.toContain("message_failed");
+  });
+
   it("keeps the startup scan open while the current Codex screen is resuming", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.daemon.beginSpawn();
@@ -334,6 +438,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       ...RESUMING_WITH_MESSAGE.split("\n").map(row => `  ${row}`),
       "• I can inspect that startup race.",
       "› Ask Codex to do anything",
+      "  Context 46% left",
     ].join("\n");
     h.state.afterPaste = SUBMITTED;
     h.state.afterEnter = SUBMITTED;
@@ -458,10 +563,11 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
-    // Nothing of ours reached the pane, so the redelivery paste is the right
-    // recovery here — and it must actually happen.
-    expect(h.paste).toHaveBeenCalledTimes(2);
-    expect(ok).toBe(true);
+    // An absent viewport echo is not proof of loss: the native queue may have
+    // accepted it without painting the full body. Never risk a duplicate.
+    expect(h.paste).toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_failed");
+    expect(ok).toBe(false);
   });
 
   // Counting alone is not enough when the viewport scrolls. A repeated
@@ -509,10 +615,11 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
-    // Ours is nowhere on screen, so the recovery is to paste it — not to press
-    // Enter on someone else's text and call this delivery done.
-    expect(h.paste, "our message must actually be sent, not assumed sent").toHaveBeenCalledTimes(2);
-    expect(ok).toBe(true);
+    // The older strand cannot confirm ours, but it also cannot prove our
+    // unique message was not accepted off-screen. No blind second paste.
+    expect(h.paste).toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_failed");
+    expect(ok).toBe(false);
   });
 
   // A momentary failure to read the pane BEFORE pasting must not turn a
@@ -521,18 +628,9 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
   it("does not re-paste when the baseline capture failed but the message is clearly there", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = false;
-    // The dialog probes read the pane first; every capture after those fails
-    // until the paste happens, so all three baseline attempts come back empty
-    // and this delivery has no "before" picture at all.
-    let captures = 0;
-    let pasted = false;
-    h.daemon.tmux.capturePane = async () => {
-      captures++;
-      if (!pasted && captures > 2) throw new Error("no server running");
-      return h.state.pane;
-    };
-    const origPaste = h.paste.getMockImplementation()! as (...a: unknown[]) => Promise<unknown>;
-    h.paste.mockImplementation(async (...args: unknown[]) => { pasted = true; return origPaste(...args); });
+    // Readiness now makes its own captures before the baseline. Make only the
+    // baseline unavailable so this test does not depend on probe call counts.
+    vi.spyOn(h.daemon, "capturePaneEvidence").mockResolvedValue(null);
     h.state.afterPaste = SUBMITTED; // m-1 echoed into the transcript, input row clear
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
@@ -562,8 +660,9 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterSecondPaste = [identicalOlderStrand, SUBMITTED].join("\n");
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_SINGLELINE, STATUS, {}));
 
-    expect(h.paste, "the older strand is not ours to claim as delivered").toHaveBeenCalledTimes(2);
-    expect(ok).toBe(true);
+    expect(h.paste, "the older strand is not ours to claim as delivered").toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_failed");
+    expect(ok).toBe(false);
   });
 
   // Agents and users discuss message ids in the message BODY all the time
@@ -593,8 +692,9 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
       { submissionId: "m-1" },
     ));
 
-    expect(h.paste, "the id in the body belongs to an older message, not this one").toHaveBeenCalledTimes(2);
-    expect(ok).toBe(true);
+    expect(h.paste, "the id in the body belongs to an older message, not this one").toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_failed");
+    expect(ok).toBe(false);
   });
 
   // The wiring, not just the check: deliverMessage only knows the trusted id
@@ -708,9 +808,9 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
-    expect(h.paste, "the vanished paste is retried").toHaveBeenCalledTimes(2);
-    expect(h.events, "a redraw is not proof that the retry landed either").not.toContain("message_confirmed");
-    expect(h.events).toContain("message_failed");
+    expect(h.paste, "absence is not proof that a retry is safe").toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
     expect(ok).toBe(false);
   });
 
@@ -734,7 +834,8 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
 
     const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
 
-    expect(h.paste, "the older copy is not evidence for this delivery").toHaveBeenCalledTimes(2);
-    expect(ok).toBe(true);
+    expect(h.paste, "the older copy is not evidence for this delivery").toHaveBeenCalledTimes(1);
+    expect(h.events).not.toContain("message_failed");
+    expect(ok).toBe(false);
   });
 });

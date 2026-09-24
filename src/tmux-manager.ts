@@ -411,6 +411,24 @@ export class TmuxManager {
     return { columns, rows, mode: modeOutput.trim() };
   }
 
+  /** Positive termios evidence that a TUI, not the spawning shell, owns stdin. */
+  async getPaneInputMode(): Promise<"raw" | "cooked" | "unknown"> {
+    if (!this.windowId) return "unknown";
+    try {
+      const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
+        "display-message", "-p", "-t", `${this.sessionName}:${this.windowId}`, "#{pane_tty}",
+      ]), { timeout: 2_000 });
+      const tty = stdout.trim();
+      if (!/^\/dev\/(?:pts\/\d+|tty\w*)$/.test(tty)) return "unknown";
+      const flag = process.platform === "darwin" ? "-f" : "-F";
+      const { stdout: modes } = await exec("stty", [flag, tty, "-a"], { timeout: 2_000 });
+      return /(?:^|\s)-icanon(?:\s|$)/.test(modes) && /(?:^|\s)-echo(?:\s|$)/.test(modes)
+        ? "raw" : "cooked";
+    } catch {
+      return "unknown";
+    }
+  }
+
   async sendKeys(text: string): Promise<boolean> {
     try {
       await exec("tmux", TmuxManager.tmuxArgs(["send-keys", "-l", "-t", `${this.sessionName}:${this.windowId}`, text]));

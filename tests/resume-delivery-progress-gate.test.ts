@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
@@ -56,6 +56,11 @@ const READY = [
   "› Ask Codex to do anything",
   "  Context 46% left",
 ].join("\n");
+
+// Captured from an isolated real codex-cli 0.156.0 tmux pane. The sign-in
+// modal used a fresh test-only CODEX_HOME; neither fixture is a fabricated UI.
+const CODEX_0156_READY = readFileSync(join(__dirname, "fixtures/codex-0156-ready.pane.txt"), "utf-8");
+const CODEX_0156_SIGNIN = readFileSync(join(__dirname, "fixtures/codex-0156-signin.pane.txt"), "utf-8");
 
 /** codex mid-turn: busy, but its input is available — the steer/native-queue shape. */
 const BUSY = [
@@ -131,6 +136,7 @@ function makeHarness(backendName: "codex" | "grok" = "codex"): Harness {
   });
   daemon.tmux = {
     capturePane: async () => state.pane,
+    getPaneInputMode: async () => "raw" as const,
     pasteBuffer: paste,
     sendSpecialKey: vi.fn(async () => true),
     sendKeys: vi.fn(async () => true),
@@ -180,6 +186,65 @@ afterEach(() => {
 });
 
 describe("delivery to a codex that is still resuming", () => {
+  it("recognizes the real 0.156 input/footer but not its sign-in modal", () => {
+    const backend = new CodexBackend("/tmp/codex-0156-fixture");
+    expect(backend.isDeliveryInputReadyPane(CODEX_0156_READY)).toBe(true);
+    expect(backend.isDeliveryInputReadyPane(CODEX_0156_SIGNIN)).toBe(false);
+    expect(backend.isDeliveryInputReadyPane(CODEX_0156_READY.replace("› Ask Codex to do anything", "> 1. Trust and continue"))).toBe(false);
+  });
+
+  it("holds a real 0.156 ready-looking pane until its tty is in raw mode", async () => {
+    const h = makeHarness();
+    h.state.idle = true;
+    h.state.pane = CODEX_0156_READY;
+    let mode: "cooked" | "raw" = "cooked";
+    h.daemon.tmux.getPaneInputMode = vi.fn(async () => mode);
+    h.daemon.tmux.sendSpecialKey = vi.fn(async () => {
+      h.state.pane = SUBMITTED.replace("• Working", "  (message_id: m)\n• Working");
+      return true;
+    });
+    setTimeout(() => { mode = "raw"; }, 2_000);
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.paste, "a visible prompt with cooked tty is not input readiness").not.toHaveBeenCalled();
+    await expect(settle(delivery)).resolves.toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+  });
+
+  it("does not treat an unknown tty mode as positive startup readiness", async () => {
+    const h = makeHarness();
+    h.state.idle = true;
+    h.state.pane = CODEX_0156_READY;
+    h.daemon.tmux.getPaneInputMode = vi.fn(async () => "unknown");
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.paste).not.toHaveBeenCalled();
+    h.daemon.tmux.getPaneInputMode = vi.fn(async () => "raw");
+    h.daemon.tmux.sendSpecialKey = vi.fn(async () => {
+      h.state.pane = SUBMITTED.replace("• Working", "  (message_id: m)\n• Working");
+      return true;
+    });
+    await expect(settle(delivery)).resolves.toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+  });
+
+  it("holds the real 0.156 sign-in modal instead of typing into its selected option", async () => {
+    const h = makeHarness();
+    h.state.idle = true;
+    h.state.pane = CODEX_0156_SIGNIN;
+    h.daemon.tmux.getPaneInputMode = vi.fn(async () => "raw");
+    h.daemon.tmux.sendSpecialKey = vi.fn(async () => {
+      h.state.pane = SUBMITTED.replace("• Working", "  (message_id: m)\n• Working");
+      return true;
+    });
+    setTimeout(() => { h.state.pane = CODEX_0156_READY; }, 2_000);
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "m" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(h.paste).not.toHaveBeenCalled();
+    await expect(settle(delivery)).resolves.toBe(true);
+  });
   it("waits out a resume that runs well past the old thirty-second cap", async () => {
     // Ninety seconds of resume — three times the old flat budget — with the
     // frame repainting the way a live one does. This is the paused-codex wake
@@ -331,6 +396,8 @@ describe("who gets told a cross-instance delivery failed", () => {
     await settle(h.daemon.pasteLock);
 
     expect(broadcasts.map(b => b.type)).toContain("cross_instance_delivery_failed");
+    expect(broadcasts.find(b => b.type === "cross_instance_delivery_failed"))
+      .toMatchObject({ error: "delivery failed: phase=readiness; proof=timeout-before-write" });
   });
   it("says nothing when a STEER could not be attempted", async () => {
     // Same rule, the other lock. A steer runs on steerLock, and its call site

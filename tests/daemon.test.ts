@@ -341,11 +341,26 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("hands busy Codex input to its native queue with exactly one Enter when paste is visible", async () => {
+    // A queued-input marker in a trusted Codex pane is positive proof. The old
+    // synthetic "thinking…\n↳ queued work" pane had no live prompt/footer;
+    // #910 correctly treats that unknown layout as unconfirmed instead.
+    const before = [
+      "• Working (9s • esc to interrupt)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    const after = [
+      "• Working (9s • esc to interrupt)",
+      "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)",
+      "  ↳ queued work",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
     const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
       "codex",
       false,
-      "thinking…\n↳ queued work",
-      "thinking…", // before the paste there is no queue marker to borrow
+      after,
+      before, // before the paste there is no queue marker to borrow
     );
     const queued = vi.fn();
     const delivered = vi.fn();
@@ -381,12 +396,9 @@ describe("Daemon backend-native input queue delivery", () => {
     }
   });
 
-  it("re-delivers via idle gate when busy Codex paste is silently swallowed", async () => {
-    // First capture (post busy-paste) empty → silent loss; after idle-gated
-    // re-paste the text appears (or busy confirm succeeds).
-    // The paste is swallowed: the pane never gains anything of ours, so the
-    // delivery must fall back to the idle-gated path and paste again. The ↳
-    // that appears later belongs to that second, successful attempt.
+  it("does not re-paste an unproven busy Codex delivery", async () => {
+    // Missing viewport evidence cannot prove Codex rejected a native-queue
+    // paste. Do not duplicate an ambiguously accepted cross-instance request.
     const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
       "codex",
       false,
@@ -410,21 +422,17 @@ describe("Daemon backend-native input queue delivery", () => {
         messageId: "message",
       });
 
-      expect(result).toBe(true);
+      expect(result).toBe(false);
       expect(control.waitUntilIdle).toHaveBeenCalledOnce();
-      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
-      expect(tmux.sendSpecialKey.mock.calls.filter((c: string[]) => c[0] === "Enter").length).toBeGreaterThanOrEqual(2);
-      // Codex exposes an input row, so the redelivery is confirmed by the pane
-      // gaining the message — not by confirmBusyAfterEnter, which no longer
-      // decides for backends that can be read.
-      expect(confirmed).toHaveBeenCalledOnce();
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(confirmed).not.toHaveBeenCalled();
       expect(failed).not.toHaveBeenCalled();
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }
   });
 
-  it("emits message_failed when idle-gated redelivery also cannot land the paste", async () => {
+  it("does not emit a false failure for an unproven native-queue delivery", async () => {
     const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", false, "still busy redraw");
     const confirm = vi.fn().mockResolvedValue(false);
     (daemon as any).confirmBusyAfterEnter = confirm;
@@ -438,12 +446,11 @@ describe("Daemon backend-native input queue delivery", () => {
       });
 
       expect(result).toBe(false);
-      // Waiting for the prompt before a retry Enter is part of the confirmation
-      // ladder now, so the idle wait is no longer once-only; what must hold is
-      // that an unprovable delivery is redelivered and then failed.
+      // No signature in the viewport is uncertainty, not permission to paste
+      // a duplicate or tell the sender a definitive ❌.
       expect(control.waitUntilIdle).toHaveBeenCalled();
-      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(2);
-      expect(failed).toHaveBeenCalledOnce();
+      expect(tmux.pasteBuffer).toHaveBeenCalledTimes(1);
+      expect(failed).not.toHaveBeenCalled();
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
     }
@@ -619,7 +626,7 @@ describe("Daemon backend-native input queue delivery", () => {
         senderSession: "sender-session",
         targetInstance: "claude-code-queue-test",
         correlationId: "cid-large",
-        error: "load-buffer failed: ENOSPC",
+        error: "delivery failed: phase=paste; proof=non-retryable-tmux-error",
       });
     } finally {
       rmSync(instanceDir, { recursive: true, force: true });
@@ -657,9 +664,9 @@ describe("Daemon backend-native input queue delivery", () => {
     // submits it. Codex can be read, so the recovery is proven by the pane
     // rather than by "the pane printed something after Enter" — which, on a
     // freshly woken instance, is satisfied by the redraw that ate the Enter.
-    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", true, "› Ask Codex to do anything");
+    const { control, daemon, instanceDir, tmux } = makeDeliveryDaemon("codex", true, "› Ask Codex to do anything\n  Context 63% left");
     const STRANDED = "› normal idle submission\n  Context 63% left";
-    const SUBMITTED = "› normal idle submission\n• Working (1s)\n› Ask Codex to do anything";
+    const SUBMITTED = "› normal idle submission\n• Working (1s)\n› Ask Codex to do anything\n  Context 63% left";
     let enters = 0;
     tmux.pasteBuffer.mockImplementation(async () => { tmux.capturePane.mockResolvedValue(STRANDED); return true; });
     tmux.sendSpecialKey.mockImplementation(async (key: string) => {
@@ -1116,8 +1123,8 @@ describe("Daemon /steer delivery", () => {
     // separates "could not land" from "never attempted", and only the first is
     // reported to the sender (#826). The stub has to model that contract.
     (daemon as any).deliverMessage = vi.fn(
-      async (_text: string, _status: unknown, opts?: { verdict?: { reached: boolean } }) => {
-        if (opts?.verdict) opts.verdict.reached = true;
+      async (_text: string, _status: unknown, opts?: { verdict?: { reached: boolean; phase?: string; proof?: string } }) => {
+        if (opts?.verdict) Object.assign(opts.verdict, { reached: true, phase: "paste", proof: "non-retryable-tmux-error" });
         return false;
       });
     (daemon as any).wake = vi.fn(async () => {});
@@ -1141,7 +1148,7 @@ describe("Daemon /steer delivery", () => {
       senderSession: "sender-session",
       targetInstance: "claude-code-steer-test",
       correlationId: "cid-steer",
-      error: "load-buffer failed: ENOSPC",
+      error: "delivery failed: phase=paste; proof=non-retryable-tmux-error",
     });
   });
 
