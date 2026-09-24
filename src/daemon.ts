@@ -42,6 +42,8 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
+import { CodexResumeConflictError, CodexResumeIdentityError, CodexResumeUnavailableError } from "./backend/codex-session.js";
+import { codexResumeLockVisible } from "./backend/codex.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1085,6 +1087,8 @@ export class Daemon extends EventEmitter {
   private instanceStateBusyPattern: RegExp | null = null;
   private instanceStateMonitorActive = false;
   private sessionCheckpointWarningEmitted = false;
+  private codexSessionIdentityHoldNotified = false;
+  private recoveredLegacyCodexSessionId: string | null = null;
   private statePollInFlight = false;
   // One generation-scoped source of truth for human-turn reply completion.
   // It also supplies the older dead-MCP/malformed-call recovery paths, so those
@@ -1349,6 +1353,11 @@ export class Daemon extends EventEmitter {
   }
 
   async start(): Promise<void> {
+    // Do this before touching daemon.pid or a pre-existing window. An unknown
+    // rollout format with an owned marker must not become a fresh session.
+    if (this.backend?.hasInvalidSessionIdentity?.(this.config.working_directory)) {
+      throw new CodexResumeIdentityError();
+    }
     mkdirSync(this.instanceDir, { recursive: true });
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
     this.logger.info(`Starting ${this.name}`);
@@ -1359,8 +1368,15 @@ export class Daemon extends EventEmitter {
       if (existsSync(crashStatePath)) {
         const state = JSON.parse(readFileSync(crashStatePath, "utf-8"));
         if (state.resumeDisabled) {
-          this.skipResume = true;
-          this.logger.warn("Previous crash loop detected — starting without resume");
+          if (this.backend?.binaryName === "codex" && this.backend.canResume?.(this.config.working_directory)) {
+            // A crash-loop heuristic cannot silently discard an explicitly
+            // owned Codex conversation. Try once, then hold with a visible
+            // reason rather than cycling or choosing a new session.
+            this.logger.warn("Previous crash loop detected — preserving explicit Codex resume");
+          } else {
+            this.skipResume = true;
+            this.logger.warn("Previous crash loop detected — starting without resume");
+          }
         }
         unlinkSync(crashStatePath);
       }
@@ -1488,7 +1504,11 @@ export class Daemon extends EventEmitter {
       if (savedId) {
         const oldTmux = new TmuxManager(this.tmuxSessionName, savedId);
         if (await oldTmux.isWindowAlive()) {
-          this.saveSessionId();
+          this.backend?.setActivePanePid?.(await TmuxManager.getPanePid(this.tmuxSessionName, savedId));
+          const recoveredPane = this.backend?.binaryName === "codex"
+            ? await oldTmux.capturePane().catch(() => undefined) : undefined;
+          const recoveredId = this.checkpointLivePaneBeforeReplacement(recoveredPane);
+          if (this.backend?.binaryName === "codex") this.recoveredLegacyCodexSessionId = recoveredId;
           await oldTmux.killWindow();
           this.logger.info({ savedId }, "Killed old tmux window for fresh start");
         }
@@ -1581,7 +1601,9 @@ export class Daemon extends EventEmitter {
       this.guardian.startWatching();
 
       this.guardian.on("status_update", () => {
-        this.saveSessionId();
+        // Codex's /new can leave multiple writer locks in one PID. A status
+        // callback has no pane footer, so it cannot attest the current chat.
+        if (this.backend?.binaryName !== "codex") this.saveSessionId();
       });
       // Context rotation removed: all CLI backends have built-in auto-compact.
       // Crash recovery (health check + respawn with snapshot) is retained below.
@@ -2130,7 +2152,8 @@ export class Daemon extends EventEmitter {
           }
 
           // Detect claude-code background session conflict — recover without counting as crash
-          if (lastOutput && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
+          if (this.backend?.binaryName !== "codex" && lastOutput
+            && (lastOutput.includes("background agent") || lastOutput.includes("Session is currently running"))) {
             if (!this.backgroundSessionRecoveryAttempted) {
               this.backgroundSessionRecoveryAttempted = true;
               this.logger.warn("Detected lingering background agent session — starting fresh (no resume)");
@@ -2168,6 +2191,14 @@ export class Daemon extends EventEmitter {
           // and skip resume so the next spawn starts fresh. (skipResume also stops
           // saveSessionId below from resurrecting the id from statusline.json.)
           if (this.paneSaysNoConversation(lastOutput)) {
+            if (this.backend?.binaryName === "codex" && this.backend.hasSessionIdentity?.()) {
+              // Codex may have changed its rollout format or emitted an error
+              // that only resembles this generic pattern. A persisted UUID is
+              // never discarded by a text heuristic; preserve and hold.
+              this.healthCheckPaused = true;
+              this.emitSupervisionEnded("Codex could not resume its owned session", "Inspect the preserved session ID/rollout and restart this instance manually.");
+              return;
+            }
             this.setSessionAside("cli_reported_no_conversation");
             this.skipResume = true;
           }
@@ -2245,7 +2276,9 @@ export class Daemon extends EventEmitter {
           await new Promise(r => setTimeout(r, delay));
 
           try {
-            this.saveSessionId();
+            // The dead Codex pane cannot supply current-session evidence.
+            // Its last verified checkpoint stays as-is (or held if ambiguous).
+            if (this.backend?.binaryName !== "codex") this.saveSessionId();
             this.transcriptMonitor?.resetOffset();
             // Kill orphan MCP server from the crashed CLI session.
             // MCP server writes its PID to channel.mcp.pid on startup.
@@ -2285,7 +2318,15 @@ export class Daemon extends EventEmitter {
             // so its chat notification is suppressed into the fleet summary.
             if (crashType === "server") this.stormWindow?.markRecovered(this.name);
           } catch (err) {
-            if (!this.handOffBackendUnreachableRespawn(err)) {
+            if (err instanceof CodexResumeConflictError || err instanceof CodexResumeUnavailableError) {
+              // A live owner is not a broken conversation. Stop automatic
+              // respawns and preserve the explicit session for a human retry.
+              this.healthCheckPaused = true;
+              this.logger.warn({ ownerPid: err instanceof CodexResumeConflictError ? err.ownerPid : null }, "Codex resume cannot continue — supervision stopped");
+              this.emitSupervisionEnded(err.message, err instanceof CodexResumeConflictError
+                ? "Close the other Codex owner, then restart this instance."
+                : "Inspect the Codex pane and restart this instance after resolving the startup failure.");
+            } else if (!this.handOffBackendUnreachableRespawn(err)) {
               this.logger.error({ err }, `Failed to respawn ${cliLabel} window`);
             }
           }
@@ -2844,7 +2885,9 @@ export class Daemon extends EventEmitter {
     // Quit CLI FIRST — this kills MCP server child processes cleanly.
     // IPC must stay open during quit so MCP servers receive the shutdown message.
     if (this.tmux) {
-      this.saveSessionId();
+      const codexPane = this.backend?.binaryName === "codex"
+        ? await this.tmux.capturePane().catch(() => undefined) : undefined;
+      this.saveSessionId(codexPane);
       this.healthCheckPaused = true;
       let killed = false;
       const quitSent = await this.sendQuitSequence();
@@ -2983,7 +3026,9 @@ export class Daemon extends EventEmitter {
     this.freezeRuntimeMonitors();
     const transition = (async () => {
       try {
-        this.saveSessionId();
+        const codexPane = this.backend?.binaryName === "codex"
+          ? await this.tmux?.capturePane().catch(() => undefined) : undefined;
+        this.saveSessionId(codexPane);
         await this.sendQuitSequence();
 
         let exited = false;
@@ -3112,13 +3157,13 @@ export class Daemon extends EventEmitter {
     }
     this.instanceState = snapshot.state;
 
-    // OpenCode creates its session lazily on the first submitted message.
+    // OpenCode and Codex create their session lazily on the first submitted message.
     // Waiting until stop/pause to persist that id loses resume state when the
     // fleet is SIGKILLed or the host reboots.
     // Idle observations are safe checkpoints; the 60s safety sweep also gives
     // us a bounded retry if session creation produced no visible state edge.
-    if (snapshot.state === "idle" && this.backend?.binaryName === "opencode") {
-      this.saveSessionId();
+    if (snapshot.state === "idle" && (this.backend?.binaryName === "opencode" || this.backend?.binaryName === "codex")) {
+      this.saveSessionId(pane);
     }
 
     // Only a transition back to idle completes pending work. Repeated idle
@@ -6454,11 +6499,23 @@ export class Daemon extends EventEmitter {
       throw new Error("No backend configured — cannot spawn CLI window");
     }
 
-    const attemptedResume = !this.skipResume;
+    const attemptedResume = !this.skipResume
+      && (this.backend.canResume?.(this.config.working_directory) ?? true);
     // A resume launch may get a longer budget than a fresh one (kiro: the
     // conversation must come back from the backend before anything paints).
     const resumeBudget = attemptedResume ? this.startupBudgetFor(true) : undefined;
     let alive = await this.trySpawn(false, resumeBudget);
+
+    if (!alive && attemptedResume && this.backend.binaryName === "codex") {
+      const status = await this.tmux?.getPaneStatus().catch(() => null);
+      if (status?.exitCode === 75) throw new CodexResumeConflictError(null);
+      const pane = await this.tmux?.capturePane().catch(() => "");
+      if (pane?.includes("[agend:codex-session-held]")) throw new CodexResumeConflictError(null);
+      if (pane && codexResumeLockVisible(pane)) throw new CodexResumeConflictError(null);
+      // A failed explicit resume is not evidence that the conversation is
+      // unusable. Never enter the generic abandon/--fresh recovery path.
+      throw new CodexResumeUnavailableError();
+    }
 
     if (!alive && attemptedResume) {
       // Resume failed. Before abandoning the session:
@@ -6642,7 +6699,9 @@ export class Daemon extends EventEmitter {
     }
     try { await this.ipcServer?.close(); } catch (err) { this.logger.debug({ err }, "IPC server close failed during startup abort"); }
     this.ipcServer = null;
-    for (const file of ["daemon.pid", "window-id"]) {
+    // A rejection before tmux setup did not create a replacement window; its
+    // pre-existing window-id still belongs to the old pane and must survive.
+    for (const file of this.tmux ? ["daemon.pid", "window-id"] : ["daemon.pid"]) {
       try { unlinkSync(join(this.instanceDir, file)); } catch { /* absent */ }
     }
   }
@@ -6666,12 +6725,21 @@ export class Daemon extends EventEmitter {
    * Returns true if CLI is ready, false if it failed or got stuck.
    */
   private async trySpawn(reuseWindow = false, startupTimeoutMs?: number): Promise<boolean> {
-    if (!this.spawnGate) return this.trySpawnInsideGate(reuseWindow, startupTimeoutMs);
-    return this.spawnGate.run({
-      instanceName: this.name,
-      workingDirectory: this.config.working_directory,
-      reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
-    }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    const ready = !this.spawnGate
+      ? await this.trySpawnInsideGate(reuseWindow, startupTimeoutMs)
+      : await this.spawnGate.run({
+        instanceName: this.name,
+        workingDirectory: this.config.working_directory,
+        reason: reuseWindow ? "wake" : this.lastSpawnAt > 0 ? "recovery" : "startup",
+      }, () => this.trySpawnInsideGate(reuseWindow, startupTimeoutMs));
+    // All successful launches, including wake's trySpawn(true), cross this
+    // point. The previous checkpoint in spawnClaudeWindow missed wake and
+    // kept reading the dead pane PID after a resumed session changed.
+    if (ready && !this.fatalStartupBlocked && this.backend?.binaryName === "codex" && this.tmux) {
+      this.backend.setActivePanePid?.(await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux.getWindowId()));
+      this.saveSessionId(await this.tmux.capturePane().catch(() => undefined));
+    }
+    return ready;
   }
 
   /**
@@ -6888,6 +6956,19 @@ export class Daemon extends EventEmitter {
 
     this.backend!.writeConfig(backendConfig);
     this.backend!.preTrust?.(this.config.working_directory);
+
+    // Bounded preflight for an owner left by a restart or another app. Codex
+    // must not be launched as a competing resumer. The command's flock is the
+    // atomic second fence for a race after this observation.
+    if (!backendConfig.skipResume && this.backend!.resumeOwner) {
+      let owner: number | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        owner = this.backend!.resumeOwner(this.config.working_directory);
+        if (owner === null) break;
+        if (attempt < 2) await new Promise(r => setTimeout(r, 1_000));
+      }
+      if (owner !== null) throw new CodexResumeConflictError(owner);
+    }
 
     // Resolve working directory (e.g. symlink for hidden paths)
     const resolvedCwd = this.backend!.resolveWorkingDirectory?.(this.config.working_directory, this.name) ?? this.config.working_directory;
@@ -7270,22 +7351,31 @@ export class Daemon extends EventEmitter {
     } catch { /* best effort */ }
   }
 
-  private saveSessionId(): void {
+  /** The returned ID was durably checkpointed or already matched on disk. */
+  private saveSessionId(pane?: string): string | null {
     // When a resume failure has forced a fresh start, don't persist the stale id
     // back from statusline.json — that would re-arm --continue and re-loop.
-    if (this.skipResume) return;
+    if (this.skipResume) return null;
     try {
-      const sid = this.backend?.getSessionId();
-      if (!sid) return;
+      const sid = this.backend?.getSessionId(pane);
+      if (!sid) {
+        if (this.backend?.hasUnconfirmedSessionIdentity?.() && !this.codexSessionIdentityHoldNotified) {
+          this.codexSessionIdentityHoldNotified = true;
+          this.emit("codex_session_identity_unconfirmed", { name: this.name });
+        }
+        return null;
+      }
+      this.codexSessionIdentityHoldNotified = false;
       const path = join(this.instanceDir, "session-id");
       // Idle observations happen after turns. Avoid needless writes (and mtime
       // churn) while still updating the marker when /new changes the session.
       try {
-        if (readFileSync(path, "utf-8").trim() === sid) return;
+        if (readFileSync(path, "utf-8").trim() === sid) return sid;
       } catch { /* first checkpoint */ }
       writeFileSync(path, sid);
       this.sessionCheckpointWarningEmitted = false;
       this.logger.debug("Session id checkpointed");
+      return sid;
     } catch (err) {
       // Session discovery is best-effort and must never break the pane state
       // monitor. Existing stop/pause checkpoints get another chance later.
@@ -7293,8 +7383,24 @@ export class Daemon extends EventEmitter {
         this.sessionCheckpointWarningEmitted = true;
         this.logger.warn({ err: (err as Error).message }, "Session id checkpoint failed");
       }
+      return null;
     }
   }
+
+  private checkpointLivePaneBeforeReplacement(pane?: string): string | null {
+    // A pre-upgrade Codex pane can provide stronger, exact ownership
+    // evidence than an old crash-loop heuristic. Discover it before
+    // saveSessionId's skip-resume guard, then arm resume only if the
+    // checkpoint was actually durable. Never fall back to --last.
+    const exactCodexId = this.backend?.binaryName === "codex" ? this.backend.getSessionId(pane) : null;
+    if (exactCodexId) this.skipResume = false;
+    const recoveredId = this.saveSessionId(pane);
+    if (exactCodexId && !recoveredId) this.skipResume = true;
+    return recoveredId;
+  }
+
+  /** Only a live pre-upgrade pane can provide this positive migration proof. */
+  getRecoveredLegacyCodexSessionId(): string | null { return this.recoveredLegacyCodexSessionId; }
 
   private readContextPercentage(): number {
     return this.backend?.getContextUsage() ?? 0;

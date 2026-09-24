@@ -7275,6 +7275,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return false;
   }
 
+  /** A migration debt is retired only after the platform accepted the send. */
+  async notifyInstanceTopicConfirmed(instanceName: string, text: string): Promise<boolean> {
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return false;
+    const channelCfg = this.getChannelConfig(this.getInstanceAdapterId(instanceName));
+    const groupId = channelCfg?.group_id;
+    const threadId = this.fleetConfig?.instances[instanceName]?.topic_id;
+    let chatId: string;
+    let opts: import("./channel/types.js").SendOpts | undefined;
+    if (threadId != null && groupId) {
+      chatId = String(groupId);
+      opts = { threadId: String(threadId) };
+    } else {
+      const classicChatId = this.classicChannels?.getChannelIdByInstance(instanceName);
+      if (classicChatId) chatId = classicChatId;
+      else {
+        const target = this.fleetNoticeTarget(this.getInstanceAdapterId(instanceName));
+        if (!target) return false;
+        chatId = target.chatId;
+        opts = target.opts;
+      }
+    }
+    try {
+      await adapter.sendText(chatId, text, opts);
+      return true;
+    } catch {
+      // Provider transport errors can include credential-bearing URLs. This
+      // notice is diagnostic only; never put the raw error into a fleet log.
+      this.logger.warn({ instanceName }, "Codex upgrade notice was not delivered — pending for retry");
+      return false;
+    }
+  }
+
   // ── Nonce-armed button prompts (hang / assist / exit / clear) ──
   //
   // One shared lifecycle for every "notification with decision buttons":
