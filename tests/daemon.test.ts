@@ -341,11 +341,26 @@ describe("Daemon backend-native input queue delivery", () => {
   });
 
   it("hands busy Codex input to its native queue with exactly one Enter when paste is visible", async () => {
+    // A queued-input marker in a trusted Codex pane is positive proof. The old
+    // synthetic "thinking…\n↳ queued work" pane had no live prompt/footer;
+    // #910 correctly treats that unknown layout as unconfirmed instead.
+    const before = [
+      "• Working (9s • esc to interrupt)",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
+    const after = [
+      "• Working (9s • esc to interrupt)",
+      "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)",
+      "  ↳ queued work",
+      "› Ask Codex to do anything",
+      "  Context 63% left",
+    ].join("\n");
     const { backend, control, daemon, instanceDir, tmux } = makeDeliveryDaemon(
       "codex",
       false,
-      "thinking…\n↳ queued work",
-      "thinking…", // before the paste there is no queue marker to borrow
+      after,
+      before, // before the paste there is no queue marker to borrow
     );
     const queued = vi.fn();
     const delivered = vi.fn();
