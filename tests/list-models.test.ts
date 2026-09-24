@@ -78,6 +78,45 @@ describe("listModelCatalog — global scope", () => {
     expect((await fm.listModelCatalog()).backend).toBe("claude-code");
   });
 
+  it("re-probes a cache older than the ~1h /model window instead of serving it", async () => {
+    // #888: the cache is still inside the 24h hard TTL, but `/model` would
+    // already have re-probed past the 1h freshness window — list_models must too.
+    seedCliEnv("kiro-cli", [{ id: "auto" }], { currentModel: "auto", ageMs: 2 * 60 * 60 * 1000 });
+    const fm = makeFleet();
+    const probe = vi.fn().mockResolvedValue({
+      backend: "kiro-cli", probedAt: Date.now(),
+      models: [{ id: "auto" }, { id: "claude-opus-6" }], currentModel: "claude-opus-6",
+    });
+    (fm as any).probeBackend = probe;
+
+    const r = await fm.listModelCatalog({ backend: "kiro-cli" });
+
+    expect(probe, "a cache past the 1h window must be refreshed").toHaveBeenCalled();
+    expect(r.source).toBe("live");
+    expect(r.models.map(m => m.id)).toEqual(["auto", "claude-opus-6"]);
+  });
+
+  it("does not probe while the cache is inside the ~1h /model window", async () => {
+    seedCliEnv("kiro-cli", [{ id: "auto" }], { currentModel: "auto", ageMs: 5 * 60 * 1000 });
+    const fm = makeFleet();
+
+    const r = await fm.listModelCatalog({ backend: "kiro-cli" });
+
+    expect((fm as any).probeBackend, "a fresh cache must not hit the vendor").not.toHaveBeenCalled();
+    expect(r.source).toBe("cache");
+    expect(r.models.map(m => m.id)).toEqual(["auto"]);
+  });
+
+  it("falls back to the stale list when a refresh finds nothing, like /model", async () => {
+    seedCliEnv("kiro-cli", [{ id: "auto" }], { currentModel: "auto", ageMs: 2 * 60 * 60 * 1000 });
+    const fm = makeFleet(); // probeBackend stubbed to fail
+
+    const r = await fm.listModelCatalog({ backend: "kiro-cli" });
+
+    expect(r.source).toBe("cache");
+    expect(r.models.map(m => m.id)).toEqual(["auto"]);
+  });
+
   it("ignores a cache past its 24h TTL rather than serving stale ids", async () => {
     seedCliEnv("grok", [{ id: "grok-4.6" }], { ageMs: 25 * 60 * 60 * 1000 });
     const fm = makeFleet();

@@ -10929,22 +10929,39 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     }
   }
 
-  /** Account-wide catalog: probe cache first, live probe on miss. */
+  /**
+   * Account-wide catalog: probe cache first, live probe when the cache is
+   * missing or older than the same ~1h window `/model` uses (#888).
+   *
+   * Previously this served anything inside the 24h hard TTL, so `list_models`
+   * could answer with a day-old list `/model` had already re-probed past.
+   * The probe runs under the same deadline `/model` uses: a vendor that stops
+   * answering degrades to the previous list, never stalls the tool call.
+   */
   private async globalModelCatalog(backend: string): Promise<ModelCatalog> {
     const cached = this.readCliEnv(backend);
-    if (cached?.models?.length) {
+    if (cached?.models?.length && !this.cliEnvNeedsRefresh(cached)) {
       return {
         backend, scope: "global", current_model: cached.currentModel ?? null,
         models: cached.models, source: "cache",
         probed_at: new Date(cached.probedAt).toISOString(),
       };
     }
-    const env = await this.probeBackend(backend);
+    const env = await this.probeBackendBounded(backend);
     if (env?.models?.length) {
       return {
         backend, scope: "global", current_model: env.currentModel ?? null,
         models: env.models, source: "live",
         probed_at: new Date(env.probedAt).toISOString(),
+      };
+    }
+    // Probe failed or timed out: like `/model`, the previous list is still the
+    // best answer — a stale list beats an empty one.
+    if (cached?.models?.length) {
+      return {
+        backend, scope: "global", current_model: cached.currentModel ?? null,
+        models: cached.models, source: "cache",
+        probed_at: new Date(cached.probedAt).toISOString(),
       };
     }
     // Reported rather than thrown: "we could not enumerate" is a useful answer,
