@@ -74,14 +74,6 @@ function active(dialog: { pattern: RegExp; isActive?: (pane: string) => boolean 
   return dialog.pattern.test(pane) && (dialog.isActive?.(pane) ?? true);
 }
 
-function trustDialogs(backend: CodexBackend) {
-  const dialogs = backend.getStartupDialogs();
-  return [
-    dialogs.find(dialog => dialog.autoResolutionKey === "codex-authorized-folder-trust")!,
-    dialogs.find(dialog => dialog.holdOnly && dialog.description.includes("folder trust"))!,
-  ] as const;
-}
-
 describe("Codex 0.156 trust prompt", () => {
   it("overwrites an existing untrusted project entry in the private config, idempotently", () => {
     const { shared, instance, cwd, backend } = fixture();
@@ -119,7 +111,7 @@ describe("Codex 0.156 trust prompt", () => {
     const config = readFileSync(join(instance, "codex-home", "config.toml"), "utf-8");
     expect(config).toContain(`[projects."${main}"]\ntrust_level = "trusted"`);
     expect(config).not.toContain(`[projects."${worktree}"]`);
-    const [auto] = trustDialogs(backend);
+    const [auto] = backend.getStartupDialogs();
     expect(active(auto, liveTrustPane(worktree, main))).toBe(true);
   });
 
@@ -133,7 +125,7 @@ describe("Codex 0.156 trust prompt", () => {
     execFileSync("git", ["-C", main, "worktree", "add", "-q", "--detach", worktree]);
     backend.writeConfig({ workingDirectory: worktree, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(worktree);
-    const [auto, hold] = trustDialogs(backend);
+    const [auto, hold] = backend.getStartupDialogs();
     for (const variant of ["wide", "narrow"] as const) {
       const pane = capturedTrustPane(variant, worktree, main);
       expect(active(auto, pane)).toBe(true);
@@ -148,7 +140,7 @@ describe("Codex 0.156 trust prompt", () => {
     const { dir, instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
-    const [auto, hold] = trustDialogs(backend);
+    const [auto, hold] = backend.getStartupDialogs();
     const pane = capturedTrustPane("wide", cwd, join(dir, "not-authorized"));
     const malformed = pane.replace("repository root:", "repository root");
     expect(active(auto, pane)).toBe(false);
@@ -201,7 +193,7 @@ describe("Codex 0.156 trust prompt", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
-    const [auto, hold] = trustDialogs(backend);
+    const [auto, hold] = backend.getStartupDialogs();
     expect(auto.keys).toEqual(["Enter"]);
     expect(active(auto, liveTrustPane(cwd))).toBe(true);
     expect(active(auto, liveTrustPane(join(cwd, "stranger")))).toBe(false);
@@ -222,7 +214,7 @@ describe("Codex 0.156 trust prompt", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
-    const [auto, hold] = trustDialogs(backend);
+    const [auto, hold] = backend.getStartupDialogs();
     const pane = liveTrustPane(cwd);
     const reversed = pane.replace("1. Trust and continue", "1. Quit").replace("2. Quit", "2. Trust and continue");
     const extra = pane.replace("  2. Quit", "  2. Quit\n  3. Ask later");

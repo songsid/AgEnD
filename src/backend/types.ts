@@ -373,20 +373,7 @@ export interface CliBackend {
   getContextUsage(): number | null;
 
   /** Read session ID for resume capability. Returns null if unavailable. */
-  getSessionId(pane?: string): string | null;
-
-  /** Optional exact process/session binding for backends with shared histories. */
-  setActivePanePid?(pid: number | null): void;
-  /** Whether this launch has an explicitly owned conversation to resume. */
-  canResume?(workingDirectory: string): boolean;
-  /** An owned marker exists, even when its current rollout cannot be verified. */
-  hasSessionIdentity?(): boolean;
-  /** Existing identity must hold rather than be treated as first-run history. */
-  hasInvalidSessionIdentity?(workingDirectory: string): boolean;
-  /** A live pane exposed multiple owned rollouts but no proven current chat. */
-  hasUnconfirmedSessionIdentity?(): boolean;
-  /** Live foreign owner PID for an explicitly owned conversation, if any. */
-  resumeOwner?(workingDirectory: string): number | null;
+  getSessionId(): string | null;
 
   /** Regex to detect when the CLI is ready to accept input. */
   getReadyPattern(): RegExp;

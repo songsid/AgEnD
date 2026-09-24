@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -25,7 +25,6 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
-import { CodexResumeConflictError, CodexResumeIdentityError, CodexResumeUnavailableError } from "./backend/codex-session.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -146,8 +145,6 @@ export interface LifecycleContext {
    * legacy contexts and test doubles counts as dispatched.
    */
   notifyInstanceTopic(name: string, text: string): boolean | void;
-  /** Await platform send success before retiring a durable migration notice. */
-  notifyInstanceTopicConfirmed?(name: string, text: string): Promise<boolean>;
   /** Notify the blocked instance and offer an interactive assist action in General. */
   notifyInteractivePrompt(name: string, kind: string): Promise<void>;
   /**
@@ -351,60 +348,8 @@ export class InstanceLifecycle {
   private static readonly MCP_AUTO_RESTART_COOLDOWN_MS = 15 * 60_000;
   /** instanceName → time of the last MCP-revival auto-restart. */
   private mcpAutoRestartAt = new Map<string, number>();
-  /** At most one retry per instance; pending debt survives process restart. */
-  private codexMigrationNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private codexMigrationNoticeAttempts = new Map<string, number>();
 
   constructor(private ctx: LifecycleContext) {}
-
-  private clearCodexMigrationNoticeRetry(name: string): void {
-    const timer = this.codexMigrationNoticeTimers.get(name);
-    if (timer) clearTimeout(timer);
-    this.codexMigrationNoticeTimers.delete(name);
-  }
-
-  private async sendPendingCodexMigrationNotice(name: string, instanceDir: string, daemon: Daemon): Promise<void> {
-    if (this.daemons.get(name) !== daemon) return;
-    const pending = join(instanceDir, "codex-migration-pending");
-    const notified = join(instanceDir, "codex-migration-notified");
-    if (!existsSync(pending) || existsSync(notified)) return;
-    const notice = t("inst.codex_legacy_session", name);
-    let sent = false;
-    try {
-      if (this.ctx.notifyInstanceTopicConfirmed) {
-        sent = await this.ctx.notifyInstanceTopicConfirmed(name, notice);
-      } else {
-        // Legacy test contexts can dispatch but cannot prove platform success.
-        this.ctx.notifyInstanceTopic(name, notice);
-        return;
-      }
-    } catch {
-      this.ctx.logger.warn({ name }, "Codex upgrade notice failed — pending for retry");
-    }
-    if (sent) {
-      try {
-        writeFileSync(notified, new Date().toISOString(), { flag: "wx", mode: 0o600 });
-        try { unlinkSync(pending); } catch { /* marker is the authoritative delivered state */ }
-        this.clearCodexMigrationNoticeRetry(name);
-        this.codexMigrationNoticeAttempts.delete(name);
-        return;
-      } catch {
-        this.ctx.logger.warn({ name }, "Codex upgrade notice receipt could not be persisted — pending for retry");
-      }
-    }
-    if (this.daemons.get(name) !== daemon) return;
-    this.clearCodexMigrationNoticeRetry(name);
-    const attempts = (this.codexMigrationNoticeAttempts.get(name) ?? 0) + 1;
-    this.codexMigrationNoticeAttempts.set(name, attempts);
-    const delayMs = Math.min(30_000 * 2 ** Math.min(attempts - 1, 4), 5 * 60_000);
-    const timer = setTimeout(() => {
-      if (this.codexMigrationNoticeTimers.get(name) !== timer) return;
-      this.codexMigrationNoticeTimers.delete(name);
-      void this.sendPendingCodexMigrationNotice(name, instanceDir, daemon);
-    }, delayMs);
-    timer.unref?.();
-    this.codexMigrationNoticeTimers.set(name, timer);
-  }
 
   /**
    * Report an incident to the user — unless the fleet is deliberately going
@@ -692,11 +637,6 @@ export class InstanceLifecycle {
       );
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
-
-    daemon.on("codex_session_identity_unconfirmed", safeHandler(() => {
-      this.ctx.logger.warn({ name }, "Codex current session unconfirmed — automatic resume held");
-      this.ctx.notifyInstanceTopic(name, t("inst.codex_session_unconfirmed", name));
-    }, this.ctx.logger, `daemon.codex_session_identity_unconfirmed[${name}]`));
 
     daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
@@ -1078,27 +1018,6 @@ export class InstanceLifecycle {
     }
 
     const backend = createBackend(backendName, instanceDir);
-    if (backend.hasInvalidSessionIdentity?.(config.working_directory)) {
-      const err = new CodexResumeIdentityError();
-      this.ctx.logger.warn({ name }, "Codex identity is present but unverified — startup held");
-      this.ctx.notifyInstanceTopic(name, `⚠️ ${name}: ${err.message}`);
-      this.ctx.setTopicIcon(name, "remove");
-      return;
-    }
-    const pendingMigrationPath = join(instanceDir, "codex-migration-pending");
-    const notifiedMigrationPath = join(instanceDir, "codex-migration-notified");
-    const priorPendingMigration = existsSync(pendingMigrationPath);
-    const legacyCodexHistory = backendName === "codex"
-      && existsSync(join(instanceDir, "codex-home"))
-      && !backend.hasSessionIdentity?.()
-      && !existsSync(notifiedMigrationPath);
-    const migrationPending = !existsSync(notifiedMigrationPath)
-      && (priorPendingMigration || legacyCodexHistory);
-    if (migrationPending && !priorPendingMigration) {
-      // Write the debt BEFORE a fresh session can checkpoint a new ID. The
-      // next launch must still know it owes a notice even if canResume=true.
-      writeFileSync(pendingMigrationPath, new Date().toISOString(), { flag: "wx", mode: 0o600 });
-    }
     const daemon = new Daemon(
       name,
       config,
@@ -1120,30 +1039,8 @@ export class InstanceLifecycle {
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
     });
-    try {
-      await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
-    } catch (err) {
-      if (!(err instanceof CodexResumeConflictError || err instanceof CodexResumeUnavailableError)) throw err;
-      // Do not schedule an automatic restart into the same live owner. The
-      // session marker remains untouched; a human can restart after release.
-      this.ctx.logger.warn({ name, ownerPid: err instanceof CodexResumeConflictError ? err.ownerPid : null }, "Codex resume held; explicit session preserved");
-      const target = this.ptyErrorNotificationTarget(name);
-      if (target) this.notifyIncident(target, "pty_error", `⚠️ ${name}: ${err.message}`);
-      this.ctx.setTopicIcon(name, "remove");
-      return;
-    }
-    this.clearCodexMigrationNoticeRetry(name);
+    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
     this.daemons.set(name, daemon);
-
-    if (migrationPending && daemon.getRecoveredLegacyCodexSessionId() && !priorPendingMigration) {
-      // This upgrade's live old pane supplied exact identity: no context was
-      // lost, so the newly-created pending debt can be retired without notice.
-      try { unlinkSync(pendingMigrationPath); } catch { /* exact recovery still wins */ }
-    } else if (migrationPending) {
-      // The old --last backend never stored an instance-owned UUID. Do not
-      // silently select a shared-home/CWD "latest" session on upgrade.
-      await this.sendPendingCodexMigrationNotice(name, instanceDir, daemon);
-    }
 
 
     daemon.on("auto_pause_requested", safeHandler(async () => {
@@ -1271,8 +1168,6 @@ export class InstanceLifecycle {
   }
 
   async stop(name: string): Promise<void> {
-    this.clearCodexMigrationNoticeRetry(name);
-    this.codexMigrationNoticeAttempts.delete(name);
     this.ctx.setTopicIcon(name, "remove");
 
     const daemon = this.daemons.get(name);

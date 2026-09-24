@@ -49,12 +49,11 @@ describe("CodexBackend", () => {
   });
 
   describe("buildCommand", () => {
-    it("starts fresh without an instance-owned session ID, never guessing --last", () => {
+    it("always uses resume --last (resumes latest session for CWD)", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
       expect(cmd).toContain(`CODEX_HOME='${join(TEST_DIR, "codex-home")}'`);
-      expect(cmd).not.toContain("resume --last");
-      expect(cmd).not.toContain(" resume ");
+      expect(cmd).toContain("resume --last");
       expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
       expect(cmd).toContain("-c check_for_update_on_startup=false");
     });
@@ -62,7 +61,7 @@ describe("CodexBackend", () => {
     it("includes model config", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig({ model: "o3" }));
-      expect(cmd).not.toContain("resume --last");
+      expect(cmd).toContain("resume --last");
       expect(cmd).toContain(`-c 'model="o3"'`);
     });
 

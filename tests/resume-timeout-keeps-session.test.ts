@@ -7,7 +7,6 @@ import { Daemon } from "../src/daemon.js";
 import type { Logger } from "../src/logger.js";
 import type { CliBackend } from "../src/backend/types.js";
 import type { TmuxManager } from "../src/tmux-manager.js";
-import { CodexResumeUnavailableError } from "../src/backend/codex-session.js";
 
 /**
  * A stand-in with only the members this test's path touches. Widening through
@@ -168,31 +167,6 @@ describe("giving up is bounded and never silent (through spawnClaudeWindow)", ()
     expect(sessionExists(), "proven gone, so it is set aside on the first failure").toBe(false);
     expect(setAside()).toHaveLength(1);
     expect(lost, "a proven-gone session is not a surprise context loss").not.toHaveBeenCalled();
-  });
-});
-
-describe("explicit Codex resume fails closed", () => {
-  it("never abandons an owned UUID or starts fresh after repeated ambiguous failures", async () => {
-    const d = makeDaemon();
-    armForFailedResume(d);
-    d["backend"] = standingIn<CliBackend>({
-      binaryName: "codex",
-      canResume: () => true,
-      getStartupBudgetMs: () => 60_000,
-    });
-    const tmux = d["tmux"]!;
-    tmux.getPaneStatus = vi.fn().mockResolvedValue({ alive: false, exitCode: 1 });
-    tmux.capturePane = vi.fn().mockResolvedValue("Codex resume failed without an owner verdict");
-    const lost = vi.fn();
-    d.on("context_lost", lost);
-
-    for (let i = 0; i < 3; i++) {
-      await expect(d["spawnClaudeWindow"]()).rejects.toBeInstanceOf(CodexResumeUnavailableError);
-    }
-    expect(d["trySpawn"]).toHaveBeenCalledTimes(3); // one per operator attempt; never fresh fallback
-    expect(sessionExists()).toBe(true);
-    expect(setAside()).toHaveLength(0);
-    expect(lost).not.toHaveBeenCalled();
   });
 });
 
