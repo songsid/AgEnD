@@ -95,6 +95,100 @@ describe("Muse usage relay protocol", () => {
     expect(() => new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "https://evil.example" })).toThrow(/api\.meta\.ai/);
   });
 
+  it("rejects a non-loopback origin even through the request seam", () => {
+    // M8b: the seam exists for loopback test doubles only — a custom request
+    // impl must not turn the relay into an arbitrary proxy.
+    const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
+    dirs.push(dir);
+    expect(() => new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "http://192.168.1.10:8080", request: httpRequest }))
+      .toThrow(/api\.meta\.ai/);
+    expect(() => new MuseUsageRelay({ instanceDir: dir, upstreamOrigin: "http://example.com/", request: httpRequest }))
+      .toThrow(/api\.meta\.ai/);
+  });
+
+  it("ignores a renamed subscription event instead of parsing its payload", () => {
+    // M2: only the canonical event name feeds the snapshot. Parser-level on
+    // purpose: loopback dials are unusable in some sandboxes, and record() is
+    // only ever fed by parser output, so gating the parse gates the write.
+    const parser = new MuseUsageSseParser();
+    expect(parser.feed(
+      "event: response.subscription_usage_changed\n" +
+      "data: {\"session\":{\"used_percent\":99,\"resets_at\":1800000000}}\n\n",
+    )).toEqual([]);
+    expect(parser.end()).toEqual([]);
+    // The canonical name still parses — the gate is the name, not the shape.
+    const canonical = new MuseUsageSseParser();
+    expect(canonical.feed(
+      "event: response.subscription_usage\n" +
+      "data: {\"session\":{\"used_percent\":99,\"resets_at\":1800000000}}\n\n",
+    )).toEqual([{ session: { usedPercent: 99, resetsAt: 1800000000 }, weekly: undefined, plan: undefined }]);
+  });
+
+  it("does not cut a slow upstream off at 30s — the stream stays open", async () => {
+    // M13: pin the ABSENCE of an upstream timeout. Socket-free on purpose
+    // (loopback dials are unusable in some sandboxes): handle() is driven
+    // with a stub transport whose response never ends, the clock jumps past
+    // 30s, and a re-added cutoff would destroy the stream (red) while no
+    // cutoff leaves it untouched (green).
+    const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
+    dirs.push(dir);
+    const { EventEmitter } = await import("node:events");
+    const req = new EventEmitter() as any;
+    req.url = "/responses"; req.method = "GET"; req.headers = {};
+    const res = new EventEmitter() as any;
+    res.headersSent = false; res.destroyed = false;
+    res.writeHead = vi.fn(); res.end = vi.fn();
+    res.destroy = vi.fn(() => { res.destroyed = true; });
+    const upstreamRes = new EventEmitter() as any;
+    upstreamRes.headers = {}; upstreamRes.statusCode = 200;
+    upstreamRes.pipe = vi.fn();
+    const clientReq = new EventEmitter() as any;
+    clientReq.end = vi.fn();
+    clientReq.destroy = vi.fn();
+    clientReq.setTimeout = vi.fn((ms: number) => setTimeout(() => clientReq.emit("timeout"), ms));
+    const fakeTransport = vi.fn((_opts: unknown, cb: (r: unknown) => void) => { cb(upstreamRes); return clientReq; });
+    const relay = new MuseUsageRelay({
+      instanceDir: dir,
+      upstreamOrigin: "http://127.0.0.1:9",
+      request: fakeTransport as any,
+    });
+    vi.useFakeTimers();
+    try {
+      const pending = (relay as unknown as { handle: (q: unknown, s: unknown) => Promise<void> }).handle(req, res);
+      pending.catch(() => {});
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(clientReq.destroy).not.toHaveBeenCalled();
+      expect(res.destroy).not.toHaveBeenCalled();
+      expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());
+    } finally {
+      vi.useRealTimers();
+    }
+    await relay.stop();
+  });
+
+  it("on exhausted recovery clears the snapshot and reports unavailable", async () => {
+    // Relay-level half of M20 (the daemon half lives in
+    // muse-relay-exhaustion.test.ts): reclaiming can never succeed, so the
+    // snapshot from the dead port must go and onUnavailable must fire once.
+    const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
+    dirs.push(dir);
+    const onUnavailable = vi.fn();
+    const relay = new MuseUsageRelay({ instanceDir: dir, onUnavailable });
+    await relay.start();
+    writeMuseUsageSnapshot(dir, {
+      observedAt: Date.now(),
+      session: { usedPercent: 8, resetsAt: 1_800_000_000 },
+    });
+    (relay as unknown as { listen: () => Promise<void> }).listen = async () => { throw new Error("EADDRINUSE"); };
+    (relay as unknown as { server: { close: () => void } }).server.close();
+    for (let i = 0; i < 100 && onUnavailable.mock.calls.length === 0; i++) {
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    expect(readMuseUsageSnapshot(dir)).toBeNull();
+    await relay.stop();
+  });
+
   it("reclaims its original port after an unexpected listener close", async () => {
     const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
     dirs.push(dir);

@@ -6633,9 +6633,10 @@ export class Daemon extends EventEmitter {
   /**
    * A relay crash must not make the daemon kill a live Muse process. The
    * supervisor normally reclaims the same port; when that bounded recovery
-   * fails, mark usage unavailable and leave Muse untouched. A later natural
-   * spawn sees museRelayFallback and starts direct, without interrupting the
-   * current conversation or destroying its session.
+   * fails, move Muse back to a direct connection once it is idle (session
+   * preserved via the existing resume path) and mark usage unavailable. The
+   * fallback flag also covers every later natural spawn. Never throws: the
+   * floor is the old behavior (flag set, relay stopped, next restart direct).
    */
   private switchMuseToDirect(): Promise<void> {
     if (this.museRelayFallbackInFlight || this.startupAborted || this.backend?.binaryName !== "muse") {
@@ -6643,7 +6644,7 @@ export class Daemon extends EventEmitter {
     }
     this.museRelayFallbackInFlight = (async () => {
       this.museRelayFallback = true;
-      this.logger.warn("Muse usage relay could not recover — usage is unavailable until the next natural Muse restart");
+      this.logger.warn("Muse usage relay could not recover — usage is unavailable until Muse restarts direct");
       try {
         if (this.museUsageRelay) {
           await this.museUsageRelay.stop().catch(() => {});
@@ -6651,6 +6652,30 @@ export class Daemon extends EventEmitter {
         }
       } catch (err) {
         this.logger.warn({ reason: err instanceof Error ? err.message : "relay stop failed" }, "Muse usage relay cleanup failed");
+      }
+      // Say so where the operator is looking: without this, muse keeps running
+      // with --base-url pointed at the dead relay port and every turn fails.
+      this.emit("muse_relay_exhausted", { name: this.name });
+      // An idle muse can be moved now; a busy, paused, or supervised-paused one
+      // is left alone — pausing/wake respawns direct anyway via the fallback
+      // flag, and interrupting a live turn (or fighting supervision) would be
+      // worse than waiting for the next natural restart.
+      if (this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+      try {
+        await this.waitForIdle();
+        if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+        this.beginSpawn();
+        try {
+          this.saveSessionId();
+          const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
+          this.transcriptMonitor?.resetOffset();
+          if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
+          else this.logger.warn("Muse direct resume after relay exhaustion did not become ready — next natural restart retries");
+        } finally {
+          this.endSpawn();
+        }
+      } catch (err) {
+        this.logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "Muse direct resume after relay exhaustion failed — next natural restart retries");
       }
     })().finally(() => { this.museRelayFallbackInFlight = null; });
     return this.museRelayFallbackInFlight;

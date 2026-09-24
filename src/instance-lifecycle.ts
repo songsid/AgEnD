@@ -655,6 +655,14 @@ export class InstanceLifecycle {
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.crash_loop[${name}]`));
 
+    daemon.on("muse_relay_exhausted", safeHandler(() => {
+      // The usage relay is gone and the CLI is (or will shortly be) back on a
+      // direct connection. Without this notice the operator only sees turns
+      // failing against a dead relay port, or usage quietly going stale.
+      this.ctx.eventLog?.insert(name, "muse_relay_exhausted", {});
+      this.notifyIncident(name, "muse_relay_exhausted", t("inst.muse_relay_exhausted", name));
+    }, this.ctx.logger, `daemon.muse_relay_exhausted[${name}]`));
+
     daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean }) => {
       const stormAtDetection = this.ctx.stormWindow?.isActive() === true;
       const incident = this.mcpIncident(name);
