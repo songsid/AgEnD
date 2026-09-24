@@ -145,7 +145,11 @@ describe("Muse usage relay protocol", () => {
     const clientReq = new EventEmitter() as any;
     clientReq.end = vi.fn();
     clientReq.destroy = vi.fn();
-    clientReq.setTimeout = vi.fn((ms: number) => setTimeout(() => clientReq.emit("timeout"), ms));
+    // Faithful to node's ClientRequest.setTimeout(ms, cb): the callback fires
+    // on the clock. A stub that swallows it would let a re-added cutoff hide
+    // (the B3 fake-green) — and the pin below forbids the call entirely.
+    clientReq.setTimeout = vi.fn((ms: number, cb?: (...args: any[]) => void) =>
+      setTimeout(() => { cb?.(); clientReq.emit("timeout"); }, ms));
     const fakeTransport = vi.fn((_opts: unknown, cb: (r: unknown) => void) => { cb(upstreamRes); return clientReq; });
     const relay = new MuseUsageRelay({
       instanceDir: dir,
@@ -157,6 +161,9 @@ describe("Muse usage relay protocol", () => {
       const pending = (relay as unknown as { handle: (q: unknown, s: unknown) => Promise<void> }).handle(req, res);
       pending.catch(() => {});
       await vi.advanceTimersByTimeAsync(60_000);
+      // No upstream timeout may exist at all: any setTimeout on the upstream
+      // request is the M13 regression, whether or not it destroys.
+      expect(clientReq.setTimeout).not.toHaveBeenCalled();
       expect(clientReq.destroy).not.toHaveBeenCalled();
       expect(res.destroy).not.toHaveBeenCalled();
       expect(res.writeHead).toHaveBeenCalledWith(200, expect.anything());

@@ -517,6 +517,14 @@ const STARTUP_DIALOG_BUDGET_MS = 30_000;
 const DIALOG_PARKED_NOTIFY_MS = 60_000;
 /** How many "dialog painted just before the write → wait → retry" rounds a delivery tolerates. */
 const LATE_DIALOG_WRITE_ROUNDS = 3;
+/**
+ * After relay exhaustion, how long to wait for an authoritatively idle pane
+ * before giving up the immediate resume-direct (the fallback flag and the
+ * notification already cover the next natural restart). Muse turns can run
+ * for many minutes; polling keeps each check a fresh capture.
+ */
+const MUSE_DIRECT_RESUME_IDLE_BUDGET_MS = 10 * 60_000;
+const MUSE_DIRECT_RESUME_IDLE_POLL_MS = 5_000;
 
 /**
  * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
@@ -6631,14 +6639,57 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * One fresh pane capture judged as ready && !busy && !dialog. Transcript
+   * silence is deliberately NOT the gate: its monitor is inert for muse, so a
+   * quiet-but-working pane would read as idle and the respawn below would kill
+   * a live turn. Fail closed: an unreadable pane is never idle.
+   */
+  private async isPaneAuthoritativelyIdle(): Promise<boolean> {
+    const backend = this.backend;
+    if (!this.tmux || !backend) return false;
+    let pane: string;
+    try {
+      pane = await this.tmux.capturePane();
+    } catch {
+      return false;
+    }
+    if (backend.getBusyPattern?.()?.test(pane)) return false;
+    for (const dialog of this.deliveryBlockingDialogs()) {
+      if (Daemon.dialogMatches(dialog, pane)) return false;
+    }
+    if (!backend.getReadyPattern().test(pane)) return false;
+    return true;
+  }
+
+  /**
+   * Poll the authoritative pane check until it reports idle or the budget runs
+   * out. Each poll is a fresh capture, so a turn that ends mid-wait is seen.
+   */
+  private async waitForAuthoritativePaneIdle(
+    budgetMs = MUSE_DIRECT_RESUME_IDLE_BUDGET_MS,
+    pollMs = MUSE_DIRECT_RESUME_IDLE_POLL_MS,
+  ): Promise<boolean> {
+    const deadline = Date.now() + budgetMs;
+    for (;;) {
+      if (await this.isPaneAuthoritativelyIdle()) return true;
+      if (Date.now() >= deadline) return false;
+      await new Promise(r => setTimeout(r, pollMs));
+    }
+  }
+
+  /**
    * A relay crash must not make the daemon kill a live Muse process. The
    * supervisor normally reclaims the same port; when that bounded recovery
-   * fails, move Muse back to a direct connection once it is idle (session
-   * preserved via the existing resume path) and mark usage unavailable. The
-   * fallback flag also covers every later natural spawn. Never throws: the
-   * floor is the old behavior (flag set, relay stopped, next restart direct).
+   * fails, move Muse back to a direct connection once it is authoritatively
+   * idle (session preserved via the existing resume path) and mark usage
+   * unavailable. The fallback flag also covers every later natural spawn.
+   * Never throws: the floor is the old behavior (flag set, relay stopped,
+   * next restart direct).
    */
-  private switchMuseToDirect(): Promise<void> {
+  private switchMuseToDirect(
+    idleBudgetMs = MUSE_DIRECT_RESUME_IDLE_BUDGET_MS,
+    idlePollMs = MUSE_DIRECT_RESUME_IDLE_POLL_MS,
+  ): Promise<void> {
     if (this.museRelayFallbackInFlight || this.startupAborted || this.backend?.binaryName !== "muse") {
       return this.museRelayFallbackInFlight ?? Promise.resolve();
     }
@@ -6660,22 +6711,36 @@ export class Daemon extends EventEmitter {
       // is left alone — pausing/wake respawns direct anyway via the fallback
       // flag, and interrupting a live turn (or fighting supervision) would be
       // worse than waiting for the next natural restart.
-      if (this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
-      try {
-        await this.waitForIdle();
-        if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+      if (this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped" || !this.tmux) return;
+      const generation = this.spawnGeneration;
+      const idle = await this.waitForAuthoritativePaneIdle(idleBudgetMs, idlePollMs);
+      // Another spawn (wake/restart) completed while waiting — it owns the pane
+      // now, and respawning here would kill its fresh process mid-turn.
+      if (generation !== this.spawnGeneration) return;
+      if (!idle) return;
+      if (this.startupAborted || this.isPaused || this.healthCheckPaused || this.getProcessStatus() === "stopped") return;
+      // Final re-verification under pane-write exclusion: no delivery can paste
+      // a new turn between this verdict and the respawn it authorizes. The
+      // spawn itself runs outside the lock (its dialog dismissal re-takes it).
+      let claimed = false;
+      await this.paneWriteLock.run(async () => {
+        const stillIdle = await this.isPaneAuthoritativelyIdle();
+        if (generation !== this.spawnGeneration) return;
+        if (!stillIdle) return;
         this.beginSpawn();
-        try {
-          this.saveSessionId();
-          const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
-          this.transcriptMonitor?.resetOffset();
-          if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
-          else this.logger.warn("Muse direct resume after relay exhaustion did not become ready — next natural restart retries");
-        } finally {
-          this.endSpawn();
-        }
+        claimed = true;
+      });
+      if (!claimed) return;
+      try {
+        this.saveSessionId();
+        const ready = await this.trySpawn(true, this.wakeBudgetMs(30_000));
+        this.transcriptMonitor?.resetOffset();
+        if (ready) this.logger.info("Muse resumed direct after relay exhaustion (session preserved)");
+        else this.logger.warn("Muse direct resume after relay exhaustion did not become ready — next natural restart retries");
       } catch (err) {
         this.logger.warn({ reason: err instanceof Error ? err.message : String(err) }, "Muse direct resume after relay exhaustion failed — next natural restart retries");
+      } finally {
+        this.endSpawn();
       }
     })().finally(() => { this.museRelayFallbackInFlight = null; });
     return this.museRelayFallbackInFlight;
