@@ -31,7 +31,7 @@ function makeDaemon() {
     beginSpawn(): void;
     endSpawn(): void;
     spawning: boolean;
-    waitForSpawnToSettle(): Promise<void>;
+    waitForSpawnToSettle(capMs?: number): Promise<boolean>;
     deliverMessage(text: string): Promise<boolean>;
     tmux: unknown;
   };
