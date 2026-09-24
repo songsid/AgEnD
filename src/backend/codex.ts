@@ -32,15 +32,16 @@ import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
-import { CODEX_SESSION_ID, CodexResumeIdentityError, codexCurrentSessionFromPane, codexRolloutForId, codexSessionsForPane, codexSessionOwners, readCodexRolloutMeta, type CodexSessionRecord } from "./codex-session.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
-const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
-const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
-const SQLITE_SIDECAR_RE = /-(?:wal|shm|journal)$/;
 
+/**
+ * Whether a pane row is Codex's context footer. Kept when #913 was reverted:
+ * #913 introduced it, but #914's pane/ready detection is built on it, and it
+ * is pane parsing, not session handling.
+ */
 function isCodexContextFooter(row: string): boolean {
   const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
   const legacy = new RegExp(String.raw`^\s*${context}(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?\s*$`, "i");
@@ -50,6 +51,9 @@ function isCodexContextFooter(row: string): boolean {
   // /ctx honestly reports context unavailable from a truncated percentage.
   return /^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row);
 }
+const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
+const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
+const SQLITE_SIDECAR_RE = /-(?:wal|shm|journal)$/;
 
 /**
  * Remove AgEnD-owned MCP tables from a Codex TOML config without touching
@@ -198,74 +202,6 @@ type CodexTrustPrompt = {
   rootNote: "absent" | "parsed" | "invalid";
   safeChoice: boolean;
 };
-
-type CodexResumeDirectoryPrompt = { active: boolean; sessionCwd: string | null; currentCwd: string | null; safeChoice: boolean };
-
-/** Captured from Codex 0.156; only the live, bottom-of-pane four-choice menu. */
-export function codexResumeDirectoryPromptState(pane: string): CodexResumeDirectoryPrompt {
-  const empty: CodexResumeDirectoryPrompt = { active: false, sessionCwd: null, currentCwd: null, safeChoice: false };
-  const rows = pane.replace(/\r/g, "").split("\n");
-  let last = rows.length - 1;
-  while (last >= 0 && rows[last].trim() === "") last--;
-  let title = -1;
-  for (let i = last; i >= Math.max(0, last - 20); i--) {
-    if (/^\s{2}Working directory · resume\s*$/.test(rows[i])) { title = i; break; }
-  }
-  if (title < 0 || !/^\s{2}enter continue · esc use session · ctrl\+c quit\s*$/.test(rows[last])) return empty;
-  const menu = rows.slice(title + 1, last);
-  const one = menu.findIndex(row => /^› 1\. Use session directory \(/.test(row));
-  if (one < 0) return empty;
-  const options = menu.slice(one, one + 4);
-  const first = options[0]?.match(/^› 1\. Use session directory \((\/[^)]+)\)$/);
-  const second = options[1]?.match(/^  2\. Use current directory \((\/[^)]+)\)$/);
-  const safeChoice = !!first && !!second
-    && options[2] === "  3. Always use session directory"
-    && options[3] === "  4. Always use current directory"
-    && menu.slice(one + 4).every(row => row.trim() === "")
-    && menu.slice(0, one).every(row => row.trim() === ""
-      || /^\s{2}(?:Session = latest cwd recorded in the resumed session|Current = your current working directory)$/.test(row));
-  return { active: true, sessionCwd: first?.[1] ?? null, currentCwd: second?.[1] ?? null, safeChoice };
-}
-
-/** Unknown variants still own stdin; only the exact canonical menu may be answered. */
-export function codexResumeDirectoryVisible(pane: string): boolean {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  let last = rows.length - 1;
-  while (last >= 0 && rows[last].trim() === "") last--;
-  let title = -1;
-  for (let i = last; i >= Math.max(0, last - 20); i--) {
-    if (/^\s{2}Working directory · resume\s*$/.test(rows[i])) { title = i; break; }
-  }
-  if (title < 0) return false;
-  const tail = rows.slice(title + 1, last + 1);
-  return tail.some(row => /^\s*[›❯]?\s*1\. Use session directory\b/.test(row))
-    && tail.some(row => /^\s*[›❯]?\s*2\. Use current directory\b/.test(row))
-    && !tail.some(row => /[›❯]\s*(?:Ask Codex|Message Codex|Type a message)/i.test(row));
-}
-
-/** Codex's concurrent-owner screen is a hold, never an invitation to press R. */
-export function codexResumeLockActive(pane: string): boolean {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  let last = rows.length - 1;
-  while (last >= 0 && rows[last].trim() === "") last--;
-  if (last < 0 || !/^\s*r retry\s+esc\/ctrl\+c\/q exit(?:\s+ctrl\+t transcript)?\s*$/.test(rows[last])) return false;
-  const recent = rows.slice(Math.max(0, last - 5), last);
-  return recent.some(row => /^\s*🔒\s+This conversation is open in another app\b/.test(row))
-    && recent.some(row => /^\s*Close it there and press R to continue here\.\s*$/.test(row));
-}
-
-/** A changed lock-screen footer is still a hold, never a ready prompt. */
-export function codexResumeLockVisible(pane: string): boolean {
-  const rows = pane.replace(/\r/g, "").split("\n");
-  let last = rows.length - 1;
-  while (last >= 0 && rows[last].trim() === "") last--;
-  const title = rows.findIndex((row, i) => i >= Math.max(0, last - 8)
-    && /^\s*🔒\s+This conversation is open in another app\b/.test(row));
-  if (title < 0) return false;
-  const tail = rows.slice(title + 1, last + 1);
-  return tail.some(row => /Close it there and press R to continue here\./.test(row))
-    && !tail.some(row => /^\s*[›❯]\s*(?:Ask Codex|Message Codex|Type a message)/i.test(row));
-}
 
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
@@ -432,41 +368,6 @@ function atomicWritePrivate(path: string, content: string): void {
   }
 }
 
-/** macOS lockf and Linux flock both fail immediately with status 75 on contention. */
-export function codexResumeClaimCommand(platform: NodeJS.Platform, lockPath: string, launch: string): string {
-  // A child Codex exit 75 is remapped; only lock contention gets the marker.
-  const child = `sh -c ${shellQuote(`${launch}; agend_child_status=$?; if [ "$agend_child_status" -eq 75 ]; then exit 74; fi; exit "$agend_child_status"`)}`;
-  const guarded = platform === "darwin"
-    ? `lockf -s -t 0 -k -w ${shellQuote(lockPath)} ${child}`
-    : `flock -n -E 75 ${shellQuote(lockPath)} ${child}`;
-  // Daemon prefixes this command with TERM/AGEND_* assignments. A shell
-  // subshell is not a simple command (`VAR=x ( ... )` is a syntax error), but
-  // `sh -c` is, so the same claim works in the real daemon launch line.
-  return `sh -c ${shellQuote(`${guarded}; agend_resume_status=$?; if [ "$agend_resume_status" -eq 75 ]; then printf '%s\\n' '[agend:codex-session-held]'; fi; exit "$agend_resume_status"`)}`;
-}
-
-/** Explicit, stopped-instance recovery for an old conversation without an AgEnD owner record. */
-export function attachCodexSession(instanceDir: string, sharedHome: string, currentCwd: string, id: string): void {
-  if (!CODEX_SESSION_ID.test(id)) throw new Error("Codex session ID must be a UUID");
-  if (existsSync(join(instanceDir, "window-id"))) throw new Error("Stop this instance before attaching a Codex session");
-  // Startup writes daemon.pid before window-id. Require a clean stop rather
-  // than race an instance still launching. An orphaned stale pid marker must
-  // be inspected and removed manually, never inferred to be harmless here.
-  if (existsSync(join(instanceDir, "daemon.pid"))) throw new Error("Stop this instance and clear its daemon PID marker before attaching a Codex session");
-  const found = codexRolloutForId(sharedHome, id);
-  if (!found) throw new Error("Codex session ID was not found in the shared session store");
-  if (codexTrustPaths(found.cwd).root !== codexTrustPaths(currentCwd).root) {
-    throw new Error("Codex session belongs to a different repository; refusing to attach");
-  }
-  if (codexSessionOwners(id).length > 0) throw new Error("Codex session has a live owner; close it before attaching");
-  const record: CodexSessionRecord = { ...found, owner: basename(instanceDir) };
-  atomicWritePrivate(join(instanceDir, "codex-session.json"), JSON.stringify(record));
-  atomicWritePrivate(join(instanceDir, "session-id"), id);
-  // Human-selected exact identity retires a prior ambiguous-live-pane hold.
-  try { unlinkSync(join(instanceDir, "codex-session-unconfirmed")); }
-  catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
-}
-
 // Account-aware models_cache.json is preferred. These documented Codex models
 // are only a last-resort menu when the TUI has not populated its cache yet.
 /** The whole of a codex identity, and the only file a profile owns. */
@@ -491,11 +392,8 @@ export class CodexBackend implements CliBackend {
   private credentialProfile: string | null = null;
   /** Set only after preTrust wrote and read back this instance's private config. */
   private authorizedTrust: { cwd: string; root: string } | null = null;
-  private activePanePid: number | null = null;
-  private resumeRecord: CodexSessionRecord | null = null;
-  private get unconfirmedSessionPath(): string { return join(this.instanceDir, "codex-session-unconfirmed"); }
 
-  constructor(private instanceDir: string, private readonly procRoot = "/proc") {
+  constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
     this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
     this.isolatedCodexHome = resolve(instanceDir, "codex-home");
@@ -530,9 +428,9 @@ export class CodexBackend implements CliBackend {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
     const footer = rows.pop() ?? "";
-    // Codex preserves other configured status-line items after our session ID
-    // and context meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra").
-    // They are footer chrome, not evidence that the input row is unavailable.
+    // Codex preserves other configured status-line items after the context
+    // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
+    // are footer chrome, not evidence that the input row is unavailable.
     if (!isCodexContextFooter(footer)) return false;
     // Pasted text may wrap over several continuation rows before the footer.
     // Search only its immediate tail, not a historical transcript prompt.
@@ -610,19 +508,15 @@ export class CodexBackend implements CliBackend {
       ? "--dangerously-bypass-approvals-and-sandbox"
       : "--full-auto";
 
-    // Never select by CWD: two instances can share a worktree and --last may
-    // select a session still owned by another app. A sidecar written from the
-    // actual pane's open rollout + writer lock is the only automatic identity.
-    // A present but unreadable/unknown-version record is NOT legacy absence.
-    // Do not overwrite it with a fresh session even if a caller requested a
-    // skip-resume recovery; a human must resolve this identity first.
-    if (this.hasInvalidSessionIdentity(config.workingDirectory)) throw new CodexResumeIdentityError();
-    this.resumeRecord = config.skipResume ? null : this.validResumeRecord(config.workingDirectory);
+    // `codex resume --last` resumes the most recent session for the current
+    // working directory. Each AgEnD instance has a unique working_directory,
+    // so sessions are per-instance scoped and won't collide.
+    // If no prior session exists (first launch), Codex falls back to a fresh session.
     let cmd: string;
-    if (!this.resumeRecord) {
+    if (config.skipResume) {
       cmd = `${this.binaryPath} ${approvalFlag}`;
     } else {
-      cmd = `${this.binaryPath} resume ${shellQuote(this.resumeRecord.id)} ${approvalFlag}`;
+      cmd = `${this.binaryPath} resume --last ${approvalFlag}`;
     }
     if (config.model) {
       const model = validateModel(config.model);
@@ -643,51 +537,7 @@ export class CodexBackend implements CliBackend {
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore
     // still load every globally registered AgEnD MCP server.
-    const launch = `CODEX_HOME=${shellQuote(this.isolatedCodexHome)} ${cmd}`;
-    if (!this.resumeRecord) return launch;
-    // The shared claim is held for the entire Codex process lifetime;
-    // an atomic, cross-daemon fence closes the race between the owner probe and
-    // spawn. Exit 75 is recognized as a held session, never a broken session.
-    const claims = join(this.sharedCodexHome, ".agend-session-claims");
-    mkdirSync(claims, { recursive: true, mode: 0o700 });
-    return codexResumeClaimCommand(process.platform, join(claims, `${this.resumeRecord.id}.lock`), launch);
-  }
-
-  setActivePanePid(pid: number | null): void { this.activePanePid = pid; }
-
-  /** A fresh launch has no resume identity; it must not be counted as --resume. */
-  canResume(workingDirectory: string): boolean { return this.validResumeRecord(workingDirectory) !== null; }
-  hasSessionIdentity(): boolean {
-    return existsSync(join(this.instanceDir, "codex-session.json")) || existsSync(join(this.instanceDir, "session-id"))
-      || existsSync(this.unconfirmedSessionPath);
-  }
-  hasInvalidSessionIdentity(workingDirectory: string): boolean {
-    return existsSync(this.unconfirmedSessionPath) || (this.hasSessionIdentity() && !this.validResumeRecord(workingDirectory));
-  }
-  hasUnconfirmedSessionIdentity(): boolean { return existsSync(this.unconfirmedSessionPath); }
-  /** Positive owner evidence, not merely a stale lock-file name on disk. */
-  resumeOwner(workingDirectory: string): number | null {
-    const record = this.validResumeRecord(workingDirectory);
-    return record ? codexSessionOwners(record.id, this.procRoot).find(pid => pid !== process.pid) ?? null : null;
-  }
-
-  private validResumeRecord(workingDirectory: string): CodexSessionRecord | null {
-    if (existsSync(this.unconfirmedSessionPath)) return null;
-    try {
-      const record = JSON.parse(readFileSync(join(this.instanceDir, "codex-session.json"), "utf8")) as CodexSessionRecord;
-      if (!record || !CODEX_SESSION_ID.test(record.id) || record.owner !== basename(this.instanceDir)) return null;
-      if (readFileSync(join(this.instanceDir, "session-id"), "utf8").trim() !== record.id) return null;
-      const rollout = realpathSync(record.rolloutPath);
-      const sessions = realpathSync(join(this.sharedCodexHome, "sessions"));
-      if (!rollout.startsWith(`${sessions}/`)) return null;
-      const meta = readCodexRolloutMeta(rollout);
-      if (!meta || meta.id !== record.id || meta.cwd !== record.cwd) return null;
-      // A moved worktree may legitimately have a different CWD in the saved
-      // session. It must still be the same Git repository as the current CWD.
-      const current = codexTrustPaths(workingDirectory);
-      if (record.cwd !== current.cwd && codexTrustPaths(record.cwd).root !== current.root) return null;
-      return record;
-    } catch { return null; }
+    return `CODEX_HOME=${shellQuote(this.isolatedCodexHome)} ${cmd}`;
   }
 
   writeConfig(config: CliBackendConfig): void {
@@ -769,50 +619,44 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
-   * The first status-line item is Codex's own current session ID. Unlike fd
-   * order, this changes when /new switches chats while old writer locks stay
-   * open. Keep context too, then preserve all user-selected remaining items.
-   * If the footer is hidden/truncated, checkpointing fails closed instead.
+   * Ensure Codex's TUI status line shows context usage so /ctx can scrape it.
+   * Rules (never overwrites the user's status_line):
+   *   1. status_line already has a context item (context-remaining / -usage /
+   *      -used) → leave the whole config untouched (they already show context).
+   *   2. no context item:
+   *        - no status_line at all → write status_line = ["context-remaining"]
+   *        - status_line exists     → append "context-remaining" to it
+   * If a user's own status_line is long and truncates at 80 cols, that's their
+   * config — /ctx just reports context unavailable. Best-effort string edit of
+   * ~/.codex/config.toml (no toml dependency); other settings untouched.
    */
   private enableContextStatusLine(): void {
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
-    let existing: string[] | undefined;
-    try {
-      const parsed = parseToml(content) as { tui?: { status_line?: unknown } };
-      if (parsed.tui?.status_line !== undefined) {
-        if (!Array.isArray(parsed.tui.status_line)
-          || !parsed.tui.status_line.every((item: unknown) => typeof item === "string")) return;
-        existing = parsed.tui.status_line as string[];
-      }
-    } catch { return; }
-    const tuiHeader = /^[ \t]*\[[ \t]*tui[ \t]*\][ \t]*(?:#.*)?$/m.exec(content);
-    const tuiStart = tuiHeader ? tuiHeader.index + tuiHeader[0].length : -1;
-    const nextHeader = tuiStart >= 0 ? /^[ \t]*\[/m.exec(content.slice(tuiStart)) : null;
-    const tuiEnd = nextHeader ? tuiStart + nextHeader.index : content.length;
-    const tuiBody = tuiStart >= 0 ? content.slice(tuiStart, tuiEnd) : "";
-    const arr = /^[ \t]*status_line[ \t]*=[ \t]*\[([^\]]*)\]/m.exec(tuiBody);
-    if (existing && !arr) return; // an unfamiliar but valid TOML form: preserve it
+    // Rule 1: any existing context item → don't touch anything.
+    if (/status_line\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
+
+    const ITEM = "context-remaining";
+    const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
     if (arr) {
-      const items = existing!;
-      const context = items.find(item => /^(?:context-remaining|context-usage|context-used)$/.test(item)) ?? "context-remaining";
-      const ordered = ["session-id", context, ...items.filter(item => item !== "session-id" && item !== context)];
-      const updatedBody = tuiBody.replace(arr[0], `\nstatus_line = ${JSON.stringify(ordered)}`);
-      content = content.slice(0, tuiStart) + updatedBody + content.slice(tuiEnd);
+      // Rule 2b: prepend our item to the user's existing array (don't overwrite).
+      // First position keeps "Context N% left" at the far left of the footer so a
+      // long cwd/other items can't push it past 80 cols and truncate it.
+      const inner = arr[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
+      const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
+      content = content.replace(arr[0], `status_line = [${newInner}]`);
     } else {
+      // Rule 2a: no status_line at all → add a minimal one.
       if (content.length && !content.endsWith("\n")) content += "\n";
-      if (tuiHeader) {
-        content = content.slice(0, tuiStart) + '\nstatus_line = ["session-id", "context-remaining"]' + content.slice(tuiStart);
+      if (/^\[tui\]/m.test(content)) {
+        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
       } else {
-        content += '\n[tui]\nstatus_line = ["session-id", "context-remaining"]\n';
+        content += `\n[tui]\nstatus_line = ["${ITEM}"]\n`;
       }
     }
     try {
-      // A bad rewrite must not turn a working Codex configuration into a
-      // startup failure. It merely loses the optional current-ID proof.
-      parseToml(content);
       atomicWritePrivate(configPath, content);
     } catch { /* best effort — never block launch on statusline config */ }
   }
@@ -1189,23 +1033,6 @@ export class CodexBackend implements CliBackend {
     const trustHold = this.trustHoldDialog();
     return [
       {
-        pattern: /^\s{2}Working directory · resume\s*$/m,
-        keys: ["Down", "Enter"],
-        description: "Codex verified resume directory — use this instance's current worktree",
-        blocksDelivery: true,
-        inputBlocked: true,
-        autoResolutionKey: "codex-verified-resume-directory",
-        isActive: pane => {
-          const state = codexResumeDirectoryPromptState(pane);
-          const record = this.resumeRecord;
-          const authorized = this.authorizedTrust;
-          return state.active && state.safeChoice && !!record && !!authorized
-            && state.sessionCwd === record.cwd && state.currentCwd === authorized.cwd;
-        },
-      },
-      this.resumeDirectoryHoldDialog(),
-      this.resumeLockHoldDialog(),
-      {
         pattern: /^\s*Trust this folder\?/m,
         keys: ["Enter"],
         description: "Codex authorized folder trust dialog",
@@ -1236,30 +1063,6 @@ export class CodexBackend implements CliBackend {
       blocksDelivery: true,
       inputBlocked: true,
       isActive: codexTrustVariantActive,
-    };
-  }
-
-  private resumeDirectoryHoldDialog(): RuntimeDialog {
-    return {
-      pattern: /^\s{2}Working directory · resume\s*$/m,
-      keys: [],
-      description: "Codex resume directory needs verified session/worktree ownership",
-      holdOnly: true,
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexResumeDirectoryVisible,
-    };
-  }
-
-  private resumeLockHoldDialog(): RuntimeDialog {
-    return {
-      pattern: /This conversation is open in another app/,
-      keys: [],
-      description: "Codex conversation is open in another app — close that owner before a manual restart",
-      holdOnly: true,
-      blocksDelivery: true,
-      inputBlocked: true,
-      isActive: codexResumeLockVisible,
     };
   }
 
@@ -1300,8 +1103,6 @@ export class CodexBackend implements CliBackend {
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       this.trustHoldDialog(),
-      this.resumeDirectoryHoldDialog(),
-      this.resumeLockHoldDialog(),
       {
         // Codex 0.156 may change the wording/order of this credit-cost choice.
         // Never navigate it by position: a moved option could switch to a
@@ -1356,46 +1157,10 @@ export class CodexBackend implements CliBackend {
     return null;
   }
 
-  getSessionId(pane?: string): string | null {
-    const panePid = this.activePanePid;
-    if (!panePid) return null;
-    const candidates = codexSessionsForPane(panePid, this.sharedCodexHome, this.procRoot);
-    const displayedId = pane === undefined ? null : codexCurrentSessionFromPane(pane);
-    // Once ambiguity has revoked the old identity, only fresh visible proof
-    // can restore it. A later status callback without a pane cannot silently
-    // re-arm the old sidecar just because one fd happened to close.
-    if (existsSync(this.unconfirmedSessionPath) && !displayedId) return null;
-    const active = candidates.length === 1
-      ? displayedId && displayedId !== candidates[0].id ? null : candidates[0]
-      : displayedId ? candidates.find(candidate => candidate.id === displayedId) ?? null : null;
-    if (!active) {
-      // `/new` keeps both native writer locks open even after a completed
-      // turn. A null checkpoint must revoke the old resumable sidecar, not
-      // leave it armed for a later wake into the wrong conversation.
-      const oldId = (() => {
-        try { return readFileSync(join(this.instanceDir, "session-id"), "utf8").trim(); }
-        catch { return null; }
-      })();
-      const hasStoredIdentity = existsSync(join(this.instanceDir, "codex-session.json")) || oldId !== null;
-      if (candidates.length > 1 || (displayedId && displayedId !== oldId)
-        || (pane !== undefined && candidates.length === 0 && hasStoredIdentity)) {
-        try { writeFileSync(this.unconfirmedSessionPath, "current Codex session unconfirmed\n", { flag: "wx", mode: 0o600 }); }
-        catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
-      }
-      return null;
-    }
-    const record: CodexSessionRecord = { ...active, owner: basename(this.instanceDir) };
-    const path = join(this.instanceDir, "codex-session.json");
-    try {
-      const prior = readFileSync(path, "utf8");
-      if (prior === JSON.stringify(record)) {
-        if (existsSync(this.unconfirmedSessionPath)) unlinkSync(this.unconfirmedSessionPath);
-        return active.id;
-      }
-    } catch { /* first checkpoint */ }
-    atomicWritePrivate(path, JSON.stringify(record));
-    if (existsSync(this.unconfirmedSessionPath)) unlinkSync(this.unconfirmedSessionPath);
-    return active.id;
+  getSessionId(): string | null {
+    // Codex manages sessions internally via SQLite (~/.codex/state_5.sqlite).
+    // `resume --last` handles session selection by CWD automatically.
+    return null;
   }
 
   getQuitCommand(): string { return "/quit"; }

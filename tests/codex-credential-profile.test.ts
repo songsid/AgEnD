@@ -371,9 +371,7 @@ describe("if a resumed session cannot be opened", () => {
     const resuming = backend.buildCommand({ ...config } as never);
     const fresh = backend.buildCommand({ ...config, skipResume: true } as never);
 
-    // No instance-owned session record exists yet: a CWD-based --last could
-    // select another instance's conversation, so even the default is fresh.
-    expect(resuming).not.toContain("resume --last");
+    expect(resuming).toContain("resume --last");
     expect(fresh).not.toContain("resume");
   });
 });
