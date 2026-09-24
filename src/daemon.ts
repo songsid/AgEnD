@@ -5234,8 +5234,17 @@ export class Daemon extends EventEmitter {
           // Our text is on the pane but cannot be shown to have left the input
           // row — either the backend exposes no input row (only /steer reaches
           // this path on such a backend) or the pre-paste pane was unreadable.
-          // Re-pasting on that would deliver the message twice, so accept as
-          // this path always has, and record that it is unproven.
+          // For Codex, this can also mean its current layout is not a trusted
+          // input/queue frame. Do not turn that uncertainty into a false ✅.
+          if (this.backend?.isDeliveryInputReadyPane) {
+            this.logger.warn({ phase: "native-queue-proof", proof },
+              "Codex native-queue outcome uncertain — not re-pasting or confirming");
+            verdict.phase = "native-queue-proof";
+            verdict.proof = proof;
+            return false;
+          }
+          // Re-pasting on a backend without structured Codex pane evidence
+          // would risk duplication; retain its legacy best-effort behavior.
           this.logger.warn("Paste reached the pane but could not be verified as submitted — accepting without proof");
           if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
           return true;
@@ -5270,7 +5279,12 @@ export class Daemon extends EventEmitter {
           if (!(await this.sendDeliveryEnter("native-queue-stranded-submit"))) {
             return this.failDelivery(verdict, status, "native-queue-submit", "tmux-send-keys-failed");
           }
-          const afterEnter = await this.confirmSubmitted(signature, pasteBaseline);
+          // The recovery Enter can be accepted before Codex paints its new
+          // transcript. One immediate capture is not a failure verdict: give
+          // that echo/queue a bounded chance to appear, without re-pasting.
+          const afterEnter = this.backend?.isDeliveryInputReadyPane
+            ? await this.lateCodexSubmissionProof(signature, pasteBaseline, true)
+            : await this.confirmSubmitted(signature, pasteBaseline);
           if (afterEnter === "submitted") {
             if (status) this.emit("message_confirmed", status); // ✅
             return true;
@@ -5281,8 +5295,14 @@ export class Daemon extends EventEmitter {
           // another turn's output — and treating that as proof re-confirms a
           // message nobody submitted. Output is corroboration; text sitting in
           // the input row is disqualifying, and disqualifying evidence wins.
-          this.logger.error({ afterEnter, strandedAt },
-            "Stranded message could not be submitted by Enter");
+          if (this.backend?.isDeliveryInputReadyPane && afterEnter !== "stranded") {
+            this.logger.warn({ phase: "native-queue-submit", proof: afterEnter, strandedAt },
+              "Codex recovery Enter outcome uncertain — no hard failure or duplicate paste");
+            verdict.phase = "native-queue-submit";
+            verdict.proof = afterEnter;
+            return false;
+          }
+          this.logger.error({ afterEnter, strandedAt }, "Stranded message could not be submitted by Enter");
           return this.failDelivery(verdict, status, "native-queue-submit", afterEnter);
         }
 
@@ -5576,12 +5596,18 @@ export class Daemon extends EventEmitter {
   }
 
   /** Only positive echo/queue evidence may turn an ambiguous Codex write into ✅. */
-  private async lateCodexSubmissionProof(signature: SubmissionSignature, baseline: PaneEvidence | null): Promise<SubmitProof> {
+  private async lateCodexSubmissionProof(
+    signature: SubmissionSignature, baseline: PaneEvidence | null, waitThroughStranded = false,
+  ): Promise<SubmitProof> {
     const deadline = Date.now() + CODEX_LATE_PROOF_MS;
     let proof: SubmitProof = "unproven";
     for (;;) {
       proof = await this.confirmSubmitted(signature, baseline);
-      if (proof === "submitted" || proof === "stranded") return proof;
+      // Ordinary idle-path proof may return a strand immediately. After a
+      // native-queue recovery Enter, though, it can be the previous frame
+      // still on screen; only a strand that survives the bounded repaint
+      // window proves that Enter was swallowed.
+      if (proof === "submitted" || (proof === "stranded" && !waitThroughStranded)) return proof;
       if (signature.unique && this.tmux?.capturePaneWithHistory) {
         try {
           const history = await this.tmux.capturePaneWithHistory(300);

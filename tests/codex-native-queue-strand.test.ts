@@ -93,6 +93,16 @@ const READY_EMPTY = [
   "  Context 46% left",
 ].join("\n");
 
+/** Codex 0.156.0 with user status-line chrome retained after context. */
+const READY_WITH_CHROME = [
+  "╭───────────────────────────────────────────╮",
+  "│ >_ OpenAI Codex (v0.156.0)                │",
+  "│ model:     GPT-6-Astra   /model to change │",
+  "╰───────────────────────────────────────────╯",
+  "› Ask Codex to do anything",
+  "  Context 100% left · GPT-6-Astra",
+].join("\n");
+
 /**
  * The pane BEFORE we paste: codex is working on something else. Submission is
  * judged by what the pane gains, so every test starts from a frame that holds
@@ -198,6 +208,69 @@ afterEach(() => {
 });
 
 describe("codex native-queue handoff: text left in the input row is NOT a delivery", () => {
+  it("accepts the real 0.156 context footer with additional status-line chrome", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = true;
+    h.state.pane = READY_WITH_CHROME;
+    h.state.afterPaste = [
+      "› [from:agend-dev-claude-t1519896892392083558] " + BODY,
+      "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
+      "• Working (1s • esc to interrupt)",
+      READY_WITH_CHROME,
+    ].join("\n");
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.events).toContain("message_confirmed");
+  });
+
+  it("keeps native-queue recovery unconfirmed while its accepted Enter has not painted the echo", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.afterEnter = READY_EMPTY;
+    // The recovery Enter was accepted, but Codex paints the transcript later.
+    setTimeout(() => { h.state.pane = SUBMITTED; }, 5_000);
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not report a hard failure when native-queue recovery remains unknowable", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = STRANDED_MULTILINE;
+    h.state.afterEnter = READY_EMPTY;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not confirm a native queue submission from an unknown Codex pane layout", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.state.idle = false;
+    h.state.afterPaste = RESUMING_WITH_MESSAGE;
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE_MULTILINE, STATUS, { submissionId: "m-1" }));
+
+    expect(ok).toBe(false);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
   it("does not report a false failure while a submitted 0.156 message appears after the first proof window", async () => {
     const h = makeHarness(); dirs.push(h.dir);
     h.state.idle = true;
