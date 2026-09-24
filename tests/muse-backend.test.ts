@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -175,7 +175,7 @@ describe("MuseBackend launch command", () => {
 
   it("pins the launcher's update check so it cannot repaint the pane mid-run", () => {
     const { backend } = makeBackend();
-    expect(backend.buildCommand(config())).toMatch(/^MUSE_UPDATE_INTERVAL_SECONDS=\d+ /);
+    expect(backend.buildCommand(config())).toMatch(/^XDG_CONFIG_HOME='[^']+' MUSE_UPDATE_INTERVAL_SECONDS=\d+ /);
   });
 
   it("passes the model and the reasoning effort through", () => {
@@ -214,6 +214,78 @@ describe("MuseBackend launch command", () => {
     const { backend, instanceDir } = makeBackend();
     writeFileSync(join(instanceDir, "session-id"), "$(rm -rf /)\n");
     expect(backend.buildCommand(config())).not.toContain("resume");
+  });
+});
+
+describe("MuseBackend MCP instance isolation", () => {
+  it("keeps two Muse instances on their own settings, wrappers, and sockets", () => {
+    const root = mkdtempSync(join(process.cwd(), ".agend-muse-isolation-"));
+    dirs.push(root);
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = join(root, "shared-xdg");
+    try {
+      const sharedMuseDir = join(process.env.XDG_CONFIG_HOME, "muse");
+      mkdirSync(sharedMuseDir, { recursive: true });
+      const sharedSettingsPath = join(sharedMuseDir, "settings.json");
+      const sharedSettings = {
+        schema_version: 1,
+        model: "muse-spark-1.3",
+        mcpServers: {
+          "user-server": { type: "stdio", command: "user-mcp", args: [] },
+          "agend-agend-old": { type: "stdio", command: "/old/agend-wrapper.sh", args: [] },
+        },
+      };
+      writeFileSync(sharedSettingsPath, JSON.stringify(sharedSettings));
+      const sharedAuthPath = join(sharedMuseDir, "auth.json");
+      writeFileSync(sharedAuthPath, "test-only-credentials", { mode: 0o600 });
+
+      const instances = ["dev-muse", "reviewer"] as const;
+      const launches: Array<{ name: string; instanceDir: string; command: string }> = [];
+      for (const name of instances) {
+        const instanceDir = join(root, name);
+        mkdirSync(instanceDir);
+        const backend = new MuseBackend(instanceDir);
+        const backendConfig = config({
+          instanceDir,
+          instanceName: name,
+          workingDirectory: join(root, `${name}-worktree`),
+          mcpServers: {
+            agend: {
+              command: "node",
+              args: ["/agend/mcp-server.js"],
+              env: { AGEND_SOCKET_PATH: join(instanceDir, "channel.sock") },
+            },
+          },
+        });
+        backend.writeConfig(backendConfig);
+        launches.push({ name, instanceDir, command: backend.buildCommand(backendConfig) });
+      }
+
+      // Inspect both launch commands only after the second instance has written
+      // its config. A shared settings path would now contain the last writer's
+      // socket, even if the first instance's initial write looked correct.
+      for (const { name, instanceDir, command } of launches) {
+        const effectiveXdg = command.match(/XDG_CONFIG_HOME='([^']+)'/)?.[1] ?? process.env.XDG_CONFIG_HOME;
+        const settingsPath = join(effectiveXdg, "muse", "settings.json");
+        const isolatedSettings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        expect(isolatedSettings.model).toBe("muse-spark-1.3");
+        expect(statSync(settingsPath).mode & 0o777).toBe(0o600);
+        expect(Object.keys(isolatedSettings.mcpServers).sort()).toEqual(["user-server", `agend-agend-${name}`].sort());
+        const wrapper = isolatedSettings.mcpServers[`agend-agend-${name}`].command as string;
+        expect(wrapper).toBe(join(instanceDir, "mcp-wrapper-agend.sh"));
+        expect(readFileSync(wrapper, "utf8")).toContain(`AGEND_SOCKET_PATH='${join(instanceDir, "channel.sock")}'`);
+        expect(statSync(wrapper).mode & 0o777).toBe(0o700);
+        expect(command).toContain(`XDG_CONFIG_HOME='${join(instanceDir, "muse-xdg")}'`);
+        const authLink = join(effectiveXdg, "muse", "auth.json");
+        expect(lstatSync(authLink).isSymbolicLink()).toBe(true);
+        expect(readlinkSync(authLink)).toBe(sharedAuthPath);
+        expect(readlinkSync(join(effectiveXdg, "muse", ".auth.json.lock"))).toBe(join(sharedMuseDir, ".auth.json.lock"));
+      }
+      expect(JSON.parse(readFileSync(sharedSettingsPath, "utf8"))).toEqual(sharedSettings);
+    } finally {
+      if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = previousXdg;
+    }
   });
 });
 
