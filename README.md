@@ -130,14 +130,20 @@ AgEnD now resumes Codex by an explicit, per-instance session ID. It never uses
 when worktrees or credential homes overlap. On the first restart after upgrading,
 an existing **live** Codex pane is linked to its exact open session when its
 rollout and writer lock can be verified. If a legacy pane was already stopped
-or its ID cannot be verified, the instance starts a new session and posts a
-one-time notice to its topic. Older rollout files remain on disk.
+and has no instance-owned ID, the instance starts a new session and posts a
+one-time notice to its topic. Older rollout files remain on disk. A stored ID
+whose rollout cannot be verified is different: startup holds instead of
+silently opening a new conversation.
 
 To recover an older conversation, stop the instance, identify and verify its
 session UUID in your Codex session history, then run
 `agend fleet codex-resume <instance> <session-id>` and start the instance.
 The command refuses a different repository or a session with a live owner;
 it does not infer ownership from the newest session in a directory.
+If Codex keeps multiple rollout locks open after `/new`, AgEnD uses Codex's
+current-session footer to identify the new chat. Without that positive proof,
+automatic resume is held and the instance topic is notified; the existing
+conversation files remain available for an explicit manual attach.
 
 ## Requirements
 

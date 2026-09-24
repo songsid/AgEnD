@@ -118,16 +118,30 @@ export function codexRolloutForId(home: string, id: string): { id: string; cwd: 
   return null;
 }
 
-/** A pane's process group gives exact session identity even if two TUIs share a CWD. */
-export function codexSessionForPane(
+/** The first footer item is Codex's own `session-id`, not a guessed rollout order. */
+export function codexCurrentSessionFromPane(pane: string): string | null {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+  const footer = rows.at(-1)?.trim() ?? "";
+  const match = footer.match(/^([0-9a-f-]{36})\s+·\s+Context\b/i);
+  if (!match || !CODEX_SESSION_ID.test(match[1])) return null;
+  rows.pop();
+  while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+  // A quoted UUID-shaped transcript line is not current-session evidence.
+  // Only Codex's live empty input followed by its status footer counts.
+  return /^[>›]\s+Ask Codex to do anything\s*$/.test(rows.at(-1) ?? "") ? match[1] : null;
+}
+
+/** A pane process group identifies candidates; `/new` can retain both locks. */
+export function codexSessionsForPane(
   panePid: number,
   sharedHome: string,
   procRoot = "/proc",
-): { id: string; cwd: string; rolloutPath: string } | null {
-  if (!Number.isSafeInteger(panePid) || panePid <= 0) return null;
+): Array<{ id: string; cwd: string; rolloutPath: string }> {
+  if (!Number.isSafeInteger(panePid) || panePid <= 0) return [];
   let sessionsRoot: string;
   try { sessionsRoot = realpathSync(join(sharedHome, "sessions")) + sep; }
-  catch { return null; }
+  catch { return []; }
   const candidates = new Map<string, { id: string; cwd: string; rolloutPath: string }>();
   for (const pid of paneProcessIds(panePid, procRoot)) {
     const paths = openPaths(pid, procRoot);
@@ -141,9 +155,17 @@ export function codexSessionForPane(
       if (meta && lockIds.has(meta.id)) candidates.set(meta.id, { ...meta, rolloutPath: actual });
     }
   }
-  // A process group can briefly expose both old and new rollouts during /new.
-  // No ordering of fd numbers or mtimes is ownership proof; wait for one.
-  return candidates.size === 1 ? [...candidates.values()][0] : null;
+  return [...candidates.values()];
+}
+
+/** Compatibility helper: never choose among multiple open writer-lock pairs. */
+export function codexSessionForPane(
+  panePid: number,
+  sharedHome: string,
+  procRoot = "/proc",
+): { id: string; cwd: string; rolloutPath: string } | null {
+  const candidates = codexSessionsForPane(panePid, sharedHome, procRoot);
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 /** Any process holding this session's writer lock is a live competing owner. */

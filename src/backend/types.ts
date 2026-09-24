@@ -373,7 +373,7 @@ export interface CliBackend {
   getContextUsage(): number | null;
 
   /** Read session ID for resume capability. Returns null if unavailable. */
-  getSessionId(): string | null;
+  getSessionId(pane?: string): string | null;
 
   /** Optional exact process/session binding for backends with shared histories. */
   setActivePanePid?(pid: number | null): void;
@@ -383,6 +383,8 @@ export interface CliBackend {
   hasSessionIdentity?(): boolean;
   /** Existing identity must hold rather than be treated as first-run history. */
   hasInvalidSessionIdentity?(workingDirectory: string): boolean;
+  /** A live pane exposed multiple owned rollouts but no proven current chat. */
+  hasUnconfirmedSessionIdentity?(): boolean;
   /** Live foreign owner PID for an explicitly owned conversation, if any. */
   resumeOwner?(workingDirectory: string): number | null;
 

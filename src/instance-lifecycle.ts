@@ -693,6 +693,11 @@ export class InstanceLifecycle {
       this.ctx.setTopicIcon(name, "red");
     }, this.ctx.logger, `daemon.supervision_ended[${name}]`));
 
+    daemon.on("codex_session_identity_unconfirmed", safeHandler(() => {
+      this.ctx.logger.warn({ name }, "Codex current session unconfirmed — automatic resume held");
+      this.ctx.notifyInstanceTopic(name, t("inst.codex_session_unconfirmed", name));
+    }, this.ctx.logger, `daemon.codex_session_identity_unconfirmed[${name}]`));
+
     daemon.on("health_check_error", safeHandler((data: { name: string; message: string }) => {
       this.ctx.eventLog?.insert(name, "health_check_error", { message: data.message });
       this.ctx.logger.error({ name, message: data.message }, "Health check failing — instance supervision degraded");

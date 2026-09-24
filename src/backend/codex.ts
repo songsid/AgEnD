@@ -33,7 +33,7 @@ import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
 import { parse as parseToml } from "smol-toml";
-import { CODEX_SESSION_ID, CodexResumeIdentityError, codexRolloutForId, codexSessionForPane, codexSessionOwners, readCodexRolloutMeta, type CodexSessionRecord } from "./codex-session.js";
+import { CODEX_SESSION_ID, CodexResumeIdentityError, codexCurrentSessionFromPane, codexRolloutForId, codexSessionsForPane, codexSessionOwners, readCodexRolloutMeta, type CodexSessionRecord } from "./codex-session.js";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
@@ -41,6 +41,16 @@ const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
 const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
 const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
 const SQLITE_SIDECAR_RE = /-(?:wal|shm|journal)$/;
+
+function isCodexContextFooter(row: string): boolean {
+  const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
+  const legacy = new RegExp(String.raw`^\s*${context}(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?\s*$`, "i");
+  if (legacy.test(row)) return true;
+  // A narrow Codex 0.156 pane may truncate the context item after the
+  // authoritative first `session-id` item. Keep structural readiness while
+  // /ctx honestly reports context unavailable from a truncated percentage.
+  return /^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row);
+}
 
 /**
  * Remove AgEnD-owned MCP tables from a Codex TOML config without touching
@@ -394,6 +404,9 @@ export function attachCodexSession(instanceDir: string, sharedHome: string, curr
   const record: CodexSessionRecord = { ...found, owner: basename(instanceDir) };
   atomicWritePrivate(join(instanceDir, "codex-session.json"), JSON.stringify(record));
   atomicWritePrivate(join(instanceDir, "session-id"), id);
+  // Human-selected exact identity retires a prior ambiguous-live-pane hold.
+  try { unlinkSync(join(instanceDir, "codex-session-unconfirmed")); }
+  catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
 }
 
 // Account-aware models_cache.json is preferred. These documented Codex models
@@ -422,6 +435,7 @@ export class CodexBackend implements CliBackend {
   private authorizedTrust: { cwd: string; root: string } | null = null;
   private activePanePid: number | null = null;
   private resumeRecord: CodexSessionRecord | null = null;
+  private get unconfirmedSessionPath(): string { return join(this.instanceDir, "codex-session-unconfirmed"); }
 
   constructor(private instanceDir: string, private readonly procRoot = "/proc") {
     this.binaryPath = resolveBinary("codex");
@@ -458,10 +472,10 @@ export class CodexBackend implements CliBackend {
     const rows = pane.replace(/\r/g, "").split("\n");
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
     const footer = rows.pop() ?? "";
-    // Codex preserves other configured status-line items after the context
-    // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
-    // are footer chrome, not evidence that the input row is unavailable.
-    if (!/^\s*Context\s+\d+%\s+(?:left|used)(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?\s*$/i.test(footer)) return false;
+    // Codex preserves other configured status-line items after our session ID
+    // and context meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra").
+    // They are footer chrome, not evidence that the input row is unavailable.
+    if (!isCodexContextFooter(footer)) return false;
     // Pasted text may wrap over several continuation rows before the footer.
     // Search only its immediate tail, not a historical transcript prompt.
     for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
@@ -506,7 +520,7 @@ export class CodexBackend implements CliBackend {
 
     let footer = -1;
     for (let i = prompt + 1; i < Math.min(rows.length, prompt + 7); i++) {
-      if (/^\s*Context\s+\d+%\s+(?:left|used)\s*$/i.test(rows[i])) {
+      if (isCodexContextFooter(rows[i])) {
         footer = i;
         break;
       }
@@ -583,11 +597,13 @@ export class CodexBackend implements CliBackend {
   /** A fresh launch has no resume identity; it must not be counted as --resume. */
   canResume(workingDirectory: string): boolean { return this.validResumeRecord(workingDirectory) !== null; }
   hasSessionIdentity(): boolean {
-    return existsSync(join(this.instanceDir, "codex-session.json")) || existsSync(join(this.instanceDir, "session-id"));
+    return existsSync(join(this.instanceDir, "codex-session.json")) || existsSync(join(this.instanceDir, "session-id"))
+      || existsSync(this.unconfirmedSessionPath);
   }
   hasInvalidSessionIdentity(workingDirectory: string): boolean {
-    return this.hasSessionIdentity() && !this.validResumeRecord(workingDirectory);
+    return existsSync(this.unconfirmedSessionPath) || (this.hasSessionIdentity() && !this.validResumeRecord(workingDirectory));
   }
+  hasUnconfirmedSessionIdentity(): boolean { return existsSync(this.unconfirmedSessionPath); }
   /** Positive owner evidence, not merely a stale lock-file name on disk. */
   resumeOwner(workingDirectory: string): number | null {
     const record = this.validResumeRecord(workingDirectory);
@@ -595,6 +611,7 @@ export class CodexBackend implements CliBackend {
   }
 
   private validResumeRecord(workingDirectory: string): CodexSessionRecord | null {
+    if (existsSync(this.unconfirmedSessionPath)) return null;
     try {
       const record = JSON.parse(readFileSync(join(this.instanceDir, "codex-session.json"), "utf8")) as CodexSessionRecord;
       if (!record || !CODEX_SESSION_ID.test(record.id) || record.owner !== basename(this.instanceDir)) return null;
@@ -691,44 +708,50 @@ export class CodexBackend implements CliBackend {
   }
 
   /**
-   * Ensure Codex's TUI status line shows context usage so /ctx can scrape it.
-   * Rules (never overwrites the user's status_line):
-   *   1. status_line already has a context item (context-remaining / -usage /
-   *      -used) → leave the whole config untouched (they already show context).
-   *   2. no context item:
-   *        - no status_line at all → write status_line = ["context-remaining"]
-   *        - status_line exists     → append "context-remaining" to it
-   * If a user's own status_line is long and truncates at 80 cols, that's their
-   * config — /ctx just reports context unavailable. Best-effort string edit of
-   * ~/.codex/config.toml (no toml dependency); other settings untouched.
+   * The first status-line item is Codex's own current session ID. Unlike fd
+   * order, this changes when /new switches chats while old writer locks stay
+   * open. Keep context too, then preserve all user-selected remaining items.
+   * If the footer is hidden/truncated, checkpointing fails closed instead.
    */
   private enableContextStatusLine(): void {
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
-    // Rule 1: any existing context item → don't touch anything.
-    if (/status_line\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
-
-    const ITEM = "context-remaining";
-    const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
+    let existing: string[] | undefined;
+    try {
+      const parsed = parseToml(content) as { tui?: { status_line?: unknown } };
+      if (parsed.tui?.status_line !== undefined) {
+        if (!Array.isArray(parsed.tui.status_line)
+          || !parsed.tui.status_line.every((item: unknown) => typeof item === "string")) return;
+        existing = parsed.tui.status_line as string[];
+      }
+    } catch { return; }
+    const tuiHeader = /^[ \t]*\[[ \t]*tui[ \t]*\][ \t]*(?:#.*)?$/m.exec(content);
+    const tuiStart = tuiHeader ? tuiHeader.index + tuiHeader[0].length : -1;
+    const nextHeader = tuiStart >= 0 ? /^[ \t]*\[/m.exec(content.slice(tuiStart)) : null;
+    const tuiEnd = nextHeader ? tuiStart + nextHeader.index : content.length;
+    const tuiBody = tuiStart >= 0 ? content.slice(tuiStart, tuiEnd) : "";
+    const arr = /^[ \t]*status_line[ \t]*=[ \t]*\[([^\]]*)\]/m.exec(tuiBody);
+    if (existing && !arr) return; // an unfamiliar but valid TOML form: preserve it
     if (arr) {
-      // Rule 2b: prepend our item to the user's existing array (don't overwrite).
-      // First position keeps "Context N% left" at the far left of the footer so a
-      // long cwd/other items can't push it past 80 cols and truncate it.
-      const inner = arr[1].trim().replace(/^,\s*/, "").replace(/,\s*$/, "");
-      const newInner = inner.length ? `"${ITEM}", ${inner}` : `"${ITEM}"`;
-      content = content.replace(arr[0], `status_line = [${newInner}]`);
+      const items = existing!;
+      const context = items.find(item => /^(?:context-remaining|context-usage|context-used)$/.test(item)) ?? "context-remaining";
+      const ordered = ["session-id", context, ...items.filter(item => item !== "session-id" && item !== context)];
+      const updatedBody = tuiBody.replace(arr[0], `\nstatus_line = ${JSON.stringify(ordered)}`);
+      content = content.slice(0, tuiStart) + updatedBody + content.slice(tuiEnd);
     } else {
-      // Rule 2a: no status_line at all → add a minimal one.
       if (content.length && !content.endsWith("\n")) content += "\n";
-      if (/^\[tui\]/m.test(content)) {
-        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
+      if (tuiHeader) {
+        content = content.slice(0, tuiStart) + '\nstatus_line = ["session-id", "context-remaining"]' + content.slice(tuiStart);
       } else {
-        content += `\n[tui]\nstatus_line = ["${ITEM}"]\n`;
+        content += '\n[tui]\nstatus_line = ["session-id", "context-remaining"]\n';
       }
     }
     try {
+      // A bad rewrite must not turn a working Codex configuration into a
+      // startup failure. It merely loses the optional current-ID proof.
+      parseToml(content);
       atomicWritePrivate(configPath, content);
     } catch { /* best effort — never block launch on statusline config */ }
   }
@@ -1246,18 +1269,45 @@ export class CodexBackend implements CliBackend {
     return null;
   }
 
-  getSessionId(): string | null {
+  getSessionId(pane?: string): string | null {
     const panePid = this.activePanePid;
     if (!panePid) return null;
-    const active = codexSessionForPane(panePid, this.sharedCodexHome, this.procRoot);
-    if (!active) return null;
+    const candidates = codexSessionsForPane(panePid, this.sharedCodexHome, this.procRoot);
+    const displayedId = pane === undefined ? null : codexCurrentSessionFromPane(pane);
+    // Once ambiguity has revoked the old identity, only fresh visible proof
+    // can restore it. A later status callback without a pane cannot silently
+    // re-arm the old sidecar just because one fd happened to close.
+    if (existsSync(this.unconfirmedSessionPath) && !displayedId) return null;
+    const active = candidates.length === 1
+      ? displayedId && displayedId !== candidates[0].id ? null : candidates[0]
+      : displayedId ? candidates.find(candidate => candidate.id === displayedId) ?? null : null;
+    if (!active) {
+      // `/new` keeps both native writer locks open even after a completed
+      // turn. A null checkpoint must revoke the old resumable sidecar, not
+      // leave it armed for a later wake into the wrong conversation.
+      const oldId = (() => {
+        try { return readFileSync(join(this.instanceDir, "session-id"), "utf8").trim(); }
+        catch { return null; }
+      })();
+      const hasStoredIdentity = existsSync(join(this.instanceDir, "codex-session.json")) || oldId !== null;
+      if (candidates.length > 1 || (displayedId && displayedId !== oldId)
+        || (pane !== undefined && candidates.length === 0 && hasStoredIdentity)) {
+        try { writeFileSync(this.unconfirmedSessionPath, "current Codex session unconfirmed\n", { flag: "wx", mode: 0o600 }); }
+        catch (err) { if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err; }
+      }
+      return null;
+    }
     const record: CodexSessionRecord = { ...active, owner: basename(this.instanceDir) };
     const path = join(this.instanceDir, "codex-session.json");
     try {
       const prior = readFileSync(path, "utf8");
-      if (prior === JSON.stringify(record)) return active.id;
+      if (prior === JSON.stringify(record)) {
+        if (existsSync(this.unconfirmedSessionPath)) unlinkSync(this.unconfirmedSessionPath);
+        return active.id;
+      }
     } catch { /* first checkpoint */ }
     atomicWritePrivate(path, JSON.stringify(record));
+    if (existsSync(this.unconfirmedSessionPath)) unlinkSync(this.unconfirmedSessionPath);
     return active.id;
   }
 

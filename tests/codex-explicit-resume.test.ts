@@ -4,7 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CodexBackend, attachCodexSession, codexResumeClaimCommand, codexResumeDirectoryPromptState, codexResumeDirectoryVisible, codexResumeLockActive, codexResumeLockVisible } from "../src/backend/codex.js";
-import { codexSessionForPane, codexSessionOwners, type CodexSessionRecord } from "../src/backend/codex-session.js";
+import { codexCurrentSessionFromPane, codexSessionForPane, codexSessionOwners, type CodexSessionRecord } from "../src/backend/codex-session.js";
 import { Daemon } from "../src/daemon.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 import { InstanceLifecycle } from "../src/instance-lifecycle.js";
@@ -51,6 +51,29 @@ const config = (f: ReturnType<typeof fixture>) => ({
 });
 
 describe("Codex explicit session identity", () => {
+  it("pins Codex's current session-id as the first footer item while preserving context and user items", () => {
+    const f = fixture();
+    writeFileSync(join(f.shared, "config.toml"), '[tui]\nstatus_line = ["model-name", "context-remaining"]\n');
+    f.backend.writeConfig(config(f));
+    const privateConfig = readFileSync(join(f.instance, "codex-home", "config.toml"), "utf8");
+    expect(privateConfig).toContain('status_line = ["session-id","context-remaining","model-name"]');
+    expect(readFileSync(join(f.shared, "config.toml"), "utf8"))
+      .toContain('status_line = ["model-name", "context-remaining"]');
+    const footer = `› Ask Codex to do anything\n\n  ${SESSION} · Context 100…  ⚠ 1 warning · f2 to view\n`;
+    expect(f.backend.isDeliveryInputReadyPane(footer)).toBe(true);
+    expect(f.backend.isPeriodicRedrawIdlePane(footer)).toBe(true);
+    expect(codexCurrentSessionFromPane(footer)).toBe(SESSION);
+  });
+
+  it("adds the current-session footer to a spaced TOML tui table without duplicating that table", () => {
+    const f = fixture();
+    writeFileSync(join(f.shared, "config.toml"), '[ tui ]\nx = 1\n');
+    f.backend.writeConfig(config(f));
+    const privateConfig = readFileSync(join(f.instance, "codex-home", "config.toml"), "utf8");
+    expect(privateConfig.match(/\[[ \t]*tui[ \t]*\]/g)).toHaveLength(1);
+    expect(privateConfig).toContain('status_line = ["session-id", "context-remaining"]');
+  });
+
   it("never uses --last without an instance-owned session record", () => {
     const f = fixture();
     const command = f.backend.buildCommand(config(f));
@@ -144,7 +167,10 @@ describe("Codex explicit session identity", () => {
       restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
     } as any, f.instance, false, f.backend, undefined, logger);
-    (daemon as any).tmux = { getWindowId: () => "@wake" };
+    (daemon as any).tmux = {
+      getWindowId: () => "@wake",
+      capturePane: vi.fn().mockResolvedValue(`› Ask Codex to do anything\n\n  ${nextId} · Context 100% left`),
+    };
     vi.spyOn(daemon as any, "trySpawnInsideGate").mockResolvedValue(true);
     vi.spyOn(daemon as any, "resumeRuntimeMonitors").mockImplementation(() => {});
     (daemon as any).pauseWakeState = "paused";
@@ -272,6 +298,94 @@ describe("Codex explicit session identity", () => {
     writeFileSync(firstLock, ""); writeFileSync(secondLock, "");
     processFixture(f.proc, 4411, 777, [firstLock, secondLock, f.rollout, secondRollout]);
     expect(codexSessionForPane(777, f.shared, f.proc)).toBeNull();
+  });
+
+  it("checkpoints the current /new chat from Codex's live session-id footer, not the retained old lock", () => {
+    const f = fixture(); persist(f);
+    // Shape captured from a real Codex 0.156.1 pane after /new → Current
+    // checkout → a completed "Reply exactly OK" turn. The old writer lock
+    // was still held by that same Codex PID after the new turn.
+    const nextId = "01a0d361-9c90-7c50-bf7c-a06a3b5ffea6";
+    const nextRollout = join(f.shared, "sessions", "2026", "09", "24", `rollout-${nextId}.jsonl`);
+    writeFileSync(nextRollout, JSON.stringify({ type: "session_meta", payload: { id: nextId, cwd: f.cwd } }) + "\nnew turn completed\n");
+    const oldLock = join(f.dir, `${SESSION}.lock`);
+    const nextLock = join(f.dir, `${nextId}.lock`);
+    writeFileSync(oldLock, ""); writeFileSync(nextLock, "");
+    processFixture(f.proc, 4411, 777, [oldLock, f.rollout, nextLock, nextRollout]);
+    f.backend.setActivePanePid(777);
+    const pane = [
+      "› Reply exactly OK. Do not use tools.",
+      "", "", "• OK", "", "  20:26", "", "",
+      "› Ask Codex to do anything", "",
+      `  ${nextId} · Context 98% left                            ⚠ 1 warning · f2 to view`,
+      "", "",
+    ].join("\n");
+    expect(codexSessionForPane(777, f.shared, f.proc)).toBeNull();
+    expect(codexCurrentSessionFromPane(pane)).toBe(nextId);
+    expect(codexCurrentSessionFromPane(`› Example output\n  ${nextId} · Context 98% left`)).toBeNull();
+    const daemon = new Daemon("instance-a", {
+      working_directory: f.cwd, backend: "codex", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, f.instance, false, f.backend, undefined,
+    { child: () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }) } as any);
+    expect((daemon as any).saveSessionId(pane)).toBe(nextId);
+    expect(readFileSync(join(f.instance, "session-id"), "utf8")).toBe(nextId);
+    expect(JSON.parse(readFileSync(join(f.instance, "codex-session.json"), "utf8")).id).toBe(nextId);
+    const resume = f.backend.buildCommand(config(f));
+    expect(resume).toContain(nextId);
+    expect(resume).not.toContain(SESSION);
+  });
+
+  it("durably holds rather than resumes the old UUID when /new leaves two locks but no current-session proof", () => {
+    const f = fixture(); persist(f);
+    const nextId = "01a0d2a2-325b-7d61-be56-f23c0470c200";
+    const nextRollout = join(f.shared, "sessions", "2026", "09", "24", `rollout-${nextId}.jsonl`);
+    writeFileSync(nextRollout, JSON.stringify({ type: "session_meta", payload: { id: nextId, cwd: f.cwd } }) + "\n");
+    const oldLock = join(f.dir, `${SESSION}.lock`);
+    const nextLock = join(f.dir, `${nextId}.lock`);
+    writeFileSync(oldLock, ""); writeFileSync(nextLock, "");
+    processFixture(f.proc, 4411, 777, [oldLock, f.rollout, nextLock, nextRollout]);
+    f.backend.setActivePanePid(777);
+    const oldRecord = readFileSync(join(f.instance, "codex-session.json"), "utf8");
+    const warn = vi.fn();
+    const daemon = new Daemon("instance-a", {
+      working_directory: f.cwd, backend: "codex", log_level: "silent",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+    } as any, f.instance, false, f.backend, undefined,
+    { child: () => ({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() }) } as any);
+    const held = vi.fn();
+    daemon.on("codex_session_identity_unconfirmed", held);
+    expect((daemon as any).saveSessionId("› Ask Codex to do anything\n  Context 98% left")).toBeNull();
+    expect(held).toHaveBeenCalledOnce();
+    expect(readFileSync(join(f.instance, "codex-session.json"), "utf8")).toBe(oldRecord);
+    expect(readFileSync(join(f.instance, "session-id"), "utf8")).toBe(SESSION);
+    expect(existsSync(join(f.instance, "codex-session-unconfirmed"))).toBe(true);
+    expect(f.backend.canResume(f.cwd)).toBe(false);
+    expect(() => f.backend.buildCommand(config(f))).toThrow("identity could not be verified");
+    // Rechecking the same unknown pane cannot spam the operator.
+    (daemon as any).saveSessionId("› Ask Codex to do anything\n  Context 98% left");
+    expect(held).toHaveBeenCalledOnce();
+    // The old rollout fd can close after /new; an unrelated checkpoint with
+    // no pane evidence must not clear the durable hold when only one remains.
+    rmSync(join(f.proc, "4411", "fd", "1"));
+    expect(codexSessionForPane(777, f.shared, f.proc)?.id).toBe(nextId);
+    expect((daemon as any).saveSessionId()).toBeNull();
+    expect(f.backend.canResume(f.cwd)).toBe(false);
+    expect((daemon as any).saveSessionId(`› Ask Codex to do anything\n\n  ${nextId} · Context 98% left`)).toBe(nextId);
+    expect(existsSync(join(f.instance, "codex-session-unconfirmed"))).toBe(false);
+    expect(f.backend.canResume(f.cwd)).toBe(true);
+    expect(f.backend.buildCommand(config(f))).toContain(nextId);
+  });
+
+  it("does not keep an old resumable identity when a live pane has no verifiable rollout candidate", () => {
+    const f = fixture(); persist(f);
+    f.backend.setActivePanePid(777);
+    expect(f.backend.getSessionId("› Ask Codex to do anything\n\n  Context 98% left")).toBeNull();
+    expect(existsSync(join(f.instance, "codex-session-unconfirmed"))).toBe(true);
+    expect(f.backend.canResume(f.cwd)).toBe(false);
+    expect(readFileSync(join(f.instance, "session-id"), "utf8")).toBe(SESSION);
   });
 
   it("holds a live owner; a stale lock file alone is not an owner", () => {
