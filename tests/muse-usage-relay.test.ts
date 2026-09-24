@@ -3,7 +3,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { brotliCompressSync, gzipSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   MuseUsageRelay,
   MuseUsageSseParser,
@@ -373,5 +373,105 @@ describe("Muse usage relay protocol", () => {
     const usage = await fetchMuseUsage();
     expect(usage.metrics).toEqual([]);
     expect(usage.hint).toMatch(/unavailable/);
+  });
+
+  // #909: stale-path boundaries. Time is frozen so the exact edges are
+  // deterministic — a live clock would drift a few ms between seeding the file
+  // and reading it. Fake timers are restored in `finally` because other tests
+  // in this file depend on real socket timeouts.
+  it("prunes a stale window with a missing or unusable reset while keeping the live one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
+    dirs.push(dir);
+    const NOW = 1_700_000_000_000;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(NOW);
+      const badResets: Array<{ name: string; value: unknown }> = [
+        { name: "undefined", value: undefined },
+        { name: "null", value: null },
+        { name: "non-numeric", value: "tomorrow" },
+        { name: "zero", value: 0 },
+        { name: "negative", value: -60 },
+        { name: "NaN", value: NaN },
+        { name: "Infinity", value: Infinity },
+      ];
+      for (const bad of badResets) {
+        writeMuseUsageSnapshot(dir, {
+          observedAt: NOW - MUSE_USAGE_STALE_MS - 60_000,
+          session: { usedPercent: 8, resetsAt: bad.value as number },
+          weekly: { usedPercent: 41, resetsAt: 1_800_000_000 },
+        });
+        const retained = readMuseUsageSnapshot(dir);
+        expect(retained, `reset=${bad.name} must fail closed`).not.toBeNull();
+        expect(retained?.session, `reset=${bad.name} must prune the window`).toBeUndefined();
+        expect(retained?.weekly?.usedPercent).toBe(41);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("prunes a stale window whose reset is exactly now — the bound is > now, not >=", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-muse-relay-"));
+    dirs.push(dir);
+    const NOW = 1_700_000_000_000;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(NOW);
+      writeMuseUsageSnapshot(dir, {
+        observedAt: NOW - MUSE_USAGE_STALE_MS - 60_000,
+        session: { usedPercent: 8, resetsAt: NOW / 1000 },
+        weekly: { usedPercent: 41, resetsAt: 1_800_000_000 },
+      });
+      const retained = readMuseUsageSnapshot(dir);
+      expect(retained?.session).toBeUndefined();
+      expect(retained?.weekly?.usedPercent).toBe(41);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("treats observedAt exactly at the idle threshold as fresh, +1ms as stale", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-usage-"));
+    dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const instance = join(home, "instances", "muse-one");
+    const NOW = 1_700_000_000_000;
+    const seed = (observedAt: number) => writeMuseUsageSnapshot(instance, {
+      observedAt,
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: 1_800_000_000 },
+      weekly: { usedPercent: 41, resetsAt: 1_800_000_000 },
+    });
+    // An expired session window tells fresh-passthrough apart from stale-retain:
+    // only the retain path prunes, so `session` being defined pins the `<=`.
+    const seedExpiredSession = (observedAt: number) => writeMuseUsageSnapshot(instance, {
+      observedAt,
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: Math.floor(NOW / 1000) - 60 },
+      weekly: { usedPercent: 41, resetsAt: 1_800_000_000 },
+    });
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(NOW);
+      seed(NOW - MUSE_USAGE_STALE_MS);
+      const fresh = await fetchMuseUsage();
+      expect(fresh.metrics.map(metric => metric.label)).toEqual(["Session", "Weekly"]);
+      expect(fresh.hint).toBeUndefined();
+
+      seed(NOW - MUSE_USAGE_STALE_MS - 1);
+      const stale = await fetchMuseUsage();
+      expect(stale.metrics.map(metric => metric.label)).toEqual(["Session", "Weekly"]);
+      expect(stale.hint).toMatch(/^cached \d+m ago/);
+
+      seedExpiredSession(NOW - MUSE_USAGE_STALE_MS);
+      expect(readMuseUsageSnapshot(instance)?.session?.usedPercent).toBe(23);
+
+      seedExpiredSession(NOW - MUSE_USAGE_STALE_MS - 1);
+      expect(readMuseUsageSnapshot(instance)?.session).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
