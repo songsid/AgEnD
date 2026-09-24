@@ -156,7 +156,9 @@ describe("pane write exclusion", () => {
     lock.run = async (fn: any) => { lockRuns++; return origRun(fn); };
     const origSettle = internals.waitForSpawnToSettle.bind(internals);
     let settles = 0;
-    internals.waitForSpawnToSettle = async () => { await origSettle(); settles++; };
+    // Preserve the real boolean: a post-increment counter alone would return 0
+    // (falsy) on the first call and fake an unsettled wait.
+    internals.waitForSpawnToSettle = async () => { const r = await origSettle(); settles++; return r; };
     try {
       // Hold the lock so the delivery queues behind it.
       let release!: () => void;
@@ -175,6 +177,59 @@ describe("pane write exclusion", () => {
       expect(lockRuns).toBeGreaterThanOrEqual(2);
       // And still exactly one paste — the retry redoes, never duplicates.
       expect(pastes).toEqual(["hello race"]);
+    } finally {
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  function makeSpawnCapDaemon(name: string) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-pane-excl-spawncap-"));
+    writeFileSync(join(instanceDir, "window-id"), "@1");
+    const { root } = makeLogger();
+    const daemon = new Daemon(name, CONFIG, instanceDir, false, { getReadyPattern: () => /❯/ } as any, undefined, root);
+    const internals = daemon as any;
+    const pastes: string[] = [];
+    internals.tmux = {
+      getWindowId: () => "@1",
+      capturePane: async () => "❯",
+      pasteBuffer: vi.fn(async (text: string) => { pastes.push(text); return true; }),
+      sendSpecialKey: vi.fn(async () => true),
+    };
+    return { internals, instanceDir, pastes };
+  }
+
+  it("never pastes while a spawn runs past the settle cap in one generation", async () => {
+    // Round-4 exit: the spawn neither finishes nor bumps the generation again,
+    // so every settle wait times out with spawning still true. Each round must
+    // back out and the delivery must end in honest failure — zero pastes, even
+    // though the generation never changes (the churn test above cannot see this).
+    const { internals, instanceDir, pastes } = makeSpawnCapDaemon("spawn-stuck");
+    try {
+      internals.beginSpawn();
+      const realSettle = internals.waitForSpawnToSettle.bind(internals);
+      internals.waitForSpawnToSettle = () => realSettle(150);
+      await expect(internals.deliverMessage("hello stuck")).resolves.toBe(false);
+      expect(pastes).toEqual([]);
+    } finally {
+      internals.endSpawn();
+      internals.freezeRuntimeMonitors();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  it("still backs out when the spawn completes right after the settle cap", async () => {
+    // The settle wait timed out, but the spawn finished before the pane write:
+    // spawning is false and the generation matches, yet nothing ever observed
+    // the completed spawn — so the current generation is still not settled
+    // evidence and the delivery must redo itself, not paste on stale verdicts.
+    const { internals, instanceDir, pastes } = makeSpawnCapDaemon("spawn-late-finish");
+    let calls = 0;
+    try {
+      internals.waitForSpawnToSettle = async () => { calls++; return false; };
+      await expect(internals.deliverMessage("hello late")).resolves.toBe(false);
+      expect(calls).toBeGreaterThanOrEqual(2);
+      expect(pastes).toEqual([]);
     } finally {
       internals.freezeRuntimeMonitors();
       rmSync(instanceDir, { recursive: true, force: true });

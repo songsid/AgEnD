@@ -92,24 +92,27 @@ describe("delivery waits for an in-flight spawn", () => {
     }
   });
 
-  it("gives up after the cap rather than holding a message forever", async () => {
+  it("reports unsettled after the cap rather than holding a message forever", async () => {
     vi.useFakeTimers();
     const { internals, logger, instanceDir } = makeDaemon();
     try {
       internals.beginSpawn(); // and never ends — a spawn that wedged
-      let released = false;
-      const wait = internals.waitForSpawnToSettle().then(() => { released = true; });
+      let outcome: boolean | undefined;
+      const wait = internals.waitForSpawnToSettle().then(r => { outcome = r; });
 
       await vi.advanceTimersByTimeAsync(59_000);
-      expect(released).toBe(false);
+      expect(outcome).toBeUndefined();
       await vi.advanceTimersByTimeAsync(2_000);
       await wait;
 
-      expect(released).toBe(true);
-      // Falling back to the old behaviour is a decision worth seeing in the log.
-      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("delivering anyway"));
+      // The cap expiring is not settled evidence: false, never a silent
+      // proceed into the pane (changed contract, #899 round-4 — the old
+      // "delivering anyway" pasted into a possibly replaced pane).
+      expect(outcome).toBe(false);
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("not settled evidence"));
     } finally {
       vi.useRealTimers();
+      internals.endSpawn();
       rmSync(instanceDir, { recursive: true, force: true });
     }
   });

@@ -4445,7 +4445,10 @@ export class Daemon extends EventEmitter {
     }
 
     // Before anything reads the window id: a spawn in progress is about to change it.
-    await this.waitForSpawnToSettle();
+    // A false return means the cap expired with a spawn STILL running — the
+    // generation captured below is in-progress evidence, not settled evidence,
+    // so the critical section must still back out (see settledClean).
+    const settledClean = await this.waitForSpawnToSettle();
     // Everything captured below (window id, readiness verdicts) belongs to
     // this spawn generation. A spawn that starts afterwards is detected inside
     // the critical section, where this delivery backs out and redoes itself.
@@ -4543,10 +4546,12 @@ export class Daemon extends EventEmitter {
         if (cancelled()) return false;
         // A spawn that started after the settle wait above invalidates the
         // window id and every readiness verdict since: the pane about to be
-        // written may already belong to a replacement process. Never wait
+        // written may already belong to a replacement process. The same holds
+        // when the settle wait itself timed out (!settledClean) or a spawn is
+        // running right now — none of those is settled evidence. Never wait
         // here (startup dismissal needs this lock) — back out and redo the
         // delivery from the top, where the settle wait runs again outside it.
-        if (settleGeneration !== this.spawnGeneration) return "spawn-started";
+        if (!settledClean || settleGeneration !== this.spawnGeneration || this.spawning) return "spawn-started";
         if (this.refuseFatalStartupDelivery(verdict, status)) return false;
         // A passive startup phase may paint after the outer readiness probe.
         // It clears without input, so waiting under the pane lock cannot starve
@@ -6357,22 +6362,29 @@ export class Daemon extends EventEmitter {
    * Bounded, and called BEFORE the pane lock is taken — waiting on the spawn while
    * holding the lock the spawn itself needs would deadlock.
    */
-  private async waitForSpawnToSettle(): Promise<void> {
+  /**
+   * Wait for an in-flight spawn to finish, up to the cap. Returns true when no
+   * spawn is in flight afterwards; false when the cap expired with one still
+   * running. A false return is NOT settled evidence — the caller must not
+   * treat the current generation as a completed spawn.
+   */
+  private async waitForSpawnToSettle(capMs = SPAWN_SETTLE_MAX_WAIT_MS): Promise<boolean> {
     const settled = this.spawnSettled;
-    if (!settled) return;
+    if (!settled) return true;
     this.logger.debug("Holding delivery until the CLI has finished starting up");
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const cap = new Promise<void>(resolve => {
-      timer = setTimeout(resolve, SPAWN_SETTLE_MAX_WAIT_MS);
+    const cap = new Promise<false>(resolve => {
+      timer = setTimeout(() => resolve(false), capMs);
       timer.unref?.();
     });
     try {
-      await Promise.race([settled, cap]);
+      const finished = await Promise.race([settled.then(() => true as const), cap]);
+      if (!finished) {
+        this.logger.warn("CLI still starting after the delivery hold — the pane is not settled evidence");
+      }
+      return finished;
     } finally {
       if (timer) clearTimeout(timer);
-    }
-    if (this.spawning) {
-      this.logger.warn("CLI still starting after the delivery hold — delivering anyway");
     }
   }
 
