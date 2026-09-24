@@ -3,11 +3,16 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { parse as parseToml } from "smol-toml";
 import { CodexBackend } from "../src/backend/codex.js";
 import { Daemon } from "../src/daemon.js";
 
 const dirs: string[] = [];
 const priorCodexHome = process.env.CODEX_HOME;
+const codex0156Installed = (() => {
+  try { return /codex-cli 0\.156\.0/.test(execFileSync("codex", ["--version"], { encoding: "utf-8" })); }
+  catch { return false; }
+})();
 afterEach(() => {
   if (priorCodexHome === undefined) delete process.env.CODEX_HOME;
   else process.env.CODEX_HOME = priorCodexHome;
@@ -60,6 +65,11 @@ function liveTrustPane(folder: string, root?: string, cursor: "trust" | "quit" |
   ].join("\n");
 }
 
+function capturedTrustPane(variant: "wide" | "narrow", folder: string, root: string): string {
+  return readFileSync(new URL(`./fixtures/codex-0156-trust-${variant}.pane.txt`, import.meta.url), "utf-8")
+    .replace("__FOLDER__", folder).replace("__ROOT__", root);
+}
+
 function active(dialog: { pattern: RegExp; isActive?: (pane: string) => boolean }, pane: string) {
   return dialog.pattern.test(pane) && (dialog.isActive?.(pane) ?? true);
 }
@@ -105,6 +115,80 @@ describe("Codex 0.156 trust prompt", () => {
     expect(active(auto, liveTrustPane(worktree, main))).toBe(true);
   });
 
+  it("recognizes both live Codex 0.156 trust layouts without a decorative header", () => {
+    const { dir, instance, backend } = fixture();
+    const main = join(dir, "main");
+    const worktree = join(dir, "linked-worktree");
+    mkdirSync(main);
+    execFileSync("git", ["-C", main, "init", "-q"]);
+    execFileSync("git", ["-C", main, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "initial"]);
+    execFileSync("git", ["-C", main, "worktree", "add", "-q", "--detach", worktree]);
+    backend.writeConfig({ workingDirectory: worktree, instanceDir: instance, instanceName: "test", mcpServers: {} });
+    backend.preTrust(worktree);
+    const [auto, hold] = backend.getStartupDialogs();
+    for (const variant of ["wide", "narrow"] as const) {
+      const pane = capturedTrustPane(variant, worktree, main);
+      expect(active(auto, pane)).toBe(true);
+      expect(active(hold, pane)).toBe(true);
+      const wrongRoot = pane.replace(main, join(dir, "stranger"));
+      expect(active(auto, wrongRoot)).toBe(false);
+      expect(active(hold, wrongRoot)).toBe(true);
+    }
+  });
+
+  it("holds a root note that is present but cannot be parsed, even when the folder is authorized", () => {
+    const { dir, instance, cwd, backend } = fixture();
+    backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
+    backend.preTrust(cwd);
+    const [auto, hold] = backend.getStartupDialogs();
+    const pane = capturedTrustPane("wide", cwd, join(dir, "not-authorized"));
+    const malformed = pane.replace("repository root:", "repository root");
+    expect(active(auto, pane)).toBe(false);
+    expect(active(auto, malformed)).toBe(false);
+    expect(active(hold, malformed)).toBe(true);
+    const missingFolder = capturedTrustPane("wide", cwd, cwd).replace(`  ${cwd}\n\n`, "\n");
+    expect(active(auto, missingFolder)).toBe(false);
+    expect(active(hold, missingFolder)).toBe(true);
+  });
+
+  it("updates equivalent TOML table and quoted trust key without making config invalid", () => {
+    const { shared, instance, cwd, backend } = fixture();
+    const original = `[ projects . "${cwd}" ]\n"trust_level" = "untrusted"\ncustom = "keep"\n`;
+    writeFileSync(join(shared, "config.toml"), original);
+    backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
+    backend.preTrust(cwd);
+    const config = readFileSync(join(instance, "codex-home", "config.toml"), "utf-8");
+    expect(config).toContain(`[ projects . "${cwd}" ]`);
+    expect(config).toContain("custom = \"keep\"");
+    expect(config.match(/trust_level/g)).toHaveLength(1);
+    expect(config).toContain('trust_level = "trusted"');
+    expect(parseToml(config)).toMatchObject({ projects: { [cwd]: { trust_level: "trusted", custom: "keep" } } });
+    expect(readFileSync(join(shared, "config.toml"), "utf-8")).toBe(original);
+    backend.preTrust(cwd);
+    expect(readFileSync(join(instance, "codex-home", "config.toml"), "utf-8")).toBe(config);
+  });
+
+  it("refuses an unsupported effective TOML trust syntax without damaging the private config", () => {
+    const { shared, instance, cwd, backend } = fixture();
+    writeFileSync(join(shared, "config.toml"), `[projects]\n"${cwd}".trust_level = "untrusted"\n`);
+    backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
+    const configPath = join(instance, "codex-home", "config.toml");
+    const before = readFileSync(configPath, "utf-8");
+    expect(() => backend.preTrust(cwd)).toThrow("Cannot safely edit Codex trust project table");
+    expect(readFileSync(configPath, "utf-8")).toBe(before);
+  });
+
+  it.skipIf(!codex0156Installed)("true Codex 0.156 accepts the edited private config without a paid turn", () => {
+    const { shared, instance, cwd, backend } = fixture();
+    writeFileSync(join(shared, "config.toml"), `[ projects . "${cwd}" ]\n"trust_level" = "untrusted"\n`);
+    backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
+    backend.preTrust(cwd);
+    expect(() => execFileSync("codex", ["features", "list"], {
+      env: { ...process.env, CODEX_HOME: join(instance, "codex-home") }, cwd,
+      encoding: "utf-8", timeout: 5_000, stdio: ["ignore", "pipe", "pipe"],
+    })).not.toThrow();
+  });
+
   it("auto-enters only the authorized current folder with canonical options and cursor on Trust", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
@@ -119,7 +203,7 @@ describe("Codex 0.156 trust prompt", () => {
     expect(active(hold, liveTrustPane(cwd, undefined, "quit"))).toBe(true);
     expect(active(hold, liveTrustPane(cwd, undefined, "unknown"))).toBe(true);
     const noHeader = liveTrustPane(cwd).split("\n").slice(7).join("\n");
-    expect(active(auto, noHeader)).toBe(false);
+    expect(active(auto, noHeader)).toBe(true);
     expect(active(hold, noHeader)).toBe(true);
     const noAccessLabel = liveTrustPane(cwd).replace("Folder access", "Workspace permission");
     expect(active(auto, noAccessLabel)).toBe(false);
@@ -171,7 +255,7 @@ describe("Codex 0.156 trust prompt", () => {
       working_directory: cwd, backend: "codex", restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "silent",
     } as any, instance, false, backend, undefined, { child: () => logger } as any) as any;
-    let pane = liveTrustPane(cwd);
+    let pane = capturedTrustPane("wide", cwd, cwd);
     const keys: string[] = [];
     daemon.tmux = {
       capturePane: vi.fn(async () => pane),

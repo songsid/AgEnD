@@ -32,6 +32,7 @@ import {
 import { getAgendHome } from "../paths.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 import { t } from "../locale.js";
+import { parse as parseToml } from "smol-toml";
 
 const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const CODEX_MODELS_CACHE_MAX_BYTES = 5 * 1024 * 1024;
@@ -108,10 +109,25 @@ function codexTrustPaths(workingDirectory: string): { cwd: string; root: string 
   }
 }
 
-/** Change only the private project's trust value; never duplicate a TOML table. */
+function tomlTable(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)
+    ? value as Record<string, unknown> : null;
+}
+
+function projectTrustTable(config: unknown, root: string): Record<string, unknown> | null {
+  const projects = tomlTable(tomlTable(config)?.projects);
+  return projects ? tomlTable(projects[root]) : null;
+}
+
+function effectiveProjectTrust(content: string, root: string): unknown {
+  return projectTrustTable(parseToml(content), root)?.trust_level;
+}
+
+/** Change only the private project's trust value; parse before and after editing. */
 function setProjectTrusted(content: string, root: string): string {
   const section = `[projects.${tomlString(root)}]`;
-  const literalSection = root.includes("'") ? null : `[projects.'${root}']`;
+  const parsed = parseToml(content);
+  if (projectTrustTable(parsed, root)?.trust_level === "trusted") return content;
   const lines = content.split("\n");
   const tableRows: number[] = [];
   let multiline: `"""` | `'''` | null = null;
@@ -132,41 +148,56 @@ function setProjectTrusted(content: string, root: string): string {
     }
   }
   const headers = tableRows.filter(row => {
-    const trimmed = lines[row].trim();
-    return [section, literalSection].some(candidate => candidate !== null
-      && trimmed.startsWith(candidate)
-      && /^\s*(?:#.*)?$/.test(trimmed.slice(candidate.length)));
+    // TOML permits whitespace around dots and quoted/literal table keys.
+    // Parse each real header instead of comparing its raw spelling.
+    try {
+      return projectTrustTable(parseToml(`${lines[row]}\n__agend_trust_probe__ = true\n`), root)?.__agend_trust_probe__ === true;
+    } catch { return false; }
   });
   if (headers.length > 1) throw new Error("Duplicate Codex trust project table");
-  if (headers.length === 0) return `${content.trimEnd()}\n\n${section}\ntrust_level = "trusted"\n`;
-
-  const header = headers[0];
-  const end = tableRows.find(row => row > header) ?? lines.length;
-  const trustRows: number[] = [];
-  for (let row = header + 1; row < end; row++) {
-    if (/^\s*trust_level\s*=/.test(lines[row])) trustRows.push(row);
+  if (headers.length === 0 && projectTrustTable(parsed, root)) {
+    throw new Error("Cannot safely edit Codex trust project table");
   }
-  if (trustRows.length > 1) throw new Error("Duplicate Codex trust_level key");
-  if (trustRows.length === 1) lines[trustRows[0]] = 'trust_level = "trusted"';
-  else lines.splice(header + 1, 0, 'trust_level = "trusted"');
-  return lines.join("\n");
+
+  let updated: string;
+  if (headers.length === 0) {
+    updated = `${content.trimEnd()}\n\n${section}\ntrust_level = "trusted"\n`;
+  } else {
+    const header = headers[0];
+    const end = tableRows.find(row => row > header) ?? lines.length;
+    const trustRows: number[] = [];
+    for (let row = header + 1; row < end; row++) {
+      if (/^\s*(?:trust_level|"trust_level"|'trust_level')\s*=/.test(lines[row])) trustRows.push(row);
+    }
+    if (trustRows.length > 1) throw new Error("Duplicate Codex trust_level key");
+    if (trustRows.length === 1) lines[trustRows[0]] = 'trust_level = "trusted"';
+    else lines.splice(header + 1, 0, 'trust_level = "trusted"');
+    updated = lines.join("\n");
+  }
+
+  // Candidate validation is before atomic write. A spelling the narrow text
+  // editor cannot handle must fail closed, never leave Codex with invalid TOML.
+  if (effectiveProjectTrust(updated, root) !== "trusted") throw new Error("Codex project trust is not effective");
+  return updated;
 }
 
-type CodexTrustPrompt = { active: boolean; folder: string | null; root: string | null; safeChoice: boolean };
+type CodexTrustPrompt = {
+  active: boolean;
+  folder: string | null;
+  root: string | null;
+  rootNote: "absent" | "parsed" | "invalid";
+  safeChoice: boolean;
+};
 
 /** Only the bottom, live Codex 0.156 folder-access screen can own stdin. */
 function codexTrustPromptState(pane: string): CodexTrustPrompt {
-  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, safeChoice: false };
+  const noPrompt: CodexTrustPrompt = { active: false, folder: null, root: null, rootNote: "absent", safeChoice: false };
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
   if (last < 0) return noPrompt;
-  let header = -1;
-  for (let index = rows.length - 1; index >= 0; index--) {
-    if (/^│\s*>_ OpenAI Codex \(v[\d.]+\)/.test(rows[index])) { header = index; break; }
-  }
   let access = -1;
-  for (let index = rows.length - 1; index > header; index--) {
+  for (let index = rows.length - 1; index >= 0; index--) {
     if (/^\s{0,2}Folder access\s*$/.test(rows[index])) { access = index; break; }
   }
   if (access < 0 || last - access > 60) return noPrompt;
@@ -176,21 +207,31 @@ function codexTrustPromptState(pane: string): CodexTrustPrompt {
   // trust dialog is history, not the current interactive region.
   if (rows.slice(question + 1, last + 1).some(row => /^\s*[›❯>]\s*(?!\d+\.)\S/.test(row))) return noPrompt;
 
-  const folder = rows.slice(access + 1, question).find(row => /^\s{0,2}\//.test(row))?.trim() ?? null;
-  const rootLabel = rows.findIndex((row, index) => index > access && index < question && /^\s{0,2}repository root:\s*$/.test(row));
-  const root = rootLabel < 0 ? null : rows[rootLabel + 1]?.trim() ?? null;
+  const noteRows = rows.slice(access + 1, question);
+  // The folder must be the first content row after the title. Do not let a
+  // later repository-root path stand in for a missing folder path.
+  const folderRow = noteRows.find(row => row.trim() !== "");
+  const folder = folderRow && /^\s{0,2}\//.test(folderRow) ? folderRow.trim() : null;
+  const hasRootNote = noteRows.some(row => /\bNote:|\brepository root\b|Trusting will apply/i.test(row));
+  const rootLabel = noteRows.findIndex(row => /\brepository root:/i.test(row));
+  const inlineRoot = rootLabel < 0 ? "" : noteRows[rootLabel].split(/\brepository root:/i)[1]?.trim() ?? "";
+  const followingRoot = rootLabel < 0 ? "" : noteRows.slice(rootLabel + 1).find(row => row.trim() !== "")?.trim() ?? "";
+  const candidateRoot = inlineRoot || followingRoot;
+  const root = candidateRoot.startsWith("/") ? candidateRoot : null;
+  const rootNote = !hasRootNote ? "absent" : root ? "parsed" : "invalid";
   const choices = rows.slice(question + 1, last + 1).flatMap((row, offset) => {
     const match = row.match(/^\s*([›❯>]?)\s*(\d+)\.\s+(.+?)\s*$/);
     return match ? [{ row: question + 1 + offset, cursor: match[1], number: match[2], text: match[3] }] : [];
   });
   // Unknown option orders, a moved cursor, a third option, or any different
   // footer are held for a human. Never guess where Enter would land.
-  const safeChoice = header >= 0 && choices.length === 2
+  const safeChoice = choices.length === 2
     && choices[0].row + 1 === choices[1].row
+    && rows.slice(choices[1].row + 1, last).every(row => row.trim() === "")
     && choices[0].cursor === "›" && choices[0].number === "1" && choices[0].text === "Trust and continue"
     && choices[1].cursor === "" && choices[1].number === "2" && choices[1].text === "Quit"
     && /^\s*enter continue\s*·\s*esc quit\s*$/i.test(rows[last]);
-  return { active: true, folder, root, safeChoice };
+  return { active: true, folder, root, rootNote, safeChoice };
 }
 
 /** Unknown/older trust layouts are still input-blocking, never auto-answered. */
@@ -583,7 +624,7 @@ export class CodexBackend implements CliBackend {
     // Do not authorize an automatic Enter merely because the write returned:
     // a stale/untrusted section in the effective isolated config must fail shut.
     const onDisk = readFileSync(configPath, "utf-8");
-    if (setProjectTrusted(onDisk, paths.root) !== onDisk) throw new Error("Codex project trust did not persist");
+    if (effectiveProjectTrust(onDisk, paths.root) !== "trusted") throw new Error("Codex project trust did not persist");
     this.authorizedTrust = paths;
   }
 
@@ -917,7 +958,8 @@ export class CodexBackend implements CliBackend {
           const authorized = this.authorizedTrust;
           return state.active && state.safeChoice && authorized !== null
             && state.folder === authorized.cwd
-            && (state.root === null ? authorized.root === authorized.cwd : state.root === authorized.root);
+            && (state.rootNote === "absent" ? authorized.root === authorized.cwd
+              : state.rootNote === "parsed" && state.root === authorized.root);
         },
       },
       trustHold,
