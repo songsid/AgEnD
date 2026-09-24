@@ -15,6 +15,7 @@ import {
   writeMuseUsageSnapshot,
 } from "../src/muse-usage-relay.js";
 import { fetchMuseUsage } from "../src/usage/providers.js";
+import { formatDiscordUsageActivity } from "../src/usage/usage-api.js";
 
 const dirs: string[] = [];
 const originalAgendHome = process.env.AGEND_HOME;
@@ -285,5 +286,92 @@ describe("Muse usage relay protocol", () => {
       session: { usedPercent: 8, resetsAt: 1_700_000_000 },
     });
     expect(readMuseUsageSnapshot(dir)).toBeNull();
+  });
+
+  it("shows a fresh snapshot with no stale marker", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-usage-"));
+    dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const instance = join(home, "instances", "muse-one");
+    const reset = Math.floor(Date.now() / 1000) + 3600;
+    writeMuseUsageSnapshot(instance, {
+      observedAt: Date.now(),
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: reset },
+      weekly: { usedPercent: 41, resetsAt: reset + 100_000 },
+    });
+
+    const usage = await fetchMuseUsage();
+
+    expect(usage.metrics.map(metric => metric.label)).toEqual(["Session", "Weekly"]);
+    expect(usage.hint).toBeUndefined();
+  });
+
+  it("retains an idle snapshot while its windows stand and marks it cached", async () => {
+    // #904: past the 15m idle threshold but neither window has flipped, so the
+    // last-known percentages are still the truth — kept, but honestly labelled.
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-usage-"));
+    dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const instance = join(home, "instances", "muse-one");
+    const reset = Math.floor(Date.now() / 1000) + 3600;
+    writeMuseUsageSnapshot(instance, {
+      observedAt: Date.now() - MUSE_USAGE_STALE_MS - 60_000,
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: reset },
+      weekly: { usedPercent: 41, resetsAt: reset + 100_000 },
+    });
+
+    expect(readMuseUsageSnapshot(instance)?.session?.usedPercent).toBe(23);
+    const usage = await fetchMuseUsage();
+    expect(usage.metrics.map(metric => metric.label)).toEqual(["Session", "Weekly"]);
+    expect(usage.hint).toMatch(/^cached \d+m ago/);
+    const activity = formatDiscordUsageActivity({
+      fetchedAt: new Date().toISOString(),
+      providers: [{ id: "muse", name: "Muse", ...usage }],
+    });
+    expect(activity).toBe("⚡ Muse: stale");
+  });
+
+  it("drops only the flipped window when the session reset but weekly stands", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-usage-"));
+    dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const instance = join(home, "instances", "muse-one");
+    writeMuseUsageSnapshot(instance, {
+      observedAt: Date.now() - MUSE_USAGE_STALE_MS - 60_000,
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: Math.floor(Date.now() / 1000) - 60 },
+      weekly: { usedPercent: 41, resetsAt: Math.floor(Date.now() / 1000) + 100_000 },
+    });
+
+    const retained = readMuseUsageSnapshot(instance);
+    expect(retained?.session).toBeUndefined();
+    expect(retained?.weekly?.usedPercent).toBe(41);
+    const usage = await fetchMuseUsage();
+    expect(usage.metrics.map(metric => metric.label)).toEqual(["Weekly"]);
+    expect(usage.hint).toMatch(/^cached \d+m ago/);
+  });
+
+  it("discards an idle snapshot once every window has reset", async () => {
+    const home = mkdtempSync(join(tmpdir(), "agend-muse-usage-"));
+    dirs.push(home);
+    process.env.AGEND_HOME = home;
+    writeFileSync(join(home, "fleet.yaml"), "instances:\n  muse-one:\n    backend: muse\n");
+    const instance = join(home, "instances", "muse-one");
+    writeMuseUsageSnapshot(instance, {
+      observedAt: Date.now() - MUSE_USAGE_STALE_MS - 60_000,
+      plan: "pro",
+      session: { usedPercent: 23, resetsAt: Math.floor(Date.now() / 1000) - 60 },
+      weekly: { usedPercent: 41, resetsAt: Math.floor(Date.now() / 1000) - 30 },
+    });
+
+    expect(readMuseUsageSnapshot(instance)).toBeNull();
+    const usage = await fetchMuseUsage();
+    expect(usage.metrics).toEqual([]);
+    expect(usage.hint).toMatch(/unavailable/);
   });
 });
