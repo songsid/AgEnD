@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CodexBackend } from "../src/backend/codex.js";
-import { PaneStateMachine } from "../src/daemon.js";
+import { Daemon, PaneStateMachine } from "../src/daemon.js";
 
 const fixtures = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const pane = (name: string): string => readFileSync(join(fixtures, name), "utf8");
@@ -51,6 +51,34 @@ describe("Codex 0.155/0.156 inline pane contract", () => {
     const update = backend.getRuntimeDialogs().find(dialog => dialog.description.includes("update-available picker"));
     expect(update!.pattern.test(idle155)).toBe(true);
     expect(update!.isActive?.(idle155)).toBe(false);
+  });
+
+  it("dismisses only the live canonical update picker and holds an unknown Enter-only selector", () => {
+    // Daemon.dialogMatches deliberately uses isActive INSTEAD OF pattern when
+    // supplied.  A pattern && isActive test would miss the production bug.
+    const matches = (Daemon as unknown as {
+      dialogMatches: (dialog: ReturnType<CodexBackend["getRuntimeDialogs"]>[number], pane: string) => boolean;
+    }).dialogMatches;
+    const liveUpdate = idle155.slice(0, idle155.indexOf("\n╭─────────────────────────────────────────────────╮"));
+    const unknown = [
+      "Select changed options",
+      "› 1. Different model",
+      "  2. Keep current model",
+      "Press enter to continue",
+    ].join("\n");
+    for (const dialogs of [backend.getStartupDialogs(), backend.getRuntimeDialogs()]) {
+      expect(dialogs.find(dialog => matches(dialog, liveUpdate))?.description).toContain("update-available picker");
+      for (const pane of [unknown, `${liveUpdate}\n${unknown}`]) {
+        const selected = dialogs.find(dialog => matches(dialog, pane));
+        expect(selected).toMatchObject({
+          description: "Codex interactive selection needs human input",
+          holdOnly: true,
+          blocksDelivery: true,
+          inputBlocked: true,
+          keys: [],
+        });
+      }
+    }
   });
 
   it("pins inline mode supported by both tested CLI versions", () => {

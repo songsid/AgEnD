@@ -20,7 +20,6 @@ import {
 import { homedir } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -363,7 +362,8 @@ function codexUnknownSelectionVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
   let last = rows.length - 1;
   while (last >= 0 && rows[last].trim() === "") last--;
-  if (last < 0 || !/\benter\b.*\besc\b/i.test(rows[last])) return false;
+  if (last < 0 || !(/\benter\b.*\besc\b/i.test(rows[last])
+    || /^\s*Press enter to continue\s*$/i.test(rows[last]))) return false;
   let selected = -1;
   for (let i = last - 1; i >= Math.max(0, last - 24); i--) {
     if (/^\s*[›❯>]\s+\S/.test(rows[i])) { selected = i; break; }
@@ -372,6 +372,29 @@ function codexUnknownSelectionVisible(pane: string): boolean {
   if (/^\s*[›❯>]\s+Ask Codex to do anything\b/.test(rows[selected])) return false;
   return !rows.slice(selected + 1, last + 1).some(row =>
     /^[›>]\s+Ask Codex to do anything\b/.test(row) || isCodexContextFooter(row));
+}
+
+/** Only the complete, current Codex installer picker may receive Escape. */
+function codexUpdatePickerVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0 || !/^\s*Press enter to continue\s*$/.test(rows[last])) return false;
+  for (let first = last - 3; first >= Math.max(0, last - 9); first--) {
+    if (!/^\s*[›❯>]\s+1\.\s+Update now\b/.test(rows[first])) continue;
+    // At 80 columns Codex 0.153 wraps the installer command to the next row.
+    // Permit a bounded continuation, but never another option or cursor.
+    const second = rows.findIndex((row, index) => index > first && index <= first + 3
+      && /^\s*2\.\s+Skip\s*$/.test(row));
+    if (second < 0 || !rows.slice(first + 1, second).every(row =>
+      /^\s+\S/.test(row) && !/^\s*[›❯>]?\s*\d+\./.test(row))
+      || !/^\s*3\.\s+Skip until next version\s*$/.test(rows[second + 1] ?? "")
+      || !rows.slice(second + 2, last).every(row => row.trim() === "")) continue;
+    const intro = rows.slice(Math.max(0, first - 14), first);
+    if (intro.some(row => /Update available!/.test(row))
+      && intro.some(row => /^\s*Release notes: https:\/\/github\.com\/openai\/codex\/releases\/latest\s*$/.test(row))) return true;
+  }
+  return false;
 }
 
 function renderMcpServer(name: string, entry: McpServerEntry, instanceName: string): string {
@@ -1060,6 +1083,12 @@ export class CodexBackend implements CliBackend {
     return /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
   }
 
+  /** A proxy reply filters chrome per line; whole-pane readiness is separate. */
+  isProxyReplyChromeLine(line: string): boolean {
+    return /^\s*[›>]\s+Ask Codex to do anything\s*$/.test(line)
+      || isCodexContextFooter(line);
+  }
+
   getErrorPatterns(): ErrorPattern[] {
     return [
       // Specific quota codes must precede the generic HTTP 429 classifier:
@@ -1249,14 +1278,10 @@ export class CodexBackend implements CliBackend {
       // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
       // which parks on this picker for as long as nobody answers it).
       blocksDelivery: true,
-      // Bottom-anchored, so a transcript that quotes the picker (an agent
-      // pasting a pane capture, this very change being reviewed) is not
-      // mistaken for a live one: the real picker owns the bottom of the pane
-      // and has no input row under it.
-      isActive: (pane: string) => {
-        const last = lastNonBlankRow(pane);
-        return last != null && /^\s*Press enter to continue\s*$/.test(last);
-      },
+      // Daemon.dialogMatches uses isActive INSTEAD OF pattern when present.
+      // Check the complete current picker here; a different Enter-only menu
+      // must never receive this automatic Escape key.
+      isActive: codexUpdatePickerVisible,
     };
   }
 

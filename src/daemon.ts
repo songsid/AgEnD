@@ -735,13 +735,16 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
  * final answer exists only on screen. Everything up to and including the last
  * line of the inbound message we pasted is cut (the reply starts after it),
  * lines with no letters or digits are dropped (borders, separators, spinners,
- * bare prompts), and the ready-prompt line is dropped by pattern. Returns null
- * when what remains is trivial — a proxy message must carry an answer, not
- * chrome. Secrets are redacted by sanitizePaneTail, same as stuck diagnostics.
+ * bare prompts), and UI chrome is dropped by a backend-specific per-line
+ * filter when available (or a legacy single-line ready pattern). Whole-pane
+ * readiness regexes cannot identify individual prompt/footer lines. Returns
+ * null when what remains is trivial — a proxy message must carry an answer,
+ * not chrome. Secrets are redacted by sanitizePaneTail, same as stuck diagnostics.
  */
 export function extractProxyReplyText(pane: string, opts: {
   inboundMarker?: string;
   readyPattern?: RegExp | null;
+  isChromeLine?: (line: string) => boolean;
   maxLines?: number;
   maxChars?: number;
 } = {}): string | null {
@@ -760,6 +763,7 @@ export function extractProxyReplyText(pane: string, opts: {
     const t = line.trim();
     if (!t) return true; // keep paragraph breaks; collapsed below
     if (!/[\p{L}\p{N}]/u.test(t)) return false;
+    if (opts.isChromeLine?.(line)) return false;
     if (ready && ready.test(line)) return false;
     return true;
   });
@@ -3482,7 +3486,11 @@ export class Daemon extends EventEmitter {
       // edge came from a path without one.
       if (pane === undefined) pane = await this.tmux?.capturePane();
       if (!pane) return;
-      const text = extractProxyReplyText(pane, { inboundMarker: target.inboundMarker, readyPattern: this.instanceStateReadyPattern });
+      const text = extractProxyReplyText(pane, {
+        inboundMarker: target.inboundMarker,
+        readyPattern: this.instanceStateReadyPattern,
+        isChromeLine: line => this.backend?.isProxyReplyChromeLine?.(line) ?? false,
+      });
       if (!text) {
         this.logger.debug("Dead-MCP proxy reply skipped — pane tail is trivial");
         return;
