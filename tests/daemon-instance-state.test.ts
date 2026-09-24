@@ -641,7 +641,7 @@ describe("Daemon event-driven pane monitor", () => {
   it.each([
     ["a draft in the composer", "› please also fix the flaky test in ci\n  (no context footer)"],
     ["a layout without a context footer", "• Finished the requested work.\n› Ask Codex to do anything"],
-  ])("keeps the ordinary quiet debounce path for %s", async (_label, unknownIdlePane) => {
+  ])("does not assert idle for an unverified %s", async (_label, unknownIdlePane) => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const monitor = makeCodexMonitor(codexWorkingFrame(1));
@@ -654,7 +654,10 @@ describe("Daemon event-driven pane monitor", () => {
       await vi.advanceTimersByTimeAsync(1_999);
       expect(monitor.daemon.getInstanceState()).toBe("working");
       await vi.advanceTimersByTimeAsync(1);
-      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      // #914: without the live bottom Context footer, the same-looking prompt
+      // may belong to a resume transition or fullscreen picker. Silence is not
+      // positive evidence that delivery is safe.
+      expect(monitor.daemon.getInstanceState()).toBe("working");
     } finally {
       monitor.close();
       vi.useRealTimers();

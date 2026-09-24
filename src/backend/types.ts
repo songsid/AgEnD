@@ -392,6 +392,13 @@ export interface CliBackend {
   getReadyPattern(): RegExp;
 
   /**
+   * Optional per-line UI chrome filter for emergency pane-text proxy replies.
+   * Keep this distinct from whole-pane readiness: a structural ready regex
+   * may require adjacent lines and can never match one isolated line.
+   */
+  isProxyReplyChromeLine?(line: string): boolean;
+
+  /**
    * Regex matching a marker that means "generating right now", if the TUI has one.
    *
    * Several TUIs keep their input box (and therefore their ready marker) on screen

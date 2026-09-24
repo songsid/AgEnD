@@ -23,17 +23,16 @@ describe("Backend ready patterns", () => {
     expect(pattern.test("❯\u00a0")).toBe(true);
   });
 
-  it("Codex matches startup, daily prompt, and statusline variants", async () => {
+  it("Codex requires a live bottom prompt and footer, not persistent chrome", async () => {
     const { CodexBackend } = await import("../src/backend/codex.js");
     const backend = new CodexBackend("/tmp/test");
     const pattern = backend.getReadyPattern();
-    expect(pattern.test("gpt-5.4 default · 100% left · ~/Documents")).toBe(true);
-    expect(pattern.test("context window · 23% used")).toBe(true);
-    expect(pattern.test("OpenAI Codex (v0.117.0)")).toBe(true);
-    expect(pattern.test("> Write unit tests")).toBe(true);
-    expect(pattern.test("›")).toBe(true);
-    expect(pattern.test("› Summarize recent commits")).toBe(true);
-    // Must NOT match trust dialog's ›
+    expect(pattern.test("gpt-5.4 default · 100% left · ~/Documents")).toBe(false);
+    expect(pattern.test("context window · 23% used")).toBe(false);
+    expect(pattern.test("OpenAI Codex (v0.156.1)")).toBe(false);
+    expect(pattern.test("› Ask Codex to do anything\n\n  Context 23% used")).toBe(true);
+    expect(pattern.test("› Ask Codex to do anything\n\n  Context 100% left · GPT-6-Astra")).toBe(true);
+    expect(pattern.test("› Ask Codex to do anything\n\n  Context 100% left\n\nSelect Model\n› 1. Astra")).toBe(false);
     expect(pattern.test("› 1. Yes, continue")).toBe(false);
   });
 

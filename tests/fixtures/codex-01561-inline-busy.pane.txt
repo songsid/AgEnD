@@ -1,0 +1,33 @@
+╭───────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.156.1)                │
+│                                           │
+│ model:     loading   /model to change     │
+│ directory: ~/Projects/AgEnD-agend-dev-sol │
+╰───────────────────────────────────────────╯
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                            ⚠ 1 warning · f2 to view
+
+╭────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.156.1)                     │
+│                                                │
+│ model:     GPT-6-Luna xhigh   /model to change │
+│ directory: ~/Projects/AgEnD-agend-dev-sol      │
+╰────────────────────────────────────────────────╯
+
+  Tip: Use /side to start a side conversation in a temporary fork without polluting the main thread.
+
+⚠ Heads up, you have less than 25% of your weekly limit left. Run /status for a breakdown.
+
+
+› Reply exactly OK. No tools.
+
+
+• Working (0s • esc to interrupt)
+
+
+› Ask Codex to do anything
+
+  Context 100% left                                                                           ⚠ 2 warnings · f2 to view

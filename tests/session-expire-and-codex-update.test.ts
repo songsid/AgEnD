@@ -232,6 +232,8 @@ describe("codex update picker is dismissed if it appears anyway", () => {
   it("leaves the rate-limit dialog untouched", () => {
     const rl = "Approaching rate limits\nSwitch to gpt-5.4 for lower credit use";
     const d = dialogs().find(d => d.pattern.test(rl));
-    expect(d?.keys).toEqual(["Down", "Down", "Enter"]);
+    expect(d?.keys).toEqual([]);
+    expect(d?.holdOnly).toBe(true);
+    expect(d?.blocksDelivery).toBe(true);
   });
 });

@@ -704,7 +704,7 @@ export async function waitForPasteSettle(
 }
 
 /** Redact likely credentials and control sequences before pane text reaches logs. */
-export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
+export function sanitizePaneTail(pane: string, lineCount = 5, excludeLine?: (line: string) => boolean): string[] {
   const secretAssignment = /\b(token|secret|password|passwd|api[_-]?key|authorization)\b\s*[:=]\s*\S+/gi;
   const bearer = /\bBearer\s+\S+/gi;
   const knownToken = /\b(?:sk-[A-Za-z0-9_-]+|ghp_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|AKIA[A-Z0-9]{16})\b/g;
@@ -718,6 +718,10 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
 
   return lines
     .slice(-lineCount)
+    // The proxy-reply chrome predicate sees only control-normalized lines,
+    // but must run BEFORE redaction. Redaction can replace a status-footer
+    // session UUID with [REDACTED], destroying its structural signature.
+    .filter(line => !excludeLine?.(line))
     .map(line => line
       .replace(bearer, "Bearer [REDACTED]")
       .replace(secretAssignment, "$1=[REDACTED]")
@@ -735,17 +739,20 @@ export function sanitizePaneTail(pane: string, lineCount = 5): string[] {
  * final answer exists only on screen. Everything up to and including the last
  * line of the inbound message we pasted is cut (the reply starts after it),
  * lines with no letters or digits are dropped (borders, separators, spinners,
- * bare prompts), and the ready-prompt line is dropped by pattern. Returns null
- * when what remains is trivial — a proxy message must carry an answer, not
- * chrome. Secrets are redacted by sanitizePaneTail, same as stuck diagnostics.
+ * bare prompts), and UI chrome is dropped by a backend-specific per-line
+ * filter when available (or a legacy single-line ready pattern). Whole-pane
+ * readiness regexes cannot identify individual prompt/footer lines. Returns
+ * null when what remains is trivial — a proxy message must carry an answer,
+ * not chrome. Secrets are redacted by sanitizePaneTail, same as stuck diagnostics.
  */
 export function extractProxyReplyText(pane: string, opts: {
   inboundMarker?: string;
   readyPattern?: RegExp | null;
+  isChromeLine?: (line: string) => boolean;
   maxLines?: number;
   maxChars?: number;
 } = {}): string | null {
-  const lines = sanitizePaneTail(pane, opts.maxLines ?? 40);
+  const lines = sanitizePaneTail(pane, opts.maxLines ?? 40, opts.isChromeLine);
   const marker = opts.inboundMarker?.trim();
   // Require a distinctive marker: a short one ("ok") would match agent text.
   if (marker && marker.length >= 8) {
@@ -3482,7 +3489,11 @@ export class Daemon extends EventEmitter {
       // edge came from a path without one.
       if (pane === undefined) pane = await this.tmux?.capturePane();
       if (!pane) return;
-      const text = extractProxyReplyText(pane, { inboundMarker: target.inboundMarker, readyPattern: this.instanceStateReadyPattern });
+      const text = extractProxyReplyText(pane, {
+        inboundMarker: target.inboundMarker,
+        readyPattern: this.instanceStateReadyPattern,
+        isChromeLine: line => this.backend?.isProxyReplyChromeLine?.(line) ?? false,
+      });
       if (!text) {
         this.logger.debug("Dead-MCP proxy reply skipped — pane tail is trivial");
         return;

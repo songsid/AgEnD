@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 import pino from "pino";
 import { describe, expect, it, afterEach, vi } from "vitest";
 import { Daemon, extractProxyReplyText } from "../src/daemon.js";
+import { CodexBackend } from "../src/backend/codex.js";
+import type { CliBackend } from "../src/backend/types.js";
 import { InstanceLifecycle, type LifecycleContext, type IncidentEventSource } from "../src/instance-lifecycle.js";
 import type { Logger } from "../src/logger.js";
 import { mcpServerState } from "../src/mcp-liveness.js";
@@ -38,7 +40,7 @@ const rootLogger = pino({ level: "silent" }) as Logger;
 
 type AnyDaemon = Daemon & Record<string, any>;
 
-function makeDaemon(overrides: Record<string, unknown> = {}): { daemon: AnyDaemon; dir: string; broadcast: ReturnType<typeof vi.fn> } {
+function makeDaemon(overrides: Record<string, unknown> = {}, backend?: CliBackend): { daemon: AnyDaemon; dir: string; broadcast: ReturnType<typeof vi.fn> } {
   const dir = mkdtempSync(join(tmpdir(), "agend-proxy-reply-"));
   const daemon = new Daemon("proxy-test", {
     working_directory: dir,
@@ -47,7 +49,7 @@ function makeDaemon(overrides: Record<string, unknown> = {}): { daemon: AnyDaemo
     log_level: "silent",
     mcp_proxy_reply: true, // the feature is opt-in; behavior tests opt in explicitly
     ...overrides,
-  } as any, dir, true, undefined, undefined, rootLogger) as AnyDaemon;
+  } as any, dir, true, backend, undefined, rootLogger) as AnyDaemon;
   const broadcast = vi.fn();
   daemon["ipcServer"] = standingIn<IpcServer>({ broadcast, send: vi.fn() });
   daemon["lastChatId"] = "chat-1";
@@ -63,6 +65,14 @@ function idleSnapshot() {
 
 const INBOUND_MARKER = "(Reply using the reply tool — do NOT respond with direct text)";
 const INBOUND = `[user:han via discord, id:123] status?\n${INBOUND_MARKER}`;
+const resumedCodexPane = readFileSync(new URL("./fixtures/codex-01561-inline-resumed.pane.txt", import.meta.url), "utf8");
+const CODEX_CHROME = resumedCodexPane.slice(resumedCodexPane.lastIndexOf("› Ask Codex to do anything")).trim().split("\n");
+// Observed on a real Codex 0.156.1 120-column tmux pane; only the session UUID
+// is anonymized. Its status item and warning badge are intentionally retained.
+const CODEX_SESSION_CHROME = [
+  CODEX_CHROME[0],
+  "  01a0d452-378b-78b2-b38a-0123456789ab · Context 100% left · GPT-6-Luna xhigh                 ⚠ 2 warnings · f2 to view",
+];
 const PANE = [
   "some earlier scrollback",
   "[user:han via discord, id:123] status?",
@@ -99,6 +109,42 @@ describe("extractProxyReplyText", () => {
     const pane = [INBOUND_MARKER, "The answer is 42.", "agend v2 ❯ ready"].join("\n");
     const text = extractProxyReplyText(pane, { inboundMarker: INBOUND_MARKER, readyPattern: /❯ ready/ });
     expect(text).toBe("The answer is 42.");
+  });
+
+  it("uses Codex chrome filtering separately from whole-pane readiness", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const onlyChrome = [INBOUND_MARKER, ...CODEX_CHROME].join("\n");
+    expect(codex.getReadyPattern().test(onlyChrome)).toBe(true);
+    expect(extractProxyReplyText(onlyChrome, {
+      inboundMarker: INBOUND_MARKER,
+      readyPattern: codex.getReadyPattern(),
+      isChromeLine: line => codex.isProxyReplyChromeLine?.(line) ?? false,
+    })).toBeNull();
+    expect(extractProxyReplyText([INBOUND_MARKER, "• The answer is 42.", ...CODEX_CHROME].join("\n"), {
+      inboundMarker: INBOUND_MARKER,
+      readyPattern: codex.getReadyPattern(),
+      isChromeLine: line => codex.isProxyReplyChromeLine?.(line) ?? false,
+    })).toBe("• The answer is 42.");
+  });
+
+  it("filters a session-id footer before redaction without losing a real answer", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const options = {
+      inboundMarker: INBOUND_MARKER,
+      readyPattern: codex.getReadyPattern(),
+      isChromeLine: (line: string) => codex.isProxyReplyChromeLine?.(line) ?? false,
+    };
+    expect(codex.getReadyPattern().test(CODEX_SESSION_CHROME.join("\n"))).toBe(true);
+    expect(extractProxyReplyText([INBOUND_MARKER, ...CODEX_SESSION_CHROME].join("\n"), options)).toBeNull();
+    const reply = extractProxyReplyText([
+      INBOUND_MARKER,
+      "• The actual answer is 42. Authorization: Bearer sk-FAKE-TOKEN-FOR-TEST",
+      ...CODEX_SESSION_CHROME,
+    ].join("\n"), options);
+    expect(reply).toContain("The actual answer is 42.");
+    expect(reply).toContain("[REDACTED]");
+    expect(reply).not.toContain("sk-FAKE-TOKEN-FOR-TEST");
+    expect(reply).not.toContain("Context 100% left");
   });
 
   it("ignores a marker too short to be distinctive instead of slicing at a false match", () => {
@@ -159,6 +205,37 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     daemon["pendingIpcRequests"].get(msg.fleetRequestId)!({ result: { messageId: "proxy-1" } });
     await vi.waitFor(() => expect(proxied).toHaveBeenCalledOnce());
     expect(proxied).toHaveBeenCalledWith({ name: "proxy-test", correlationId: "cid-42" });
+  });
+
+  it("does not broadcast a Codex pane containing only composer and status footer", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const made = makeDaemon({ backend: "codex" }, codex); dir = made.dir;
+    const { daemon, broadcast } = made;
+    liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
+    daemon["instanceStateReadyPattern"] = codex.getReadyPattern();
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-codex-chrome" }, INBOUND);
+    daemon["instanceState"] = "working";
+    const pane = [INBOUND_MARKER, ...CODEX_SESSION_CHROME].join("\n");
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), pane);
+    expect(proxyCalls(broadcast)).toHaveLength(0);
+  });
+
+  it("broadcasts the Codex answer without leaking its session-id footer", () => {
+    const codex = new CodexBackend("/tmp/agend-proxy-codex");
+    const made = makeDaemon({ backend: "codex" }, codex); dir = made.dir;
+    const { daemon, broadcast } = made;
+    liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
+    daemon["instanceStateReadyPattern"] = codex.getReadyPattern();
+    daemon["markTurnStarted"]({ chat_id: "chat-1", correlation_id: "cid-codex-answer" }, INBOUND);
+    daemon["instanceState"] = "working";
+    const pane = [INBOUND_MARKER, "• The answer is 42.", ...CODEX_SESSION_CHROME].join("\n");
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), pane);
+    const calls = proxyCalls(broadcast);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args.text).toContain("The answer is 42.");
+    expect(calls[0].args.text).not.toContain("Context 100% left");
+    expect(calls[0].args.text).not.toContain("[REDACTED] · Context");
+    expect(calls[0].args.text).not.toContain("01a0d452");
   });
 
   it("fires at most once per turn — a second idle edge without a new inbound stays silent", () => {

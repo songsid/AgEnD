@@ -20,7 +20,6 @@ import {
 import { homedir } from "node:os";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { lastNonBlankRow } from "../pane-input-residue.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputUnavailableTransient, type McpServerEntry, type ModelOption, type RuntimeDialog, type StartupDialog, probeCliVersion, resolveBinary, shellQuote, validateModel, validateProvider, warnIfModelMismatch } from "./types.js";
 import {
@@ -339,6 +338,65 @@ function codexTrustVariantActive(pane: string): boolean {
       || /^\s*[›❯>]?\s*\d+\.\s+\S/.test(rows[last]));
 }
 
+/** Rate-switch prompts are economic choices, not a fixed keyboard position. */
+function codexRateSwitchVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  let title = -1;
+  for (let i = last; i >= Math.max(0, last - 18); i--) {
+    if (/^\s*(?:Approaching rate limits|Switch to .{1,120} for lower credit usage\?)\s*$/i.test(rows[i])) {
+      title = i;
+      break;
+    }
+  }
+  if (title < 0) return false;
+  const tail = rows.slice(title + 1, last + 1);
+  // A copied picker in transcript history is not the currently active menu.
+  if (tail.some(row => /^[›>]\s+Ask Codex to do anything\b/.test(row) || isCodexContextFooter(row))) return false;
+  return tail.some(row => /^\s*[›❯>]?\s*\d+\.\s*(?:Switch to|Keep current model)\b/i.test(row));
+}
+
+/** Unknown pickers own stdin too; never type or press Enter into one. */
+function codexUnknownSelectionVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0 || !(/\benter\b.*\besc\b/i.test(rows[last])
+    || /^\s*Press enter to continue\s*$/i.test(rows[last]))) return false;
+  let selected = -1;
+  for (let i = last - 1; i >= Math.max(0, last - 24); i--) {
+    if (/^\s*[›❯>]\s+\S/.test(rows[i])) { selected = i; break; }
+  }
+  if (selected < 0) return false;
+  if (/^\s*[›❯>]\s+Ask Codex to do anything\b/.test(rows[selected])) return false;
+  return !rows.slice(selected + 1, last + 1).some(row =>
+    /^[›>]\s+Ask Codex to do anything\b/.test(row) || isCodexContextFooter(row));
+}
+
+/** Only the complete, current Codex installer picker may receive Escape. */
+function codexUpdatePickerVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0 || !/^\s*Press enter to continue\s*$/.test(rows[last])) return false;
+  for (let first = last - 3; first >= Math.max(0, last - 9); first--) {
+    if (!/^\s*[›❯>]\s+1\.\s+Update now\b/.test(rows[first])) continue;
+    // At 80 columns Codex 0.153 wraps the installer command to the next row.
+    // Permit a bounded continuation, but never another option or cursor.
+    const second = rows.findIndex((row, index) => index > first && index <= first + 3
+      && /^\s*2\.\s+Skip\s*$/.test(row));
+    if (second < 0 || !rows.slice(first + 1, second).every(row =>
+      /^\s+\S/.test(row) && !/^\s*[›❯>]?\s*\d+\./.test(row))
+      || !/^\s*3\.\s+Skip until next version\s*$/.test(rows[second + 1] ?? "")
+      || !rows.slice(second + 2, last).every(row => row.trim() === "")) continue;
+    const intro = rows.slice(Math.max(0, first - 14), first);
+    if (intro.some(row => /Update available!/.test(row))
+      && intro.some(row => /^\s*Release notes: https:\/\/github\.com\/openai\/codex\/releases\/latest\s*$/.test(row))) return true;
+  }
+  return false;
+}
+
 function renderMcpServer(name: string, entry: McpServerEntry, instanceName: string): string {
   const mcpName = `${name}-${instanceName}`.replace(/[^A-Za-z0-9_-]/g, "_");
   const env = { ...entry.env, AGEND_INSTANCE_NAME: instanceName };
@@ -578,7 +636,10 @@ export class CodexBackend implements CliBackend {
     // AgEnD instances are unattended processes: an interactive self-update
     // picker blocks delivery and must never be enabled by a copied global or
     // managed config layer. Keep this last so the CLI override is authoritative.
-    cmd += " -c check_for_update_on_startup=false";
+    // Both observed Codex 0.155.0 and 0.156.1 support this launch flag. Pin
+    // the initial layout so a user/global fullscreen preference cannot make a
+    // header-only pane look ready. A later unknown layout still fails closed.
+    cmd += " -c check_for_update_on_startup=false --no-alt-screen";
     // CODEX_HOME is the only Codex-supported way to isolate the complete base
     // config. A profile only layers over the shared config and would therefore
     // still load every globally registered AgEnD MCP server.
@@ -1011,11 +1072,21 @@ export class CodexBackend implements CliBackend {
   }
 
   getReadyPattern(): RegExp {
-    // Startup/header: "OpenAI Codex". Prompt glyph is ">" on older Codex and
-    // "›" (U+203A) on newer releases. Exclude numbered menu selections so a
-    // trust/confirmation dialog is not mistaken for an idle input prompt.
-    // Statusline variants report either "% left" or "% used" while idle.
-    return /% left|% used|OpenAI Codex|^[>›](?!\s*\d+\.)/m;
+    // Header and context text persist in inline scrollback and even while the
+    // CLI is loading or a modal owns stdin. Require the live prompt followed
+    // by the Context footer at the *end* of the capture. getBusyPattern still
+    // vetoes a working turn whose empty composer remains visible. Unknown TUI
+    // layouts cannot claim readiness by merely rendering the old header.
+    // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
+    // prompt, between prompt/footer, and below the footer. A drafted composer
+    // is also idle once this same bottom footer proves it owns the screen.
+    return /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+  }
+
+  /** A proxy reply filters chrome per line; whole-pane readiness is separate. */
+  isProxyReplyChromeLine(line: string): boolean {
+    return /^\s*[›>]\s+Ask Codex to do anything\s*$/.test(line)
+      || isCodexContextFooter(line);
   }
 
   getErrorPatterns(): ErrorPattern[] {
@@ -1152,6 +1223,7 @@ export class CodexBackend implements CliBackend {
       },
       trustHold,
       this.updatePickerDialog(),
+      this.unknownSelectionHoldDialog(),
     ];
   }
 
@@ -1206,14 +1278,22 @@ export class CodexBackend implements CliBackend {
       // seconds and a delivery can arrive first (hit live on codex-cli 0.153.4,
       // which parks on this picker for as long as nobody answers it).
       blocksDelivery: true,
-      // Bottom-anchored, so a transcript that quotes the picker (an agent
-      // pasting a pane capture, this very change being reviewed) is not
-      // mistaken for a live one: the real picker owns the bottom of the pane
-      // and has no input row under it.
-      isActive: (pane: string) => {
-        const last = lastNonBlankRow(pane);
-        return last != null && /^\s*Press enter to continue\s*$/.test(last);
-      },
+      // Daemon.dialogMatches uses isActive INSTEAD OF pattern when present.
+      // Check the complete current picker here; a different Enter-only menu
+      // must never receive this automatic Escape key.
+      isActive: codexUpdatePickerVisible,
+    };
+  }
+
+  private unknownSelectionHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /^\s*[›❯>]\s+\S/m,
+      keys: [],
+      description: "Codex interactive selection needs human input",
+      holdOnly: true,
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexUnknownSelectionVisible,
     };
   }
 
@@ -1223,13 +1303,20 @@ export class CodexBackend implements CliBackend {
       this.resumeDirectoryHoldDialog(),
       this.resumeLockHoldDialog(),
       {
-        // Codex shows a model switch dialog when approaching rate limits.
-        // Auto-select "Keep current model (never show again)" — option 3.
-        pattern: /Approaching rate limits[\s\S]*Switch to.*for lower credit/m,
-        keys: ["Down", "Down", "Enter"],
-        description: "Codex rate limit model switch dialog",
+        // Codex 0.156 may change the wording/order of this credit-cost choice.
+        // Never navigate it by position: a moved option could switch to a
+        // more expensive model. A live picker holds delivery and notifies a
+        // human; old transcript mentions are excluded by the tail matcher.
+        pattern: /(?:Approaching rate limits|Switch to [^\r\n]{1,120} for lower credit usage\?)/i,
+        keys: [],
+        description: "Codex rate limit model switch dialog needs human choice",
+        holdOnly: true,
+        blocksDelivery: true,
+        inputBlocked: true,
+        isActive: codexRateSwitchVisible,
       },
       this.updatePickerDialog(),
+      this.unknownSelectionHoldDialog(),
     ];
   }
 
