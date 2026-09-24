@@ -6,7 +6,7 @@ import { applyNetworkReliabilityDefaults } from "./network-family.js";
 applyNetworkReliabilityDefaults();
 
 import { Command } from "commander";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { SchedulerDb } from "./scheduler/db.js";
 import { Cron } from "croner";
 import {
@@ -104,6 +104,33 @@ function signalFleetReload(): void {
 
 // === Fleet commands ===
 const fleet = program.command("fleet").description("Fleet management");
+
+fleet
+  .command("codex-resume")
+  .description("Explicitly attach an old Codex session to a stopped instance (never selects --last)")
+  .argument("<instance>", "Stopped Codex instance")
+  .argument("<session-id>", "Verified Codex session UUID")
+  .action(async (instance: string, id: string) => {
+    try {
+      const { loadFleetConfig } = await import("./config.js");
+      const cfg = loadFleetConfig(FLEET_CONFIG_PATH);
+      const target = cfg.instances[instance];
+      if (!target || (target.backend ?? cfg.defaults?.backend) !== "codex") {
+        throw new Error(`Configured Codex instance "${instance}" not found`);
+      }
+      const { attachCodexSession } = await import("./backend/codex.js");
+      attachCodexSession(
+        join(DATA_DIR, "instances", instance),
+        resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")),
+        target.working_directory,
+        id,
+      );
+      console.log(`Codex session ${id} attached to ${instance}. Start it with: agend fleet start ${instance}`);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exitCode = 1;
+    }
+  });
 
 fleet
   .command("start")

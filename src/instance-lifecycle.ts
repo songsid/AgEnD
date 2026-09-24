@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
@@ -25,6 +25,7 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
+import { CodexResumeConflictError, CodexResumeUnavailableError } from "./backend/codex-session.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -1018,6 +1019,13 @@ export class InstanceLifecycle {
     }
 
     const backend = createBackend(backendName, instanceDir);
+    const legacyCodexHistory = backendName === "codex"
+      && existsSync(join(instanceDir, "codex-home"))
+      && !backend.canResume?.(config.working_directory)
+      && !existsSync(join(instanceDir, "codex-migration-notified"))
+      && (existsSync(join(instanceDir, "session-id"))
+        || existsSync(join(instanceDir, "codex-session.json"))
+        || (backend.hasLegacyHistory?.(config.working_directory) ?? false));
     const daemon = new Daemon(
       name,
       config,
@@ -1039,8 +1047,30 @@ export class InstanceLifecycle {
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
     });
-    await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
+    try {
+      await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
+    } catch (err) {
+      if (!(err instanceof CodexResumeConflictError || err instanceof CodexResumeUnavailableError)) throw err;
+      // Do not schedule an automatic restart into the same live owner. The
+      // session marker remains untouched; a human can restart after release.
+      this.ctx.logger.warn({ name, ownerPid: err instanceof CodexResumeConflictError ? err.ownerPid : null }, "Codex resume held; explicit session preserved");
+      const target = this.ptyErrorNotificationTarget(name);
+      if (target) this.notifyIncident(target, "pty_error", `⚠️ ${name}: ${err.message}`);
+      this.ctx.setTopicIcon(name, "remove");
+      return;
+    }
     this.daemons.set(name, daemon);
+
+    if (legacyCodexHistory && !daemon.getRecoveredLegacyCodexSessionId()) {
+      // The old --last backend never stored an instance-owned UUID. Do not
+      // silently select a shared-home/CWD "latest" session on upgrade.
+      const notified = this.ctx.notifyInstanceTopic(name, t("inst.codex_legacy_session", name));
+      if (notified !== false) {
+        const marker = join(instanceDir, "codex-migration-notified");
+        try { writeFileSync(marker, new Date().toISOString(), { flag: "wx", mode: 0o600 }); }
+        catch { /* retry notification after restart if marker could not persist */ }
+      }
+    }
 
 
     daemon.on("auto_pause_requested", safeHandler(async () => {

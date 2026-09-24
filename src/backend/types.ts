@@ -375,6 +375,15 @@ export interface CliBackend {
   /** Read session ID for resume capability. Returns null if unavailable. */
   getSessionId(): string | null;
 
+  /** Optional exact process/session binding for backends with shared histories. */
+  setActivePanePid?(pid: number | null): void;
+  /** Whether this launch has an explicitly owned conversation to resume. */
+  canResume?(workingDirectory: string): boolean;
+  /** Live foreign owner PID for an explicitly owned conversation, if any. */
+  resumeOwner?(workingDirectory: string): number | null;
+  /** One-time upgrade warning, never permission to infer a resume target. */
+  hasLegacyHistory?(workingDirectory: string): boolean;
+
   /** Regex to detect when the CLI is ready to accept input. */
   getReadyPattern(): RegExp;
 
