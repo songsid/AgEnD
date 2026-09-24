@@ -153,8 +153,20 @@ export function readMuseUsageSnapshot(instanceDir: string): MuseUsageSnapshot | 
   try {
     const value = JSON.parse(readFileSync(usageStatePath(instanceDir), "utf8")) as MuseUsageSnapshot;
     if (!value || typeof value.observedAt !== "number" || !Number.isFinite(value.observedAt)) return null;
-    if (Date.now() - value.observedAt > MUSE_USAGE_STALE_MS) return null;
-    return { ...value, plan: safeMusePlan(value.plan) };
+    const snapshot = { ...value, plan: safeMusePlan(value.plan) };
+    if (Date.now() - snapshot.observedAt <= MUSE_USAGE_STALE_MS) return snapshot;
+    // Past the idle threshold the last-known windows are still the truth until
+    // their own reset flips (#904): prune rolled-over windows, and only discard
+    // when nothing usable remains. A window without a usable reset cannot be
+    // proven unflipped, so it is dropped rather than shown.
+    const now = Date.now();
+    const live = (window: MuseUsageWindow | undefined): MuseUsageWindow | undefined =>
+      window && typeof window.resetsAt === "number" && Number.isFinite(window.resetsAt)
+      && window.resetsAt * 1000 > now ? window : undefined;
+    const session = live(snapshot.session);
+    const weekly = live(snapshot.weekly);
+    if (!session && !weekly) return null;
+    return { ...snapshot, session, weekly };
   } catch { return null; }
 }
 

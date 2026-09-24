@@ -32,7 +32,7 @@ import {
 import { readKiroAuthTokens, type KiroStoredToken } from "../backend/kiro-auth-store.js";
 import { homedir } from "node:os";
 import { getProviderRateLimit } from "./provider-alerts.js";
-import { readMuseUsageSnapshot } from "../muse-usage-relay.js";
+import { MUSE_USAGE_STALE_MS, readMuseUsageSnapshot } from "../muse-usage-relay.js";
 import {
   readStatuslineRateLimits,
   type StatuslineRateLimits,
@@ -1257,10 +1257,18 @@ export async function fetchMuseUsage(): Promise<Omit<ProviderUsage, "id" | "name
     metric("Session", snapshot.session, MUSE_SESSION_MS),
     metric("Weekly", snapshot.weekly, WEEK_MS),
   ].filter((m): m is UsageMetric => m !== null);
+  // An idle snapshot past the freshness threshold keeps its last-known windows
+  // (#904) but must say so: the "cached Nm ago" prefix is the same marker
+  // `formatDiscordUsageActivity` already renders as "Muse: stale" for claude.
+  const ageMs = Date.now() - snapshot.observedAt;
+  const stale = ageMs > MUSE_USAGE_STALE_MS;
+  const ageMin = Math.max(1, Math.round(ageMs / 60_000));
   return {
     status: "ok",
     plan: snapshot.plan || "Subscription",
-    hint: metrics.length ? undefined : "Muse usage unavailable — no response frame observed.",
+    hint: metrics.length
+      ? (stale ? `cached ${ageMin}m ago — idle, no new response frame` : undefined)
+      : "Muse usage unavailable — no response frame observed.",
     metrics,
   };
 }
