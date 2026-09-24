@@ -48,6 +48,102 @@ interface CachedKiroCompatibility {
 const compatibilityCache = new Map<string, CachedKiroCompatibility>();
 const warnedUnsupportedEffortCacheKeys = new Set<string>();
 
+/**
+ * A picker may change its model labels or credit wording between Kiro releases.
+ * This broad test is only a safety hold: it must never select an option or
+ * claim a service outage. A ready prompt below the picker makes it history.
+ */
+function kiroModelPickerAtTail(pane: string): boolean {
+  const lines = pane.replace(/\r/g, "").split("\n");
+  let pickerIndex = -1;
+  for (let index = lines.length - 1; index >= 0; index--) {
+    if (/^\s*Select model \(type to search\):\s*$/.test(lines[index])) {
+      pickerIndex = index;
+      break;
+    }
+  }
+  if (pickerIndex < 0) return false;
+  const tail = lines.slice(pickerIndex + 1);
+  if (tail.some(line => /^\s*\d+%[^\n]*[!❯>]\s+\S/.test(line))) return false;
+  return tail.some(line => /^\s*[>❯›]\s*\*?\s*\S/.test(line));
+}
+
+/** Never navigate a stale trust phrase in scrollback or an unknown menu. */
+function kiroTrustDialogActive(pane: string): boolean {
+  if (kiroModelPickerAtTail(pane)) return false;
+  const lines = pane.replace(/\r/g, "").split("\n");
+  let selected = -1;
+  for (let index = lines.length - 1; index >= 0; index--) {
+    if (/^\s*[❯›]\s*No, exit\s*$/.test(lines[index])) {
+      selected = index;
+      break;
+    }
+  }
+  if (selected < 0) return false;
+  const yes = lines.findIndex((line, index) => index > selected && index <= selected + 3
+    && /^\s*Yes, I accept\s*$/.test(line));
+  if (yes < 0) return false;
+  const afterChoices = lines.slice(yes + 1).filter(line => line.trim());
+  return afterChoices.every(line => /^\s*(?:enter|esc|press|use)\b/i.test(line));
+}
+
+/**
+ * Kiro's service-unavailable path opens the same picker as `/model`, but only
+ * the former needs incident escalation. The runtime scanner and delivery gate
+ * share this bottom-anchored test: a warning in old scrollback, an ordinary
+ * `/model` picker, or a quoted transcript followed by a prompt is not enough.
+ * Model rows are validated for their credit multiplier; it is precisely why
+ * AgEnD must not pick a replacement on the user's behalf.
+ */
+export function kiroUnavailableModelPickerActive(pane: string): boolean {
+  const lines = pane.replace(/\r/g, "").split("\n");
+  let pickerIndex = -1;
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (/^\s*Select model \(type to search\):\s*$/.test(lines[i])) {
+      pickerIndex = i;
+      break;
+    }
+  }
+  if (pickerIndex < 0) return false;
+
+  const context = lines.slice(Math.max(0, pickerIndex - 8), pickerIndex);
+  let troubleIndex = -1;
+  for (let i = context.length - 1; i >= 0; i--) {
+    if (/^\s*Kiro is having trouble responding right now:\s*$/.test(context[i])) {
+      troubleIndex = i;
+      break;
+    }
+  }
+  if (troubleIndex < 0) return false;
+  const warning = context.slice(troubleIndex + 1).join(" ").replace(/\s+/g, " ");
+  if (!/^ ?The model you['’]ve selected is temporarily unavailable\. Please select a different model\. ?$/.test(warning)) return false;
+
+  const cursorRow = /^\s*[>❯›]\s*\*?\s*[a-z0-9][a-z0-9._/-]*\s+\d+(?:\.\d+)?x credits\b/i;
+  const modelRow = /^\s*\*?\s*[a-z0-9][a-z0-9._/-]*\s+\d+(?:\.\d+)?x credits\b/i;
+  let cursorCount = 0;
+  let modelCount = 0;
+  let wrappedDescription = false;
+  for (const line of lines.slice(pickerIndex + 1)) {
+    if (!line.trim()) continue;
+    if (cursorRow.test(line)) {
+      cursorCount++;
+      modelCount++;
+      wrappedDescription = false;
+    } else if (modelRow.test(line)) {
+      modelCount++;
+      wrappedDescription = false;
+    } else if (modelCount > 0 && !wrappedDescription && /^(?:[a-z][a-z ]+|[0-9]+)$/i.test(line)) {
+      // tmux capture-pane does not join a long description that wraps at the
+      // viewport edge. The real 80-column picker splits "DeepSeek V3.2"
+      // across lines, leaving just "2" on the second line.
+      wrappedDescription = true;
+    } else {
+      return false;
+    }
+  }
+  return cursorCount === 1 && modelCount >= 1;
+}
+
 function parseSemver(value: string | undefined): [number, number, number] | undefined {
   const match = value?.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
   if (!match) return undefined;
@@ -590,10 +686,36 @@ export class KiroBackend implements CliBackend {
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
       {
+        // A service/model outage can drop Kiro into the interactive /model
+        // picker. Its choices range across credit multipliers and capability
+        // tiers, so this must be a human decision, never an automatic Enter or
+        // Escape. The ordinary /model menu alone is intentionally not matched.
+        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        keys: [],
+        description: "Kiro model unavailable — choose a replacement model in the instance pane",
+        blocksDelivery: true,
+        holdOnly: true,
+        inputBlocked: true,
+        isActive: kiroUnavailableModelPickerActive,
+      },
+      {
+        // Any active /model picker owns stdin, even if a future Kiro release
+        // changes the exact warning, credit wording or row layout. Keep this
+        // after the verified-outage case: it never labels /model as an outage.
+        pattern: /^\s*Select model \(type to search\):\s*$/m,
+        keys: [],
+        description: "Kiro model picker — manual selection required",
+        blocksDelivery: true,
+        holdOnly: true,
+        inputBlocked: true,
+        isActive: kiroModelPickerAtTail,
+      },
+      {
         // Same trust prompt can also appear mid-session if Kiro re-validates.
         pattern: /Do you trust the files|Yes, I accept[\s\S]*No, exit/m,
         keys: ["Down", "Enter"],
         description: "Kiro trust confirmation dialog — auto-accept",
+        isActive: kiroTrustDialogActive,
       },
     ];
   }
