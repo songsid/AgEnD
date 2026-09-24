@@ -1,0 +1,24 @@
+Select model (type to search):
+
+> * auto                 1.00x credits      Models chosen by task for optimal us
+age and consistent quality
+    claude-sonnet-4.6    1.30x credits      Claude Sonnet 4.6 model with 1M cont
+ext window
+    claude-opus-4.5      2.20x credits      Claude Opus 4.5 model
+
+    claude-sonnet-4.5    1.30x credits      Claude Sonnet 4.5 model
+
+    claude-sonnet-4      1.30x credits      Hybrid reasoning and coding for regu
+lar use
+    claude-haiku-4.5     0.40x credits      The latest Claude Haiku model
+
+    deepseek-3.2         0.25x credits      Experimental preview of DeepSeek V3.
+2
+    minimax-m2.5         0.25x credits      MiniMax M2.5 model
+
+    minimax-m2.1         0.15x credits      Experimental preview of MiniMax M2.1
+
+    glm-5                0.50x credits      GLM-5 model
+
+    qwen3-coder-next     0.05x credits      Experimental preview of Qwen3 Coder
+Next

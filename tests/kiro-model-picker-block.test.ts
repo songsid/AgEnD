@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon } from "../src/daemon.js";
@@ -20,6 +20,12 @@ const PICKER = [
   "    claude-opus-4.5      2.20x credits      Claude Opus 4.5 model",
 ].join("\n");
 const BLOCKED = `${ERROR}\n\n${PICKER}\n`;
+// Captured from a real kiro-cli 2.24.0 --legacy-ui /model pane: opened at
+// 120 columns, resized to 80 columns before the TUI repainted. Trailing empty
+// pane rows are omitted; long rows wrap, including DeepSeek V3.2 whose final
+// "2" occupies its own terminal line.
+const NARROW_PICKER = readFileSync(new URL("./fixtures/kiro-model-picker-80.txt", import.meta.url), "utf8");
+const NARROW_BLOCKED = `${ERROR}\n\n${NARROW_PICKER}`;
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -72,6 +78,81 @@ describe("Kiro model-unavailable picker", () => {
     expect(dialog?.isActive?.(BLOCKED.replace("credit", "token"))).toBe(false);
     expect(dialog?.isActive?.(BLOCKED.replace("Models chosen by task for optimal usage and consistent quality", "Models chosen by task for optimal us\nage and consistent quality"))).toBe(true);
     expect(dialog?.isActive?.(`${ERROR}\nRetry #3\n${BLOCKED}`)).toBe(true);
+    expect(dialog?.isActive?.(NARROW_BLOCKED)).toBe(true);
+    expect(dialog?.isActive?.(NARROW_PICKER)).toBe(false);
+  });
+
+  it("holds the real narrow picker and escalates after 60s without any key", async () => {
+    vi.useFakeTimers();
+    const { daemon, tmux } = makeDaemon(NARROW_BLOCKED);
+    const parked: unknown[] = [];
+    daemon.on("dialog_parked", (event: unknown) => parked.push(event));
+    daemon.startErrorMonitor();
+    try {
+      await vi.advanceTimersByTimeAsync(66_000);
+      expect(daemon.isInputBlocked()).toBe(true);
+      expect((await daemon.probeBlockingDialog()).state).toBe("dialog");
+      expect(parked).toEqual([expect.objectContaining({ holdOnly: true })]);
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+      expect(tmux.pasteText).not.toHaveBeenCalled();
+    } finally {
+      daemon.freezeRuntimeMonitors();
+    }
+  });
+
+  it("never auto-accepts stale trust prose while an unknown or ordinary model picker owns stdin", async () => {
+    vi.useFakeTimers();
+    // Credit wording changed: the strict outage matcher must fail, but the
+    // model menu is still live. An old trust phrase in scrollback must not
+    // reach the legacy Down+Enter auto-accept path.
+    const unknownPicker = NARROW_PICKER.replace("0.25x credits", "0.25x tokens");
+    const priorTrust = "Earlier the user asked: Do you trust the files?\n\n";
+    const { daemon, screen, tmux } = makeDaemon(`${priorTrust}${ERROR}\n\n${unknownPicker}`);
+    const parked: unknown[] = [];
+    daemon.on("dialog_parked", (event: unknown) => parked.push(event));
+    daemon.startErrorMonitor();
+    try {
+      await vi.advanceTimersByTimeAsync(66_000);
+      expect(daemon.isInputBlocked()).toBe(true);
+      expect((await daemon.probeBlockingDialog()).state).toBe("dialog");
+      expect(parked).toEqual([expect.objectContaining({ holdOnly: true, description: expect.not.stringContaining("unavailable") })]);
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+      expect(tmux.pasteText).not.toHaveBeenCalled();
+
+      screen.pane = `${priorTrust}${NARROW_PICKER}`; // deliberate /model, no outage
+      await vi.advanceTimersByTimeAsync(5_100);
+      expect(daemon.isInputBlocked()).toBe(true);
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+
+      screen.pane = `${priorTrust}${NARROW_PICKER}\n\n2% λ > ready`;
+      await vi.advanceTimersByTimeAsync(5_100);
+      expect(daemon.isInputBlocked()).toBe(false);
+      expect(tmux.sendSpecialKey).not.toHaveBeenCalled();
+    } finally {
+      daemon.freezeRuntimeMonitors();
+    }
+  });
+
+  it("keeps auto-accept limited to a selected, current trust dialog", () => {
+    const trust = new KiroBackend("/tmp/kiro-picker-test").getRuntimeDialogs()
+      .find(candidate => candidate.description.includes("trust confirmation"));
+    expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n")).toBe(true);
+    expect(trust?.isActive?.("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n\n2% λ > ready")).toBe(false);
+    expect(trust?.isActive?.(`Do you trust the files?\n❯ No, exit\n  Yes, I accept\n\n${NARROW_PICKER}`)).toBe(false);
+  });
+
+  it("still navigates a current canonical trust dialog", async () => {
+    vi.useFakeTimers();
+    const { daemon, tmux } = makeDaemon("Do you trust the files?\n❯ No, exit\n  Yes, I accept\n");
+    daemon.startErrorMonitor();
+    try {
+      await vi.advanceTimersByTimeAsync(5_500);
+      expect(tmux.sendSpecialKey).toHaveBeenCalledTimes(2);
+      expect(tmux.sendSpecialKey).toHaveBeenNthCalledWith(1, "Down");
+      expect(tmux.sendSpecialKey).toHaveBeenNthCalledWith(2, "Enter");
+    } finally {
+      daemon.freezeRuntimeMonitors();
+    }
   });
 
   it("holds stdin without sending any model-selection key, reports General once, and clears on exit", async () => {
