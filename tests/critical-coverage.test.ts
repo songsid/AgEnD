@@ -132,7 +132,7 @@ describe("120-column wrap-sensitive backend coverage", () => {
   });
 
   it.each([
-    ["codex", "Do you trust the files in this folder?"],
+    ["codex", "  Trust this folder? Codex can read, edit, and run files here"],
     ["antigravity", "Do you trust this folder?"],
     ["grok", "Do you trust the contents of this directory?"],
   ])("uses the real %s trust-dialog pattern", (backendName, pane) => {

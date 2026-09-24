@@ -6923,6 +6923,10 @@ export class Daemon extends EventEmitter {
     let lastTransient: InputUnavailableTransient | null = null;
     let captureFailures = 0;
     let attempts = 0;
+    // A safety-critical startup choice is one-shot. If the CLI has not
+    // repainted after Enter, let the following hold-only entry report it
+    // instead of sending a second Enter into a possibly changed screen.
+    const attemptedSafetyChoices = new Set<string>();
     do {
       attempts++;
       let pane: string;
@@ -6957,6 +6961,10 @@ export class Daemon extends EventEmitter {
         lastDialog = null;
         for (const dialog of startupDialogs) {
           if (Daemon.dialogMatches(dialog, pane)) {
+            if (dialog.autoResolutionKey
+              && (attemptedSafetyChoices.has(dialog.autoResolutionKey)
+                || (this.autoResolvedDialogGeneration === this.spawnGeneration
+                  && this.autoResolvedDialogKey === dialog.autoResolutionKey))) continue;
             lastDialog = dialog;
             cleanReadyPolls = 0;
             // Start the parked clock for every delivery-blocking dialog, exact
@@ -6998,16 +7006,34 @@ export class Daemon extends EventEmitter {
             // Restart is exactly when inbound messages pile up, and nothing gates
             // delivery on `spawning`. Take the pane lock for the key sequence so a
             // queued message cannot be pasted into a half-dismissed trust dialog.
-            await this.paneWriteLock.run(async () => {
+            const sent = await this.paneWriteLock.run(async () => {
+              // The capture above may have gone stale while waiting for the
+              // write lock. Trust/other safety prompts must still be the
+              // CURRENT menu, with the same safe cursor, at the instant of
+              // the key send. A changed pane falls through to the next scan.
+              if (dialog.inputBlocked) {
+                const currentPane = await this.tmux!.capturePane();
+                if (!Daemon.dialogMatches(dialog, currentPane)) return false;
+              }
+              if (dialog.autoResolutionKey) {
+                attemptedSafetyChoices.add(dialog.autoResolutionKey);
+                this.autoResolvedDialogGeneration = this.spawnGeneration;
+                this.autoResolvedDialogKey = dialog.autoResolutionKey;
+              }
               for (const key of dialog.keys) {
                 if (key === "Up" || key === "Down" || key === "Enter" || key === "Escape") {
-                  await this.tmux!.sendSpecialKey(key);
+                  if (!await this.tmux!.sendSpecialKey(key)) return false;
                 } else {
-                  await this.tmux!.sendKeys(key);
+                  if (!await this.tmux!.sendKeys(key)) return false;
                 }
                 await new Promise(r => setTimeout(r, 200));
               }
+              return true;
             });
+            if (!sent) {
+              matched = true;
+              break;
+            }
             // Wait for next screen to render — bounded by what is left of the budget.
             const renderWait = Math.max(0, Math.min(10_000, remaining()));
             if (this.controlClient) {
