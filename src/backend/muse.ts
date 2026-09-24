@@ -1,7 +1,7 @@
-import { join } from "node:path";
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync, chmodSync, lstatSync, readlinkSync, symlinkSync, renameSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type ModelOption, type RuntimeDialog, type StartupDialog, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
 
@@ -39,12 +39,14 @@ export function museSessionCwd(head: string): string | null {
 export class MuseBackend implements CliBackend {
   readonly binaryName = "muse";
   private binaryPath: string;
+  private readonly sharedXdgConfigHome: string;
   // Cached from buildCommand/writeConfig so getSessionId() (which takes no
   // args) can match sessions against this instance's workspace.
   private workingDirectory?: string;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("muse");
+    this.sharedXdgConfigHome = resolve(process.env.XDG_CONFIG_HOME || join(homedir(), ".config"));
   }
 
   buildCommand(config: CliBackendConfig): string {
@@ -56,7 +58,10 @@ export class MuseBackend implements CliBackend {
     // mid-run would repaint the pane and swap the CLI. One year in seconds
     // keeps the check quiet while staying inside the launcher's own numeric
     // guard (a non-numeric value also disables it, but undocumented).
-    let cmd = `MUSE_UPDATE_INTERVAL_SECONDS=31536000 ${this.binaryPath}`;
+    // Muse has one user-level settings.json and loads every MCP server in it.
+    // Point only this Muse process at its instance-scoped copy; otherwise two
+    // fleet instances both see both socket-bearing MCP tools.
+    let cmd = `XDG_CONFIG_HOME=${shellQuote(this.isolatedXdgConfigHome())} MUSE_UPDATE_INTERVAL_SECONDS=31536000 ${this.binaryPath}`;
 
     // The daemon may prepare a localhost-only usage relay before spawning Muse.
     // If relay preparation fails this remains unset and Muse connects directly;
@@ -105,9 +110,8 @@ export class MuseBackend implements CliBackend {
   }
 
   /**
-   * Per-instance MCP key. Instance names can be CJK (persona channels), and a
-   * settings file shared by every instance needs keys that cannot collide, so a
-   * non-ASCII name becomes an ASCII slug plus a hash of the original.
+   * Per-instance MCP key. Keep tool names stable across the shared-settings
+   * migration; a non-ASCII instance name becomes an ASCII slug plus a hash.
    */
   private mcpKey(mcpName: string, instanceName: string): string {
     const ascii = instanceName.replace(/[^\x20-\x7E]/g, "");
@@ -117,37 +121,79 @@ export class MuseBackend implements CliBackend {
     return slug ? `agend-${mcpName}-${slug}-${hash}` : `agend-${mcpName}-${hash}`;
   }
 
-  /** `$XDG_CONFIG_HOME/muse/settings.json`, else `~/.config/muse/settings.json`. */
+  private isolatedXdgConfigHome(): string {
+    return join(this.instanceDir, "muse-xdg");
+  }
+
+  /** Muse's per-process settings location after buildCommand sets XDG_CONFIG_HOME. */
   private settingsPath(): string {
-    const base = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-    return join(base, "muse", "settings.json");
+    return join(this.isolatedXdgConfigHome(), "muse", "settings.json");
+  }
+
+  private sharedSettingsPath(): string {
+    return join(this.sharedXdgConfigHome, "muse", "settings.json");
+  }
+
+  private mirrorSharedConfigEntries(sourceDir: string, isolatedDir: string, excluded: Set<string>): void {
+    for (const name of readdirSync(sourceDir)) {
+      if (excluded.has(name)) continue;
+      const link = join(isolatedDir, name);
+      try {
+        lstatSync(link);
+        continue; // Keep any per-instance file Muse already created.
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      symlinkSync(join(sourceDir, name), link);
+    }
+  }
+
+  /** Preserve the user's login while keeping Muse's MCP settings per instance. */
+  private linkSharedAuth(): void {
+    const sharedMuseDir = join(this.sharedXdgConfigHome, "muse");
+    const isolatedXdgHome = this.isolatedXdgConfigHome();
+    const isolatedMuseDir = join(isolatedXdgHome, "muse");
+    mkdirSync(sharedMuseDir, { recursive: true, mode: 0o700 });
+    mkdirSync(isolatedXdgHome, { recursive: true, mode: 0o700 });
+    mkdirSync(isolatedMuseDir, { recursive: true, mode: 0o700 });
+    chmodSync(isolatedXdgHome, 0o700);
+    chmodSync(isolatedMuseDir, 0o700);
+    // XDG_CONFIG_HOME also affects tools run by Muse. Mirror unrelated XDG and
+    // Muse config entries, while owning only settings.json in this instance.
+    this.mirrorSharedConfigEntries(this.sharedXdgConfigHome, isolatedXdgHome, new Set(["muse"]));
+    this.mirrorSharedConfigEntries(sharedMuseDir, isolatedMuseDir, new Set(["settings.json", "auth.json", ".auth.json.lock"]));
+    // Muse uses a lock beside auth.json. Both symlinks must point at the same
+    // shared files so login/refresh from two instances remains serialized.
+    for (const name of ["auth.json", ".auth.json.lock"]) {
+      const target = join(sharedMuseDir, name);
+      const link = join(isolatedMuseDir, name);
+      try {
+        const st = lstatSync(link);
+        if (st.isSymbolicLink() && readlinkSync(link) === target) continue;
+        throw new Error(`Muse auth path is already occupied: ${link}`);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      symlinkSync(target, link);
+    }
   }
 
   writeConfig(config: CliBackendConfig): void {
     this.workingDirectory = config.workingDirectory;
 
-    // Muse reads MCP servers from ONE file — the user-level settings.json. It
-    // has no project-level equivalent (checked: `muse init` scaffolds AGENTS.md
-    // and nothing else, and the binary documents a single `$CONFIG_DIR` path).
-    // So this writes into the user's own settings, which means two rules:
-    // every key we did not put there is preserved, and ours are namespaced per
-    // instance so instances sharing a machine cannot overwrite each other.
-    //
-    // Isolating this per instance would mean relocating XDG_CONFIG_HOME, which
-    // also moves auth.json — the user's login. Not worth doing blind; left as a
-    // follow-up for whoever needs per-instance muse credentials.
+    // Muse reads every MCP entry in its single XDG settings.json; namespacing
+    // keys inside a shared file still exposes all sibling instances' tools to
+    // every Muse process. Copy the user's ordinary settings into this instance's
+    // XDG home, excluding all AgEnD MCP entries, then add only this socket.
+    this.linkSharedAuth();
     const settingsPath = this.settingsPath();
     let root: Record<string, unknown> = {};
-    try { root = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch { /* new file */ }
+    try { root = JSON.parse(readFileSync(this.sharedSettingsPath(), "utf-8")); } catch { /* new file */ }
     if (typeof root.schema_version !== "number") root.schema_version = 1;
 
-    const servers = (root.mcpServers ?? {}) as Record<string, unknown>;
-    // Drop our own stale entries whose wrapper script is gone (deleted instance,
-    // cleared instance dir). Never touch a key we did not write.
-    for (const [key, val] of Object.entries(servers)) {
-      if (!key.startsWith("agend-")) continue;
-      const cmd = (val as Record<string, unknown>)?.command;
-      if (typeof cmd === "string" && !existsSync(cmd)) delete servers[key];
+    const servers = { ...((root.mcpServers ?? {}) as Record<string, unknown>) };
+    for (const key of Object.keys(servers)) {
+      if (key === "agend" || key.startsWith("agend-")) delete servers[key];
     }
 
     for (const [name, entry] of Object.entries(config.mcpServers)) {
@@ -180,10 +226,14 @@ export class MuseBackend implements CliBackend {
       };
     }
     root.mcpServers = servers;
+    const temporaryPath = `${settingsPath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
     try {
-      mkdirSync(join(settingsPath, ".."), { recursive: true });
-      writeFileSync(settingsPath, JSON.stringify(root, null, 2));
-    } catch { /* best effort — a muse without MCP still starts */ }
+      writeFileSync(temporaryPath, JSON.stringify(root, null, 2), { mode: 0o600, flag: "wx" });
+      renameSync(temporaryPath, settingsPath);
+      chmodSync(settingsPath, 0o600);
+    } finally {
+      try { unlinkSync(temporaryPath); } catch { /* renamed or write failed */ }
+    }
 
     // `muse init` scaffolds AGENTS.md and the binary reads it as project rules,
     // the same convention as codex and grok. Additive + idempotent via marker.
@@ -390,7 +440,10 @@ export class MuseBackend implements CliBackend {
     // The selected model is the one thing muse persists where we can read it.
     let currentModel: string | undefined;
     try {
-      const settings = JSON.parse(readFileSync(this.settingsPath(), "utf-8"));
+      const settings = JSON.parse(readFileSync(
+        existsSync(this.settingsPath()) ? this.settingsPath() : this.sharedSettingsPath(),
+        "utf-8",
+      ));
       if (typeof settings.model === "string") currentModel = settings.model;
     } catch { /* best effort */ }
     return { version: probeCliVersion(this.binaryPath), models: await this.listModels(), currentModel };
@@ -404,7 +457,8 @@ export class MuseBackend implements CliBackend {
         for (const name of Object.keys(config.mcpServers)) {
           delete root.mcpServers[this.mcpKey(name, config.instanceName)];
         }
-        writeFileSync(settingsPath, JSON.stringify(root, null, 2));
+        writeFileSync(settingsPath, JSON.stringify(root, null, 2), { mode: 0o600 });
+        chmodSync(settingsPath, 0o600);
       }
     } catch { /* best effort */ }
 
