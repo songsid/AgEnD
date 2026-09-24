@@ -238,6 +238,9 @@ describe("MuseBackend MCP instance isolation", () => {
       writeFileSync(sharedSettingsPath, JSON.stringify(sharedSettings));
       const sharedAuthPath = join(sharedMuseDir, "auth.json");
       writeFileSync(sharedAuthPath, "test-only-credentials", { mode: 0o600 });
+      writeFileSync(join(sharedMuseDir, "plugins.json"), "{}");
+      mkdirSync(join(process.env.XDG_CONFIG_HOME, "git"));
+      writeFileSync(join(process.env.XDG_CONFIG_HOME, "git", "config"), "[user]\n");
 
       const instances = ["dev-muse", "reviewer"] as const;
       const launches: Array<{ name: string; instanceDir: string; command: string }> = [];
@@ -280,6 +283,8 @@ describe("MuseBackend MCP instance isolation", () => {
         expect(lstatSync(authLink).isSymbolicLink()).toBe(true);
         expect(readlinkSync(authLink)).toBe(sharedAuthPath);
         expect(readlinkSync(join(effectiveXdg, "muse", ".auth.json.lock"))).toBe(join(sharedMuseDir, ".auth.json.lock"));
+        expect(readlinkSync(join(effectiveXdg, "muse", "plugins.json"))).toBe(join(sharedMuseDir, "plugins.json"));
+        expect(readlinkSync(join(effectiveXdg, "git"))).toBe(join(process.env.XDG_CONFIG_HOME, "git"));
       }
       expect(JSON.parse(readFileSync(sharedSettingsPath, "utf8"))).toEqual(sharedSettings);
     } finally {

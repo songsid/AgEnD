@@ -134,6 +134,20 @@ export class MuseBackend implements CliBackend {
     return join(this.sharedXdgConfigHome, "muse", "settings.json");
   }
 
+  private mirrorSharedConfigEntries(sourceDir: string, isolatedDir: string, excluded: Set<string>): void {
+    for (const name of readdirSync(sourceDir)) {
+      if (excluded.has(name)) continue;
+      const link = join(isolatedDir, name);
+      try {
+        lstatSync(link);
+        continue; // Keep any per-instance file Muse already created.
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      }
+      symlinkSync(join(sourceDir, name), link);
+    }
+  }
+
   /** Preserve the user's login while keeping Muse's MCP settings per instance. */
   private linkSharedAuth(): void {
     const sharedMuseDir = join(this.sharedXdgConfigHome, "muse");
@@ -144,6 +158,10 @@ export class MuseBackend implements CliBackend {
     mkdirSync(isolatedMuseDir, { recursive: true, mode: 0o700 });
     chmodSync(isolatedXdgHome, 0o700);
     chmodSync(isolatedMuseDir, 0o700);
+    // XDG_CONFIG_HOME also affects tools run by Muse. Mirror unrelated XDG and
+    // Muse config entries, while owning only settings.json in this instance.
+    this.mirrorSharedConfigEntries(this.sharedXdgConfigHome, isolatedXdgHome, new Set(["muse"]));
+    this.mirrorSharedConfigEntries(sharedMuseDir, isolatedMuseDir, new Set(["settings.json", "auth.json", ".auth.json.lock"]));
     // Muse uses a lock beside auth.json. Both symlinks must point at the same
     // shared files so login/refresh from two instances remains serialized.
     for (const name of ["auth.json", ".auth.json.lock"]) {
