@@ -540,6 +540,21 @@ const MUSE_DIRECT_RESUME_IDLE_POLL_MS = 5_000;
 const KIRO_STOP_IDLE_BUDGET_MS = 15_000;
 const KIRO_STOP_QUIT_GRACE_MS = 5_000;
 const KIRO_STOP_SIGTERM_GRACE_MS = 2_000;
+/**
+ * How recently AgEnD must have asked the CLI to stop for a pane death to be
+ * attributed to AgEnD rather than to the CLI itself (#927). Covers the longest
+ * quit grace plus the SIGTERM/SIGKILL fallback, and one health tick more.
+ */
+const STOP_ATTRIBUTION_WINDOW_MS = 90_000;
+/** Lines of pane output kept with a death record: enough for a vendor error. */
+const DEATH_OUTPUT_LINES = 20;
+
+/** The last `lines` non-empty lines of a captured pane, escape codes already stripped. */
+function paneTail(output: string | undefined, lines = DEATH_OUTPUT_LINES): string | undefined {
+  if (!output) return undefined;
+  const tail = output.split("\n").filter(line => line.trim()).slice(-lines).join("\n");
+  return tail ? tail.slice(-2_000) : undefined;
+}
 
 /**
  * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
@@ -2106,6 +2121,9 @@ export class Daemon extends EventEmitter {
           // Normal exit (e.g. user Ctrl+C or /exit) — no crash, no respawn
           if (paneStatus && exitCode === 0) {
             this.setProcessStatus("stopped");
+            // Status 0 is not proof of a clean exit: a codex that hits a quota
+            // wall exits 0 too. Capture what it printed before the window goes.
+            this.logPaneDeath(cliLabel, exitCode, await this.capturePaneOutput());
             this.logger.info("CLI exited normally (code 0) — pausing health check");
             await this.tmux.killWindow();
             this.healthCheckPaused = true;
@@ -2180,6 +2198,7 @@ export class Daemon extends EventEmitter {
             const cleaned = raw.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
             lastOutput = cleaned.trimEnd() || undefined;
           } catch { /* best effort — pane may already be gone */ }
+          this.logPaneDeath(cliLabel, exitCode, lastOutput);
 
           // Kill the dead window (remain-on-exit keeps it around) before respawn
           if (paneStatus) {
@@ -2259,7 +2278,7 @@ export class Daemon extends EventEmitter {
           if (this.crashTimestamps.length >= 3) {
             this.healthCheckPaused = true;
             this.logger.error(
-              { crashesInWindow: this.crashTimestamps.length },
+              { crashesInWindow: this.crashTimestamps.length, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
               "3+ crashes in 5 minutes — pausing respawn",
             );
             // P1: Persist crash state so next process restart skips resume
@@ -2283,7 +2302,10 @@ export class Daemon extends EventEmitter {
           this.lastCrashAt = Date.now();
 
           if (this.crashCount > max_retries) {
-            this.logger.error({ crashCount: this.crashCount, maxRetries: max_retries }, "Max crash retries exceeded — not respawning");
+            this.logger.error(
+              { crashCount: this.crashCount, maxRetries: max_retries, lastExitCode: exitCode ?? null, lastOutput: paneTail(lastOutput) ?? null },
+              "Max crash retries exceeded — not respawning",
+            );
             this.healthCheckPaused = true;
             this.emitSupervisionEnded(
               `it crashed ${this.crashCount} times, exceeding restart_policy.max_retries (${max_retries})`,
@@ -2867,12 +2889,60 @@ export class Daemon extends EventEmitter {
     this.logger.debug({ dialog: dialog.description }, "Backend clear dialog did not appear");
   }
 
+  /**
+   * The last time AgEnD itself asked the CLI to go away, and why (#927). Read
+   * when a pane dies, to tell "AgEnD stopped it" from "the CLI exited on its
+   * own" — a codex that exits 0 on its own and one AgEnD sent /quit look the
+   * same from the pane.
+   */
+  private lastStopRequest: { via: string; reason: string; at: number } | null = null;
+
+  /** Record, and log, that AgEnD is about to stop the CLI. */
+  private noteStopRequest(via: string, reason: string): void {
+    this.lastStopRequest = { via, reason, at: Date.now() };
+    this.logger.info({ via, reason }, `AgEnD is stopping the CLI: ${via} (${reason})`);
+  }
+
+  /** Capture the pane's recent output with escape codes stripped. Never throws. */
+  private async capturePaneOutput(): Promise<string | undefined> {
+    try {
+      const raw = await this.tmux?.capturePaneWithHistory(50);
+      const cleaned = raw?.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+      return cleaned?.trimEnd() || undefined;
+    } catch { return undefined; }
+  }
+
+  /**
+   * One record per pane death: exit status, when, who, and what the CLI printed
+   * last — the line that was missing when a codex on Luna Reserve died with
+   * status 0 and daemon.log said only "exited normally" (#927). Logging only;
+   * the caller decides what happens next.
+   */
+  private logPaneDeath(cliLabel: string, exitCode: number | undefined, lastOutput: string | undefined): void {
+    const request = this.lastStopRequest;
+    const sinceStopMs = request ? Date.now() - request.at : null;
+    const byAgend = request !== null && sinceStopMs !== null && sinceStopMs <= STOP_ATTRIBUTION_WINDOW_MS;
+    const record = {
+      exitCode: exitCode ?? null,
+      diedAt: new Date().toISOString(),
+      initiatedBy: byAgend ? "agend" : "cli",
+      ...(byAgend ? { stopVia: request.via, stopReason: request.reason, sinceStopMs } : {}),
+      lastOutput: paneTail(lastOutput) ?? null,
+    };
+    if (byAgend) {
+      this.logger.info(record, `${cliLabel} exited after AgEnD stopped it (${request.via}: ${request.reason})`);
+    } else {
+      this.logger.warn(record, `${cliLabel} exited on its own (exit code ${exitCode ?? "unknown"}) — last output recorded`);
+    }
+  }
+
   /** Send the backend-specific graceful quit command/key sequence. */
-  private async sendQuitSequence(): Promise<boolean> {
+  private async sendQuitSequence(reason = "unspecified"): Promise<boolean> {
     if (!this.tmux || !this.backend) return false;
 
     const quitCmd = this.backend.getQuitCommand();
     const quitKey = this.backend.getQuitKey?.();
+    if (quitCmd || quitKey) this.noteStopRequest(quitCmd ? `quit command ${quitCmd}` : `quit key ${quitKey}`, reason);
     if (quitCmd) {
       if (!await this.tmux.sendKeys(quitCmd)) return false;
       // Delay before Enter to prevent tmux server races when instances stop in
@@ -2938,7 +3008,7 @@ export class Daemon extends EventEmitter {
       let killed = false;
       const windowId = this.tmux.getWindowId();
       const kiroReady = windowId ? await this.drainBusyKiroForStop(windowId) : true;
-      const quitSent = kiroReady && await this.sendQuitSequence();
+      const quitSent = kiroReady && await this.sendQuitSequence("graceful stop");
       const quitGraceMs = this.backend?.binaryName === "kiro-cli"
         ? KIRO_STOP_QUIT_GRACE_MS : 3_000;
       const sigtermGraceMs = this.backend?.binaryName === "kiro-cli"
@@ -2958,7 +3028,7 @@ export class Daemon extends EventEmitter {
           { quitSent, quitGraceMs },
           "CLI did not exit gracefully within its bounded quit grace — falling back to SIGTERM",
         );
-        await this.killProcessTree("SIGTERM");
+        await this.killProcessTree("SIGTERM", "graceful stop: the CLI outlived its quit grace");
         for (let elapsed = 0; elapsed < sigtermGraceMs; elapsed += 200) {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
@@ -2967,7 +3037,7 @@ export class Daemon extends EventEmitter {
       }
       if (!killed) {
         this.logger.warn("CLI process tree survived SIGTERM — falling back to SIGKILL");
-        await this.killProcessTree("SIGKILL");
+        await this.killProcessTree("SIGKILL", "graceful stop: the CLI survived SIGTERM");
         await new Promise(r => setTimeout(r, 200));
       }
       // Always kill window — remain-on-exit keeps dead panes around after CLI exits
@@ -3067,6 +3137,9 @@ export class Daemon extends EventEmitter {
     // into an ordinary idle-timeout pause of a busy instance.
     const allowStuck = this.pauseAllowStuck;
     this.pauseAllowStuck = false;
+    // Why this pause, for the stop record (#927): an idle pause and an
+    // auth-deferred one look the same from the pane.
+    const pauseReason = allowStuck ? "pause (auth-deferred, stuck pane)" : "pause (idle)";
     const pausableState = this.instanceState === "idle"
       || (allowStuck && this.instanceState === "stuck");
     if (!pausableState || this.pasteQueueDepth > 0) {
@@ -3080,7 +3153,7 @@ export class Daemon extends EventEmitter {
     const transition = (async () => {
       try {
         this.saveSessionId();
-        await this.sendQuitSequence();
+        await this.sendQuitSequence(pauseReason);
 
         let exited = false;
         for (let i = 0; i < 15; i++) {
@@ -3089,11 +3162,11 @@ export class Daemon extends EventEmitter {
           if (status && !status.alive) { exited = true; break; }
         }
         if (!exited) {
-          await this.killProcessTree("SIGTERM");
+          await this.killProcessTree("SIGTERM", `${pauseReason}: the CLI outlived its quit grace`);
           await new Promise(r => setTimeout(r, 1_000));
           const status = await this.tmux?.getPaneStatus();
           if (status?.alive) {
-            await this.killProcessTree("SIGKILL");
+            await this.killProcessTree("SIGKILL", `${pauseReason}: the CLI survived SIGTERM`);
             await new Promise(r => setTimeout(r, 200));
           }
         }
@@ -6691,7 +6764,7 @@ export class Daemon extends EventEmitter {
       await this.failStartupIfBackendUnreachable();
       if (this.backend.retriesResumeOnStartupFailure?.() !== false) {
         this.logger.warn("Resume startup failed — retrying resume once before abandoning the session");
-        await this.killProcessTree();
+        await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
         await this.tmux!.killWindow();
         alive = await this.trySpawn(false, resumeBudget);
         if (!alive) {
@@ -6715,7 +6788,7 @@ export class Daemon extends EventEmitter {
         if (this.unprovenResumeFailures < Daemon.MAX_UNPROVEN_RESUME_FAILURES) {
           // Keep the session and fail this attempt; the fleet retries with
           // backoff, which is also how the backend-outage path behaves.
-          await this.killProcessTree();
+          await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
           await this.tmux!.killWindow();
           throw new Error(
             `CLI startup failed with a session to resume (attempt ${this.unprovenResumeFailures}/${Daemon.MAX_UNPROVEN_RESUME_FAILURES}) `
@@ -6737,12 +6810,12 @@ export class Daemon extends EventEmitter {
       // A fresh start that also failed retries once, as before. It never clears
       // a session: nothing about a failed fresh launch says the stored
       // conversation is unusable.
-      await this.killProcessTree();
+      await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
       await this.tmux!.killWindow();
 
       const retryAlive = await this.trySpawn(false, this.startupBudgetFor(false));
       if (!retryAlive) {
-        await this.killProcessTree();
+        await this.killProcessTree("SIGTERM", "spawn: clearing the previous CLI process");
         await this.tmux!.killWindow();
         throw new Error("CLI failed to start after retry");
       }
@@ -6812,7 +6885,7 @@ export class Daemon extends EventEmitter {
   private async failStartupIfBackendUnreachable(): Promise<void> {
     if (!this.backendOutage?.isActive(this.backendKey())) return;
     this.logger.warn("Backend unreachable — keeping the session and failing startup for a delayed retry");
-    await this.killProcessTree();
+    await this.killProcessTree("SIGTERM", "startup: backend unreachable");
     await this.tmux!.killWindow();
     throw new BackendUnreachableStartupError(this.backendKey());
   }
@@ -6852,7 +6925,7 @@ export class Daemon extends EventEmitter {
       await this.museUsageRelay.stop().catch(() => {});
       this.museUsageRelay = null;
     }
-    try { await this.killProcessTree(); } catch { /* nothing running */ }
+    try { await this.killProcessTree("SIGTERM", "startup aborted"); } catch { /* nothing running */ }
     if (this.tmux) {
       const windowId = this.tmux.getWindowId();
       try { await this.tmux.killWindow(); } catch { /* window may not exist */ }
@@ -6866,11 +6939,12 @@ export class Daemon extends EventEmitter {
   }
 
   /** Kill the entire process tree of the current tmux pane (CLI + MCP server). */
-  private async killProcessTree(signal: NodeJS.Signals = "SIGTERM"): Promise<void> {
+  private async killProcessTree(signal: NodeJS.Signals = "SIGTERM", reason = "unspecified"): Promise<void> {
     if (!this.tmux) return;
     try {
       const pid = await TmuxManager.getPanePid(this.tmuxSessionName, this.tmux.getWindowId());
       if (pid) {
+        this.noteStopRequest(signal, reason);
         process.kill(-pid, signal);
         this.logger.debug({ pid, signal }, "Killed process group");
       }
