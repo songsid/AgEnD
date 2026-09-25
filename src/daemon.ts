@@ -499,6 +499,13 @@ interface SubmissionSignature {
   unique: boolean;
 }
 
+interface KiroPendingDelivery {
+  kind: "kiro-pending";
+  windowId: string;
+  spawnGeneration: number;
+  signature: SubmissionSignature;
+}
+
 /** Occurrences of `needle` in `haystack` (plain text, no regex semantics). */
 function countOccurrences(haystack: string, needle: string): number {
   if (!needle) return 0;
@@ -540,6 +547,10 @@ export class BackendUnreachableStartupError extends Error {
 }
 /** Bounded wait (under the pane lock) for the prompt to return before retrying a dropped Enter. */
 const STRANDED_RETRY_READY_WAIT_MS = 30_000;
+/** A pasted Kiro message may be processing for longer than the retry window. */
+const KIRO_SUBMISSION_OBSERVE_MS = 10 * 60_000;
+const KIRO_SUBMISSION_POLL_MS = 1_000;
+const KIRO_SUBMISSION_UNREADABLE_POLLS = 40;
 /** A passive startup phase must clear within this bound before an Enter is sent. */
 /**
  * How long a passive startup/resume transient may sit WITHOUT REPAINTING before
@@ -4459,6 +4470,7 @@ export class Daemon extends EventEmitter {
     // A false return means the cap expired with a spawn STILL running — the
     // generation captured below is in-progress evidence, not settled evidence,
     // so the critical section must still back out (see settledClean).
+    if (this.spawnSettled && status) this.emit("message_queued", status);
     const settledClean = await this.waitForSpawnToSettle();
     // Everything captured below (window id, readiness verdicts) belongs to
     // this spawn generation. A spawn that starts afterwards is detected inside
@@ -4553,7 +4565,7 @@ export class Daemon extends EventEmitter {
     // what makes progress. The one under-lock wait below is explicitly passive:
     // it clears by itself and closes a repaint race immediately before paste.
     for (let round = 0; ; round++) {
-      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started"> => {
+      const outcome = await this.paneWriteLock.run(async (): Promise<boolean | "dialog" | "spawn-started" | KiroPendingDelivery> => {
         if (cancelled()) return false;
         // A spawn that started after the settle wait above invalidates the
         // window id and every readiness verdict since: the pane about to be
@@ -4592,6 +4604,9 @@ export class Daemon extends EventEmitter {
           return this.failDelivery(verdict, status);
         }
         return this.deliverMessage(formatted, status, { ...opts, spawnRetry: retries });
+      }
+      if (typeof outcome === "object") {
+        return this.observeKiroSubmission(formatted, outcome, status, verdict, cancelled);
       }
       if (outcome !== "dialog") return outcome;
       // Wait OUTSIDE the lock (holding it would starve the runtime dismisser),
@@ -5083,6 +5098,88 @@ export class Daemon extends EventEmitter {
     return sawOutput && residue === "absent";
   }
 
+  /** Once Kiro returns to its prompt, its unique envelope id in history proves submission. */
+  private async kiroSubmissionEvidence(
+    windowId: string,
+    formatted: string,
+    signature: SubmissionSignature,
+  ): Promise<"submitted" | "stranded" | "unknown" | "unreadable"> {
+    if (!this.tmux) return "unreadable";
+    let pane: string;
+    try { pane = await this.tmux.capturePane(); } catch { return "unreadable"; }
+    const prompt = this.backend?.getBottomReadyPattern?.();
+    if (prompt && bottomRowIsReady(pane, prompt)
+      && inputShowsPastedText(inputAreaText(pane, prompt) ?? "", signature.value)) return "stranded";
+    if (prompt && pasteLeftInInput(pane, prompt, formatted)) return "stranded";
+    // During generation the same text can still be typeahead for an older
+    // turn. A history hit is safe only after this pane returns to its prompt.
+    if (!signature.unique || !this.tmux.capturePaneWithHistory
+      || !(await this.isPaneReadyForDelivery(windowId))) return "unknown";
+    try {
+      const history = await this.tmux.capturePaneWithHistory(300);
+      if (countOccurrences(history.replace(/\s+/g, ""), signature.value) > 0) return "submitted";
+    } catch { /* missing history cannot establish a verdict */ }
+    return "unknown";
+  }
+
+  /** Observe the Kiro paste outside paneWriteLock; a long agent turn must not block dialog handling. */
+  private async observeKiroSubmission(
+    formatted: string,
+    pending: KiroPendingDelivery,
+    status: { chatId: string; messageId: string } | undefined,
+    verdict: DeliveryVerdict,
+    cancelled: () => boolean,
+  ): Promise<boolean> {
+    const deadline = Date.now() + KIRO_SUBMISSION_OBSERVE_MS;
+    let retriedStrand = false;
+    let unreadable = 0;
+    for (;;) {
+      if (cancelled()) return false;
+      if (this.spawnGeneration !== pending.spawnGeneration) return false;
+      const evidence = await this.kiroSubmissionEvidence(pending.windowId, formatted, pending.signature);
+      if (evidence === "submitted") {
+        if (status) this.emit("message_confirmed", status);
+        return true;
+      }
+      unreadable = evidence === "unreadable" ? unreadable + 1 : 0;
+      if (unreadable >= KIRO_SUBMISSION_UNREADABLE_POLLS) {
+        return this.failDelivery(verdict, status, "post-submit-proof", "pane-unreadable");
+      }
+      if (evidence === "stranded" && await this.isPaneReadyForDelivery(pending.windowId)) {
+        if (retriedStrand) return this.failDelivery(verdict, status, "stranded-text-retry", "stranded");
+        const retry = await this.paneWriteLock.run(async () => {
+          if (cancelled()) return "cancelled" as const;
+          const fresh = await this.kiroSubmissionEvidence(pending.windowId, formatted, pending.signature);
+          if (fresh === "submitted") return "submitted" as const;
+          if (fresh !== "stranded" || !(await this.isPaneReadyForDelivery(pending.windowId))) return "changed" as const;
+          return await this.sendDeliveryEnter("stranded-text-retry") ? "sent" as const : "failed" as const;
+        });
+        if (retry === "cancelled") return false;
+        if (retry === "submitted") {
+          if (status) this.emit("message_confirmed", status);
+          return true;
+        }
+        if (retry === "failed") return this.failDelivery(verdict, status, "stranded-text-retry", "tmux-send-keys-failed");
+        if (retry === "sent") {
+          retriedStrand = true;
+          await new Promise(r => setTimeout(r, POST_ENTER_PROOF_WINDOW_MS));
+          continue;
+        }
+      }
+      const alive = await this.tmux?.isWindowAlive().catch(() => false);
+      if (!alive) return this.failDelivery(verdict, status, "post-submit-proof", "window-gone");
+      if (Date.now() >= deadline) {
+        // A live, busy pane and no positive strand are still ambiguous. The
+        // hang detector owns hung CLI recovery; elapsed time alone is not ❌.
+        this.logger.warn("Kiro submission remains unproven; keeping the delivery queued without a false failure");
+        verdict.phase = "post-submit-proof";
+        verdict.proof = "unproven";
+        return false;
+      }
+      await new Promise(r => setTimeout(r, KIRO_SUBMISSION_POLL_MS));
+    }
+  }
+
   /**
    * While the CLI is parked on a fatal startup screen (see fatalStartupBlocked),
    * no pane write may happen: paste+Enter into the corrupt-config modal would
@@ -5180,7 +5277,7 @@ export class Daemon extends EventEmitter {
     // Last and defaulted so the positional callers that ignore the outcome stay
     // readable; deliverMessage, the only one that reports, always passes its own.
     verdict: DeliveryVerdict = { reached: false },
-  ): Promise<boolean> {
+  ): Promise<boolean | KiroPendingDelivery> {
     const signature = this.submissionSignature(formatted, submissionId);
     let windowId = initialWindowId;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
@@ -5396,10 +5493,19 @@ export class Daemon extends EventEmitter {
         // F2: output after Enter is necessary but not sufficient — the paste
         // must also have LEFT the input row.
         let submitted = await this.confirmSubmittedAfterEnter(windowId, enterAt, formatted);
+        if (!submitted && signature.unique) {
+          submitted = await this.kiroSubmissionEvidence(windowId, formatted, signature) === "submitted";
+          if (!submitted) {
+            // No output edge is not proof of a lost message. Leave the pane
+            // lock before waiting through a long Kiro turn, so runtime dialog
+            // handling can still make progress.
+            if (status) this.emit("message_queued", status);
+            return { kind: "kiro-pending", windowId, spawnGeneration: this.spawnGeneration, signature };
+          }
+        }
         if (!submitted) {
-          // The Enter landed while the TUI was still busy (it kept the text but
-          // dropped the key). A retry is only useful once the prompt is back —
-          // bounded, since we hold the pane lock here.
+          // Legacy system pastes have no unique envelope id. Preserve their
+          // existing bounded retry until they can be tied to a specific turn.
           this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
           const promptBack = await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS);
           const retryAt = Date.now();

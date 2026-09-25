@@ -71,6 +71,7 @@ function makeHarness(backend: unknown): Harness {
   const capture = vi.fn(async () => state.pane);
   daemon.tmux = {
     capturePane: capture,
+    capturePaneWithHistory: vi.fn(async () => state.pane),
     pasteBuffer: paste,
     sendSpecialKey: enter,
     sendKeys: vi.fn(async () => true),
@@ -286,6 +287,74 @@ describe("kiro delivery: the Enter-drop gate is legacy-UI only", () => {
 });
 
 describe("kiro delivery: submission verification (F2)", () => {
+  it("keeps the first startup delivery queued through a long turn, then confirms its own id", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.state.outputSince = false; // control mode missed the output edge
+    h.paste.mockImplementation(async () => {
+      h.state.pane = "⠇ Thinking about the first request";
+      h.state.silent = false;
+      return true;
+    });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.events).toContain("message_queued");
+    expect(h.paste).not.toHaveBeenCalled();
+    h.daemon.endSpawn();
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(h.events, "a long first turn is still processing after the old 30s retry cap").not.toContain("message_failed");
+    expect(h.events).toContain("message_queued");
+    let paneLockAvailable = false;
+    await h.daemon.paneWriteLock.run(async () => { paneLockAvailable = true; });
+    expect(paneLockAvailable, "a long turn must not hold the pane lock used by dialog handling").toBe(true);
+
+    h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+    h.state.silent = true;
+    expect(await settle(delivery, 10_000)).toBe(true);
+    expect(h.events.at(-1)).toBe("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+    expect(h.paste).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the unique id in Kiro history when control mode misses the submit output", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => {
+      h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+      h.state.silent = true;
+      return true;
+    });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 6_000)).toBe(true);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("still fails when the same message is visibly stranded after a safe retry", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 12_000)).toBe(false);
+    expect(h.enter).toHaveBeenCalledTimes(3);
+    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_confirmed");
+  });
+
+  it("still fails when the pane stays unreadable after the paste", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.paste.mockImplementation(async () => {
+      h.capture.mockRejectedValue(new Error("pane unreadable"));
+      return true;
+    });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 50_000)).toBe(false);
+    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_confirmed");
+  });
+
   it("confirms promptly when a historical prompt is followed by the submitted turn and agent output", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = true;
