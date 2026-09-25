@@ -15,7 +15,11 @@ function usage(used: number) {
   };
 }
 
-function lifecycle(verifier: () => Promise<CodexQuotaVerdict>, names = ["worker"]) {
+function lifecycle(
+  verifier: () => Promise<CodexQuotaVerdict>,
+  names = ["worker"],
+  codexLivePane = false,
+) {
   const notifyInstanceTopic = vi.fn();
   const clearCancelButton = vi.fn();
   const ctx = {
@@ -36,7 +40,10 @@ function lifecycle(verifier: () => Promise<CodexQuotaVerdict>, names = ["worker"
   } as unknown as LifecycleContext;
   const instanceLifecycle = new InstanceLifecycle(ctx);
   const daemons = names.map(name => {
-    const daemon = Object.assign(new EventEmitter(), { requestPauseWhenIdle: vi.fn() });
+    const daemon = Object.assign(new EventEmitter(), {
+      requestPauseWhenIdle: vi.fn(),
+      isCodexLivePane: vi.fn(async () => codexLivePane),
+    });
     instanceLifecycle.attachIncidentHandlers(name, daemon as any);
     return daemon;
   });
@@ -83,6 +90,24 @@ describe("Codex quota second opinion", () => {
       await vi.waitFor(() => expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1));
     },
   );
+
+  it("does not pause after the usage dialog resolves into a live Luna Reserve pane", async () => {
+    const { daemons, notifyInstanceTopic, clearCancelButton } = lifecycle(async () => "exhausted", ["worker"], true);
+    daemons[0].emit("pty_error", quotaError("worker"));
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(notifyInstanceTopic).not.toHaveBeenCalled();
+    expect(clearCancelButton).not.toHaveBeenCalled();
+    expect(daemons[0].requestPauseWhenIdle).not.toHaveBeenCalled();
+  });
+
+  it("still pauses when the quota pane has no live composer proof", async () => {
+    const { daemons, notifyInstanceTopic } = lifecycle(async () => "exhausted", ["worker"], false);
+    daemons[0].emit("pty_error", quotaError("worker"));
+
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledTimes(1));
+    expect(daemons[0].requestPauseWhenIdle).toHaveBeenCalledTimes(1);
+  });
 
   it("joins simultaneous quota alerts to one in-flight live check", async () => {
     let release!: (verdict: CodexQuotaVerdict) => void;

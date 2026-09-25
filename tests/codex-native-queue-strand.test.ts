@@ -103,6 +103,14 @@ const READY_WITH_CHROME = [
   "  Context 100% left · GPT-6-Astra",
 ].join("\n");
 
+/** The post-restart usage-limit picker before the user selects Luna Reserve. */
+const RESERVE_USAGE_LIMIT_DIALOG = [
+  "■ You've hit your usage limit.",
+  "› 3. Continue with Luna Reserve",
+  "  4. Quit",
+  "  enter select · esc quit",
+].join("\n");
+
 /**
  * The pane BEFORE we paste: codex is working on something else. Submission is
  * judged by what the pane gains, so every test starts from a frame that holds
@@ -317,6 +325,37 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     // Without the production transient gate, Codex's broad ready pattern sees
     // its header and returns after the first two resuming frames.
     expect(captures).toBeGreaterThanOrEqual(4);
+  });
+
+  it("recognises the live Luna Reserve prompt after the startup usage dialog is resolved", async () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    let captures = 0;
+    h.daemon.tmux.capturePane = async () => {
+      captures++;
+      return captures <= 2 ? RESERVE_USAGE_LIMIT_DIALOG : READY_EMPTY;
+    };
+
+    const scan = h.daemon.dismissDialogsUntilReady(5_000, 100);
+    await expect(settle(scan, 5_000, 50)).resolves.toBe(true);
+    h.daemon.endSpawn();
+
+    expect(captures).toBeGreaterThanOrEqual(4);
+    expect(h.enter).not.toHaveBeenCalled();
+    await expect(h.daemon.isCodexLivePane()).resolves.toBe(true);
+  });
+
+  it("baselines stale usage-limit text when the current pane is a live reserve composer", () => {
+    const h = makeHarness(); dirs.push(h.dir);
+    const errors: unknown[] = [];
+    h.daemon.on("pty_error", (error: unknown) => errors.push(error));
+    const backend = h.daemon.backend as CodexBackend;
+    const patterns = backend.getErrorPatterns();
+    const pane = `■ You've hit your usage limit.\n${READY_EMPTY}`;
+
+    h.daemon.evaluateErrorPatterns(pane, patterns, backend.getReadyPattern(), 1_000_000);
+
+    expect(errors).toHaveLength(0);
   });
 
   it("classifies a quiet resume screen as transient rather than native-queue busy", async () => {

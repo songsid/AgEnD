@@ -182,6 +182,8 @@ type Daemon = InstanceType<typeof import("./daemon.js").Daemon>;
 export interface IncidentEventSource {
   on(event: string, handler: (...args: any[]) => void): unknown;
   requestPauseWhenIdle(): void;
+  /** Re-checks that a Codex pane is live after an async quota probe. */
+  isCodexLivePane?(): Promise<boolean>;
   /** Present on real daemons; hang buttons attach only when it returns one. */
   getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
 }
@@ -868,15 +870,26 @@ export class InstanceLifecycle {
       // Codex keeps old errors in pane scrollback. After a restart, the new
       // daemon has no occurrence baseline and can mistake yesterday's
       // `You've hit your usage limit` for a current failure, pause, wake, then
-      // repeat forever. A live, non-LLM usage query distinguishes an
-      // available account from that stale text before any notification/pause.
-      // Only pause-class quota errors need this gate; low-quota notifications
-      // remain immediate. Unknown (timeout/auth/API failure) stays fail-closed.
+      // repeat forever. A live, non-LLM usage query and a post-probe pane
+      // recheck distinguish an available account or a live Luna Reserve
+      // composer from that stale text before any notification/pause. Only
+      // pause-class quota errors need this gate; low-quota notifications remain
+      // immediate. Unknown (timeout/auth/API failure) stays fail-closed unless
+      // the current pane proves that the reserve session is live.
       if (data.type === "quota" && data.action === "pause" && this.backendOf(name) === "codex") {
         const verdict = await this.verifyCodexQuota();
         if (verdict === "available") {
           this.ctx.logger.debug({ name, backend: "codex" },
             "quota pattern ignored — live usage has capacity (stale pane history)");
+          return;
+        }
+        // The user may have just selected Luna Reserve while the non-LLM
+        // usage probe was in flight. The provider can still report the primary
+        // account as exhausted, so trust the current pane's positive live
+        // composer + Context footer proof before issuing the destructive pause.
+        if (await daemon.isCodexLivePane?.()) {
+          this.ctx.logger.debug({ name, backend: "codex" },
+            "quota pattern ignored — Codex reserve session is live");
           return;
         }
         if (verdict === "unknown") {

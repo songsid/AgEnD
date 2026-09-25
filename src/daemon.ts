@@ -1275,6 +1275,39 @@ export class Daemon extends EventEmitter {
   }
   get lastPausedAt(): number | null { return this.autoPauseController.lastPausedAt; }
   private getPauseWakeState(): typeof this.pauseWakeState { return this.pauseWakeState; }
+
+  /**
+   * Codex can show an exhausted-account notice while the user is switching to
+   * a reserve account. Once the live composer and Context footer are back, the
+   * notice is scrollback, not a reason to pause and send /quit.
+   */
+  private isCodexLivePaneSnapshot(pane: string): boolean {
+    if (this.backend?.binaryName !== "codex") return false;
+    try {
+      if (this.backend.isDeliveryInputReadyPane?.(pane) !== true) return false;
+      const busy = this.backend.getBusyPattern?.();
+      if (busy) {
+        busy.lastIndex = 0;
+        if (busy.test(pane)) return false;
+      }
+      const ready = this.backend.getReadyPattern();
+      ready.lastIndex = 0;
+      return ready.test(pane);
+    } catch {
+      return false;
+    }
+  }
+
+  /** Re-check the current pane after an async quota probe before pausing it. */
+  async isCodexLivePane(): Promise<boolean> {
+    if (this.backend?.binaryName !== "codex" || !this.tmux) return false;
+    try {
+      return this.isCodexLivePaneSnapshot(await this.tmux.capturePane());
+    } catch {
+      return false;
+    }
+  }
+
   /** Whether this instance is in a crash loop (3+ consecutive crashes). */
   get isCrashLoop(): boolean {
     return this.crashCount >= 3;
@@ -2557,6 +2590,7 @@ export class Daemon extends EventEmitter {
     // rebaselining the occurrence count while the error is still displayed — one
     // notification, a false recovery log, then silence.
     const looksReady = (): boolean => !busyPattern?.test(pane) && readyPattern.test(pane);
+    const codexLivePane = this.isCodexLivePaneSnapshot(pane);
 
     // State: waiting for recovery. A missing/outdated ready pattern must not
     // suppress every future error forever, so the gate has a hard deadline.
@@ -2621,6 +2655,17 @@ export class Daemon extends EventEmitter {
       const key = Daemon.errorPatternKey(ep);
       const count = countMatches(ep.pattern);
       const seen = this.lastErrorCount.get(key) ?? 0;
+
+      // The generic Codex usage-limit line remains in scrollback after the
+      // user selects Luna Reserve. A live composer + Context footer is positive
+      // evidence that the pane recovered; baseline the stale occurrence so it
+      // cannot reach the destructive quota pause path.
+      if (codexLivePane && ep.type === "quota" && ep.action === "pause"
+        && ep.message.startsWith("Codex usage limit reached")) {
+        if (count > 0) this.lastErrorCount.set(key, count);
+        this.logger.debug("Codex usage-limit text is stale — live reserve pane is running");
+        continue;
+      }
 
       if (count <= seen) {
         // Occurrences scrolled out of the capture buffer → lower the baseline
@@ -7359,7 +7404,16 @@ export class Daemon extends EventEmitter {
         // CLI is ready (pattern defined by each backend). Require it on two
         // consecutive polls: the first ready frame is also the moment a late
         // dialog is about to be painted over it.
-        if (this.backend!.getReadyPattern().test(pane)) {
+        const readyPatternMatches = this.backend!.getReadyPattern().test(pane);
+        // Codex's broad prompt/footer regex is necessary for inline layouts,
+        // but startup must also prove that the current composer owns the
+        // footer. This matters when a usage-limit picker is being resolved:
+        // its old prompt can remain in scrollback while the reserve session is
+        // still transitioning. Once the live composer is back, do not keep the
+        // scan parked on the old limit text.
+        const codexReady = this.backend!.binaryName !== "codex"
+          || this.isCodexLivePaneSnapshot(pane);
+        if (readyPatternMatches && codexReady) {
           cleanReadyPolls++;
           if (cleanReadyPolls >= 2 || remaining() <= 0) {
             // A real ready prompt (with no fatal dialog on screen — those are
