@@ -27,4 +27,15 @@ describe("FirstDeliveryDelay", () => {
     expect(gate.consume(20_200)).toBe(1_750);
     expect(gate.consume(20_300)).toBe(500);
   });
+
+  it("re-arm is idempotent: calling recordReady twice before consume only costs the one consume", () => {
+    // Matches the mid-session Luna Reserve case: finishStartupScan called
+    // recordReady once, then waitForInputTransientToClear calls it again when
+    // the transient clears — the pending delivery consumes the 1750ms once.
+    const gate = new FirstDeliveryDelay();
+    gate.recordReady(1_000);
+    gate.recordReady(1_100); // second arm (transient cleared)
+    expect(gate.consume(1_200)).toBe(1_750); // one consume
+    expect(gate.consume(1_300)).toBe(500);   // subsequent: normal
+  });
 });
