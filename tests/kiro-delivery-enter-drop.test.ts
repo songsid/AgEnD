@@ -302,7 +302,7 @@ describe("kiro delivery: submission verification (F2)", () => {
     h.paste.mockImplementation(async () => { h.state.pane = TOOL_RUNNING; return true; });
     const readiness = h.daemon.isPaneReadyForDelivery.bind(h.daemon);
     let exposedTypeahead = false;
-    vi.spyOn(h.daemon, "isPaneReadyForDelivery").mockImplementation(async (windowId: string) => {
+    vi.spyOn(h.daemon, "isPaneReadyForDelivery").mockImplementation(async (windowId) => {
       if (!exposedTypeahead && h.enter.mock.calls.length >= 2) {
         exposedTypeahead = true;
         h.state.pane = STRANDED_WITH_ID;
