@@ -299,12 +299,12 @@ describe("CodexBackend", () => {
       });
     });
 
-    it("pauses on the exact Codex capacity rejection and explains recovery", () => {
+    it("uses backoff_restart action on the exact Codex capacity rejection (not pause)", () => {
       const match = matchingError("⚠ Selected model is at capacity. Please try a different model.");
 
       expect(match).toMatchObject({
         type: "model_error",
-        action: "pause",
+        action: "backoff_restart",
         skipRecoveryWait: true,
       });
       expect(match?.message).toContain("Retry the message manually later");

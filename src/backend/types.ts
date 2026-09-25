@@ -49,7 +49,7 @@ export interface CliBackendConfig {
 }
 
 /** Action to take when an error pattern is detected in PTY output. */
-export type ErrorActionType = "notify" | "failover" | "restart" | "pause";
+export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "backoff_restart";
 
 /** Categorizes detected errors for logging and response. */
 export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error";

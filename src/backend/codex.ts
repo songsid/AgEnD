@@ -985,11 +985,13 @@ export class CodexBackend implements CliBackend {
         // A capacity rejection is a completed failed turn: Codex returns to its
         // prompt without an answer. Keep this anchored to the exact decorated
         // TUI line so ordinary prose about model capacity cannot pause an
-        // otherwise healthy instance. The CLI is already ready again, so there
-        // is no recovery state to wait for after the pause notification.
+        // otherwise healthy instance. The CLI is already back at the prompt, so
+        // skipRecoveryWait avoids an extra wait before the backoff timer fires.
+        // action "backoff_restart": exponential backoff + resume, up to 3 times;
+        // the lifecycle falls back to "pause" after the limit (see #905).
         pattern: /^⚠ Selected model is at capacity\. Please try a different model\.\r?$/m,
         type: "model_error",
-        action: "pause",
+        action: "backoff_restart",
         message: t("inst.codex_model_capacity"),
         skipRecoveryWait: true,
       },
