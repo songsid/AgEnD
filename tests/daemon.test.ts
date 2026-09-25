@@ -3,6 +3,7 @@ import { Daemon, PaneStateMachine } from "../src/daemon.js";
 import type { InstanceConfig } from "../src/types.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
+import { KiroBackend } from "../src/backend/kiro.js";
 import { createBackend } from "../src/backend/factory.js";
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -157,6 +158,103 @@ describe("Daemon", () => {
       expect(killProcessTree).not.toHaveBeenCalled();
       expect(tmux.killWindow).toHaveBeenCalledOnce();
     } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("cancels a busy Kiro turn, waits for readiness, then quits without a process signal", async () => {
+    const instanceDir = join(tmpdir(), `kiro-graceful-stop-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    const backend = new KiroBackend(instanceDir, {
+      version: "kiro-cli 2.21.0",
+      supportsRequireMcpStartup: true,
+      supportsLegacyUi: true,
+      supportsEffortFlag: true,
+      source: "version",
+    });
+    const daemon = new Daemon(
+      "kiro-graceful-stop",
+      { ...makeConfig(), backend: "kiro-cli", working_directory: instanceDir },
+      instanceDir,
+      false,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    const sendKeys = vi.fn().mockResolvedValue(true);
+    const sendSpecialKey = vi.fn().mockResolvedValue(true);
+    const tmux = {
+      sendKeys,
+      sendSpecialKey,
+      getPaneStatus: vi.fn().mockResolvedValue({ alive: false, exitCode: 0 }),
+      getWindowId: vi.fn(() => "@kiro"),
+      killWindow: vi.fn().mockResolvedValue(undefined),
+    };
+    (daemon as any).tmux = tmux;
+    vi.spyOn(daemon as any, "paneReadinessForDelivery")
+      .mockResolvedValueOnce("busy")
+      .mockResolvedValueOnce("ready");
+    const readyWait = vi.spyOn(daemon as any, "waitForPaneReadyForDelivery").mockResolvedValue(true);
+    const killProcessTree = vi.spyOn(daemon as any, "killProcessTree").mockResolvedValue(undefined);
+
+    try {
+      await daemon.stop();
+
+      expect(sendSpecialKey.mock.calls).toEqual([["C-c"], ["Enter"]]);
+      expect(sendKeys).toHaveBeenCalledWith("/quit");
+      expect(readyWait).toHaveBeenCalledWith("@kiro", 15_000);
+      expect(killProcessTree).not.toHaveBeenCalled();
+      expect(tmux.killWindow).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Kiro stop bounded and escalates SIGTERM to SIGKILL when cancel cannot drain", async () => {
+    vi.useFakeTimers();
+    const instanceDir = join(tmpdir(), `kiro-stop-fallback-${Date.now()}-${Math.random()}`);
+    mkdirSync(instanceDir, { recursive: true });
+    const backend = new KiroBackend(instanceDir, {
+      version: "kiro-cli 2.21.0",
+      supportsRequireMcpStartup: true,
+      supportsLegacyUi: true,
+      supportsEffortFlag: true,
+      source: "version",
+    });
+    const daemon = new Daemon(
+      "kiro-stop-fallback",
+      { ...makeConfig(), backend: "kiro-cli", working_directory: instanceDir },
+      instanceDir,
+      false,
+      backend,
+      undefined,
+      rootLogger,
+    );
+    const sendKeys = vi.fn().mockResolvedValue(true);
+    const sendSpecialKey = vi.fn().mockResolvedValue(true);
+    const tmux = {
+      sendKeys,
+      sendSpecialKey,
+      getPaneStatus: vi.fn().mockResolvedValue({ alive: true }),
+      getWindowId: vi.fn(() => "@kiro"),
+      killWindow: vi.fn().mockResolvedValue(undefined),
+    };
+    (daemon as any).tmux = tmux;
+    vi.spyOn(daemon as any, "paneReadinessForDelivery").mockResolvedValue("busy");
+    vi.spyOn(daemon as any, "waitForPaneReadyForDelivery").mockResolvedValue(false);
+    const killProcessTree = vi.spyOn(daemon as any, "killProcessTree").mockResolvedValue(undefined);
+
+    try {
+      const stopping = daemon.stop();
+      await vi.runAllTimersAsync();
+      await stopping;
+
+      expect(sendSpecialKey.mock.calls).toEqual([["C-c"]]);
+      expect(sendKeys).not.toHaveBeenCalled();
+      expect(killProcessTree.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+      expect(tmux.killWindow).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
       rmSync(instanceDir, { recursive: true, force: true });
     }
   });
