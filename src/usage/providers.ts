@@ -777,15 +777,28 @@ export async function fetchCodexUsage(storeHome?: string): Promise<Omit<Provider
 
   // Model-specific limits (e.g. Spark) ride in additional_rate_limits, same window shape.
   for (const entry of Array.isArray(body.additional_rate_limits) ? body.additional_rate_limits : []) {
-    const e = entry as { limit_name?: string; metered_feature?: string; rate_limit?: unknown };
+    const e = entry as { limit_name?: string; metered_feature?: string; normal_model_slug?: unknown; rate_limit?: unknown };
     if (!e || typeof e !== "object" || !e.rate_limit) continue;
     const rawName = e.limit_name || e.metered_feature || "Model limit";
-    metrics.push(...codexWindows(e.rate_limit as never, {
-      session: { text: rawName, i18n: i18n("usage.metric.named", rawName) },
-      weekly: { text: `${rawName} (weekly)`, i18n: i18n("usage.metric.named_weekly", rawName) },
-      monthly: { text: `${rawName} (monthly)`, i18n: i18n("usage.metric.named_monthly", rawName) },
-      other: d => ({ text: `${rawName} (${d}d)`, i18n: i18n("usage.metric.named_days", rawName, d) }),
-    }, nowMs).map(metric => ({ ...metric, scope: "model" as const })));
+    // A reserve is not one more per-model limit (#936). The API names it only
+    // `gpt-reserve`; the Codex TUI calls it after the model it backs — "Luna
+    // Reserve" for `normal_model_slug: gpt-5.6-luna` — so that is the label,
+    // with the raw name kept as a note. And it is not model-scoped: model rows
+    // at 0% are hidden to spare a list of untouched per-model limits, but an
+    // untouched reserve is exactly the thing worth seeing, and hiding it is how
+    // /usage came to show a single weekly line.
+    const reserveFor = /-reserve$/i.test(rawName) && typeof e.normal_model_slug === "string"
+      ? e.normal_model_slug.split("-").pop()?.trim() : undefined;
+    const name = reserveFor ? `${reserveFor.charAt(0).toUpperCase()}${reserveFor.slice(1)} Reserve` : rawName;
+    const windows = codexWindows(e.rate_limit as never, {
+      session: { text: name, i18n: i18n("usage.metric.named", name) },
+      weekly: { text: `${name} (weekly)`, i18n: i18n("usage.metric.named_weekly", name) },
+      monthly: { text: `${name} (monthly)`, i18n: i18n("usage.metric.named_monthly", name) },
+      other: d => ({ text: `${name} (${d}d)`, i18n: i18n("usage.metric.named_days", name, d) }),
+    }, nowMs);
+    metrics.push(...windows.map(metric => reserveFor
+      ? { ...metric, note: rawName }
+      : { ...metric, scope: "model" as const }));
   }
 
   const resets = body.rate_limit_reset_credits as { available_count?: unknown } | undefined;
