@@ -27,6 +27,7 @@ const TOOL_RUNNING = [
 const IDLE_BARE = " ▸ Time: 15s\n2% !>";
 const MESSAGE = "[user:hanhanv via discord, id:368442276000694273] MSG-1 pasted while kiro was busy\n(message_id: 1)";
 const STRANDED = ` ▸ Time: 15s\n2% !> ${MESSAGE.split("\n")[0]}`;
+const STRANDED_WITH_ID = ` ▸ Time: 15s\n2% !> ${MESSAGE.replace(/\n/g, " ")}`;
 const GENERATING = `2% !> ${MESSAGE.split("\n")[0]}\n⠇ Thinking...`;
 const OLD_STRANDED = " ▸ Time: 9s\n7% !> [from:agend-leader-t1503382358143799511] an earlier message whose Enter was dropped";
 const SUBMITTED_WITHOUT_SPINNER = [
@@ -71,6 +72,7 @@ function makeHarness(backend: unknown): Harness {
   const capture = vi.fn(async () => state.pane);
   daemon.tmux = {
     capturePane: capture,
+    capturePaneWithHistory: vi.fn(async () => state.pane),
     pasteBuffer: paste,
     sendSpecialKey: enter,
     sendKeys: vi.fn(async () => true),
@@ -104,6 +106,14 @@ async function settle<T>(promise: Promise<T>, maxMs = 120_000, stepMs = 100): Pr
   }
   if (!done) throw new Error(`delivery did not settle within ${maxMs}ms of fake time`);
   return result;
+}
+
+async function advanceUntil(check: () => boolean, maxMs = 15_000): Promise<void> {
+  for (let elapsed = 0; elapsed < maxMs; elapsed += 100) {
+    if (check()) return;
+    await vi.advanceTimersByTimeAsync(100);
+  }
+  throw new Error(`condition not reached within ${maxMs}ms of fake time`);
 }
 
 const kiro = () => new KiroBackend(mkdtempSync(join(tmpdir(), "agend-kiro-be-")), KIRO_COMPAT);
@@ -286,6 +296,184 @@ describe("kiro delivery: the Enter-drop gate is legacy-UI only", () => {
 });
 
 describe("kiro delivery: submission verification (F2)", () => {
+  it("does not confirm typeahead exposed between the viewport and history captures", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = TOOL_RUNNING; return true; });
+    const readiness = h.daemon.isPaneReadyForDelivery.bind(h.daemon);
+    let exposedTypeahead = false;
+    vi.spyOn(h.daemon, "isPaneReadyForDelivery").mockImplementation(async (windowId) => {
+      if (!exposedTypeahead && h.enter.mock.calls.length >= 2) {
+        exposedTypeahead = true;
+        h.state.pane = STRANDED_WITH_ID;
+        return true;
+      }
+      return readiness(windowId);
+    });
+    h.enter.mockImplementation(async () => {
+      if (h.enter.mock.calls.length >= 3) h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+      return true;
+    });
+
+    const ok = await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 15_000);
+    expect(exposedTypeahead).toBe(true);
+    expect(ok).toBe(true);
+    expect(h.enter).toHaveBeenCalledTimes(3);
+    expect(h.events.at(-1)).toBe("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not retry Enter after a spawn starts while waiting for the pane lock", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    let releaseHold!: () => void;
+    const hold = new Promise<void>(resolve => { releaseHold = resolve; });
+    let holding = false;
+    let holdQueued = false;
+    h.daemon.on("message_queued", () => {
+      if (holdQueued || h.paste.mock.calls.length === 0) return;
+      holdQueued = true;
+      void h.daemon.paneWriteLock.run(async () => { holding = true; await hold; });
+    });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" });
+    await advanceUntil(() => holding && h.enter.mock.calls.length === 2);
+    // The observer's retry waits behind the held lock. Invalidate its window
+    // and generation before it can acquire that lock.
+    await vi.advanceTimersByTimeAsync(2_000);
+    h.daemon.beginSpawn();
+    releaseHold();
+    expect(await settle(delivery, 5_000)).toBe(false);
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+    h.daemon.endSpawn();
+  });
+
+  it("does not confirm after cancel during an awaited history capture", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = TOOL_RUNNING; return true; });
+    let releaseHistory!: (pane: string) => void;
+    const history = new Promise<string>(resolve => { releaseHistory = resolve; });
+    const readHistory = h.daemon.tmux.capturePaneWithHistory as ReturnType<typeof vi.fn>;
+    readHistory.mockImplementation(async () => history);
+    h.daemon.on("message_queued", () => {
+      if (h.paste.mock.calls.length) h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+    });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1", deliveryEpoch: 0 });
+    await advanceUntil(() => readHistory.mock.calls.length > 0);
+    h.daemon.clearPendingDeliveries();
+    releaseHistory(h.state.pane);
+    expect(await settle(delivery, 5_000)).toBe(false);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("does not retry Enter after cancel during its under-lock pane capture", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+    const evidence = h.daemon.kiroSubmissionEvidence.bind(h.daemon);
+    let evidenceCalls = 0;
+    let blockNextCapture = false;
+    vi.spyOn(h.daemon, "kiroSubmissionEvidence").mockImplementation(async (...args: unknown[]) => {
+      evidenceCalls++;
+      if (evidenceCalls === 3) blockNextCapture = true;
+      return evidence(args[0], args[1], args[2]);
+    });
+    let releaseCapture!: () => void;
+    const waitForCapture = new Promise<void>(resolve => { releaseCapture = resolve; });
+    let capturePending = false;
+    h.capture.mockImplementation(async () => {
+      if (blockNextCapture) {
+        blockNextCapture = false;
+        capturePending = true;
+        await waitForCapture;
+      }
+      return h.state.pane;
+    });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1", deliveryEpoch: 0 });
+    await advanceUntil(() => capturePending);
+    h.daemon.clearPendingDeliveries();
+    releaseCapture();
+    expect(await settle(delivery, 5_000)).toBe(false);
+    expect(h.enter).toHaveBeenCalledTimes(2);
+    expect(h.events).not.toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("keeps the first startup delivery queued through a long turn, then confirms its own id", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.daemon.beginSpawn();
+    h.state.outputSince = false; // control mode missed the output edge
+    h.paste.mockImplementation(async () => {
+      h.state.pane = "⠇ Thinking about the first request";
+      h.state.silent = false;
+      return true;
+    });
+
+    const delivery = h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.events).toContain("message_queued");
+    expect(h.paste).not.toHaveBeenCalled();
+    h.daemon.endSpawn();
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(h.events, "a long first turn is still processing after the old 30s retry cap").not.toContain("message_failed");
+    expect(h.events).toContain("message_queued");
+    let paneLockAvailable = false;
+    await h.daemon.paneWriteLock.run(async () => { paneLockAvailable = true; });
+    expect(paneLockAvailable, "a long turn must not hold the pane lock used by dialog handling").toBe(true);
+
+    h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+    h.state.silent = true;
+    expect(await settle(delivery, 10_000)).toBe(true);
+    expect(h.events.at(-1)).toBe("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+    expect(h.paste).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the unique id in Kiro history when control mode misses the submit output", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => {
+      h.state.pane = `${SUBMITTED_WITHOUT_SPINNER}\n3% !>`;
+      h.state.silent = true;
+      return true;
+    });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 6_000)).toBe(true);
+    expect(h.events).toContain("message_confirmed");
+    expect(h.events).not.toContain("message_failed");
+  });
+
+  it("still fails when the same message is visibly stranded after a safe retry", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.state.outputSince = false;
+    h.paste.mockImplementation(async () => { h.state.pane = STRANDED; return true; });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 12_000)).toBe(false);
+    expect(h.enter).toHaveBeenCalledTimes(3);
+    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_confirmed");
+  });
+
+  it("still fails when the pane stays unreadable after the paste", async () => {
+    const h = makeHarness(kiro()); dirs.push(h.dir);
+    h.paste.mockImplementation(async () => {
+      h.capture.mockRejectedValue(new Error("pane unreadable"));
+      return true;
+    });
+
+    expect(await settle(h.daemon.deliverMessage(MESSAGE, STATUS, { submissionId: "1" }), 50_000)).toBe(false);
+    expect(h.events).toContain("message_failed");
+    expect(h.events).not.toContain("message_confirmed");
+  });
+
   it("confirms promptly when a historical prompt is followed by the submitted turn and agent output", async () => {
     const h = makeHarness(kiro()); dirs.push(h.dir);
     h.state.outputSince = true;
