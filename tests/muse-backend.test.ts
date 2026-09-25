@@ -150,6 +150,115 @@ describe("muse stuck detection with the busy veto", () => {
   });
 });
 
+/** After an Escape-cancel, muse shows this (partial answer kept, idle prompt). */
+const INTERRUPTED = [
+  "  Muse Code 1.3.0",
+  "❯ Write a haiku about tmux. Nothing else.",
+  "◆ Panes split the",
+  "────────────────────────────────────────────",
+  "❯",
+  "────────────────────────────────────────────",
+  "  muse-spark-1.3-contributor · high · /t/c/scratchpad/muse-probe · Launch overrides",
+].join("\n");
+
+describe("MuseBackend isPeriodicRedrawIdlePane — structural idle proof (#932)", () => {
+  const { backend } = makeBackend();
+
+  it("returns true for an idle pane (status bar periodically redraws)", () => {
+    // Mutation guard: removing isPeriodicRedrawIdlePane or returning false would
+    // leave the daemon without `canProvePeriodicIdle`, causing every status-bar
+    // repaint to call recordOutput() and pin the instance in `working` forever.
+    expect(backend.isPeriodicRedrawIdlePane(IDLE)).toBe(true);
+  });
+
+  it("returns true for an interrupted pane (partial answer + idle prompt)", () => {
+    // After Escape-cancel the prompt is idle; this must not stay stuck as working.
+    expect(backend.isPeriodicRedrawIdlePane(INTERRUPTED)).toBe(true);
+  });
+
+  it("returns false for a working pane (busy indicator above the prompt)", () => {
+    // The CliBackend contract: false positives can admit a delivery into a
+    // busy CLI. The working indicator `◇ Thinking (2s · esc to interrupt)`
+    // sits in the rows just above the top separator; the busy-pattern check
+    // inside isPeriodicRedrawIdlePane returns false for working panes.
+    expect(backend.isPeriodicRedrawIdlePane(WORKING)).toBe(false);
+    // Confirm the outer PaneStateMachine also keeps it working (defence-in-depth):
+    const machine = new PaneStateMachine(
+      backend.getReadyPattern(), 15_000, 0, backend.getBusyPattern(),
+    );
+    // With settled: true (what the daemon passes after two positive probes):
+    expect(machine.observe(WORKING, 1, { settled: true }).state).toBe("working");
+  });
+
+  it("returns false for screens without the ❯ + separator chrome", () => {
+    // Startup / trust screen — no idle chrome yet.
+    expect(backend.isPeriodicRedrawIdlePane(TRUST)).toBe(false);
+    // Empty string: nothing to match.
+    expect(backend.isPeriodicRedrawIdlePane("")).toBe(false);
+    // A ❯ line with user text in the transcript (not the live prompt).
+    const transcriptOnly = [
+      "  Muse Code 1.3.0",
+      "❯ Write a haiku about tmux. Nothing else.",
+      "◆ Answer text here",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(transcriptOnly)).toBe(false);
+  });
+
+  // B3 mutation-catching: three code paths that must independently gate.
+  it("returns false when the ❯ + separator pair has no separator (separator-check mutation)", () => {
+    // Without the `if (!/^─{10,}/.test(...)) return false` guard, a pane with
+    // an empty ❯ not followed by a separator would incorrectly return true.
+    const noSepAfterPrompt = [
+      "  Muse Code 1.3.0",
+      "◆ Some answer",
+      "────────────────────────────────────────────",
+      "❯",
+      "  muse-spark-1.3-contributor · high · /tmp", // status bar, not separator
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(noSepAfterPrompt)).toBe(false);
+  });
+
+  it("returns false when the empty ❯ + separator pair is outside the bottom 8 rows (whole-pane-search mutation)", () => {
+    // Without the `rows.length - 8` limit, searching the whole pane could find
+    // an empty ❯ + separator pair in the conversation history (above the visible
+    // idle chrome) and wrongly claim the pane is idle.
+    const rows = [
+      "❯",                             // empty ❯ in history, row 0
+      "────────────────────────────────────────────", // separator, row 1
+      "  follow-up content",            // row 2
+      "  more content",                 // row 3
+      "  more content",                 // row 4
+      "  more content",                 // row 5
+      "  more content",                 // row 6
+      "  more content",                 // row 7
+      "  more content",                 // row 8 — 9 rows from the end, outside bottom-8
+      "  conversation line a",          // row 9 (bottom 8 starts here)
+      "  conversation line b",
+      "  conversation line c",
+      "  conversation line d",
+      "  conversation line e",
+      "  conversation line f",
+      "  conversation line g",
+      "  conversation line h",          // row 16 (last)
+    ];
+    // bottom 8 = rows 9-16: no empty ❯ + separator → must return false.
+    expect(backend.isPeriodicRedrawIdlePane(rows.join("\n"))).toBe(false);
+  });
+
+  it("returns false when the ❯ line carries draft text (draft-text mutation)", () => {
+    // Without the `\s*$` anchor in `/^❯\s*$/`, a typed-but-unsent draft followed
+    // by a separator would be accepted as the idle prompt — a delivery into a
+    // pane still holding unsubmitted text.
+    const draftInPrompt = [
+      "────────────────────────────────────────────",
+      "❯ unsent draft text",            // ❯ with content, not the idle prompt
+      "────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · high · /tmp",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(draftInPrompt)).toBe(false);
+  });
+});
+
 describe("MuseBackend launch command", () => {
   it("asks for both trust and approval, because either alone stalls", () => {
     // Verified live: `--disable-approval` on its own parks on the trust dialog.
