@@ -534,6 +534,12 @@ const DELIVERY_SPAWN_RACE_MAX_ROUNDS = 3;
  */
 const MUSE_DIRECT_RESUME_IDLE_BUDGET_MS = 10 * 60_000;
 const MUSE_DIRECT_RESUME_IDLE_POLL_MS = 5_000;
+/** Kiro can drop /quit while a turn is running; cancel it and wait for its
+ * verified prompt before asking the native process to exit. Each instance is
+ * bounded so a fleet update can stop all daemons in parallel. */
+const KIRO_STOP_IDLE_BUDGET_MS = 15_000;
+const KIRO_STOP_QUIT_GRACE_MS = 5_000;
+const KIRO_STOP_SIGTERM_GRACE_MS = 2_000;
 
 /**
  * Startup failed because the CLI's backend is unreachable (see backend-outage.ts).
@@ -2840,6 +2846,26 @@ export class Daemon extends EventEmitter {
     return true;
   }
 
+  /**
+   * Kiro drops `/quit` while a turn is running. Stop that turn first, then use
+   * the same delivery readiness gate that protects Enter from the busy pane.
+   * Returning false is fail-closed: the caller skips `/quit` and enters the
+   * bounded SIGTERM -> SIGKILL fallback instead of typing into an unknown pane.
+   */
+  private async drainBusyKiroForStop(windowId: string): Promise<boolean> {
+    if (this.backend?.binaryName !== "kiro-cli") return true;
+    const readiness = await this.paneReadinessForDelivery(windowId);
+    if (readiness === "ready") return true;
+    if (readiness !== "busy") return false;
+
+    const cancelKey = this.backend.getCancelKey?.() ?? "Escape";
+    const sent = await this.tmux?.sendSpecialKey(
+      cancelKey as "Enter" | "Escape" | "Up" | "Down" | "Right" | "Left" | "C-c" | "C-q",
+    );
+    if (!sent) return false;
+    return this.waitForPaneReadyForDelivery(windowId, KIRO_STOP_IDLE_BUDGET_MS);
+  }
+
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
     this.turnReplyGuard.reset();
@@ -2865,11 +2891,18 @@ export class Daemon extends EventEmitter {
       this.saveSessionId();
       this.healthCheckPaused = true;
       let killed = false;
-      const quitSent = await this.sendQuitSequence();
+      const windowId = this.tmux.getWindowId();
+      const kiroReady = windowId ? await this.drainBusyKiroForStop(windowId) : true;
+      const quitSent = kiroReady && await this.sendQuitSequence();
+      const quitGraceMs = this.backend?.binaryName === "kiro-cli"
+        ? KIRO_STOP_QUIT_GRACE_MS : 3_000;
+      const sigtermGraceMs = this.backend?.binaryName === "kiro-cli"
+        ? KIRO_STOP_SIGTERM_GRACE_MS : 1_000;
       if (quitSent) {
-        // Wait up to 3s for graceful exit, polling every 200ms. A healthy CLI
+        // Wait up to the backend's bounded graceful-exit window, polling every
+        // 200ms. A healthy CLI
         // exits within ~1s; a longer wait just delays the force-kill fallback.
-        for (let i = 0; i < 15; i++) {
+        for (let elapsed = 0; elapsed < quitGraceMs; elapsed += 200) {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
           if (!status || !status.alive) { killed = true; break; }
@@ -2877,11 +2910,11 @@ export class Daemon extends EventEmitter {
       }
       if (!killed) {
         this.logger.warn(
-          { quitSent },
-          "CLI did not exit gracefully within 3s — falling back to SIGTERM",
+          { quitSent, quitGraceMs },
+          "CLI did not exit gracefully within its bounded quit grace — falling back to SIGTERM",
         );
         await this.killProcessTree("SIGTERM");
-        for (let i = 0; i < 5; i++) {
+        for (let elapsed = 0; elapsed < sigtermGraceMs; elapsed += 200) {
           await new Promise(r => setTimeout(r, 200));
           const status = await this.tmux.getPaneStatus();
           if (!status || !status.alive) { killed = true; break; }
