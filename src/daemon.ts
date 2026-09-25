@@ -5117,6 +5117,14 @@ export class Daemon extends EventEmitter {
       || !(await this.isPaneReadyForDelivery(windowId))) return "unknown";
     try {
       const history = await this.tmux.capturePaneWithHistory(300);
+      // History includes the CURRENT input row. The earlier viewport capture
+      // and readiness probe may belong to an older frame: Kiro can finish a
+      // turn and expose our unsent typeahead between those reads. Judge both
+      // readiness and input residue on this same, final snapshot before its
+      // message id can count as a submitted transcript echo.
+      if (!prompt || !bottomRowIsReady(history, prompt)) return "unknown";
+      if (inputShowsPastedText(inputAreaText(history, prompt) ?? "", signature.value)
+        || pasteLeftInInput(history, prompt, formatted)) return "stranded";
       if (countOccurrences(history.replace(/\s+/g, ""), signature.value) > 0) return "submitted";
     } catch { /* missing history cannot establish a verdict */ }
     return "unknown";
@@ -5133,10 +5141,15 @@ export class Daemon extends EventEmitter {
     const deadline = Date.now() + KIRO_SUBMISSION_OBSERVE_MS;
     let retriedStrand = false;
     let unreadable = 0;
+    const current = () => !cancelled()
+      && !this.spawning
+      && this.spawnGeneration === pending.spawnGeneration
+      && this.getWindowId() === pending.windowId
+      && this.tmux?.getWindowId() === pending.windowId;
     for (;;) {
-      if (cancelled()) return false;
-      if (this.spawnGeneration !== pending.spawnGeneration) return false;
+      if (!current()) return false;
       const evidence = await this.kiroSubmissionEvidence(pending.windowId, formatted, pending.signature);
+      if (!current()) return false;
       if (evidence === "submitted") {
         if (status) this.emit("message_confirmed", status);
         return true;
@@ -5146,14 +5159,20 @@ export class Daemon extends EventEmitter {
         return this.failDelivery(verdict, status, "post-submit-proof", "pane-unreadable");
       }
       if (evidence === "stranded" && await this.isPaneReadyForDelivery(pending.windowId)) {
+        if (!current()) return false;
         if (retriedStrand) return this.failDelivery(verdict, status, "stranded-text-retry", "stranded");
         const retry = await this.paneWriteLock.run(async () => {
-          if (cancelled()) return "cancelled" as const;
+          if (!current()) return "cancelled" as const;
           const fresh = await this.kiroSubmissionEvidence(pending.windowId, formatted, pending.signature);
+          if (!current()) return "cancelled" as const;
           if (fresh === "submitted") return "submitted" as const;
           if (fresh !== "stranded" || !(await this.isPaneReadyForDelivery(pending.windowId))) return "changed" as const;
-          return await this.sendDeliveryEnter("stranded-text-retry") ? "sent" as const : "failed" as const;
+          if (!current()) return "cancelled" as const;
+          const sent = await this.sendDeliveryEnter("stranded-text-retry", current);
+          if (!current()) return "cancelled" as const;
+          return sent ? "sent" as const : "failed" as const;
         });
+        if (!current()) return false;
         if (retry === "cancelled") return false;
         if (retry === "submitted") {
           if (status) this.emit("message_confirmed", status);
@@ -5167,6 +5186,7 @@ export class Daemon extends EventEmitter {
         }
       }
       const alive = await this.tmux?.isWindowAlive().catch(() => false);
+      if (!current()) return false;
       if (!alive) return this.failDelivery(verdict, status, "post-submit-proof", "window-gone");
       if (Date.now() >= deadline) {
         // A live, busy pane and no positive strand are still ambiguous. The
@@ -5256,8 +5276,11 @@ export class Daemon extends EventEmitter {
    * precisely so the lock's scope is visible at the call site rather than being
    * an invariant maintained by comments.
    */
-  private async sendDeliveryEnter(phase: string): Promise<boolean> {
+  private async sendDeliveryEnter(phase: string, stillCurrent?: () => boolean): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
+    // A recovery Enter may have waited for a transient while cancel or spawn
+    // replaced the delivery. Check at the last point before the tmux write.
+    if (stillCurrent && !stillCurrent()) return false;
     const sent = await this.tmux!.sendSpecialKey("Enter");
     if (!sent) {
       this.logger.error({
