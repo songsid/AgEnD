@@ -66,6 +66,32 @@ describe("waitForPasteSettle", () => {
     expect(result!.settleMs).toBeLessThanOrEqual(650);
   });
 
+  it("holds Enter for the full min-settle window even when the paste renders quickly (Luna Reserve fix)", async () => {
+    // Mutation guard: removing `&& now >= fallbackDeadline` from the quiet-exit
+    // would let the 1750ms first-delivery window be bypassed — paste renders at
+    // 50ms, goes quiet at 550ms, Enter fires at 550ms instead of 1750ms, and
+    // the Luna Reserve compositor swallows it.
+    vi.useFakeTimers();
+    const control = fakeControl();
+    let result: Awaited<ReturnType<typeof waitForPasteSettle>> | undefined;
+    void waitForPasteSettle(control, "@1", Date.now(), 1_750).then(r => { result = r; });
+
+    // Paste renders immediately, then settles.
+    await vi.advanceTimersByTimeAsync(50); control.lastOutputAt = Date.now();
+
+    // At 650ms (50ms render + 600ms quiet): the quiet-threshold is met, but
+    // the 1750ms minimum window has NOT elapsed — Enter must not fire yet.
+    await vi.advanceTimersByTimeAsync(600);
+    expect(result).toBeUndefined();
+
+    // At 1750ms the minimum window elapses; Enter can go.
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(result).toBeDefined();
+    expect(result).toMatchObject({ observedPostPasteOutput: true, capHit: false, usedFallback: false });
+    expect(result!.settleMs).toBeGreaterThanOrEqual(1_750);
+    expect(result!.settleMs).toBeLessThanOrEqual(1_850);
+  });
+
   it("falls back to the fixed delay when the paste never visibly renders", async () => {
     vi.useFakeTimers();
     const control = fakeControl();

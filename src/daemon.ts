@@ -621,9 +621,13 @@ const SPAWN_SETTLE_MAX_WAIT_MS = 60_000;
  * prompt. A TUI that is still completing its first redraw can swallow Enter.
  *
  * Since the adaptive settle (see {@link waitForPasteSettle}) this value is the
- * *fallback* wait — it governs only deliveries where the pane's output cannot
- * be observed (no control mode, native-queue handoff, mid-wait reconnect, or a
- * paste that never visibly renders).
+ * *minimum* settle window for the first delivery — it prevents Enter from firing
+ * before the minimum elapses even when the paste's own render goes quiet early.
+ * For observed deliveries the quiet-exit path in waitForPasteSettle now checks
+ * `now >= fallbackDeadline`, so 1750ms governs every first delivery regardless
+ * of whether output is observed. For unobserved deliveries (no control mode,
+ * native-queue handoff, mid-wait reconnect, or a paste that never visibly
+ * renders) it is the flat fallback delay, same as before.
  */
 export class FirstDeliveryDelay {
   private readyAt = 0;
@@ -680,9 +684,15 @@ export interface PasteSettleResult {
  * So: watch `lastOutputAt` and send Enter only once the paste's own render has
  * been quiet for {@link PASTE_QUIET_MS}. Bounded both ways —
  *
- * - never earlier than the legacy fixed delay when the paste produces no
- *   observable output at all (`usedFallback`), so panes that don't echo keep
- *   their long-standing behaviour;
+ * - never earlier than `fallbackMs` from settle start: `fallbackMs` is a
+ *   **minimum** settle window, not merely a fallback. For first deliveries
+ *   (fallbackMs = 1750ms) the compositor may render quickly then go quiet at
+ *   ~550ms while still initialising — the minimum ensures Enter is held until
+ *   1750ms regardless of observed output. This applies to every backend's first
+ *   delivery after ready, not only codex/Luna Reserve. For normal deliveries
+ *   (fallbackMs = 500ms ≈ PASTE_QUIET_MS) the minimum adds at most a few ms
+ *   and is effectively unchanged. When the paste produces no observable output
+ *   at all (`usedFallback`), the same `fallbackMs` deadline governs;
  * - never later than {@link PASTE_SETTLE_CAP_MS} after the paste (`capHit`),
  *   so a chatty pane cannot stall delivery.
  *
@@ -713,7 +723,13 @@ export async function waitForPasteSettle(
     const last = client.getLastOutputAt(windowId);
     if (last != null && last > pasteStartedAt) {
       observed = true;
-      if (now - last >= PASTE_QUIET_MS) {
+      // Quiet for PASTE_QUIET_MS AND the minimum settle window has elapsed.
+      // The minimum (fallbackDeadline) is the key fix for Luna Reserve: the
+      // TUI's first compositor render produces output quickly then goes quiet,
+      // but Enter sent at the 500ms quiet point lands while the compositor is
+      // still initialising and is swallowed. Holding until fallbackDeadline
+      // (1750ms for first deliveries, 500ms for normal ones) eliminates the race.
+      if (now - last >= PASTE_QUIET_MS && now >= fallbackDeadline) {
         return { settleMs: now - settleStart, observedPostPasteOutput: true, capHit: false, usedFallback: false };
       }
     } else if (now >= fallbackDeadline) {
@@ -726,8 +742,11 @@ export async function waitForPasteSettle(
 
     // Sleep to the next decision point, at most one poll tick — so the normal
     // paths return at their exact deadlines instead of a poll-width late.
+    // When output has been observed but we are still inside the minimum window,
+    // sleep to the later of (last quiet deadline) and (fallback deadline) so
+    // the loop does not busy-spin between quiet and minimum.
     let wake = capDeadline;
-    if (last != null && last > pasteStartedAt) wake = Math.min(wake, last + PASTE_QUIET_MS);
+    if (last != null && last > pasteStartedAt) wake = Math.min(wake, Math.max(last + PASTE_QUIET_MS, fallbackDeadline));
     else wake = Math.min(wake, fallbackDeadline);
     await new Promise(r => setTimeout(r, Math.min(PASTE_SETTLE_POLL_MS, Math.max(1, wake - now))));
   }
@@ -4884,7 +4903,18 @@ export class Daemon extends EventEmitter {
         this.logger.warn({ phase, generation }, "Spawn changed during the input-availability probe — refusing to send Enter into the replacement pane");
         return false;
       }
-      if (probe.state === "clear") return true;
+      if (probe.state === "clear") {
+        // Re-arm the first-delivery delay when a transient was actually observed
+        // and then cleared, but ONLY from the pre-write phase. That phase runs
+        // before consume() in writeMessageToPane, so the re-arm benefits the
+        // current delivery's paste settle. Enter-path callers (initial-submit,
+        // retries) run after consume() — re-arming there would leave the flag
+        // for the NEXT unrelated delivery, which must not be slowed.
+        if (observedDescription !== null && phase === "pre-write") {
+          this.firstDeliveryDelay.recordReady();
+        }
+        return true;
+      }
       if (probe.state === "active" && observedDescription !== probe.transient.description) {
         observedDescription = probe.transient.description;
         this.logger.info({ phase, transient: probe.transient.description, generation },
