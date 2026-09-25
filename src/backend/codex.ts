@@ -51,6 +51,7 @@ function isCodexContextFooter(row: string): boolean {
   // /ctx honestly reports context unavailable from a truncated percentage.
   return /^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row);
 }
+
 const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
 const AGEND_MCP_CLEANUP_LOCK_STALE_MS = 30_000;
 const SQLITE_SIDECAR_RE = /-(?:wal|shm|journal)$/;
@@ -635,11 +636,16 @@ export class CodexBackend implements CliBackend {
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
 
+    // TOML allows quoted keys: `"status_line" = [...]` and `['tui']` are both
+    // legal. The regexes below accept an optional surrounding quote pair so that
+    // users who write their config with quoted keys still get context-remaining
+    // injected correctly. Both single and double TOML quotes are accepted.
+
     // Rule 1: any existing context item → don't touch anything.
-    if (/status_line\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
+    if (/["']?status_line["']?\s*=\s*\[[^\]]*context-(remaining|usage|used)[^\]]*\]/.test(content)) return;
 
     const ITEM = "context-remaining";
-    const arr = content.match(/status_line\s*=\s*\[([^\]]*)\]/);
+    const arr = content.match(/["']?status_line["']?\s*=\s*\[([^\]]*)\]/);
     if (arr) {
       // Rule 2b: prepend our item to the user's existing array (don't overwrite).
       // First position keeps "Context N% left" at the far left of the footer so a
@@ -650,8 +656,9 @@ export class CodexBackend implements CliBackend {
     } else {
       // Rule 2a: no status_line at all → add a minimal one.
       if (content.length && !content.endsWith("\n")) content += "\n";
-      if (/^\[tui\]/m.test(content)) {
-        content = content.replace(/^\[tui\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
+      // Also recognise quoted section headers: `["tui"]` and `['tui']`.
+      if (/^\[["']?tui["']?\]/m.test(content)) {
+        content = content.replace(/^\[["']?tui["']?\][^\n]*\n/m, h => `${h}status_line = ["${ITEM}"]\n`);
       } else {
         content += `\n[tui]\nstatus_line = ["${ITEM}"]\n`;
       }
