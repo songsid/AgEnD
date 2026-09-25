@@ -350,6 +350,21 @@ export class InstanceLifecycle {
   private static readonly MCP_AUTO_RESTART_COOLDOWN_MS = 15 * 60_000;
   /** instanceName → time of the last MCP-revival auto-restart. */
   private mcpAutoRestartAt = new Map<string, number>();
+  /**
+   * Per-instance tracking for model-capacity backoff retries (#905).
+   * Counts how many times "Selected model is at capacity" triggered a backoff
+   * restart within the sliding window; cleared implicitly when the window expires.
+   * Stored on the lifecycle (not the daemon) so the count survives daemon restarts.
+   */
+  private capacityBackoffAttempts = new Map<string, { count: number; lastAt: number }>();
+  /** Active backoff restart timers, keyed by instance name. One per instance max. */
+  private capacityBackoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** 30-minute window for capacity retry accounting. */
+  private static readonly CAPACITY_BACKOFF_WINDOW_MS = 30 * 60_000;
+  /** Delay before each retry attempt (30s / 60s / 120s). */
+  private static readonly CAPACITY_BACKOFF_DELAYS_MS = [30_000, 60_000, 120_000] as const;
+  /** Max retries before giving up and pausing. */
+  private static readonly CAPACITY_BACKOFF_MAX = 3;
 
   constructor(private ctx: LifecycleContext) {}
 
@@ -952,7 +967,9 @@ export class InstanceLifecycle {
         this.noteBackendOutage(name, data.message, notificationTarget);
       } else if (data.type === "auth_error") {
         if (notificationTarget) this.notifyAuthErrorOnce(name, data.message, notificationTarget);
-      } else if (notificationTarget) {
+      } else if (notificationTarget && data.action !== "backoff_restart") {
+        // backoff_restart notifications are handled in the action branch below
+        // with per-attempt context (attempt N/max, delay).
         this.notifyIncident(notificationTarget, "pty_error", t("inst.notification", emoji, name, incidentMessage, data.action));
       }
       this.ctx.webhookEmit("pty_error", name, { type: data.type, action: data.action, message: data.message });
@@ -972,6 +989,70 @@ export class InstanceLifecycle {
         // default (valid) model.
         this.ctx.restartSingleInstance(name, { freshStart: true }).catch(err =>
           this.ctx.logger.error({ err, name }, "pty_error restart failed"));
+      } else if (data.action === "backoff_restart") {
+        // Transient model capacity error (#905). The CLI already returned to its
+        // prompt (skipRecoveryWait: true in the error pattern), so no additional
+        // CLI-level recovery is needed. Wait, then restart to retry the session.
+        //
+        // Crash-loop isolation: restartSingleInstance (stop + start) creates a
+        // FRESH daemon with reset crashTimestamps/crashCount. The backoff counter
+        // lives here on the lifecycle, completely separate from the daemon's
+        // per-instance crash tracking.
+        //
+        // Quota/usage-limit isolation: this branch only fires for
+        // type:"model_error" action:"backoff_restart". The quota pause path
+        // (type:"quota" action:"pause") is a different branch below, unaffected.
+        const now = Date.now();
+
+        // B2: if a backoff timer is already pending for this instance, skip.
+        // Each daemon restart clears the old daemon's error cooldown, so the
+        // fresh daemon could detect the same stale capacity line in scrollback
+        // without a real new turn. A pending timer means we're already committed
+        // to retrying — don't schedule a second one or advance the counter early.
+        // NOTE: this only covers detections *while* the timer is pending. The
+        // timer deletes itself before calling restartSingleInstance, so a fresh
+        // daemon that re-renders the old capacity line after restart sees an
+        // empty map and counts it as a new attempt. That is a follow-up item.
+        if (this.capacityBackoffTimers.has(name)) {
+          this.ctx.logger.debug({ name }, "Capacity backoff already pending — skipping duplicate");
+          return;
+        }
+
+        const prev = this.capacityBackoffAttempts.get(name);
+        const windowOk = prev && now - prev.lastAt < InstanceLifecycle.CAPACITY_BACKOFF_WINDOW_MS;
+        const attempts = windowOk ? prev!.count : 0;
+
+        if (attempts >= InstanceLifecycle.CAPACITY_BACKOFF_MAX) {
+          // Exhausted retries — fall back to pause and notify.
+          this.ctx.logger.warn({ name, attempts }, "Model still at capacity after max retries — pausing");
+          const notificationTarget = this.ptyErrorNotificationTarget(name);
+          if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_exhausted", name, String(attempts)));
+          void this.pause(name)
+            .catch(err => this.ctx.logger.warn({ err, name }, "capacity-exhausted pause failed"))
+            .finally(() => { if (!this.isPaused(name)) this.daemons.get(name)?.requestPauseWhenIdle(); });
+        } else {
+          const delays = InstanceLifecycle.CAPACITY_BACKOFF_DELAYS_MS;
+          const delayMs = delays[Math.min(attempts, delays.length - 1)];
+          this.capacityBackoffAttempts.set(name, { count: attempts + 1, lastAt: now });
+          this.ctx.logger.info({ name, attempt: attempts + 1, delayMs }, "Model at capacity — backing off before restart");
+          const notificationTarget = this.ptyErrorNotificationTarget(name);
+          if (notificationTarget) this.notifyIncident(notificationTarget, "pty_error", t("inst.codex_capacity_backoff_retry", name, String(attempts + 1), String(InstanceLifecycle.CAPACITY_BACKOFF_MAX), String(Math.round(delayMs / 1000))));
+          // B1: store the timer so it can be cancelled if the user stops/pauses
+          // the instance or the fleet shuts down before the backoff fires.
+          const timer = setTimeout(() => {
+            this.capacityBackoffTimers.delete(name);
+            // Re-check instance state before restarting: user may have stopped,
+            // paused, or removed the instance during the backoff window.
+            if (!this.daemons.has(name) || this.isPaused(name) || this.ctx.isPlannedRestart()) {
+              this.ctx.logger.debug({ name }, "Capacity backoff fired but instance is gone/paused — skipping restart");
+              return;
+            }
+            this.ctx.restartSingleInstance(name).catch(err =>
+              this.ctx.logger.warn({ err, name }, "capacity backoff restart failed"));
+          }, delayMs);
+          timer.unref?.();
+          this.capacityBackoffTimers.set(name, timer);
+        }
       } else if (data.action === "pause") {
         // Previously unhandled, so an expired session kept receiving messages and
         // re-sending its whole context into a CLI that could only fail — wasted
@@ -1119,6 +1200,13 @@ export class InstanceLifecycle {
     if (isGeneralInstance(this.ctx.fleetConfig, name)) {
       throw new Error(GENERAL_PAUSE_ERROR);
     }
+    // B1: cancel any pending capacity backoff — a user-initiated pause should
+    // not be undone by a queued restart 30–120s later.
+    const pendingBackoff = this.capacityBackoffTimers.get(name);
+    if (pendingBackoff) {
+      clearTimeout(pendingBackoff);
+      this.capacityBackoffTimers.delete(name);
+    }
     const daemon = this.daemons.get(name);
     if (!daemon) {
       if (hasPausedMarker(this.ctx.getInstanceDir(name))) return;
@@ -1182,6 +1270,13 @@ export class InstanceLifecycle {
 
   async stop(name: string): Promise<void> {
     this.ctx.setTopicIcon(name, "remove");
+    // B1: cancel any pending capacity backoff timer so a stopped/removed
+    // instance is not restarted behind the user's back.
+    const pendingBackoff = this.capacityBackoffTimers.get(name);
+    if (pendingBackoff) {
+      clearTimeout(pendingBackoff);
+      this.capacityBackoffTimers.delete(name);
+    }
 
     const daemon = this.daemons.get(name);
     if (daemon) {

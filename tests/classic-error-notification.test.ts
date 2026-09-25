@@ -90,7 +90,7 @@ describe("PTY error notification targets", () => {
     );
   });
 
-  it("localizes a Codex capacity incident and pauses the affected instance", async () => {
+  it("localizes a Codex capacity incident and schedules a backoff restart (not immediate pause)", async () => {
     setLocale("zh-TW");
     const { attach, notifyInstanceTopic, ctx } = makeLifecycle([]);
     (ctx as any).fleetConfig.instances.worker.backend = "codex";
@@ -100,13 +100,15 @@ describe("PTY error notification targets", () => {
       .find(({ pattern }) => pattern.test("⚠ Selected model is at capacity. Please try a different model."));
 
     expect(capacity).toBeDefined();
+    expect(capacity!.action).toBe("backoff_restart");
     daemon.emit("pty_error", { name: "worker", ...capacity });
 
-    await vi.waitFor(() => expect(daemon.requestPauseWhenIdle).toHaveBeenCalledTimes(1));
-    expect(notifyInstanceTopic).toHaveBeenCalledWith(
+    // backoff_restart schedules a restart after delay, not an immediate pause.
+    await vi.waitFor(() => expect(notifyInstanceTopic).toHaveBeenCalledWith(
       "worker",
-      expect.stringMatching(/服務擁擠.*手動重送訊息.*\/model/s),
-    );
+      expect.stringMatching(/擁擠|capacity/i),  // zh-TW: 擁擠, en: capacity
+    ));
+    expect(daemon.requestPauseWhenIdle).not.toHaveBeenCalled();
     expect((ctx as any).clearCancelButton).toHaveBeenCalledWith("worker");
   });
 
