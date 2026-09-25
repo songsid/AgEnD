@@ -251,7 +251,9 @@ describe("Daemon", () => {
 
       expect(sendSpecialKey.mock.calls).toEqual([["C-c"]]);
       expect(sendKeys).not.toHaveBeenCalled();
-      expect(killProcessTree.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+      // Signal order is the contract; each call also names why (#927).
+      expect(killProcessTree.mock.calls.map((c: unknown[]) => c[0])).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(killProcessTree.mock.calls.every((c: unknown[]) => typeof c[1] === "string" && (c[1] as string).length > 0)).toBe(true);
       expect(tmux.killWindow).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
@@ -288,7 +290,9 @@ describe("Daemon", () => {
       await vi.runAllTimersAsync();
       await stopping;
 
-      expect(killProcessTree.mock.calls).toEqual([["SIGTERM"], ["SIGKILL"]]);
+      // Signal order is the contract; each call also names why (#927).
+      expect(killProcessTree.mock.calls.map((c: unknown[]) => c[0])).toEqual(["SIGTERM", "SIGKILL"]);
+      expect(killProcessTree.mock.calls.every((c: unknown[]) => typeof c[1] === "string" && (c[1] as string).length > 0)).toBe(true);
       expect(tmux.killWindow).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
