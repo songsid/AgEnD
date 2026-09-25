@@ -275,6 +275,70 @@ function codexTrustVariantActive(pane: string): boolean {
       || /^\s*[›❯>]?\s*\d+\.\s+\S/.test(rows[last]));
 }
 
+/**
+ * Structural helpers for the codex usage-limit selection menu (#945).
+ *
+ * The real codex 0.156.1 dialog (captured live) states that codex has
+ * ALREADY switched to Luna Reserve and offers:
+ *
+ *   • Automatically switched to Luna Reserve xhigh due to usage limits.
+ *     You're now using Luna, a faster model for simpler tasks.
+ *     Use your reset to continue using the most advanced models, or
+ *     wait for usage to reset after 08:00 on 27 Sep.
+ *   › 1. Reset usage
+ *     2. Add Credits
+ *     3. Continue with Luna Reserve
+ *     Press enter to confirm or esc to continue working
+ *
+ * The SAFE key is **Escape** ("esc to continue working"), which dismisses
+ * the dialog and keeps the already-active Luna Reserve session. Escape is
+ * sent via sendSpecialKey, NEVER via pasteText (which would add an implicit
+ * Enter that could confirm option 1 = Reset usage).
+ *
+ * Design:  keys: ["Escape"]  + verifyAfterKeys: true (menu must vanish).
+ * No confirmBeforeEnter / keysAfterConfirm needed: Escape cannot select any
+ * numbered option — it is handled by sendSpecialKey, never by paste+Enter.
+ */
+
+/** MUST match the exact hint row text to prevent false positives. */
+const USAGE_LIMIT_ESC_HINT = /^\s*Press enter to confirm or esc to continue working\s*$/i;
+/** Option-set that appears in this specific menu (exact wording). */
+const USAGE_LIMIT_OPT1 = /^\s*[›❯>]?\s*1\.\s+Reset usage\b/i;
+const USAGE_LIMIT_OPT3 = /^\s*[›❯>]?\s*3\.\s+Continue with Luna Reserve\b/i;
+
+/**
+ * True when the usage-limit selection menu is the **current** interactive
+ * region of the pane (not a historical transcript copy).
+ *
+ * Structural requirements (all must hold):
+ *   - Hint row "Press enter to confirm or esc to continue working"
+ *   - Options 1 and 3 present in the bottom region (with exact text)
+ *   - NOT followed by the Codex idle compositor (Context footer / Ask Codex row)
+ */
+function codexUsageLimitMenuVisible(pane: string): boolean {
+  const rows = pane.replace(/\r/g, "").split("\n");
+  let last = rows.length - 1;
+  while (last >= 0 && rows[last].trim() === "") last--;
+  if (last < 0) return false;
+
+  // The hint row "Press enter to confirm or esc to continue working" must be last.
+  if (!USAGE_LIMIT_ESC_HINT.test(rows[last])) return false;
+
+  // The three options must appear in the bottom region (within 10 rows of hint).
+  const region = rows.slice(Math.max(0, last - 10), last);
+  const hasOpt1 = region.some(r => USAGE_LIMIT_OPT1.test(r));
+  const hasOpt3 = region.some(r => USAGE_LIMIT_OPT3.test(r));
+  if (!hasOpt1 || !hasOpt3) return false;
+
+  // Guard: if the Codex compositor (idle prompt + Context footer) is at the
+  // bottom, this is scrollback, not the live menu.
+  const tail = region.join("\n");
+  if (/[›>]\s*Ask Codex to do anything\b/i.test(tail)) return false;
+  if (isCodexContextFooter(rows[last])) return false;
+
+  return true;
+}
+
 /** Rate-switch prompts are economic choices, not a fixed keyboard position. */
 function codexRateSwitchVisible(pane: string): boolean {
   const rows = pane.replace(/\r/g, "").split("\n");
@@ -1097,6 +1161,35 @@ export class CodexBackend implements CliBackend {
     };
   }
 
+  private usageLimitLunaReserveDialog(): RuntimeDialog {
+    // The real codex usage-limit dialog states codex has ALREADY switched to
+    // Luna Reserve and labels Escape as "continue working". Pressing Escape via
+    // sendSpecialKey is the ONLY safe key:
+    //
+    //   • Escape is sent via sendSpecialKey — never via pasteText (which adds
+    //     an implicit bracketed-paste Enter that could confirm Reset usage).
+    //   • A digit pasted via pasteText would leave the cursor on option 1 and
+    //     its own implicit Enter would fire Reset usage BEFORE any confirmation
+    //     gate. This path is explicitly NOT used.
+    //
+    // verifyAfterKeys: true — confirm the menu is gone after Escape.
+    // No confirmBeforeEnter / keysAfterConfirm: Escape needs no confirm gate.
+    return {
+      pattern: /Press enter to confirm or esc to continue working/i,
+      keys: ["Escape"],
+      description: "Codex usage limit — pressing Escape to continue with Luna Reserve",
+      blocksDelivery: true,
+      inputBlocked: true,
+      isActive: codexUsageLimitMenuVisible,
+      verifyAfterKeys: true,
+      autoResolutionKey: "codex-usage-limit-luna-reserve",
+      postDismissNotice: {
+        text: t("inst.codex_usage_limit_luna_reserve", ""),  // instance name injected by daemon
+        label: "codex-usage-limit-selected",
+      },
+    };
+  }
+
   private unknownSelectionHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*[›❯>]\s+\S/m,
@@ -1126,6 +1219,7 @@ export class CodexBackend implements CliBackend {
         isActive: codexRateSwitchVisible,
       },
       this.updatePickerDialog(),
+      this.usageLimitLunaReserveDialog(),
       this.unknownSelectionHoldDialog(),
     ];
   }

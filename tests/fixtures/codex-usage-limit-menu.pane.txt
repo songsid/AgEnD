@@ -1,0 +1,14 @@
+  ╭────────────────────────────────────────────────╮
+  │ >_ OpenAI Codex (v0.156.1)                     │
+  │                                                │
+  │ model:     GPT-6-Luna xhigh   /model to change │
+  │ directory: ~/Projects/app                      │
+  ╰────────────────────────────────────────────────╯
+
+• Automatically switched to Luna Reserve xhigh due to usage limits.
+  You're now using Luna, a faster model for simpler tasks.
+  Use your reset to continue using the most advanced models, or wait for usage to reset after 08:00 on 27 Sep.
+› 1. Reset usage
+  2. Add Credits
+  3. Continue with Luna Reserve
+  Press enter to confirm or esc to continue working
