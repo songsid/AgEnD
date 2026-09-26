@@ -82,13 +82,15 @@ describe("CodexBackend.refreshModelCatalog", () => {
     // has to land there — refreshing the shared one would change nothing it shows.
     stubCodex("refetch");
     const instanceDir = join(root, "instance");
-    mkdirSync(join(instanceDir, "codex-home"), { recursive: true });
-    writeFileSync(join(instanceDir, "codex-home", "models_cache.json"), catalog("gpt-5.6-sol"));
+    mkdirSync(instanceDir, { recursive: true });
     const backend = new CodexBackend(instanceDir);
+    const codexHome = (backend as any).isolatedCodexHome as string;
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(join(codexHome, "models_cache.json"), catalog("gpt-5.6-sol"));
 
     await backend.refreshModelCatalog();
 
-    expect(recorded()[0].home).toBe(join(instanceDir, "codex-home"));
+    expect(recorded()[0].home).toBe(codexHome);
     expect((await backend.listModels()).map(m => m.id)).toContain("gpt-6-astra");
   });
 

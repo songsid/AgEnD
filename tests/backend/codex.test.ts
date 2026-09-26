@@ -52,7 +52,8 @@ describe("CodexBackend", () => {
     it("always uses resume --last (resumes latest session for CWD)", () => {
       const backend = new CodexBackend(TEST_DIR);
       const cmd = backend.buildCommand(makeConfig());
-      expect(cmd).toContain(`CODEX_HOME='${join(TEST_DIR, "codex-home")}'`);
+      // CODEX_HOME is now a short path under ~/.agend/cx/<hash>/ (not instanceDir/codex-home)
+      expect(cmd).toMatch(/CODEX_HOME='[^']+\/cx\/[0-9a-f]{8}'/);
       expect(cmd).toContain("resume --last");
       expect(cmd).toContain("--dangerously-bypass-approvals-and-sandbox");
       expect(cmd).toContain("-c check_for_update_on_startup=false");
