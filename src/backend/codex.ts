@@ -18,6 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
+import { createHash } from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { basename, dirname, join, resolve } from "node:path";
@@ -461,7 +462,103 @@ export class CodexBackend implements CliBackend {
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
     this.sharedCodexHome = resolve(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"));
-    this.isolatedCodexHome = resolve(instanceDir, "codex-home");
+    this.isolatedCodexHome = CodexBackend.resolveShortHome(instanceDir);
+  }
+
+  /**
+   * Compute and (on first call for an existing instance) migrate to a SHORT
+   * persistent CODEX_HOME under `~/.agend/cx/<8-char-hash>/`.
+   *
+   * Background (#953): codex 0.157.0 added `app-server-control.sock` under
+   * CODEX_HOME. For instances with long `-t<topic_id>` suffixes the full path
+   * exceeds the Unix socket SUN_LEN (~107 chars). codex canonicalises the path
+   * before binding the socket, so a symlink workaround does not help — the real
+   * path must be short.
+   *
+   * Migration steps (each is idempotent; half-completed states self-heal):
+   *  1. If shortHome does not exist AND legacyHome is a real directory (not a
+   *     symlink) → atomic renameSync. On EXDEV or any other error, fall back
+   *     safely: keep using the legacy long path (instance can still start, just
+   *     without the short-path fix).
+   *  2. If shortHome exists but legacyHome is missing → recreate the backward-
+   *     compat symlink (self-heal for rename-succeeded-but-symlink-failed crash).
+   *  3. If both shortHome and legacyHome (as symlink) exist → nothing to do.
+   *  4. New instance (no legacyHome) → create shortHome directly.
+   *
+   * Fail-safe guarantee: migration failure must never make the instance worse.
+   * The caller always receives a valid path it can use as CODEX_HOME.
+   */
+  /** Exposed for fleet-manager to delete the short home on instance removal. */
+  static shortHomeFor(instanceDir: string): string {
+    // Resolve to canonical form before hashing so trailing slashes or
+    // non-canonical paths don't produce a different (orphaned) home.
+    const canonical = resolve(instanceDir);
+    const hash = createHash("sha256").update(canonical).digest("hex").slice(0, 8);
+    return join(getAgendHome(), "cx", hash);
+  }
+
+  private static resolveShortHome(instanceDir: string): string {
+    const shortHome = CodexBackend.shortHomeFor(instanceDir);
+    const shortBase = join(getAgendHome(), "cx");
+    const canonical = resolve(instanceDir);
+    const legacyHome = resolve(instanceDir, "codex-home");
+
+    // Only migrate/create when the instance directory itself exists.
+    // Constructing CodexBackend for a non-existent dir (cli-env probes, test
+    // backends that never ran) must not litter ~/.agend/cx/ with orphan dirs.
+    if (!existsSync(canonical)) return shortHome;
+
+    const legacyExists = existsSync(legacyHome);
+    const legacyIsRealDir = legacyExists && !lstatSync(legacyHome).isSymbolicLink();
+    const shortExists = existsSync(shortHome);
+
+    if (!shortExists) {
+      mkdirSync(shortBase, { recursive: true });
+      if (legacyIsRealDir) {
+        // Attempt atomic rename. Requires same device; fails with EXDEV otherwise.
+        try {
+          renameSync(legacyHome, shortHome);
+          // Log the one-time migration for observability.
+          try {
+            const logPath = join(shortBase, `${shortHome.split("/").at(-1)}.migrated`);
+            writeFileSync(logPath, `${new Date().toISOString()} migrated from ${legacyHome}\n`);
+          } catch { /* log failure is non-fatal */ }
+        } catch (err) {
+          // EXDEV (cross-device) or any other rename failure → fail-safe:
+          // fall back to the legacy long path so the instance still works.
+          // The socket-length bug persists for this instance but no data is lost.
+          const code = (err as NodeJS.ErrnoException).code ?? "unknown";
+          try {
+            const warnPath = join(shortBase, `${shortHome.split("/").at(-1)}.migration-failed`);
+            writeFileSync(warnPath,
+              `${new Date().toISOString()} rename failed (${code}): ${(err as Error).message}\n`
+              + `legacy path remains in use: ${legacyHome}\n`);
+          } catch { /* warn log failure is also non-fatal */ }
+          // Return legacy long path so the instance starts (socket may still fail
+          // on 0.157.0 for long names, but no data is lost or corrupted).
+          return legacyHome;
+        }
+      } else if (!legacyExists) {
+        // New instance — no data to migrate.
+        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
+      }
+      // If legacyExists but is already a symlink: shortHome was deleted externally
+      // while the symlink still points to it. Re-create shortHome as a fresh dir.
+      if (!existsSync(shortHome)) {
+        mkdirSync(shortHome, { recursive: true, mode: 0o700 });
+      }
+    }
+
+    // Backward-compat symlink: instanceDir/codex-home → shortHome.
+    // Also serves as self-heal: if a previous run renamed successfully but
+    // crashed before creating the symlink, we recreate it here.
+    if (!legacyExists || legacyIsRealDir) {
+      // legacyIsRealDir means rename just happened (now shortHome exists, legacyHome gone).
+      // !legacyExists means new instance or symlink was deleted — create it.
+      try { symlinkSync(shortHome, legacyHome); } catch { /* race or already exists */ }
+    }
+
+    return shortHome;
   }
 
   supportsQueuedInput(): boolean {

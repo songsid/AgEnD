@@ -6861,6 +6861,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     }
 
+    // Capture instance dir BEFORE lifecycle.remove, which deletes the instance
+    // from fleetConfig. (The backend would be unresolvable afterwards.)
+    const instanceDirToClean = this.getInstanceDir(name);
+
     await this.lifecycle.remove(name, authorization);
 
     // Clean up per-instance tracking maps so they don't grow unbounded
@@ -6871,10 +6875,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Clean up statusline watcher + instance directory
     this.statuslineWatcher.unwatch(name);
+    // instanceDirToClean and effectiveBackend are captured before lifecycle.remove
+    // (which deletes the instance from fleetConfig).
     try {
-      rmSync(this.getInstanceDir(name), { recursive: true, force: true });
+      rmSync(instanceDirToClean, { recursive: true, force: true });
     } catch (err) {
       this.logger.debug({ err, name }, "Instance dir cleanup failed");
+    }
+    // Remove the codex short home (~/.agend/cx/<hash>/) unconditionally.
+    // (#953). CodexBackend.shortHomeFor is a pure path computation; the existsSync
+    // guard makes this a no-op for instances that never used a short home (non-codex,
+    // or codex instances on a short-enough path). Unconditional also covers instances
+    // whose backend was switched away from codex before deletion — they still have a
+    // short home that would otherwise be inherited by a later same-name instance.
+    try {
+      const { CodexBackend } = await import("./backend/codex.js");
+      const shortHome = CodexBackend.shortHomeFor(instanceDirToClean);
+      if (existsSync(shortHome)) rmSync(shortHome, { recursive: true, force: true });
+    } catch (err) {
+      this.logger.debug({ err, name }, "Codex short home cleanup failed");
     }
   }
 
