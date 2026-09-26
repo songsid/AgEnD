@@ -647,9 +647,13 @@ export class TopicCommands {
       : this.ctx.modelDisplayForInstance?.(instanceName);
     const modelLine = modelDisplay ? `\n${t("ctx.model", modelDisplay)}` : "";
     const effortLine = this.effortLineFor(instanceName, backend);
+    const autoPauseLine = this.autoPauseLineFor(instanceName);
+    const pausedLine = (this.ctx.getInstanceStatus?.(instanceName) ?? "running") === "paused"
+      ? `\n${t("ctx.paused")}`
+      : "";
     return context != null
-      ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}${effortLine}\n${t("ctx.instance", instanceName)}`
-      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}${modelLine}${effortLine}\n${t("ctx.instance", instanceName)}`;
+      ? `${contextLine}\n${t("ctx.backend", backend)}${modelLine}${effortLine}${autoPauseLine}${pausedLine}\n${t("ctx.instance", instanceName)}`
+      : `${t("ctx.unavailable")}\n${t("ctx.backend", backend)}${modelLine}${effortLine}${autoPauseLine}${pausedLine}\n${t("ctx.instance", instanceName)}`;
   }
 
   /**
@@ -676,6 +680,35 @@ export class TopicCommands {
     const effort = this.ctx.resolveInstanceEffort?.(instanceName)?.effort;
     if (!effort) return "";
     return `\n${t(strategy === "runtime" ? "ctx.effort_configured" : "ctx.effort", effort)}`;
+  }
+
+  /**
+   * The `/ctx` auto-pause line: effective value, both fleet-topic and Classic instances.
+   *
+   * Fleet-topic:   instance override → fleet defaults → 0 (disabled)
+   * Classic:       classicChannels.getAutoPauseAfterByInstance → fleet defaults → 0
+   *
+   * Unit: auto_pause_after is already in minutes. 0 = disabled.
+   */
+  private autoPauseLineFor(instanceName: string): string {
+    // General is the dispatcher — it must stay warm and is never auto-paused
+    // regardless of the configured value (same rule as daemon.ts:1433).
+    if (isGeneralInstance(this.ctx.fleetConfig, instanceName)) {
+      return `\n${t("ctx.auto_pause_disabled")}`;
+    }
+    const fleetDefault = this.ctx.fleetConfig?.defaults?.auto_pause_after;
+    let minutes: number | undefined;
+    if (this.ctx.classicChannels?.getChannelIdByInstance(instanceName)) {
+      // Classic instance: channel → classicBot defaults → fleet defaults
+      minutes = this.ctx.classicChannels.getAutoPauseAfterByInstance?.(instanceName, fleetDefault) ?? fleetDefault ?? 0;
+    } else {
+      // Fleet-topic instance: instance override → fleet defaults → 0
+      minutes = this.ctx.fleetConfig?.instances[instanceName]?.auto_pause_after
+        ?? fleetDefault
+        ?? 0;
+    }
+    if (!minutes) return `\n${t("ctx.auto_pause_disabled")}`;
+    return `\n${t("ctx.auto_pause", `${minutes}m`)}`;
   }
 
   /** Send the backend-appropriate compact command to an instance's tmux pane */
