@@ -18,6 +18,7 @@ import { CodexBackend } from "../src/backend/codex.js";
 type MockDaemon = EventEmitter & {
   requestPauseWhenIdle: ReturnType<typeof vi.fn>;
   isCodexLivePane?: ReturnType<typeof vi.fn>;
+  getErrorPatternOccurrenceCount: ReturnType<typeof vi.fn>;
 };
 
 function makeLifecycle(overrides: Partial<LifecycleContext> = {}) {
@@ -54,6 +55,7 @@ function makeLifecycle(overrides: Partial<LifecycleContext> = {}) {
   const daemon: MockDaemon = Object.assign(new EventEmitter(), {
     requestPauseWhenIdle: vi.fn(),
     isCodexLivePane: vi.fn(async () => false),
+    getErrorPatternOccurrenceCount: vi.fn(() => 2),
   });
   lc.attachIncidentHandlers("codex-inst", daemon as any);
   // Register the daemon in the map so timer callback finds it alive
@@ -62,12 +64,13 @@ function makeLifecycle(overrides: Partial<LifecycleContext> = {}) {
   return { lc, daemon, notifyInstanceTopic, restartSingleInstance, clearCancelButton, pause };
 }
 
-function emitCapacity(daemon: MockDaemon) {
+function emitCapacity(daemon: EventEmitter, extra: Record<string, unknown> = {}) {
   daemon.emit("pty_error", {
     name: "codex-inst",
     type: "model_error",
     action: "backoff_restart",
     message: "Codex model at capacity",
+    ...extra,
   });
 }
 
@@ -96,6 +99,29 @@ describe("codex model-capacity backoff (#905)", () => {
     expect(capacityPattern!.action).toBe("backoff_restart");
     expect(capacityPattern!.type).toBe("model_error");
     expect(capacityPattern!.skipRecoveryWait).toBe(true);
+  });
+
+  it("transfers only Codex backoff occurrence baselines to its replacement daemon", async () => {
+    const { lc, daemon } = makeLifecycle();
+    const pattern = /Selected model is at capacity/;
+    emitCapacity(daemon, { pattern });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(daemon.getErrorPatternOccurrenceCount).toHaveBeenCalledWith("model_error", pattern);
+    const saved = (lc as any).capacityBackoffBaselines.get("codex-inst");
+    expect(saved).toEqual({ pattern, count: 2 });
+
+    const seed = vi.fn();
+    (lc as any).applyCapacityBackoffBaseline("codex-inst", "codex", {
+      seedErrorPatternOccurrenceCount: seed,
+    });
+    expect(seed).toHaveBeenCalledWith("model_error", pattern, 2);
+
+    const otherBackendSeed = vi.fn();
+    (lc as any).applyCapacityBackoffBaseline("codex-inst", "kiro-cli", {
+      seedErrorPatternOccurrenceCount: otherBackendSeed,
+    });
+    expect(otherBackendSeed).not.toHaveBeenCalled();
   });
 
   it("first capacity error schedules a restart after 30s, not an immediate pause", async () => {

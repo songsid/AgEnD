@@ -1393,6 +1393,17 @@ export class Daemon extends EventEmitter {
     return `${ep.type}:${ep.pattern.source}`;
   }
 
+  /** Read the occurrence baseline so a lifecycle-owned restart can carry it forward. */
+  getErrorPatternOccurrenceCount(type: ErrorPattern["type"], pattern: RegExp): number {
+    return this.lastErrorCount.get(`${type}:${pattern.source}`) ?? 0;
+  }
+
+  /** Seed a replacement daemon with an already-reported pattern count. */
+  seedErrorPatternOccurrenceCount(type: ErrorPattern["type"], pattern: RegExp, count: number): void {
+    if (!Number.isSafeInteger(count) || count <= 0) return;
+    this.lastErrorCount.set(`${type}:${pattern.source}`, count);
+  }
+
   /**
    * Undo the auth suspicion a pattern match armed, once the backend's token-free
    * probe has said the credentials are fine.

@@ -950,6 +950,37 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual(["Codex monthly limit: less than 5% left"]);
   });
 
+  it("carries a Codex capacity occurrence baseline across daemon replacement (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const patterns = backend.getErrorPatterns!();
+    const capacity = patterns.find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const stale = "⚠ Selected model is at capacity. Please try a different model.";
+    const first = new Daemon("test-capacity-baseline", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
+    const oldErrors: unknown[] = [];
+    first.on("pty_error", error => oldErrors.push(error));
+
+    (first as any).evaluateErrorPatterns(stale, patterns, /NEVER_READY/, 1_000_000);
+    expect(oldErrors).toHaveLength(1);
+    const count = first.getErrorPatternOccurrenceCount("model_error", capacity!.pattern);
+    expect(count).toBe(1);
+
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, count);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    (replacement as any).evaluateErrorPatterns(stale, replacementBackend.getErrorPatterns!(), /NEVER_READY/, 1_000_100);
+    expect(newErrors, "old scrollback line must not burn a second backoff attempt").toHaveLength(0);
+
+    // A genuinely new occurrence appended after restart increments the count
+    // beyond the transferred baseline and still triggers normal backoff.
+    (replacement as any).evaluateErrorPatterns(`${stale}\n${stale}`, replacementBackend.getErrorPatterns!(), /NEVER_READY/, 1_000_200);
+    expect(newErrors).toHaveLength(1);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(2);
+  });
+
   it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {
     const messages: string[] = [];
     const actions: string[] = [];

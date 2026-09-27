@@ -185,6 +185,8 @@ export interface IncidentEventSource {
   requestPauseWhenIdle(): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
   isCodexLivePane?(): Promise<boolean>;
+  /** Existing occurrence count used to preserve Codex capacity history on restart. */
+  getErrorPatternOccurrenceCount?(type: "model_error", pattern: RegExp): number;
   /** Present on real daemons; hang buttons attach only when it returns one. */
   getHangDetector?(): { on(event: string, handler: (...args: any[]) => void): unknown } | null;
 }
@@ -360,6 +362,10 @@ export class InstanceLifecycle {
   private capacityBackoffAttempts = new Map<string, { count: number; lastAt: number }>();
   /** Active backoff restart timers, keyed by instance name. One per instance max. */
   private capacityBackoffTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** Old Codex capacity rows to baseline in the replacement daemon (#949). */
+  private capacityBackoffBaselines = new Map<string, { pattern: RegExp; count: number }>();
+  /** Set only while a scheduled capacity retry is stopping/replacing its daemon. */
+  private capacityBackoffRestarting = new Set<string>();
   /** 30-minute window for capacity retry accounting. */
   private static readonly CAPACITY_BACKOFF_WINDOW_MS = 30 * 60_000;
   /** Delay before each retry attempt (30s / 60s / 120s). */
@@ -368,6 +374,13 @@ export class InstanceLifecycle {
   private static readonly CAPACITY_BACKOFF_MAX = 3;
 
   constructor(private ctx: LifecycleContext) {}
+
+  /** Seed only the Codex daemon replacing a scheduled capacity retry. */
+  private applyCapacityBackoffBaseline(name: string, backendName: string, daemon: Daemon): void {
+    if (backendName !== "codex") return;
+    const baseline = this.capacityBackoffBaselines.get(name);
+    if (baseline) daemon.seedErrorPatternOccurrenceCount("model_error", baseline.pattern, baseline.count);
+  }
 
   /**
    * Report an incident to the user — unless the fleet is deliberately going
@@ -871,7 +884,15 @@ export class InstanceLifecycle {
       await this.ctx.notifyInteractivePrompt(name, data.kind);
     }, this.ctx.logger, `daemon.interactive_prompt[${name}]`));
 
-    daemon.on("pty_error", safeHandler(async (data: { name: string; type: string; action: string; message: string; fleetWide?: boolean; verifyQuota?: boolean }) => {
+    daemon.on("pty_error", safeHandler(async (data: {
+      name: string;
+      type: string;
+      action: string;
+      message: string;
+      fleetWide?: boolean;
+      verifyQuota?: boolean;
+      pattern?: RegExp;
+    }) => {
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
@@ -1005,15 +1026,21 @@ export class InstanceLifecycle {
         // (type:"quota" action:"pause") is a different branch below, unaffected.
         const now = Date.now();
 
+        // Preserve the old daemon's count baseline so its capacity row in
+        // resumed scrollback is not counted as a fresh attempt (#949). The
+        // replacement still sees later appended rows as new occurrences.
+        if (this.backendOf(name) === "codex" && data.type === "model_error" && data.pattern instanceof RegExp) {
+          const count = daemon.getErrorPatternOccurrenceCount?.(data.type, data.pattern) ?? 0;
+          if (Number.isSafeInteger(count) && count > 0) {
+            this.capacityBackoffBaselines.set(name, { pattern: data.pattern, count });
+          }
+        }
+
         // B2: if a backoff timer is already pending for this instance, skip.
         // Each daemon restart clears the old daemon's error cooldown, so the
         // fresh daemon could detect the same stale capacity line in scrollback
         // without a real new turn. A pending timer means we're already committed
         // to retrying — don't schedule a second one or advance the counter early.
-        // NOTE: this only covers detections *while* the timer is pending. The
-        // timer deletes itself before calling restartSingleInstance, so a fresh
-        // daemon that re-renders the old capacity line after restart sees an
-        // empty map and counts it as a new attempt. That is a follow-up item.
         if (this.capacityBackoffTimers.has(name)) {
           this.ctx.logger.debug({ name }, "Capacity backoff already pending — skipping duplicate");
           return;
@@ -1046,10 +1073,19 @@ export class InstanceLifecycle {
             // paused, or removed the instance during the backoff window.
             if (!this.daemons.has(name) || this.isPaused(name) || this.ctx.isPlannedRestart()) {
               this.ctx.logger.debug({ name }, "Capacity backoff fired but instance is gone/paused — skipping restart");
+              this.capacityBackoffBaselines.delete(name);
               return;
             }
-            this.ctx.restartSingleInstance(name).catch(err =>
-              this.ctx.logger.warn({ err, name }, "capacity backoff restart failed"));
+            this.capacityBackoffRestarting.add(name);
+            this.ctx.restartSingleInstance(name)
+              .catch(err => {
+                this.capacityBackoffBaselines.delete(name);
+                this.ctx.logger.warn({ err, name }, "capacity backoff restart failed");
+              })
+              .finally(() => {
+                this.capacityBackoffRestarting.delete(name);
+                if (!this.daemons.has(name)) this.capacityBackoffBaselines.delete(name);
+              });
           }, delayMs);
           timer.unref?.();
           this.capacityBackoffTimers.set(name, timer);
@@ -1130,11 +1166,13 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    this.applyCapacityBackoffBaseline(name, backendName, daemon);
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
     });
     await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
+    this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
 
 
@@ -1209,6 +1247,9 @@ export class InstanceLifecycle {
     if (pendingBackoff) {
       clearTimeout(pendingBackoff);
       this.capacityBackoffTimers.delete(name);
+      this.capacityBackoffBaselines.delete(name);
+    } else if (!this.capacityBackoffRestarting.has(name)) {
+      this.capacityBackoffBaselines.delete(name);
     }
     const daemon = this.daemons.get(name);
     if (!daemon) {
@@ -1279,6 +1320,9 @@ export class InstanceLifecycle {
     if (pendingBackoff) {
       clearTimeout(pendingBackoff);
       this.capacityBackoffTimers.delete(name);
+      this.capacityBackoffBaselines.delete(name);
+    } else if (!this.capacityBackoffRestarting.has(name)) {
+      this.capacityBackoffBaselines.delete(name);
     }
 
     const daemon = this.daemons.get(name);
