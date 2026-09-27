@@ -119,6 +119,10 @@ export interface ChannelAdapter extends EventEmitter {
    * threads are their own channel; Telegram reactions key on the supergroup
    * chat_id and ignore it). */
   react(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void>;
+  /** Remove the bot's own reaction from a message. Optional so third-party
+   * adapters keep working — callers fall back to a plain add when absent.
+   * threadId follows the same routing rule as react. */
+  unreact?(chatId: string, messageId: string, emoji: string, threadId?: string): Promise<void>;
 
   sendApproval(
     prompt: PermissionPrompt,

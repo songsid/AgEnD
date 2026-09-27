@@ -5423,8 +5423,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Wake/delivery failed");
       if (msg.chatId && msg.messageId) {
-        const reactAdapter = this.getAdapterForInstance(instanceName) ?? inboundAdapter;
-        reactAdapter.react(this.reactTarget(msg), msg.messageId, "❌").catch(() => {});
+        // Tracked status path (not a bare add): a retry that later succeeds
+        // replaces this ❌ with ✅ instead of leaving both.
+        this.reactMessageStatus(instanceName, this.reactTarget(msg), msg.messageId, "❌");
       }
       return;
     }
@@ -6907,16 +6908,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.statuslineWatcher.unwatch(name, true);
   }
 
+  /**
+   * Last delivery-status emoji (👀/⏳/✅/❌) applied per message, so a status
+   * change removes the previous one first — a ❌ never sticks next to a later
+   * ✅. Keyed by the same chat:message id the adapters react on. Best effort:
+   * a bot restart loses the map, and a lookup miss degrades to the old
+   * add-only behaviour (never worse).
+   */
+  private lastDeliveryStatusReaction = new Map<string, string>();
+  private static readonly DELIVERY_STATUS_TRACK_CAP = 1000;
+
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void {
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
     // (bound bot) and the delivery/confirm reactions (some other bot) come from
     // different bots, leaving a duplicate 👀 that never turns into ✅.
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    // Status reactions are Discord-only (TG/others use the inbound react path).
-    if (!adapter || adapter.type !== "discord") return;
-    adapter.react(chatId, messageId, emoji)
-      .catch(e => this.logger.debug({ err: (e as Error).message }, "Message status react failed"));
+    if (!adapter) return;
+    void this.applyDeliveryStatusReaction(adapter, chatId, messageId, emoji);
+  }
+
+  private async applyDeliveryStatusReaction(
+    adapter: ChannelAdapter, chatId: string, messageId: string, emoji: string,
+  ): Promise<void> {
+    const key = `${chatId}:${messageId}`;
+    try {
+      const prev = this.lastDeliveryStatusReaction.get(key);
+      if (prev && prev !== emoji && adapter.unreact) {
+        // Best effort: a failed removal must not block the new status.
+        await adapter.unreact(chatId, messageId, prev).catch(e =>
+          this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
+      }
+      await adapter.react(chatId, messageId, emoji);
+      // ✅ is terminal — forget it so the map only holds messages that may
+      // still transition (e.g. a ❌ a retry later turns into ✅).
+      if (emoji === "✅") this.lastDeliveryStatusReaction.delete(key);
+      else {
+        this.lastDeliveryStatusReaction.delete(key);
+        this.lastDeliveryStatusReaction.set(key, emoji);
+        if (this.lastDeliveryStatusReaction.size > FleetManager.DELIVERY_STATUS_TRACK_CAP) {
+          const oldest = this.lastDeliveryStatusReaction.keys().next();
+          if (!oldest.done) this.lastDeliveryStatusReaction.delete(oldest.value);
+        }
+      }
+    } catch (e) {
+      this.logger.debug({ err: (e as Error).message }, "Message status react failed");
+    }
   }
 
   // ── Model failover ──────────────────────────────────────────────────────
