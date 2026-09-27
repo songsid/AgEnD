@@ -449,6 +449,40 @@ const CODEX_FALLBACK_MODELS: ModelOption[] = [
   { id: "gpt-5.6-luna", label: "GPT-5.6 Luna", description: "fast, efficient agentic coding" },
 ];
 
+const CODEX_RUN_STATE_STATUS_ITEMS = new Set(["run-state", "status"]);
+// Deliberately small allow-list of built-in Codex status_line values. These
+// patterns identify positive rendered chrome; unknown/custom items fail closed.
+const CODEX_STATUS_LINE_VALUE_PATTERNS: Readonly<Record<string, string>> = {
+  model: String.raw`[\p{L}\p{N}][\p{L}\p{N}._:/+-]*`,
+  "model-name": String.raw`[\p{L}\p{N}][\p{L}\p{N}._:/+-]*`,
+  "model-with-reasoning": String.raw`[\p{L}\p{N}][\p{L}\p{N}._:/+-]*(?:[ \t]+(?:none|low|medium|high|xhigh|max|minimal|standard))?(?:[ \t]+(?:fast|flex|priority))?`,
+  reasoning: String.raw`(?:none|low|medium|high|xhigh|max)`,
+  "run-state": String.raw`Ready`,
+  status: String.raw`Ready`,
+  "current-dir": String.raw`(?:[/~.]|[A-Za-z]:[\\/])[^\r\n·]*`,
+  "project-name": String.raw`[\p{L}\p{N}_.-]+`,
+  project: String.raw`[\p{L}\p{N}_.-]+`,
+  "project-root": String.raw`[\p{L}\p{N}_.-]+`,
+  hostname: String.raw`[\p{L}\p{N}][\p{L}\p{N}.-]*`,
+  "git-branch": String.raw`[\p{L}\p{N}_.\/-]+`,
+  "pull-request-number": String.raw`PR[ \t]+#?\d+`,
+  "branch-changes": String.raw`(?:No changes|\+\d+[ \t]+-\d+)`,
+  "codex-version": String.raw`v?\d+\.\d+\.\d+(?:[-+][\w.-]+)?`,
+  "session-id": String.raw`[0-9a-f-]{36}`,
+  "thread-id": String.raw`[0-9a-f-]{36}`,
+  "context-window-size": String.raw`\d+(?:\.\d+)?[kKmM]?[ \t]+window`,
+  "five-hour-limit": String.raw`5h[ \t]+\d+(?:\.\d+)?%(?:[ \t]+(?:left|used))?(?:[ \t]+@?[^\r\n·]+)?`,
+  "weekly-limit": String.raw`weekly[ \t]+\d+(?:\.\d+)?%(?:[ \t]+(?:left|used))?(?:[ \t]+@?[^\r\n·]+)?`,
+  "used-tokens": String.raw`\d+(?:\.\d+)?[kKmM]?[ \t]+(?:tokens?[ \t]+)?used`,
+  "total-input-tokens": String.raw`\d+(?:\.\d+)?[kKmM]?[ \t]+in`,
+  "total-output-tokens": String.raw`\d+(?:\.\d+)?[kKmM]?[ \t]+out`,
+  "thread-credits": String.raw`\d+(?:\.\d+)?[ \t]+credits?`,
+  "estimated-thread-cost": String.raw`[$€£][ \t]*\d+(?:[,.]\d+)?`,
+  "fast-mode": String.raw`Fast[ \t]+(?:on|off)`,
+  "raw-output": String.raw`Raw output`,
+  "task-progress": String.raw`\d+[ \t]*/[ \t]*\d+`,
+};
+
 export class CodexBackend implements CliBackend {
   readonly binaryName = "codex";
   private binaryPath: string;
@@ -458,6 +492,8 @@ export class CodexBackend implements CliBackend {
   private credentialProfile: string | null = null;
   /** Set only after preTrust wrote and read back this instance's private config. */
   private authorizedTrust: { cwd: string; root: string } | null = null;
+  private configuredStatusLineItems: string[] | null | undefined;
+  private configuredStatusLinePattern: RegExp | null | undefined;
 
   constructor(private instanceDir: string) {
     this.binaryPath = resolveBinary("codex");
@@ -593,7 +629,19 @@ export class CodexBackend implements CliBackend {
     // Codex preserves other configured status-line items after the context
     // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
     // are footer chrome, not evidence that the input row is unavailable.
-    if (!isCodexContextFooter(footer)) return false;
+    const contextFooter = isCodexContextFooter(footer);
+    // A deliberately configured status_line may omit Context entirely. In
+    // that case require a recognized value from the actual configured item
+    // list after Codex's exact empty live-composer row. An arbitrary non-empty
+    // footer or a recent transcript echo is not a readiness signal; that was
+    // the false-ready hole in the old Layer 2 deny-list attempt (#931/#947).
+    if (!contextFooter && !this.isConfiguredStatusLineFooter(footer)) return false;
+    if (!contextFooter) {
+      if (this.getBusyPattern().test(pane)) return false;
+      let liveComposer = rows.length - 1;
+      while (liveComposer >= 0 && (/^[ \t⋆]*$/.test(rows[liveComposer]))) liveComposer--;
+      return liveComposer >= 0 && /^[>›]\s*Ask Codex to do anything\s*$/.test(rows[liveComposer]);
+    }
     // Pasted text may wrap over several continuation rows before the footer.
     // Search only its immediate tail, not a historical transcript prompt.
     for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
@@ -618,9 +666,8 @@ export class CodexBackend implements CliBackend {
    * Do not use getReadyPattern() here: the Codex header, context meter and
    * input chrome all remain visible while a turn is running.  Instead require
    * the live, empty prompt followed by the context footer at the bottom of the
-   * viewport, and reject a live status row immediately above it.  Transcript
-   * quotes are indented by the TUI and, more importantly, cannot replace the
-   * final live prompt/footer pair.
+   * viewport, and reject a live status row immediately above it. A configured
+   * no-Context status line must satisfy the same exact prompt/footer shape.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
@@ -638,7 +685,7 @@ export class CodexBackend implements CliBackend {
 
     let footer = -1;
     for (let i = prompt + 1; i < Math.min(rows.length, prompt + 7); i++) {
-      if (isCodexContextFooter(rows[i])) {
+      if (this.isCodexIdleFooter(rows[i])) {
         footer = i;
         break;
       }
@@ -793,6 +840,8 @@ export class CodexBackend implements CliBackend {
    * ~/.codex/config.toml (no toml dependency); other settings untouched.
    */
   private enableContextStatusLine(): void {
+    this.configuredStatusLineItems = undefined;
+    this.configuredStatusLinePattern = undefined;
     const configPath = join(this.isolatedCodexHome, "config.toml");
     let content = "";
     try { content = readFileSync(configPath, "utf-8"); } catch { /* no file yet */ }
@@ -1086,13 +1135,74 @@ export class CodexBackend implements CliBackend {
   getReadyPattern(): RegExp {
     // Header and context text persist in inline scrollback and even while the
     // CLI is loading or a modal owns stdin. Require the live prompt followed
-    // by the Context footer at the *end* of the capture. getBusyPattern still
-    // vetoes a working turn whose empty composer remains visible. Unknown TUI
-    // layouts cannot claim readiness by merely rendering the old header.
+    // by the Context footer at the *end* of the capture. A valid custom
+    // status_line without Context gets a separate configured-item pattern;
+    // unknown footer values still fail closed. getBusyPattern vetoes a working
+    // turn whose empty composer remains visible.
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    return /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const footerPattern = this.configuredStatusLineFooterPattern();
+    if (!footerPattern) return contextReady;
+
+    // The no-Context alternative requires the exact empty composer followed by
+    // a recognized configured Codex status_line value. If run-state is
+    // configured, that value must specifically be Ready. This is positive
+    // structural proof, never a deny-list of known dialogs.
+    const footerSource = footerPattern.source.slice(1, -1);
+    const noContextReady = new RegExp(
+      String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
+      "iu",
+    );
+    return new RegExp(`(?:${contextReady.source})|(?:${noContextReady.source})`, "iu");
+  }
+
+  private readConfiguredStatusLineItems(): string[] | null {
+    if (this.configuredStatusLineItems !== undefined) return this.configuredStatusLineItems;
+    try {
+      const config = tomlTable(parseToml(readFileSync(join(this.isolatedCodexHome, "config.toml"), "utf-8")));
+      const tui = tomlTable(config?.tui);
+      const items = tui?.status_line;
+      this.configuredStatusLineItems = Array.isArray(items) && items.every(item => typeof item === "string")
+        ? items as string[]
+        : null;
+    } catch {
+      this.configuredStatusLineItems = null;
+    }
+    return this.configuredStatusLineItems;
+  }
+
+  private configuredStatusLineFooterPattern(): RegExp | null {
+    if (this.configuredStatusLinePattern !== undefined) return this.configuredStatusLinePattern;
+    const items = this.readConfiguredStatusLineItems();
+    if (!items?.length) return this.configuredStatusLinePattern = null;
+    const configuredPatterns = items
+      .map(item => CODEX_STATUS_LINE_VALUE_PATTERNS[item])
+      .filter((pattern): pattern is string => pattern !== undefined);
+    if (!configuredPatterns.length) return this.configuredStatusLinePattern = null;
+
+    const segment = `(?:${configuredPatterns.join("|")})`;
+    const separator = String.raw`[ \t]+·[ \t]+`;
+    const hasRunState = items.some(item => CODEX_RUN_STATE_STATUS_ITEMS.has(item));
+    // Ready must occupy its own status-line segment. Other configured items
+    // may precede/follow it, as Codex joins visible values with ` · `.
+    const line = hasRunState
+      ? `(?:${segment}${separator})*Ready(?:${separator}${segment})*`
+      : `${segment}(?:${separator}${segment})*`;
+    this.configuredStatusLinePattern = new RegExp(`^[ \t⋆]*${line}[ \t⋆]*$`, "iu");
+    return this.configuredStatusLinePattern;
+  }
+
+  private isConfiguredStatusLineFooter(row: string): boolean {
+    const pattern = this.configuredStatusLineFooterPattern();
+    if (!pattern) return false;
+    pattern.lastIndex = 0;
+    return pattern.test(row);
+  }
+
+  private isCodexIdleFooter(row: string): boolean {
+    return isCodexContextFooter(row) || this.isConfiguredStatusLineFooter(row);
   }
 
   /** A proxy reply filters chrome per line; whole-pane readiness is separate. */

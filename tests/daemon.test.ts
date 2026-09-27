@@ -950,6 +950,99 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual(["Codex monthly limit: less than 5% left"]);
   });
 
+  it("keeps the seeded capacity baseline through an empty restart frame before stale resume history (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const patterns = backend.getErrorPatterns!();
+    const capacity = patterns.find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const stale = "⚠ Selected model is at capacity. Please try a different model.";
+    const first = new Daemon("test-capacity-baseline", makeConfig(), tmpDir, false, backend, undefined, rootLogger);
+    const oldErrors: unknown[] = [];
+    first.on("pty_error", error => oldErrors.push(error));
+
+    (first as any).evaluateErrorPatterns(stale, patterns, /NEVER_READY/, 1_000_000);
+    expect(oldErrors).toHaveLength(1);
+    const count = first.getErrorPatternOccurrenceCount("model_error", capacity!.pattern);
+    expect(count).toBe(1);
+
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, count);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(
+      ">_ OpenAI Codex (v0.157.0)\n  Resuming session…",
+      replacementBackend.getErrorPatterns!(), readyPattern, 1_000_050, busyPattern,
+    );
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(count);
+
+    const resumedWithOldHistory = `${stale}\n› Ask Codex to do anything\n  Context 100% left`;
+    (replacement as any).evaluateErrorPatterns(resumedWithOldHistory, replacementBackend.getErrorPatterns!(), readyPattern, 1_000_100, busyPattern);
+    expect(newErrors, "old scrollback line must not burn a second backoff attempt").toHaveLength(0);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(1);
+  });
+
+  it("rebases an absent stale line on the first live resume prompt so later capacity is new (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline-zero", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, 1);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    const patterns = replacementBackend.getErrorPatterns!();
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(">_ OpenAI Codex (v0.157.0)\n  Resuming session…", patterns, readyPattern, 2_000_000, busyPattern);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(1);
+
+    const resumedWithoutOldHistory = "› Ask Codex to do anything\n  Context 100% left";
+    (replacement as any).evaluateErrorPatterns(resumedWithoutOldHistory, patterns, readyPattern, 2_000_100, busyPattern);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(0);
+
+    const genuinelyNewCapacity = `${staleCapacityLine()}\n› Ask Codex to do anything\n  Context 100% left`;
+    (replacement as any).evaluateErrorPatterns(genuinelyNewCapacity, patterns, readyPattern, 2_000_200, busyPattern);
+    expect(newErrors, "a new capacity line after ready must still be detected").toHaveLength(1);
+  });
+
+  it("does not absorb a new capacity line already present on the first live resume scan (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline-race", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, 1);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    const patterns = replacementBackend.getErrorPatterns!();
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(">_ OpenAI Codex (v0.157.0)\n  Resuming session…", patterns, readyPattern, 3_000_000, busyPattern);
+
+    // The old row, queued work, new capacity row and live composer can all be
+    // visible in the first post-resume scan. Only the transferred occurrence
+    // is history; the extra matching line must remain actionable.
+    const oldPlusNew = [
+      staleCapacityLine(),
+      "› queued follow-up after capacity retry",
+      staleCapacityLine(),
+      "› Ask Codex to do anything",
+      "  Context 100% left",
+    ].join("\n");
+    (replacement as any).evaluateErrorPatterns(oldPlusNew, patterns, readyPattern, 3_000_100, busyPattern);
+
+    expect(newErrors, "a post-restart capacity row beyond the seed must still trigger backoff").toHaveLength(1);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(2);
+  });
+
+  function staleCapacityLine(): string { return "⚠ Selected model is at capacity. Please try a different model."; }
+
   it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {
     const messages: string[] = [];
     const actions: string[] = [];
