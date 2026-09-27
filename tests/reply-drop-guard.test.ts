@@ -65,7 +65,40 @@ describe("TurnReplyGuard", () => {
     expect(guard.snapshot()).toMatchObject({ replyAttempted: true, replyDelivered: false });
 
     guard.settleToolAttempt(attempt, true);
-    expect(guard.snapshot()).toMatchObject({ replyDelivered: true, outboundDelivered: true });
+    expect(guard.snapshot()).toMatchObject({ replyDelivered: true, completionDelivered: true, outboundDelivered: true });
+  });
+
+  it.each(["react", "edit_message"])("counts a successful %s as a delivered channel response", () => {
+    const guard = new TurnReplyGuard();
+    guard.arm({ chatId: "c" });
+    const attempt = guard.beginToolAttempt(false, true);
+    expect(guard.snapshot()).toMatchObject({
+      replyAttempted: false,
+      replyDelivered: false,
+      completionDelivered: false,
+      outboundDelivered: false,
+    });
+
+    guard.settleToolAttempt(attempt, true);
+    expect(guard.snapshot()).toMatchObject({
+      replyAttempted: false,
+      replyDelivered: false,
+      completionDelivered: true,
+      outboundDelivered: true,
+    });
+  });
+
+  it("tracks ordinary outbound work without treating it as a human-facing response", () => {
+    const guard = new TurnReplyGuard();
+    guard.arm({ chatId: "c" });
+    const attempt = guard.beginToolAttempt(false, false);
+    guard.settleToolAttempt(attempt, true);
+
+    expect(guard.snapshot()).toMatchObject({
+      replyDelivered: false,
+      completionDelivered: false,
+      outboundDelivered: true,
+    });
   });
 
   it("does not let an older in-flight reply satisfy a newer steering obligation", () => {
@@ -79,6 +112,7 @@ describe("TurnReplyGuard", () => {
       target: { messageId: "m2" },
       replyAttempted: false,
       replyDelivered: false,
+      completionDelivered: false,
     });
   });
 
@@ -156,6 +190,80 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
     expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Use the reply tool exactly once");
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
+  it.each(["react", "edit_message"])("does not re-prompt after a successfully delivered %s-only turn", async tool => {
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+
+    daemon.handleToolCall({
+      tool,
+      args: tool === "react" ? { message_id: "message-1", emoji: "👍" } : { message_id: "message-1", text: "done" },
+      requestId: 17,
+    }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key === "tool_1_17");
+    expect(pending).toBeDefined();
+    pending![1]({ result: { ok: true } });
+
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+
+    expect(detected).not.toHaveBeenCalled();
+    expect(daemon.deliverDaemonReply).not.toHaveBeenCalled();
+    expect(daemon.deliverMessage).not.toHaveBeenCalled();
+    expect(daemon.turnReplyGuard.snapshot()).toBeNull();
+  });
+
+  it("still re-prompts when a react call fails and no outbound action was delivered", async () => {
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+
+    daemon.handleToolCall({ tool: "react", args: { message_id: "message-1", emoji: "👍" }, requestId: 18 }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key === "tool_1_18");
+    expect(pending).toBeDefined();
+    pending![1]({ result: null, error: "adapter rejected reaction" });
+
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
+    expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Use the reply tool exactly once");
+  });
+
+  it("still re-prompts when only a non-human-facing outbound succeeded", async () => {
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+
+    daemon.handleToolCall({
+      tool: "send_to_instance",
+      args: { instance_name: "other", message: "hi" },
+      requestId: 21,
+    }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.endsWith("_21"));
+    expect(pending).toBeDefined();
+    pending![1]({ result: { sent: true } });
+    expect(daemon.turnReplyGuard.snapshot()).toMatchObject({ outboundDelivered: true, completionDelivered: false });
+
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
   });
 
   it("bounds a daemon-owned channel delivery that never receives a fleet response", async () => {
