@@ -1289,7 +1289,7 @@ describe("Daemon /steer delivery", () => {
     expect(deliverMessage).toHaveBeenCalledOnce();
     expect(deliverMessage).toHaveBeenCalledWith(
       expect.any(String),
-      { chatId: "topic-9", messageId: "msg-9" },
+      { chatId: "chat-9", messageId: "msg-9", threadId: "topic-9" },
       expect.objectContaining({ steer: true }),
     );
     const pasted = String(deliverMessage.mock.calls[0][0]);

@@ -602,6 +602,23 @@ const STRANDED_INPUT_MAX_ROUNDS = 3;
 
 /** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
 type DeliveryVerdict = { reached: boolean; phase?: string; proof?: string };
+
+/**
+ * Where a delivery-status reaction belongs. chatId is ALWAYS the platform
+ * chat (Telegram supergroup id, Discord guild id) — never a forum topic id.
+ * threadId carries the topic/thread separately so each adapter can address
+ * the message its own way (Telegram ignores it, Discord reacts in the thread).
+ */
+type DeliveryStatus = { chatId: string; messageId: string; threadId?: string };
+
+/** Build a status holder from channel metadata, keeping chat and thread apart. */
+function channelStatus(meta: Record<string, string>): DeliveryStatus | undefined {
+  const chatId = meta.chat_id;
+  const messageId = meta.message_id;
+  if (!chatId || !messageId) return undefined;
+  const threadId = meta.thread_id || undefined;
+  return threadId ? { chatId, messageId, threadId } : { chatId, messageId };
+}
 const FIRST_ENTER_SETTLE_MS = 1_750;
 const FIRST_DELIVERY_WINDOW_MS = 5_000;
 /** After busy native-queue paste+Enter, wait before checking the pane for silent loss. */
@@ -4362,7 +4379,7 @@ export class Daemon extends EventEmitter {
    */
   private failDelivery(
     verdict: DeliveryVerdict,
-    status?: { chatId: string; messageId: string },
+    status?: DeliveryStatus,
     phase = "unknown",
     proof = "undelivered",
   ): false {
@@ -4420,11 +4437,7 @@ export class Daemon extends EventEmitter {
 
     const formatted = "[STEERING — mid-task course correction. Fold this into the CURRENT work if one is active.]\n"
       + this.formatInboundMessage(content, meta);
-    const chatId = meta.chat_id;
-    const messageId = meta.message_id;
-    const status = (chatId && messageId)
-      ? { chatId: meta.thread_id || chatId, messageId }
-      : undefined;
+    const status = channelStatus(meta);
 
     this.steerLock = this.steerLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -4461,11 +4474,7 @@ export class Daemon extends EventEmitter {
 
     const formatted = "[BTW — side question from the user. Answer it separately without changing or interrupting the CURRENT work.]\n"
       + this.formatInboundMessage(content, meta);
-    const chatId = meta.chat_id;
-    const messageId = meta.message_id;
-    const status = (chatId && messageId)
-      ? { chatId: meta.thread_id || chatId, messageId }
-      : undefined;
+    const status = channelStatus(meta);
 
     this.steerLock = this.steerLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
@@ -4549,7 +4558,8 @@ export class Daemon extends EventEmitter {
       this.logger.warn({ depth: this.pasteQueueDepth }, "Message delivery queue backing up");
     }
     if (wasQueued && chatId && messageId) {
-      this.emit("message_queued", { chatId: meta.thread_id || chatId, messageId });
+      const queuedStatus = channelStatus(meta);
+      if (queuedStatus) this.emit("message_queued", queuedStatus);
     }
     this.pasteLock = this.pasteLock.then(async () => {
       try {
@@ -4570,9 +4580,7 @@ export class Daemon extends EventEmitter {
           );
           if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
         }
-        const status = (chatId && messageId)
-          ? { chatId: meta.thread_id || chatId, messageId }
-          : undefined;
+        const status = channelStatus(meta);
         // A fresh delivery begins a fresh turn — its bubble must not inherit
         // the previous turn's tool list.
         this.resetToolProgress();
@@ -4617,7 +4625,7 @@ export class Daemon extends EventEmitter {
    */
   private async deliverMessage(
     formatted: string,
-    status?: { chatId: string; messageId: string },
+    status?: DeliveryStatus,
     opts?: { steer?: boolean; deliveryEpoch?: number; submissionId?: string; verdict?: DeliveryVerdict; spawnRetry?: number },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -5395,7 +5403,7 @@ export class Daemon extends EventEmitter {
    * what to fix, and holding would only build a queue that floods the pane the
    * moment the flag clears.
    */
-  private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: { chatId: string; messageId: string }): boolean {
+  private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
     if (!this.fatalStartupBlocked) return false;
     this.logger.error("Delivery refused — CLI is parked on a fatal startup screen");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");
@@ -5482,7 +5490,7 @@ export class Daemon extends EventEmitter {
     formatted: string,
     initialWindowId: string | undefined,
     handingOffToNativeQueue: boolean,
-    status?: { chatId: string; messageId: string },
+    status?: DeliveryStatus,
     submissionId?: string,
     // Last and defaulted so the positional callers that ignore the outcome stay
     // readable; deliverMessage, the only one that reports, always passes its own.

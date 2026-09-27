@@ -899,10 +899,54 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   // threadId is ignored: Telegram reactions key on the supergroup chat_id, not
   // the forum topic thread (reacting on a thread id silently fails).
+  /**
+   * The bot's current reaction per message, as last set through this adapter.
+   * setMessageReaction replaces the whole list, and Telegram bots can use only
+   * one reaction per message. Remembering that one slot lets unreact avoid
+   * clearing a newer unrelated reaction when an older status is retired.
+   * Best effort: a restart or an outside client can desync this memory.
+   */
+  // Lazily created: prototype-spawned test doubles skip field initialisers.
+  private telegramReactions: Map<string, string[]> | undefined;
+  private static readonly REACTION_TRACK_CAP = 1000;
+
+  private toReactionList(emojis: string[]): { type: "emoji"; emoji: import("grammy/types").ReactionTypeEmoji["emoji"] }[] {
+    return emojis.map(emoji => ({
+      type: "emoji" as const,
+      emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"],
+    }));
+  }
+
+  private trackedReactions(chatId: string, messageId: string): string[] {
+    return this.telegramReactions?.get(`${chatId}:${messageId}`) ?? [];
+  }
+
+  private rememberReactions(chatId: string, messageId: string, emojis: string[]): void {
+    const key = `${chatId}:${messageId}`;
+    this.telegramReactions ??= new Map<string, string[]>();
+    this.telegramReactions.delete(key);
+    this.telegramReactions.set(key, emojis);
+    if (this.telegramReactions.size > TelegramAdapter.REACTION_TRACK_CAP) {
+      const oldest = this.telegramReactions.keys().next();
+      if (!oldest.done) this.telegramReactions.delete(oldest.value);
+    }
+  }
+
   async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), [
-      { type: "emoji", emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"] },
-    ]);
+    // Telegram allows one bot reaction per message; this replaces the prior
+    // one, matching the Bot API's setMessageReaction semantics.
+    const next = [emoji];
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
+    this.rememberReactions(chatId, messageId, next);
+  }
+
+  async unreact(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
+    // setMessageReaction clears the whole slot. Only clear when the reaction
+    // being retired is still current; otherwise it may be a newer user-facing
+    // reaction (for example 👍 replacing the delivery marker 👀).
+    if (!this.trackedReactions(chatId, messageId).includes(emoji)) return;
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), []);
+    this.rememberReactions(chatId, messageId, []);
   }
 
   // ── Approval ─────────────────────────────────────────────────────────────
