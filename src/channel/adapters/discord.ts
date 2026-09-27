@@ -1295,7 +1295,9 @@ export class DiscordAdapter extends EventEmitter implements ChannelAdapter {
     } catch (directError) {
       try {
         const channel = await this._fetchTextChannel(channelId);
-        const message = await channel.messages.fetch(messageId);
+        // force: a cached Message may predate the reaction (REST react()
+        // bypasses the cache), and a stale cache miss is not removal evidence.
+        const message = await channel.messages.fetch({ message: messageId, force: true });
         // resolve() is undefined when the emoji was never applied — nothing to
         // remove, which still satisfies "not there anymore".
         await message.reactions.resolve(emoji)?.users.remove();

@@ -899,18 +899,52 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
 
   // threadId is ignored: Telegram reactions key on the supergroup chat_id, not
   // the forum topic thread (reacting on a thread id silently fails).
-  async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), [
-      { type: "emoji", emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"] },
-    ]);
+  /**
+   * The bot's own reactions per message, as last set through this adapter.
+   * The Bot API has no per-emoji removal — setMessageReaction SETS the whole
+   * list — so unreact re-sends the list minus the removed emoji. Without this
+   * memory, clearing one status would wipe an unrelated reaction (a non-premium
+   * bot gets one reaction slot per message, so statuses and ordinary reactions
+   * share it). Best effort: a restart or an outside client desyncs it, and a
+   * set then reflects the tracked list, never worse than a blind clear.
+   */
+  // Lazily created: prototype-spawned test doubles skip field initialisers.
+  private telegramReactions: Map<string, string[]> | undefined;
+  private static readonly REACTION_TRACK_CAP = 1000;
+
+  private toReactionList(emojis: string[]): { type: "emoji"; emoji: import("grammy/types").ReactionTypeEmoji["emoji"] }[] {
+    return emojis.map(emoji => ({
+      type: "emoji" as const,
+      emoji: emoji as import("grammy/types").ReactionTypeEmoji["emoji"],
+    }));
   }
 
-  async unreact(chatId: string, messageId: string, _emoji: string, _threadId?: string): Promise<void> {
-    // setMessageReaction SETS the bot's reaction list (it does not append),
-    // so an empty list clears the bot's reactions on the message. Per-emoji
-    // removal does not exist in the Bot API — callers updating a status pass
-    // the new emoji via react() right after, which lands as the only one.
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), []);
+  private trackedReactions(chatId: string, messageId: string): string[] {
+    return this.telegramReactions?.get(`${chatId}:${messageId}`) ?? [];
+  }
+
+  private rememberReactions(chatId: string, messageId: string, emojis: string[]): void {
+    const key = `${chatId}:${messageId}`;
+    this.telegramReactions ??= new Map<string, string[]>();
+    this.telegramReactions.delete(key);
+    this.telegramReactions.set(key, emojis);
+    if (this.telegramReactions.size > TelegramAdapter.REACTION_TRACK_CAP) {
+      const oldest = this.telegramReactions.keys().next();
+      if (!oldest.done) this.telegramReactions.delete(oldest.value);
+    }
+  }
+
+  async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
+    const current = this.trackedReactions(chatId, messageId);
+    const next = current.includes(emoji) ? current : [...current, emoji];
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
+    this.rememberReactions(chatId, messageId, next);
+  }
+
+  async unreact(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
+    const next = this.trackedReactions(chatId, messageId).filter(e => e !== emoji);
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
+    this.rememberReactions(chatId, messageId, next);
   }
 
   // ── Approval ─────────────────────────────────────────────────────────────

@@ -39,6 +39,7 @@ import { AccessManager } from "./channel/access-manager.js";
 import { IpcClient } from "./channel/ipc-bridge.js";
 import type { AdapterHealthSnapshot, AlertData, ChannelAdapter, InboundMessage, InboundReaction, Choice, TopicPresence } from "./channel/types.js";
 import { createAdapter } from "./channel/factory.js";
+import { TelegramAdapter } from "./channel/adapters/telegram.js";
 import { createBackend } from "./backend/factory.js";
 import { isModelCompatible } from "./backend/types.js";
 import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
@@ -5276,13 +5277,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (msg.adapterId) this.bindInstanceAdapter(generalInstance, msg.adapterId, true);
         const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-        // React immediately — before any other API calls. Use the adapter BOUND to
-        // the instance (not whichever same-guild bot received the event first) so
-        // exactly the owning bot reacts — no duplicate 👀 from a sibling bot.
+        // React immediately — before any other API calls — through the status
+        // path, so a later delivery status replaces (not stacks onto) this
+        // acknowledgement.
         if (msg.chatId && msg.messageId) {
-          const reactAdapter = this.getAdapterForInstance(generalInstance) ?? inboundAdapter;
-          reactAdapter.react(msg.threadId ?? msg.chatId, msg.messageId, "👀")
-            .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+          this.reactMessageStatus(generalInstance, msg.chatId, msg.messageId, "👀", msg.threadId || undefined);
         }
 
         this.warnIfRateLimited(generalInstance, msg);
@@ -5375,13 +5374,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const inboundAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter ?? this.adapter!;
 
-    // React immediately — before any other Discord API calls. Use the adapter
-    // BOUND to the instance (not whichever same-guild bot received the event
-    // first) so exactly the owning bot reacts — no duplicate 👀 from a sibling.
+    // React immediately — before any other Discord API calls — through the
+    // status path, so a later delivery status replaces (not stacks onto) this
+    // acknowledgement. Same bound-adapter routing as the status path itself.
     if (msg.chatId && msg.messageId) {
-      const reactAdapter = this.getAdapterForInstance(instanceName) ?? inboundAdapter;
-      reactAdapter.react(this.reactTarget(msg), msg.messageId, "👀")
-        .catch(e => this.logger.debug({ err: (e as Error).message }, "Auto-react failed"));
+      this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "👀", msg.threadId || undefined);
     }
 
     // These may hit Discord API (topic icon, archive) — do after react
@@ -5423,9 +5420,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch (err) {
       this.logger.warn({ err: (err as Error).message, instanceName }, "Wake/delivery failed");
       if (msg.chatId && msg.messageId) {
-        // Tracked status path (not a bare add): a retry that later succeeds
-        // replaces this ❌ with ✅ instead of leaving both.
-        this.reactMessageStatus(instanceName, this.reactTarget(msg), msg.messageId, "❌");
+        // Reconciled status path (not a bare add): a retry that later
+        // succeeds replaces this ❌ with ✅ instead of leaving both. Chat and
+        // thread travel separately so Telegram addresses the supergroup.
+        this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "❌", msg.threadId || undefined);
       }
       return;
     }
@@ -6909,48 +6907,68 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * Last delivery-status emoji (👀/⏳/✅/❌) applied per message, so a status
-   * change removes the previous one first — a ❌ never sticks next to a later
-   * ✅. Keyed by the same chat:message id the adapters react on. Best effort:
-   * a bot restart loses the map, and a lookup miss degrades to the old
-   * add-only behaviour (never worse).
+   * Last delivery status applied per bot+message. Unbounded by design: any cap
+   * reintroduces the hole where a forgotten ❌ can never be cleared, and an
+   * entry is two short strings (id pair plus one emoji) — thousands of
+   * status-reacted messages cost kilobytes. A bot restart loses it, degrading
+   * to a plain add (never worse than the old behaviour).
    */
-  private lastDeliveryStatusReaction = new Map<string, string>();
-  private static readonly DELIVERY_STATUS_TRACK_CAP = 1000;
+  private lastStatusEmoji = new Map<string, string>();
+  /**
+   * One in-flight status update per bot+message: updates run strictly in call
+   * order, so a delayed ❌ add can never land after a newer ✅'s removal —
+   * the final state is always the latest call. Entries delete themselves when
+   * the chain drains, so idle messages hold no memory.
+   */
+  private deliveryStatusChains = new Map<string, Promise<void>>();
 
-  reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string): void {
+  reactMessageStatus(
+    instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
+  ): void {
     // React via the adapter BOUND to this instance — NOT the first discord world.
     // Otherwise, in a same-channel/same-guild multi-bot setup, the inbound 👀
     // (bound bot) and the delivery/confirm reactions (some other bot) come from
     // different bots, leaving a duplicate 👀 that never turns into ✅.
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
-    void this.applyDeliveryStatusReaction(adapter, chatId, messageId, emoji);
+    // Bot-scoped: sibling bots reacting on the same message must not clear
+    // each other's state — every removal below targets this adapter's own
+    // reactions (@me on Discord, the bot's list on Telegram).
+    const adapterId = typeof (adapter as { id?: unknown }).id === "string"
+      ? (adapter as unknown as { id: string }).id : "?";
+    const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
+    const prev = this.deliveryStatusChains.get(key) ?? Promise.resolve();
+    const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId));
+    this.deliveryStatusChains.set(key, run);
+    void run.then(
+      () => { if (this.deliveryStatusChains.get(key) === run) this.deliveryStatusChains.delete(key); },
+      () => { if (this.deliveryStatusChains.get(key) === run) this.deliveryStatusChains.delete(key); },
+    );
   }
 
   private async applyDeliveryStatusReaction(
-    adapter: ChannelAdapter, chatId: string, messageId: string, emoji: string,
+    adapter: ChannelAdapter, key: string,
+    chatId: string, messageId: string, emoji: string, threadId?: string,
   ): Promise<void> {
-    const key = `${chatId}:${messageId}`;
     try {
-      const prev = this.lastDeliveryStatusReaction.get(key);
+      if (adapter instanceof TelegramAdapter && emoji !== "👀") {
+        // The Bot API ReactionTypeEmoji list supports 👀 only — ⏳/✅/❌ come
+        // back REACTION_INVALID. Never clear-then-send-invalid (that destroys
+        // the valid 👀 and leaves nothing): Telegram shows 👀 for any live
+        // status, and the MCP/tool react path keeps its honest errors.
+        return;
+      }
+      // Thread-aware adapters (Discord) react where the thread is; Telegram
+      // addresses the supergroup chat and ignores the thread part.
+      const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
+      const prev = this.lastStatusEmoji.get(key);
       if (prev && prev !== emoji && adapter.unreact) {
         // Best effort: a failed removal must not block the new status.
-        await adapter.unreact(chatId, messageId, prev).catch(e =>
+        await adapter.unreact(target, messageId, prev, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
       }
-      await adapter.react(chatId, messageId, emoji);
-      // ✅ is terminal — forget it so the map only holds messages that may
-      // still transition (e.g. a ❌ a retry later turns into ✅).
-      if (emoji === "✅") this.lastDeliveryStatusReaction.delete(key);
-      else {
-        this.lastDeliveryStatusReaction.delete(key);
-        this.lastDeliveryStatusReaction.set(key, emoji);
-        if (this.lastDeliveryStatusReaction.size > FleetManager.DELIVERY_STATUS_TRACK_CAP) {
-          const oldest = this.lastDeliveryStatusReaction.keys().next();
-          if (!oldest.done) this.lastDeliveryStatusReaction.delete(oldest.value);
-        }
-      }
+      await adapter.react(target, messageId, emoji, threadId);
+      this.lastStatusEmoji.set(key, emoji);
     } catch (e) {
       this.logger.debug({ err: (e as Error).message }, "Message status react failed");
     }
@@ -8912,16 +8930,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const e of [...this.cancelButtons.values()]) {
       if (e.correlationId === correlationId) this.retireButton(e);
     }
-  }
-
-  /**
-   * Reaction target chat id. Telegram reactions key on the supergroup chat_id
-   * (the topic thread is NOT a chat_id), so a forum-topic message must react on
-   * msg.chatId — reacting on threadId silently fails. Discord reactions key on
-   * the channel/thread id.
-   */
-  private reactTarget(msg: { source?: string; chatId: string; threadId?: string }): string {
-    return msg.source === "telegram" ? msg.chatId : (msg.threadId ?? msg.chatId);
   }
 
   /** Remember the user message just delivered, so we can react ✅ when done. */

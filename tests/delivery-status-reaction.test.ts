@@ -10,17 +10,19 @@ import type { ChannelAdapter } from "../src/channel/types.js";
 /**
  * #868: a delivery-status ❌ used to stick forever — react() only adds, so a
  * later ✅ landed next to it instead of replacing it. The status path now
- * tracks the last emoji per message and removes it before applying the next
- * one, on both adapters (Discord REST DELETE, Telegram setMessageReaction([])).
+ * reconciles: every update removes the other group members (👀/⏳/✅/❌)
+ * before adding the new one, serialised per bot+message so a delayed ❌ can
+ * never land after a newer ✅. Telegram only ever carries 👀 (the Bot API
+ * rejects the rest), addressed at the supergroup with the thread separate.
  */
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
 
-function stubAdapter(type: "discord" | "telegram", extra: Record<string, unknown> = {}) {
+function stubAdapter(type: "discord" | "telegram") {
   const react = vi.fn(async () => {});
   const unreact = vi.fn(async () => {});
-  const adapter = { id: `${type}-main`, type, react, unreact, ...extra } as unknown as ChannelAdapter;
+  const adapter = { id: `${type}-main`, type, react, unreact } as unknown as ChannelAdapter;
   return { adapter, react, unreact };
 }
 
@@ -38,56 +40,42 @@ describe("delivery-status reaction replaces the previous status", () => {
     const fleet = makeFleet(adapter);
 
     fleet.reactMessageStatus("inst", "chat", "msg", "❌");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "❌"));
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "❌", undefined));
     fleet.reactMessageStatus("inst", "chat", "msg", "✅");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅"));
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
 
     expect(unreact).toHaveBeenCalledTimes(1);
-    expect(unreact).toHaveBeenCalledWith("chat", "msg", "❌");
-    // Removal lands before the replacement add, never after.
+    expect(unreact).toHaveBeenCalledWith("chat", "msg", "❌", undefined);
+    // The removal lands before the replacement add, never after.
     expect(unreact.mock.invocationCallOrder[0]).toBeLessThan(react.mock.invocationCallOrder[1]);
   });
 
-  it("telegram: ❌ then ✅ removes ❌ before adding ✅", async () => {
-    const { adapter, react, unreact } = stubAdapter("telegram");
-    const fleet = makeFleet(adapter);
-
-    fleet.reactMessageStatus("inst", "100", "42", "❌");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("100", "42", "❌"));
-    fleet.reactMessageStatus("inst", "100", "42", "✅");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("100", "42", "✅"));
-
-    expect(unreact).toHaveBeenCalledTimes(1);
-    expect(unreact).toHaveBeenCalledWith("100", "42", "❌");
-    expect(unreact.mock.invocationCallOrder[0]).toBeLessThan(react.mock.invocationCallOrder[1]);
-  });
-
-  it("repeating the same status does not remove anything", async () => {
+  it("addresses discord topics at the thread, keyed across the folded id", async () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg", "⏳");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(1));
-    fleet.reactMessageStatus("inst", "chat", "msg", "⏳");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(2));
+    fleet.reactMessageStatus("inst", "guild", "msg", "👀", "topic-9");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("topic-9", "msg", "👀", "topic-9"));
+    fleet.reactMessageStatus("inst", "guild", "msg", "✅", "topic-9");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("topic-9", "msg", "✅", "topic-9"));
 
-    expect(unreact).not.toHaveBeenCalled();
+    // The earlier 👀 is found and cleared at the same folded address.
+    expect(unreact).toHaveBeenCalledWith("topic-9", "msg", "👀", "topic-9");
   });
 
-  it("forgets ✅ so a later ❌ starts fresh instead of removing ✅", async () => {
-    const { adapter, react, unreact } = stubAdapter("discord");
+  it("telegram: only 👀 is ever sent, other statuses stay silent", async () => {
+    const { adapter, react } = stubAdapter("telegram");
+    // instanceof drives the Telegram policy, so use a real prototype object.
+    Object.setPrototypeOf(adapter, TelegramAdapter.prototype);
     const fleet = makeFleet(adapter);
 
-    fleet.reactMessageStatus("inst", "chat", "msg", "❌");
+    for (const emoji of ["👀", "⏳", "❌", "✅"]) {
+      fleet.reactMessageStatus("inst", "100", "42", emoji);
+    }
     await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(1));
-    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(2));
-    // A new failure after the terminal ✅: nothing tracked to remove.
-    fleet.reactMessageStatus("inst", "chat", "msg", "❌");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(3));
-
-    expect(unreact).toHaveBeenCalledTimes(1);
-    expect(unreact).toHaveBeenCalledWith("chat", "msg", "❌");
+    expect(react).toHaveBeenCalledWith("100", "42", "👀", undefined);
+    await new Promise(r => setTimeout(r, 100));
+    expect(react).toHaveBeenCalledTimes(1);
   });
 
   it("adapters without unreact fall back to a plain add", async () => {
@@ -98,7 +86,7 @@ describe("delivery-status reaction replaces the previous status", () => {
     fleet.reactMessageStatus("inst", "chat", "msg", "❌");
     await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(1));
     fleet.reactMessageStatus("inst", "chat", "msg", "✅");
-    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅"));
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
 
     expect(react).toHaveBeenCalledTimes(2);
   });
@@ -122,7 +110,7 @@ describe("Discord adapter unreact", () => {
     );
   });
 
-  it("falls back to discord.js removal when REST fails", async () => {
+  it("falls back to a forced fresh discord.js fetch when REST fails", async () => {
     const remove = vi.fn().mockResolvedValue(undefined);
     const resolve = vi.fn().mockReturnValue({ users: { remove } });
     const fetchMessage = vi.fn().mockResolvedValue({ reactions: { resolve } });
@@ -138,7 +126,8 @@ describe("Discord adapter unreact", () => {
     await adapter.unreact!("guild", "message-2", "❌", "topic-2");
 
     expect(fetchChannel).toHaveBeenCalledWith("topic-2");
-    expect(fetchMessage).toHaveBeenCalledWith("message-2");
+    // Forced: a cached message predating the REST-added reaction proves nothing.
+    expect(fetchMessage).toHaveBeenCalledWith({ message: "message-2", force: true });
     expect(resolve).toHaveBeenCalledWith("❌");
     expect(remove).toHaveBeenCalledWith();
   });
@@ -158,14 +147,18 @@ describe("Discord adapter unreact", () => {
   });
 });
 
-describe("Telegram adapter unreact", () => {
-  it("clears the bot's reactions with an empty setMessageReaction list", async () => {
+describe("Telegram adapter reaction memory", () => {
+  it("re-sends the surviving list so unreact keeps an ordinary reaction", async () => {
     const setMessageReaction = vi.fn().mockResolvedValue(undefined);
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter as any, { bot: { api: { setMessageReaction } } });
 
-    await adapter.unreact!("100", "42", "❌");
+    await adapter.react("100", "42", "👀");
+    await adapter.react("100", "42", "👍");
+    await adapter.unreact("100", "42", "👀");
 
-    expect(setMessageReaction).toHaveBeenCalledWith(100, 42, []);
+    expect(setMessageReaction).toHaveBeenLastCalledWith(100, 42, [
+      { type: "emoji", emoji: "👍" },
+    ]);
   });
 });
