@@ -1010,6 +1010,37 @@ describe("Daemon error monitor recovery", () => {
     expect(newErrors, "a new capacity line after ready must still be detected").toHaveLength(1);
   });
 
+  it("does not absorb a new capacity line already present on the first live resume scan (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline-race", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, 1);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    const patterns = replacementBackend.getErrorPatterns!();
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(">_ OpenAI Codex (v0.157.0)\n  Resuming session…", patterns, readyPattern, 3_000_000, busyPattern);
+
+    // The old row, queued work, new capacity row and live composer can all be
+    // visible in the first post-resume scan. Only the transferred occurrence
+    // is history; the extra matching line must remain actionable.
+    const oldPlusNew = [
+      staleCapacityLine(),
+      "› queued follow-up after capacity retry",
+      staleCapacityLine(),
+      "› Ask Codex to do anything",
+      "  Context 100% left",
+    ].join("\n");
+    (replacement as any).evaluateErrorPatterns(oldPlusNew, patterns, readyPattern, 3_000_100, busyPattern);
+
+    expect(newErrors, "a post-restart capacity row beyond the seed must still trigger backoff").toHaveLength(1);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(2);
+  });
+
   function staleCapacityLine(): string { return "⚠ Selected model is at capacity. Please try a different model."; }
 
   it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {

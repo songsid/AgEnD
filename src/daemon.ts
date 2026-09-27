@@ -2672,16 +2672,21 @@ export class Daemon extends EventEmitter {
     // notification, a false recovery log, then silence.
     const looksReady = (): boolean => !busyPattern?.test(pane) && readyPattern.test(pane);
     const codexLivePane = this.isCodexLivePaneSnapshot(pane);
+    const rebasedSeededBaselines = new Set<string>();
 
     // The baseline belongs to the resumed transcript, not the empty startup
     // frame from the replacement tmux window. Keep it as a floor until resume
-    // presents a live composer, then rebase to the pane's actual count (including
-    // zero when the old row is no longer present).
+    // presents a live composer, then rebase to the lower of the pane's actual
+    // count and the seed. Any higher count already includes a new occurrence,
+    // which the normal scan below must still report.
     if (codexLivePane && this.seededErrorCountBaselines.size > 0) {
-      for (const key of this.seededErrorCountBaselines.keys()) {
+      for (const [key, seed] of this.seededErrorCountBaselines) {
         const ep = patterns.find(candidate => Daemon.errorPatternKey(candidate) === key);
-        if (ep) this.lastErrorCount.set(key, countMatches(ep.pattern));
+        if (ep) this.lastErrorCount.set(key, Math.min(countMatches(ep.pattern), seed));
         this.seededErrorCountBaselines.delete(key);
+        // Do not let the generic scrolling-count path repeat this rebase if the
+        // live-pane assignment above is removed or changed (#949 mutation guard).
+        rebasedSeededBaselines.add(key);
       }
     }
 
@@ -2765,7 +2770,9 @@ export class Daemon extends EventEmitter {
         // so a future re-occurrence still counts as new (no permanent suppress).
         // A seeded Codex count stays a floor until resume reaches a live composer;
         // an empty startup frame is not evidence that its history scrolled away.
-        if (count < seen && !this.seededErrorCountBaselines.has(key)) this.lastErrorCount.set(key, count);
+        if (count < seen && !this.seededErrorCountBaselines.has(key) && !rebasedSeededBaselines.has(key)) {
+          this.lastErrorCount.set(key, count);
+        }
         continue;
       }
 
