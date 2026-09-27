@@ -905,6 +905,14 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     ]);
   }
 
+  async unreact(chatId: string, messageId: string, _emoji: string, _threadId?: string): Promise<void> {
+    // setMessageReaction SETS the bot's reaction list (it does not append),
+    // so an empty list clears the bot's reactions on the message. Per-emoji
+    // removal does not exist in the Bot API — callers updating a status pass
+    // the new emoji via react() right after, which lands as the only one.
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), []);
+  }
+
   // ── Approval ─────────────────────────────────────────────────────────────
 
   async sendApproval(
