@@ -79,12 +79,12 @@ describe("delivery-status reaction replaces the previous status", () => {
     fleet.finishDeliveryStatus("inst", "100", "42", "✅");
     fleet.finishDeliveryStatus("inst", "100", "42", "❌");
     fleet.finishDeliveryStatus("inst", "100", "42", "✅");
-    await vi.waitFor(() => expect(sets).toHaveLength(4));
+    await vi.waitFor(() => expect(sets).toHaveLength(3));
 
-    expect(sets).toEqual([["👀"], ["👀"], ["👎"], ["👀"]]);
+    expect(sets).toEqual([["👀"], ["👎"], ["👀"]]);
   });
 
-  it("restores Telegram's successful 👀 status after replacing the in-progress marker", async () => {
+  it("preserves an agent Telegram reaction when confirmed status remains 👀", async () => {
     const sets: string[][] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, {
@@ -98,13 +98,14 @@ describe("delivery-status reaction replaces the previous status", () => {
 
     fleet.reactMessageStatus("inst", "100", "42", "👀");
     await vi.waitFor(() => expect(sets).toHaveLength(1));
-    // Telegram's single slot means the ordinary reaction replaces 👀. The
-    // successful terminal status then maps back to 👀 in that same slot.
+    // Telegram's single slot means the ordinary reaction replaces 👀. Since
+    // success maps to the already tracked 👀 state, the status update is a
+    // no-op and must not overwrite the agent's reaction.
     await adapter.react("100", "42", "👍");
     fleet.finishDeliveryStatus("inst", "100", "42", "✅");
     await new Promise(r => setTimeout(r, 100));
 
-    expect(sets).toEqual([["👀"], ["👍"], ["👀"]]);
+    expect(sets).toEqual([["👀"], ["👍"]]);
   });
 
   it("adapters without unreact fall back to a plain add", async () => {

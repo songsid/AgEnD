@@ -6993,6 +6993,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         return;
       }
+      // A Telegram status may map multiple lifecycle states to the same
+      // reaction. Avoid resending it: an agent may have replaced the one
+      // reaction slot with its own 👍 between delivered and confirmed.
+      if (prev === emoji) return;
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
       // Discord needs the old reaction removed before the new one is added.
