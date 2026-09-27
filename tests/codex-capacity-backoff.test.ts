@@ -12,8 +12,13 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import pino from "pino";
 import { InstanceLifecycle, type LifecycleContext } from "../src/instance-lifecycle.js";
 import { CodexBackend } from "../src/backend/codex.js";
+import { Daemon } from "../src/daemon.js";
 
 type MockDaemon = EventEmitter & {
   requestPauseWhenIdle: ReturnType<typeof vi.fn>;
@@ -122,6 +127,69 @@ describe("codex model-capacity backoff (#905)", () => {
       seedErrorPatternOccurrenceCount: otherBackendSeed,
     });
     expect(otherBackendSeed).not.toHaveBeenCalled();
+  });
+
+  it("transfers the baseline through the scheduled stop-and-spawn restart path", async () => {
+    // Mutation guards: removing the spawn seed, clearing the baseline during
+    // the scheduled stop, or making the daemon seed method a no-op must fail.
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-codex-949-restart-"));
+    const { ctx: baseCtx } = makeRealPathCtx();
+    const config = (baseCtx.fleetConfig as any).instances["codex-inst"];
+    let lifecycle!: InstanceLifecycle;
+    const restartSingleInstance = vi.fn(async () => {
+      await lifecycle.stop("codex-inst");
+      await lifecycle.start("codex-inst", config, false);
+    });
+    const ctx = {
+      ...baseCtx,
+      logger: pino({ level: "silent" }) as any,
+      getInstanceDir: () => instanceDir,
+      dataDir: instanceDir,
+      touchActivity: vi.fn(),
+      restartSingleInstance,
+    } as LifecycleContext;
+    lifecycle = new InstanceLifecycle(ctx);
+    const startSpy = vi.spyOn(Daemon.prototype, "start").mockResolvedValue();
+    const stopSpy = vi.spyOn(Daemon.prototype, "stop").mockResolvedValue();
+    const seedSpy = vi.spyOn(Daemon.prototype, "seedErrorPatternOccurrenceCount");
+
+    try {
+      await lifecycle.start("codex-inst", config, false);
+      const oldDaemon = (lifecycle as any).daemons.get("codex-inst") as Daemon;
+      const capacity = new CodexBackend(instanceDir).getErrorPatterns().find(
+        pattern => pattern.type === "model_error" && pattern.action === "backoff_restart",
+      );
+      expect(capacity).toBeDefined();
+      vi.spyOn(oldDaemon, "getErrorPatternOccurrenceCount").mockReturnValue(1);
+
+      oldDaemon.emit("pty_error", {
+        name: "codex-inst",
+        type: "model_error",
+        action: "backoff_restart",
+        message: "Codex model at capacity",
+        pattern: capacity!.pattern,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect((lifecycle as any).capacityBackoffBaselines.get("codex-inst")).toEqual({
+        pattern: capacity!.pattern,
+        count: 1,
+      });
+
+      await vi.advanceTimersByTimeAsync(30_000);
+
+      expect(restartSingleInstance).toHaveBeenCalledOnce();
+      await restartSingleInstance.mock.results[0]!.value;
+      const replacement = (lifecycle as any).daemons.get("codex-inst") as Daemon;
+      expect(replacement).toBeDefined();
+      expect(replacement).not.toBe(oldDaemon);
+      expect(seedSpy).toHaveBeenCalledWith("model_error", capacity!.pattern, 1);
+      expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(1);
+      expect((lifecycle as any).capacityBackoffBaselines.has("codex-inst")).toBe(false);
+    } finally {
+      startSpy.mockRestore();
+      stopSpy.mockRestore();
+      rmSync(instanceDir, { recursive: true, force: true });
+    }
   });
 
   it("first capacity error schedules a restart after 30s, not an immediate pause", async () => {

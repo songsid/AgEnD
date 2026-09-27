@@ -1387,6 +1387,10 @@ export class Daemon extends EventEmitter {
   // capture buffer the count drops — we lower the baseline so a re-occurrence
   // still registers as new (prevents the old hash-dedup's permanent suppression).
   private lastErrorCount = new Map<string, number>();
+  // A lifecycle-provided count is a lower bound while a restarted Codex pane is
+  // still booting. Its new tmux window starts empty before resume restores the
+  // old transcript, so pre-ready scans must not lower this seeded baseline.
+  private seededErrorCountBaselines = new Map<string, number>();
   private lastDetectedErrorType: string | null = null;
 
   private static errorPatternKey(ep: ErrorPattern): string {
@@ -1401,7 +1405,9 @@ export class Daemon extends EventEmitter {
   /** Seed a replacement daemon with an already-reported pattern count. */
   seedErrorPatternOccurrenceCount(type: ErrorPattern["type"], pattern: RegExp, count: number): void {
     if (!Number.isSafeInteger(count) || count <= 0) return;
-    this.lastErrorCount.set(`${type}:${pattern.source}`, count);
+    const key = `${type}:${pattern.source}`;
+    this.lastErrorCount.set(key, count);
+    this.seededErrorCountBaselines.set(key, count);
   }
 
   /**
@@ -2667,6 +2673,18 @@ export class Daemon extends EventEmitter {
     const looksReady = (): boolean => !busyPattern?.test(pane) && readyPattern.test(pane);
     const codexLivePane = this.isCodexLivePaneSnapshot(pane);
 
+    // The baseline belongs to the resumed transcript, not the empty startup
+    // frame from the replacement tmux window. Keep it as a floor until resume
+    // presents a live composer, then rebase to the pane's actual count (including
+    // zero when the old row is no longer present).
+    if (codexLivePane && this.seededErrorCountBaselines.size > 0) {
+      for (const key of this.seededErrorCountBaselines.keys()) {
+        const ep = patterns.find(candidate => Daemon.errorPatternKey(candidate) === key);
+        if (ep) this.lastErrorCount.set(key, countMatches(ep.pattern));
+        this.seededErrorCountBaselines.delete(key);
+      }
+    }
+
     // State: waiting for recovery. A missing/outdated ready pattern must not
     // suppress every future error forever, so the gate has a hard deadline.
     if (this.errorWaitingForRecovery) {
@@ -2745,7 +2763,9 @@ export class Daemon extends EventEmitter {
       if (count <= seen) {
         // Occurrences scrolled out of the capture buffer → lower the baseline
         // so a future re-occurrence still counts as new (no permanent suppress).
-        if (count < seen) this.lastErrorCount.set(key, count);
+        // A seeded Codex count stays a floor until resume reaches a live composer;
+        // an empty startup frame is not evidence that its history scrolled away.
+        if (count < seen && !this.seededErrorCountBaselines.has(key)) this.lastErrorCount.set(key, count);
         continue;
       }
 

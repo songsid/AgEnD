@@ -79,4 +79,37 @@ describe("Codex status_line without Context (#947)", () => {
     const machine = new PaneStateMachine(backend.getReadyPattern(), 60_000, 0, backend.getBusyPattern());
     expect(machine.observe(working, 1_000, { settled: true }).state).toBe("working");
   });
+
+  it("vetoes a Working marker above the empty composer when run-state is not configured", () => {
+    // Mutation guard: removing the no-Context busy veto must not let a live
+    // composer plus an otherwise valid footer report idle during generation.
+    const backend = backendForStatusLine(["model"]);
+    const working = [
+      "• Working (5s • esc to interrupt)",
+      "› Ask Codex to do anything",
+      "  gpt-5.5",
+    ].join("\n");
+
+    expect(backend.isDeliveryInputReadyPane(working)).toBe(false);
+    expect(backend.isPeriodicRedrawIdlePane(working)).toBe(false);
+    const machine = new PaneStateMachine(backend.getReadyPattern(), 60_000, 0, backend.getBusyPattern());
+    expect(machine.observe(working, 1_000, { settled: true }).state).toBe("working");
+  });
+
+  it("fails closed for unknown status_line items, alone or beside a known item", () => {
+    // Mutation guard: treating unknown items as arbitrary text would make both
+    // footer shapes below false readiness proofs.
+    const composer = "› Ask Codex to do anything";
+    const unknownOnly = backendForStatusLine(["my-plugin"]);
+    const unknownOnlyPane = `${composer}\n  whatever`;
+    expect(unknownOnly.getReadyPattern().test(unknownOnlyPane)).toBe(false);
+    expect(unknownOnly.isDeliveryInputReadyPane(unknownOnlyPane)).toBe(false);
+    expect(unknownOnly.isPeriodicRedrawIdlePane(unknownOnlyPane)).toBe(false);
+
+    const mixed = backendForStatusLine(["model", "my-plugin"]);
+    const mixedPane = `${composer}\n  gpt-5.5 · arbitrary text`;
+    expect(mixed.getReadyPattern().test(mixedPane)).toBe(false);
+    expect(mixed.isDeliveryInputReadyPane(mixedPane)).toBe(false);
+    expect(mixed.isPeriodicRedrawIdlePane(mixedPane)).toBe(false);
+  });
 });

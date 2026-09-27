@@ -950,7 +950,7 @@ describe("Daemon error monitor recovery", () => {
     expect(messages).toEqual(["Codex monthly limit: less than 5% left"]);
   });
 
-  it("carries a Codex capacity occurrence baseline across daemon replacement (#949)", () => {
+  it("keeps the seeded capacity baseline through an empty restart frame before stale resume history (#949)", () => {
     const backend = createBackend("codex", tmpDir);
     const patterns = backend.getErrorPatterns!();
     const capacity = patterns.find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
@@ -971,15 +971,46 @@ describe("Daemon error monitor recovery", () => {
     const newErrors: unknown[] = [];
     replacement.on("pty_error", error => newErrors.push(error));
 
-    (replacement as any).evaluateErrorPatterns(stale, replacementBackend.getErrorPatterns!(), /NEVER_READY/, 1_000_100);
-    expect(newErrors, "old scrollback line must not burn a second backoff attempt").toHaveLength(0);
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(
+      ">_ OpenAI Codex (v0.157.0)\n  Resuming session…",
+      replacementBackend.getErrorPatterns!(), readyPattern, 1_000_050, busyPattern,
+    );
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(count);
 
-    // A genuinely new occurrence appended after restart increments the count
-    // beyond the transferred baseline and still triggers normal backoff.
-    (replacement as any).evaluateErrorPatterns(`${stale}\n${stale}`, replacementBackend.getErrorPatterns!(), /NEVER_READY/, 1_000_200);
-    expect(newErrors).toHaveLength(1);
-    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(2);
+    const resumedWithOldHistory = `${stale}\n› Ask Codex to do anything\n  Context 100% left`;
+    (replacement as any).evaluateErrorPatterns(resumedWithOldHistory, replacementBackend.getErrorPatterns!(), readyPattern, 1_000_100, busyPattern);
+    expect(newErrors, "old scrollback line must not burn a second backoff attempt").toHaveLength(0);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(1);
   });
+
+  it("rebases an absent stale line on the first live resume prompt so later capacity is new (#949)", () => {
+    const backend = createBackend("codex", tmpDir);
+    const capacity = backend.getErrorPatterns!().find(pattern => pattern.type === "model_error" && pattern.action === "backoff_restart");
+    expect(capacity).toBeDefined();
+    const replacementBackend = createBackend("codex", tmpDir);
+    const replacement = new Daemon("test-capacity-baseline-zero", makeConfig(), tmpDir, false, replacementBackend, undefined, rootLogger);
+    replacement.seedErrorPatternOccurrenceCount("model_error", capacity!.pattern, 1);
+    const newErrors: unknown[] = [];
+    replacement.on("pty_error", error => newErrors.push(error));
+
+    const patterns = replacementBackend.getErrorPatterns!();
+    const readyPattern = replacementBackend.getReadyPattern();
+    const busyPattern = replacementBackend.getBusyPattern?.();
+    (replacement as any).evaluateErrorPatterns(">_ OpenAI Codex (v0.157.0)\n  Resuming session…", patterns, readyPattern, 2_000_000, busyPattern);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(1);
+
+    const resumedWithoutOldHistory = "› Ask Codex to do anything\n  Context 100% left";
+    (replacement as any).evaluateErrorPatterns(resumedWithoutOldHistory, patterns, readyPattern, 2_000_100, busyPattern);
+    expect(replacement.getErrorPatternOccurrenceCount("model_error", capacity!.pattern)).toBe(0);
+
+    const genuinelyNewCapacity = `${staleCapacityLine()}\n› Ask Codex to do anything\n  Context 100% left`;
+    (replacement as any).evaluateErrorPatterns(genuinelyNewCapacity, patterns, readyPattern, 2_000_200, busyPattern);
+    expect(newErrors, "a new capacity line after ready must still be detected").toHaveLength(1);
+  });
+
+  function staleCapacityLine(): string { return "⚠ Selected model is at capacity. Please try a different model."; }
 
   it("surfaces Claude's hard usage pause once while the pane keeps showing it", () => {
     const messages: string[] = [];
