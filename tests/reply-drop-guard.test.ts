@@ -241,6 +241,31 @@ describe("Claude human-turn reply completion harness", () => {
     expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Use the reply tool exactly once");
   });
 
+  it("still re-prompts when only a non-human-facing outbound succeeded", async () => {
+    const daemon = makeDaemon();
+    const detected = vi.fn();
+    daemon.on("reply_drop_detected", detected);
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    const socket = new EventEmitter() as any;
+    daemon.socketSessionNames.set(socket, "worker");
+
+    daemon.handleToolCall({
+      tool: "send_to_instance",
+      args: { instance_name: "other", message: "hi" },
+      requestId: 21,
+    }, socket);
+    const pending = [...daemon.pendingIpcRequests.entries()].find(([key]: [string]) => key.endsWith("_21"));
+    expect(pending).toBeDefined();
+    pending![1]({ result: { sent: true } });
+    expect(daemon.turnReplyGuard.snapshot()).toMatchObject({ outboundDelivered: true, completionDelivered: false });
+
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+
+    expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
+  });
+
   it("bounds a daemon-owned channel delivery that never receives a fleet response", async () => {
     vi.useFakeTimers();
     const daemon = makeDaemon();
