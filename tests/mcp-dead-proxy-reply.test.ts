@@ -267,6 +267,38 @@ describe("daemon: dead MCP at turn end with no reply → proxy reply", () => {
     expect(proxyCalls(broadcast)).toHaveLength(0);
   });
 
+  it.each(["react", "edit_message"])("a successful %s action suppresses the duplicate dead-MCP proxy", tool => {
+    const made = makeDaemon(); dir = made.dir;
+    const { daemon, broadcast } = made;
+    liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+
+    daemon["handleToolCall"]({
+      tool,
+      args: tool === "react" ? { message_id: "message-1", emoji: "👍" } : { message_id: "message-1", text: "done" },
+      requestId: 19,
+    }, standingIn<import("node:net").Socket>({}));
+    daemon["pendingIpcRequests"].get("tool_1_19")!({ result: { ok: true } });
+
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
+    expect(proxyCalls(broadcast)).toHaveLength(0);
+  });
+
+  it("a failed reaction does not suppress the dead-MCP proxy", () => {
+    const made = makeDaemon(); dir = made.dir;
+    const { daemon, broadcast } = made;
+    liveness.mockReturnValue({ state: "dead", pid: 1 } as any);
+    daemon["markTurnStarted"]({ chat_id: "chat-1" }, INBOUND);
+
+    daemon["handleToolCall"]({ tool: "react", args: { message_id: "message-1", emoji: "👍" }, requestId: 20 }, standingIn<import("node:net").Socket>({}));
+    daemon["pendingIpcRequests"].get("tool_1_20")!({ result: null, error: "adapter rejected reaction" });
+
+    daemon["instanceState"] = "working";
+    daemon["applyInstanceStateSnapshot"](idleSnapshot(), PANE);
+    expect(proxyCalls(broadcast)).toHaveLength(1);
+  });
+
   it("a FAILED reply does not stand it down — only verified delivery counts", () => {
     const made = makeDaemon(); dir = made.dir;
     const { daemon, broadcast } = made;

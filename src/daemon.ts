@@ -51,9 +51,15 @@ const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "sta
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
-// Tools whose success proves the agent got a message out this turn. While any
-// of these succeeded, a dead-MCP proxy reply would double-post — suppress it.
-const TURN_REPLY_TOOLS = new Set(["reply", "send_to_instance", "report_result", "request_information", "delegate_task", "broadcast"]);
+// Tools whose success proves the agent performed an outbound action this turn.
+// While any of these succeeded, a dead-MCP proxy reply would duplicate output.
+const TURN_OUTBOUND_TOOLS = new Set([
+  "reply", "react", "edit_message", "send_to_instance", "report_result",
+  "request_information", "delegate_task", "broadcast",
+]);
+// These actions reach the human-facing channel and satisfy reply-completion:
+// a deliberate reaction or edit is a valid response even without new text.
+const TURN_COMPLETION_TOOLS = new Set(["reply", "react", "edit_message"]);
 const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
 const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. Use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, send a brief acknowledgement. Do not reply to this system instruction except through the reply tool.";
 
@@ -3396,7 +3402,7 @@ export class Daemon extends EventEmitter {
     const turn = this.turnReplyGuard.snapshot();
     if (!turn || this.isPaused) return;
 
-    if (turn.replyDelivered) {
+    if (turn.completionDelivered) {
       if (turn.phase === "recovering") {
         this.emit("reply_drop_recovered", {
           name: this.name,
@@ -3455,9 +3461,9 @@ export class Daemon extends EventEmitter {
       }
     }
 
-    // Preserve the dead-MCP proxy path and its explicit opt-in. Other outbound
-    // tools still suppress that proxy, but only a delivered `reply` satisfies
-    // the human-facing completion guard below.
+    // Preserve the dead-MCP proxy path and its explicit opt-in. Any verified
+    // outbound action suppresses a duplicate proxy; only a delivered
+    // human-facing channel action satisfies the completion guard below.
     if (!turn.outboundDelivered && this.config.mcp_proxy_reply === true
       && mcpServerState(this.instanceDir).state === "dead") {
       this.turnReplyGuard.complete(turn.generation);
@@ -3538,7 +3544,7 @@ export class Daemon extends EventEmitter {
       try {
         const current = this.turnReplyGuard.snapshot();
         if (!current || current.generation !== turn.generation || current.phase !== "recovering") return;
-        if (current.replyDelivered) {
+        if (current.completionDelivered) {
           this.turnReplyGuard.complete(turn.generation);
           this.emit("reply_drop_recovered", {
             name: this.name,
@@ -6208,15 +6214,15 @@ export class Daemon extends EventEmitter {
     // an unmapped socket is retained for legacy/tests where mcp_ready was not
     // observed before the first tool call.
     const sourceSession = this.socketSessionNames.get(socket);
-    const replyAttempt = TURN_REPLY_TOOLS.has(tool) && (!sourceSession || sourceSession === this.name)
-      ? this.turnReplyGuard.beginToolAttempt(tool === "reply")
+    const replyAttempt = TURN_OUTBOUND_TOOLS.has(tool) && (!sourceSession || sourceSession === this.name)
+      ? this.turnReplyGuard.beginToolAttempt(tool === "reply", TURN_COMPLETION_TOOLS.has(tool))
       : null;
 
     // For now, log and respond. Full adapter routing will be wired in fleet manager.
     const respond = (result: unknown, error?: string) => {
       // A message that verifiably went out stands down the dead-MCP proxy reply
       // for this turn: the agent proved it can still speak for itself.
-      if (!error && result != null && TURN_REPLY_TOOLS.has(tool)) {
+      if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
         this.turnReplyGuard.settleToolAttempt(replyAttempt, true);
       }
       const sent = this.ipcServer?.send(socket, { requestId, result, error }) ?? false;

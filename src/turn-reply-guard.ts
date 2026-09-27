@@ -13,7 +13,10 @@ export type TurnReplyPhase = "awaiting" | "recovering";
 export interface ReplyAttemptToken {
   generation: number;
   obligation: number;
+  /** A literal reply call, used to avoid duplicating an uncertain delivery. */
   reply: boolean;
+  /** A user-facing channel action that satisfies the completion obligation. */
+  completionAction: boolean;
 }
 
 export interface TurnReplySnapshot {
@@ -22,6 +25,7 @@ export interface TurnReplySnapshot {
   target: TurnReplyTarget;
   replyAttempted: boolean;
   replyDelivered: boolean;
+  completionDelivered: boolean;
   outboundDelivered: boolean;
 }
 
@@ -32,6 +36,7 @@ interface ActiveTurn {
   latestObligation: number;
   replyAttemptedAt: number;
   replyDeliveredAt: number;
+  completionDeliveredAt: number;
   outboundDeliveredAt: number;
 }
 
@@ -55,6 +60,7 @@ export class TurnReplyGuard {
         latestObligation: 1,
         replyAttemptedAt: 0,
         replyDeliveredAt: 0,
+        completionDeliveredAt: 0,
         outboundDeliveredAt: 0,
       };
       return this.active.generation;
@@ -65,7 +71,7 @@ export class TurnReplyGuard {
     return this.active.generation;
   }
 
-  beginToolAttempt(reply: boolean): ReplyAttemptToken | null {
+  beginToolAttempt(reply: boolean, completionAction = reply): ReplyAttemptToken | null {
     const active = this.active;
     if (!active) return null;
     if (reply) active.replyAttemptedAt = Math.max(active.replyAttemptedAt, active.latestObligation);
@@ -73,6 +79,7 @@ export class TurnReplyGuard {
       generation: active.generation,
       obligation: active.latestObligation,
       reply,
+      completionAction,
     };
   }
 
@@ -81,6 +88,7 @@ export class TurnReplyGuard {
     if (!token || !active || token.generation !== active.generation || !delivered) return;
     active.outboundDeliveredAt = Math.max(active.outboundDeliveredAt, token.obligation);
     if (token.reply) active.replyDeliveredAt = Math.max(active.replyDeliveredAt, token.obligation);
+    if (token.completionAction) active.completionDeliveredAt = Math.max(active.completionDeliveredAt, token.obligation);
   }
 
   snapshot(): TurnReplySnapshot | null {
@@ -92,6 +100,7 @@ export class TurnReplyGuard {
       target: { ...active.target },
       replyAttempted: active.replyAttemptedAt >= active.latestObligation,
       replyDelivered: active.replyDeliveredAt >= active.latestObligation,
+      completionDelivered: active.completionDeliveredAt >= active.latestObligation,
       outboundDelivered: active.outboundDeliveredAt >= active.latestObligation,
     };
   }
