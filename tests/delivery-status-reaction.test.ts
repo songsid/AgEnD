@@ -12,8 +12,8 @@ import type { ChannelAdapter } from "../src/channel/types.js";
  * later ✅ landed next to it instead of replacing it. The status path now
  * reconciles: every update removes the other group members (👀/⏳/✅/❌)
  * before adding the new one, serialised per bot+message so a delayed ❌ can
- * never land after a newer ✅. Telegram only ever carries 👀 (the Bot API
- * rejects the rest), addressed at the supergroup with the thread separate.
+ * never land after a newer ✅. Telegram uses the supported 👀/👎 status pair,
+ * addressed at the supergroup with the thread separate.
  */
 
 const dirs: string[] = [];
@@ -63,27 +63,34 @@ describe("delivery-status reaction replaces the previous status", () => {
     expect(unreact).toHaveBeenCalledWith("topic-9", "msg", "👀", "topic-9");
   });
 
-  it("telegram: only 👀 is ever sent, other statuses stay silent", async () => {
-    const { adapter, react } = stubAdapter("telegram");
-    // instanceof drives the Telegram policy, so use a real prototype object.
-    Object.setPrototypeOf(adapter, TelegramAdapter.prototype);
-    const fleet = makeFleet(adapter);
-
-    for (const emoji of ["👀", "⏳", "❌", "✅"]) {
-      fleet.reactMessageStatus("inst", "100", "42", emoji);
-    }
-    await vi.waitFor(() => expect(react).toHaveBeenCalledTimes(1));
-    expect(react).toHaveBeenCalledWith("100", "42", "👀", undefined);
-    await new Promise(r => setTimeout(r, 100));
-    expect(react).toHaveBeenCalledTimes(1);
-  });
-
-  it("clears Telegram's tracked 👀 on a terminal verdict without clearing another bot reaction", async () => {
+  it("telegram: central status mapping uses 👀 for progress/success and 👎 for failure", async () => {
     const sets: string[][] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, {
       id: "telegram-main",
       bot: { api: { setMessageReaction: async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
+        if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
+        sets.push(reactions.map(reaction => reaction.emoji));
+      } } },
+    });
+    const fleet = makeFleet(adapter);
+
+    fleet.reactMessageStatus("inst", "100", "42", "👀");
+    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    fleet.finishDeliveryStatus("inst", "100", "42", "❌");
+    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    await vi.waitFor(() => expect(sets).toHaveLength(4));
+
+    expect(sets).toEqual([["👀"], ["👀"], ["👎"], ["👀"]]);
+  });
+
+  it("restores Telegram's successful 👀 status after replacing the in-progress marker", async () => {
+    const sets: string[][] = [];
+    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+    Object.assign(adapter, {
+      id: "telegram-main",
+      bot: { api: { setMessageReaction: async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
+        if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
         sets.push(reactions.map(reaction => reaction.emoji));
       } } },
     });
@@ -91,13 +98,13 @@ describe("delivery-status reaction replaces the previous status", () => {
 
     fleet.reactMessageStatus("inst", "100", "42", "👀");
     await vi.waitFor(() => expect(sets).toHaveLength(1));
-    // A separate bot-owned reaction is tracked by the adapter and must survive
-    // retiring only the delivery-status marker.
+    // Telegram's single slot means the ordinary reaction replaces 👀. The
+    // successful terminal status then maps back to 👀 in that same slot.
     await adapter.react("100", "42", "👍");
     fleet.finishDeliveryStatus("inst", "100", "42", "✅");
-    await vi.waitFor(() => expect(sets).toHaveLength(3));
+    await new Promise(r => setTimeout(r, 100));
 
-    expect(sets).toEqual([["👀"], ["👀", "👍"], ["👍"]]);
+    expect(sets).toEqual([["👀"], ["👍"], ["👀"]]);
   });
 
   it("adapters without unreact fall back to a plain add", async () => {
@@ -170,8 +177,30 @@ describe("Discord adapter unreact", () => {
 });
 
 describe("Telegram adapter reaction memory", () => {
-  it("re-sends the surviving list so unreact keeps an ordinary reaction", async () => {
-    const setMessageReaction = vi.fn().mockResolvedValue(undefined);
+  it("replaces one bot reaction with another without exceeding Telegram's one-reaction limit", async () => {
+    const sent: string[][] = [];
+    const setMessageReaction = vi.fn(async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
+      if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
+      sent.push(reactions.map(reaction => reaction.emoji));
+    });
+    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+    Object.assign(adapter as any, { bot: { api: { setMessageReaction } } });
+
+    // A normal agent may react more than once to the same message. Each call
+    // replaces the current single bot reaction, as the Bot API specifies.
+    await adapter.react("100", "42", "👍");
+    await adapter.react("100", "42", "🎉");
+
+    expect(sent).toEqual([["👍"], ["🎉"]]);
+    expect(setMessageReaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not clear a newer reaction when unreact targets a replaced one", async () => {
+    const sent: string[][] = [];
+    const setMessageReaction = vi.fn(async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
+      if (reactions.length > 1) throw new Error("REACTIONS_TOO_MANY");
+      sent.push(reactions.map(reaction => reaction.emoji));
+    });
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter as any, { bot: { api: { setMessageReaction } } });
 
@@ -179,8 +208,7 @@ describe("Telegram adapter reaction memory", () => {
     await adapter.react("100", "42", "👍");
     await adapter.unreact("100", "42", "👀");
 
-    expect(setMessageReaction).toHaveBeenLastCalledWith(100, 42, [
-      { type: "emoji", emoji: "👍" },
-    ]);
+    expect(sent).toEqual([["👀"], ["👍"]]);
+    expect(setMessageReaction).toHaveBeenCalledTimes(2);
   });
 });

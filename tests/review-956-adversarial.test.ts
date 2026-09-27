@@ -152,6 +152,7 @@ describe("review #956 adapter contracts", () => {
     const emojiUnion = types.match(/export interface ReactionTypeEmoji\s*\{[\s\S]*?\n\s*emoji: ([^;]+);/)![1];
     const allowed = new Set([...emojiUnion.matchAll(/"([^"]+)"/g)].map(m => m[1]));
     expect(allowed.has("👀")).toBe(true);
+    expect(allowed.has("👎")).toBe(true);
     let visible: string[] = []; const rejected: string[] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, { id: "telegram", bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
@@ -161,11 +162,12 @@ describe("review #956 adapter contracts", () => {
       visible = values.map(v => v.emoji);
     } } } });
     const { fleet } = makeFleet(adapter);
-    for (const emoji of ["👀", "⏳", "❌", "✅"]) {
-      fleet.reactMessageStatus("inst", "100", "42", emoji); await flush();
-    }
+    fleet.reactMessageStatus("inst", "100", "42", "👀");
+    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    fleet.finishDeliveryStatus("inst", "100", "42", "❌");
+    await flush();
     expect(rejected).toEqual([]);
-    expect(visible.length).toBe(1);
+    expect(visible).toEqual(["👎"]);
   });
 
   it("does not remove a later ordinary Telegram reaction when asked to remove an old status", async () => {

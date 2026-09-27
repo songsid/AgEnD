@@ -900,13 +900,11 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   // threadId is ignored: Telegram reactions key on the supergroup chat_id, not
   // the forum topic thread (reacting on a thread id silently fails).
   /**
-   * The bot's own reactions per message, as last set through this adapter.
-   * The Bot API has no per-emoji removal — setMessageReaction SETS the whole
-   * list — so unreact re-sends the list minus the removed emoji. Without this
-   * memory, clearing one status would wipe an unrelated reaction (a non-premium
-   * bot gets one reaction slot per message, so statuses and ordinary reactions
-   * share it). Best effort: a restart or an outside client desyncs it, and a
-   * set then reflects the tracked list, never worse than a blind clear.
+   * The bot's current reaction per message, as last set through this adapter.
+   * setMessageReaction replaces the whole list, and Telegram bots can use only
+   * one reaction per message. Remembering that one slot lets unreact avoid
+   * clearing a newer unrelated reaction when an older status is retired.
+   * Best effort: a restart or an outside client can desync this memory.
    */
   // Lazily created: prototype-spawned test doubles skip field initialisers.
   private telegramReactions: Map<string, string[]> | undefined;
@@ -935,16 +933,20 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
   }
 
   async react(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    const current = this.trackedReactions(chatId, messageId);
-    const next = current.includes(emoji) ? current : [...current, emoji];
+    // Telegram allows one bot reaction per message; this replaces the prior
+    // one, matching the Bot API's setMessageReaction semantics.
+    const next = [emoji];
     await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
     this.rememberReactions(chatId, messageId, next);
   }
 
   async unreact(chatId: string, messageId: string, emoji: string, _threadId?: string): Promise<void> {
-    const next = this.trackedReactions(chatId, messageId).filter(e => e !== emoji);
-    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), this.toReactionList(next));
-    this.rememberReactions(chatId, messageId, next);
+    // setMessageReaction clears the whole slot. Only clear when the reaction
+    // being retired is still current; otherwise it may be a newer user-facing
+    // reaction (for example 👍 replacing the delivery marker 👀).
+    if (!this.trackedReactions(chatId, messageId).includes(emoji)) return;
+    await this.bot.api.setMessageReaction(Number(chatId), Number(messageId), []);
+    this.rememberReactions(chatId, messageId, []);
   }
 
   // ── Approval ─────────────────────────────────────────────────────────────

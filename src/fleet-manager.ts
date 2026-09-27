@@ -29,6 +29,17 @@ import type { FleetConfig, RawFleetConfig, InstanceConfig, ChannelConfig, CostGu
 
 /** Fallback access policy for a channel with no `access:` block — open (no gate). */
 const DEFAULT_OPEN_ACCESS: AccessConfig = { mode: "open", allowed_users: [], max_pending_codes: 0, code_expiry_minutes: 0 };
+/**
+ * Telegram bot reactions replace a single slot per message. Keep delivery state
+ * presentation here so supported emoji choices can change without altering the
+ * status reconciliation logic.
+ */
+const TELEGRAM_DELIVERY_STATUS_REACTIONS = new Map<string, string>([
+  ["👀", "👀"], // queued / processing
+  ["⏳", "👀"],
+  ["✅", "👀"], // confirmed
+  ["❌", "👎"], // failed
+]);
 import { isProbeableRouteTarget, type RouteTarget } from "./fleet-context.js";
 import { loadFleetConfig, loadRawFleetConfig, DEFAULT_COST_GUARD, DEFAULT_DAILY_SUMMARY, DEFAULT_INSTANCE_CONFIG } from "./config.js";
 import { EventLog } from "./event-log.js";
@@ -6931,35 +6942,29 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // different bots, leaving a duplicate 👀 that never turns into ✅.
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) return;
+    const statusEmoji = adapter instanceof TelegramAdapter
+      ? TELEGRAM_DELIVERY_STATUS_REACTIONS.get(emoji)
+      : emoji;
+    // Telegram has a deliberately smaller status vocabulary, and every mapped
+    // value is accepted by ReactionTypeEmoji. Unknown statuses stay a no-op.
+    if (!statusEmoji) return;
     // Bot-scoped: sibling bots reacting on the same message must not clear
     // each other's state — every removal below targets this adapter's own
     // reactions (@me on Discord, the bot's list on Telegram).
     const adapterId = typeof (adapter as { id?: unknown }).id === "string"
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
-    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId);
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, statusEmoji, threadId);
   }
 
   /**
-   * Apply a terminal delivery verdict. Discord can display the verdict emoji;
-   * Telegram cannot, so retire its temporary 👀 marker instead. Keeping this
-   * separate from reactMessageStatus means unsupported emoji values stay a
-   * no-op and can never accidentally clear a valid Telegram reaction.
+   * Apply a terminal delivery verdict. Telegram maps ✅ to 👀 and ❌ to 👎 in
+   * reactMessageStatus; Discord continues to show the verdict emoji directly.
    */
   finishDeliveryStatus(
     instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
   ): void {
-    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
-    if (!adapter) return;
-    if (!(adapter instanceof TelegramAdapter)) {
-      this.reactMessageStatus(instanceName, chatId, messageId, emoji, threadId);
-      return;
-    }
-
-    const adapterId = typeof (adapter as { id?: unknown }).id === "string"
-      ? (adapter as unknown as { id: string }).id : "?";
-    const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
-    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, null, threadId);
+    this.reactMessageStatus(instanceName, chatId, messageId, emoji, threadId);
   }
 
   private queueDeliveryStatusReaction(
@@ -6988,17 +6993,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         return;
       }
-      if (adapter instanceof TelegramAdapter && emoji !== "👀") {
-        // The Bot API ReactionTypeEmoji list supports 👀 only — ⏳/✅/❌ come
-        // back REACTION_INVALID. Ignore direct unsupported sets. Terminal
-        // verdicts use finishDeliveryStatus() to clear the tracked 👀 without
-        // ever sending an illegal emoji; the MCP/tool react path keeps its
-        // honest errors.
-        return;
-      }
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
-      if (prev && prev !== emoji && adapter.unreact) {
+      // Discord needs the old reaction removed before the new one is added.
+      // Telegram's setMessageReaction replaces the bot's one current reaction.
+      if (prev && prev !== emoji && adapter.unreact && !(adapter instanceof TelegramAdapter)) {
         // Best effort: a failed removal must not block the new status.
         await adapter.unreact(target, messageId, prev, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
