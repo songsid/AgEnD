@@ -61,7 +61,7 @@ const TURN_OUTBOUND_TOOLS = new Set([
 // a deliberate reaction or edit is a valid response even without new text.
 const TURN_COMPLETION_TOOLS = new Set(["reply", "react", "edit_message"]);
 const REPLY_DROP_WARNING_COOLDOWN_MS = 5 * 60_000;
-const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. Use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, send a brief acknowledgement. Do not reply to this system instruction except through the reply tool.";
+const REPLY_RECOVERY_PROMPT = "[system:reply-required] The previous human-facing turn ended without a successfully delivered reply. Do not redo the work. React with an emoji or use the reply tool exactly once now to send the user a concise conclusion. If no substantive answer is needed, a brief react is sufficient. Do not reply to this system instruction except through the react or reply tool.";
 
 /** Point a resumed CLI at its one backend-native instruction source. */
 export function buildInstructionReloadNotice(binaryName: string, instanceName: string, instanceDir: string): string {

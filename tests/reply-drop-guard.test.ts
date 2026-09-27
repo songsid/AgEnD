@@ -188,8 +188,31 @@ describe("Claude human-turn reply completion harness", () => {
       true,
     );
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
-    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Use the reply tool exactly once");
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
+    expect(daemon.deliverMessage.mock.calls[0][0]).not.toMatch(/👍|✅|👀|⏳|❌/); // no specific emoji
     expect(daemon.turnReplyGuard.snapshot()?.phase).toBe("recovering");
+  });
+
+  it("recovery prompt offers react and reply but names no specific emoji (#960)", async () => {
+    // Mutation guard: if the prompt is reverted to "Use the reply tool exactly once"
+    // (no react option), this test fails. Also guards against accidentally mentioning
+    // reserved status emoji (👍✅👀⏳❌) which would steer agents toward system emoji.
+    const daemon = makeDaemon();
+    daemon.markTurnStarted(meta(), "[user] do the task\nreply marker");
+    daemon.instanceState = "working";
+    daemon.applyInstanceStateSnapshot(idle(), "work finished\n❯");
+    await daemon.pasteLock;
+    // The recovery prompt is delivered via deliverMessage — extract it.
+    const prompt = daemon.deliverMessage.mock.calls[0]?.[0] as string | undefined;
+    expect(prompt).toBeDefined();
+    // Must offer react as an alternative to reply.
+    expect(prompt).toMatch(/react.*emoji|emoji.*react/i);
+    // Must still mention reply.
+    expect(prompt).toContain("reply");
+    // Must NOT name any specific emoji.
+    expect(prompt).not.toMatch(/👍|✅|👀|⏳|❌|🎉|🙏/);
+    // Must still guard against plain-text responses.
+    expect(prompt).toMatch(/react or reply tool|react.*reply.*tool|reply.*react.*tool/i);
   });
 
   it.each(["react", "edit_message"])("does not re-prompt after a successfully delivered %s-only turn", async tool => {
@@ -238,7 +261,7 @@ describe("Claude human-turn reply completion harness", () => {
 
     expect(detected).toHaveBeenCalledWith(expect.objectContaining({ reason: "no_valid_call", recoveryStarted: true }));
     expect(daemon.deliverMessage).toHaveBeenCalledTimes(1);
-    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("Use the reply tool exactly once");
+    expect(daemon.deliverMessage.mock.calls[0][0]).toContain("React with an emoji or use the reply tool");
   });
 
   it("still re-prompts when only a non-human-facing outbound succeeded", async () => {
