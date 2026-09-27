@@ -5423,7 +5423,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // Reconciled status path (not a bare add): a retry that later
         // succeeds replaces this ❌ with ✅ instead of leaving both. Chat and
         // thread travel separately so Telegram addresses the supergroup.
-        this.reactMessageStatus(instanceName, msg.chatId, msg.messageId, "❌", msg.threadId || undefined);
+        this.finishDeliveryStatus(instanceName, msg.chatId, msg.messageId, "❌", msg.threadId || undefined);
       }
       return;
     }
@@ -6937,6 +6937,34 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapterId = typeof (adapter as { id?: unknown }).id === "string"
       ? (adapter as unknown as { id: string }).id : "?";
     const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId);
+  }
+
+  /**
+   * Apply a terminal delivery verdict. Discord can display the verdict emoji;
+   * Telegram cannot, so retire its temporary 👀 marker instead. Keeping this
+   * separate from reactMessageStatus means unsupported emoji values stay a
+   * no-op and can never accidentally clear a valid Telegram reaction.
+   */
+  finishDeliveryStatus(
+    instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
+  ): void {
+    const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
+    if (!adapter) return;
+    if (!(adapter instanceof TelegramAdapter)) {
+      this.reactMessageStatus(instanceName, chatId, messageId, emoji, threadId);
+      return;
+    }
+
+    const adapterId = typeof (adapter as { id?: unknown }).id === "string"
+      ? (adapter as unknown as { id: string }).id : "?";
+    const key = `${adapterId}:${chatId}:${threadId ?? ""}:${messageId}`;
+    this.queueDeliveryStatusReaction(adapter, key, chatId, messageId, null, threadId);
+  }
+
+  private queueDeliveryStatusReaction(
+    adapter: ChannelAdapter, key: string, chatId: string, messageId: string, emoji: string | null, threadId?: string,
+  ): void {
     const prev = this.deliveryStatusChains.get(key) ?? Promise.resolve();
     const run = prev.then(() => this.applyDeliveryStatusReaction(adapter, key, chatId, messageId, emoji, threadId));
     this.deliveryStatusChains.set(key, run);
@@ -6948,20 +6976,28 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async applyDeliveryStatusReaction(
     adapter: ChannelAdapter, key: string,
-    chatId: string, messageId: string, emoji: string, threadId?: string,
+    chatId: string, messageId: string, emoji: string | null, threadId?: string,
   ): Promise<void> {
     try {
+      const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
+      const prev = this.lastStatusEmoji.get(key);
+      if (emoji == null) {
+        if (prev && adapter.unreact) {
+          await adapter.unreact(target, messageId, prev, threadId);
+          this.lastStatusEmoji.delete(key);
+        }
+        return;
+      }
       if (adapter instanceof TelegramAdapter && emoji !== "👀") {
         // The Bot API ReactionTypeEmoji list supports 👀 only — ⏳/✅/❌ come
-        // back REACTION_INVALID. Never clear-then-send-invalid (that destroys
-        // the valid 👀 and leaves nothing): Telegram shows 👀 for any live
-        // status, and the MCP/tool react path keeps its honest errors.
+        // back REACTION_INVALID. Ignore direct unsupported sets. Terminal
+        // verdicts use finishDeliveryStatus() to clear the tracked 👀 without
+        // ever sending an illegal emoji; the MCP/tool react path keeps its
+        // honest errors.
         return;
       }
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
-      const target = adapter instanceof TelegramAdapter ? chatId : (threadId ?? chatId);
-      const prev = this.lastStatusEmoji.get(key);
       if (prev && prev !== emoji && adapter.unreact) {
         // Best effort: a failed removal must not block the new status.
         await adapter.unreact(target, messageId, prev, threadId).catch(e =>

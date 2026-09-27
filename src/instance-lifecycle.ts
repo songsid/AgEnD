@@ -173,6 +173,7 @@ export interface LifecycleContext {
   startStatuslineWatcher(name: string): void;
   stopStatuslineWatcher(name: string): void;
   reactMessageStatus(instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string): void;
+  finishDeliveryStatus?(instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string): void;
   startPersistedPausedInstance(name: string): Promise<void>;
 }
 
@@ -1174,12 +1175,14 @@ export class InstanceLifecycle {
       this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "👀", data.threadId);
     });
     daemon.on("message_confirmed", (data: { chatId: string; messageId: string; threadId?: string }) => {
-      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "✅", data.threadId);
+      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "✅", data.threadId);
+      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "✅", data.threadId);
     });
     daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string; threadId?: string }) => {
       this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
       this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
-      this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "❌", data.threadId);
+      if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "❌", data.threadId);
+      else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "❌", data.threadId);
     }, this.ctx.logger, `daemon.message_failed[${name}]`));
 
     this.ctx.setTopicIcon(name, "green");

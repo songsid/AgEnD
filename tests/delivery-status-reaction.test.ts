@@ -78,6 +78,28 @@ describe("delivery-status reaction replaces the previous status", () => {
     expect(react).toHaveBeenCalledTimes(1);
   });
 
+  it("clears Telegram's tracked 👀 on a terminal verdict without clearing another bot reaction", async () => {
+    const sets: string[][] = [];
+    const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
+    Object.assign(adapter, {
+      id: "telegram-main",
+      bot: { api: { setMessageReaction: async (_chat: number, _message: number, reactions: { emoji: string }[]) => {
+        sets.push(reactions.map(reaction => reaction.emoji));
+      } } },
+    });
+    const fleet = makeFleet(adapter);
+
+    fleet.reactMessageStatus("inst", "100", "42", "👀");
+    await vi.waitFor(() => expect(sets).toHaveLength(1));
+    // A separate bot-owned reaction is tracked by the adapter and must survive
+    // retiring only the delivery-status marker.
+    await adapter.react("100", "42", "👍");
+    fleet.finishDeliveryStatus("inst", "100", "42", "✅");
+    await vi.waitFor(() => expect(sets).toHaveLength(3));
+
+    expect(sets).toEqual([["👀"], ["👀", "👍"], ["👍"]]);
+  });
+
   it("adapters without unreact fall back to a plain add", async () => {
     const react = vi.fn(async () => {});
     const adapter = { id: "legacy", type: "discord", react } as unknown as ChannelAdapter;

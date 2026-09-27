@@ -55,9 +55,9 @@ describe("review #956 adversarial status transitions", () => {
     expect([...d.visible()]).toEqual(["✅"]);
   });
 
-  it("does not let a delayed old Telegram set overwrite a newer set", async () => {
-    // Concurrency alone: use accepted 👀 and a hypothetical status mapping so
-    // this probe is independent of Telegram's separate emoji validation bug.
+  it("keeps the last accepted Telegram status when a later status emoji is unsupported", async () => {
+    // Telegram accepts 👀, but not ✅. The rejected status must not be sent to
+    // the Bot API or clear the last accepted reaction.
     const gate = deferred(); let visible: string[] = [];
     const adapter = Object.create(TelegramAdapter.prototype) as TelegramAdapter;
     Object.assign(adapter, { id: "tg", bot: { api: { setMessageReaction: async (_c: number, _m: number, values: any[]) => {
@@ -68,7 +68,7 @@ describe("review #956 adversarial status transitions", () => {
     fleet.reactMessageStatus("inst", "100", "42", "👀");
     fleet.reactMessageStatus("inst", "100", "42", "✅");
     await flush(); gate.resolve(); await flush();
-    expect(visible).toEqual(["✅"]);
+    expect(visible).toEqual(["👀"]);
   });
 
   it("keeps bot A's failed state when bot B completes the same message", async () => {
