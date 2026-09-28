@@ -396,6 +396,47 @@ describe("MuseBackend idle proof anchored to the live input box (#958)", () => {
     expect(backend.isPeriodicRedrawIdlePane([...tail, "  Allow"].join("\n"))).toBe(false);
   });
 
+  it("refuses the /model arrow-key picker around an otherwise idle input box", () => {
+    // Not a live capture: AgEnD never opens this picker itself (model changes
+    // restart), so it appears only when a human types `/model` in the pane.
+    // The option rows are the ids listModels() documents from the live picker.
+    const bar = LIVE_1_4_IDLE_TAIL.at(-1)!;
+    const box = [SEP_120, "❯", SEP_120, bar];
+    const cursorAbove = [
+      "Select a model",
+      "› muse-spark-1.3-contributor (shares content)",
+      "  muse-spark-1.3",
+      "  muse-spark-1.2",
+      ...box,
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(cursorAbove), "› cursor above the box").toBe(false);
+    const bareIdsAbove = [
+      "  muse-spark-1.3",
+      "  muse-spark-1.3-contributor (shares content)",
+      "  muse-spark-1.2",
+      ...box,
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(bareIdsAbove), "bare model ids above the box").toBe(false);
+    // Any arrow picker, not only /model: the cursor itself is the proof.
+    const nonModelCursorAbove = ["Select effort", "› high", "  medium", "  low", ...box].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(nonModelCursorAbove), "non-model › cursor above the box").toBe(false);
+    const cursorUnderBar = [...box, "  › muse-spark-1.3", "    muse-spark-1.2"].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(cursorUnderBar), "picker rows under the bar").toBe(false);
+  });
+
+  it("does not mistake a single model id or a submitted message for the picker", () => {
+    // One bare id is ordinary answer text; `❯ …` above the box is muse's echo
+    // of a submitted message. Neither may re-create the stall.
+    const pane = [
+      "❯ which model are you?",
+      "◆ I am running as",
+      "  muse-spark-1.3-contributor",
+      SEP_120, "❯", SEP_120, LIVE_1_4_IDLE_TAIL.at(-1)!,
+      "", "",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(pane)).toBe(true);
+  });
+
   it("still proves idle when the last answer above the box is a numbered list", () => {
     // The dialog veto must not re-create the stall: numbered lists are
     // ordinary answer text.

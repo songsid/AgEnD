@@ -358,9 +358,9 @@ export class MuseBackend implements CliBackend {
     const status = rows.slice(bottomSeparator + 1);
     if (!statusBar.test(status[0])) return false;
     if (!status.every(row => /^\s+\S/.test(row) && !separator.test(row.trim()) && !busyPattern.test(row) && !dialogChrome.test(row))) return false;
-    // A wrapped cwd continues as path text; a numbered option list under the
-    // bar is a picker, not the bar.
-    if (status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row))) return false;
+    // A wrapped cwd continues as path text; a numbered option list or a
+    // selection cursor under the bar is a picker, not the bar.
+    if (status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row) || /^\s*[>›]/.test(row))) return false;
     // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
     // (or, higher up, a transcript echo) and never proves idle.
     if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
@@ -369,7 +369,15 @@ export class MuseBackend implements CliBackend {
     // No busy indicator and no dialog just above the input box. The working
     // line (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the
     // top separator; check 8 rows up to be safe.
-    return !rows.slice(Math.max(0, topSeparator - 8), topSeparator).some(r => busyPattern.test(r) || dialogChrome.test(r));
+    const above = rows.slice(Math.max(0, topSeparator - 8), topSeparator);
+    if (above.some(r => busyPattern.test(r) || dialogChrome.test(r))) return false;
+    // The `/model` arrow-key picker: a `›` selection cursor, or a list of bare
+    // model ids (`muse-spark-1.3-contributor (shares content)`). `❯` is not a
+    // cursor here — muse echoes submitted messages with it. One bare id can be
+    // answer text; two in a row is the picker.
+    const pickerRow = /^\s*(?:[›>❯]\s*)?muse-[\w.-]+(?:\s+\(shares content\))?\s*$/i;
+    if (above.some(r => /^\s*›\s+\S/.test(r))) return false;
+    return above.filter(r => pickerRow.test(r)).length < 2;
   }
 
   getErrorPatterns(): ErrorPattern[] {
