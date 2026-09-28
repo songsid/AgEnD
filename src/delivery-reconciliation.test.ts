@@ -239,7 +239,7 @@ describe("durable transcript marker reconciliation", () => {
       targetInstance: "worker",
       sessionName: "test-session",
       savedWindowId: "@old-worker",
-      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
+      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: 424242, pane: "", paneCaptureError: null }],
     }, true);
     expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
     expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
