@@ -162,8 +162,9 @@ describe("DeliveryOutbox", () => {
     restarted.close();
   });
 
-  it("replays a whole-process SIGKILL before Enter because no write-ahead Enter marker exists", async () => {
+  it("replays a whole-process SIGKILL after raw paste but before Enter", async () => {
     const dbPath = tempDb();
+    const rawContent = "  /compact\n--keep-space  ";
     const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
     const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
     const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
@@ -182,11 +183,13 @@ describe("DeliveryOutbox", () => {
       `const source = makeDaemon("source"); const target = makeDaemon("worker");`,
       `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
       `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
-      `const accepted = manager.admitDurableDelivery({ operationId: "op-paste-crash", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "corr-paste-crash", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
+      `const accepted = outbox.admit({ operationId: "op-raw-paste-crash", sourceKey: "schedule:silent-1:run-1:worker:raw_paste", sourceInstance: "source", sourceDaemonBootId: source.bootId, targetInstance: "worker", kind: "raw_paste", correlationId: "schedule:silent-1:run-1", payload: { type: "raw_paste", content: ${JSON.stringify(rawContent)}, schedule_id: "silent-1", schedule_run_id: "run-1" } });`,
       `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
       `const instanceDir = root + "/instances/worker"; mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
-      `target.tmux = { capturePane: async () => "❯", pasteBuffer: async () => { process.stdout.write("pane-paste-started\\n"); return new Promise(() => {}); }, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
-      `target.pushChannelMessage("hello", { delivery_id: accepted.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "corr-paste-crash", user: "instance:source", user_id: "instance:source", message_id: "message-paste-crash", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
+      `target.wake = async () => {}; target.waitForInputTransientToClear = async () => true;`,
+      `target.getWindowId = () => "@worker";`,
+      `target.tmux = { getWindowId: () => "@worker", capturePane: async () => "❯", pasteBuffer: async () => { process.stdout.write("raw-paste-started\\n"); return new Promise(() => {}); }, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.queueRawPaste(${JSON.stringify(rawContent)}, 0, false, { deliveryId: accepted.delivery.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });`,
       `setInterval(() => {}, 1000);`,
     ].join("\n");
     const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
@@ -198,7 +201,7 @@ describe("DeliveryOutbox", () => {
       const timer = setTimeout(() => reject(new Error("child did not reach the pane paste")), 10_000);
       lines.once("line", line => {
         clearTimeout(timer);
-        if (line === "pane-paste-started") resolve();
+        if (line === "raw-paste-started") resolve();
         else reject(new Error(`unexpected child output: ${line}`));
       });
       child.once("error", err => {
@@ -228,15 +231,101 @@ describe("DeliveryOutbox", () => {
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
 
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
-    const row = restarted.getByOperation("source", "op-paste-crash")[0];
+    const row = restarted.getByOperation("source", "op-raw-paste-crash")[0];
     expect(row).toMatchObject({ state: "reconciliation_pending", reconciliationPending: true, targetInstance: "worker" });
     const candidate = restarted.getReconciliationCandidates("worker")[0]!;
     expect(candidate.attempt.enterStartedAt).toBeNull();
-    expect(restarted.reconcileAttempt(candidate.deliveryId, candidate.attempt.targetDaemonBootId,
-      candidate.attempt.attemptNo, "retry_wait", "enter-not-started; pre-kill-pane-captured")).toBe(true);
+    expect(candidate.attempt.submissionMode).toBe("raw_paste");
+    const reconciled = await finishTargetReconciliation(restarted, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@worker",
+      attempts: [{
+        candidate,
+        paneWindowId: "@worker",
+        panePid: child.pid ?? null,
+        pane: `❯ ${rawContent}`,
+        paneCaptureError: null,
+      }],
+    }, true);
+    expect(reconciled).toEqual({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
     expect(restarted.get(row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
     expect(restarted.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(0);
+    expect(restarted.listPending().filter(item => item.kind === "post_restart_outcome_notice")).toHaveLength(0);
     restarted.close();
+  });
+
+  it("whole-process SIGKILL after raw_paste Enter is uncertain and never auto-replayed", async () => {
+    const dbPath = tempDb();
+    const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
+    const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
+    const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
+    const script = [
+      `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
+      `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
+      `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+      `import { mkdirSync, writeFileSync } from "node:fs";`,
+      `import pino from "pino";`,
+      `const root = ${JSON.stringify(dirname(dbPath))}; const db = ${JSON.stringify(dbPath)};`,
+      `const manager = new FleetManager(root); manager.shuttingDown = true;`,
+      `const outbox = new DeliveryOutbox(db, manager.managerBootId); manager.deliveryOutbox = outbox;`,
+      `const logger = pino({ level: "silent" });`,
+      `const source = new Daemon("source", { backend: "codex", working_directory: "/tmp", log_level: "error" }, root + "/instances/source", false, undefined, undefined, logger);`,
+      `const target = new Daemon("worker", { backend: "codex", working_directory: "/tmp", log_level: "error" }, root + "/instances/worker", false, undefined, undefined, logger);`,
+      `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
+      `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
+      `const row = outbox.admit({ operationId: "op-raw-enter-crash", sourceKey: "schedule:silent-2:run-1:worker:raw_paste", sourceInstance: "source", sourceDaemonBootId: source.bootId, targetInstance: "worker", kind: "raw_paste", correlationId: "schedule:silent-2:run-1", payload: { type: "raw_paste", content: "/compact", schedule_id: "silent-2", schedule_run_id: "run-1" } }).delivery;`,
+      `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
+      `const instanceDir = root + "/instances/worker"; mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
+      `target.wake = async () => {}; target.waitForInputTransientToClear = async () => true; target.getWindowId = () => "@worker";`,
+      `target.tmux = { getWindowId: () => "@worker", capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("raw-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.queueRawPaste("/compact", 0, false, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo, submissionMode: "raw_paste" });`,
+      `setInterval(() => {}, 1000);`,
+    ].join("\n");
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let childStderr = "";
+    child.stderr.setEncoding("utf8").on("data", chunk => { childStderr += chunk; });
+    const lines = createInterface({ input: child.stdout });
+    const entered = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`writer child did not reach raw Enter: ${childStderr}`)), 10_000);
+      lines.once("line", line => {
+        clearTimeout(timer);
+        if (line === "raw-enter-accepted") resolve();
+        else reject(new Error(`unexpected child output: ${line}`));
+      });
+      child.once("error", err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    await entered;
+    child.kill("SIGKILL");
+    await once(child, "exit");
+    lines.close();
+
+    const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
+    (replacementManager as any).shuttingDown = true;
+    (replacementManager as any).ensureDeliveryOutbox();
+    const replacement = replacementManager.deliveryOutbox!;
+    const candidate = replacement.getReconciliationCandidates("worker")[0]!;
+    expect(candidate.attempt.enterStartedAt).toBeTruthy();
+    expect(candidate.attempt.submissionMode).toBe("raw_paste");
+    const reconciled = await finishTargetReconciliation(replacement, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@worker",
+      attempts: [{
+        candidate, paneWindowId: "@worker", panePid: child.pid ?? null,
+        pane: "❯ /compact", paneCaptureError: null,
+      }],
+    }, true);
+    expect(reconciled).toEqual({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+    expect(replacement.get(candidate.deliveryId)).toMatchObject({ state: "uncertain" });
+    expect(replacement.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
+    replacement.close();
   });
 
   it("whole-process SIGKILL after tmux accepts Enter stays uncertain even if the stale pane still shows the marker", async () => {

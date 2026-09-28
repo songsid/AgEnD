@@ -149,6 +149,7 @@ describe("Scheduler one-shot schedules", () => {
   let dbPath: string;
   let scheduler: Scheduler;
   let triggered: Schedule[];
+  let triggeredRunIds: string[];
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -156,9 +157,10 @@ describe("Scheduler one-shot schedules", () => {
     dir = mkdtempSync(join(tmpdir(), "scheduler-at-test-"));
     dbPath = join(dir, "scheduler.db");
     triggered = [];
+    triggeredRunIds = [];
     scheduler = new Scheduler(
       dbPath,
-      schedule => { triggered.push(schedule); },
+      (schedule, runId) => { triggered.push(schedule); triggeredRunIds.push(runId); },
       DEFAULT_SCHEDULER_CONFIG,
       () => true,
     );
@@ -189,6 +191,7 @@ describe("Scheduler one-shot schedules", () => {
 
     vi.advanceTimersByTime(1);
     expect(triggered.map(item => item.id)).toEqual([schedule.id]);
+    expect(triggeredRunIds).toEqual(["2026-07-26T00:00:10.000Z"]);
     expect(scheduler.get(schedule.id)).toBeNull();
 
     vi.advanceTimersByTime(60_000);

@@ -610,7 +610,11 @@ const INPUT_TRANSIENT_POLL_MS = 250;
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 
 /** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
-type DurableDeliveryAttempt = { deliveryId: string; attemptNo: number };
+type DurableDeliveryAttempt = {
+  deliveryId: string;
+  attemptNo: number;
+  submissionMode?: "raw_paste";
+};
 type DeliveryVerdict = {
   reached: boolean;
   phase?: string;
@@ -1545,11 +1549,12 @@ export class Daemon extends EventEmitter {
     windowId: string | undefined,
     handingOffToNativeQueue: boolean,
     steer: boolean,
+    rawPaste = false,
   ): Promise<DeliveryAttemptEvidence> {
     let checkpoint = null;
     try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
     catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
-    const submissionMode: DurableSubmissionMode = steer
+    const submissionMode: DurableSubmissionMode = rawPaste ? "raw_paste" : steer
       ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
     const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
@@ -1713,10 +1718,20 @@ export class Daemon extends EventEmitter {
         });
       } else if (msg.type === "raw_paste") {
         // Paste raw text directly to CLI without [user:] wrapping.
+        const deliveryMeta = {
+          delivery_id: typeof msg.delivery_id === "string" ? msg.delivery_id : "",
+          delivery_attempt: typeof msg.delivery_attempt === "string" ? msg.delivery_attempt : "",
+        };
+        const durableAttempt = this.durableDeliveryAttempt(deliveryMeta);
+        if (durableAttempt === false) {
+          this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
+          return;
+        }
         this.queueRawPaste(
           msg.content as string,
           this.captureDeliveryEpoch(msg.delivery_epoch),
           msg.confirm_clear === true,
+          durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste" } : undefined,
         );
       } else if (msg.type === "config_update") {
         this.applyConfigUpdate(msg.config);
@@ -3039,20 +3054,51 @@ export class Daemon extends EventEmitter {
     rawText: string,
     deliveryEpoch = this.deliveryEpoch,
     confirmClear = false,
+    durableAttempt?: DurableDeliveryAttempt,
   ): void {
-    if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    if (!this.tmux || !this.isDeliveryEpochCurrent(deliveryEpoch)) {
+      if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste target unavailable before pane queue");
+      return;
+    }
     this.pasteLock = this.pasteLock.then(async () => {
       if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
         this.logger.info("Pending raw delivery dropped by user cancel");
+        if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while queued");
         return;
       }
-      await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
-      await this.deliverMessage(rawText, undefined, { deliveryEpoch });
+      const verdict: DeliveryVerdict = { reached: false };
+      try {
+        await this.wake();
+        if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, "raw_paste epoch changed while waking");
+          return;
+        }
+        const delivered = await this.deliverMessage(rawText, undefined, {
+          deliveryEpoch,
+          verdict,
+          durableAttempt,
+          preserveExactBytes: true,
+        });
+        if (delivered) this.finishDurableSubmission(durableAttempt ?? null, verdict);
+        else if (durableAttempt && verdict.paneWriteStarted) {
+          this.finishDurableDelivery(durableAttempt, "uncertain", `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "unverified"}`);
+        } else if (durableAttempt && verdict.durableBeginCommitted) {
+          this.abortDurableDelivery(durableAttempt, `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "no-pane-write"}`);
+        } else if (durableAttempt) {
+          this.retryDurableDeliveryBeforeBegin(durableAttempt, `${verdict.phase ?? "raw-paste"}:${verdict.proof ?? "deferred"}`);
+        }
+      } catch (err) {
+        if (durableAttempt && verdict.paneWriteStarted) this.finishDurableDelivery(durableAttempt, "uncertain", (err as Error).message);
+        else if (durableAttempt && verdict.durableBeginCommitted) this.abortDurableDelivery(durableAttempt, (err as Error).message);
+        else if (durableAttempt) this.retryDurableDeliveryBeforeBegin(durableAttempt, (err as Error).message);
+        this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+        return;
+      }
       if (confirmClear) await this.confirmBackendClearDialog();
       this.logger.debug({ text: rawText.slice(0, 100) }, "Raw paste delivered");
-    }).catch(err => {
-      this.logger.warn({ err: (err as Error).message }, "raw_paste delivery error");
+    });
+    this.pasteLock = this.pasteLock.catch(err => {
+      this.logger.warn({ err: (err as Error).message }, "raw_paste delivery queue error");
     });
   }
 
@@ -4911,6 +4957,7 @@ export class Daemon extends EventEmitter {
       verdict?: DeliveryVerdict;
       spawnRetry?: number;
       durableAttempt?: DurableDeliveryAttempt;
+      preserveExactBytes?: boolean;
     },
   ): Promise<boolean> {
     // The caller passes its own holder when it needs the answer; a system paste
@@ -4922,7 +4969,7 @@ export class Daemon extends EventEmitter {
     if (cancelled() || this.stormWindow?.isStopped()) return false;
     // Sanitize unclosed code fences — they cause CLI to wait for closure on Enter
     const fenceCount = (formatted.match(/```/g) || []).length;
-    if (fenceCount % 2 !== 0) {
+    if (!opts?.preserveExactBytes && fenceCount % 2 !== 0) {
       // Odd number of fences = unclosed. Remove all code fences from the message.
       formatted = formatted.replace(/```/g, "");
     }
@@ -5809,6 +5856,7 @@ export class Daemon extends EventEmitter {
     steer = false,
   ): Promise<boolean | KiroPendingDelivery> {
     const signature = this.submissionSignature(formatted, submissionId);
+    const rawPaste = durableAttempt?.submissionMode === "raw_paste";
     let windowId = initialWindowId;
     // Bug A: paste with backoff. Transient failures are usually a stale window id
     // after a crash/respawn — recover by name and retry (max 3 attempts, 2s apart).
@@ -5824,7 +5872,12 @@ export class Daemon extends EventEmitter {
       // first side effect; a crash during those waits remains safely replayable.
       if (durableAttempt && !beginChecked) {
         beginChecked = true;
-        const attemptEvidence = await this.durableAttemptEvidence(windowId, handingOffToNativeQueue, steer);
+        const attemptEvidence = await this.durableAttemptEvidence(
+          windowId,
+          handingOffToNativeQueue,
+          steer,
+          durableAttempt.submissionMode === "raw_paste",
+        );
         if (!this.beginDurableDelivery(durableAttempt, attemptEvidence)) {
           verdict.durableBeginRejected = true;
           verdict.phase = "submission-begin";
@@ -5833,8 +5886,18 @@ export class Daemon extends EventEmitter {
         }
         verdict.durableBeginCommitted = true;
       }
+      // For raw commands the paste itself may alter the live composer. Treat a
+      // failed/throwing write as uncertain rather than retrying bytes into the
+      // same pane; the write-ahead Enter marker later separates safe pre-Enter
+      // recovery from a possibly executed command.
+      if (rawPaste) verdict.paneWriteStarted = true;
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
+        if (rawPaste) {
+          verdict.phase = "raw-paste-write";
+          verdict.proof = "paste-result-unknown";
+          return false;
+        }
         const tmuxError = this.tmux!.getLastPasteError?.() ?? "unknown tmux paste failure";
         const recoverable = this.tmux!.isLastPasteFailureRecoverable?.() ?? true;
         this.logger[recoverable ? "warn" : "error"](
@@ -5895,7 +5958,7 @@ export class Daemon extends EventEmitter {
       // re-baselined to the second Enter so leftover paste-render output between
       // the two cannot be what "confirms" the submission.
       let enterRetry = false;
-      if (this.backend?.requiresDeliveryEnterRetry?.() === true) {
+      if (!rawPaste && this.backend?.requiresDeliveryEnterRetry?.() === true) {
         await new Promise(r => setTimeout(r, 1_000));
         const retryAt = Date.now();
         if (await this.sendDeliveryEnter("queue-less-defensive-retry")) {
@@ -5944,6 +6007,14 @@ export class Daemon extends EventEmitter {
           verdict.proof = "unverified";
           if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
           return true;
+        }
+
+        // raw_paste has no unique marker and is not allowed to re-paste or
+        // issue another Enter after its one committed submission attempt.
+        if (rawPaste) {
+          verdict.phase = "raw-paste-native-queue-proof";
+          verdict.proof = proof;
+          return false;
         }
 
         // Not submitted (or not provably submitted): fall back once to the
@@ -6055,6 +6126,11 @@ export class Daemon extends EventEmitter {
           }
         }
         if (!submitted) {
+          if (rawPaste) {
+            verdict.phase = "raw-paste-submit-proof";
+            verdict.proof = "no-positive-acceptance-proof";
+            return false;
+          }
           // Legacy system pastes have no unique envelope id. Preserve their
           // existing bounded retry until they can be tied to a specific turn.
           this.logger.warn("Message not submitted after Enter — waiting for the prompt, then re-sending Enter once");
@@ -6082,7 +6158,14 @@ export class Daemon extends EventEmitter {
         // is disqualifying and no amount of output may override it. Where it
         // cannot (a backend with no prompt pattern), the output signal remains
         // exactly as before — this must not regress backends we cannot read.
-        const becameBusy = await this.confirmAfterEnter(windowId, enterAt, signature, pasteBaseline, "idle-to-busy-retry");
+        const becameBusy = await this.confirmAfterEnter(
+          windowId,
+          enterAt,
+          signature,
+          pasteBaseline,
+          "idle-to-busy-retry",
+          !rawPaste,
+        );
         if (becameBusy) {
           if (status) this.emit("message_confirmed", status); // ✅
         } else {
@@ -6108,6 +6191,14 @@ export class Daemon extends EventEmitter {
           return this.failDelivery(verdict, status, "post-submit-proof", proof);
         }
       } else {
+        // No control client means a raw command has no acceptance proof. The
+        // write-ahead Enter fence keeps it uncertain after this point; never
+        // send a second Enter that could execute a command twice.
+        if (rawPaste) {
+          verdict.phase = "raw-paste-submit-proof";
+          verdict.proof = "unverified";
+          return true;
+        }
         // No control client to observe output: fall back to the legacy double-Enter.
         await new Promise(r => setTimeout(r, 1000));
         await this.sendDeliveryEnter("unobserved-defensive-retry");
@@ -6172,10 +6263,12 @@ export class Daemon extends EventEmitter {
     signature: SubmissionSignature,
     baseline: PaneEvidence | null,
     retryPhase: string,
+    allowRecoveryEnter = true,
   ): Promise<boolean> {
     if (!this.canProveSubmission()) {
       let busy = await this.confirmBusyAfterEnter(windowId, enterAt);
       if (!busy) {
+        if (!allowRecoveryEnter) return false;
         this.logger.warn("No idle→busy transition after Enter — re-sending Enter once");
         const retryAt = Date.now();
         if (!(await this.sendDeliveryEnter(retryPhase))) return false;
@@ -6218,6 +6311,7 @@ export class Daemon extends EventEmitter {
     // how we got here. Then poll briefly rather than judging on one capture:
     // the key takes a moment to be digested, and a single early look would
     // report a failure for a message that did go out.
+    if (!allowRecoveryEnter) return false;
     this.logger.warn("Enter did not submit — waiting for the prompt, then re-sending once");
     if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
     if (!(await this.sendDeliveryEnter(retryPhase))) return false;

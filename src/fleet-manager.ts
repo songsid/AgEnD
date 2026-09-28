@@ -1023,26 +1023,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const target = claimed.targetInstance;
     const attempt = claimed.attemptNo;
     const payload = { ...claimed.payload };
+    const laneReleased = this.waitForDurableLaneRelease(claimed);
     const rawMeta = payload.meta && typeof payload.meta === "object"
       ? payload.meta as Record<string, unknown>
       : {};
-    payload.meta = {
-      ...rawMeta,
-      delivery_id: claimed.deliveryId,
-      delivery_attempt: String(claimed.attemptNo),
-      from_instance: typeof rawMeta.from_instance === "string" && rawMeta.from_instance
-        ? rawMeta.from_instance
-        : claimed.sourceInstance,
-      correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
-    };
     // Arm the visible liveness alert as soon as this generation owns the lane,
     // including time spent waiting for a handoff/idle gate to return.
-    const laneReleased = this.waitForDurableLaneRelease(claimed);
     try {
-      const sent = await this.deliverToInstance(target, payload, {
-        isCrossInstance: true,
-        waitForIdle: claimed.kind !== "steer",
-      });
+      let sent: boolean | void;
+      if (claimed.kind === "raw_paste") {
+        if (payload.type !== "raw_paste" || typeof payload.content !== "string") {
+          throw new Error("Durable raw_paste row has an invalid payload");
+        }
+        // Preserve the schedule's exact bytes and raw route. The target daemon
+        // owns readiness, paste, one Enter, and the fenced outbox transition.
+        sent = await this.deliverToInstance(target, {
+          type: "raw_paste",
+          content: payload.content,
+          delivery_id: claimed.deliveryId,
+          delivery_attempt: String(claimed.attemptNo),
+          raw_delivery: true,
+        }, { waitForIdle: false });
+      } else {
+        payload.meta = {
+          ...rawMeta,
+          delivery_id: claimed.deliveryId,
+          delivery_attempt: String(claimed.attemptNo),
+          from_instance: typeof rawMeta.from_instance === "string" && rawMeta.from_instance
+            ? rawMeta.from_instance
+            : claimed.sourceInstance,
+          correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
+        };
+        sent = await this.deliverToInstance(target, payload, {
+          isCrossInstance: true,
+          waitForIdle: claimed.kind !== "steer",
+        });
+      }
       if (!sent) {
         const current = outbox.get(claimed.deliveryId);
         if (current?.state === "delivering") {
@@ -3479,7 +3495,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
       this.scheduler = new Scheduler(
         join(this.dataDir, "scheduler.db"),
-        (schedule) => this.handleScheduleTrigger(schedule),
+        (schedule, runId) => this.handleScheduleTrigger(schedule, runId),
         schedulerConfig,
         (name) => this.fleetConfig?.instances?.[name] != null || !!this.classicChannels?.getAll().some(ch => ch.instanceName === name),
       );
@@ -5959,7 +5975,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ===================== Scheduler =====================
 
-  private async handleScheduleTrigger(schedule: Schedule): Promise<void> {
+  private async handleScheduleTrigger(schedule: Schedule, stableRunId: string = randomUUID()): Promise<void> {
     const { target, reply_chat_id, reply_thread_id, message, label, id, source, silent } = schedule;
 
     const RATE_LIMIT_DEFER_THRESHOLD = 85;
@@ -5979,19 +5995,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     // Silent mode: paste directly to tmux pane — no channel message.
     if (silent) {
-      const ipc = this.instanceIpcClients.get(target);
-      if (ipc) {
-        ipc.send({
+      // The outbox commit is the schedule's durable acceptance point. The run
+      // key is the scheduled fire instant (or an invocation UUID for a manual
+      // trigger), so restart/catch-up reuses the same raw paste row.
+      this.ensureDeliveryOutbox();
+      const runKey = encodeURIComponent(stableRunId);
+      const sourceKey = `schedule:${encodeURIComponent(id)}:${runKey}:${encodeURIComponent(target)}:raw_paste`;
+      const operationId = `schedule:${id}:${stableRunId}`;
+      const sourceBootId = this.daemons.get(source)?.bootId ?? this.managerBootId;
+      const admitted = this.deliveryOutbox!.admit({
+        operationId,
+        sourceKey,
+        sourceInstance: source,
+        sourceDaemonBootId: sourceBootId,
+        targetInstance: target,
+        kind: "raw_paste",
+        correlationId: operationId,
+        payload: {
           type: "raw_paste",
           content: message,
-          delivery_epoch: this.getDeliveryEpoch(target),
-        });
-        this.scheduler!.recordRun(id, "delivered");
-        this.logger.info({ target, scheduleId: id, label }, "Silent schedule injected via raw_paste");
-      } else {
-        this.scheduler!.recordRun(id, "instance_offline", "IPC not connected");
-        this.logger.warn({ target, scheduleId: id }, "Silent schedule: IPC not connected, skipping");
-      }
+          schedule_id: id,
+          schedule_run_id: stableRunId,
+        },
+      });
+      this.scheduler!.recordRun(id, "queued", `durable raw_paste delivery_id=${admitted.delivery.deliveryId}`);
+      this.logger.info({ target, scheduleId: id, runId: stableRunId, deliveryId: admitted.delivery.deliveryId, duplicate: !admitted.inserted },
+        "Silent schedule durably admitted as raw_paste");
+      this.scheduleDeliveryOutboxPump();
       return;
     }
 

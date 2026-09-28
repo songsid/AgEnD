@@ -1,4 +1,5 @@
 import { Cron } from "croner";
+import { randomUUID } from "node:crypto";
 import { SchedulerDb } from "./db.js";
 import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun } from "./types.js";
 import { validateTimezone } from "../config.js";
@@ -14,7 +15,7 @@ export class Scheduler {
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
   private oneShotTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private onTrigger: (schedule: Schedule) => void | Promise<void>;
+  private onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>;
   private config: SchedulerConfig;
   private isValidInstance: (name: string) => boolean;
   /** IDs of schedules whose onTrigger is currently in flight; guards against
@@ -23,7 +24,7 @@ export class Scheduler {
 
   constructor(
     dbPath: string,
-    onTrigger: (schedule: Schedule) => void | Promise<void>,
+    onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>,
     config: SchedulerConfig,
     isValidInstance: (name: string) => boolean,
   ) {
@@ -67,7 +68,9 @@ export class Scheduler {
         if (nextMs > now) continue;       // not yet due
         if (nextMs < cutoff) continue;    // too old, don't spam
         if (this.executing.has(schedule.id)) continue;
-        this.runWithLock(schedule);
+        // The expected fire time stays stable if the process dies after the
+        // outbox commit but before schedule_runs advances last_triggered_at.
+        this.runWithLock(schedule, next.toISOString());
       } catch {
         // Bad cron expression or croner edge case — skip rather than crash init
         continue;
@@ -151,7 +154,7 @@ export class Scheduler {
 
   /** Invoke onTrigger while holding the per-schedule lock. Cleans up when
    * the callback returns synchronously, throws, or settles a returned Promise. */
-  private runWithLock(schedule: Schedule): void {
+  private runWithLock(schedule: Schedule, runId: string = randomUUID()): void {
     this.executing.add(schedule.id);
     const finish = () => {
       this.executing.delete(schedule.id);
@@ -164,7 +167,7 @@ export class Scheduler {
     };
     let result: void | Promise<void>;
     try {
-      result = this.onTrigger(schedule);
+      result = this.onTrigger(schedule, runId);
     } catch (err) {
       finish();
       throw err;
@@ -208,13 +211,15 @@ export class Scheduler {
       return;
     }
     if (!schedule.cron) return;
-    const job = new Cron(schedule.cron, { timezone: schedule.timezone }, () => {
+    const job = new Cron(schedule.cron, { timezone: schedule.timezone }, currentJob => {
       const current = this.db.get(schedule.id);
       if (!current || !current.enabled) return;
       // Skip if a previous fire (or manual trigger) is still in flight —
       // avoids overlapping runs of the same schedule.
       if (this.executing.has(current.id)) return;
-      this.runWithLock(current);
+      // Croner's currentRun is the scheduled fire instant, unlike Date.now()
+      // which could change across a restart and defeat outbox idempotency.
+      this.runWithLock(current, currentJob.currentRun()?.toISOString() ?? randomUUID());
     });
     this.jobs.set(schedule.id, job);
   }
@@ -259,7 +264,7 @@ export class Scheduler {
         this.oneShotTimers.delete(schedule.id);
         const due = this.db.get(schedule.id);
         if (!due || !due.enabled || !due.at || this.executing.has(due.id)) return;
-        this.runWithLock(due);
+        this.runWithLock(due, new Date(atMs).toISOString());
       }, Math.max(0, remaining));
       this.oneShotTimers.set(schedule.id, timer);
     };

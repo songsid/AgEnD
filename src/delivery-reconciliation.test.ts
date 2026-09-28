@@ -20,7 +20,9 @@ function makeAttempt(options: {
   transcriptOffset?: number | null;
   windowId?: string | null;
   backend?: string;
-  submissionMode?: "idle_submit" | "native_queue_handoff" | "steer";
+  kind?: string;
+  payloadContent?: string;
+  submissionMode?: "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";
   queueResumePolicy?: "not_applicable" | "unknown" | "may_resume" | "does_not_resume";
 } = { enterStarted: true }) {
   const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-"));
@@ -32,8 +34,8 @@ function makeAttempt(options: {
     sourceInstance: "source",
     sourceDaemonBootId: "source-boot",
     targetInstance: "worker",
-    kind: "fleet_inbound",
-    payload: { type: "fleet_inbound", content: "work", meta: {} },
+    kind: options.kind ?? "fleet_inbound",
+    payload: { type: options.kind === "raw_paste" ? "raw_paste" : "fleet_inbound", content: options.payloadContent ?? "work", meta: {} },
   }).delivery;
   const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
   expect(outbox.begin(row.deliveryId, "target-boot-1", claimed.attemptNo, {
@@ -190,6 +192,74 @@ describe("durable transcript marker reconciliation", () => {
       }, true);
       expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
       expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
+  });
+
+  it("retries raw_paste only when the exact bytes remain at the end of the pre-kill composer", async () => {
+    const raw = "  /compact\n--keep-space  ";
+    const h = makeAttempt({
+      enterStarted: false,
+      kind: "raw_paste",
+      payloadContent: raw,
+      submissionMode: "raw_paste",
+    });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("no such process") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{
+          candidate: h.candidate,
+          paneWindowId: "@old-worker",
+          panePid: 424242,
+          pane: `old transcript\n❯ ${raw}`,
+          paneCaptureError: null,
+        }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
+      expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait" });
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
+  });
+
+  it("keeps raw_paste uncertain when W1 says no Enter but the exact composer bytes are absent", async () => {
+    const raw = "/compact";
+    const h = makeAttempt({
+      enterStarted: false,
+      kind: "raw_paste",
+      payloadContent: raw,
+      submissionMode: "raw_paste",
+    });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("no such process") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{
+          candidate: h.candidate,
+          paneWindowId: "@old-worker",
+          panePid: 424242,
+          pane: "CLI resumed with a clean prompt",
+          paneCaptureError: null,
+        }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+      expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain" });
     } finally {
       kill.mockRestore();
       h.outbox.close();
