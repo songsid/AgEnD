@@ -7192,6 +7192,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * the chain drains, so idle messages hold no memory.
    */
   private deliveryStatusChains = new Map<string, Promise<void>>();
+  /** #725: in-flight CLI env probes, keyed by backend name. Coalesces concurrent /model requests. */
+  private pendingCliEnvProbes = new Map<string, Promise<import("./backend/types.js").CliEnv | null>>();
 
   reactMessageStatus(
     instanceName: string, chatId: string, messageId: string, emoji: string, threadId?: string,
@@ -11027,6 +11029,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     backend: string,
     opts: { refreshVendorCatalog?: boolean } = {},
   ): Promise<import("./backend/types.js").CliEnv | null> {
+    // #725: single-flight per backend — if a probe for this backend is already
+    // in flight, return the same promise instead of starting a duplicate.
+    // Refresh probes (refreshVendorCatalog=true) are always started fresh since
+    // the caller explicitly asked for a new vendor fetch.
+    if (!opts.refreshVendorCatalog) {
+      const existing = this.pendingCliEnvProbes.get(backend);
+      if (existing) return existing;
+    }
     const work = this.probeBackend(backend, opts);
     work.catch(() => { /* surfaced through the race, or already too late to matter */ });
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -11037,11 +11047,12 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         resolve(null);
       }, CLI_ENV_PROBE_DEADLINE_MS);
     });
-    try {
-      return await Promise.race([work, deadline]);
-    } finally {
+    const bounded = Promise.race([work, deadline]).finally(() => {
       clearTimeout(timer);
-    }
+      if (this.pendingCliEnvProbes.get(backend) === bounded) this.pendingCliEnvProbes.delete(backend);
+    });
+    if (!opts.refreshVendorCatalog) this.pendingCliEnvProbes.set(backend, bounded);
+    return bounded;
   }
 
   /**
@@ -11154,7 +11165,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     for (const inst of Object.values(this.fleetConfig?.instances ?? {})) if (inst.backend) backends.add(inst.backend);
     for (const ch of this.classicChannels?.getAll() ?? []) if (ch.backend) backends.add(ch.backend);
     if (backends.size === 0) backends.add("claude-code");
-    for (const b of backends) void this.probeBackend(b);
+    // #724: use the bounded variant so background startup probes cannot hang
+    // indefinitely — each is wrapped by CLI_ENV_PROBE_DEADLINE_MS.
+    for (const b of backends) void this.probeBackendBounded(b);
   }
 
   /** Best-effort model list for `/model`: cached CLI env first, else live probe. Never throws. */
@@ -11594,7 +11607,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private async claudeApiModelOptions(): Promise<import("./backend/types.js").ModelOption[]> {
     const cached = this.readCliEnv("claude-code");
     if (cached?.apiModels?.length) return cached.apiModels;
-    const env = await this.probeBackend("claude-code");
+    const env = await this.probeBackendBounded("claude-code");
     return env?.apiModels ?? [];
   }
 

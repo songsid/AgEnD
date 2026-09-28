@@ -84,6 +84,18 @@ const i18n = (key: UsageI18nKey, ...args: Array<string | number>): UsageI18nRef 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SESSION_MS = 5 * 60 * 60 * 1000;
 
+/**
+ * Longest timeout any single fetch in a provider chain carries.
+ *
+ * Defined here (before the fetches) so every AbortSignal.timeout() call can
+ * reference it by name instead of a magic 15_000 — keeping the
+ * "deadline must exceed this" relationship visible and drift-proof. (#720)
+ *
+ * The outer deadline (DEFAULT_PROVIDER_DEADLINE_MS = 16s) must exceed this by
+ * at least 1s so a slow-but-legitimate single fetch always completes first.
+ */
+export const LONGEST_SINGLE_FETCH_MS = 15_000;
+
 function jwtExpiryMs(token: string): number | null {
   try {
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
@@ -598,7 +610,7 @@ async function agyAccessToken(): Promise<{ token: string } | { error: string; er
         refresh_token: t.refresh_token,
         grant_type: "refresh_token",
       }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
     });
     if (!res.ok) return { error: "Google sign-in expired. Run `agy` once to log in again.", errorI18n: i18n("usage.error.agy_login_expired") };
     const body = await res.json() as { access_token?: string; expires_in?: number };
@@ -647,7 +659,7 @@ async function fetchAntigravityUsage(): Promise<Omit<ProviderUsage, "id" | "name
           "User-Agent": "antigravity",
         },
         body: "{}",
-        signal: AbortSignal.timeout(15_000),
+        signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
       });
     } catch { continue; }
     if (res.status === 401 || res.status === 403) {
@@ -879,7 +891,7 @@ async function grokRefreshAndPersist(
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({ grant_type: "refresh_token", client_id: clientId, refresh_token: refreshToken }),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
     });
   } catch {
     return { error: "Could not reach auth.x.ai to refresh the token.", errorI18n: i18n("usage.error.grok_refresh_unreachable") };
@@ -1122,7 +1134,7 @@ export async function fetchKiroUsage(storeHome?: string): Promise<Omit<ProviderU
         Authorization: `Bearer ${token.access_token}`,
       },
       body: JSON.stringify(token.profile_arn ? { profileArn: token.profile_arn } : {}),
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(LONGEST_SINGLE_FETCH_MS),
     });
   } catch {
     return { status: "error", error: `Could not reach codewhisperer.${region}.amazonaws.com.`, errorI18n: i18n("usage.error.unreachable", `codewhisperer.${region}.amazonaws.com`), metrics: [] };
@@ -1436,12 +1448,8 @@ export function setUsageProvidersForTests(providers: UsageProvider[] | null): vo
  */
 export const DEFAULT_PROVIDER_DEADLINE_MS = 16_000;
 
-/**
- * The longest AbortSignal timeout any single legitimate operation carries (the
- * token refreshes). The deadline above must stay greater than this, or a slow
- * refresh that would have succeeded gets reported as unreachable.
- */
-export const LONGEST_SINGLE_FETCH_MS = 15_000;
+// LONGEST_SINGLE_FETCH_MS is defined near the top of this file (before the
+// fetch calls that use it), so the deadline relationship is always visible.
 
 let providerDeadlineMs: number = DEFAULT_PROVIDER_DEADLINE_MS;
 
