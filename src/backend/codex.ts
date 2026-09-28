@@ -45,6 +45,7 @@ const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
  */
 /** A status-line Context item, whole (`Context 46% left`) or truncated by a narrow pane (`Context 4…`, `Context …`). */
 const CODEX_CONTEXT_ITEM = String.raw`Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)`;
+const CODEX_CONTEXT_STATUS_ITEMS = new Set(["context-remaining", "context-used", "context-usage"]);
 
 function isCodexContextFooter(row: string): boolean {
   const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
@@ -53,15 +54,9 @@ function isCodexContextFooter(row: string): boolean {
   // A narrow Codex 0.156 pane may truncate the context item after the
   // authoritative first `session-id` item. Keep structural readiness while
   // /ctx honestly reports context unavailable from a truncated percentage.
-  if (/^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row)) return true;
-  // #978: status_line keeps the user's item order, so Context can be any
-  // ` · `-joined segment (`gpt-5.6-sol medium · Context 46% left · ~/x`).
-  // The footer is indented chrome; a bullet, prompt or warning glyph in front
-  // is transcript or live status, never the footer.
-  return new RegExp(
-    String.raw`^[ \t]+[^\s•›>■⚠◦][^\r\n]*?[ \t]+·[ \t]+${CODEX_CONTEXT_ITEM}(?:[ \t]+·[ \t]+\S[^\r\n]*)?[ \t]*$`,
-    "i",
-  ).test(row);
+  // A Context item that is NOT first (#978) is recognised by
+  // CodexBackend.isConfiguredContextFooter(), against the configured items.
+  return /^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row);
 }
 
 const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
@@ -492,6 +487,11 @@ const CODEX_STATUS_LINE_VALUE_PATTERNS: Readonly<Record<string, string>> = {
   "fast-mode": String.raw`Fast[ \t]+(?:on|off)`,
   "raw-output": String.raw`Raw output`,
   "task-progress": String.raw`\d+[ \t]*/[ \t]*\d+`,
+  // #978: Context items, whole or truncated. Codex keeps the configured item
+  // order, so Context may be any segment of the footer.
+  "context-remaining": CODEX_CONTEXT_ITEM,
+  "context-used": CODEX_CONTEXT_ITEM,
+  "context-usage": CODEX_CONTEXT_ITEM,
 };
 
 export class CodexBackend implements CliBackend {
@@ -640,7 +640,7 @@ export class CodexBackend implements CliBackend {
     // Codex preserves other configured status-line items after the context
     // meter (observed on 0.156.0: "Context 100% left · GPT-6-Astra"). They
     // are footer chrome, not evidence that the input row is unavailable.
-    const contextFooter = isCodexContextFooter(footer);
+    const contextFooter = this.isAnyContextFooter(footer);
     // A deliberately configured status_line may omit Context entirely. In
     // that case require a recognized value from the actual configured item
     // list after Codex's exact empty live-composer row. An arbitrary non-empty
@@ -1153,8 +1153,7 @@ export class CodexBackend implements CliBackend {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    // #978: Context may be any ` · ` segment of the footer, not only the first.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[^\s•›>■⚠◦·][^\r\n·]*?[ \t]+·[ \t]+)*Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1167,7 +1166,23 @@ export class CodexBackend implements CliBackend {
       String.raw`(?:^|\n)[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*\r?\n(?:[ \t⋆]*\r?\n){0,3}${footerSource}(?:\r?\n[ \t⋆]*)*$`,
       "iu",
     );
-    return new RegExp(`(?:${contextReady.source})|(?:${noContextReady.source})`, "iu");
+    // #978: a configured footer that carries a Context item in any position
+    // is the Context footer: same drafted-composer rule as Context-first. The
+    // whole row must match the configured item grammar, so an arbitrary
+    // indented line that merely contains `Context N% left` cannot pass.
+    const configuredContextReady = this.configuredHasContextItem()
+      ? new RegExp(
+        String.raw`(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}(?=[^\r\n]*${CODEX_CONTEXT_ITEM})${footerSource}(?:\r?\n[ \t⋆]*)*$`,
+        "iu",
+      )
+      : null;
+    return new RegExp(
+      [contextReady.source, noContextReady.source, configuredContextReady?.source]
+        .filter((source): source is string => !!source)
+        .map(source => `(?:${source})`)
+        .join("|"),
+      "iu",
+    );
   }
 
   private readConfiguredStatusLineItems(): string[] | null {
@@ -1213,6 +1228,31 @@ export class CodexBackend implements CliBackend {
     return pattern.test(row);
   }
 
+  private configuredHasContextItem(): boolean {
+    return (this.readConfiguredStatusLineItems() ?? []).some(item => CODEX_CONTEXT_STATUS_ITEMS.has(item));
+  }
+
+  /**
+   * #978: a Context item in ANY position, accepted only as part of a footer
+   * whose every segment matches the configured status_line items. Codex keeps
+   * the user's order (`gpt-5.6-sol medium · Context 46% left · ~/x`); an
+   * arbitrary indented transcript line that happens to contain the item does
+   * not match that grammar. A stale config fails closed, and the daemon's
+   * stable-composer escape hatch then keeps the instance from latching.
+   */
+  // The configured grammar already makes Context a whole segment, so the item
+  // test only has to establish that one is present.
+  private isConfiguredContextFooter(row: string): boolean {
+    return this.configuredHasContextItem()
+      && new RegExp(CODEX_CONTEXT_ITEM, "iu").test(row)
+      && this.isConfiguredStatusLineFooter(row);
+  }
+
+  /** Any footer that proves the Context meter owns the bottom row. */
+  private isAnyContextFooter(row: string): boolean {
+    return isCodexContextFooter(row) || this.isConfiguredContextFooter(row);
+  }
+
   /**
    * #978 escape hatch: the live, EMPTY Codex composer within the last few
    * non-blank rows, no busy marker, and none of the known selection screens.
@@ -1220,6 +1260,9 @@ export class CodexBackend implements CliBackend {
    */
   isStableUnknownLayoutIdlePane(pane: string): boolean {
     if (this.getBusyPattern().test(pane)) return false;
+    // A retained queued message (`↳ …` under "Messages to be submitted after
+    // next tool call") means work is pending, whatever the composer shows.
+    if (/↳|Messages to be submitted/i.test(pane)) return false;
     if (codexUsageLimitMenuVisible(pane) || codexRateSwitchVisible(pane)
       || codexUnknownSelectionVisible(pane) || codexUpdatePickerVisible(pane)) return false;
     const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
@@ -1233,7 +1276,7 @@ export class CodexBackend implements CliBackend {
   /** A proxy reply filters chrome per line; whole-pane readiness is separate. */
   isProxyReplyChromeLine(line: string): boolean {
     return /^\s*[›>]\s+Ask Codex to do anything\s*$/.test(line)
-      || isCodexContextFooter(line);
+      || this.isAnyContextFooter(line);
   }
 
   getErrorPatterns(): ErrorPattern[] {

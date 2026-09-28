@@ -46,11 +46,37 @@ describe("Codex Context item in any status_line position (#978)", () => {
     ["truncated to the label, last", "  gpt-5.6-sol medium · Context …"],
     ["Context first (unchanged behaviour)", "  Context 46% left · gpt-5.6-sol medium · ~/x"],
   ])("proves idle with %s", (_label, footer) => {
-    const pane = idle(footer);
-    for (const b of [backend(USER_CONFIG), backend()]) {
-      // With and without the config: a runtime /statusline edit must not make
-      // readiness depend on a stale config read.
-      expect(readyEverywhere(b, pane)).toEqual({ delivery: true, ready: true, redrawIdle: true });
+    expect(readyEverywhere(backend(USER_CONFIG), idle(footer))).toEqual({ delivery: true, ready: true, redrawIdle: true });
+  });
+
+  it("accepts a drafted composer above a non-first Context footer, like the Context-first path", () => {
+    const pane = ["› half-typed draft", "", "  gpt-5.6-sol medium · Context 46% left · ~/x"].join("\n");
+    const b = backend(USER_CONFIG);
+    expect(b.isDeliveryInputReadyPane(pane)).toBe(true);
+    expect(b.getReadyPattern().test(pane)).toBe(true);
+  });
+
+  it("only trusts a non-first Context footer that matches the configured item grammar", () => {
+    // Without a config (or a stale one) the order is unknown: the structural
+    // proof fails closed, and the daemon's stable-composer escape hatch keeps
+    // the instance from latching in working. Context-first needs no config.
+    const unconfigured = backend();
+    expect(readyEverywhere(unconfigured, idle("  gpt-5.6-sol medium · Context 46% left · ~/x")))
+      .toEqual({ delivery: false, ready: false, redrawIdle: false });
+    expect(readyEverywhere(unconfigured, idle("  Context 46% left · gpt-5.6-sol medium · ~/x")))
+      .toEqual({ delivery: true, ready: true, redrawIdle: true });
+  });
+
+  it("does not take an arbitrary indented line containing a Context item for the footer", () => {
+    // Prism's #979 probe: plain indented transcript-shaped text in the first
+    // segment does not match the configured model-with-reasoning grammar.
+    const b = backend(USER_CONFIG);
+    for (const footer of [
+      "  copied command output · Context 46% left · ~/x",
+      "  gpt-5.6-sol medium · notes about Context 46% left · ~/x",
+      "  gpt-5.6-sol medium · Context 46% left and more · ~/x",
+    ]) {
+      expect(readyEverywhere(b, idle(footer)), footer).toEqual({ delivery: false, ready: false, redrawIdle: false });
     }
   });
 
@@ -88,6 +114,9 @@ describe("stable unknown-layout escape hatch (#978)", () => {
     expect(b.isStableUnknownLayoutIdlePane(idle("  some-future-item · another"))).toBe(true);
     expect(b.isStableUnknownLayoutIdlePane(idle("  some-future-item · another").replace("Ask Codex to do anything", "draft text"))).toBe(false);
     expect(b.isStableUnknownLayoutIdlePane(`• Working (3s • esc to interrupt)\n${idle("  x · y")}`)).toBe(false);
+    // Prism's #979 probe: a retained queued message is pending work.
+    const queued = ["• Messages to be submitted after next tool call", "  ↳ run the migration next", "", "› Ask Codex to do anything", "", "  x · y"].join("\n");
+    expect(b.isStableUnknownLayoutIdlePane(queued)).toBe(false);
     // A composer only far up in scrollback is not the live one.
     expect(b.isStableUnknownLayoutIdlePane(["› Ask Codex to do anything", ...Array(8).fill("  output line"), "  x · y"].join("\n"))).toBe(false);
   });

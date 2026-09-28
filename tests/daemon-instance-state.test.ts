@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail, UNKNOWN_LAYOUT_STABLE_MS } from "../src/daemon.js";
@@ -228,6 +228,12 @@ describe("Daemon event-driven pane monitor", () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
     const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    // The reporter's config: the non-first Context is proven against it.
+    const home = (monitor.daemon as any).backend.isolatedCodexHome as string;
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.toml"), '[tui]\nstatus_line = ["model-with-reasoning", "context-remaining", "current-dir"]\n');
+    (monitor.daemon as any).backend.configuredStatusLineItems = undefined;
+    (monitor.daemon as any).backend.configuredStatusLinePattern = undefined;
     try {
       (monitor.daemon as any).startInstanceStateMonitor();
       await vi.advanceTimersByTimeAsync(0);
@@ -283,7 +289,15 @@ describe("Daemon event-driven pane monitor", () => {
       "  3. Skip until next version",
       "  Press enter to continue",
     ].join("\n");
-    for (const frames of [(i: number) => busyUnknown(i + 2), () => picker]) {
+    const queuedUnknown = [
+      "• Messages to be submitted after next tool call",
+      "  ↳ run the migration next",
+      "",
+      "› Ask Codex to do anything",
+      "",
+      "  some-future-item · another-item",
+    ].join("\n");
+    for (const frames of [(i: number) => busyUnknown(i + 2), () => picker, () => queuedUnknown]) {
       const monitor = makeCodexMonitor(codexWorkingFrame(1));
       try {
         (monitor.daemon as any).startInstanceStateMonitor();
