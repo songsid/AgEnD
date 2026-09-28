@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeliveryOutbox } from "./delivery-outbox.js";
 import { finishTargetReconciliation, transcriptDeltaHasDeliveryMarker } from "./delivery-reconciliation.js";
 
@@ -13,7 +13,12 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function makeAttempt(options: { enterStarted: boolean; transcriptPath?: string | null; transcriptOffset?: number | null } = { enterStarted: true }) {
+function makeAttempt(options: {
+  enterStarted: boolean;
+  transcriptPath?: string | null;
+  transcriptOffset?: number | null;
+  windowId?: string | null;
+} = { enterStarted: true }) {
   const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-"));
   roots.push(root);
   const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager-1");
@@ -29,7 +34,7 @@ function makeAttempt(options: { enterStarted: boolean; transcriptPath?: string |
   const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
   expect(outbox.begin(row.deliveryId, "target-boot-1", claimed.attemptNo, {
     backend: "claude-code",
-    windowId: "@old-worker",
+    windowId: options.windowId === undefined ? "@old-worker" : options.windowId,
     transcriptPath: options.transcriptPath ?? null,
     transcriptOffset: options.transcriptOffset ?? null,
     transcriptSessionId: options.transcriptPath ?? null,
@@ -53,6 +58,28 @@ describe("durable transcript marker reconciliation", () => {
       type: "response_item",
       payload: { type: "message", role: "user", content: [{ type: "input_text", text: `${marker}\n[from:worker] do the work` }] },
     }), "codex", id)).toBe(true);
+  });
+
+  it("does not accept a marker after the first Claude user text item", () => {
+    const entry = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [
+        { type: "text", text: "preceding content" },
+        { type: "text", text: `${marker}\n[from:worker] do the work` },
+      ] },
+    });
+    expect(transcriptDeltaHasDeliveryMarker(entry, "claude-code", id)).toBe(false);
+  });
+
+  it("does not accept a marker after the first Codex user text item", () => {
+    const entry = JSON.stringify({
+      type: "response_item",
+      payload: { type: "message", role: "user", content: [
+        { type: "input_text", text: "preceding content" },
+        { type: "input_text", text: `${marker}\n[from:worker] do the work` },
+      ] },
+    });
+    expect(transcriptDeltaHasDeliveryMarker(entry, "codex", id)).toBe(false);
   });
 
   it("does not accept quoted, embedded, assistant, system, or tool-result occurrences", () => {
@@ -128,5 +155,54 @@ describe("durable transcript marker reconciliation", () => {
     expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: false });
     expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
     h.outbox.close();
+  });
+
+  it("keeps the target fenced when the tmux window is gone but its captured process is still alive", async () => {
+    const h = makeAttempt({ enterStarted: true });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("permission denied") as NodeJS.ErrnoException;
+      err.code = "EPERM";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: 424242, pane: "", paneCaptureError: null }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: false });
+      expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
+  });
+
+  it("keeps the target fenced when a pending attempt has no window identity", async () => {
+    const h = makeAttempt({ enterStarted: true, windowId: null });
+    const result = await finishTargetReconciliation(h.outbox, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old-worker",
+      attempts: [{ candidate: h.candidate, paneWindowId: null, panePid: null, pane: null, paneCaptureError: "old window id unavailable" }],
+    }, true);
+    expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: false });
+    expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
+    h.outbox.close();
+  });
+
+  it("allows an ordinary start when no reconciliation rows exist even if retirement is unconfirmed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-empty-"));
+    roots.push(root);
+    const outbox = new DeliveryOutbox(join(root, "outbox.db"), "manager-1");
+    const result = await finishTargetReconciliation(outbox, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old-worker",
+      attempts: [],
+    }, false);
+    expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 0, safeToStart: true });
+    outbox.close();
   });
 });

@@ -279,6 +279,8 @@ Phase 1 對 crash 後的 `submission_started` 採 `uncertain` + 不盲重送。P
 
 所有 probe 有明確上限，初始 budget：pane capture 2 秒；window kill + 舊 CLI exit 確認共 15 秒（包含既有強制終止升級）；transcript flush/stable read 10 秒。probe、transcript parser 和 provider I/O 必須 async 或隔離到 worker，不能在 FleetManager event loop 同步掃描整份 transcript；鎖與 timeout 都以 target 為界。任一步超時、provider 回 unsupported、或不能證明舊 CLI 已退出時，該 row 轉 `uncertain` 並排一次 notice；不得把 timeout 當 negative proof。若舊 process 還無法確認已死，target 本身保持 fenced 並告警、不啟動可重複收件的新 window；這個限制只留在該 target lane，其他 target 可啟動和 dispatch。Budget 必須可注入測試，不得靠無上限 polling。
 
+**Phase 2.1 rollout caveats.** A target with no `reconciliation_pending` rows does not enter this retirement fence: ordinary starts keep Strategy A's existing best-effort cleanup, and an unconfirmed cleanup must not prevent the instance from starting. A target with pending rows is still fail-closed if its old CLI/window cannot be positively retired. Today FleetManager starts General instances sequentially, then starts other instances through its existing staggered-concurrency pool; a pending General reconciliation can therefore delay later General startups. Per-probe limits above bound each capture/retire/exit/flush step, but total startup delay can scale with the number of pending attempts/windows. Parallelizing General startup or adding a separate aggregate startup budget is deferred to a follow-up; reconciliation remains target-scoped and does not hold already-started targets' delivery lanes. Reconciliation also retires the old pane before `Daemon.start()` can run its conditional `saveSessionId()` checkpoint. Existing idle/stop/pause checkpoints remain; preserving this particular startup checkpoint is a follow-up if session-resume evidence shows it is needed.
+
 分類規則：
 
 | 證據 | 判定 | 動作 |

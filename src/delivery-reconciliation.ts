@@ -203,7 +203,12 @@ export async function finishTargetReconciliation(
   oldWindowGone: boolean,
   logger?: Pick<Logger, "debug" | "warn">,
 ): Promise<{ delivered: number; retry: number; uncertain: number; safeToStart: boolean }> {
-  const result = { delivered: 0, retry: 0, uncertain: 0, safeToStart: oldWindowGone };
+  const result = {
+    delivered: 0,
+    retry: 0,
+    uncertain: 0,
+    safeToStart: captured.attempts.length === 0 || oldWindowGone,
+  };
   for (const item of captured.attempts) {
     const { candidate } = item;
     // A missing window id is not evidence that the old CLI exited: there was
@@ -269,6 +274,12 @@ export async function reconcileTargetBeforeStart(
   logger?: Pick<Logger, "debug" | "warn">,
 ): Promise<{ delivered: number; retry: number; uncertain: number; safeToStart: boolean }> {
   const captured = await capturePendingTargetReconciliation(outbox, targetInstance, instanceDir, getTmuxSession(), logger);
+  // Keep the historical Strategy-A best-effort cleanup for ordinary starts.
+  // A verified retirement barrier is required only when an in-flight durable
+  // submission needs pane/transcript reconciliation evidence.
+  if (captured.attempts.length === 0) {
+    return { delivered: 0, retry: 0, uncertain: 0, safeToStart: true };
+  }
   const oldWindowGone = await retireCapturedTargetWindows(captured);
   return finishTargetReconciliation(outbox, captured, oldWindowGone, logger);
 }

@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { reconcileTargetBeforeStart } from "../src/delivery-reconciliation.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { TmuxManager } from "../src/tmux-manager.js";
 
@@ -226,6 +227,26 @@ describe("durable delivery through a real Daemon", () => {
 });
 
 describe("MCP durable response delivery tracking", () => {
+  it("does not fence an ordinary start when best-effort old-window cleanup is unconfirmed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-no-pending-start-"));
+    roots.push(root);
+    const instanceDir = join(root, "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@stale-worker");
+    const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-test");
+    const kill = vi.spyOn(TmuxManager.prototype, "killWindowConfirmed").mockResolvedValue(false);
+    try {
+      const result = await reconcileTargetBeforeStart(outbox, "worker", instanceDir);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 0, safeToStart: true });
+      // No durable attempt needs evidence. Let Daemon.start retain the old
+      // Strategy-A best-effort kill behavior instead of imposing a new fence.
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      kill.mockRestore();
+      outbox.close();
+    }
+  });
+
   it("reconciles old pane evidence before replacement Daemon.start can run Strategy A cleanup", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-start-barrier-"));
     roots.push(root);
