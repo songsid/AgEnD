@@ -44,13 +44,17 @@ function decode(component: string): string {
  * username that merely contains `ghp_` is not a token.
  */
 export function userinfoHasGitHubToken(userinfo: string): boolean {
-  // Decode before splitting: `x-access-token%3Aghs_…` is the same credential.
-  const components = decode(userinfo).split(/[:@]/);
-  // `x-access-token` is only the conventional username; a URL carrying just the
-  // username embeds nothing (a credential helper supplies the token). It marks
-  // an embedded token only when a non-empty credential follows it.
-  if (components[0]?.toLowerCase() === GITHUB_APP_TOKEN_USER && components.slice(1).some(c => c.length > 0)) return true;
-  return components.some(component => GITHUB_TOKEN_PREFIXES.some(prefix => component.startsWith(prefix)));
+  // Decode first: `x-access-token%3Aghs_…` is the same credential.
+  const decoded = decode(userinfo);
+  // `x-access-token` is only the conventional username; on its own it embeds
+  // nothing (a credential helper supplies the token). It marks an embedded
+  // token only as the whole username with a non-empty password after the
+  // first `:`, so `x-access-token@ci-user` (an encoded-@ username) is clean.
+  const colon = decoded.indexOf(":");
+  const user = colon === -1 ? decoded : decoded.slice(0, colon);
+  const password = colon === -1 ? "" : decoded.slice(colon + 1);
+  if (user.toLowerCase() === GITHUB_APP_TOKEN_USER && password.length > 0) return true;
+  return decoded.split(/[:@]/).some(component => GITHUB_TOKEN_PREFIXES.some(prefix => component.startsWith(prefix)));
 }
 
 /** One remote URL: does its HTTPS userinfo carry a GitHub token? */

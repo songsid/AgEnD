@@ -47,6 +47,11 @@ describe("urlHasEmbeddedGitHubToken — each GitHub token form, on its own", () 
   it("does not flag x-access-token as a bare username: a credential helper supplies the token", () => {
     expect(urlHasEmbeddedGitHubToken("https://x-access-token@github.com/acme/public.git")).toBe(false);
     expect(urlHasEmbeddedGitHubToken("https://x-access-token:@github.com/acme/public.git")).toBe(false);
+    // An encoded @ keeps this one username (`x-access-token@ci-user`), no password.
+    expect(urlHasEmbeddedGitHubToken("https://x-access-token%40ci-user@github.com/acme/repo.git")).toBe(false);
+    expect(remoteListHasEmbeddedGitHubToken(
+      "origin\thttps://x-access-token%40ci-user@github.com/acme/repo.git (fetch)\n",
+    )).toBe(false);
   });
 
   it("flags a token in the password position and a percent-encoded separator", () => {
