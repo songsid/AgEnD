@@ -3,6 +3,18 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+const sqliteOpenCalls = vi.hoisted(() => ({ options: [] as Array<unknown> }));
+vi.mock("better-sqlite3", async importOriginal => {
+  const actual = await importOriginal() as any;
+  const RealDatabase = actual.default ?? actual;
+  class ObservedDatabase extends RealDatabase {
+    constructor(...args: any[]) {
+      super(...args);
+      sqliteOpenCalls.options.push(args[1] ?? {});
+    }
+  }
+  return { ...actual, default: ObservedDatabase };
+});
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
 import { DeliveryStatusArgs } from "../src/outbound-schemas.js";
@@ -160,6 +172,12 @@ describe("delivery_status query access", () => {
     const outbox = new DeliveryOutbox(dbPath, "manager");
     const row = seed(outbox, "op-cli", "source", "worker", "corr-cli");
     outbox.close();
+    const beforeReadOnlyQuery = sqliteOpenCalls.options.length;
+    expect(DeliveryOutbox.queryStatusReadOnly(dbPath, { deliveryId: row.deliveryId }).items)
+      .toMatchObject([{ delivery_id: row.deliveryId }]);
+    expect(sqliteOpenCalls.options.slice(beforeReadOnlyQuery)).toContainEqual(
+      expect.objectContaining({ readonly: true, fileMustExist: true }),
+    );
     const output = execFileSync(process.execPath, [
       "--import", import.meta.resolve("tsx"), join(process.cwd(), "src", "cli.ts"),
       "delivery", "show", "--delivery-id", row.deliveryId,
