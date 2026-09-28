@@ -112,9 +112,11 @@ describe("DeliveryOutbox", () => {
     lines.close();
 
     const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
-    const restarted = new DeliveryOutbox(dbPath, replacementManager.managerBootId);
-    replacementManager.deliveryOutbox = restarted;
     (replacementManager as any).shuttingDown = true;
+    // Exercise FleetManager's production startup wiring: it opens the durable
+    // store and runs recoverForBoot itself before any target Daemon is started.
+    (replacementManager as any).ensureDeliveryOutbox();
+    const restarted = replacementManager.deliveryOutbox!;
     const { Daemon } = await import("./daemon.js");
     const pinoModule = await import("pino");
     const logger = pinoModule.default({ level: "silent" });
@@ -130,7 +132,6 @@ describe("DeliveryOutbox", () => {
     const sourceDaemon = makeDaemon("source");
     sourceDaemon.setDeliveryOutboxPort(restarted);
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
-    const recovered = restarted.recoverForBoot(replacementManager.managerBootId);
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
     const pendingAfterRecovery = restarted.listPending();
     expect(pendingAfterRecovery).toMatchObject([
@@ -138,7 +139,6 @@ describe("DeliveryOutbox", () => {
       { operationId: expect.stringContaining("notice:"), targetInstance: "source", state: "queued" },
     ]);
     expect(replacementManager.lifecycle.daemons.has("worker")).toBe(false);
-    expect(recovered).toEqual({ queued: 1, uncertain: 0 });
     expect(restarted.getUnansweredAccepted("source", sourceDaemon.bootId)).toHaveLength(1);
 
     const queuedDelivery = pendingAfterRecovery.find(row => row.operationId === "op-1")!;
@@ -206,9 +206,9 @@ describe("DeliveryOutbox", () => {
     lines.close();
 
     const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
-    const restarted = new DeliveryOutbox(dbPath, replacementManager.managerBootId);
-    replacementManager.deliveryOutbox = restarted;
     (replacementManager as any).shuttingDown = true;
+    (replacementManager as any).ensureDeliveryOutbox();
+    const restarted = replacementManager.deliveryOutbox!;
     const { Daemon } = await import("./daemon.js");
     const pinoModule = await import("pino");
     const logger = pinoModule.default({ level: "silent" });
@@ -221,11 +221,9 @@ describe("DeliveryOutbox", () => {
     sourceDaemon.setDeliveryOutboxPort(restarted);
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
 
-    const recovered = restarted.recoverForBoot(replacementManager.managerBootId);
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
     const row = restarted.getByOperation("source", "op-paste-crash")[0];
     const notices = restarted.listPending().filter(item => item.kind === "delivery_outcome_notice");
-    expect(recovered).toEqual({ queued: 0, uncertain: 1 });
     expect(row).toMatchObject({ state: "uncertain", targetInstance: "worker" });
     expect(notices).toHaveLength(1);
     expect(notices[0]?.payload.content).toContain("state=uncertain");
