@@ -37,6 +37,23 @@ export class PaneWriteLock {
     return this.pending > 0;
   }
 
+  /** Bounded drain barrier for lifecycle evidence capture; does not admit writes. */
+  async waitForIdle(timeoutMs: number): Promise<boolean> {
+    if (!this.isBusy) return true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.tail.then(() => true),
+        new Promise<boolean>(resolve => {
+          timer = setTimeout(() => resolve(false), Math.max(0, timeoutMs));
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   /**
    * Run `fn` with exclusive access, queueing behind any writer already admitted.
    * Rejections propagate to *this* caller only — the internal chain is always

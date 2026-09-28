@@ -42,7 +42,7 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
-import type { DaemonDeliveryPort } from "./delivery-outbox.js";
+import type { DaemonDeliveryPort, DeliveryAttemptEvidence, DurableSubmissionMode } from "./delivery-outbox.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1264,6 +1264,7 @@ export class Daemon extends EventEmitter {
   /** Mutual exclusion for *every* write into the pane, whichever subsystem it
    *  comes from. See PaneWriteLock for why interleaving is destructive. */
   private readonly paneWriteLock = new PaneWriteLock();
+  private deliveryWritesStopping = false;
   private pendingInstructionsUpdate: string | undefined;
   private pendingInstructionsNotice = false;
   // Whether the warmup steering-reload notice should be injected after spawn.
@@ -1508,6 +1509,18 @@ export class Daemon extends EventEmitter {
     this.deliveryOutbox = port;
   }
 
+  /** Fence pane writers before lifecycle captures pre-kill reconciliation evidence. */
+  fenceDeliveryWritesForStop(): void {
+    if (this.deliveryWritesStopping) return;
+    this.deliveryWritesStopping = true;
+    this.deliveryEpoch++;
+  }
+
+  /** Bounded drain: timeout remains safe because Enter has a write-ahead fence. */
+  waitForDeliveryWritesToDrain(timeoutMs: number): Promise<boolean> {
+    return this.paneWriteLock.waitForIdle(timeoutMs);
+  }
+
   private durableDeliveryAttempt(meta: Record<string, string>): DurableDeliveryAttempt | null | false {
     const deliveryId = meta.delivery_id;
     if (!deliveryId) return null;
@@ -1516,15 +1529,36 @@ export class Daemon extends EventEmitter {
     return { deliveryId, attemptNo };
   }
 
-  private beginDurableDelivery(delivery: DurableDeliveryAttempt): boolean {
+  private beginDurableDelivery(delivery: DurableDeliveryAttempt, evidence?: DeliveryAttemptEvidence): boolean {
     if (!this.deliveryOutbox) {
       this.emit("durable_delivery_deferred", { ...delivery, targetBootId: this.bootId, reason: "outbox port unavailable before pane write" });
       return false;
     }
-    const outcome = this.deliveryOutbox.begin(delivery.deliveryId, this.bootId, delivery.attemptNo);
+    const outcome = this.deliveryOutbox.begin(delivery.deliveryId, this.bootId, delivery.attemptNo, evidence);
     // A repeated begin is idempotent at the store but must not authorize a
     // second pane write. Only the first caller that acquired the permit acts.
     return outcome === "begun";
+  }
+
+  private async durableAttemptEvidence(
+    windowId: string | undefined,
+    handingOffToNativeQueue: boolean,
+    steer: boolean,
+  ): Promise<DeliveryAttemptEvidence> {
+    let checkpoint = null;
+    try { checkpoint = await this.transcriptMonitor?.reconciliationCheckpoint() ?? null; }
+    catch (err) { this.logger.debug({ err }, "Could not checkpoint transcript before durable delivery"); }
+    const submissionMode: DurableSubmissionMode = steer
+      ? "steer"
+      : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
+    return {
+      backend: this.config.backend ?? this.backend?.binaryName ?? "unknown",
+      windowId: windowId ?? this.tmux?.getWindowId() ?? null,
+      transcriptPath: checkpoint?.path ?? null,
+      transcriptOffset: checkpoint?.offset ?? null,
+      transcriptSessionId: checkpoint?.sessionId ?? null,
+      submissionMode,
+    };
   }
 
   private abortDurableDelivery(delivery: { deliveryId: string; attemptNo: number } | null, reason: string): void {
@@ -3155,6 +3189,7 @@ export class Daemon extends EventEmitter {
 
   async stop(): Promise<void> {
     this.logger.info("Stopping daemon instance");
+    this.fenceDeliveryWritesForStop();
     this.turnReplyGuard.reset();
     // Invalidate any bounded pre-Enter wait from the process generation being
     // stopped. It must fail closed, not press Enter in a replacement pane.
@@ -5027,6 +5062,7 @@ export class Daemon extends EventEmitter {
           opts?.submissionId,
           verdict,
           opts?.durableAttempt,
+          opts?.steer === true,
         );
       });
       if (outcome === "spawn-started") {
@@ -5723,11 +5759,24 @@ export class Daemon extends EventEmitter {
    * precisely so the lock's scope is visible at the call site rather than being
    * an invariant maintained by comments.
    */
-  private async sendDeliveryEnter(phase: string, stillCurrent?: () => boolean): Promise<boolean> {
+  private async sendDeliveryEnter(
+    phase: string,
+    stillCurrent?: () => boolean,
+    durableAttempt?: DurableDeliveryAttempt,
+  ): Promise<boolean> {
     if (!(await this.waitForInputTransientToClear(phase))) return false;
     // A recovery Enter may have waited for a transient while cancel or spawn
     // replaced the delivery. Check at the last point before the tmux write.
-    if (stillCurrent && !stillCurrent()) return false;
+    if (this.deliveryWritesStopping || (stillCurrent && !stillCurrent())) return false;
+    // W1: persist the "Enter may have happened" boundary before tmux receives
+    // the key. A crash after this commit is never auto-replayed without a
+    // positive transcript marker, even if the stale pane still shows composer.
+    if (durableAttempt && !this.deliveryOutbox?.markEnterStarted(
+      durableAttempt.deliveryId, this.bootId, durableAttempt.attemptNo,
+    )) {
+      this.logger.error({ phase, deliveryId: durableAttempt.deliveryId }, "Could not commit durable Enter write-ahead fence");
+      return false;
+    }
     const sent = await this.tmux!.sendSpecialKey("Enter");
     if (!sent) {
       this.logger.error({
@@ -5748,6 +5797,7 @@ export class Daemon extends EventEmitter {
     // readable; deliverMessage, the only one that reports, always passes its own.
     verdict: DeliveryVerdict = { reached: false },
     durableAttempt?: DurableDeliveryAttempt,
+    steer = false,
   ): Promise<boolean | KiroPendingDelivery> {
     const signature = this.submissionSignature(formatted, submissionId);
     let windowId = initialWindowId;
@@ -5765,7 +5815,8 @@ export class Daemon extends EventEmitter {
       // first side effect; a crash during those waits remains safely replayable.
       if (durableAttempt && !beginChecked) {
         beginChecked = true;
-        if (!this.beginDurableDelivery(durableAttempt)) {
+        const attemptEvidence = await this.durableAttemptEvidence(windowId, handingOffToNativeQueue, steer);
+        if (!this.beginDurableDelivery(durableAttempt, attemptEvidence)) {
           verdict.durableBeginRejected = true;
           verdict.phase = "submission-begin";
           verdict.proof = "permit-rejected";
@@ -5818,7 +5869,7 @@ export class Daemon extends EventEmitter {
         settle = { settleMs: fallbackMs, observedPostPasteOutput: false, capHit: false, usedFallback: true };
       }
       let enterAt = Date.now();
-      if (!(await this.sendDeliveryEnter("initial-submit"))) {
+      if (!(await this.sendDeliveryEnter("initial-submit", undefined, durableAttempt))) {
         return this.failDelivery(verdict, status, "submit-enter", "tmux-send-keys-failed");
       }
 

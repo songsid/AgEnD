@@ -1,10 +1,10 @@
-import { existsSync, readFileSync, mkdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, basename, dirname, resolve, sep as pathSep } from "node:path";
 import { access, unlink } from "node:fs/promises";
 import { getAgendHome, ensureWorkspaceGit } from "./paths.js";
 import type { InstanceConfig, FleetConfig } from "./types.js";
-import { DEFAULT_INSTANCE_CONFIG } from "./config.js";
+import { DEFAULT_INSTANCE_CONFIG, getTmuxSession } from "./config.js";
 import { readStatuslineModel, sanitizeInstanceName } from "./topic-commands.js";
 import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
@@ -27,6 +27,13 @@ import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import type { DeliveryOutbox } from "./delivery-outbox.js";
+import {
+  capturePendingTargetReconciliation,
+  finishTargetReconciliation,
+  reconcileTargetBeforeStart,
+  RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS,
+  retireCapturedTargetWindows,
+} from "./delivery-reconciliation.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -1203,18 +1210,34 @@ export class InstanceLifecycle {
     daemon.on("error", (err: Error) => {
       this.ctx.logger.error({ err, name }, "Daemon emitted error — instance isolated");
     });
+    if (this.ctx.deliveryOutbox) {
+      // Fence older-generation submissions and reconcile them before Daemon.start
+      // reaches Strategy A's unconditional old-window kill.
+      const recovered = this.ctx.deliveryOutbox.recoverTargetGeneration(name, daemon.bootId);
+      if (recovered.queued || recovered.reconciliationPending) {
+        this.ctx.logger.warn({ name, ...recovered }, "Preparing durable outbox rows before target generation start");
+      }
+      const reconciled = await reconcileTargetBeforeStart(
+        this.ctx.deliveryOutbox,
+        name,
+        instanceDir,
+        this.ctx.logger,
+      );
+      if (reconciled.uncertain > 0) {
+        this.ctx.logger.warn({ name, ...reconciled }, "Some durable submissions need operator reconciliation");
+      }
+      if (!reconciled.safeToStart) {
+        const message = `Instance '${name}' remains stopped because its previous CLI window could not be confirmed retired during durable delivery reconciliation`;
+        this.ctx.logger.error({ name, ...reconciled }, message);
+        this.ctx.notifyFleetError?.(message);
+        await daemon.abortStartup().catch(err =>
+          this.ctx.logger.warn({ err, name }, "Failed to dispose daemon after reconciliation could not verify old CLI exit"));
+        throw new Error(message);
+      }
+    }
     await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
-    if (this.ctx.deliveryOutbox) {
-      const recovered = this.ctx.deliveryOutbox.recoverTargetGeneration(name, daemon.bootId);
-      if (recovered.queued || recovered.uncertain) {
-        this.ctx.logger.warn({ name, ...recovered }, "Reconciled outbox rows after target daemon generation changed");
-      }
-      if (recovered.uncertain > 0) {
-        this.ctx.notifyFleetError?.(`${recovered.uncertain} durable delivery outcome(s) for ${name} became uncertain during restart; sender notice queued for reconciliation.`);
-      }
-    }
     this.ctx.onDaemonReady?.(name, daemon.bootId);
 
 
@@ -1369,7 +1392,44 @@ export class InstanceLifecycle {
 
     const daemon = this.daemons.get(name);
     if (daemon) {
-      await daemon.stop();
+      let captured: Awaited<ReturnType<typeof capturePendingTargetReconciliation>> | undefined;
+      if (this.ctx.deliveryOutbox) {
+        daemon.fenceDeliveryWritesForStop();
+        const drained = await daemon.waitForDeliveryWritesToDrain(RECONCILIATION_WRITE_DRAIN_TIMEOUT_MS);
+        if (!drained) this.ctx.logger.warn({ name }, "Pane write did not drain before durable reconciliation capture; relying on the Enter write-ahead fence");
+        this.ctx.deliveryOutbox.markTargetReconciliationPending(name, daemon.bootId);
+        captured = await capturePendingTargetReconciliation(
+          this.ctx.deliveryOutbox,
+          name,
+          this.ctx.getInstanceDir(name),
+          getTmuxSession(),
+          this.ctx.logger,
+        );
+      }
+      let stopped = false;
+      try {
+        await daemon.stop();
+        stopped = true;
+      } finally {
+        if (captured && this.ctx.deliveryOutbox) {
+          const oldWindowGone = stopped && await retireCapturedTargetWindows(captured);
+          await finishTargetReconciliation(this.ctx.deliveryOutbox, captured, oldWindowGone, this.ctx.logger);
+          if (!oldWindowGone) {
+            // Daemon.stop removes this file after its best-effort kill. Restore
+            // the id so the next startup can retry the verified retirement
+            // barrier before creating a replacement CLI window.
+            const fencedWindowId = captured.savedWindowId
+              ?? captured.attempts.find(item => item.paneWindowId)?.paneWindowId;
+            if (fencedWindowId) {
+              try {
+                writeFileSync(join(this.ctx.getInstanceDir(name), "window-id"), `${fencedWindowId}\n`, { mode: 0o600 });
+              } catch (err) {
+                this.ctx.logger.error({ err, name, windowId: fencedWindowId }, "Could not persist old window id after unverified durable stop");
+              }
+            }
+          }
+        }
+      }
       // Identity-safe: while we awaited, a concurrent restart may have
       // registered a FRESH daemon under this name — deleting by name alone
       // would drop it from supervision while its CLI keeps running.

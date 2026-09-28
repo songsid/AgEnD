@@ -329,6 +329,8 @@ Phase 2 將目前 Phase 1 明確標成 non-durable 的 silent-schedule `raw_past
 
 `raw_paste` 沒有 delivery marker，slash command 通常也不會成為一般 transcript user entry，因此一般 marker-based transcript parser 不適用；submission_started 後 crash 多數只能判 `uncertain`。只有在該 target generation 的 pane-write lock 已 fence 並 drain、pre-kill capture 能證明 active composer 仍完整保有該次 exact bytes、且 attempt record 證明 Enter write 尚未開始/沒有 in-flight，才是可靠 negative proof → 原 row `retry_wait`。Composer 裡曾出現 bytes 不足以判 delivered：Strategy A 會 kill 舊 window 並清掉 composer，無持久效果可以由這個畫面證明。Enter 已送出或是否送出不確定時，除非 backend 對該 command 有經驗證的正面 receipt/transcript proof，否則 `uncertain`，不盲 replay。raw_paste 不假裝有 Claude/Codex delivery marker 證據。
 
+**Enter-start write-ahead fence（W1）。** 每次 attempt 的 `enter_started_at` 是「Enter 可能已送出」的持久邊界，不是 Enter 成功 receipt。target 必須在呼叫 tmux `send-keys Enter` **之前同步 commit** 此欄位；commit 失敗則不得呼叫 Enter。若 crash 後該值非 NULL，即使 pre-kill pane 仍顯示 composer marker，也不可據此判負面或 retry；只有 transcript 正面 proof 能判 delivered，否則 uncertain。這避免 crash 落在 tmux 已收 Enter、SQLite 尚未記錄之間而把同一訊息重送。
+
 Phase 2 實作順序：先做 2.1 reconciliation 與 2.2 queue evidence，再做 2.3 delivery_status；**raw_paste 放 Phase 2 最後一個子階段**，獨立驗證 scheduler run key、exact bytes、paste+Enter 以及 crash matrix 後才切換 silent schedules 的 admission ACK。
 
 #### 2.5 Phase 2 測試策略與必紅 mutation
@@ -360,6 +362,7 @@ Phase 2 實作順序：先做 2.1 reconciliation 與 2.2 queue evidence，再做
 | 38. replacement `Daemon.start()` 在 reconciler capture 前執行 Strategy A `killWindow` | lifecycle integration test 的 composer-only pane evidence 消失，預期 capture barrier 先完成，mutation 紅 |
 | 39. reconciliation 用 fleet-global barrier 等所有 target 分類完才 dispatch | 讓 target A 的 bounded evidence probe 卡住，同時 target B 有 queued row；B 未被 dispatch 即 mutation 紅 |
 | 40. `raw_paste` 只 paste bytes 而不送 Enter | `/compact` live/backend fixture 保持 composer 未提交，schedule run 不可標 delivered，mutation 紅 |
+| 41. 把 `enter_started_at` 的 SQLite commit 移到 tmux Enter 之後 | crash hook 在 tmux 接受 Enter 後、紀錄寫入前殺整個 process；replacement 仍看到 marker 在 composer 並錯誤轉 `retry_wait`/重送，mutation 紅 |
 
 原 mutation 19–24 仍須維持會紅：移除 envelope marker、composer-only 誤判、transcript 提前讀、capture 順序錯、timeout 缺 operation_id、post-restart notice 移除。Phase 2 不可因自動 reconciliation/status 查詢而削弱 Phase 1 的 boot/generation fence、fail-closed admission、TTL notice 或 per-target FIFO。
 

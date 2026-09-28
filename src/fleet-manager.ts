@@ -876,9 +876,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.deliveryOutboxRecovered) {
       const recovered = outbox.recoverForBoot(this.managerBootId);
       this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
-      if (recovered.uncertain > 0) {
-        this.notifyFleetError(`${recovered.uncertain} durable delivery outcome(s) became uncertain during process restart; inspect the sender's delivery notice before retrying.`);
-      }
       this.deliveryOutboxRecovered = true;
     }
     outbox.on("admitted", () => this.scheduleDeliveryOutboxPump());
@@ -894,9 +891,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
-    outbox.on("expired", (event: { count?: number }) => {
+    outbox.on("expired", (event: { count?: number; uncertain?: number }) => {
       this.scheduleDeliveryOutboxPump();
-      if (event.count) this.notifyFleetError(`${event.count} durable delivery row(s) expired before their target became available; sender outcome notice queued.`);
+      if (event.count) this.notifyFleetError(
+        `${event.count} durable delivery row(s) reached the 24-hour outbox bound; ${event.uncertain ?? 0} unresolved submissions are uncertain and sender notices were queued.`,
+      );
     });
     this.scheduleDeliveryOutboxPump();
   }
