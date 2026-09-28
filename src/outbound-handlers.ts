@@ -1,6 +1,7 @@
 import { validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
@@ -94,7 +95,7 @@ export interface OutboundContext {
   /** Persist a cross-instance action before its MCP call is acknowledged. */
   admitDurableDelivery?(input: {
     operationId: string;
-    sourceDaemonBootId: string;
+    sourceDaemonBootId?: string;
     sourceInstance: string;
     targetInstance: string;
     targetSession?: string;
@@ -102,6 +103,8 @@ export interface OutboundContext {
     correlationId: string;
     payload: Record<string, unknown>;
   }): { deliveryId: string; state: string; duplicate: boolean };
+  /** Current Daemon generation for authenticated HTTP/CLI ingress. */
+  getDaemonBootId?(instanceName: string): string | undefined;
   /** True for the bounded stop/spawn window of an already planned replacement. */
   isInstanceRestarting?(instanceName: string): boolean;
   /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
@@ -408,6 +411,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     : undefined;
 
   const correlationId = parsedCorrelationId || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const operationId = ctx.admitDurableDelivery ? meta.operationId ?? randomUUID() : meta.operationId;
   const ipcMeta: Record<string, string> = {
     chat_id: "",
     message_id: `xmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -446,14 +450,12 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   };
   let durableReceipt: { deliveryId: string; state: string; duplicate: boolean } | undefined;
   if (ctx.admitDurableDelivery) {
-    if (!meta.operationId || !meta.sourceDaemonBootId) {
-      respond(null, "Durable delivery requires an MCP operation_id; update/reconnect the AgEnD MCP server and retry.");
-      return;
-    }
     try {
       durableReceipt = ctx.admitDurableDelivery({
-        operationId: meta.operationId,
-        sourceDaemonBootId: meta.sourceDaemonBootId,
+        // MCP assigns this before ipcRequest; HTTP/CLI and legacy ingress get
+        // an equivalent server-side key so non-MCP agents remain supported.
+        operationId: operationId!,
+        sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
         sourceInstance: meta.instanceName,
         targetInstance: targetInstanceName,
         targetSession,
@@ -555,7 +557,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       durable: true,
       delivery_id: durableReceipt.deliveryId,
       delivery_state: durableReceipt.state,
-      operation_id: meta.operationId,
+      operation_id: operationId,
       duplicate: durableReceipt.duplicate,
     } : {}),
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
@@ -1402,6 +1404,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
+  const operationId = ctx.admitDurableDelivery ? meta.operationId ?? randomUUID() : meta.operationId;
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
   const makeBroadcastMeta = (correlationId: string, messageId = `bcast-${Date.now()}`): Record<string, string> => {
     const ipcMeta: Record<string, string> = {
@@ -1457,14 +1460,10 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
 
     const payload = { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta };
     if (ctx.admitDurableDelivery) {
-      if (!meta.operationId || !meta.sourceDaemonBootId) {
-        failed.push(targetName);
-        continue;
-      }
       try {
         ctx.admitDurableDelivery({
-          operationId: meta.operationId,
-          sourceDaemonBootId: meta.sourceDaemonBootId,
+          operationId: operationId!,
+          sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
           sourceInstance: meta.instanceName,
           targetInstance: hostInstance,
           targetSession: targetName,
@@ -1502,6 +1501,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     failed,
     count: sentTo.length,
     queued: true,
+    ...(operationId ? { operation_id: operationId } : {}),
     ...(ctx.admitDurableDelivery ? { durable: true, delivery_state: "queued" } : { durable: false }),
   });
 };

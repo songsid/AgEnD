@@ -4,6 +4,10 @@ import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
+export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
+export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
+export const DURABLE_DELIVERY_ABORT_BACKOFF_MS = 5_000;
+
 export interface DaemonDeliveryPort {
   begin(deliveryId: string, targetBootId: string, attemptNo: number): "begun" | "duplicate" | "stale";
   abort(deliveryId: string, targetBootId: string, attemptNo: number, reason: string): boolean;
@@ -73,6 +77,7 @@ interface OutboxRow {
   response_delivered_at: string | null;
   next_attempt_at: string | null;
   last_error: string | null;
+  created_at: string;
 }
 
 export interface ClaimedOutboxDelivery extends OutboxDelivery {
@@ -173,6 +178,11 @@ export class DeliveryOutbox extends EventEmitter {
         notice_delivery_id TEXT NOT NULL,
         created_at TEXT NOT NULL,
         PRIMARY KEY (source_instance, source_daemon_boot_id, operation_id, target_instance)
+      );
+      CREATE TABLE IF NOT EXISTS failure_notices (
+        parent_delivery_id TEXT PRIMARY KEY,
+        notice_delivery_id TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL
       );
       PRAGMA user_version = 1;
     `);
@@ -332,9 +342,16 @@ export class DeliveryOutbox extends EventEmitter {
       `).run(now, reason.slice(0, 300), deliveryId, targetBootId, attemptNo);
       if (updateAttempt.changes !== 1) return false;
       const updateDelivery = this.db.prepare(`
-        UPDATE deliveries SET state='retry_wait',updated_at=?,last_error=?
+        UPDATE deliveries SET state='retry_wait',updated_at=?,last_error=?,next_attempt_at=?
         WHERE delivery_id=? AND state='submission_started' AND target_daemon_boot_id=? AND attempt_no=?
-      `).run(now, reason.slice(0, 300), deliveryId, targetBootId, attemptNo);
+      `).run(
+        now,
+        reason.slice(0, 300),
+        new Date(Date.now() + DURABLE_DELIVERY_ABORT_BACKOFF_MS).toISOString(),
+        deliveryId,
+        targetBootId,
+        attemptNo,
+      );
       if (updateDelivery.changes !== 1) throw new Error("outbox abort lost its delivery fence");
       return true;
     });
@@ -352,6 +369,7 @@ export class DeliveryOutbox extends EventEmitter {
   ): boolean {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
+      const parent = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
       const result = this.db.prepare(`
         UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?
         WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='submission_started'
@@ -364,6 +382,9 @@ export class DeliveryOutbox extends EventEmitter {
         UPDATE delivery_attempts SET state=?,finished_at=?,evidence=?
         WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='begun'
       `).run(outcome, now, evidence?.slice(0, 300) ?? null, deliveryId, targetBootId, attemptNo);
+      if (parent && (outcome === "failed" || outcome === "uncertain")) {
+        this.insertFailureNotice(parent, outcome, evidence ?? outcome, now);
+      }
       return { changed: true, accepted: true };
     });
     const result = transaction();
@@ -375,22 +396,78 @@ export class DeliveryOutbox extends EventEmitter {
   retryBeforeBegin(deliveryId: string, targetBootId: string, attemptNo: number, reason: string, delayMs = 30_000): boolean {
     const now = new Date().toISOString();
     const next = new Date(Date.now() + Math.max(0, delayMs)).toISOString();
-    const changed = this.db.prepare(`
-      UPDATE deliveries SET state='retry_wait',updated_at=?,last_error=?,next_attempt_at=?
-      WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='delivering'
-    `).run(now, reason.slice(0, 300), next, deliveryId, targetBootId, attemptNo).changes === 1;
-    if (changed) this.emit("state", { deliveryId, state: "retry_wait" });
-    return changed;
+    const transaction = this.db.transaction(() => {
+      const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
+      if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo || row.state !== "delivering") {
+        return undefined;
+      }
+      const ageMs = Date.now() - Date.parse(row.created_at);
+      const exhausted = attemptNo >= DURABLE_DELIVERY_MAX_ATTEMPTS || ageMs >= DURABLE_DELIVERY_MAX_AGE_MS;
+      const outcome = exhausted ? "failed" : "retry_wait";
+      const update = this.db.prepare(`
+        UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?,next_attempt_at=?
+        WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='delivering'
+      `).run(outcome, now, exhausted ? now : null, reason.slice(0, 300), exhausted ? null : next,
+        deliveryId, targetBootId, attemptNo);
+      if (update.changes !== 1) return undefined;
+      if (exhausted) this.insertFailureNotice(row, "failed", `${reason}; retry limit/age reached`, now);
+      return outcome;
+    });
+    const outcome = transaction();
+    if (outcome) this.emit("state", { deliveryId, state: outcome });
+    return outcome !== undefined;
   }
 
   failBeforeBegin(deliveryId: string, reason: string): boolean {
     const now = new Date().toISOString();
-    const changed = this.db.prepare(`
-      UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error=?
-      WHERE delivery_id=? AND state IN ('queued','delivering','retry_wait')
-    `).run(now, now, reason.slice(0, 300), deliveryId).changes === 1;
+    const transaction = this.db.transaction(() => {
+      const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
+      if (!row) return false;
+      const changed = this.db.prepare(`
+        UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error=?,next_attempt_at=NULL
+        WHERE delivery_id=? AND state IN ('queued','delivering','retry_wait')
+      `).run(now, now, reason.slice(0, 300), deliveryId).changes === 1;
+      if (changed) this.insertFailureNotice(row, "failed", reason, now);
+      return changed;
+    });
+    const changed = transaction();
     if (changed) this.emit("state", { deliveryId, state: "failed" });
     return changed;
+  }
+
+  /** Expire unavailable/pre-submit rows instead of leaving them queued forever. */
+  expireStale(nowMs = Date.now(), maxAgeMs = DURABLE_DELIVERY_MAX_AGE_MS): number {
+    const cutoff = new Date(nowMs - maxAgeMs).toISOString();
+    const now = new Date(nowMs).toISOString();
+    const transaction = this.db.transaction(() => {
+      const stale = this.db.prepare(`
+        SELECT * FROM deliveries
+        WHERE state IN ('queued','retry_wait') AND created_at<=?
+        ORDER BY created_seq
+      `).all(cutoff) as OutboxRow[];
+      const update = this.db.prepare(`
+        UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error='delivery TTL expired before target became available',next_attempt_at=NULL
+        WHERE delivery_id=? AND state IN ('queued','retry_wait')
+      `);
+      let changed = 0;
+      for (const row of stale) {
+        if (update.run(now, now, row.delivery_id).changes !== 1) continue;
+        this.insertFailureNotice(row, "failed", "delivery TTL expired before target became available", now);
+        changed++;
+      }
+      return changed;
+    });
+    const changed = transaction();
+    if (changed) this.emit("expired", { count: changed });
+    return changed;
+  }
+
+  /** Next queued/retry expiry for bounded maintenance scheduling. */
+  nextExpiryAt(): string | null {
+    const row = this.db.prepare(`
+      SELECT MIN(created_at) AS created_at FROM deliveries WHERE state IN ('queued','retry_wait')
+    `).get() as { created_at: string | null };
+    return row.created_at ? new Date(Date.parse(row.created_at) + DURABLE_DELIVERY_MAX_AGE_MS).toISOString() : null;
   }
 
   markResponseDelivered(sourceInstance: string, operationId: string): number {
@@ -405,6 +482,9 @@ export class DeliveryOutbox extends EventEmitter {
   recoverForBoot(managerBootId: string): { queued: number; uncertain: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
+      const uncertainRows = this.db.prepare(`
+        SELECT * FROM deliveries WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state='submission_started'
+      `).all(managerBootId) as OutboxRow[];
       const queued = this.db.prepare(`
         UPDATE deliveries SET state='queued',manager_boot_id=NULL,target_daemon_boot_id=NULL,next_attempt_at=NULL,updated_at=?
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state IN ('delivering','retry_wait')
@@ -415,6 +495,9 @@ export class DeliveryOutbox extends EventEmitter {
         UPDATE deliveries SET state='uncertain',updated_at=?,finished_at=?,last_error='process restarted during submission; reconciliation required'
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state='submission_started'
       `).run(now, now, managerBootId).changes;
+      for (const row of uncertainRows) {
+        this.insertFailureNotice(row, "uncertain", "process restarted during submission; reconciliation required", now);
+      }
       return { queued, uncertain };
     });
     return transaction();
@@ -445,6 +528,11 @@ export class DeliveryOutbox extends EventEmitter {
         WHERE n.source_instance=? AND n.source_daemon_boot_id=? AND n.operation_id=? AND n.target_instance=?
       `).get(parent.sourceInstance, parent.sourceDaemonBootId, parent.operationId, parent.targetInstance) as OutboxRow | undefined;
       if (prior) return mapRow(prior);
+      const terminalNotice = this.db.prepare(`
+        SELECT d.* FROM failure_notices n JOIN deliveries d ON d.delivery_id=n.notice_delivery_id
+        WHERE n.parent_delivery_id=?
+      `).get(parent.deliveryId) as OutboxRow | undefined;
+      if (terminalNotice) return mapRow(terminalNotice);
       const reserved = this.db.prepare(`
         INSERT OR IGNORE INTO outcome_notices
         (source_instance,source_daemon_boot_id,operation_id,target_instance,notice_delivery_id,created_at)
@@ -480,6 +568,10 @@ export class DeliveryOutbox extends EventEmitter {
   recoverTargetGeneration(targetInstance: string, currentTargetBootId: string): { queued: number; uncertain: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
+      const uncertainRows = this.db.prepare(`
+        SELECT * FROM deliveries WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL
+          AND target_daemon_boot_id<>? AND state='submission_started'
+      `).all(targetInstance, currentTargetBootId) as OutboxRow[];
       const queued = this.db.prepare(`
         UPDATE deliveries SET state='queued',manager_boot_id=NULL,target_daemon_boot_id=NULL,next_attempt_at=NULL,updated_at=?
         WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL AND target_daemon_boot_id<>?
@@ -490,6 +582,9 @@ export class DeliveryOutbox extends EventEmitter {
         WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL AND target_daemon_boot_id<>?
           AND state='submission_started'
       `).run(now, now, targetInstance, currentTargetBootId).changes;
+      for (const row of uncertainRows) {
+        this.insertFailureNotice(row, "uncertain", "target daemon generation changed during submission; reconciliation required", now);
+      }
       return { queued, uncertain };
     });
     const result = transaction();
@@ -508,5 +603,48 @@ export class DeliveryOutbox extends EventEmitter {
 
   close(): void {
     this.db.close();
+  }
+
+  /** Must be called inside the same SQLite transaction as the terminal transition. */
+  private insertFailureNotice(parent: OutboxRow, outcome: "failed" | "uncertain", reason: string, now: string): void {
+    if (parent.kind === "delivery_outcome_notice" || parent.kind === "post_restart_outcome_notice") return;
+    const noticeId = randomUUID();
+    const operationId = `notice:${parent.operation_id}:${parent.delivery_id}`;
+    const payload = {
+      type: "fleet_inbound",
+      content: `[system:delivery-outcome] Cross-instance operation outcome: operation_id=${parent.operation_id}; delivery_id=${parent.delivery_id}; target=${parent.target_instance}; state=${outcome}; detail=${reason.slice(0, 200)}. ${outcome === "uncertain" ? "Do not resend until an operator reconciles this delivery." : "The delivery failed after bounded retries; report this outcome to the operator."}`,
+      meta: {
+        user: "AgEnD delivery outbox",
+        user_id: "agend-system",
+        message_id: `delivery-outcome-${parent.delivery_id}`,
+        chat_id: "",
+        thread_id: "",
+        source: "delivery-outbox",
+      },
+    };
+    const reserved = this.db.prepare(`
+      INSERT OR IGNORE INTO failure_notices(parent_delivery_id,notice_delivery_id,created_at) VALUES (?,?,?)
+    `).run(parent.delivery_id, noticeId, now);
+    if (reserved.changes !== 1) return;
+    this.db.prepare(`
+      INSERT INTO deliveries (
+        delivery_id,operation_id,source_key,source_instance,source_daemon_boot_id,
+        target_instance,target_session,target_daemon_boot_id,kind,correlation_id,payload_json,state,
+        attempt_no,created_seq,manager_boot_id,created_at,updated_at,accepted_at
+      ) VALUES (?,?,?,?,?,?,NULL,NULL,'delivery_outcome_notice',?,?,'queued',0,
+        (SELECT COALESCE(MAX(created_seq),0)+1 FROM deliveries),NULL,?,?,?)
+    `).run(
+      noticeId,
+      operationId,
+      `failure-notice:${parent.delivery_id}`,
+      "agend-system",
+      this.managerBootId,
+      parent.source_instance,
+      parent.correlation_id,
+      JSON.stringify(payload),
+      now,
+      now,
+      now,
+    );
   }
 }

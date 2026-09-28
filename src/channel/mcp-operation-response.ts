@@ -7,9 +7,15 @@ export function encodeOperationSuccess(result: unknown, operationId: string): st
 }
 
 export function encodeOperationError(message: string, operationId: string): string {
-  const isUnknownOutcome = /timed out|IPC disconnected|IPC send failed|Not connected to daemon IPC/i.test(message);
+  // A timeout/disconnect can happen after the daemon committed admission, so
+  // retrying could duplicate work. These two preflight failures happen before
+  // the request was put on the socket and are therefore safe to retry.
+  const isUnknownOutcome = /timed out|IPC disconnected/i.test(message);
+  const isKnownNotSent = /Not connected to daemon IPC|IPC send failed/i.test(message);
   const detail = isUnknownOutcome
     ? `Outcome unknown; do not resend this operation. operation_id=${operationId}. Ask the operator to inspect its delivery status. Error: ${message}`
+    : isKnownNotSent
+      ? `Operation was not sent to the daemon and was not admitted. It is safe to retry. operation_id=${operationId}. Error: ${message}`
     : `${message} (operation_id=${operationId})`;
   return `Error: ${detail}`;
 }

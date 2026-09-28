@@ -15,4 +15,14 @@ describe("durable MCP operation response", () => {
     });
     expect(encodeOperationError("target not found", "op-error")).toContain("operation_id=op-error");
   });
+
+  it.each(["Not connected to daemon IPC", "IPC send failed: socket is closed"])(
+    "marks pre-send failure as safe to retry (%s)",
+    message => {
+      const text = encodeOperationError(message, "op-preflight");
+      expect(text).toContain("operation_id=op-preflight");
+      expect(text).not.toContain("do not resend");
+      expect(text).toContain("safe to retry");
+    },
+  );
 });

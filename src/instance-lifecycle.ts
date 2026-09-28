@@ -1172,6 +1172,23 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
+    daemon.on("durable_delivery_deferred", (data: {
+      deliveryId: string;
+      attemptNo: number;
+      targetBootId: string;
+      reason: string;
+    }) => {
+      // A daemon without its outbox port cannot update the row directly. The
+      // lifecycle owns the same-process store and records a bounded pre-write
+      // retry instead of leaving the lane in delivering forever.
+      this.ctx.deliveryOutbox?.retryBeforeBegin(
+        data.deliveryId,
+        data.targetBootId,
+        data.attemptNo,
+        data.reason,
+        5_000,
+      );
+    });
     daemon.on("mcp_tool_response_written", (data: { operationId?: string; daemonBootId?: string }) => {
       if (!data.operationId || data.daemonBootId !== daemon.bootId) return;
       try {
@@ -1192,6 +1209,9 @@ export class InstanceLifecycle {
       const recovered = this.ctx.deliveryOutbox.recoverTargetGeneration(name, daemon.bootId);
       if (recovered.queued || recovered.uncertain) {
         this.ctx.logger.warn({ name, ...recovered }, "Reconciled outbox rows after target daemon generation changed");
+      }
+      if (recovered.uncertain > 0) {
+        this.ctx.notifyFleetError?.(`${recovered.uncertain} durable delivery outcome(s) for ${name} became uncertain during restart; sender notice queued for reconciliation.`);
       }
     }
     this.ctx.onDaemonReady?.(name, daemon.bootId);

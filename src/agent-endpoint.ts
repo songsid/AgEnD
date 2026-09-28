@@ -14,7 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { OutboundContext } from "./outbound-handlers.js";
 import { outboundHandlers } from "./outbound-handlers.js";
 import { routeToolCall } from "./channel/tool-router.js";
@@ -89,12 +89,22 @@ export interface AgentEndpointContext extends OutboundContext {
   readonly dataDir: string;
   /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
   readonly replyDeduper?: import("./reply-dedup.js").ReplyDeduper;
+  /** Mark an HTTP durable-operation result once its response is written. */
+  markDurableResponseDelivered?(sourceInstance: string, operationId: string): void;
   handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
   handleDecisionCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
   handleTaskCrudHttp(instance: string, args: Record<string, unknown>): Promise<unknown>;
   handleSetDisplayNameHttp(instance: string, name: string): Promise<unknown>;
   handleSetDescriptionHttp(instance: string, description: string): Promise<unknown>;
 }
+
+const DURABLE_HTTP_TOOLS = new Set([
+  "send_to_instance",
+  "broadcast",
+  "report_result",
+  "delegate_task",
+  "request_information",
+]);
 
 /**
  * Constant-time comparison of the provided header against the per-instance
@@ -166,7 +176,13 @@ export function handleAgentRequest(
 
       const result = await dispatchAgentOperation(ctx, instance, op, args);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(result));
+      const operationId = result && typeof result === "object" && !Array.isArray(result)
+        && typeof (result as Record<string, unknown>).operation_id === "string"
+        ? (result as Record<string, unknown>).operation_id as string
+        : undefined;
+      res.end(JSON.stringify(result), () => {
+        if (operationId) ctx.markDurableResponseDelivered?.(instance, operationId);
+      });
     } catch (err) {
       // A refusal is not a malformed request: 403 says "you, specifically, may
       // not", which is what the caller has to act on.
@@ -232,6 +248,14 @@ export async function dispatchAgentOperation(
       throw new ToolNotPermittedError(toolRefusedMessage(profile, requestedTool));
     }
   }
+
+  // HTTP/CLI agents do not pass through mcp-server.ts, so assign the same
+  // durable-operation identity at this ingress before invoking an outbound
+  // handler. The returned operation_id lets the CLI report/query the exact
+  // accepted operation instead of retrying it as a new tool call.
+  const operationId = requestedTool && DURABLE_HTTP_TOOLS.has(requestedTool)
+    ? randomUUID()
+    : undefined;
 
   // Schedule CRUD
   if (op.startsWith("schedule-")) {
@@ -339,8 +363,26 @@ export async function dispatchAgentOperation(
   }
 
   return new Promise((resolve) => {
-    handler(ctx, args, (result, error) => {
-      resolve(error ? { error } : result);
-    }, { instanceName: instance, requestId: undefined, fleetRequestId: undefined, senderSessionName: undefined });
+    let settled = false;
+    const respond = (result: unknown, error?: string) => {
+      if (settled) return;
+      settled = true;
+      const response = error ? { error } : result;
+      if (!operationId) {
+        resolve(response);
+      } else if (response && typeof response === "object" && !Array.isArray(response)) {
+        resolve({ ...(response as Record<string, unknown>), operation_id: operationId });
+      } else {
+        resolve({ result: response, operation_id: operationId });
+      }
+    };
+    const returned = handler(ctx, args, respond, {
+      instanceName: instance,
+      requestId: undefined,
+      fleetRequestId: undefined,
+      senderSessionName: undefined,
+      ...(operationId ? { operationId, sourceDaemonBootId: ctx.getDaemonBootId?.(instance) } : {}),
+    });
+    void Promise.resolve(returned).catch(err => respond(null, (err as Error).message));
   });
 }

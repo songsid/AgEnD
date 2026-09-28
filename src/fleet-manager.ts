@@ -77,6 +77,8 @@ import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
 import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery } from "./delivery-outbox.js";
+
+const DURABLE_DELIVERY_LANE_MAX_WAIT_MS = 10 * 60_000;
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -870,18 +872,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!this.deliveryOutboxRecovered) {
       const recovered = outbox.recoverForBoot(this.managerBootId);
       this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
+      if (recovered.uncertain > 0) {
+        this.notifyFleetError(`${recovered.uncertain} durable delivery outcome(s) became uncertain during process restart; inspect the sender's delivery notice before retrying.`);
+      }
       this.deliveryOutboxRecovered = true;
     }
     outbox.on("admitted", () => this.scheduleDeliveryOutboxPump());
-    outbox.on("state", () => this.scheduleDeliveryOutboxPump());
+    outbox.on("state", (event: { deliveryId?: string; state?: string }) => {
+      this.scheduleDeliveryOutboxPump();
+      if (event.deliveryId && (event.state === "failed" || event.state === "uncertain")) {
+        const row = outbox.get(event.deliveryId);
+        if (row && row.kind !== "delivery_outcome_notice" && row.kind !== "post_restart_outcome_notice") {
+          const notice = `Durable delivery ${row.state}: operation_id=${row.operationId}; target=${row.targetInstance}; delivery_id=${row.deliveryId}.`;
+          this.logger.error({ deliveryId: row.deliveryId, operationId: row.operationId, target: row.targetInstance, state: row.state }, notice);
+          this.notifyFleetError(notice);
+        }
+      }
+    });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
+    outbox.on("expired", (event: { count?: number }) => {
+      this.scheduleDeliveryOutboxPump();
+      if (event.count) this.notifyFleetError(`${event.count} durable delivery row(s) expired before their target became available; sender outcome notice queued.`);
+    });
     this.scheduleDeliveryOutboxPump();
   }
 
   /** Synchronous SQLite admission; the caller may acknowledge only after this returns. */
   admitDurableDelivery(input: {
     operationId: string;
-    sourceDaemonBootId: string;
+    sourceDaemonBootId?: string;
     sourceInstance: string;
     targetInstance: string;
     targetSession?: string;
@@ -892,11 +911,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const outbox = this.deliveryOutbox;
     if (!outbox) throw new Error("Durable delivery store is unavailable");
     const source = this.daemons.get(input.sourceInstance);
-    if (!source || source.bootId !== input.sourceDaemonBootId) {
+    const sourceDaemonBootId = input.sourceDaemonBootId ?? source?.bootId;
+    if (!source || !sourceDaemonBootId || source.bootId !== sourceDaemonBootId) {
       throw new Error("Source daemon generation is no longer current; outcome is unknown");
     }
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
-    const admitted = outbox.admit({ ...input, sourceKey });
+    const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
     if (admitted.inserted) this.logger.info({
       deliveryId: admitted.delivery.deliveryId,
       operationId: input.operationId,
@@ -910,6 +930,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       state: admitted.delivery.state,
       duplicate: !admitted.inserted,
     };
+  }
+
+  getDaemonBootId(instanceName: string): string | undefined {
+    return this.daemons.get(instanceName)?.bootId;
+  }
+
+  markDurableResponseDelivered(sourceInstance: string, operationId: string): void {
+    this.deliveryOutbox?.markResponseDelivered(sourceInstance, operationId);
   }
 
   /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
@@ -950,6 +978,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.deliveryPumpRunning = true;
     this.deliveryPumpScheduled = false;
     try {
+      outbox.expireStale();
       while (this.activeDurableTargets.size < 8) {
         const claimed = outbox.claimNext(
           this.managerBootId,
@@ -973,6 +1002,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (nextRetryAt && !this.deliveryPumpTimer) {
         this.scheduleDeliveryOutboxPump(Math.max(1, Date.parse(nextRetryAt) - Date.now()));
       }
+      const nextExpiryAt = outbox.nextExpiryAt();
+      if (nextExpiryAt && !this.deliveryPumpTimer) {
+        this.scheduleDeliveryOutboxPump(Math.max(1, Date.parse(nextExpiryAt) - Date.now()));
+      }
     }
   }
 
@@ -981,6 +1014,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!outbox) return;
     const target = claimed.targetInstance;
     const attempt = claimed.attemptNo;
+    const laneDeadline = Date.now() + DURABLE_DELIVERY_LANE_MAX_WAIT_MS;
     const payload = { ...claimed.payload };
     const rawMeta = payload.meta && typeof payload.meta === "object"
       ? payload.meta as Record<string, unknown>
@@ -995,14 +1029,35 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
     };
     try {
-      const sent = await this.deliverToInstance(target, payload, {
-        isCrossInstance: true,
-        waitForIdle: claimed.kind !== "steer",
-      });
-      if (!sent) {
-        outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo,
-          "delivery was cancelled before target IPC handoff",
-          Math.min(60_000, 1_000 * 2 ** Math.min(attempt - 1, 6)));
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const result = await Promise.race([
+        this.deliverToInstance(target, payload, {
+          isCrossInstance: true,
+          waitForIdle: claimed.kind !== "steer",
+        }).then(sent => ({ sent })),
+        new Promise<{ timedOut: true }>(resolve => {
+          timeout = setTimeout(() => resolve({ timedOut: true }), Math.max(1, laneDeadline - Date.now()));
+          timeout.unref?.();
+        }),
+      ]);
+      if (timeout) clearTimeout(timeout);
+      if ("timedOut" in result) {
+        const current = outbox.get(claimed.deliveryId);
+        if (current?.state === "submission_started") {
+          outbox.complete(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, "uncertain", "delivery dispatch exceeded the 10 minute lane limit after submission began");
+        } else if (current?.state === "delivering") {
+          outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo,
+            "delivery dispatch exceeded the 10 minute lane limit before submission",
+            Math.min(60_000, 1_000 * 2 ** Math.min(attempt - 1, 6)));
+        }
+        this.notifyFleetError(`Durable delivery to ${target} exceeded its 10 minute lane limit; delivery ${claimed.deliveryId} is ${current?.state === "submission_started" ? "uncertain" : "deferred"}.`);
+      } else if (!result.sent) {
+        const current = outbox.get(claimed.deliveryId);
+        if (current?.state === "delivering") {
+          outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo,
+            "delivery was cancelled before target IPC handoff",
+            Math.min(60_000, 1_000 * 2 ** Math.min(attempt - 1, 6)));
+        }
       }
     } catch (err) {
       const latest = outbox.get(claimed.deliveryId);
@@ -1015,29 +1070,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       this.logger.warn({ deliveryId: claimed.deliveryId, target, attempt, err: reason }, "Durable delivery dispatch deferred");
     }
-    await this.waitForDurableLaneRelease(claimed.deliveryId);
+    await this.waitForDurableLaneRelease(claimed, laneDeadline);
   }
 
-  private async waitForDurableLaneRelease(deliveryId: string): Promise<void> {
+  private async waitForDurableLaneRelease(claimed: ClaimedOutboxDelivery, deadline: number): Promise<void> {
     const outbox = this.deliveryOutbox;
     if (!outbox) return;
+    const deliveryId = claimed.deliveryId;
     const released = (row: OutboxDelivery | undefined): boolean => !row
       || row.state === "queued" || row.state === "retry_wait"
       || row.state === "delivered" || row.state === "failed"
       || row.state === "uncertain" || row.state === "cancelled";
     if (released(outbox.get(deliveryId))) return;
+    let timedOut = false;
     await new Promise<void>(resolve => {
-      const check = () => {
-        if (released(outbox.get(deliveryId))) {
-          outbox.off("state", check);
-          outbox.off("generation_recovered", check);
-          resolve();
-        }
+      const finish = () => {
+        clearTimeout(timer);
+        outbox.off("state", check);
+        outbox.off("generation_recovered", check);
+        resolve();
       };
+      const check = () => {
+        if (released(outbox.get(deliveryId))) finish();
+      };
+      const timer = setTimeout(() => {
+        timedOut = true;
+        finish();
+      }, Math.max(1, deadline - Date.now()));
+      timer.unref?.();
       outbox.on("state", check);
       outbox.on("generation_recovered", check);
       check();
     });
+    if (!timedOut) return;
+    const current = outbox.get(deliveryId);
+    if (current?.state === "submission_started") {
+      outbox.complete(deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, "uncertain", "durable delivery lane exceeded 10 minute submission limit");
+    } else if (current?.state === "delivering") {
+      outbox.retryBeforeBegin(
+        deliveryId,
+        claimed.targetDaemonBootId,
+        claimed.attemptNo,
+        "durable delivery lane exceeded 10 minute pre-submit limit",
+        Math.min(60_000, 1_000 * 2 ** Math.min(claimed.attemptNo - 1, 6)),
+      );
+    }
+    this.notifyFleetError(`Durable delivery lane for ${claimed.targetInstance} exceeded its 10 minute limit; delivery ${deliveryId} was ${current?.state === "submission_started" ? "marked uncertain" : "deferred"}.`);
   }
 
   private spawnConcurrency(): number {
