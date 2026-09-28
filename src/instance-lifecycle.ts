@@ -10,6 +10,7 @@ import { isModelCompatible } from "./backend/types.js";
 import { RoutingEngine } from "./routing-engine.js";
 import { safeHandler } from "./safe-async.js";
 import { t } from "./locale.js";
+import { EMBEDDED_CREDENTIAL_REMOTE_WARNING, remoteListHasEmbeddedGitHubToken } from "./remote-credential-check.js";
 import type { Logger } from "./logger.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
 import type { EventLog } from "./event-log.js";
@@ -1635,6 +1636,15 @@ export class InstanceLifecycle {
           await execFileAsync("git", worktreeArgs, { cwd: directory });
         }
         this.ctx.logger.info({ worktreePath, branch, repo: directory }, "Created git worktree for instance");
+        // #855/#963: advisory only. Read-only, bounded, and fully contained so it
+        // can never affect the worktree just created or any cleanup path; the
+        // warning carries the repo path but never the URL or token.
+        try {
+          const { stdout: remotes } = await execFileAsync("git", ["remote", "-v"], { cwd: directory, timeout: 5_000 });
+          if (remoteListHasEmbeddedGitHubToken(remotes)) {
+            this.ctx.logger.warn({ repo: directory }, EMBEDDED_CREDENTIAL_REMOTE_WARNING);
+          }
+        } catch { /* advisory check skipped; the worktree is unaffected */ }
         workDir = worktreePath;
       } catch (err) {
         respond(null, `Failed to create worktree: ${(err as Error).message}`);
