@@ -1260,6 +1260,10 @@ export class CodexBackend implements CliBackend {
    */
   isStableUnknownLayoutIdlePane(pane: string): boolean {
     if (this.getBusyPattern().test(pane)) return false;
+    // Broader than getBusyPattern(): Codex relabels the live status row with
+    // the reasoning title (`• Planning the edit (esc to interrupt)`), and the
+    // fallback must never read that as idle, whatever the title says.
+    if (/(?:^|\n)[ \t]*•[^\n]*\besc to interrupt\b/i.test(pane)) return false;
     // A retained queued message (`↳ …` under "Messages to be submitted after
     // next tool call") means work is pending, whatever the composer shows.
     if (/↳|Messages to be submitted/i.test(pane)) return false;

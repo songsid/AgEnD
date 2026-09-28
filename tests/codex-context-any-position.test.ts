@@ -117,6 +117,8 @@ describe("stable unknown-layout escape hatch (#978)", () => {
     // Prism's #979 probe: a retained queued message is pending work.
     const queued = ["• Messages to be submitted after next tool call", "  ↳ run the migration next", "", "› Ask Codex to do anything", "", "  x · y"].join("\n");
     expect(b.isStableUnknownLayoutIdlePane(queued)).toBe(false);
+    expect(b.isStableUnknownLayoutIdlePane(`• Planning the edit (esc to interrupt)\n${idle("  x · y")}`)).toBe(false);
+    expect(b.isStableUnknownLayoutIdlePane(`• Running the tests (41s • esc to interrupt)\n${idle("  x · y")}`)).toBe(false);
     // A composer only far up in scrollback is not the live one.
     expect(b.isStableUnknownLayoutIdlePane(["› Ask Codex to do anything", ...Array(8).fill("  output line"), "  x · y"].join("\n"))).toBe(false);
   });

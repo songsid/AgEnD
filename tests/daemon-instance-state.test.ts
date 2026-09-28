@@ -297,7 +297,9 @@ describe("Daemon event-driven pane monitor", () => {
       "",
       "  some-future-item · another-item",
     ].join("\n");
-    for (const frames of [(i: number) => busyUnknown(i + 2), () => picker, () => queuedUnknown]) {
+    // Prism's #979 probe: a static reasoning-titled status row, no "Working".
+    const reasoningUnknown = "• Planning the edit (esc to interrupt)\n\n› Ask Codex to do anything\n\n  some-future-item · another-item";
+    for (const frames of [(i: number) => busyUnknown(i + 2), () => picker, () => queuedUnknown, () => reasoningUnknown]) {
       const monitor = makeCodexMonitor(codexWorkingFrame(1));
       try {
         (monitor.daemon as any).startInstanceStateMonitor();
