@@ -8,8 +8,8 @@
 
 1. 在 FleetManager process 內新增單一 SQLite durable outbox。row commit 才能回覆 durable accepted；`events.db` 不作工作佇列。
 2. FleetManager 和 `Daemon` 物件不是兩個獨立 process。`delivery_begin`、`delivery_abort`、delivery ACK 由同 process 直接呼叫 outbox，SQLite commit 完才返回；IpcClient/socket write 只負責既有 ingress/target 通訊，絕不代表投遞完成。
-3. 穩定 `delivery_id` 貫穿接受、dispatch、CLI header、status 與 reconciliation。MCP tool invocation 有獨立 `operation_id` 作冪等/查詢鍵；`correlation_id` 只關聯工作，可對應多筆合法訊息。
-4. Fleet process 整體死亡後，先以 CLI 持久 transcript 中的 marker reconciliation；在任何舊 tmux window 被 kill 前，保存可用的 pane 證據。沒有正面或可靠負面證據才標 `uncertain`，不可盲目重送。
+3. `mcp-server.ts` 在 CLI 端、`ipcRequest()` 前建立穩定 `operation_id`，並在 success/error/timeout 都回傳；它是 response-lost 後 status lookup 的 key。`correlation_id` 只關聯工作，可對應多筆合法訊息。
+4. Fleet process 整體死亡後，先用持久 session transcript 及有順序保證的 pre-kill pane evidence reconciliation；composer-only marker 是「已貼未送出」的負面證據，不是 delivered。沒有正面或可靠負面證據才標 `uncertain`，不可盲目重送。
 5. begin 對 `(delivery_id, target_daemon_boot_id, attempt_no)` 冪等。side effect 尚未發生且能證明未發生時，必須以 `delivery_abort` 持久退回 queued/retry_wait。
 6. queue admission、completion、failure 均 fail-closed 並有機器可查/人可見結果。status reaction 由 outbox row 狀態驅動；retry_wait 不顯示失敗。
 
@@ -72,7 +72,7 @@ DB 開啟/寫入失敗、磁碟滿或 schema 不相容時，不可 fallback 到�
 | 欄位 | 用途 |
 |---|---|
 | `delivery_id TEXT PRIMARY KEY` | Fleet 接受時產生 UUID，重試/replay 不變；同時放入 CLI envelope header。 |
-| `operation_id TEXT` | 同一 MCP tool invocation 的穩定鍵；同一次 invocation 的 transport 重試沿用。 |
+| `operation_id TEXT` | `mcp-server.ts` 在 `ipcRequest()` 前建立的穩定 MCP invocation key；同一次 invocation 的 transport 重試沿用。 |
 | `source_key TEXT UNIQUE` | 由穩定 ingress key + target 導出；不可用 correlation 或單次 transport `fleetRequestId` 取代。 |
 | `source_instance`, `source_session`, `target_instance`, `target_session` | source/target 路由與通知位置。 |
 | `source_daemon_boot_id`, `target_daemon_boot_id` | UUID；每個 Daemon 物件建立時新值。ACK 只可由當前 target generation 完成。 |
@@ -82,6 +82,7 @@ DB 開啟/寫入失敗、磁碟滿或 schema 不相容時，不可 fallback 到�
 | `manager_boot_id`, `lease_target_boot_id` | 記錄目前 dispatcher process 與 Daemon 物件 generation，不用時間推算租約存活。 |
 | `expires_at` | 可選的產品 TTL；只可觸發可見 terminal failure，不得用來偷回收活躍 lease。 |
 | `created_at`, `accepted_at`, `submitted_at`, `finished_at`, `updated_at` | audit/延遲觀測。 |
+| `response_delivered_at` | source Daemon 將 MCP response 成功寫入 source MCP socket 的時間；NULL 表示 response delivery 未被記錄。Process restart recovery 以此決定是否需要 post-resume outcome notice。 |
 | `last_error_phase`, `last_error_code`, `last_error_safe` | 不含 token/secret/完整附件的診斷。 |
 | `notification_state`, `notice_attempts` | failure notice 是否已持久排出/成功通知。 |
 
@@ -89,9 +90,11 @@ DB 開啟/寫入失敗、磁碟滿或 schema 不相容時，不可 fallback 到�
 
 ### 冪等鍵與重送邊界
 
-`operation_id` 必須在 source 端建立並放在 tool invocation 中，供呼叫方在 timeout/process crash 後仍可查詢；若 MCP transport 有明確保證會在同一呼叫重試時沿用的 call ID，可用該 ID 加 source namespace，否則由 caller 提供/保留 UUID 欄位。source daemon 的 `fleetRequestId` 只作單次 IPC request 去重，不可當跨 MCP retry 的 operation key。`source_key = source_namespace + operation_id + target_instance + action_kind`。同一 operation_id 的重送回既有 row；每個新的模型/tool invocation 都是新的操作；同 correlation 可有多個 key/row。為相容，舊 caller 暫時省略 operation_id 時 server 可建立 UUID，但必須在所有 timeout/error/success response 回傳；此模式若 process 在 response 前死亡，client 未取得該 UUID，不能宣稱可跨新 tool call 去重。穩定 operation_id 是完整 response-loss 保證的前提。
+`mcp-server.ts`（CLI 端獨立 process）必須在呼叫 `ipcRequest()` **之前**建立 UUID `operation_id`，把它隨 IPC request 傳給 source Daemon/FleetManager。success、error、timeout 三種 MCP 回應都帶回同一 operation_id；即使 FleetManager/source Daemon 在 response 前死亡，MCP caller 已持有 ID，可在 resume 後查狀態。source daemon 的 `fleetRequestId` 只作單次 IPC request 去重，不可當跨 MCP retry 的 operation key。`source_key = source_namespace + operation_id + target_instance + action_kind`。同一 operation_id 的重送回既有 row；每個新的模型/tool invocation 都是新的操作；同 correlation 可有多個 key/row。若舊 caller 未提供 operation_id，該 caller 不符合新協定，不得獲得 durable guarantee；升級期必須明確標 degraded，而非 server 隨機生成一個 response 前不可知的 ID。
 
 timeout 回覆不得只寫「failed」：若 admission/side effect 可能已發生，回 `outcome_unknown`，帶原 request 的 `operation_id`，明確指示**先查狀態，不要重送原工作**。新增 read-only `delivery_status` 查詢，接受一個 `delivery_id`、`operation_id` 或 `correlation_id`；operation_id 對應此 invocation 的 target rows，correlation_id 可回多筆。若模型仍建立一個新的 tool call，它是新的操作，不可僅靠語意相似度去重。相同 transport invocation 的自動重試會因 operation_id 回既有 row。
+
+整個 AgEnD process restart 時，Strategy A 會連 source CLI/MCP process 一起終止，source agent resume 後可能只看見沒有 MCP 結果的舊 tool call，因而建立新 call。新 FleetManager recovery 必須找出 source Daemon generation 已死亡、row 已 durable accepted、且 `response_delivered_at IS NULL` 的 deliveries。等該 source instance resume 並有可投遞 system channel 後，建立一次性、可去重的 post-restart outcome notice，內容含 `operation_id`、target、目前 delivery state，以及「此操作已被接受；請勿重送，先查 delivery_status」。notice 自身也要 durable、以 `(source generation,operation_id)` 去重，不能只靠 transient log/IPC。
 
 平台 event 用 `(adapter_id, platform_message_id, target, action_kind)`；schedule 用 `(schedule_id, run_id, target)`；內部 system notice 用來源 event UUID。source key 都保留 target/action 維度，避免把合法多 recipient 或不同 action 合併。
 
@@ -141,15 +144,16 @@ FleetManager process 每次啟動產生 `manager_boot_id`；每次 `Daemon` 物�
 
 ### Evidence-first recovery
 
-1. CLI message envelope 開頭加入短、可精確匹配且不影響 agent 任務內容的 marker，例如 `[agend-delivery-id:<UUID>]`。marker 必須跟實際提交到 CLI 的同一段內容一起進 session transcript；不能只存在 IPC metadata。
-2. 首選查 CLI 自己持久化的 transcript：Claude Code JSONL、Codex rollout 等既有 transcript source，依 session ID 搜尋完整 delivery marker。正面命中是 delivered proof。讀取不完整/不可用時，不能把「沒搜到」當 negative proof。
-3. 在任何 daemon startup/restart 的 `killWindow` / `new-window` cleanup 前，先 capture 舊 pane，針對未完成 `submission_started` rows 擷取與 delivery marker 對應的最小 evidence metadata（window identity、marker hit、capture 時間/完整性）；避免保存完整敏感 pane。整 process restart 也必須在 lifecycle 刪舊窗前完成這一步。
-4. 若 transcript 有完整覆蓋且 marker 不存在，或 pre-kill evidence 可靠證明尚未寫入，才可判 negative proof 並 abort/retry。若 pane 已換、transcript 缺段、session identity 不確定或 capture 不完整，標 uncertain 並通知，不盲貼第二次。
+1. Marker 固定格式為 `[agend-delivery-id:<lowercase-uuid>]`，只允許出現在 outbox envelope 的 user message entry **開頭**；marker/user-entry 解析器必須以 entry boundary 精確匹配，禁止 substring 搜尋（避免 agent 引用 marker 造成 false positive）。在 system/agent instructions 寫明它是 AgEnD 系統欄位，agent 不應引用、改寫或重複輸出。mutation #19 驗證移除 marker 後 transcript reconciliation 會失敗。
+2. Pre-kill capture 必須分辨三態：**(a)** marker 僅在當前 composer、entry 尚未送出：已 paste 未 Enter，是可靠 negative proof，kill 後可安全 replay；**(b)** marker 已出現在 CLI transcript 的 user message entry：已提交的 positive proof；**(c)** marker 尚未 paste：若 capture/transcript 完整則可靠 negative proof。composer-only marker 絕不可當 delivered。capture 前先 fence 舊 generation 並等任何已排程 pane write 結束，避免 capture 後又有 Enter。
+3. Recovery 的順序固定為：**capture pane → `killWindow` → 確認舊 CLI process 已結束 → 讀取/刷新 transcript 再判定**。不能在舊 CLI 還活著時因 marker 暫未 flush 就判 negative；也不能 kill 後才 capture。若 marker 只在 composer，這筆是未提交，可 abort/requeue；若 transcript user entry 命中則 delivered；證據不完整或有競態則 uncertain。
+4. Claude Code JSONL、Codex rollout 是第一版已知可用的持久 transcript source，依正確 session identity 查 user entry marker。Kiro、Antigravity、Muse 暫無可用 transcript source，只能依 pre-kill pane capture，證據不完整時通常會進 uncertain。backend evidence matrix 必須逐 backend 記錄 transcript source、session identity、pane fallback 和降級狀態；不能以另一 backend 的 transcript 能力推論。
+5. 如果 transcript 完整覆蓋且精確 user-entry marker 不存在，或 pre-kill evidence 可靠證明未提交，才可 replay。若 pane 已換、transcript 缺段、session identity 不確定、舊 CLI 未退出或 capture 不完整，標 uncertain 並通知，不盲貼第二次。
 5. 維持 `delivery_id` 到 human delivery status event / failure notice 的 mapping。證據來源不只 pane；pane 只是在舊窗被清除前的輔助存證。
 
 ## 4. Dispatch、failure surface 與順序
 
-1. FleetManager 啟動先 open/validate DB，載入舊 rows，完成 recovery classification，再開 dispatcher/adapter 的不可逆 ingress ACK。啟動恢復期間可以把新 ingress durable insert 入列，但 dispatcher 先處理舊 pending rows。
+1. FleetManager 啟動先 open/validate DB，載入舊 rows，完成 recovery classification，再開 dispatcher/adapter 的不可逆 ingress ACK。啟動恢復期間可以把新 ingress durable insert 入列，但 dispatcher 先處理舊 pending rows。重啟後 `response_delivered_at IS NULL` 的舊 source operation，除 delivery row 外還要等 source instance resume 後發 post-restart outcome notice。
 2. `created_seq` 由 DB 單調遞增。每個 target 嚴格按 seq FIFO，且同 target 最多一筆 in-flight；恢復 rows 排在 process restart 後的新 ingress 前。不同 targets 有 bounded parallelism，不能為 FIFO 將全 fleet 串行化。
 3. 正常 message、cross-instance、`report_result`/wrappers、broadcast recipient、web/API、schedule trigger、system notices 都經共用 admission/dispatcher。
 4. `steer` 與 `btw` 必須在 exhaustiveness policy map 明列，保持既有操作模式、target 定址及 side-effect semantics；若它們觸發 agent-visible action，就各自有 delivery row/attempt，但不把兩種 action 折疊成普通 message。沒有明確 policy 的新 outbound kind 在 typecheck/test 中 fail。
@@ -164,16 +168,16 @@ FleetManager process 每次啟動產生 `manager_boot_id`；每次 `Daemon` 物�
 
 ## 5. 現有 API 整合、相容與遷移
 
-- `send_to_instance`、`delegate_task`、`request_information`、`report_result` 維持 schema/wrapper，新增 operation/delivery IDs 與 durable state。`report_result` 的 correlation optional 保持相容並繼續 warning；correlation 不作去重。
+- `mcp-server.ts` 在 `ipcRequest()` 前生成 operation_id，並在 success/error/timeout 回應都帶該值；`send_to_instance`、`delegate_task`、`request_information`、`report_result` 維持 schema/wrapper，新增 operation/delivery IDs 與 durable state。`report_result` 的 correlation optional 保持相容並繼續 warning；correlation 不作去重。
 - `broadcast` 每個 target 各自 admission、FIFO 和 status；一個 target failure 不吞掉其他結果。
 - target 正在 planned restart/replacement 時仍可 durable admission，row 等待 replacement Daemon generation ready 後按 FIFO dispatch；只有真正 stopped/unknown 且沒有 restart intent 的 target 才走既有同步拒絕。restart intent 及 queued admission 的 race 由 FleetManager 同一 transaction/狀態 gate 線性化，避免把短暫 restarting 誤認 permanently unavailable。
 - 平台/web/API ingress 必須在 source ack/offset advance 前 durable insert。逐 adapter 審核其可重送/ack contract；若 provider 在本機 commit 前已不可逆 ack，該 ingress gap 必須明列，不能承諾無遺失。
 - schedule 用穩定 schedule/run key 去重；`raw_paste` 是上節定義的 non-durable 第一版例外。
-- 新增只讀 `delivery_status` tool/query：必須能以 operation ID 回覆 response-lost 的那筆狀態；correlation 查詢允許多列。其本身是 control-plane，不建立 outbox row。
+- 新增只讀 `delivery_status` tool/query：必須能以 operation ID 回覆 response-lost 的那筆狀態；correlation 查詢允許多列。只能查詢 caller 是該 row 的 source instance 或 target instance 的 row；FleetManager 以已驗證的 caller instance identity 做授權，不可只憑猜到的 operation_id/correlation_id 越權讀取。回覆不包含 payload/secret。其本身是 control-plane，不建立 outbox row。
 - 加 versioned `delivery_ack_v1` capability handshake。target daemon 只有宣告支援且送回 matching delivery ID + current generation 的 ACK 才能完成 row。缺 capability 的舊 daemon 必須進 compatibility error/degraded failed，絕不可當 delivered。
 - wire fields additive/optional；新版本啟動順序是開 store → preflight evidence → recover/分類舊 rows → 開 dispatcher → 啟用會 ack 的 ingress。既有記憶體 queue 無法回填，升級切換瞬間仍有舊版風險需揭露。
 - 附件在 admission 前必須物化到 outbox-owned blob area 並以 delivery ID 引用；不能存過期 CDN URL/process temp path。terminal retention 後安全 GC。
-- 新 DB 用 `PRAGMA user_version` additive migration；不改 events/scheduler schema。成功 payload 建議 7 日清內容、terminal metadata 30 日保留；unfinished/uncertain/notice rows 不自動 prune。
+- 新 DB 用 `PRAGMA user_version` additive migration；不改 events/scheduler schema。成功 payload 建議 7 日清內容、terminal metadata 30 日保留；unfinished/uncertain/notice rows 不自動 prune。若舊 MCP caller 不傳 operation_id，該 caller 在協定升級前只能走明確 degraded/non-durable path。
 
 ## 6. 失敗處置與 rollback
 
@@ -195,6 +199,7 @@ FleetManager process 每次啟動產生 `manager_boot_id`；每次 `Daemon` 物�
 - transcript reconciliation 必須測 Claude JSONL/Codex rollout marker、session identity、截斷 transcript 和 pre-kill pane capture；無完整證據不能把 absence 當 negative。
 - #927 busy target 多訊息順序 replay；#926 report_result 到 leader success/failure 都能查、對回 correlation，pipeline 不會靜默卡住。
 - timeout/outcome_unknown/status lookup、不同 tool invocation 不被誤合併、相同 operation transport retry 不重複；同 correlation 多筆 report 都保留。
+- source MCP server 在 `ipcRequest()` 前產 operation_id，且 success/error/timeout response 都帶相同 ID；整 process restart 後未回 response 的已接受 row 在 source resume 時產生唯一 outcome notice。
 - recovery rows 排在 restart 後新 ingress 前；同 target 並發仍 FIFO/單 in-flight，不同 targets bounded parallel。`steer`/`btw` policy 覆蓋；unknown kind 明確測試失敗。
 - restarting target 可接 durable ingress 並等 replacement generation；真正 stopped/unknown target 按 policy 同步拒絕或持久 failed。
 - notice 自己重啟後能續送；notice failure 不遞迴。reaction 由 DB state 驅動且 retry_wait 不顯示 failure；`raw_paste` 明確回 non-durable。
@@ -222,6 +227,11 @@ FleetManager process 每次啟動產生 `manager_boot_id`；每次 `Daemon` 物�
 17. failure notice 自己失敗又產生新的 failure notice：遞迴被界限測試紅。
 18. target 沒有 `delivery_ack_v1` capability 仍被標 delivered：舊 daemon handshake 測試紅。
 19. 移除 envelope 的 delivery marker：整 process crash、舊 window 被清掉後，Claude/Codex transcript reconciliation 找不到已提交工作，預期 delivered 的測試轉紅。
+20. 把 composer-only marker 當 delivered：paste-without-Enter + pre-kill capture 測試應要求 negative proof/replay，mutation 轉紅。
+21. 在舊 CLI process 結束前讀 transcript 並因 marker 未 flush 判 negative：延遲 flush/restart integration test 會導致重複 submission，mutation 轉紅。
+22. 把 pane capture 移到 `killWindow` 之後：舊 composer 證據消失，pre-kill capture/recovery 測試轉紅。
+23. 移除 timeout response 的 operation_id：response-lost/outcome_unknown 查詢測試無法定位既有 row，mutation 轉紅。
+24. 移除 post-restart outcome notice：整 process crash 後 source resume 看不到「已接受、勿重送」提醒，source 重試建立第二個新 operation 的 integration test 轉紅。
 
 Unit tests 可覆蓋 deterministic state transitions，但不得代替上列 process-level crash tests。
 
@@ -229,7 +239,8 @@ Unit tests 可覆蓋 deterministic state transitions，但不得代替上列 pro
 
 1. 第一版涵蓋所有 `deliverToInstance()` agent-directed payload；`steer`/`btw` 納入明確 policy map，silent `raw_paste` 是有標示的 non-durable 例外。
 2. Evidence-first：marker transcript + pre-kill capture 後仍不能判斷才 `uncertain` + 人工；不承諾 exactly-once，也不盲重播。
-3. timeout 回 `outcome_unknown` + operation_id/status lookup；同 invocation transport retry 冪等，新模型/tool invocation 是新意圖。
+3. CLI-side `mcp-server.ts` 在 `ipcRequest()` 前建立 operation_id，所有 success/error/timeout 回應帶回；timeout 是 outcome_unknown 並提供 status lookup。restart 後為未回應的已接受列發 outcome notice。
 4. lease 不用 wall-clock 過期偷回收；若設 TTL，明確 fence 舊 worker 後轉 visible failed。
 5. WAL/NORMAL 保障 process crash durability；OS crash/斷電的最近 commit 風險明列，是否 admission 使用 FULL 由壓測/產品保證拍板。
 6. DB failure fail-closed；30-instance 壓測後定 max age、worker concurrency、容量和 retention。
+7. Marker 固定為 `[agend-delivery-id:<lowercase-uuid>]`、僅在 user entry 開頭匹配並寫進 agent instructions；`delivery_status` 只對 source/target instance 開放。
