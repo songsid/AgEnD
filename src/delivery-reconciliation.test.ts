@@ -266,6 +266,40 @@ describe("durable transcript marker reconciliation", () => {
     }
   });
 
+  it("does not treat a raw command ending in newline as exact composer evidence", async () => {
+    const raw = "/compact\n";
+    const h = makeAttempt({
+      enterStarted: false,
+      kind: "raw_paste",
+      payloadContent: raw,
+      submissionMode: "raw_paste",
+    });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("no such process") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{
+          candidate: h.candidate,
+          paneWindowId: "@old-worker",
+          panePid: 424242,
+          pane: `old transcript\n❯ ${raw}\n`,
+          paneCaptureError: null,
+        }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+      expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain" });
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
+  });
+
   it("keeps a transcript miss uncertain when the old CLI pid is unknown", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-unknown-pid-"));
     roots.push(root);

@@ -64,15 +64,18 @@ export class Scheduler {
       try {
         if (!schedule.cron) continue;
         const cron = new Cron(schedule.cron, { timezone: schedule.timezone });
-        const next = cron.nextRun(new Date(refMs));
-        if (!next) continue;
-        const nextMs = next.getTime();
-        if (nextMs > now) continue;       // not yet due
-        if (nextMs < cutoff) continue;    // too old, don't spam
+        // Match the live callback's latest scheduled occurrence. Selecting
+        // only nextRun(last_triggered_at) can disagree with a delayed live
+        // callback that already admitted a later occurrence before crashing.
+        const scheduled = this.cronRunAtOrBefore(cron, new Date(now));
+        if (!scheduled) continue;
+        const scheduledMs = scheduled.getTime();
+        if (scheduledMs <= refMs) continue; // no missed occurrence since last run/create
+        if (scheduledMs < cutoff) continue;  // too old, don't spam
         if (this.executing.has(schedule.id)) continue;
-        // The expected fire time stays stable if the process dies after the
-        // outbox commit but before schedule_runs advances last_triggered_at.
-        this.runWithLock(schedule, next.toISOString());
+        // The expected fire time stays stable if the process dies after outbox
+        // commit but before last_triggered_at advances.
+        this.runWithLock(schedule, scheduled.toISOString());
       } catch {
         // Bad cron expression or croner edge case — skip rather than crash init
         continue;
@@ -167,9 +170,15 @@ export class Scheduler {
         this.stopJob(schedule.id);
         if (consumeOneShot) {
           try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
-        } else {
+        } else if (schedule.silent) {
           const pending = this.db.get(schedule.id);
           if (pending?.enabled) this.registerOneShot(pending, Scheduler.ONE_SHOT_FAILURE_RETRY_MS);
+        } else {
+          // Non-silent callbacks may already have posted a channel message
+          // before a later bookkeeping step rejects. Re-running them could
+          // duplicate that visible side effect; preserve the prior consume-on-
+          // failure behavior for those schedules.
+          try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
         }
       }
     };
@@ -177,11 +186,11 @@ export class Scheduler {
     try {
       result = this.onTrigger(schedule, runId);
     } catch (err) {
-      finish(false);
+      finish(!schedule.silent);
       throw err;
     }
     if (result && typeof (result as Promise<void>).then === "function") {
-      void (result as Promise<void>).then(() => finish(), () => finish(false));
+      void (result as Promise<void>).then(() => finish(), () => finish(!schedule.silent));
     } else {
       finish();
     }
@@ -225,11 +234,23 @@ export class Scheduler {
       // Skip if a previous fire (or manual trigger) is still in flight —
       // avoids overlapping runs of the same schedule.
       if (this.executing.has(current.id)) return;
-      // Croner's currentRun is the scheduled fire instant, unlike Date.now()
-      // which could change across a restart and defeat outbox idempotency.
-      this.runWithLock(current, currentJob.currentRun()?.toISOString() ?? randomUUID());
+      // currentRun() is callback wall-clock time, not the cron occurrence. A
+      // delayed callback must still use the scheduled instant so restart
+      // catch-up derives the same durable outbox key.
+      const runId = this.cronRunAtOrBefore(currentJob, new Date())?.toISOString() ?? null;
+      if (runId) this.runWithLock(current, runId);
     });
     this.jobs.set(schedule.id, job);
+  }
+
+  /** Return the latest actual cron occurrence at or before the observation. */
+  private cronRunAtOrBefore(cron: Cron, observedAt: Date): Date | null {
+    // Croner enumerates previous runs strictly before its reference and drops
+    // milliseconds. Advance to the following whole second so an occurrence in
+    // the observed second remains eligible, while never selecting a future
+    // occurrence for seconds-based schedules.
+    const exclusiveBoundary = Math.floor(observedAt.getTime() / 1_000) * 1_000 + 1_000;
+    return cron.previousRuns(1, new Date(exclusiveBoundary))[0] ?? null;
   }
 
   private stopJob(id: string): void {

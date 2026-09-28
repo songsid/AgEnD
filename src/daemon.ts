@@ -1717,22 +1717,7 @@ export class Daemon extends EventEmitter {
           this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
         });
       } else if (msg.type === "raw_paste") {
-        // Paste raw text directly to CLI without [user:] wrapping.
-        const deliveryMeta = {
-          delivery_id: typeof msg.delivery_id === "string" ? msg.delivery_id : "",
-          delivery_attempt: typeof msg.delivery_attempt === "string" ? msg.delivery_attempt : "",
-        };
-        const durableAttempt = this.durableDeliveryAttempt(deliveryMeta);
-        if (durableAttempt === false) {
-          this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
-          return;
-        }
-        this.queueRawPaste(
-          msg.content as string,
-          this.captureDeliveryEpoch(msg.delivery_epoch),
-          msg.confirm_clear === true,
-          durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste" } : undefined,
-        );
+        this.handleRawPasteIpcMessage(msg);
       } else if (msg.type === "config_update") {
         this.applyConfigUpdate(msg.config);
       } else if (msg.type === "steer") {
@@ -3100,6 +3085,26 @@ export class Daemon extends EventEmitter {
     this.pasteLock = this.pasteLock.catch(err => {
       this.logger.warn({ err: (err as Error).message }, "raw_paste delivery queue error");
     });
+  }
+
+  /** Keep the IPC raw route's durable mode attached to the parsed attempt. */
+  private handleRawPasteIpcMessage(msg: Record<string, unknown>): void {
+    // Paste raw text directly to CLI without [user:] wrapping.
+    const deliveryMeta = {
+      delivery_id: typeof msg.delivery_id === "string" ? msg.delivery_id : "",
+      delivery_attempt: typeof msg.delivery_attempt === "string" ? msg.delivery_attempt : "",
+    };
+    const durableAttempt = this.durableDeliveryAttempt(deliveryMeta);
+    if (durableAttempt === false) {
+      this.deferDurableDelivery(deliveryMeta, "invalid raw_paste delivery attempt metadata");
+      return;
+    }
+    this.queueRawPaste(
+      msg.content as string,
+      this.captureDeliveryEpoch(msg.delivery_epoch),
+      msg.confirm_clear === true,
+      durableAttempt ? { ...durableAttempt, submissionMode: "raw_paste" } : undefined,
+    );
   }
 
   /**
@@ -5886,11 +5891,11 @@ export class Daemon extends EventEmitter {
         }
         verdict.durableBeginCommitted = true;
       }
+      if (rawPaste) verdict.paneWriteStarted = true;
       // For raw commands the paste itself may alter the live composer. Treat a
       // failed/throwing write as uncertain rather than retrying bytes into the
       // same pane; the write-ahead Enter marker later separates safe pre-Enter
       // recovery from a possibly executed command.
-      if (rawPaste) verdict.paneWriteStarted = true;
       const pasted = await this.tmux!.pasteBuffer(formatted);
       if (!pasted) {
         if (rawPaste) {
@@ -6290,7 +6295,7 @@ export class Daemon extends EventEmitter {
         if (proof === "stranded" || Date.now() >= firstDeadline) break;
         await new Promise(r => setTimeout(r, POST_ENTER_PROOF_POLL_MS));
       }
-      if (proof !== "stranded") return false;
+      if (proof !== "stranded" || !allowRecoveryEnter) return false;
       if (!(await this.waitForPaneReadyForDelivery(windowId, STRANDED_RETRY_READY_WAIT_MS))) return false;
       proof = await this.confirmSubmitted(signature, baseline);
       if (proof === "submitted") return true;

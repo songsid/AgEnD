@@ -371,12 +371,16 @@ Phase 2 實作順序：先做 2.1 reconciliation 與 2.2 queue evidence，再做
 | 39. reconciliation 用 fleet-global barrier 等所有 target 分類完才 dispatch | 讓 target A 的 bounded evidence probe 卡住，同時 target B 有 queued row；B 未被 dispatch 即 mutation 紅 |
 | 40. `raw_paste` 只 paste bytes 而不送 Enter | `/compact` live/backend fixture 保持 composer 未提交，schedule run 不可標 delivered，mutation 紅 |
 | 41. 把 `enter_started_at` 的 SQLite commit 移到 tmux Enter 之後 | crash hook 在 tmux 接受 Enter 後、紀錄寫入前殺整個 process；replacement 仍看到 marker 在 composer 並錯誤轉 `retry_wait`/重送，mutation 紅 |
+| 42. Live cron run key 改用 callback wall clock/random UUID，或 catch-up 用不同 occurrence | 延遲超過一秒的 live callback 和重啟 catch-up 對同一 scheduled fire 必須產生相同 `run_id`，mutation 紅 |
+| 43. 任一 raw post-Enter recovery 分支忽略 `allowRecoveryEnter`/raw mode | Codex stranded、Kiro defensive retry、native-queue fallback、drops-Enter recovery 都必須保持 one paste + one Enter 並結為 `uncertain`，mutation 紅 |
+| 44. Raw IPC route 不帶 `submissionMode: "raw_paste"`，或 exact-byte path 套用普通 fence sanitizer | 真 `{type:"raw_paste", delivery_id, delivery_attempt}` handler 與 odd-``` payload 必須保存 mode/bytes，mutation 紅 |
+| 45. Raw reconciliation 將 trailing newline 視為 exact composer negative，或 failed paste 清掉 `paneWriteStarted` | 換行 payload/failed pane write 必須 fail closed 為 `uncertain`，mutation 紅 |
 
 原 mutation 19–24 仍須維持會紅：移除 envelope marker、composer-only 誤判、transcript 提前讀、capture 順序錯、timeout 缺 operation_id、post-restart notice 移除。Phase 2 不可因自動 reconciliation/status 查詢而削弱 Phase 1 的 boot/generation fence、fail-closed admission、TTL notice 或 per-target FIFO。
 
 **Phase 2.4 implementation note (2026-09-29).** Silent schedules now derive a stable `run_id` from the expected cron fire instant or one-shot `at`; a manual trigger gets one invocation UUID. The scheduler commits the `raw_paste` outbox row before recording the run as `queued`, and a same-run catch-up reuses the source key while a later run with identical bytes gets a distinct row. The dispatcher sends the unchanged payload to the daemon's raw route. The daemon preserves exact bytes, uses the regular pane readiness/write fence, and sends exactly one Enter for this durable attempt; no Kiro defensive second Enter, native-queue fallback paste, or post-proof recovery Enter is allowed. A successful Enter without backend acceptance proof remains `uncertain`, not `delivered`. On restart, a raw row is retryable only when the old process is confirmed gone, W1 proves Enter never started, and pre-kill capture ends with the exact raw composer bytes; all post-Enter cases without a backend receipt stay uncertain. Scheduler-originated rows do not create MCP post-restart response notices; the stable run key and outbox row are their recovery/lookup record, and terminal delivery failures continue through the existing operator alert/notice paths.
 
-Admission or queued-run recording exceptions before the scheduler ACK leave a one-shot enabled and retry after a bounded delay with the same scheduled `run_id`; they must not delete a run that has no committed outbox row.
+Admission or queued-run recording exceptions before the scheduler ACK leave a silent one-shot enabled and retry after a bounded delay with the same scheduled `run_id`; they must not delete a run that has no committed outbox row. Raw pre-Enter pane evidence is intentionally fail-closed: if tmux capture trims trailing spaces, wraps the command, or places the composer away from the captured tail, exact bytes cannot be proven and the row remains `uncertain`.
 
 ### Phase 3：其他 ingress 與完整 status surfaces
 
