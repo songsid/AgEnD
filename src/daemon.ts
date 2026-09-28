@@ -118,6 +118,8 @@ export const DEFAULT_STATE_SAFETY_SWEEP_MS = 60_000;
 export const PERIODIC_REDRAW_PROBE_MS = 25;
 /** Do not turn a streaming Codex turn into one capture-pane per burst. */
 export const STRUCTURED_IDLE_PROBE_MS = 500;
+/** How long an unrecognised-but-empty composer must stay unchanged before it counts as idle (#978). */
+export const UNKNOWN_LAYOUT_STABLE_MS = 10_000;
 /** A foreground server/port-forward should hand control back or be acknowledged. */
 export const DEFAULT_BLOCKING_PROCESS_GRACE_MS = 2 * 60_000;
 const LAST_INBOUND_FILE = "last-inbound-at";
@@ -364,13 +366,16 @@ export class PaneStateMachine {
    *   the caller has them.
    * @param opts.forceBusy the backend has positively identified a still-running
    *   foreground tool even though its TUI keeps an old ready footer visible.
+   * @param opts.forceReady the backend has positively proved an idle composer
+   *   the ready pattern cannot read (an unknown footer layout); the busy
+   *   pattern still vetoes it.
    */
   observe(
     pane: string,
     now = Date.now(),
-    opts: { settled?: boolean; changeAt?: number; forceBusy?: boolean } = {},
+    opts: { settled?: boolean; changeAt?: number; forceBusy?: boolean; forceReady?: boolean } = {},
   ): InstanceStateSnapshot {
-    const { settled = false, changeAt = now, forceBusy = false } = opts;
+    const { settled = false, changeAt = now, forceBusy = false, forceReady = false } = opts;
     const paneHash = createHash("sha256").update(pane).digest("hex");
     const firstObservation = this.lastPaneHash === null;
     const paneChanged = this.lastPaneHash !== paneHash;
@@ -383,7 +388,9 @@ export class PaneStateMachine {
     // Some TUIs keep their ready footer visible while a foreground tool owns
     // stdin. Backends can positively identify that tool from the pane; in that
     // case the old prompt must not clear pending work or retire Cancel.
-    const ready = !forceBusy && this.isReady(pane);
+    // forceReady: the backend proved readiness itself (#978 stable unknown
+    // footer); a visible busy marker still vetoes it.
+    const ready = !forceBusy && (forceReady ? !this.busyPattern?.test(pane) : this.isReady(pane));
     const nextState: InstanceState = firstObservation
       ? ready ? "idle" : "working"
       : paneChanged && !settled
@@ -1168,6 +1175,10 @@ export class Daemon extends EventEmitter {
   /** Consecutive structural idle captures for a noisy, periodically-redrawing
    * pane.  Two are required before a working -> idle transition. */
   private instanceStatePeriodicIdleConfirmations = 0;
+  /** #978: last unrecognised-but-empty-composer capture and since when it has been unchanged. */
+  private unknownLayoutPaneKey: string | null = null;
+  private unknownLayoutStableSince = 0;
+  private unknownLayoutWarned = false;
   private instanceStateStuckTimer: ReturnType<typeof setTimeout> | null = null;
   private instanceStateOutputListener: ((event: TmuxPaneOutputEvent) => void) | null = null;
   private instanceStateOutputEventName: string | null = null;
@@ -4004,9 +4015,38 @@ export class Daemon extends EventEmitter {
           }
         } else {
           // A live busy marker or an unfamiliar layout outranks the broad Codex
-          // ready pattern during the noisy-redraw path. Unknown is working.
+          // ready pattern during the noisy-redraw path. Unknown is working —
+          // but not forever (#978): a footer the proof does not recognise
+          // would otherwise pin an idle CLI in `working` and queue every
+          // delivery indefinitely. If the backend still sees its own live,
+          // empty composer and the pane has not changed (cosmetic glyphs
+          // aside) for UNKNOWN_LAYOUT_STABLE_MS, read it as settled and ready.
           this.instanceStatePeriodicIdleConfirmations = 0;
-          snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+          const stableFallback = this.backend?.isStableUnknownLayoutIdlePane;
+          const now = Date.now();
+          if (stableFallback?.call(this.backend, pane)) {
+            const key = pane.replace(/⋆/gu, "").replace(/[ \t]+$/gmu, "");
+            if (key !== this.unknownLayoutPaneKey) {
+              this.unknownLayoutPaneKey = key;
+              this.unknownLayoutStableSince = now;
+            }
+          } else {
+            this.unknownLayoutPaneKey = null;
+          }
+          if (this.unknownLayoutPaneKey !== null && now - this.unknownLayoutStableSince >= UNKNOWN_LAYOUT_STABLE_MS) {
+            if (!this.unknownLayoutWarned) {
+              this.unknownLayoutWarned = true;
+              this.logger.warn({ backend: this.backend?.binaryName },
+                "Unrecognised idle footer layout; falling back to a stable empty composer for readiness");
+            }
+            snapshot = this.instanceStateMachine.observe(pane, now, {
+              settled: true,
+              changeAt: observedChangeAt,
+              forceReady: true,
+            });
+          } else {
+            snapshot = this.instanceStateMachine.recordOutput(observedChangeAt);
+          }
         }
       } else if (structuredPeriodicIdle && reason !== "idle_debounce" && !settled) {
         // Startup, safety, and explicit state probes must not bless a broad

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail } from "../src/daemon.js";
+import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail, UNKNOWN_LAYOUT_STABLE_MS } from "../src/daemon.js";
 import { HangDetector } from "../src/hang-detector.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { CodexBackend } from "../src/backend/codex.js";
@@ -57,6 +57,13 @@ describe("PaneStateMachine", () => {
 
     expect(machine.observe("READY", 1).state).toBe("idle");
     expect(machine.observe("READY", 2).state).toBe("idle");
+  });
+
+  it("lets a backend force readiness but never past a visible busy marker (#978)", () => {
+    const machine = new PaneStateMachine(/NEVER_READY/, timeoutMs, 0, /esc to interrupt/);
+    machine.observe("idle composer", 1);
+    expect(machine.observe("idle composer", 2, { settled: true, forceReady: true }).state).toBe("idle");
+    expect(machine.observe("• Working (3s • esc to interrupt)", 3, { settled: true, forceReady: true }).state).toBe("working");
   });
 
   it("marks working immediately from a control-mode output event", () => {
@@ -199,6 +206,115 @@ describe("Daemon event-driven pane monitor", () => {
       monitor.close();
       vi.useRealTimers();
     }
+  });
+
+  // #978: the reporter's status_line order put Context after the model item.
+  const codexContextMiddleIdle = [
+    "• Finished the requested work.",
+    "",
+    "› Ask Codex to do anything",
+    "",
+    "  gpt-5.6-sol medium · Context 46% left · ~/x",
+  ].join("\n");
+
+  const redrawFor = async (monitor: ReturnType<typeof makeCodexMonitor>, ms: number, step = 500) => {
+    for (let t = 0; t < ms; t += step) {
+      monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+      await vi.advanceTimersByTimeAsync(step);
+    }
+  };
+
+  it("settles a redraw-flooded Codex whose Context item is not first (#978)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    // The reporter's config: the non-first Context is proven against it.
+    const home = (monitor.daemon as any).backend.isolatedCodexHome as string;
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, "config.toml"), '[tui]\nstatus_line = ["model-with-reasoning", "context-remaining", "current-dir"]\n');
+    (monitor.daemon as any).backend.configuredStatusLineItems = undefined;
+    (monitor.daemon as any).backend.configuredStatusLinePattern = undefined;
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+      monitor.setPane(codexContextMiddleIdle);
+      await redrawFor(monitor, 2_000);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(true);
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  // An idle Codex whose footer no proof recognises yet (a future status_line item).
+  const codexUnknownFooterIdle = [
+    "• Finished the requested work.",
+    "",
+    "› Ask Codex to do anything",
+    "",
+    "  some-future-item · another-item",
+  ].join("\n");
+
+  it("does not latch an unrecognised-but-stable idle footer in working forever (#978)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeCodexMonitor(codexWorkingFrame(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      monitor.setPane(codexUnknownFooterIdle);
+      // Short of the stability window: unknown is still working.
+      await redrawFor(monitor, UNKNOWN_LAYOUT_STABLE_MS - 1_000);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+      // Unchanged for the whole window: the escape hatch reads it as idle.
+      await redrawFor(monitor, 2_000);
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@codex")).toBe(true);
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("never escapes a busy or picker screen, however long it stays up (#978)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const busyUnknown = (s: number) => `• Working (${s}s • esc to interrupt)\n\n› Ask Codex to do anything\n\n  some-future-item · another-item`;
+    const picker = [
+      "  Update available!",
+      "› 1. Update now (runs `npm install -g @openai/codex`)",
+      "  2. Skip",
+      "  3. Skip until next version",
+      "  Press enter to continue",
+    ].join("\n");
+    const queuedUnknown = [
+      "• Messages to be submitted after next tool call",
+      "  ↳ run the migration next",
+      "",
+      "› Ask Codex to do anything",
+      "",
+      "  some-future-item · another-item",
+    ].join("\n");
+    // Prism's #979 probe: a static reasoning-titled status row, no "Working".
+    const reasoningUnknown = "• Planning the edit (esc to interrupt)\n\n› Ask Codex to do anything\n\n  some-future-item · another-item";
+    for (const frames of [(i: number) => busyUnknown(i + 2), () => picker, () => queuedUnknown, () => reasoningUnknown]) {
+      const monitor = makeCodexMonitor(codexWorkingFrame(1));
+      try {
+        (monitor.daemon as any).startInstanceStateMonitor();
+        await vi.advanceTimersByTimeAsync(0);
+        for (let i = 0; i < (UNKNOWN_LAYOUT_STABLE_MS * 2) / 500; i++) {
+          monitor.setPane(frames(i));
+          monitor.control.emit("output:@codex", { paneId: "%codex", windowId: "@codex", at: Date.now() });
+          await vi.advanceTimersByTimeAsync(500);
+        }
+        expect(monitor.daemon.getInstanceState()).not.toBe("idle");
+      } finally {
+        monitor.close();
+      }
+    }
+    vi.useRealTimers();
   });
 
   /**
