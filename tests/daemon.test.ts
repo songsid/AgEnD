@@ -72,7 +72,10 @@ describe("Daemon", () => {
     (daemon as any).queueRawPaste("/clear", 0, true);
     await (daemon as any).pasteLock;
 
-    expect(deliver).toHaveBeenCalledWith("/clear", undefined, { deliveryEpoch: 0 });
+    expect(deliver).toHaveBeenCalledWith("/clear", undefined, expect.objectContaining({
+      deliveryEpoch: 0,
+      preserveExactBytes: true,
+    }));
     expect(tmux.sendKeys).toHaveBeenCalledOnce();
     expect(tmux.sendKeys).toHaveBeenCalledWith("y");
     expect(tmux.sendSpecialKey).toHaveBeenCalledOnce();

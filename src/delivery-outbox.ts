@@ -88,7 +88,7 @@ export interface DeliveryStatusPage {
   next_cursor: string | null;
 }
 
-export type DurableSubmissionMode = "idle_submit" | "native_queue_handoff" | "steer";
+export type DurableSubmissionMode = "idle_submit" | "native_queue_handoff" | "steer" | "raw_paste";
 
 /** Checkpoint committed with begin, before any pane paste can occur. */
 export interface DeliveryAttemptEvidence {
@@ -967,6 +967,9 @@ export class DeliveryOutbox extends EventEmitter {
     const rows = this.db.prepare(`
       SELECT * FROM deliveries
       WHERE source_instance=? AND source_daemon_boot_id<>? AND response_delivered_at IS NULL
+        -- Scheduler admission has no waiting source-agent tool response; its
+        -- stable run key and durable row are the recovery/lookup contract.
+        AND kind NOT IN ('raw_paste')
       ORDER BY created_seq
     `).all(sourceInstance, currentBootId) as OutboxRow[];
     return rows.map(mapRow);

@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdirSync, rmSync } from "node:fs";
 import Database from "better-sqlite3";
+import { Cron } from "croner";
 import { Scheduler } from "../src/scheduler/scheduler.js";
 import { DEFAULT_SCHEDULER_CONFIG, type Schedule } from "../src/scheduler/types.js";
 
@@ -33,6 +34,7 @@ describe("Scheduler — catch-up on init", () => {
   let tmpDir: string;
   let dbPath: string;
   let fired: Schedule[];
+  let runIds: string[];
   let scheduler: Scheduler | null;
 
   beforeEach(() => {
@@ -40,18 +42,20 @@ describe("Scheduler — catch-up on init", () => {
     mkdirSync(tmpDir, { recursive: true });
     dbPath = join(tmpDir, "scheduler.db");
     fired = [];
+    runIds = [];
     scheduler = null;
   });
 
   afterEach(() => {
     scheduler?.shutdown();
+    vi.useRealTimers();
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
   function makeScheduler(): Scheduler {
     return new Scheduler(
       dbPath,
-      (s) => { fired.push(s); },
+      (s, runId) => { fired.push(s); runIds.push(runId); },
       DEFAULT_SCHEDULER_CONFIG,
       () => true,
     );
@@ -84,11 +88,89 @@ describe("Scheduler — catch-up on init", () => {
     expect(fired[0].id).toBe(s.id);
   });
 
+  it("uses the exact expected occurrence as the catch-up run id", () => {
+    const s = createSchedule("* * * * *");
+    const lastTriggered = new Date(Date.now() - 5 * 60 * 1000);
+    setLastTriggered(dbPath, s.id, lastTriggered.toISOString());
+    const expected = new Cron(s.cron!, { timezone: s.timezone })
+      .nextRun(lastTriggered)!.toISOString();
+
+    scheduler = makeScheduler();
+    scheduler.init();
+
+    expect(runIds).toEqual([expected]);
+  });
+
+  it("uses the same scheduled run id for a live cron fire delayed by more than one second and restart catch-up", async () => {
+    vi.useFakeTimers();
+    const before = new Date("2026-09-29T12:00:59.000Z");
+    const scheduled = new Date("2026-09-29T12:01:00.000Z");
+    vi.setSystemTime(before);
+    const liveRunIds: string[] = [];
+    const live = new Scheduler(dbPath, (_s, runId) => { liveRunIds.push(runId); },
+      DEFAULT_SCHEDULER_CONFIG, () => true);
+    scheduler = live;
+    const schedule = live.create({
+      cron: "* * * * *",
+      message: "silent command",
+      source: "test",
+      target: "general",
+      reply_chat_id: "chat-1",
+      reply_thread_id: null,
+      timezone: "UTC",
+      silent: true,
+    });
+    // Croner armed the :01:00 occurrence. Simulate a blocked event loop (or
+    // suspend/resume), then invoke the scheduled job at a wall clock 1.5s late.
+    vi.setSystemTime(new Date(scheduled.getTime() + 1_500));
+    const liveJob = (live as any).jobs.get(schedule.id);
+    await liveJob.trigger();
+    expect(liveRunIds).toEqual([scheduled.toISOString()]);
+
+    live.shutdown();
+    scheduler = null;
+    const raw = new Database(dbPath);
+    raw.prepare("UPDATE schedules SET last_triggered_at = ? WHERE id = ?")
+      .run("2026-09-29 12:00:00", schedule.id);
+    raw.close();
+
+    const catchUpRunIds: string[] = [];
+    scheduler = new Scheduler(dbPath, (_s, runId) => { catchUpRunIds.push(runId); },
+      DEFAULT_SCHEDULER_CONFIG, () => true);
+    scheduler.init();
+    expect(catchUpRunIds).toEqual(liveRunIds);
+  });
+
+  it.each([0, 50])("uses the scheduled run id for an on-time live cron fire at +%ims", async (offsetMs) => {
+    vi.useFakeTimers();
+    const before = new Date("2026-09-29T12:00:59.000Z");
+    const scheduled = new Date("2026-09-29T12:01:00.000Z");
+    vi.setSystemTime(before);
+    const liveRunIds: string[] = [];
+    const live = new Scheduler(dbPath, (_s, runId) => { liveRunIds.push(runId); },
+      DEFAULT_SCHEDULER_CONFIG, () => true);
+    scheduler = live;
+    const schedule = live.create({
+      cron: "* * * * *",
+      message: "silent command",
+      source: "test",
+      target: "general",
+      reply_chat_id: "chat-1",
+      reply_thread_id: null,
+      timezone: "UTC",
+      silent: true,
+    });
+
+    vi.setSystemTime(new Date(scheduled.getTime() + offsetMs));
+    await (live as any).jobs.get(schedule.id).trigger();
+
+    expect(liveRunIds).toEqual([scheduled.toISOString()]);
+  });
+
   it("does NOT fire if the missed run is older than the 24h catch-up window", () => {
     const s = createSchedule("0 9 * * *"); // 9am daily
-    // Last fire was 3 days ago → next expected 2 days ago → way past 24h
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-    setLastTriggered(dbPath, s.id, threeDaysAgo);
+    // Last fire was 3 days ago → next expected run is older than 24h.
+    setLastTriggered(dbPath, s.id, new Date(Date.now() - 3 * 24 * 60 * 60 * 1_000).toISOString());
 
     scheduler = makeScheduler();
     scheduler.init();

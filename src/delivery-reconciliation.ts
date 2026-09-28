@@ -227,10 +227,26 @@ export async function finishTargetReconciliation(
       outcome = "delivered";
       proof = "cli-transcript-user-entry-marker";
     } else if (!candidate.attempt.enterStartedAt && processExited) {
-      // W1 is authoritative negative evidence: this process cannot have sent
-      // Enter before the timestamp was durably committed.
-      outcome = "retry_wait";
-      proof = item.paneCaptureError ? "enter-not-started; pane-capture-unavailable" : "enter-not-started; pre-kill-pane-captured";
+      // W1 is authoritative negative evidence for ordinary envelopes: this
+      // process cannot have sent Enter before the timestamp was committed.
+      // Raw paste additionally requires the exact bytes at the end of the
+      // pre-kill capture, where the active composer sits; a missing composer
+      // snapshot is ambiguous and must not silently turn into a replay.
+      const rawBytes = candidate.kind === "raw_paste" && typeof candidate.payload.content === "string"
+        ? candidate.payload.content
+        : null;
+      const capturedTail = item.pane?.replace(/\r\n/g, "\n").replace(/\n$/, "") ?? "";
+      const rawComposerVisible = rawBytes !== null && rawBytes.length > 0 && !rawBytes.endsWith("\n")
+        && capturedTail.endsWith(rawBytes);
+      if (candidate.kind !== "raw_paste" || rawComposerVisible) {
+        outcome = "retry_wait";
+        proof = candidate.kind === "raw_paste"
+          ? "raw-composer-exact-bytes; enter-not-started; old-process-exited"
+          : item.paneCaptureError ? "enter-not-started; pane-capture-unavailable" : "enter-not-started; pre-kill-pane-captured";
+      } else {
+        outcome = "uncertain";
+        proof = "raw-composer-bytes-not-proven; enter-not-started; old-process-exited";
+      }
     } else if (item.panePid !== null && processExited && transcript === "no-match"
       && transcriptAbsenceCanProveNotSubmitted(
         candidate.attempt.submissionMode,

@@ -1,4 +1,5 @@
 import { Cron } from "croner";
+import { randomUUID } from "node:crypto";
 import { SchedulerDb } from "./db.js";
 import type { Schedule, CreateScheduleParams, UpdateScheduleParams, SchedulerConfig, ScheduleRun } from "./types.js";
 import { validateTimezone } from "../config.js";
@@ -10,11 +11,13 @@ export class Scheduler {
   private static readonly CATCHUP_WINDOW_MS = 24 * 60 * 60 * 1000;
   /** Node clamps larger setTimeout delays to 1ms. Re-arm long schedules in chunks. */
   private static readonly MAX_TIMEOUT_MS = 2_147_000_000;
+  /** Admission failures leave one-shot schedules pending instead of losing their run. */
+  private static readonly ONE_SHOT_FAILURE_RETRY_MS = 30_000;
 
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
   private oneShotTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-  private onTrigger: (schedule: Schedule) => void | Promise<void>;
+  private onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>;
   private config: SchedulerConfig;
   private isValidInstance: (name: string) => boolean;
   /** IDs of schedules whose onTrigger is currently in flight; guards against
@@ -23,7 +26,7 @@ export class Scheduler {
 
   constructor(
     dbPath: string,
-    onTrigger: (schedule: Schedule) => void | Promise<void>,
+    onTrigger: (schedule: Schedule, runId: string) => void | Promise<void>,
     config: SchedulerConfig,
     isValidInstance: (name: string) => boolean,
   ) {
@@ -61,13 +64,18 @@ export class Scheduler {
       try {
         if (!schedule.cron) continue;
         const cron = new Cron(schedule.cron, { timezone: schedule.timezone });
-        const next = cron.nextRun(new Date(refMs));
-        if (!next) continue;
-        const nextMs = next.getTime();
-        if (nextMs > now) continue;       // not yet due
-        if (nextMs < cutoff) continue;    // too old, don't spam
+        // Catch up only the first missed occurrence after the last recorded
+        // run. Choosing the latest occurrence would replay stale channel work
+        // after a long shutdown.
+        const scheduled = cron.nextRun(new Date(refMs));
+        if (!scheduled) continue;
+        const scheduledMs = scheduled.getTime();
+        if (scheduledMs > now) continue;     // not yet due
+        if (scheduledMs < cutoff) continue;  // too old, don't spam
         if (this.executing.has(schedule.id)) continue;
-        this.runWithLock(schedule);
+        // The expected fire time stays stable if the process dies after outbox
+        // commit but before last_triggered_at advances.
+        this.runWithLock(schedule, scheduled.toISOString());
       } catch {
         // Bad cron expression or croner edge case — skip rather than crash init
         continue;
@@ -151,26 +159,38 @@ export class Scheduler {
 
   /** Invoke onTrigger while holding the per-schedule lock. Cleans up when
    * the callback returns synchronously, throws, or settles a returned Promise. */
-  private runWithLock(schedule: Schedule): void {
+  private runWithLock(schedule: Schedule, runId: string = randomUUID()): void {
     this.executing.add(schedule.id);
-    const finish = () => {
+    const finish = (consumeOneShot = true) => {
       this.executing.delete(schedule.id);
       if (schedule.at) {
         // A one-shot is consumed after the delivery attempt settles, so
-        // onTrigger can still record its run while the parent row exists.
+        // onTrigger can still record its run while the parent row exists. If
+        // admission throws before its durable ACK, retain it and retry later.
         this.stopJob(schedule.id);
-        try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+        if (consumeOneShot) {
+          try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+        } else if (schedule.silent) {
+          const pending = this.db.get(schedule.id);
+          if (pending?.enabled) this.registerOneShot(pending, Scheduler.ONE_SHOT_FAILURE_RETRY_MS);
+        } else {
+          // Non-silent callbacks may already have posted a channel message
+          // before a later bookkeeping step rejects. Re-running them could
+          // duplicate that visible side effect; preserve the prior consume-on-
+          // failure behavior for those schedules.
+          try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+        }
       }
     };
     let result: void | Promise<void>;
     try {
-      result = this.onTrigger(schedule);
+      result = this.onTrigger(schedule, runId);
     } catch (err) {
-      finish();
+      finish(!schedule.silent);
       throw err;
     }
     if (result && typeof (result as Promise<void>).then === "function") {
-      void (result as Promise<void>).then(finish, finish);
+      void (result as Promise<void>).then(() => finish(), () => finish(!schedule.silent));
     } else {
       finish();
     }
@@ -208,15 +228,29 @@ export class Scheduler {
       return;
     }
     if (!schedule.cron) return;
-    const job = new Cron(schedule.cron, { timezone: schedule.timezone }, () => {
+    const job = new Cron(schedule.cron, { timezone: schedule.timezone }, currentJob => {
       const current = this.db.get(schedule.id);
       if (!current || !current.enabled) return;
       // Skip if a previous fire (or manual trigger) is still in flight —
       // avoids overlapping runs of the same schedule.
       if (this.executing.has(current.id)) return;
-      this.runWithLock(current);
+      // currentRun() is callback wall-clock time, not the cron occurrence. A
+      // delayed callback must still use the scheduled instant so restart
+      // catch-up derives the same durable outbox key.
+      const runId = this.cronRunAtOrBefore(currentJob, new Date())?.toISOString() ?? null;
+      if (runId) this.runWithLock(current, runId);
     });
     this.jobs.set(schedule.id, job);
+  }
+
+  /** Return the latest actual cron occurrence at or before the observation. */
+  private cronRunAtOrBefore(cron: Cron, observedAt: Date): Date | null {
+    // Croner enumerates previous runs strictly before its reference and drops
+    // milliseconds. Advance to the following whole second so an occurrence in
+    // the observed second remains eligible, while never selecting a future
+    // occurrence for seconds-based schedules.
+    const exclusiveBoundary = Math.floor(observedAt.getTime() / 1_000) * 1_000 + 1_000;
+    return cron.previousRuns(1, new Date(exclusiveBoundary))[0] ?? null;
   }
 
   private stopJob(id: string): void {
@@ -241,7 +275,7 @@ export class Scheduler {
     this.oneShotTimers.clear();
   }
 
-  private registerOneShot(schedule: Schedule): void {
+  private registerOneShot(schedule: Schedule, retryDelayMs = 0): void {
     const atMs = this.parseAt(schedule.at!);
     const arm = () => {
       const current = this.db.get(schedule.id);
@@ -249,7 +283,7 @@ export class Scheduler {
         this.oneShotTimers.delete(schedule.id);
         return;
       }
-      const remaining = atMs - Date.now();
+      const remaining = Math.max(atMs - Date.now(), retryDelayMs);
       if (remaining > Scheduler.MAX_TIMEOUT_MS) {
         const timer = setTimeout(arm, Scheduler.MAX_TIMEOUT_MS);
         this.oneShotTimers.set(schedule.id, timer);
@@ -259,7 +293,7 @@ export class Scheduler {
         this.oneShotTimers.delete(schedule.id);
         const due = this.db.get(schedule.id);
         if (!due || !due.enabled || !due.at || this.executing.has(due.id)) return;
-        this.runWithLock(due);
+        this.runWithLock(due, new Date(atMs).toISOString());
       }, Math.max(0, remaining));
       this.oneShotTimers.set(schedule.id, timer);
     };

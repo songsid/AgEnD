@@ -149,6 +149,7 @@ describe("Scheduler one-shot schedules", () => {
   let dbPath: string;
   let scheduler: Scheduler;
   let triggered: Schedule[];
+  let triggeredRunIds: string[];
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -156,9 +157,10 @@ describe("Scheduler one-shot schedules", () => {
     dir = mkdtempSync(join(tmpdir(), "scheduler-at-test-"));
     dbPath = join(dir, "scheduler.db");
     triggered = [];
+    triggeredRunIds = [];
     scheduler = new Scheduler(
       dbPath,
-      schedule => { triggered.push(schedule); },
+      (schedule, runId) => { triggered.push(schedule); triggeredRunIds.push(runId); },
       DEFAULT_SCHEDULER_CONFIG,
       () => true,
     );
@@ -171,13 +173,14 @@ describe("Scheduler one-shot schedules", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  const createAt = (at: string): Schedule => scheduler.create({
+  const createAt = (at: string, silent = false): Schedule => scheduler.create({
     at,
     message: "one shot",
     source: "test",
     target: "general",
     reply_chat_id: "chat",
     reply_thread_id: null,
+    silent,
   });
 
   it("fires once at the requested instant and auto-deletes the row", () => {
@@ -189,10 +192,61 @@ describe("Scheduler one-shot schedules", () => {
 
     vi.advanceTimersByTime(1);
     expect(triggered.map(item => item.id)).toEqual([schedule.id]);
+    expect(triggeredRunIds).toEqual(["2026-07-26T00:00:10.000Z"]);
     expect(scheduler.get(schedule.id)).toBeNull();
 
     vi.advanceTimersByTime(60_000);
     expect(triggered).toHaveLength(1);
+  });
+
+  it("retains and retries a one-shot when its callback fails before durable admission", async () => {
+    scheduler.shutdown();
+    let attempts = 0;
+    const runIds: string[] = [];
+    scheduler = new Scheduler(
+      dbPath,
+      async (_schedule, runId) => {
+        runIds.push(runId);
+        if (attempts++ === 0) throw new Error("outbox admission failed");
+      },
+      DEFAULT_SCHEDULER_CONFIG,
+      () => true,
+    );
+    scheduler.init();
+    const schedule = createAt("2026-07-26T00:00:01.000Z", true);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.get(schedule.id)).not.toBeNull();
+    expect(runIds).toEqual(["2026-07-26T00:00:01.000Z"]);
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(runIds).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runIds).toEqual(["2026-07-26T00:00:01.000Z", "2026-07-26T00:00:01.000Z"]);
+    expect(scheduler.get(schedule.id)).toBeNull();
+  });
+
+  it("does not retry a rejected non-silent one-shot after a possible visible side effect", async () => {
+    scheduler.shutdown();
+    const runIds: string[] = [];
+    scheduler = new Scheduler(
+      dbPath,
+      async (_schedule, runId) => {
+        runIds.push(runId);
+        throw new Error("schedule bookkeeping failed after posting");
+      },
+      DEFAULT_SCHEDULER_CONFIG,
+      () => true,
+    );
+    scheduler.init();
+    const schedule = createAt("2026-07-26T00:00:01.000Z");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(runIds).toEqual(["2026-07-26T00:00:01.000Z"]);
+    expect(scheduler.get(schedule.id)).toBeNull();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(runIds).toHaveLength(1);
   });
 
   it("keeps the row until an async delivery can record its run", async () => {

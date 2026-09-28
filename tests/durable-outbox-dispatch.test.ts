@@ -13,6 +13,48 @@ afterEach(() => {
 });
 
 describe("durable outbox dispatcher", () => {
+  it("dispatches raw_paste with its exact bytes and no message envelope", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-raw-dispatch-"));
+    roots.push(root);
+    const fm = new FleetManager(root);
+    const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-raw");
+    fm.deliveryOutbox = outbox;
+    const content = "  /compact\n--keep-space  \n";
+    const row = outbox.admit({
+      operationId: "schedule:raw-run-1",
+      sourceKey: "schedule:silent-1:run-1:worker:raw_paste",
+      sourceInstance: "scheduler-source",
+      sourceDaemonBootId: "manager-source-boot",
+      targetInstance: "worker",
+      kind: "raw_paste",
+      payload: { type: "raw_paste", content, schedule_id: "silent-1", schedule_run_id: "run-1" },
+    }).delivery;
+    const claimed = outbox.claimNext("manager-raw", () => "worker-boot", new Set())!;
+    const deliver = vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_target, payload, options) => {
+      expect(options).toMatchObject({ waitForIdle: false });
+      expect(payload).toEqual({
+        type: "raw_paste",
+        content,
+        delivery_id: row.deliveryId,
+        delivery_attempt: "1",
+      });
+      expect(payload).not.toHaveProperty("meta");
+      expect(outbox.begin(row.deliveryId, "worker-boot", 1, {
+        backend: "codex", backendVersion: null, windowId: "@worker",
+        transcriptPath: null, transcriptOffset: null, transcriptSessionId: null,
+        submissionMode: "raw_paste", queueResumePolicy: "unknown",
+      })).toBe("begun");
+      expect(outbox.markEnterStarted(row.deliveryId, "worker-boot", 1)).toBe(true);
+      expect(outbox.complete(row.deliveryId, "worker-boot", 1, "delivered", "raw command accepted by test daemon")).toBe(true);
+      return true;
+    });
+
+    await (fm as any).dispatchDurableDelivery(claimed);
+    expect(deliver).toHaveBeenCalledOnce();
+    expect(outbox.get(row.deliveryId)).toMatchObject({ state: "delivered", attemptNo: 1 });
+    outbox.close();
+  });
+
   it("returns a pre-handoff cancellation to retry_wait instead of stranding delivering", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-dispatch-"));
     roots.push(root);

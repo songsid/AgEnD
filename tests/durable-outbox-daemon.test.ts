@@ -63,6 +63,29 @@ function makeHarness(controlClient?: object) {
   return { root, outbox, daemon, row, claimed, tmux };
 }
 
+function makeRawControlClient() {
+  return {
+    getObservationResetAt: () => 0,
+    getLastOutputAt: () => undefined,
+    isIdle: () => true,
+    waitUntilIdle: vi.fn(async () => true),
+  };
+}
+
+function prepareRawControlDelivery(h: ReturnType<typeof makeHarness>, backend: Record<string, unknown>, readiness: "ready" | "busy" = "ready") {
+  const daemon = h.daemon as any;
+  daemon.backend = backend;
+  vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
+  vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
+  vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue(readiness);
+  vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValue({ state: "clear" });
+  vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
+  vi.spyOn(daemon, "waitForPaneReadyForDelivery").mockResolvedValue(true);
+  vi.spyOn(daemon, "confirmSubmitted").mockResolvedValue("stranded");
+  daemon.sendDeliveryEnter.mockRestore();
+  return daemon;
+}
+
 function deliveryMeta(deliveryId: string, attemptNo: number): Record<string, string> {
   return {
     delivery_id: deliveryId,
@@ -79,6 +102,113 @@ function deliveryMeta(deliveryId: string, attemptNo: number): Record<string, str
 }
 
 describe("durable delivery through a real Daemon", () => {
+  it("keeps raw_paste bytes exact and submits with exactly one write-ahead Enter", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    const daemon = h.daemon as any;
+    const raw = "  /compact\n--keep-space  ```\n";
+    vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
+    vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
+    (daemon as any).sendDeliveryEnter.mockRestore();
+
+    // Exercise the same parser invoked for an IPC { type: "raw_paste" } event;
+    // bypassing it would miss a dropped submissionMode field.
+    daemon.handleRawPasteIpcMessage({
+      type: "raw_paste",
+      content: raw,
+      delivery_id: h.row.deliveryId,
+      delivery_attempt: String(h.claimed.attemptNo),
+    });
+    await vi.runAllTimersAsync();
+    await daemon.pasteLock;
+
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    expect(h.tmux.pasteBuffer.mock.calls[0]?.[0]).toBe(raw);
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    expect(h.tmux.sendSpecialKey.mock.calls[0]?.[0]).toBe("Enter");
+    expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
+    expect((h.outbox as any).db.prepare(`
+      SELECT submission_mode,enter_started_at FROM delivery_attempts WHERE delivery_id=? AND attempt_no=?
+    `).get(h.row.deliveryId, h.claimed.attemptNo)).toMatchObject({
+      submission_mode: "raw_paste",
+      enter_started_at: expect.any(String),
+    });
+    h.outbox.close();
+  });
+
+  it("keeps a failed raw paste uncertain instead of making it replayable", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    const daemon = h.daemon as any;
+    vi.spyOn(daemon, "wake").mockResolvedValue(undefined);
+    vi.spyOn(daemon, "waitForInputTransientToClear").mockResolvedValue(true);
+    h.tmux.pasteBuffer.mockResolvedValueOnce(false);
+
+    daemon.queueRawPaste("/compact", daemon.deliveryEpoch, false, {
+      deliveryId: h.row.deliveryId,
+      attemptNo: h.claimed.attemptNo,
+      submissionMode: "raw_paste",
+    });
+    await vi.runAllTimersAsync();
+    await daemon.pasteLock;
+
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    expect(h.tmux.sendSpecialKey).not.toHaveBeenCalled();
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain", attemptNo: 1 });
+    h.outbox.close();
+  });
+
+  it.each([
+    ["Codex stranded input", {
+      binaryName: "codex",
+      getBottomReadyPattern: () => /^❯$/m,
+      isDeliveryInputReadyPane: (_pane: string): boolean => true,
+    }, "ready" as const],
+    ["Kiro defensive Enter", {
+      binaryName: "kiro-cli",
+      getBottomReadyPattern: () => /^❯$/m,
+      requiresDeliveryEnterRetry: () => true,
+    }, "ready" as const],
+    ["Codex native-queue fallback", {
+      binaryName: "codex",
+      getBottomReadyPattern: () => /^❯$/m,
+      isDeliveryInputReadyPane: (_pane: string): boolean => true,
+      supportsQueuedInput: () => true,
+    }, "busy" as const],
+    ["Kiro drops-Enter-while-busy recovery", {
+      binaryName: "kiro-cli",
+      getBottomReadyPattern: () => /^❯$/m,
+      dropsEnterWhileBusy: () => true,
+    }, "ready" as const],
+    ["Claude Code without a pane-ready pattern", {
+      binaryName: "claude",
+    }, "ready" as const],
+  ])("raw_paste sends only one paste and Enter on %s", async (_label, backend, readiness) => {
+    vi.useFakeTimers();
+    const h = makeHarness(makeRawControlClient());
+    const daemon = prepareRawControlDelivery(h, backend as Record<string, unknown>, readiness);
+    if ((backend as any).dropsEnterWhileBusy) {
+      vi.spyOn(daemon, "confirmSubmittedAfterEnter").mockResolvedValue(false);
+    }
+    if (!(backend as any).getBottomReadyPattern) {
+      vi.spyOn(daemon, "confirmBusyAfterEnter").mockResolvedValue(false);
+    }
+
+    daemon.queueRawPaste("/compact", daemon.deliveryEpoch, false, {
+      deliveryId: h.row.deliveryId,
+      attemptNo: h.claimed.attemptNo,
+      submissionMode: "raw_paste",
+    });
+    await vi.runAllTimersAsync();
+    await daemon.pasteLock;
+
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    expect(h.tmux.sendSpecialKey).toHaveBeenCalledOnce();
+    expect(h.tmux.sendSpecialKey.mock.calls[0]?.[0]).toBe("Enter");
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain", attemptNo: 1 });
+    h.outbox.close();
+  });
+
   it("commits enter_started before tmux can accept the Enter key", async () => {
     const h = makeHarness();
     const evidence = {

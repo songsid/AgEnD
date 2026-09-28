@@ -11,6 +11,7 @@ import { KNOWN_BACKENDS } from "../src/config-validator.js";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import type { InstanceConfig } from "../src/types.js";
 import { setUsageFetcherForTests } from "../src/usage/usage-api.js";
+import { DeliveryOutbox } from "../src/delivery-outbox.js";
 
 /**
  * An InstanceConfig as loadFleetConfig would hand it over: the three fields
@@ -35,6 +36,51 @@ describe("FleetManager", () => {
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("durably admits silent raw schedules before acknowledging each stable run", async () => {
+    const fm = new FleetManager(tmpDir);
+    (fm as any).shuttingDown = true; // keep the dispatcher idle while asserting admission
+    const outbox = new DeliveryOutbox(join(tmpDir, "delivery-outbox.db"), fm.managerBootId);
+    fm.deliveryOutbox = outbox;
+    const schedule = {
+      id: "silent-schedule-1", cron: "0 9 * * *", at: null,
+      message: "  /compact\n--keep-space  \n", source: "scheduler-source", target: "scheduled-worker",
+      reply_chat_id: "chat", reply_thread_id: null, label: "compact", enabled: true,
+      timezone: "UTC", silent: true, created_at: "2026-09-29T00:00:00.000Z",
+      last_triggered_at: null, last_status: null,
+    };
+    let expectedRowsAtAck = 1;
+    const recordRun = vi.fn((_id: string, _status: string, _detail?: string) => {
+      expect(outbox.listPending().filter(row => row.kind === "raw_paste")).toHaveLength(expectedRowsAtAck);
+      // Outbox commit precedes each scheduler ACK.
+    });
+    (fm as any).scheduler = { recordRun };
+
+    await (fm as any).handleScheduleTrigger(schedule, "2026-09-29T09:00:00.000Z");
+    const first = outbox.listPending()[0]!;
+    expect(first).toMatchObject({
+      kind: "raw_paste",
+      operationId: "schedule:silent-schedule-1:2026-09-29T09:00:00.000Z",
+      sourceInstance: "scheduler-source",
+      targetInstance: "scheduled-worker",
+      payload: {
+        type: "raw_paste",
+        content: "  /compact\n--keep-space  \n",
+        schedule_id: "silent-schedule-1",
+        schedule_run_id: "2026-09-29T09:00:00.000Z",
+      },
+    });
+    expect(recordRun).toHaveBeenLastCalledWith("silent-schedule-1", "queued", expect.stringContaining(first.deliveryId));
+
+    await (fm as any).handleScheduleTrigger(schedule, "2026-09-29T09:00:00.000Z");
+    expect(outbox.listPending().filter(row => row.kind === "raw_paste")).toHaveLength(1);
+    expectedRowsAtAck = 2;
+    await (fm as any).handleScheduleTrigger(schedule, "2026-09-30T09:00:00.000Z");
+    expect(outbox.listPending().filter(row => row.kind === "raw_paste")).toHaveLength(2);
+    expect(outbox.listPending().filter(row => row.kind === "raw_paste").map(row => row.payload.content))
+      .toEqual([schedule.message, schedule.message]);
+    outbox.close();
   });
 
   it("detects stopped instance (no PID)", () => {
