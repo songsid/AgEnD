@@ -337,25 +337,39 @@ export class MuseBackend implements CliBackend {
     while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
     const separator = /^─{10,}\s*$/;
     const busyPattern = this.getBusyPattern();
-    // The status bar is one row, or two when a long cwd wraps. Everything
-    // after the bottom separator must be status chrome: indented, and neither
-    // a separator, a prompt, nor a live busy line.
+    // The status bar's own grammar, not merely "some indented text": the model
+    // id first, then at least one more ` · `-joined field
+    // (`  muse-spark-1.3-contributor · high · ~/cwd · Launch overrides`). A
+    // chooser drawn under the box (`  1 Allow`) or any other indented row
+    // cannot pass for it.
+    const statusBar = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
+    // Menu chrome muse draws for its numbered dialogs (trust, tool approval).
+    // The approval prompt is auto-answered rather than input-blocking, so the
+    // idle proof itself must refuse a frame that shows one.
+    const dialogChrome = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)/i;
+    // The status bar is one row; a long cwd in a narrow pane wraps it onto a
+    // few more. Everything after the bottom separator must be that bar.
+    const MAX_STATUS_ROWS = 4;
     let bottomSeparator = -1;
-    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 3); i--) {
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 1 - MAX_STATUS_ROWS); i--) {
       if (separator.test(rows[i])) { bottomSeparator = i; break; }
     }
     if (bottomSeparator < 2) return false;
     const status = rows.slice(bottomSeparator + 1);
-    if (!status.every(row => /^\s+\S/.test(row) && !separator.test(row.trim()) && !busyPattern.test(row))) return false;
+    if (!statusBar.test(status[0])) return false;
+    if (!status.every(row => /^\s+\S/.test(row) && !separator.test(row.trim()) && !busyPattern.test(row) && !dialogChrome.test(row))) return false;
+    // A wrapped cwd continues as path text; a numbered option list under the
+    // bar is a picker, not the bar.
+    if (status.slice(1).some(row => /^\s*[>❯›]?\s*\d+[.)]?\s+\S/.test(row))) return false;
     // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
     // (or, higher up, a transcript echo) and never proves idle.
     if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
     const topSeparator = bottomSeparator - 2;
     if (!separator.test(rows[topSeparator])) return false;
-    // No busy indicator just above the input box. The working line
-    // (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the top
-    // separator; check 6 rows up to be safe.
-    return !rows.slice(Math.max(0, topSeparator - 6), topSeparator).some(r => busyPattern.test(r));
+    // No busy indicator and no dialog just above the input box. The working
+    // line (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the
+    // top separator; check 8 rows up to be safe.
+    return !rows.slice(Math.max(0, topSeparator - 8), topSeparator).some(r => busyPattern.test(r) || dialogChrome.test(r));
   }
 
   getErrorPatterns(): ErrorPattern[] {

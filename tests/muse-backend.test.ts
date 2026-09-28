@@ -340,7 +340,7 @@ describe("MuseBackend idle proof anchored to the live input box (#958)", () => {
     expect(backend.isPeriodicRedrawIdlePane(pane)).toBe(false);
   });
 
-  it("accepts a status bar that wraps onto a second row, but nothing more below it", () => {
+  it("accepts a status bar that wraps onto a second row, but not a picker below it", () => {
     const wrapped = [
       "◆ Done.",
       SEP_120,
@@ -351,10 +351,64 @@ describe("MuseBackend idle proof anchored to the live input box (#958)", () => {
       "", "",
     ].join("\n");
     expect(backend.isPeriodicRedrawIdlePane(wrapped)).toBe(true);
-    // Three rows under the box is no longer the status bar — a picker or a
-    // hint list muse drew beneath the input. Unfamiliar means not idle.
+    // Numbered options under the bar are a picker muse drew beneath the
+    // input, not more of a wrapped bar. Unfamiliar means not idle.
     const extra = wrapped.replace("  /window · Launch overrides", "  /window · Launch overrides\n  1. an option\n  2. another");
     expect(backend.isPeriodicRedrawIdlePane(extra)).toBe(false);
+  });
+
+  it("accepts a status bar wrapped over three or four rows in a narrow pane, not five", () => {
+    const status = [
+      "  muse-spark-1.3-contributor · high · ~/Projects/some/deeply/nested",
+      "  /workspace/for/a/very/long/project/name/that/keeps/going",
+      "  /and/going · Launch",
+      "  overrides",
+    ];
+    const pane = (rows: string[]) => ["◆ Done.", SEP_120, "❯", SEP_120, ...rows, "", ""].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(pane(status.slice(0, 3))), "3 rows").toBe(true);
+    expect(backend.isPeriodicRedrawIdlePane(pane(status)), "4 rows").toBe(true);
+    // Past the cap the tail is no longer provably the bar: fail closed.
+    expect(backend.isPeriodicRedrawIdlePane(pane([...status, "  more"])), "5 rows").toBe(false);
+  });
+
+  it("refuses an approval chooser drawn around a visible input box", () => {
+    const tail = ["◆ Running a command", SEP_120, "❯", SEP_120];
+    // A chooser where the status bar would be: not the bar's grammar.
+    const chooserUnderBox = [...tail, "  1 Allow", "  2 Deny"].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(chooserUnderBox)).toBe(false);
+    // The bar, then a chooser: a picker under the box, not a wrapped bar.
+    const barThenChooser = [...tail, LIVE_1_4_IDLE_TAIL.at(-1)!, "  1 Allow", "  2 Deny"].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(barThenChooser)).toBe(false);
+    const barThenPicker = [...tail, LIVE_1_4_IDLE_TAIL.at(-1)!, "  1. gpt-5", "  2. muse-spark"].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(barThenPicker)).toBe(false);
+    // The approval dialog above an otherwise idle-looking composer and bar. It
+    // carries no elapsed-time marker, so the busy veto alone would miss it.
+    const approvalAboveBox = [
+      "Allow this command?",
+      "  rm -rf build/",
+      "> 1  Allow",
+      "  2  Deny",
+      "Use Up/Down or 1/2, then Enter. Esc quits.",
+      SEP_120, "❯", SEP_120, LIVE_1_4_IDLE_TAIL.at(-1)!,
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(approvalAboveBox)).toBe(false);
+    // A status row with a single field is not the bar either.
+    expect(backend.isPeriodicRedrawIdlePane([...tail, "  Allow"].join("\n"))).toBe(false);
+  });
+
+  it("still proves idle when the last answer above the box is a numbered list", () => {
+    // The dialog veto must not re-create the stall: numbered lists are
+    // ordinary answer text.
+    const pane = [
+      "◆ Three options:",
+      "  1. Allow the retry",
+      "  2. Approve later",
+      "  3. Trust the cache",
+      "",
+      SEP_120, "❯", SEP_120, LIVE_1_4_IDLE_TAIL.at(-1)!,
+      "", "", "",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(pane)).toBe(true);
   });
 
   it("does not take a draft, a missing top separator, or an unindented row for the status bar", () => {
