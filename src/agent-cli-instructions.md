@@ -25,6 +25,7 @@ agend-agent delegate TARGET "task"                # Assign work
 agend-agent report TARGET "summary"               # Report results
 agend-agent ask TARGET "question"                 # Request info
 agend-agent broadcast "message"                   # Message all agents
+agend-agent delivery-status --operation-id ID      # Check a previously accepted delivery
 
 # Instance Management
 agend-agent usage                                 # AI subscription usage (all providers)
@@ -42,6 +43,10 @@ agend-agent task done ID "result"                 # Complete task
 agend-agent decision-post "title" "content"       # Post decision
 agend-agent decision-list                         # List decisions
 ```
+
+If a send result is unclear, query its returned operation ID with
+`agend-agent delivery-status --operation-id ID` before deciding what to do.
+An `uncertain` result may already have reached the target; do not resend blindly.
 
 ## Rules
 

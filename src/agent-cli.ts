@@ -75,6 +75,18 @@ async function main(): Promise<void> {
     case "delegate": args = { target_instance: rest[0], task: rest[1] ?? "", success_criteria: rest[2], context: rest[3] }; break;
     case "report": args = { target_instance: rest[0], summary: rest[1] ?? "", correlation_id: rest[2], artifacts: rest[3] }; break;
     case "ask": args = { target_instance: rest[0], question: rest[1] ?? "", context: rest[2] }; break;
+    case "delivery-status": {
+      for (let i = 0; i < rest.length; i++) {
+        const key = rest[i]!.replace(/^--/, "").replaceAll("-", "_");
+        if (!["delivery_id", "operation_id", "correlation_id", "limit", "cursor"].includes(key)) {
+          die(`Unknown delivery-status option: ${rest[i]}`);
+        }
+        const value = rest[++i];
+        if (value === undefined) die(`Missing value for --${key.replaceAll("_", "-")}`);
+        args[key] = key === "limit" ? Number(value) : value;
+      }
+      break;
+    }
     case "broadcast": args = { message: rest[0] ?? "", team: rest[1] }; break;
 
     // Usage

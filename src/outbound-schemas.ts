@@ -365,6 +365,23 @@ export const ReportResultArgs = z.object({
     .describe("Optional details: file paths, commit hashes, URLs, etc."),
 });
 
+// Read-only lookup of a previously accepted durable operation. Exactly one
+// selector is required; caller identity comes from the authenticated socket,
+// never from these arguments.
+export const DeliveryStatusArgs = z.object({
+  delivery_id: NonEmptyString.optional().describe("Exact durable delivery ID returned by AgEnD."),
+  operation_id: NonEmptyString.optional().describe("Operation ID returned when the outbound tool was accepted."),
+  correlation_id: NonEmptyString.optional().describe("Correlation ID from the original request; may return multiple deliveries."),
+  limit: z.number().int().min(1).max(100).optional().describe("Maximum rows for operation/correlation queries (default 20, maximum 100)."),
+  cursor: NonEmptyString.optional().describe("Opaque next-page cursor returned by the previous query."),
+}).strict().refine(args =>
+  [args.delivery_id, args.operation_id, args.correlation_id].filter(value => value !== undefined).length === 1,
+{ message: "Provide exactly one of delivery_id, operation_id, or correlation_id" })
+  .refine(args => !args.cursor || !args.delivery_id, {
+    message: "cursor is only valid with operation_id or correlation_id",
+    path: ["cursor"],
+  });
+
 // ── Teams ───────────────────────────────────────────────────────────────
 
 export const CreateTeamArgs = z.object({

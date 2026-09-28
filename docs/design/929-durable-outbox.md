@@ -325,6 +325,10 @@ Phase 2 驗收要逐 backend/version 固定結果：queued item 於 crash 後是
 
 狀態語意：`queued`/`delivering`/`retry_wait` 表示尚待嘗試；`submission_started`/`reconciliation_pending` 表示 side effect 可能發生、不能重送；`delivered` 表示 delivery proof 成立、不代表模型已完成處理；`failed` 是可證明的終態失敗；`uncertain` 明確顯示「可能已送達，勿盲重送」及可用 evidence 摘要。status query 的 response-lost 用途是讓 caller 使用 Phase 1 返回的 `operation_id` 找回狀態，而不是讓 correlation/id 成為 bearer capability。
 
+`safe_to_retry` 只描述是否有證據保證「重試不會重複提交」，不觸發任何重試：`queued`、`delivering`、`retry_wait`、`failed` 為 true；`submission_started`、`reconciliation_pending`、`delivered`、`uncertain`、`cancelled` 為 false。實際 retry workflow 不屬於 Phase 2.3。
+
+**Phase 2.3 implementation note (2026-09-28).** The registered MCP tool is `delivery_status`; authenticated HTTP/agent-cli uses `delivery-status`; the local operator surface is `agend delivery show`. MCP and HTTP handlers take caller identity only from the daemon socket owner or verified instance token, then apply the source-or-target predicate inside the SQLite query for every row. They return the same `Delivery not found` error for missing and unauthorized single-row lookups. Correlation/operation pages are filtered in SQL before pagination. The status projection omits payload, source key, pane/session identifiers, transcript paths/content, and raw errors; errors are reduced to a small fixed summary. The operator command opens the existing database read-only and appends query identity/key/result count to a mode-0700 audit directory with a mode-0600 file under the data directory. Querying does not create or update delivery rows.
+
 #### 2.4 Silent-schedule `raw_paste` 接入 outbox
 
 Phase 2 將目前 Phase 1 明確標成 non-durable 的 silent-schedule `raw_paste` 納入同一個 store/dispatcher。Admission key 固定包含 `(schedule_id, run_id, target_instance, action_kind="raw_paste")`；scheduler 必須在確認該 run 已 dispatch/完成或推進不可逆 cursor 前，commit row。schedule retry/restart 對同一 run 回既有 delivery row；不同 run 即使 bytes 相同仍是不同合法 paste。若不是 schedule 來源，caller 必須提供等價穩定 invocation key；不能用 payload hash 合併合法重複 paste。

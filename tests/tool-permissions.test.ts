@@ -37,17 +37,17 @@ afterEach(() => {
 const BEFORE: Record<string, string[]> = {
   standard: [
     "reply", "react", "edit_message",
-    "send_to_instance", "broadcast", "list_instances", "describe_instance",
+    "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // #895: self-scheduling, scoped by target in scheduleOpRefusal.
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
-  minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
+  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment"],
   general: [
     "reply", "react", "edit_message", "download_attachment",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
-    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
+    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
     // #895 added update_schedule: general could already create and delete.
@@ -55,8 +55,8 @@ const BEFORE: Record<string, string[]> = {
   ],
 };
 
-describe("the existing profiles are untouched", () => {
-  it("keeps the three existing profiles byte for byte", () => {
+describe("tool profiles include durable delivery lookup", () => {
+  it("preserves the prior profile members and adds delivery_status", () => {
     for (const [name, tools] of Object.entries(BEFORE)) {
       expect([...toolsFor(name as never)].sort(), name).toEqual([...tools].sort());
     }

@@ -60,6 +60,7 @@ const OP_MAP: Record<string, string> = {
   delegate: "delegate_task",
   report: "report_result",
   ask: "request_information",
+  "delivery-status": "delivery_status",
   broadcast: "broadcast",
   // Instance management
   list: "list_instances",

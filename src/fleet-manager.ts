@@ -76,7 +76,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
-import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery } from "./delivery-outbox.js";
+import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery, type DeliveryStatusSelector, type DeliveryStatusPage } from "./delivery-outbox.js";
 
 // The target Daemon can legitimately wait 30 minutes for a busy pane before
 // deciding to defer before submission. This is an alert threshold only: the
@@ -933,6 +933,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       state: admitted.delivery.state,
       duplicate: !admitted.inserted,
     };
+  }
+
+  queryDurableDeliveryStatus(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
+    this.ensureDeliveryOutbox();
+    return this.deliveryOutbox!.queryStatusForInstance(callerInstance, selector);
   }
 
   getDaemonBootId(instanceName: string): string | undefined {

@@ -134,6 +134,11 @@ describe("DeliveryOutbox", () => {
     sourceDaemon.setDeliveryOutboxPort(restarted);
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
+    const statusAfterCrash = replacementManager.queryDurableDeliveryStatus("source", { operationId: "op-1" });
+    expect(statusAfterCrash.items).toMatchObject([
+      { operation_id: "op-1", target_instance: "worker", state: "queued", safe_to_retry: true },
+    ]);
+    expect(statusAfterCrash.items[0]).not.toHaveProperty("payload");
     const pendingAfterRecovery = restarted.listPending();
     expect(pendingAfterRecovery).toMatchObject([
       { operationId: "op-1", targetInstance: "worker", state: "queued", payload: { content: "hello" } },
@@ -321,6 +326,8 @@ describe("DeliveryOutbox", () => {
     }, true);
     expect(reconciled).toEqual({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
     expect(replacement.get(candidate.deliveryId)).toMatchObject({ state: "uncertain" });
+    expect(replacement.queryStatusForInstance("source", { operationId: "op-enter-crash" }).items)
+      .toMatchObject([{ delivery_id: candidate.deliveryId, state: "uncertain", safe_to_retry: false }]);
     expect(replacement.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
     replacement.close();
   });

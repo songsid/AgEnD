@@ -87,6 +87,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "## Cross-instance protocol",
     "- `delegate_task` → work silently → `report_result` (echo correlation_id). No ack messages in between.",
     "- Send returns `{ sent, queued }` immediately — the fleet owns delivery. NEVER re-send because a reply said `queued` or an IPC wait timed out.",
+    "- If an outbound call returns an `operation_id` or `delivery_id` and its result is unclear, use `delivery_status` to inspect it before deciding what to do. `uncertain` means it may have been delivered; do not resend blindly.",
     "- `[agend-delivery-id:<uuid>]` at the start of a message is system metadata; do not quote, rewrite, or repeat it.",
     "- You only have file access under your own working directory; everything cross-instance goes through fleet tools.",
     "",

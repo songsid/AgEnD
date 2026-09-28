@@ -256,6 +256,49 @@ describe("durable delivery through a real Daemon", () => {
 });
 
 describe("MCP durable response delivery tracking", () => {
+  it("routes delivery_status from the Daemon through the fleet outbound IPC path", () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-status-route-"));
+    roots.push(root);
+    const daemon = new Daemon(
+      "source",
+      {
+        working_directory: root,
+        log_level: "error",
+        restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+        context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+      },
+      join(root, "instances", "source"),
+      false,
+      undefined,
+      undefined,
+      rootLogger as any,
+    );
+    const socket = {} as any;
+    const broadcast = vi.fn();
+    const send = vi.fn(() => true);
+    (daemon as any).topicMode = true;
+    (daemon as any).ipcServer = { broadcast, send };
+    (daemon as any).socketSessionNames.set(socket, "source");
+
+    (daemon as any).handleToolCall({
+      tool: "delivery_status", args: { operation_id: "op-status" }, requestId: 91,
+    }, socket);
+
+    expect(broadcast).toHaveBeenCalledWith(expect.objectContaining({
+      type: "fleet_outbound",
+      tool: "delivery_status",
+      args: { operation_id: "op-status" },
+    }));
+    const request = broadcast.mock.calls[0]![0] as { fleetRequestId: string };
+    const pending = (daemon as any).pendingIpcRequests.get(request.fleetRequestId);
+    expect(pending).toBeTypeOf("function");
+    pending({ result: { items: [], next_cursor: null } });
+    expect(send).toHaveBeenCalledWith(socket, expect.objectContaining({
+      requestId: 91,
+      result: { items: [], next_cursor: null },
+    }));
+  });
+
   it("does not fence an ordinary start when best-effort old-window cleanup is unconfirmed", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-no-pending-start-"));
     roots.push(root);

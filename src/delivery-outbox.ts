@@ -62,6 +62,32 @@ export interface OutboxDelivery {
   reconciliationPending: boolean;
 }
 
+export type DeliveryStatusSelector =
+  | { deliveryId: string; operationId?: never; correlationId?: never; limit?: never; cursor?: never }
+  | { operationId: string; deliveryId?: never; correlationId?: never; limit?: number; cursor?: string }
+  | { correlationId: string; deliveryId?: never; operationId?: never; limit?: number; cursor?: string };
+
+export interface DeliveryStatusItem {
+  delivery_id: string;
+  operation_id: string;
+  correlation_id: string | null;
+  source_instance: string;
+  target_instance: string;
+  kind: string;
+  state: OutboxState;
+  attempt_no: number;
+  created_at: string;
+  updated_at: string;
+  status_summary: string;
+  error_summary: string | null;
+  safe_to_retry: boolean;
+}
+
+export interface DeliveryStatusPage {
+  items: DeliveryStatusItem[];
+  next_cursor: string | null;
+}
+
 export type DurableSubmissionMode = "idle_submit" | "native_queue_handoff" | "steer";
 
 /** Checkpoint committed with begin, before any pane paste can occur. */
@@ -145,6 +171,107 @@ function mapRow(row: OutboxRow): OutboxDelivery {
   };
 }
 
+function safeErrorSummary(error: string | null): string | null {
+  if (!error) return null;
+  const normalized = error.toLowerCase();
+  if (normalized.includes("ttl expired")) return "Delivery expired before the target became available.";
+  if (normalized.includes("attempt limit")) return "Delivery exhausted its bounded retry attempts.";
+  if (normalized.includes("reconcil") || normalized.includes("uncertain") || normalized.includes("restart")) {
+    return "Submission may have occurred; do not resend until the outcome is reconciled.";
+  }
+  return "A delivery error was recorded; details are omitted for safety.";
+}
+
+function statusSummary(state: OutboxState): string {
+  switch (state) {
+    case "queued": return "Accepted and waiting for delivery.";
+    case "delivering": return "Waiting for the target to become ready; submission has not started.";
+    case "retry_wait": return "Waiting for a bounded retry; submission has not started for the next attempt.";
+    case "submission_started":
+    case "reconciliation_pending": return "Submission may have occurred; do not resend.";
+    case "delivered": return "Delivery was confirmed; this does not mean the agent finished processing it.";
+    case "failed": return "Delivery failed after bounded retries or expiry.";
+    case "uncertain": return "Delivery may have occurred; do not resend blindly.";
+    case "cancelled": return "Delivery was cancelled.";
+  }
+}
+
+function safeToRetry(state: OutboxState): boolean {
+  return state === "queued" || state === "delivering" || state === "retry_wait" || state === "failed";
+}
+
+function queryStatusPage(
+  db: Database.Database,
+  selector: DeliveryStatusSelector,
+  callerInstance: string | null,
+): DeliveryStatusPage {
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (selector.deliveryId) { where.push("d.delivery_id = ?"); params.push(selector.deliveryId); }
+  else if (selector.operationId) { where.push("d.operation_id = ?"); params.push(selector.operationId); }
+  else { where.push("d.correlation_id = ?"); params.push(selector.correlationId!); }
+  if (callerInstance !== null) {
+    where.push("(d.source_instance = ? OR d.target_instance = ?)");
+    params.push(callerInstance, callerInstance);
+  }
+  if (selector.cursor) {
+    const cursorScope = ["c.delivery_id = ?"];
+    const cursorParams: (string | number)[] = [selector.cursor];
+    if (selector.operationId) { cursorScope.push("c.operation_id = ?"); cursorParams.push(selector.operationId); }
+    else { cursorScope.push("c.correlation_id = ?"); cursorParams.push(selector.correlationId!); }
+    if (callerInstance !== null) {
+      cursorScope.push("(c.source_instance = ? OR c.target_instance = ?)");
+      cursorParams.push(callerInstance, callerInstance);
+    }
+    where.push(`d.created_seq > (SELECT c.created_seq FROM deliveries c WHERE ${cursorScope.join(" AND ")} LIMIT 1)`);
+    params.push(...cursorParams);
+  }
+  const limit = selector.deliveryId ? 1 : Math.max(1, Math.min(100, selector.limit ?? 20));
+  const rows = db.prepare(`
+    SELECT d.delivery_id,d.operation_id,d.correlation_id,d.source_instance,d.target_instance,
+      d.kind,
+      CASE WHEN d.state='submission_started' AND d.reconciliation_pending=1
+        THEN 'reconciliation_pending' ELSE d.state END AS state,
+      d.attempt_no,d.created_at,d.updated_at,d.last_error
+    FROM deliveries d
+    WHERE ${where.join(" AND ")}
+    ORDER BY d.created_seq
+    LIMIT ?
+  `).all(...params, limit + 1) as Array<{
+    delivery_id: string;
+    operation_id: string;
+    correlation_id: string | null;
+    source_instance: string;
+    target_instance: string;
+    kind: string;
+    state: OutboxState;
+    attempt_no: number;
+    created_at: string;
+    updated_at: string;
+    last_error: string | null;
+  }>;
+  const hasMore = rows.length > limit;
+  const visible = rows.slice(0, limit);
+  return {
+    items: visible.map(row => ({
+      delivery_id: row.delivery_id,
+      operation_id: row.operation_id,
+      correlation_id: row.correlation_id,
+      source_instance: row.source_instance,
+      target_instance: row.target_instance,
+      kind: row.kind,
+      state: row.state,
+      attempt_no: row.attempt_no,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      status_summary: statusSummary(row.state),
+      error_summary: safeErrorSummary(row.last_error),
+      safe_to_retry: safeToRetry(row.state),
+    })),
+    next_cursor: hasMore ? visible.at(-1)?.delivery_id ?? null : null,
+  };
+}
+
 /** Durable admission and fenced state transitions for the fleet delivery queue. */
 export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
@@ -196,6 +323,10 @@ export class DeliveryOutbox extends EventEmitter {
         ON deliveries(target_instance, state, created_seq);
       CREATE INDEX IF NOT EXISTS idx_delivery_operation_source
         ON deliveries(source_instance, operation_id);
+      CREATE INDEX IF NOT EXISTS idx_delivery_operation_seq
+        ON deliveries(operation_id, created_seq);
+      CREATE INDEX IF NOT EXISTS idx_delivery_correlation_seq
+        ON deliveries(correlation_id, created_seq);
 
       CREATE TABLE IF NOT EXISTS delivery_attempts (
         delivery_id TEXT NOT NULL REFERENCES deliveries(delivery_id),
@@ -304,6 +435,27 @@ export class DeliveryOutbox extends EventEmitter {
       SELECT * FROM deliveries WHERE source_instance = ? AND operation_id = ? ORDER BY created_seq
     `).all(sourceInstance, operationId) as OutboxRow[];
     return rows.map(mapRow);
+  }
+
+  /**
+   * Query only rows owned by the authenticated instance as source or target.
+   * This method accepts caller identity separately from user arguments so a
+   * caller cannot widen its own visibility with a forged source name.
+   */
+  queryStatusForInstance(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
+    return queryStatusPage(this.db, selector, callerInstance);
+  }
+
+  /** Open the existing outbox without migrations or writes for the operator CLI. */
+  static queryStatusReadOnly(dbPath: string, selector: DeliveryStatusSelector): DeliveryStatusPage {
+    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
+    try {
+      db.pragma("busy_timeout = 1000");
+      db.pragma("query_only = ON");
+      return queryStatusPage(db, selector, null);
+    } finally {
+      db.close();
+    }
   }
 
   listPending(): OutboxDelivery[] {

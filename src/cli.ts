@@ -13,13 +13,15 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  appendFileSync,
   unlinkSync,
   mkdirSync,
+  chmodSync,
   readdirSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { homedir, totalmem, freemem } from "node:os";
+import { homedir, totalmem, freemem, userInfo } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, execSync, execFileSync } from "node:child_process";
 import { getAgendHome, getTmuxSocketName } from "./paths.js";
@@ -42,6 +44,8 @@ import {
 } from "./service-restart-selection.js";
 import { loadRawFleetConfig } from "./config.js";
 import { setLocale, t } from "./locale.js";
+import { DeliveryOutbox, type DeliveryStatusSelector } from "./delivery-outbox.js";
+import { DeliveryStatusArgs } from "./outbound-schemas.js";
 
 /** Prefix tmux args with -L when socket isolation is active. */
 function tmuxArgs(args: string[]): string[] {
@@ -496,6 +500,65 @@ fleet
       }
     } finally {
       evLog.close();
+    }
+  });
+
+const delivery = program.command("delivery").description("Inspect durable cross-instance deliveries");
+delivery
+  .command("show")
+  .description("Read a delivery status (operator access; query is audited locally)")
+  .option("--delivery-id <id>", "Exact delivery ID")
+  .option("--operation-id <id>", "Operation ID returned by an outbound tool")
+  .option("--correlation-id <id>", "Correlation ID (may return multiple rows)")
+  .option("--limit <n>", "Maximum rows (1–100)", "20")
+  .option("--cursor <id>", "Opaque next-page cursor")
+  .action((opts: { deliveryId?: string; operationId?: string; correlationId?: string; limit: string; cursor?: string }) => {
+    const dbPath = join(DATA_DIR, "delivery-outbox.db");
+    if (!existsSync(dbPath)) {
+      console.error("No durable delivery records are available.");
+      process.exitCode = 1;
+      return;
+    }
+    const parsed = DeliveryStatusArgs.safeParse({
+      ...(opts.deliveryId ? { delivery_id: opts.deliveryId } : {}),
+      ...(opts.operationId ? { operation_id: opts.operationId } : {}),
+      ...(opts.correlationId ? { correlation_id: opts.correlationId } : {}),
+      limit: Number(opts.limit),
+      ...(opts.cursor ? { cursor: opts.cursor } : {}),
+    });
+    if (!parsed.success) {
+      console.error("Specify exactly one of --delivery-id, --operation-id, or --correlation-id; limit must be 1–100.");
+      process.exitCode = 1;
+      return;
+    }
+    const { delivery_id, operation_id, correlation_id, limit, cursor } = parsed.data;
+    const selector: DeliveryStatusSelector = delivery_id
+      ? { deliveryId: delivery_id }
+      : operation_id
+        ? { operationId: operation_id, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) }
+        : { correlationId: correlation_id!, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) };
+    try {
+      const page = DeliveryOutbox.queryStatusReadOnly(dbPath, selector);
+      const auditDir = join(DATA_DIR, "delivery-audit");
+      mkdirSync(auditDir, { recursive: true, mode: 0o700 });
+      chmodSync(auditDir, 0o700);
+      const auditPath = join(auditDir, "queries.jsonl");
+      const operator = (() => { try { return userInfo().username; } catch { return process.env.USER ?? "unknown"; } })();
+      appendFileSync(auditPath, `${JSON.stringify({
+        at: new Date().toISOString(),
+        operator,
+        selector: delivery_id
+          ? { delivery_id }
+          : operation_id
+            ? { operation_id, limit, ...(cursor ? { cursor } : {}) }
+            : { correlation_id, limit, ...(cursor ? { cursor } : {}) },
+        result_count: page.items.length,
+      })}\n`, { encoding: "utf8", mode: 0o600 });
+      chmodSync(auditPath, 0o600);
+      console.log(JSON.stringify(page, null, 2));
+    } catch (err) {
+      console.error(`Could not read delivery status: ${(err as Error).message}`);
+      process.exitCode = 1;
     }
   });
 

@@ -9,6 +9,7 @@ import type { Logger } from "./logger.js";
 import type { RoutingEngine } from "./routing-engine.js";
 import type { InstanceLifecycle, LifecycleCreateArgs } from "./instance-lifecycle.js";
 import type { EventLog } from "./event-log.js";
+import type { DeliveryStatusPage, DeliveryStatusSelector } from "./delivery-outbox.js";
 import type { z } from "zod";
 import { GENERAL_PAUSE_ERROR, isGeneralInstance } from "./general-instance.js";
 import { DEFAULT_MAX_CROSS_INSTANCE_MESSAGE_BYTES, DEFAULT_LIST_INSTANCES_OUTPUT_BUDGET, MAX_INSTANCE_LOG_LINES } from "./config.js";
@@ -35,6 +36,7 @@ import {
   ListTeamsArgs,
   ReplaceInstanceArgs,
   ReportResultArgs,
+  DeliveryStatusArgs,
   RequestInformationArgs,
   RestartInstanceArgs,
   SendToInstanceArgs,
@@ -103,6 +105,8 @@ export interface OutboundContext {
     correlationId: string;
     payload: Record<string, unknown>;
   }): { deliveryId: string; state: string; duplicate: boolean };
+  /** Read-only status query scoped to a server-authenticated source/target. */
+  queryDurableDeliveryStatus?(callerInstance: string, selector: DeliveryStatusSelector): DeliveryStatusPage;
   /** Current Daemon generation for authenticated HTTP/CLI ingress. */
   getDaemonBootId?(instanceName: string): string | undefined;
   /** True for the bounded stop/spawn window of an already planned replacement. */
@@ -1814,9 +1818,43 @@ const listDeployments: Handler = (ctx, rawArgs, respond) => {
   respond(result);
 };
 
+const deliveryStatus: Handler = (ctx, rawArgs, respond, meta) => {
+  const v = validateArgs(DeliveryStatusArgs, rawArgs, "delivery_status");
+  if (!v.ok) { respond(null, v.error); return; }
+  if (!ctx.queryDurableDeliveryStatus) {
+    respond(null, "Delivery status is unavailable");
+    return;
+  }
+  if (typeof meta.instanceName !== "string" || meta.instanceName.length === 0) {
+    // Missing authenticated identity is never an operator query.
+    respond(null, "Delivery not found");
+    return;
+  }
+  const { delivery_id, operation_id, correlation_id, limit, cursor } = v.data;
+  const selector: DeliveryStatusSelector = delivery_id
+    ? { deliveryId: delivery_id }
+    : operation_id
+      ? { operationId: operation_id, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) }
+      : { correlationId: correlation_id!, ...(limit !== undefined ? { limit } : {}), ...(cursor ? { cursor } : {}) };
+  try {
+    // `meta.instanceName` is populated from the owning daemon socket / HTTP
+    // token. Ignore any identity-like argument; the schema is strict as well.
+    const page = ctx.queryDurableDeliveryStatus(meta.instanceName, selector);
+    if (page.items.length === 0) {
+      respond(null, "Delivery not found");
+      return;
+    }
+    respond(page);
+  } catch (err) {
+    ctx.logger.warn({ err, caller: meta.instanceName }, "Delivery status query failed");
+    respond(null, "Delivery status is unavailable");
+  }
+};
+
 // ── Registry ────────────────────────────────────────────────────────────
 
 export const outboundHandlers = new Map<string, Handler>([
+  ["delivery_status", deliveryStatus],
   ["send_to_instance", sendToInstance],
   ["broadcast", broadcast],
   ["list_instances", listInstances],
