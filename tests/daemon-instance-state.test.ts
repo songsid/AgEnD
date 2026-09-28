@@ -7,6 +7,7 @@ import { Daemon, PaneStateMachine, PendingWorkTracker, sanitizePaneTail } from "
 import { HangDetector } from "../src/hang-detector.js";
 import { AntigravityBackend } from "../src/backend/antigravity.js";
 import { CodexBackend } from "../src/backend/codex.js";
+import { MuseBackend } from "../src/backend/muse.js";
 
 describe("PaneStateMachine", () => {
   const timeoutMs = 10 * 60_000;
@@ -682,6 +683,123 @@ describe("Daemon event-driven pane monitor", () => {
       const probes = monitor.tmux.capturePane.mock.calls.length - initialCaptures;
       expect(probes).toBeLessThanOrEqual(6);
       expect(monitor.daemon.getInstanceState()).toBe("working");
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  /**
+   * #958: a real Daemon + MuseBackend under a status-bar redraw flood. Muse
+   * repaints its status bar while idle, so output events never stop and the
+   * plain quiet-debounce can never settle; only the structural idle proof can
+   * open the readiness gate. The idle frame here is the live muse 1.4.0 shape
+   * right after a restart: the input box, then deep blank padding below the
+   * status bar. With the old fixed bottom-8-rows window this stayed `working`
+   * forever and every delivery timed out at phase=readiness.
+   */
+  function makeMuseMonitor(initialPane: string) {
+    const instanceDir = mkdtempSync(join(tmpdir(), "agend-muse-redraw-"));
+    writeFileSync(join(instanceDir, "window-id"), "@muse");
+    let lastOutputAt = 0;
+    const control = Object.assign(new EventEmitter(), {
+      isIdle: vi.fn(() => false),
+      waitUntilIdle: vi.fn(async () => true),
+      getLastOutputAt: vi.fn(() => lastOutputAt),
+      getObservationResetAt: vi.fn(() => 0),
+    });
+    control.on("output:@muse", (event: { at: number }) => { lastOutputAt = event.at; });
+    let pane = initialPane;
+    const tmux = { getWindowId: () => "@muse", capturePane: vi.fn(async () => pane) };
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const daemon = new Daemon("muse-redraw", {
+      working_directory: "/tmp",
+      restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+      context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+      hang_detector: { enabled: true, timeout_minutes: 10, idle_debounce_ms: 2_000 },
+      auto_pause_after: 0,
+      log_level: "silent",
+    } as any, instanceDir, false, new MuseBackend(instanceDir), control as any,
+      { child: () => logger } as any);
+    (daemon as any).tmux = tmux;
+    return {
+      daemon,
+      control,
+      setPane: (next: string) => { pane = next; },
+      redraw: () => control.emit("output:@muse", { paneId: "%muse", windowId: "@muse", at: Date.now() }),
+      close: () => {
+        (daemon as any).stopInstanceStateMonitor();
+        rmSync(instanceDir, { recursive: true, force: true });
+      },
+    };
+  }
+
+  const museSeparator = "─".repeat(120);
+  const museStatus = "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides";
+  const museInputBox = [museSeparator, "❯", museSeparator, museStatus];
+  const museRestartedIdle = ["", "  Muse Code 1.4.0", "", ...museInputBox, ...Array(29).fill("")].join("\n");
+  const museWorking = (seconds: number) => [
+    "  Muse Code 1.4.0",
+    "❯ run the tests",
+    `◇ Thinking (${seconds}s · esc to interrupt)`,
+    ...museInputBox,
+    ...Array(25).fill(""),
+  ].join("\n");
+
+  it("opens the muse readiness gate under a redraw flood on a freshly restarted pane (#958)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeMuseMonitor(museWorking(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(monitor.daemon.getInstanceState()).toBe("working");
+
+      // The turn ends; the status bar keeps repainting every 250ms, so there is
+      // never a quiet window for the debounce path.
+      monitor.setPane(museRestartedIdle);
+      for (let i = 0; i < 12; i++) {
+        monitor.redraw();
+        await vi.advanceTimersByTimeAsync(250);
+      }
+      expect(monitor.daemon.getInstanceState()).toBe("idle");
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@muse")).toBe(true);
+
+      // More cosmetic repaints must not manufacture an idle -> working edge.
+      for (let i = 0; i < 8; i++) {
+        monitor.redraw();
+        await vi.advanceTimersByTimeAsync(250);
+        expect(monitor.daemon.getInstanceState()).toBe("idle");
+      }
+    } finally {
+      monitor.close();
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a working muse pane working under the same redraw flood (#958)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const monitor = makeMuseMonitor(museWorking(1));
+    try {
+      (monitor.daemon as any).startInstanceStateMonitor();
+      await vi.advanceTimersByTimeAsync(0);
+      for (let s = 2; s < 14; s++) {
+        monitor.setPane(museWorking(s));
+        monitor.redraw();
+        await vi.advanceTimersByTimeAsync(250);
+        expect(monitor.daemon.getInstanceState()).toBe("working");
+      }
+      expect((monitor.daemon as any).isPaneIdleForDelivery("@muse")).toBe(false);
+
+      // An old idle input box left above a live working line is not proof.
+      const staleBoxAboveWork = [...museInputBox, "❯ run the tests", "◇ Working (15s · esc to interrupt)", "  streaming tool output…", ...Array(20).fill("")].join("\n");
+      monitor.setPane(staleBoxAboveWork);
+      for (let i = 0; i < 8; i++) {
+        monitor.redraw();
+        await vi.advanceTimersByTimeAsync(250);
+        expect(monitor.daemon.getInstanceState()).toBe("working");
+      }
     } finally {
       monitor.close();
       vi.useRealTimers();
