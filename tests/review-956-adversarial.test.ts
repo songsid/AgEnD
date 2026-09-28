@@ -81,10 +81,16 @@ describe("review #956 adversarial status transitions", () => {
     expect(b.unreact).not.toHaveBeenCalled();
   });
 
-  it("never displays a forgotten terminal success alongside a later failure", async () => {
+  it("❌ → ✅ removes the failure; ✅ → ❌ does not remove ✅ (add-only, #972)", async () => {
+    // #972: only leaving ❌ triggers an unreact. Going from ✅ back to ❌ is
+    // add-only — both ✅ and ❌ remain visible. This is intentional: the spec
+    // says 👀/⏳/✅ stacking is harmless; only ❌ left over after a recovery
+    // is misleading.
     const d = discord(); const { fleet } = makeFleet(d.adapter);
     await status(fleet, "❌"); await status(fleet, "✅"); await status(fleet, "❌");
-    expect(d.visible().size).toBe(1);
+    // After ❌→✅: ❌ removed, ✅ added. After ✅→❌: ✅ stays, ❌ added.
+    expect([...d.visible()]).toContain("✅");
+    expect([...d.visible()]).toContain("❌");
   });
 
   it("can replace a failure after its tracking entry was evicted", async () => {
@@ -95,7 +101,10 @@ describe("review #956 adversarial status transitions", () => {
     expect([...d.visible("chat", "old")]).toEqual(["✅"]);
   });
 
-  it("removes the actual inbound acknowledgement when wake fails", async () => {
+  it("shows both 👀 and ❌ when wake fails — add-only except ❌ removal (#972)", async () => {
+    // #972: 👀 → ❌ is add-only (prev !== ❌), so both reactions remain
+    // visible after a wake failure. The ❌ clearly signals failure; the
+    // earlier 👀 stacking alongside it is harmless per the spec.
     const d = discord(); const { fleet, dir } = makeFleet(d.adapter);
     fleet.fleetConfig = { defaults: {}, instances: { inst: { working_directory: dir, topic_id: "chat" } } } as any;
     vi.spyOn(fleet, "getAdapterForInstance").mockReturnValue(d.adapter);
@@ -112,7 +121,9 @@ describe("review #956 adversarial status transitions", () => {
     });
     await flush();
     expect(d.react.mock.calls.map(c => c[2])).toEqual(["👀", "❌"]);
-    expect([...d.visible()]).toEqual(["❌"]);
+    // Both 👀 and ❌ visible — add-only for 👀→❌ transition.
+    expect([...d.visible()]).toContain("👀");
+    expect([...d.visible()]).toContain("❌");
   });
 
   it("retains unrelated Discord reactions during a status replacement (control)", async () => {

@@ -10,10 +10,13 @@ import type { ChannelAdapter } from "../src/channel/types.js";
 /**
  * #868: a delivery-status ❌ used to stick forever — react() only adds, so a
  * later ✅ landed next to it instead of replacing it. The status path now
- * reconciles: every update removes the other group members (👀/⏳/✅/❌)
- * before adding the new one, serialised per bot+message so a delayed ❌ can
- * never land after a newer ✅. Telegram uses the supported 👀/👎 status pair,
- * addressed at the supergroup with the thread separate.
+ * reconciles: only ❌ is removed before adding the new state, serialised per
+ * bot+message so a delayed ❌ can never land after a newer ✅.
+ *
+ * #972: other status transitions (👀→⏳, ⏳→✅) are add-only — no unreact,
+ * one API call per step instead of two. 👀/⏳/✅ stacking together is harmless.
+ * Telegram uses the supported 👀/👎 status pair, addressed at the supergroup
+ * with the thread separate.
  */
 
 const dirs: string[] = [];
@@ -50,6 +53,48 @@ describe("delivery-status reaction replaces the previous status", () => {
     expect(unreact.mock.invocationCallOrder[0]).toBeLessThan(react.mock.invocationCallOrder[1]);
   });
 
+  // #972: happy-path add-only — no unreact for non-❌ transitions.
+  // Mutation guard: if the condition is reverted to `prev && prev !== emoji`
+  // (unconditional unreact), unreact would be called for 👀→⏳→✅, making
+  // this test fail.
+  it("discord: 👀 → ⏳ → ✅ happy path uses add-only — no unreact calls (#972)", async () => {
+    const { adapter, react, unreact } = stubAdapter("discord");
+    const fleet = makeFleet(adapter);
+
+    fleet.reactMessageStatus("inst", "chat", "msg", "👀");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "👀", undefined));
+    fleet.reactMessageStatus("inst", "chat", "msg", "⏳");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "⏳", undefined));
+    fleet.reactMessageStatus("inst", "chat", "msg", "✅");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg", "✅", undefined));
+
+    // Three adds, zero removes — each step is a single API call.
+    expect(react).toHaveBeenCalledTimes(3);
+    expect(unreact).not.toHaveBeenCalled();
+  });
+
+  // #868 core preserved: ❌ is removed when leaving failed state.
+  // Mutation guard: if the condition is changed to skip unreact for ❌
+  // (e.g., `prev === "never"` or `false`), this test fails — ❌ would
+  // stick alongside ✅, which is the original #868 bug.
+  it("discord: ❌ is removed when followed by ✅ — #868 core preserved (#972)", async () => {
+    const { adapter, react, unreact } = stubAdapter("discord");
+    const fleet = makeFleet(adapter);
+
+    fleet.reactMessageStatus("inst", "chat", "msg2", "👀");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "👀", undefined));
+    fleet.reactMessageStatus("inst", "chat", "msg2", "❌");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "❌", undefined));
+    fleet.reactMessageStatus("inst", "chat", "msg2", "✅");
+    await vi.waitFor(() => expect(react).toHaveBeenCalledWith("chat", "msg2", "✅", undefined));
+
+    // ❌ must be unreacted exactly once (when transitioning away from it).
+    expect(unreact).toHaveBeenCalledTimes(1);
+    expect(unreact).toHaveBeenCalledWith("chat", "msg2", "❌", undefined);
+    // Non-❌ states (👀) must NOT be unreacted.
+    expect(unreact).not.toHaveBeenCalledWith("chat", "msg2", "👀", undefined);
+  });
+
   it("addresses discord topics at the thread, keyed across the folded id", async () => {
     const { adapter, react, unreact } = stubAdapter("discord");
     const fleet = makeFleet(adapter);
@@ -59,8 +104,8 @@ describe("delivery-status reaction replaces the previous status", () => {
     fleet.reactMessageStatus("inst", "guild", "msg", "✅", "topic-9");
     await vi.waitFor(() => expect(react).toHaveBeenCalledWith("topic-9", "msg", "✅", "topic-9"));
 
-    // The earlier 👀 is found and cleared at the same folded address.
-    expect(unreact).toHaveBeenCalledWith("topic-9", "msg", "👀", "topic-9");
+    // #972: 👀 → ✅ is add-only — no unreact call for non-❌ transitions.
+    expect(unreact).not.toHaveBeenCalled();
   });
 
   it("telegram: central status mapping uses 👀 for progress/success and 👎 for failure", async () => {
