@@ -64,13 +64,13 @@ export class Scheduler {
       try {
         if (!schedule.cron) continue;
         const cron = new Cron(schedule.cron, { timezone: schedule.timezone });
-        // Match the live callback's latest scheduled occurrence. Selecting
-        // only nextRun(last_triggered_at) can disagree with a delayed live
-        // callback that already admitted a later occurrence before crashing.
-        const scheduled = this.cronRunAtOrBefore(cron, new Date(now));
+        // Catch up only the first missed occurrence after the last recorded
+        // run. Choosing the latest occurrence would replay stale channel work
+        // after a long shutdown.
+        const scheduled = cron.nextRun(new Date(refMs));
         if (!scheduled) continue;
         const scheduledMs = scheduled.getTime();
-        if (scheduledMs <= refMs) continue; // no missed occurrence since last run/create
+        if (scheduledMs > now) continue;     // not yet due
         if (scheduledMs < cutoff) continue;  // too old, don't spam
         if (this.executing.has(schedule.id)) continue;
         // The expected fire time stays stable if the process dies after outbox

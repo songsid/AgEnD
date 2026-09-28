@@ -92,9 +92,8 @@ describe("Scheduler — catch-up on init", () => {
     const s = createSchedule("* * * * *");
     const lastTriggered = new Date(Date.now() - 5 * 60 * 1000);
     setLastTriggered(dbPath, s.id, lastTriggered.toISOString());
-    const boundary = Math.floor(Date.now() / 1_000) * 1_000 + 1_000;
     const expected = new Cron(s.cron!, { timezone: s.timezone })
-      .previousRuns(1, new Date(boundary))[0]!.toISOString();
+      .nextRun(lastTriggered)!.toISOString();
 
     scheduler = makeScheduler();
     scheduler.init();
@@ -142,12 +141,36 @@ describe("Scheduler — catch-up on init", () => {
     expect(catchUpRunIds).toEqual(liveRunIds);
   });
 
+  it.each([0, 50])("uses the scheduled run id for an on-time live cron fire at +%ims", async (offsetMs) => {
+    vi.useFakeTimers();
+    const before = new Date("2026-09-29T12:00:59.000Z");
+    const scheduled = new Date("2026-09-29T12:01:00.000Z");
+    vi.setSystemTime(before);
+    const liveRunIds: string[] = [];
+    const live = new Scheduler(dbPath, (_s, runId) => { liveRunIds.push(runId); },
+      DEFAULT_SCHEDULER_CONFIG, () => true);
+    scheduler = live;
+    const schedule = live.create({
+      cron: "* * * * *",
+      message: "silent command",
+      source: "test",
+      target: "general",
+      reply_chat_id: "chat-1",
+      reply_thread_id: null,
+      timezone: "UTC",
+      silent: true,
+    });
+
+    vi.setSystemTime(new Date(scheduled.getTime() + offsetMs));
+    await (live as any).jobs.get(schedule.id).trigger();
+
+    expect(liveRunIds).toEqual([scheduled.toISOString()]);
+  });
+
   it("does NOT fire if the missed run is older than the 24h catch-up window", () => {
-    const s = createSchedule("0 9 1 1 *"); // annual; last occurrence is far outside 24h
-    const latest = new Cron(s.cron!, { timezone: s.timezone })
-      .previousRuns(1, new Date(Math.floor(Date.now() / 1_000) * 1_000 + 1_000))[0]!;
-    const beforeLatest = new Date(latest.getTime() - 400 * 24 * 60 * 60 * 1_000).toISOString();
-    setLastTriggered(dbPath, s.id, beforeLatest);
+    const s = createSchedule("0 9 * * *"); // 9am daily
+    // Last fire was 3 days ago → next expected run is older than 24h.
+    setLastTriggered(dbPath, s.id, new Date(Date.now() - 3 * 24 * 60 * 60 * 1_000).toISOString());
 
     scheduler = makeScheduler();
     scheduler.init();

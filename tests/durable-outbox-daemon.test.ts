@@ -180,12 +180,18 @@ describe("durable delivery through a real Daemon", () => {
       getBottomReadyPattern: () => /^❯$/m,
       dropsEnterWhileBusy: () => true,
     }, "ready" as const],
+    ["Claude Code without a pane-ready pattern", {
+      binaryName: "claude",
+    }, "ready" as const],
   ])("raw_paste sends only one paste and Enter on %s", async (_label, backend, readiness) => {
     vi.useFakeTimers();
     const h = makeHarness(makeRawControlClient());
     const daemon = prepareRawControlDelivery(h, backend as Record<string, unknown>, readiness);
     if ((backend as any).dropsEnterWhileBusy) {
       vi.spyOn(daemon, "confirmSubmittedAfterEnter").mockResolvedValue(false);
+    }
+    if (!(backend as any).getBottomReadyPattern) {
+      vi.spyOn(daemon, "confirmBusyAfterEnter").mockResolvedValue(false);
     }
 
     daemon.queueRawPaste("/compact", daemon.deliveryEpoch, false, {
