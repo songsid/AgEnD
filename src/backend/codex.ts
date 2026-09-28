@@ -43,6 +43,9 @@ const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
  * #913 introduced it, but #914's pane/ready detection is built on it, and it
  * is pane parsing, not session handling.
  */
+/** A status-line Context item, whole (`Context 46% left`) or truncated by a narrow pane (`Context 4…`, `Context …`). */
+const CODEX_CONTEXT_ITEM = String.raw`Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)`;
+
 function isCodexContextFooter(row: string): boolean {
   const context = String.raw`Context\s+\d+%\s+(?:left|used)`;
   const legacy = new RegExp(String.raw`^\s*${context}(?:\s+⚠\s+\d+\s+warnings?\b[^\r\n]*)?(?:\s+·\s+\S[^\r\n]*)?\s*$`, "i");
@@ -50,7 +53,15 @@ function isCodexContextFooter(row: string): boolean {
   // A narrow Codex 0.156 pane may truncate the context item after the
   // authoritative first `session-id` item. Keep structural readiness while
   // /ctx honestly reports context unavailable from a truncated percentage.
-  return /^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row);
+  if (/^\s*[0-9a-f-]{36}\s+·\s+Context\b[^\r\n]*$/i.test(row)) return true;
+  // #978: status_line keeps the user's item order, so Context can be any
+  // ` · `-joined segment (`gpt-5.6-sol medium · Context 46% left · ~/x`).
+  // The footer is indented chrome; a bullet, prompt or warning glyph in front
+  // is transcript or live status, never the footer.
+  return new RegExp(
+    String.raw`^[ \t]+[^\s•›>■⚠◦][^\r\n]*?[ \t]+·[ \t]+${CODEX_CONTEXT_ITEM}(?:[ \t]+·[ \t]+\S[^\r\n]*)?[ \t]*$`,
+    "i",
+  ).test(row);
 }
 
 const AGEND_MCP_CLEANUP_LOCK = ".agend-mcp-cleanup.lock";
@@ -1142,7 +1153,8 @@ export class CodexBackend implements CliBackend {
     // U+22C6 is Codex's observed cosmetic starfield; it can be drawn in the
     // prompt, between prompt/footer, and below the footer. A drafted composer
     // is also idle once this same bottom footer proves it owns the screen.
-    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[0-9a-f-]{36}[ \t]+·[ \t]+)?Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
+    // #978: Context may be any ` · ` segment of the footer, not only the first.
+    const contextReady = /(?:^|\n)[>›][ \t⋆]+(?!\d+\.)\S[^\r\n]*\r?\n(?:[ \t⋆]*\r?\n){0,3}[ \t⋆]+(?:[^\s•›>■⚠◦·][^\r\n·]*?[ \t]+·[ \t]+)*Context[ \t]+(?:\d+%[ \t]+(?:left|used)|\d+…|…)[^\r\n]*(?:\r?\n[ \t⋆]*)*$/i;
     const footerPattern = this.configuredStatusLineFooterPattern();
     if (!footerPattern) return contextReady;
 
@@ -1199,6 +1211,19 @@ export class CodexBackend implements CliBackend {
     if (!pattern) return false;
     pattern.lastIndex = 0;
     return pattern.test(row);
+  }
+
+  /**
+   * #978 escape hatch: the live, EMPTY Codex composer within the last few
+   * non-blank rows, no busy marker, and none of the known selection screens.
+   * Deliberately says nothing about the footer, which is what is unknown.
+   */
+  isStableUnknownLayoutIdlePane(pane: string): boolean {
+    if (this.getBusyPattern().test(pane)) return false;
+    if (codexUsageLimitMenuVisible(pane) || codexRateSwitchVisible(pane)
+      || codexUnknownSelectionVisible(pane) || codexUpdatePickerVisible(pane)) return false;
+    const rows = pane.replace(/\r/g, "").split("\n").filter(row => row.trim() !== "");
+    return rows.slice(-6).some(row => /^[>›][ \t⋆]*Ask Codex to do anything[ \t⋆]*$/.test(row));
   }
 
   private isCodexIdleFooter(row: string): boolean {

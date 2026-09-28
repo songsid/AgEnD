@@ -363,6 +363,16 @@ export interface CliBackend {
    */
   isPeriodicRedrawIdlePane?(pane: string): boolean;
 
+  /**
+   * Escape hatch for a footer layout the structural proof does not know
+   * (#978): true only for the backend's own live, empty composer with no busy
+   * marker and no dialog on screen. The daemon uses it solely after the pane
+   * content has stayed identical for a while, so an unrecognised footer can
+   * no longer pin the instance in `working` forever. Must stay stricter than
+   * any ready pattern: false positives admit a delivery into a busy CLI.
+   */
+  isStableUnknownLayoutIdlePane?(pane: string): boolean;
+
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
 
