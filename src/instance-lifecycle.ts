@@ -25,6 +25,7 @@ import type { SpawnGate } from "./spawn-gate.js";
 import type { StormWindow } from "./storm-window.js";
 import type { BackendOutageTracker } from "./backend-outage.js";
 import { assertExplicitInstanceRemoval, authorizeExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
+import type { DeliveryOutbox } from "./delivery-outbox.js";
 
 export { isFleetStartCommandLine } from "./fleet-lock.js";
 
@@ -116,6 +117,8 @@ export interface LifecycleContext {
   readonly stormWindow?: StormWindow;
   /** Fleet-level backend reachability memory (see backend-outage.ts). */
   readonly backendOutage?: BackendOutageTracker;
+  /** Same-process durable delivery store, shared directly with each Daemon. */
+  readonly deliveryOutbox?: DeliveryOutbox | null;
 
   getInstanceDir(name: string): string;
   /** Fleet-level (General topic) notification, throttled per message text. */
@@ -166,6 +169,8 @@ export interface LifecycleContext {
   checkModelFailover(name: string, fiveHourPct: number): void;
   /** Retire (delete) any pending Cancel button for an instance. No-op if none. */
   clearCancelButton(name: string): void;
+  /** Called after a replacement Daemon object is live, for generation fencing and post-resume notices. */
+  onDaemonReady?(name: string, daemonBootId: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
   verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
   /** Test/integration seam for the non-LLM Claude quota second opinion. */
@@ -1166,6 +1171,15 @@ export class InstanceLifecycle {
       this.ctx.stormWindow,
       this.ctx.backendOutage,
     );
+    daemon.setDeliveryOutboxPort(this.ctx.deliveryOutbox ?? undefined);
+    daemon.on("mcp_tool_response_written", (data: { operationId?: string; daemonBootId?: string }) => {
+      if (!data.operationId || data.daemonBootId !== daemon.bootId) return;
+      try {
+        this.ctx.deliveryOutbox?.markResponseDelivered(name, data.operationId);
+      } catch (err) {
+        this.ctx.logger.error({ name, operationId: data.operationId, err }, "Could not persist MCP response-delivered marker");
+      }
+    });
     this.applyCapacityBackoffBaseline(name, backendName, daemon);
     // Catch errors from daemon internals (e.g. IPC server) to prevent crashing the fleet process
     daemon.on("error", (err: Error) => {
@@ -1174,6 +1188,13 @@ export class InstanceLifecycle {
     await InstanceLifecycle.startOrDispose(daemon, name, this.ctx.logger);
     this.capacityBackoffBaselines.delete(name);
     this.daemons.set(name, daemon);
+    if (this.ctx.deliveryOutbox) {
+      const recovered = this.ctx.deliveryOutbox.recoverTargetGeneration(name, daemon.bootId);
+      if (recovered.queued || recovered.uncertain) {
+        this.ctx.logger.warn({ name, ...recovered }, "Reconciled outbox rows after target daemon generation changed");
+      }
+    }
+    this.ctx.onDaemonReady?.(name, daemon.bootId);
 
 
     daemon.on("auto_pause_requested", safeHandler(async () => {

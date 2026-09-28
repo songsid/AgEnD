@@ -1,6 +1,6 @@
 # #929 Durable Outbox 設計
 
-**狀態：設計稿，尚未實作。**
+**狀態：設計已核准；Phase 1（store、cross-instance admission、dispatcher）實作完成，review pending。**
 **設計基準：** `origin/main` `da83161e369c9312f3e4772a5457c50c3f5d43a2`；FleetManager 與 instance daemon 由同一個 AgEnD Node process 管理。
 **範圍：** #926、#927 與 FleetManager 接受的 agent-directed delivery；不包含本文件明列的 non-durable `raw_paste`。
 
@@ -244,3 +244,19 @@ Unit tests 可覆蓋 deterministic state transitions，但不得代替上列 pro
 5. WAL/NORMAL 保障 process crash durability；OS crash/斷電的最近 commit 風險明列，是否 admission 使用 FULL 由壓測/產品保證拍板。
 6. DB failure fail-closed；30-instance 壓測後定 max age、worker concurrency、容量和 retention。
 7. Marker 固定為 `[agend-delivery-id:<lowercase-uuid>]`、僅在 user entry 開頭匹配並寫進 agent instructions；`delivery_status` 只對 source/target instance 開放。
+
+## 分階段交付界線
+
+### Phase 1：durable cross-instance admission + dispatcher
+
+本階段接上 `send_to_instance`、`delegate_task`、`request_information`、`report_result` 與 `broadcast` recipient rows：MCP child 先產生 `operation_id`；FleetManager 在回覆 queued 前 commit SQLite row；replacement FleetManager 會恢復已 commit 的 queued work；dispatcher 依 per-target FIFO 投遞；target Daemon 在 pane side effect 前同步 `delivery_begin`，再以 positive submission proof 持久化 delivered/failed；安全的 write 前中止以 `delivery_abort` 回到 retry queue，idle-gate/cancel 在 target IPC handoff 前取消也會轉回有界 retry。成功寫回 MCP socket 時記錄 `response_delivered_at`，source Daemon generation 重建後會 admission 一次性 outcome notice。delivery marker 與勿引用指示隨 envelope 傳遞。
+
+Phase 1 對 crash 發生在 `submission_started` 之後採 **uncertain + 不盲重送**；Claude/Codex transcript 與 pre-kill capture reconciliation（mutation 19–22）留在下一階段。只接已列出的跨 instance MCP 工具；一般 channel inbound、web/API、schedule trigger、`raw_paste`、delivery status query、持久 failure-notice/outbox projection 與完整平台 reaction projection 尚未宣稱 durable，需後續階段逐一接線。store/retry/attempt 的狀態仍可供內部觀測，但本階段不向 MCP 宣稱 exactly-once 或跨來源去重。
+
+### Phase 2：evidence reconciliation
+
+加入 marker 的 Claude JSONL/Codex rollout 精確 user-entry 查找及 pre-kill pane 三態證據；嚴格執行 capture → killWindow → 確認舊 CLI 結束 → transcript read 次序。Kiro、Antigravity、Muse 使用 backend capability map 的 pane-only/uncertain 降級。此階段必須先補 mutation 20–22 並跑整 process crash matrix，才允許把 uncertain 改判為 replay-safe 或 delivered。
+
+### Phase 3：status / failure surfaces 與其他 ingress
+
+加入授權後的 `delivery_status`、一般 inbound/web/schedule admission、durable terminal failure notice、row-driven status reaction、容量/retention/TTL 及 30-target 壓測；每種 ingress 先證明 ack/offset 的 durable commit 順序。TTL 到期必須 fence worker 並轉 visible failed，不能 wall-clock 偷回 lease。

@@ -15,9 +15,11 @@ import {
   CallToolRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { basename, dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
+import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-response.js";
 import { buildMcpCoreInstructions } from "../instructions.js";
 import { reconnectDelayMs } from "./reconnect-backoff.js";
 import { mcpTimeoutMs } from "./ipc-timeouts.js";
@@ -77,6 +79,14 @@ const pendingRequests = new Map<
   number,
   { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }
 >();
+
+const DURABLE_OPERATION_TOOLS = new Set([
+  "send_to_instance",
+  "broadcast",
+  "report_result",
+  "delegate_task",
+  "request_information",
+]);
 
 function setupIpcListeners(client: IpcClient): void {
   client.on("message", (msg: Record<string, unknown>) => {
@@ -175,6 +185,7 @@ function scheduleReconnect(): void {
 function ipcRequest(
   tool: string,
   args: Record<string, unknown>,
+  operationId?: string,
 ): Promise<unknown> {
   return new Promise((resolve, reject) => {
     if (!ipcConnected || !ipc) {
@@ -192,7 +203,7 @@ function ipcRequest(
     pendingRequests.set(requestId, { resolve, reject, timer });
 
     try {
-      if (!ipc.send({ type: "tool_call", tool, args, requestId })) {
+      if (!ipc.send({ type: "tool_call", tool, args, requestId, operationId })) {
         throw new Error("IPC socket closed before the tool call was written");
       }
     } catch (err) {
@@ -268,19 +279,24 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: activeTools 
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
   const args = (req.params.arguments ?? {}) as Record<string, unknown>;
+  // This process is the MCP caller's child and survives FleetManager/Daemon
+  // IPC round-trips long enough to return the same key on timeout/error.
+  const operationId = DURABLE_OPERATION_TOOLS.has(req.params.name) ? randomUUID() : undefined;
 
   try {
-    const result = await ipcRequest(req.params.name, args);
+    const result = await ipcRequest(req.params.name, args, operationId);
     if (result === undefined) {
       throw new Error(`Daemon returned no result for ${req.params.name}`);
     }
-    const text =
-      typeof result === "string" ? result : JSON.stringify(result);
+    const text = operationId
+      ? encodeOperationSuccess(result, operationId)
+      : typeof result === "string" ? result : JSON.stringify(result);
     return { content: [{ type: "text", text }] };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const outcome = operationId ? encodeOperationError(message, operationId) : `Error: ${message}`;
     return {
-      content: [{ type: "text", text: `Error: ${message}` }],
+      content: [{ type: "text", text: outcome }],
       isError: true,
     };
   }

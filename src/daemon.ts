@@ -2,7 +2,7 @@ import { join, dirname, basename, resolve } from "node:path";
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync, rmSync, appendFileSync, statSync, chmodSync, renameSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { InstanceConfig, RotationSnapshot, RotationSnapshotEvent } from "./types.js";
 import { rotateLogIfNeeded, type Logger } from "./logger.js";
@@ -42,12 +42,13 @@ import type { BackendOutageView } from "./backend-outage.js";
 import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./turn-reply-guard.js";
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
+import type { DaemonDeliveryPort } from "./delivery-outbox.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Tool routing sets — module-level to avoid re-creation on every handleToolCall
-const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "describe_instance"]);
+const CROSS_INSTANCE_TOOLS = new Set(["send_to_instance", "broadcast", "list_instances", "start_instance", "restart_instance", "create_instance", "delete_instance", "replace_instance", "request_information", "delegate_task", "report_result", "describe_instance"]);
 const SCHEDULE_TOOLS = new Set(["create_schedule", "list_schedules", "update_schedule", "delete_schedule"]);
 const DECISION_TOOLS = new Set(["post_decision", "list_decisions", "update_decision"]);
 const TASK_TOOL = "task";
@@ -601,7 +602,7 @@ const INPUT_TRANSIENT_POLL_MS = 250;
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 
 /** One delivery's answer to "did this reach a verdict?". Created per call, never shared. */
-type DeliveryVerdict = { reached: boolean; phase?: string; proof?: string };
+type DeliveryVerdict = { reached: boolean; phase?: string; proof?: string; paneWriteStarted?: boolean };
 
 /**
  * Where a delivery-status reaction belongs. chatId is ALWAYS the platform
@@ -1067,6 +1068,9 @@ export class BlockingProcessDetector {
 }
 
 export class Daemon extends EventEmitter {
+  /** Identity of this live Daemon object; changes on object stop/restart. */
+  readonly bootId = randomUUID();
+  private deliveryOutbox?: DaemonDeliveryPort;
   private logger: Logger;
   private tmuxSessionName: string;
   private tmux: TmuxManager | null = null;
@@ -1479,6 +1483,57 @@ export class Daemon extends EventEmitter {
     );
   }
 
+  /** FleetManager and this daemon share a process, so durable begin/ACK is a direct synchronous store call. */
+  setDeliveryOutboxPort(port: DaemonDeliveryPort | undefined): void {
+    this.deliveryOutbox = port;
+  }
+
+  private beginDurableDelivery(meta: Record<string, string>): false | null | { deliveryId: string; attemptNo: number } {
+    const deliveryId = meta.delivery_id;
+    if (!deliveryId) return null;
+    const attemptNo = Number(meta.delivery_attempt);
+    if (!Number.isSafeInteger(attemptNo) || attemptNo < 1 || !this.deliveryOutbox) return false;
+    const outcome = this.deliveryOutbox.begin(deliveryId, this.bootId, attemptNo);
+    // A repeated begin is idempotent at the store but must not authorize a
+    // second pane write. Only the first caller that acquired the permit acts.
+    return outcome === "begun" ? { deliveryId, attemptNo } : false;
+  }
+
+  private abortDurableDelivery(delivery: { deliveryId: string; attemptNo: number } | null, reason: string): void {
+    if (!delivery) return;
+    this.deliveryOutbox?.abort(delivery.deliveryId, this.bootId, delivery.attemptNo, reason);
+  }
+
+  private finishDurableDelivery(
+    delivery: { deliveryId: string; attemptNo: number } | null,
+    outcome: "delivered" | "failed" | "uncertain",
+    evidence?: string,
+  ): void {
+    if (!delivery) return;
+    this.deliveryOutbox?.complete(delivery.deliveryId, this.bootId, delivery.attemptNo, outcome, evidence);
+  }
+
+  private finishDurableSubmission(
+    delivery: { deliveryId: string; attemptNo: number } | null,
+    verdict: DeliveryVerdict,
+  ): void {
+    // Legacy backends may accept a pane write without enough pane evidence to
+    // claim submission. Keep that row inspectable instead of recording a false
+    // delivered state; reconciliation can classify it in a later phase.
+    if (verdict.proof === "unverified") {
+      this.finishDurableDelivery(delivery, "uncertain", `${verdict.phase ?? "submission"}:unverified`);
+      return;
+    }
+    this.finishDurableDelivery(delivery, "delivered", "positive submission proof");
+  }
+
+  private deferDurableDelivery(meta: Record<string, string>, reason: string): void {
+    const deliveryId = meta.delivery_id;
+    const attemptNo = Number(meta.delivery_attempt);
+    if (!deliveryId || !Number.isSafeInteger(attemptNo) || attemptNo < 1 || !this.deliveryOutbox) return;
+    this.deliveryOutbox.retryBeforeBegin(deliveryId, this.bootId, attemptNo, reason, 5_000);
+  }
+
   async start(): Promise<void> {
     mkdirSync(this.instanceDir, { recursive: true });
     writeFileSync(join(this.instanceDir, "daemon.pid"), String(process.pid));
@@ -1574,6 +1629,7 @@ export class Daemon extends EventEmitter {
         void this.wake().then(() => {
           this.pushChannelMessage(msg.content as string, meta, targetSession, deliveryEpoch);
         }).catch(err => {
+          this.deferDurableDelivery(meta, `target wake failed before pane submission: ${(err as Error).message}`);
           this.logger.error({ err: (err as Error).message }, "Wake failed for inbound delivery");
         });
       } else if (msg.type === "raw_paste") {
@@ -4396,6 +4452,9 @@ export class Daemon extends EventEmitter {
     if (meta.reply_to_text) {
       formatted += `\n(reply_to: "${meta.reply_to_text}")`;
     }
+    if (meta.delivery_id) {
+      formatted = `[agend-delivery-id:${meta.delivery_id}]\n${formatted}`;
+    }
     return formatted;
   }
 
@@ -4460,7 +4519,10 @@ export class Daemon extends EventEmitter {
    * normal inbound message, with a steering notice prepended for context.
    */
   steerMessage(content: string, meta: Record<string, string>, deliveryEpoch = this.deliveryEpoch): void {
-    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+    if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+      this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+      return;
+    }
     // The fleet facade prevents a steer from overtaking an item still in its
     // idle queue. Close the second race window here: an earlier item may already
     // have reached this daemon's paste queue by the time the steer IPC arrives.
@@ -4478,19 +4540,39 @@ export class Daemon extends EventEmitter {
     const status = channelStatus(meta);
 
     this.steerLock = this.steerLock.then(async () => {
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed before steer began");
+        return;
+      }
       await this.wake();
-      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) return;
+      if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
+        this.deferDurableDelivery(meta, "delivery epoch changed while waking for steer");
+        return;
+      }
+      const durable = this.beginDurableDelivery(meta);
+      if (durable === false) return;
       const verdict: DeliveryVerdict = { reached: false };
-      if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id, verdict })) {
-        this.markTurnStarted(meta, formatted);
-      } else if (verdict.reached && this.isDeliveryEpochCurrent(deliveryEpoch)) {
-        // Same rule as the queued path: a steer that never got to try is not a
-        // delivery failure. This holder is the steer's own, which is the point
-        // — it runs on steerLock while a queued delivery runs on pasteLock.
-        this.reportCrossInstanceDeliveryFailure(meta, verdict);
+      try {
+        if (await this.deliverMessage(formatted, status, { steer: true, deliveryEpoch, submissionId: meta.message_id, verdict })) {
+          this.finishDurableSubmission(durable, verdict);
+          this.markTurnStarted(meta, formatted);
+        } else if (verdict.reached && this.isDeliveryEpochCurrent(deliveryEpoch)) {
+          this.finishDurableDelivery(durable, "failed", `${verdict.phase ?? "delivery"}:${verdict.proof ?? "failed"}`);
+          // Same rule as the queued path: a steer that never got to try is not a
+          // delivery failure. This holder is the steer's own, which is the point
+          // — it runs on steerLock while a queued delivery runs on pasteLock.
+          this.reportCrossInstanceDeliveryFailure(meta, verdict);
+        } else if (verdict.paneWriteStarted) {
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+        } else {
+          this.abortDurableDelivery(durable, "steer did not reach pane submission");
+        }
+      } catch (err) {
+        this.finishDurableDelivery(durable, "uncertain", (err as Error).message);
+        throw err;
       }
     }).catch(err => {
+      this.deferDurableDelivery(meta, `target wake/steer failed before pane submission: ${(err as Error).message}`);
       this.logger.warn({ err: (err as Error).message }, "steer delivery error");
       if (this.isDeliveryEpochCurrent(deliveryEpoch)) {
         this.reportCrossInstanceDeliveryFailure(meta, undefined, (err as Error).message);
@@ -4539,10 +4621,12 @@ export class Daemon extends EventEmitter {
   ): void {
     if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
       this.logger.info("Pending channel delivery dropped by user cancel");
+      this.deferDurableDelivery(meta, "delivery epoch changed before queue admission");
       return;
     }
     if (!this.tmux) {
       this.logger.warn("Cannot push channel message: tmux not running");
+      this.deferDurableDelivery(meta, "target tmux is unavailable");
       return;
     }
     // Remember (and persist) the reply target. Only real channel messages have a
@@ -4600,9 +4684,11 @@ export class Daemon extends EventEmitter {
       if (queuedStatus) this.emit("message_queued", queuedStatus);
     }
     this.pasteLock = this.pasteLock.then(async () => {
+      let durable: { deliveryId: string; attemptNo: number } | null = null;
       try {
         if (!this.isDeliveryEpochCurrent(deliveryEpoch)) {
           this.logger.info("Pending channel delivery dropped by user cancel");
+          this.deferDurableDelivery(meta, "delivery epoch changed while queued");
           return;
         }
         if (this.config.pre_task_command) {
@@ -4623,7 +4709,11 @@ export class Daemon extends EventEmitter {
         // the previous turn's tool list.
         this.resetToolProgress();
         const verdict: DeliveryVerdict = { reached: false };
+        const begin = this.beginDurableDelivery(meta);
+        if (begin === false) return;
+        durable = begin;
         if (await this.deliverMessage(formatted, status, { deliveryEpoch, submissionId: meta.message_id, verdict })) {
+          this.finishDurableSubmission(durable, verdict);
           this.markTurnStarted(meta, formatted);
         } else if (meta.from_instance && verdict.reached
           && this.isDeliveryEpochCurrent(deliveryEpoch)) {
@@ -4631,8 +4721,18 @@ export class Daemon extends EventEmitter {
           // not ready yet, a cancel, a storm hold or a shutdown all return
           // false without one, and telling the sender its message was lost
           // there would be the false ❌ of #826 in its other form.
+          this.finishDurableDelivery(durable, "failed", `${verdict.phase ?? "delivery"}:${verdict.proof ?? "failed"}`);
           this.reportCrossInstanceDeliveryFailure(meta, verdict);
+        } else if (verdict.reached) {
+          this.finishDurableDelivery(durable, "failed", `${verdict.phase ?? "delivery"}:${verdict.proof ?? "failed"}`);
+        } else if (verdict.paneWriteStarted) {
+          this.finishDurableDelivery(durable, "uncertain", `${verdict.phase ?? "post-submit"}:${verdict.proof ?? "unproven"}`);
+        } else {
+          this.abortDurableDelivery(durable, "delivery did not reach pane submission");
         }
+      } catch (err) {
+        this.finishDurableDelivery(durable, "uncertain", (err as Error).message);
+        throw err;
       } finally {
         this.pasteQueueDepth--;
       }
@@ -5563,6 +5663,10 @@ export class Daemon extends EventEmitter {
         if (attempt < maxAttempts) await new Promise(r => setTimeout(r, 2000));
         continue;
       }
+      // From this point a process/window transition can leave the user payload
+      // in the pane even if later proof is cancelled or unreadable. Such a row
+      // must be uncertain, never aborted back to replayable queued state.
+      verdict.paneWriteStarted = true;
 
       // Settle the bracketed paste, then submit. When control mode can observe
       // the pane, wait for the paste's own render to go quiet instead of
@@ -5647,6 +5751,8 @@ export class Daemon extends EventEmitter {
           // Re-pasting on a backend without structured Codex pane evidence
           // would risk duplication; retain its legacy best-effort behavior.
           this.logger.warn("Paste reached the pane but could not be verified as submitted — accepting without proof");
+          verdict.phase = "best-effort-submission";
+          verdict.proof = "unverified";
           if (status) this.emit("message_confirmed", status); // ✅ (best-effort)
           return true;
         }
@@ -6246,6 +6352,7 @@ export class Daemon extends EventEmitter {
     const tool = msg.tool as string;
     const args = (msg.args ?? {}) as Record<string, unknown>;
     const requestId = msg.requestId as number;
+    const operationId = typeof msg.operationId === "string" ? msg.operationId : undefined;
 
     this.logger.debug({ tool, requestId }, "Tool call from MCP server");
     // A tool call can only come from a live MCP server of ours — proof of life
@@ -6271,9 +6378,11 @@ export class Daemon extends EventEmitter {
       if (!error && result != null && TURN_OUTBOUND_TOOLS.has(tool)) {
         this.turnReplyGuard.settleToolAttempt(replyAttempt, true);
       }
-      const sent = this.ipcServer?.send(socket, { requestId, result, error }) ?? false;
+      const sent = this.ipcServer?.send(socket, { requestId, result, error, operationId }) ?? false;
       if (!sent) {
         this.logger.warn({ tool, requestId }, "Tool result could not be returned — originating MCP socket is closed");
+      } else if (operationId) {
+        this.emit("mcp_tool_response_written", { operationId, daemonBootId: this.bootId });
       }
     };
 
@@ -6407,6 +6516,7 @@ export class Daemon extends EventEmitter {
           type: "fleet_outbound",
           tool,
           args,
+          ...(operationId ? { operationId, sourceDaemonBootId: this.bootId } : {}),
           fleetRequestId: fleetReqId,
           senderSessionName,
         });
@@ -6465,6 +6575,7 @@ export class Daemon extends EventEmitter {
         type: "fleet_outbound",
         tool,
         args,
+        ...(operationId ? { operationId, sourceDaemonBootId: this.bootId } : {}),
         fleetRequestId: fleetReqId,
         // Preserve the exact adapter world that supplied the chat context. An
         // instance binding is only a fallback: persisted/runtime context can be

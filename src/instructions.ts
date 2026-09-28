@@ -87,6 +87,7 @@ export function buildMcpCoreInstructions(params: FleetInstructionsParams): strin
     "## Cross-instance protocol",
     "- `delegate_task` → work silently → `report_result` (echo correlation_id). No ack messages in between.",
     "- Send returns `{ sent, queued }` immediately — the fleet owns delivery. NEVER re-send because a reply said `queued` or an IPC wait timed out.",
+    "- `[agend-delivery-id:<uuid>]` at the start of a message is system metadata; do not quote, rewrite, or repeat it.",
     "- You only have file access under your own working directory; everything cross-instance goes through fleet tools.",
     "",
     "Full fleet guidance (workflow, decisions, collaboration rules) is in your system instructions.",
@@ -151,6 +152,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       "3. Use list_instances to discover available instances before sending messages; follow the response guidance.",
       "4. You only have direct access to files under your own working directory.",
       "5. Task flow: `delegate_task` → silent work → `report_result`. Zero messages in between. Never send ack/confirmation.",
+      "6. `[agend-delivery-id:<uuid>]` at the start of a message is system metadata; do not quote, rewrite, or repeat it.",
     ].join("\n"));
   }
 

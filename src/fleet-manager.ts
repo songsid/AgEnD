@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync, rmSync, readdirSync, renameSync, copyFileSync, chmodSync, statSync, type Dirent } from "node:fs";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { freemem, totalmem, cpus } from "node:os";
 import { access } from "node:fs/promises";
@@ -76,6 +76,7 @@ import {
 import { TopicArchiver, type ArchiverContext } from "./topic-archiver.js";
 import { StatuslineWatcher, type StatuslineWatcherContext } from "./statusline-watcher.js";
 import { outboundHandlers, type OutboundContext } from "./outbound-handlers.js";
+import { DeliveryOutbox, type ClaimedOutboxDelivery, type OutboxDelivery } from "./delivery-outbox.js";
 import { handleWebRequest, broadcastSseEvent } from "./web-api.js";
 import { handleViewRequest, isViewPath } from "./view-api.js";
 import { filterUsageProviders, formatDiscordUsageActivity, getUsageSnapshot, handleUsageRequest, isUsagePath, usageProviderIdForBackend } from "./usage/usage-api.js";
@@ -576,6 +577,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly spawnGate: SpawnGate;
   /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
   readonly backendOutage = new BackendOutageTracker();
+  /** Stable for this FleetManager OS-process lifetime; Daemon objects have their own boot IDs. */
+  readonly managerBootId = randomUUID();
+  deliveryOutbox: DeliveryOutbox | null = null;
+  private deliveryOutboxRecovered = false;
+  private deliveryPumpScheduled = false;
+  private deliveryPumpRunning = false;
+  private deliveryPumpTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly activeDurableTargets = new Set<string>();
   /** Live view of lifecycle.daemons — used throughout; not deprecated. */
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
@@ -656,7 +665,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Instances currently being auto-paused by warm_cap, so concurrent checks don't double-evict. */
   private warmCapEvicting = new Set<string>();
   /** Per-instance tail keeps cross-instance and scheduled deliveries FIFO. */
-  private idleGatedDeliveryTails = new Map<string, Promise<void>>();
+  private idleGatedDeliveryTails = new Map<string, Promise<boolean | void>>();
   /**
    * Per-instance cancellation epoch for deliveries which have not reached the
    * daemon yet. A cancel advances the epoch; queued work captures the old value
@@ -852,6 +861,183 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.topicCommands = new TopicCommands(this);
     this.topicArchiver = new TopicArchiver(this);
     this.statuslineWatcher = new StatuslineWatcher(this);
+  }
+
+  private ensureDeliveryOutbox(): void {
+    if (this.deliveryOutbox) return;
+    const outbox = new DeliveryOutbox(join(this.dataDir, "delivery-outbox.db"), this.managerBootId);
+    this.deliveryOutbox = outbox;
+    if (!this.deliveryOutboxRecovered) {
+      const recovered = outbox.recoverForBoot(this.managerBootId);
+      this.logger.info({ ...recovered }, "Recovered durable delivery outbox for this process boot");
+      this.deliveryOutboxRecovered = true;
+    }
+    outbox.on("admitted", () => this.scheduleDeliveryOutboxPump());
+    outbox.on("state", () => this.scheduleDeliveryOutboxPump());
+    outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
+    this.scheduleDeliveryOutboxPump();
+  }
+
+  /** Synchronous SQLite admission; the caller may acknowledge only after this returns. */
+  admitDurableDelivery(input: {
+    operationId: string;
+    sourceDaemonBootId: string;
+    sourceInstance: string;
+    targetInstance: string;
+    targetSession?: string;
+    kind: string;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  }): { deliveryId: string; state: string; duplicate: boolean } {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) throw new Error("Durable delivery store is unavailable");
+    const source = this.daemons.get(input.sourceInstance);
+    if (!source || source.bootId !== input.sourceDaemonBootId) {
+      throw new Error("Source daemon generation is no longer current; outcome is unknown");
+    }
+    const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
+    const admitted = outbox.admit({ ...input, sourceKey });
+    if (admitted.inserted) this.logger.info({
+      deliveryId: admitted.delivery.deliveryId,
+      operationId: input.operationId,
+      source: input.sourceInstance,
+      target: input.targetInstance,
+      kind: input.kind,
+    }, "Durable cross-instance delivery accepted");
+    this.scheduleDeliveryOutboxPump();
+    return {
+      deliveryId: admitted.delivery.deliveryId,
+      state: admitted.delivery.state,
+      duplicate: !admitted.inserted,
+    };
+  }
+
+  /** Called after a replacement Daemon object is installed in lifecycle.daemons. */
+  onDaemonReady(name: string, daemonBootId: string): void {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) return;
+    for (const prior of outbox.getUnansweredAccepted(name, daemonBootId)) {
+      try {
+        outbox.admitPostRestartOutcomeNotice(prior, daemonBootId);
+      } catch (err) {
+        this.logger.error({ err, source: name, operationId: prior.operationId }, "Could not persist post-restart delivery outcome notice");
+      }
+    }
+    this.scheduleDeliveryOutboxPump();
+  }
+
+  private scheduleDeliveryOutboxPump(delayMs = 0): void {
+    if (!this.deliveryOutbox || this.shuttingDown) return;
+    if (this.deliveryPumpTimer) {
+      if (delayMs > 0) return;
+      clearTimeout(this.deliveryPumpTimer);
+      this.deliveryPumpTimer = null;
+    }
+    if (this.deliveryPumpRunning) {
+      this.deliveryPumpScheduled = true;
+      return;
+    }
+    this.deliveryPumpTimer = setTimeout(() => {
+      this.deliveryPumpTimer = null;
+      void this.runDeliveryOutboxPump();
+    }, Math.max(0, delayMs));
+    this.deliveryPumpTimer.unref?.();
+  }
+
+  private async runDeliveryOutboxPump(): Promise<void> {
+    const outbox = this.deliveryOutbox;
+    if (!outbox || this.shuttingDown || this.deliveryPumpRunning) return;
+    this.deliveryPumpRunning = true;
+    this.deliveryPumpScheduled = false;
+    try {
+      while (this.activeDurableTargets.size < 8) {
+        const claimed = outbox.claimNext(
+          this.managerBootId,
+          target => this.isInstanceRestarting(target) ? null : this.daemons.get(target)?.bootId ?? null,
+          this.activeDurableTargets,
+        );
+        if (!claimed) break;
+        this.activeDurableTargets.add(claimed.targetInstance);
+        void this.dispatchDurableDelivery(claimed).finally(() => {
+          this.activeDurableTargets.delete(claimed.targetInstance);
+          this.scheduleDeliveryOutboxPump();
+        });
+      }
+    } catch (err) {
+      this.logger.error({ err }, "Durable delivery dispatcher failed; committed rows remain in SQLite");
+      this.scheduleDeliveryOutboxPump(5_000);
+    } finally {
+      this.deliveryPumpRunning = false;
+      if (this.deliveryPumpScheduled) this.scheduleDeliveryOutboxPump();
+      const nextRetryAt = outbox.nextRetryAt();
+      if (nextRetryAt && !this.deliveryPumpTimer) {
+        this.scheduleDeliveryOutboxPump(Math.max(1, Date.parse(nextRetryAt) - Date.now()));
+      }
+    }
+  }
+
+  private async dispatchDurableDelivery(claimed: ClaimedOutboxDelivery): Promise<void> {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) return;
+    const target = claimed.targetInstance;
+    const attempt = claimed.attemptNo;
+    const payload = { ...claimed.payload };
+    const rawMeta = payload.meta && typeof payload.meta === "object"
+      ? payload.meta as Record<string, unknown>
+      : {};
+    payload.meta = {
+      ...rawMeta,
+      delivery_id: claimed.deliveryId,
+      delivery_attempt: String(claimed.attemptNo),
+      from_instance: typeof rawMeta.from_instance === "string" && rawMeta.from_instance
+        ? rawMeta.from_instance
+        : claimed.sourceInstance,
+      correlation_id: claimed.correlationId ?? String(rawMeta.correlation_id ?? ""),
+    };
+    try {
+      const sent = await this.deliverToInstance(target, payload, {
+        isCrossInstance: true,
+        waitForIdle: claimed.kind !== "steer",
+      });
+      if (!sent) {
+        outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo,
+          "delivery was cancelled before target IPC handoff",
+          Math.min(60_000, 1_000 * 2 ** Math.min(attempt - 1, 6)));
+      }
+    } catch (err) {
+      const latest = outbox.get(claimed.deliveryId);
+      const reason = err instanceof Error ? err.message : String(err);
+      if (latest?.state === "submission_started") {
+        outbox.complete(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, "uncertain", reason);
+      } else {
+        outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, reason,
+          Math.min(60_000, 1_000 * 2 ** Math.min(attempt - 1, 6)));
+      }
+      this.logger.warn({ deliveryId: claimed.deliveryId, target, attempt, err: reason }, "Durable delivery dispatch deferred");
+    }
+    await this.waitForDurableLaneRelease(claimed.deliveryId);
+  }
+
+  private async waitForDurableLaneRelease(deliveryId: string): Promise<void> {
+    const outbox = this.deliveryOutbox;
+    if (!outbox) return;
+    const released = (row: OutboxDelivery | undefined): boolean => !row
+      || row.state === "queued" || row.state === "retry_wait"
+      || row.state === "delivered" || row.state === "failed"
+      || row.state === "uncertain" || row.state === "cancelled";
+    if (released(outbox.get(deliveryId))) return;
+    await new Promise<void>(resolve => {
+      const check = () => {
+        if (released(outbox.get(deliveryId))) {
+          outbox.off("state", check);
+          outbox.off("generation_recovered", check);
+          resolve();
+        }
+      };
+      outbox.on("state", check);
+      outbox.on("generation_recovered", check);
+      check();
+    });
   }
 
   private spawnConcurrency(): number {
@@ -1841,15 +2027,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     payload: Record<string, unknown>,
     timeoutMs: number,
     deliveryEpoch: number,
-  ): Promise<void> {
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+  ): Promise<boolean> {
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     let idleObservedAfter = this.lastDeliveryAt.get(instanceName) ?? 0;
     if (this.lifecycle.isPaused(instanceName)) {
       const wakeStartedAt = Date.now();
       await this.lifecycle.wake(instanceName, 30_000);
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
       // Waking added one to the warm count — make room by evicting a different
       // LRU idle instance (never this one; it's about to work).
       this.enforceWarmCap(instanceName);
@@ -1865,18 +2051,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
     if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
       this.logger.info({ instanceName }, "Pending delivery dropped by user cancel");
-      return;
+      return false;
     }
     // A server crash can land while waitForInstanceIdle is pending. Re-check
     // immediately before the old timeout path would force text into a boot UI.
     await this.holdDeliveryForStorm(instanceName, deliveryEpoch);
-    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+    if (this.shuttingDown || !this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     if (!idle) {
       this.logger.warn({ instanceName, timeoutMs }, "Idle gate timed out; forcing delivery");
     }
-    await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
-    this.lastDeliveryAt.set(instanceName, Date.now());
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch);
+    if (!sent) return false;
+    if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+      this.lastDeliveryAt.set(instanceName, Date.now());
+    }
+    return true;
   }
 
   private async holdDeliveryForStorm(instanceName: string, deliveryEpoch: number): Promise<void> {
@@ -1905,26 +2094,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
-  ): Promise<void> {
-    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+  ): Promise<boolean> {
+    if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
     const queued = this.ipcWaitTails.get(instanceName);
     if (!queued) {
       const ipc = this.instanceIpcClients.get(instanceName);
-      if (ipc?.connected && ipc.send(payload)) return;
+      if (ipc?.connected && ipc.send(payload)) return true;
     }
 
     const attempt = (queued ?? Promise.resolve())
       .catch(() => { /* a previous waiter's failure must not cancel this one */ })
       .then(() => {
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
         return this.sendAfterIpcReturns(instanceName, payload, deliveryEpoch);
       });
     // The chain stores a settled-either-way promise so one failed delivery cannot
     // wedge every later one, and so `queued` above is safe to await unguarded.
-    const tail = attempt.catch(() => {});
+    const tail = attempt.then(() => {}, () => {});
     this.ipcWaitTails.set(instanceName, tail);
     try {
-      await attempt;
+      return await attempt;
     } finally {
       // Only the last waiter clears the chain; while a queue is still draining the
       // map must keep pointing at it or ordering is lost.
@@ -1939,15 +2128,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     deliveryEpoch = this.getDeliveryEpoch(instanceName),
-  ): Promise<void> {
+  ): Promise<boolean> {
     const deadline = Date.now() + IPC_RECONNECT_GRACE_MS;
     let warned = false;
     for (;;) {
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
       // Re-read every round: a reconnect replaces the IpcClient object entirely,
       // so a cached reference would stay dead forever.
       const ipc = this.instanceIpcClients.get(instanceName);
-      if (ipc?.connected && ipc.send(payload)) return;
+      if (ipc?.connected && ipc.send(payload)) return true;
       if (Date.now() >= deadline) {
         throw new Error(`Instance '${instanceName}' IPC is unavailable`);
       }
@@ -1969,7 +2158,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     instanceName: string,
     payload: Record<string, unknown>,
     options: DeliveryOptions = {},
-  ): Promise<void> {
+  ): Promise<boolean | void> {
     const deliveryEpoch = this.getDeliveryEpoch(instanceName);
     const deliveryPayload = { ...payload, delivery_epoch: deliveryEpoch };
     const meta = payload.meta && typeof payload.meta === "object"
@@ -1984,15 +2173,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
         await this.lifecycle.wake(instanceName, 30_000);
-        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+        if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return false;
         this.enforceWarmCap(instanceName); // woke one → evict a different LRU idle if over cap
       }
-      await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch);
-      if (!this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) return;
+      const sent = await this.sendWhenConnected(instanceName, deliveryPayload, deliveryEpoch);
+      if (!sent) return false;
       // A cross-instance item arriving before the daemon observes this turn as
       // working must not trust the stale idle snapshot from before the send.
-      this.lastDeliveryAt.set(instanceName, Date.now());
-      return;
+      if (this.isDeliveryEpochCurrent(instanceName, deliveryEpoch)) {
+        this.lastDeliveryAt.set(instanceName, Date.now());
+      }
+      return true;
     }
 
     const previous = this.idleGatedDeliveryTails.get(instanceName) ?? Promise.resolve();
@@ -2004,7 +2195,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     ));
     this.idleGatedDeliveryTails.set(instanceName, delivery);
     try {
-      await delivery;
+      return await delivery;
     } finally {
       if (this.idleGatedDeliveryTails.get(instanceName) === delivery) {
         this.idleGatedDeliveryTails.delete(instanceName);
@@ -2668,9 +2859,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       workingDirectory,
       reason: "restart",
     }, () => this.doRestartSingleInstance(name, opts))
-      .finally(() => this.restartsInFlight.delete(name));
+      .finally(() => {
+        this.restartsInFlight.delete(name);
+        this.scheduleDeliveryOutboxPump();
+      });
     this.restartsInFlight.set(name, run);
     return run;
+  }
+
+  isInstanceRestarting(name: string): boolean {
+    return this.restartsInFlight.has(name);
   }
 
   private async doRestartSingleInstance(name: string, opts?: { freshStart?: boolean }): Promise<void> {
@@ -2971,6 +3169,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.shuttingDown = false;
     this.configPath = configPath;
     this.loadEnvFile();
+    this.ensureDeliveryOutbox();
 
     // Rotate fleet.log if oversized (before any logging)
     rotateLogIfNeeded(join(this.dataDir, "fleet.log"));
@@ -5529,6 +5728,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const requestId = msg.requestId as number | undefined;
     const fleetRequestId = msg.fleetRequestId as string | undefined;
     const senderSessionName = msg.senderSessionName as string | undefined;
+    const operationId = typeof msg.operationId === "string" ? msg.operationId : undefined;
+    const sourceDaemonBootId = typeof msg.sourceDaemonBootId === "string" ? msg.sourceDaemonBootId : undefined;
 
     const respond = (result: unknown, error?: string) => {
       const ipc = this.instanceIpcClients.get(instanceName);
@@ -5658,7 +5859,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Dispatch fleet-specific tools via handler map
     const handler = outboundHandlers.get(tool);
     if (handler) {
-      await handler(this, args, respond, { instanceName, requestId, fleetRequestId, senderSessionName });
+      await handler(this, args, respond, {
+        instanceName, requestId, fleetRequestId, senderSessionName, operationId, sourceDaemonBootId,
+      });
     } else {
       respond(null, `Unknown tool: ${tool}`);
     }

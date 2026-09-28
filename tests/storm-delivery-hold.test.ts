@@ -14,7 +14,7 @@ describe("fleet delivery during a tmux storm", () => {
     (fm as any).instanceStateCache.set("worker", {
       state: "idle", observedAt: Date.now(), receivedAt: Date.now(),
     });
-    (fm as any).sendWhenConnected = vi.fn(async () => {});
+    (fm as any).sendWhenConnected = vi.fn(async () => true);
     return fm;
   }
 
@@ -28,7 +28,7 @@ describe("fleet delivery during a tmux storm", () => {
     expect(fm.stormWindow.snapshot().phase).toBe("recovering");
     expect((fm as any).sendWhenConnected).not.toHaveBeenCalled();
     fm.stormWindow.markRecovered("worker");
-    await delivery;
+    await expect(delivery).resolves.toBe(true);
     expect((fm as any).sendWhenConnected).toHaveBeenCalledTimes(1);
     fm.stormWindow.shutdown();
   });
@@ -41,7 +41,7 @@ describe("fleet delivery during a tmux storm", () => {
     (fm as any).deliveryEpochs.set("worker", 1);
     await vi.advanceTimersByTimeAsync(30_000);
     fm.stormWindow.markRecovered("worker");
-    await delivery;
+    await expect(delivery).resolves.toBe(false);
     expect((fm as any).sendWhenConnected).not.toHaveBeenCalled();
     fm.stormWindow.shutdown();
   });
