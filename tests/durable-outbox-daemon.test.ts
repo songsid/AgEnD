@@ -122,6 +122,35 @@ describe("durable delivery through a real Daemon", () => {
     h.outbox.close();
   });
 
+  it("persists an unknown queue-resume contract on a real Codex native-queue handoff", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness({});
+    const daemon = h.daemon as any;
+    daemon.backend = { binaryName: "codex", supportsQueuedInput: () => true };
+    daemon.controlClient = {};
+    vi.spyOn(daemon, "paneReadinessForDelivery").mockResolvedValue("busy");
+    vi.spyOn(daemon, "probeBlockingDialog").mockResolvedValue({ state: "clear" });
+    vi.spyOn(daemon, "hasPositiveDeliveryInput").mockResolvedValue(true);
+    vi.spyOn(daemon, "capturePaneEvidence").mockResolvedValue({ captured: true });
+    vi.spyOn(daemon, "confirmSubmitted").mockResolvedValue("submitted");
+
+    h.daemon.pushChannelMessage("hello", deliveryMeta(h.row.deliveryId, h.claimed.attemptNo));
+    await vi.runAllTimersAsync();
+    await daemon.pasteLock;
+
+    expect(h.outbox.get(h.row.deliveryId)?.state).toBe("delivered");
+    expect((h.outbox as any).db.prepare(`
+      SELECT backend,backend_version,submission_mode,queue_resume_policy
+      FROM delivery_attempts WHERE delivery_id=? AND attempt_no=?
+    `).get(h.row.deliveryId, h.claimed.attemptNo)).toEqual({
+      backend: "codex",
+      backend_version: null,
+      submission_mode: "native_queue_handoff",
+      queue_resume_policy: "unknown",
+    });
+    h.outbox.close();
+  });
+
   it("keeps a readiness timeout before the pane write retryable without emitting terminal failure", async () => {
     const h = makeHarness({});
     let resolveIdle!: (ready: boolean) => void;

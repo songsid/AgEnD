@@ -43,6 +43,7 @@ import { TurnReplyGuard, type TurnReplySnapshot, type TurnReplyTarget } from "./
 import { t } from "./locale.js";
 import { MuseUsageRelay, clearMuseUsageSnapshot } from "./muse-usage-relay.js";
 import type { DaemonDeliveryPort, DeliveryAttemptEvidence, DurableSubmissionMode } from "./delivery-outbox.js";
+import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1551,13 +1552,21 @@ export class Daemon extends EventEmitter {
     const submissionMode: DurableSubmissionMode = steer
       ? "steer"
       : handingOffToNativeQueue ? "native_queue_handoff" : "idle_submit";
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
+    // The daemon does not synchronously probe CLI versions on the delivery
+    // path. Until lifecycle supplies a version tied to this exact process,
+    // queue handoffs persist an unknown resume contract and reconciliation
+    // must fail closed rather than infer loss from transcript absence.
+    const backendVersion: string | null = null;
     return {
-      backend: this.config.backend ?? this.backend?.binaryName ?? "unknown",
+      backend,
+      backendVersion,
       windowId: windowId ?? this.tmux?.getWindowId() ?? null,
       transcriptPath: checkpoint?.path ?? null,
       transcriptOffset: checkpoint?.offset ?? null,
       transcriptSessionId: checkpoint?.sessionId ?? null,
       submissionMode,
+      queueResumePolicy: queueResumePolicyForAttempt(backend, backendVersion, submissionMode),
     };
   }
 

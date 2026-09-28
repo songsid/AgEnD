@@ -315,6 +315,8 @@ Anthropic 官方 CLI 文件支援 session resume，但沒有承諾 interactive q
 
 Phase 2 驗收要逐 backend/version 固定結果：queued item 於 crash 後是否仍存在、resume 是否重送、何時形成可識別 user entry。只有經 live process-crash test 證明 queue 不持久且 resume 不會重送的版本，才可允許「完整 transcript 缺 marker → retry_wait」；升級版本未知時回到 `uncertain`。其測試及必紅 mutation #37 見 2.5。
 
+**Phase 2.2 implementation note (2026-09-28).** Attempts now persist `submission_mode`, nullable `backend_version`, and a `queue_resume_policy` snapshot alongside the transcript checkpoint. The policy registry is exact-version keyed and currently has no allowlisted CLI versions: the daemon does not synchronously probe a CLI on the message path, so a missing version is stored as `unknown`, never inferred from a backend name. On a stable complete transcript miss after confirmed CLI exit, `idle_submit` may enter `retry_wait`; `native_queue_handoff` and `steer` remain `uncertain` unless the attempt's exact-version snapshot explicitly says `does_not_resume`. The current Codex PTY queue and Claude interactive queue therefore remain fail-closed until a real CLI process-exit/resume matrix validates a version. A CLI's in-memory queue implementation alone is not that validation. This prevents transcript absence from blindly replaying a message the resumed CLI may still own.
+
 #### 2.3 `delivery_status` 查詢
 
 新增唯讀 MCP tool `delivery_status`，並提供等價的本機 operator CLI（建議 `agend delivery show`）。支援以 `delivery_id`、`operation_id` 或 `correlation_id` 查詢；`operation_id` 可回該 tool invocation 的多個 target row，`correlation_id` 也可能回多筆合法 progress/final delivery，不作唯一鍵。查詢回傳狀態、target、kind、attempt/更新時間、最近 sanitized error/evidence summary、是否可安全 retry；**不回 payload、附件內容、secret、transcript 原文或可任意讀檔路徑**。結果有固定上限/分頁，避免大 correlation 無界回傳。
@@ -360,7 +362,7 @@ Phase 2 實作順序：先做 2.1 reconciliation 與 2.2 queue evidence，再做
 | 34. `raw_paste` 改寫原始 bytes、追加 delivery marker 或 `[user:]` envelope | exact-byte/no-wrapper contract test 紅 |
 | 35. `raw_paste` evidence ambiguous 時自動 replay，或以 payload hash 當 unique key | crash 後重複貼入，或兩次合法相同 payload 被合併 |
 | 36. 移除 `delivery_status` MCP registration/handler，或將 missing caller identity 當 operator | tool discovery/HTTP caller authorization test 紅；agent 無法查自身 operation，或 HTTP agent 取得越權查詢 |
-| 37. native-queue handoff 沒 marker 時，忽略 queue persistence/resume policy 並直接判 negative/retry | 測試 provider 表示 queued item survives/resumes；直接 retry 會重複送，預期仍 `reconciliation_pending`/`uncertain`，mutation 紅 |
+| 37. native-queue/steer handoff 沒 marker 時，忽略持久化的 queue-resume policy 並直接判 negative/retry | 用真 SQLite + whole-process SIGKILL 建立 native handoff；replacement 看到完整穩定 transcript 缺 marker且 policy 為 `unknown`/`may_resume` 時必須 `uncertain` 並通知、不能 replay；忽略 mode/policy 的 mutation 轉 `retry_wait`，測試紅 |
 | 38. replacement `Daemon.start()` 在 reconciler capture 前執行 Strategy A `killWindow` | lifecycle integration test 的 composer-only pane evidence 消失，預期 capture barrier 先完成，mutation 紅 |
 | 39. reconciliation 用 fleet-global barrier 等所有 target 分類完才 dispatch | 讓 target A 的 bounded evidence probe 卡住，同時 target B 有 queued row；B 未被 dispatch 即 mutation 紅 |
 | 40. `raw_paste` 只 paste bytes 而不送 Enter | `/compact` live/backend fixture 保持 composer 未提交，schedule run 不可標 delivered，mutation 紅 |
