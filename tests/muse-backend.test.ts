@@ -396,45 +396,61 @@ describe("MuseBackend idle proof anchored to the live input box (#958)", () => {
     expect(backend.isPeriodicRedrawIdlePane([...tail, "  Allow"].join("\n"))).toBe(false);
   });
 
-  it("refuses the /model arrow-key picker around an otherwise idle input box", () => {
-    // Not a live capture: AgEnD never opens this picker itself (model changes
-    // restart), so it appears only when a human types `/model` in the pane.
-    // The option rows are the ids listModels() documents from the live picker.
+  /**
+   * Muse 1.4.0's list component, captured live on its login menu (2026-09-28,
+   * isolated HOME, no credentials): the selected row carries `· Enter to
+   * choose` and a hint row reads `↓↑ to select · Esc to quit`. `/model` needs a
+   * logged-in session, so its option rows below are the ids listModels()
+   * documents from the live picker, drawn in that captured component shape.
+   * AgEnD never opens this picker itself (model changes restart); it appears
+   * only when a human types `/model` in the pane.
+   */
+  const LIVE_1_4_LOGIN_PICKER = [
+    "  Muse Code 1.4.0",
+    "  Log in with browser · Enter to choose",
+    "  Set an API key",
+    "  ↓↑ to select · Esc to quit",
+  ].join("\n");
+  const modelPicker = [
+    "  muse-spark-1.3-contributor (shares content) · Enter to choose",
+    "  muse-spark-1.3",
+    "  muse-spark-1.2",
+    "  ↓↑ to select · Esc to cancel",
+  ];
+
+  it("refuses muse's picker component around an otherwise idle input box", () => {
     const bar = LIVE_1_4_IDLE_TAIL.at(-1)!;
     const box = [SEP_120, "❯", SEP_120, bar];
-    const cursorAbove = [
-      "Select a model",
-      "› muse-spark-1.3-contributor (shares content)",
-      "  muse-spark-1.3",
-      "  muse-spark-1.2",
-      ...box,
-    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(LIVE_1_4_LOGIN_PICKER), "live login picker").toBe(false);
+    expect(backend.isPeriodicRedrawIdlePane([...modelPicker, ...box].join("\n")), "picker above the box").toBe(false);
+    expect(backend.isPeriodicRedrawIdlePane([...box, ...modelPicker.slice(0, 3)].join("\n")), "picker under the bar").toBe(false);
+    // Either half of the chrome is enough; a redraw can catch one without the other.
+    expect(backend.isPeriodicRedrawIdlePane([modelPicker[0], ...box].join("\n")), "selected row only").toBe(false);
+    // The verbatim live hint (`Esc to quit`), so only the `↓↑ to select` half matches.
+    expect(backend.isPeriodicRedrawIdlePane(["  ↓↑ to select · Esc to quit", ...box].join("\n")), "hint row only").toBe(false);
+    // A `›` selection cursor, whatever the options are.
+    const cursorAbove = ["Select effort", "› high", "  medium", "  low", ...box].join("\n");
     expect(backend.isPeriodicRedrawIdlePane(cursorAbove), "› cursor above the box").toBe(false);
-    const bareIdsAbove = [
-      "  muse-spark-1.3",
-      "  muse-spark-1.3-contributor (shares content)",
-      "  muse-spark-1.2",
-      ...box,
-    ].join("\n");
-    expect(backend.isPeriodicRedrawIdlePane(bareIdsAbove), "bare model ids above the box").toBe(false);
-    // Any arrow picker, not only /model: the cursor itself is the proof.
-    const nonModelCursorAbove = ["Select effort", "› high", "  medium", "  low", ...box].join("\n");
-    expect(backend.isPeriodicRedrawIdlePane(nonModelCursorAbove), "non-model › cursor above the box").toBe(false);
     const cursorUnderBar = [...box, "  › muse-spark-1.3", "    muse-spark-1.2"].join("\n");
-    expect(backend.isPeriodicRedrawIdlePane(cursorUnderBar), "picker rows under the bar").toBe(false);
+    expect(backend.isPeriodicRedrawIdlePane(cursorUnderBar), "› cursor under the bar").toBe(false);
   });
 
-  it("does not mistake a single model id or a submitted message for the picker", () => {
-    // One bare id is ordinary answer text; `❯ …` above the box is muse's echo
-    // of a submitted message. Neither may re-create the stall.
-    const pane = [
-      "❯ which model are you?",
-      "◆ I am running as",
+  it("does not mistake an answer that names model ids, or a submitted message, for the picker", () => {
+    // Answer text may name models, even on consecutive bare rows; `❯ …` above
+    // the box is muse's echo of a submitted message. None of it is picker
+    // chrome, and treating it as such would re-create the #958 stall.
+    const box = [SEP_120, "❯", SEP_120, LIVE_1_4_IDLE_TAIL.at(-1)!, "", ""];
+    const separated = [
+      "❯ which models can you run?",
+      "◆ The default is",
       "  muse-spark-1.3-contributor",
-      SEP_120, "❯", SEP_120, LIVE_1_4_IDLE_TAIL.at(-1)!,
-      "", "",
+      "  and the older one is",
+      "  muse-spark-1.2",
+      ...box,
     ].join("\n");
-    expect(backend.isPeriodicRedrawIdlePane(pane)).toBe(true);
+    expect(backend.isPeriodicRedrawIdlePane(separated), "ids separated by prose").toBe(true);
+    const listed = ["◆ Available:", "  muse-spark-1.3", "  muse-spark-1.3-contributor (shares content)", "  muse-spark-1.2", ...box].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(listed), "consecutive bare ids").toBe(true);
   });
 
   it("still proves idle when the last answer above the box is a numbered list", () => {

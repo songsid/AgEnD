@@ -343,10 +343,14 @@ export class MuseBackend implements CliBackend {
     // chooser drawn under the box (`  1 Allow`) or any other indented row
     // cannot pass for it.
     const statusBar = /^\s{1,4}[^\s·]+(?:\s+·\s+[^·\s][^·]*)+$/;
-    // Menu chrome muse draws for its numbered dialogs (trust, tool approval).
-    // The approval prompt is auto-answered rather than input-blocking, so the
-    // idle proof itself must refuse a frame that shows one.
-    const dialogChrome = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)/i;
+    // Menu chrome muse draws for its dialogs and pickers. The approval prompt
+    // is auto-answered rather than input-blocking, so the idle proof itself
+    // must refuse a frame that shows one. The picker chrome is muse 1.4.0's
+    // list component, captured live on its login menu (2026-09-28):
+    //   Log in with browser · Enter to choose     (the selected row)
+    //   Set an API key
+    //   ↓↑ to select · Esc to quit                (the hint row)
+    const dialogChrome = /Allow this (?:tool|command)|Approve this (?:tool|command)|^\s*[>❯]?\s*1\s+(?:Allow|Approve|Trust)\b|Use Up\/Down|Esc (?:quits|to cancel)|↓↑ to select|·\s*Enter to choose\b/i;
     // The status bar is one row; a long cwd in a narrow pane wraps it onto a
     // few more. Everything after the bottom separator must be that bar.
     const MAX_STATUS_ROWS = 4;
@@ -371,13 +375,11 @@ export class MuseBackend implements CliBackend {
     // top separator; check 8 rows up to be safe.
     const above = rows.slice(Math.max(0, topSeparator - 8), topSeparator);
     if (above.some(r => busyPattern.test(r) || dialogChrome.test(r))) return false;
-    // The `/model` arrow-key picker: a `›` selection cursor, or a list of bare
-    // model ids (`muse-spark-1.3-contributor (shares content)`). `❯` is not a
-    // cursor here — muse echoes submitted messages with it. One bare id can be
-    // answer text; two in a row is the picker.
-    const pickerRow = /^\s*(?:[›>❯]\s*)?muse-[\w.-]+(?:\s+\(shares content\))?\s*$/i;
-    if (above.some(r => /^\s*›\s+\S/.test(r))) return false;
-    return above.filter(r => pickerRow.test(r)).length < 2;
+    // Arrow-key pickers (`/model`) are refused by their component chrome
+    // above, not by guessing from answer text that happens to list model ids.
+    // A `›` selection cursor is refused too; `❯` is not a cursor here — muse
+    // echoes submitted messages with it.
+    return !above.some(r => /^\s*›\s+\S/.test(r));
   }
 
   getErrorPatterns(): ErrorPattern[] {
