@@ -11,6 +11,8 @@ export class Scheduler {
   private static readonly CATCHUP_WINDOW_MS = 24 * 60 * 60 * 1000;
   /** Node clamps larger setTimeout delays to 1ms. Re-arm long schedules in chunks. */
   private static readonly MAX_TIMEOUT_MS = 2_147_000_000;
+  /** Admission failures leave one-shot schedules pending instead of losing their run. */
+  private static readonly ONE_SHOT_FAILURE_RETRY_MS = 30_000;
 
   readonly db: SchedulerDb;
   private jobs: Map<string, Cron> = new Map();
@@ -156,24 +158,30 @@ export class Scheduler {
    * the callback returns synchronously, throws, or settles a returned Promise. */
   private runWithLock(schedule: Schedule, runId: string = randomUUID()): void {
     this.executing.add(schedule.id);
-    const finish = () => {
+    const finish = (consumeOneShot = true) => {
       this.executing.delete(schedule.id);
       if (schedule.at) {
         // A one-shot is consumed after the delivery attempt settles, so
-        // onTrigger can still record its run while the parent row exists.
+        // onTrigger can still record its run while the parent row exists. If
+        // admission throws before its durable ACK, retain it and retry later.
         this.stopJob(schedule.id);
-        try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+        if (consumeOneShot) {
+          try { this.db.delete(schedule.id); } catch { /* scheduler may be shutting down */ }
+        } else {
+          const pending = this.db.get(schedule.id);
+          if (pending?.enabled) this.registerOneShot(pending, Scheduler.ONE_SHOT_FAILURE_RETRY_MS);
+        }
       }
     };
     let result: void | Promise<void>;
     try {
       result = this.onTrigger(schedule, runId);
     } catch (err) {
-      finish();
+      finish(false);
       throw err;
     }
     if (result && typeof (result as Promise<void>).then === "function") {
-      void (result as Promise<void>).then(finish, finish);
+      void (result as Promise<void>).then(() => finish(), () => finish(false));
     } else {
       finish();
     }
@@ -246,7 +254,7 @@ export class Scheduler {
     this.oneShotTimers.clear();
   }
 
-  private registerOneShot(schedule: Schedule): void {
+  private registerOneShot(schedule: Schedule, retryDelayMs = 0): void {
     const atMs = this.parseAt(schedule.at!);
     const arm = () => {
       const current = this.db.get(schedule.id);
@@ -254,7 +262,7 @@ export class Scheduler {
         this.oneShotTimers.delete(schedule.id);
         return;
       }
-      const remaining = atMs - Date.now();
+      const remaining = Math.max(atMs - Date.now(), retryDelayMs);
       if (remaining > Scheduler.MAX_TIMEOUT_MS) {
         const timer = setTimeout(arm, Scheduler.MAX_TIMEOUT_MS);
         this.oneShotTimers.set(schedule.id, timer);

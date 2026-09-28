@@ -198,6 +198,34 @@ describe("Scheduler one-shot schedules", () => {
     expect(triggered).toHaveLength(1);
   });
 
+  it("retains and retries a one-shot when its callback fails before durable admission", async () => {
+    scheduler.shutdown();
+    let attempts = 0;
+    const runIds: string[] = [];
+    scheduler = new Scheduler(
+      dbPath,
+      async (_schedule, runId) => {
+        runIds.push(runId);
+        if (attempts++ === 0) throw new Error("outbox admission failed");
+      },
+      DEFAULT_SCHEDULER_CONFIG,
+      () => true,
+    );
+    scheduler.init();
+    const schedule = createAt("2026-07-26T00:00:01.000Z");
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(scheduler.get(schedule.id)).not.toBeNull();
+    expect(runIds).toEqual(["2026-07-26T00:00:01.000Z"]);
+
+    await vi.advanceTimersByTimeAsync(29_999);
+    expect(runIds).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+
+    expect(runIds).toEqual(["2026-07-26T00:00:01.000Z", "2026-07-26T00:00:01.000Z"]);
+    expect(scheduler.get(schedule.id)).toBeNull();
+  });
+
   it("keeps the row until an async delivery can record its run", async () => {
     scheduler.shutdown();
     let release!: () => void;
