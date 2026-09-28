@@ -19,6 +19,18 @@ const DANGER_NO = DANGER_YES.replace(" ❯ 1. Yes", "   1. Yes").replace("   2. 
 const DANGER_UNKNOWN = DANGER_YES.replace(" ❯ 1. Yes", "   1. Yes").replace("   2. No", "   2. No");
 const DANGER_THREE_OPTIONS = DANGER_YES.replace("   2. No", "   2. Yes\n   3. No");
 const DANGER_REVERSED = DANGER_YES.replace(" ❯ 1. Yes", " ❯ 1. No").replace("   2. No", "   2. Yes");
+// A hint row sits between the question and the options: adjacency must reject
+// it, while a relaxed downward-search for option rows below the question would
+// wrongly match the canonical Yes/No pair underneath.
+const DANGER_NONADJACENT_OPTIONS = [
+  " command preview: rm -rf -- \"$TARGET\"/*",
+  WARNING,
+  QUESTION,
+  " Use ↑↓ to navigate, Enter to select",
+  " ❯ 1. Yes",
+  "   2. No",
+  " Esc to cancel",
+].join("\n");
 const READY = "───\n❯\n───\n  ok";
 
 const dirs: string[] = [];
@@ -71,6 +83,14 @@ describe("Claude dangerous-command prompt recognition", () => {
     expect(claudeDangerousCommandPromptState(DANGER_THREE_OPTIONS).active).toBe(false);
     expect(claudeDangerousCommandPromptState(DANGER_REVERSED)).toEqual({ active: true, cursor: "unknown" });
     expect(claudeDangerousCommandPromptState(`${DANGER_YES}\n❯ ordinary prompt`)).toEqual({ active: false, cursor: "unknown" });
+  });
+
+  it("rejects options separated from the question by a hint row", () => {
+    // Pins the adjacency requirement: the canonical Yes/No pair is present
+    // below, but not immediately under the question, so this is not the live
+    // menu. Relaxing back to a downward-search for option rows would wrongly
+    // match it (equivalent mutation that used to stay green).
+    expect(claudeDangerousCommandPromptState(DANGER_NONADJACENT_OPTIONS)).toEqual({ active: false, cursor: "unknown" });
   });
 
   it("does not match prose or code that quotes the warning", () => {
@@ -159,11 +179,16 @@ describe("runtime dangerous-command self-heal", () => {
   });
 
   it("keeps the execution state edge and auto-pause suppressed while input is blocked", () => {
-    const { daemon } = makeDaemon(DANGER_YES);
+    const { daemon, logger } = makeDaemon(DANGER_YES);
     daemon.inputBlockedDialogKey = "claude-dangerous-command";
     daemon.instanceState = "working";
     daemon.autoPauseController.observe = vi.fn(() => true);
     daemon.hangDetector = { emit: vi.fn() };
+    // Pending work present: without the input-blocked early return below,
+    // this stuck pane would warn AND emit. The warn is the observable that
+    // pins the suppression — the emit spy alone is fake-green (an earlier
+    // no-pending-work return fires first and guards nothing).
+    daemon.pendingWork.recordInbound();
     daemon.applyInstanceStateSnapshot({
       state: "idle", unchangedForMs: 4_000, stateChangedAt: 1, observedAt: 2,
     });
@@ -173,5 +198,6 @@ describe("runtime dangerous-command self-heal", () => {
       state: "stuck", unchangedForMs: 60_000, stateChangedAt: 1, observedAt: 2,
     }, /❯/);
     expect(daemon.hangDetector.emit).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
