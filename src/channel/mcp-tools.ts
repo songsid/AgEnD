@@ -74,6 +74,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Delegate a task to another instance and expect a result report back. Supports steer=true for a mid-turn supplement. Wrapper around send_to_instance with request_kind=task and requires_reply=true."],
   ["report_result", schemas.ReportResultArgs,
     "Report results back to an instance that delegated a task or asked a question. Wrapper around send_to_instance with request_kind=report."],
+  ["delivery_status", schemas.DeliveryStatusArgs,
+    "Read the status of a previously accepted delivery by delivery_id, operation_id, or correlation_id. You can see rows where you are the source or target; IDs do not grant access. Uncertain means do not resend blindly."],
   ["create_team", schemas.CreateTeamArgs,
     "Create a named group of instances for targeted broadcasting. Teams persist across restarts."],
   ["delete_team", schemas.DeleteTeamArgs,

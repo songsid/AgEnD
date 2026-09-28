@@ -37,7 +37,7 @@ const WORKER: readonly string[] = [
   // target that already exists — it is `send_to_instance` with a correlation
   // id, and a month of real traffic showed 572 of its 574 calls coming from
   // instances this would otherwise have silenced.
-  "send_to_instance", "report_result", "request_information", "broadcast", "delegate_task",
+  "send_to_instance", "report_result", "request_information", "broadcast", "delegate_task", "delivery_status",
   // Knowing where it is and who is next to it. All read-only.
   "list_instances", "describe_instance", "list_teams", "list_models",
   "get_fleet_status", "get_fleet_config", "get_usage", "get_effort", "get_instance_logs",
@@ -83,22 +83,22 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
   general: [
     "reply", "react", "edit_message", "download_attachment",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models",
-    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast",
+    "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     "create_instance", "start_instance", "restart_instance", "wake_instance",
     "task", "list_decisions", "post_decision",
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
   standard: [
     "reply", "react", "edit_message",
-    "send_to_instance", "broadcast", "list_instances", "describe_instance",
+    "send_to_instance", "broadcast", "list_instances", "describe_instance", "delivery_status",
     "list_decisions", "post_decision", "task", "set_display_name", "set_description",
     "validate_config", "get_fleet_status", "get_usage", "get_effort", "get_instance_logs", "get_fleet_config",
     // Self-scheduling, same scope as worker (#895).
     "create_schedule", "list_schedules", "update_schedule", "delete_schedule",
   ],
-  // No schedules: an explicit `minimal` is a deliberate narrowing, and three
-  // more schemas would cost the one profile whose point is having few.
-  minimal: ["reply", "send_to_instance", "list_decisions", "download_attachment"],
+  // No schedules: keep `minimal` narrow while preserving the status lookup a
+  // minimal sender needs to resolve an accepted operation safely.
+  minimal: ["reply", "send_to_instance", "delivery_status", "list_decisions", "download_attachment"],
 };
 
 const PROFILE_SETS = Object.fromEntries(
