@@ -231,7 +231,7 @@ export async function finishTargetReconciliation(
       // Enter before the timestamp was durably committed.
       outcome = "retry_wait";
       proof = item.paneCaptureError ? "enter-not-started; pane-capture-unavailable" : "enter-not-started; pre-kill-pane-captured";
-    } else if (processExited && transcript === "no-match"
+    } else if (item.panePid !== null && processExited && transcript === "no-match"
       && transcriptAbsenceCanProveNotSubmitted(
         candidate.attempt.submissionMode,
         candidate.attempt.queueResumePolicy,

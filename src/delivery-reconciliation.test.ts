@@ -176,14 +176,46 @@ describe("durable transcript marker reconciliation", () => {
       transcriptPath,
       transcriptOffset: 0,
     });
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("no such process") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: 424242, pane: "", paneCaptureError: null }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
+      expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
+  });
+
+  it("keeps a transcript miss uncertain when the old CLI pid is unknown", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-unknown-pid-"));
+    roots.push(root);
+    const transcriptPath = join(root, "session.jsonl");
+    writeFileSync(transcriptPath, "");
+    const h = makeAttempt({
+      enterStarted: true,
+      backend: "codex",
+      submissionMode: "idle_submit",
+      transcriptPath,
+      transcriptOffset: 0,
+    });
     const result = await finishTargetReconciliation(h.outbox, {
       targetInstance: "worker",
       sessionName: "test-session",
       savedWindowId: "@old-worker",
       attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
     }, true);
-    expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
-    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
     h.outbox.close();
   });
 
@@ -227,15 +259,24 @@ describe("durable transcript marker reconciliation", () => {
       transcriptPath,
       transcriptOffset: 0,
     });
-    const result = await finishTargetReconciliation(h.outbox, {
-      targetInstance: "worker",
-      sessionName: "test-session",
-      savedWindowId: "@old-worker",
-      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
-    }, true);
-    expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
-    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait" });
-    h.outbox.close();
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+      const err = new Error("no such process") as NodeJS.ErrnoException;
+      err.code = "ESRCH";
+      throw err;
+    });
+    try {
+      const result = await finishTargetReconciliation(h.outbox, {
+        targetInstance: "worker",
+        sessionName: "test-session",
+        savedWindowId: "@old-worker",
+        attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: 424242, pane: "", paneCaptureError: null }],
+      }, true);
+      expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
+      expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait" });
+    } finally {
+      kill.mockRestore();
+      h.outbox.close();
+    }
   });
 
   it("keeps the target fenced when the tmux window is gone but its captured process is still alive", async () => {
