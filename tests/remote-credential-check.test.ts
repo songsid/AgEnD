@@ -41,7 +41,12 @@ describe("urlHasEmbeddedGitHubToken — each GitHub token form, on its own", () 
 
   it("flags the GitHub App form x-access-token:<token>@ whatever the password looks like", () => {
     expect(urlHasEmbeddedGitHubToken("https://x-access-token:opaque-value@github.com/acme/repo.git")).toBe(true);
-    expect(urlHasEmbeddedGitHubToken("https://X-Access-Token@github.com/acme/repo.git")).toBe(true);
+    expect(urlHasEmbeddedGitHubToken("https://X-Access-Token:opaque-value@github.com/acme/repo.git")).toBe(true);
+  });
+
+  it("does not flag x-access-token as a bare username: a credential helper supplies the token", () => {
+    expect(urlHasEmbeddedGitHubToken("https://x-access-token@github.com/acme/public.git")).toBe(false);
+    expect(urlHasEmbeddedGitHubToken("https://x-access-token:@github.com/acme/public.git")).toBe(false);
   });
 
   it("flags a token in the password position and a percent-encoded separator", () => {

@@ -38,7 +38,7 @@ function decode(component: string): string {
 
 /**
  * True when a userinfo component is a GitHub token, or the user is the GitHub
- * App token user. Components are split on `:` (user/password) and on any `@`
+ * App token user followed by a credential. Components are split on `:` (user/password) and on any `@`
  * left inside the userinfo, so `user@ghp_…@host` is caught: git sends that
  * whole userinfo, token included. Prefixes must start a component, so a
  * username that merely contains `ghp_` is not a token.
@@ -46,7 +46,10 @@ function decode(component: string): string {
 export function userinfoHasGitHubToken(userinfo: string): boolean {
   // Decode before splitting: `x-access-token%3Aghs_…` is the same credential.
   const components = decode(userinfo).split(/[:@]/);
-  if (components[0]?.toLowerCase() === GITHUB_APP_TOKEN_USER) return true;
+  // `x-access-token` is only the conventional username; a URL carrying just the
+  // username embeds nothing (a credential helper supplies the token). It marks
+  // an embedded token only when a non-empty credential follows it.
+  if (components[0]?.toLowerCase() === GITHUB_APP_TOKEN_USER && components.slice(1).some(c => c.length > 0)) return true;
   return components.some(component => GITHUB_TOKEN_PREFIXES.some(prefix => component.startsWith(prefix)));
 }
 
