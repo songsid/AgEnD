@@ -257,6 +257,107 @@ describe("MuseBackend isPeriodicRedrawIdlePane — structural idle proof (#932)"
     ].join("\n");
     expect(backend.isPeriodicRedrawIdlePane(draftInPrompt)).toBe(false);
   });
+
+  // #958 regression suite — positive idle-proof must survive redraw-flood frames.
+  // The old deny-list (`!busyPattern`) could leave the idle-gate closed when the
+  // status bar redrawed; these tests anchor the four-row positive proof structure.
+
+  it("returns true even when the status bar content changes mid-redraw (#958)", () => {
+    // Simulates a status-bar refresh where the cwd portion changed. The positive
+    // proof only needs the ·-field structure, not stable content.
+    const statusBarRedrawn = [
+      "  Muse Code 1.3.0",
+      "❯ some earlier prompt",
+      "◆ some completed output",
+      "────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · high · /home/user/new-project · Launch overrides",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(statusBarRedrawn)).toBe(true);
+  });
+
+  it("returns true under rapid status-bar redraw flood (#958)", () => {
+    // The daemon calls isPeriodicRedrawIdlePane on every pane output event.
+    // All of these status-bar variant frames must return true so the idle-gate
+    // can open and cross-instance delivery does not time out.
+    const frames = [
+      // Model name changes (e.g. on reconnect)
+      [
+        "❯ old prompt",
+        "◆ finished work",
+        "────────────────────────────────────────────",
+        "❯",
+        "────────────────────────────────────────────",
+        "  muse-spark-2.0 · medium · /tmp/proj · some flag",
+      ],
+      // Effort tier changes
+      [
+        "❯ old prompt",
+        "◆ finished work",
+        "────────────────────────────────────────────",
+        "❯",
+        "────────────────────────────────────────────",
+        "  muse-spark-1.3-contributor · low · /tmp · overrides",
+      ],
+      // Status bar with trailing whitespace/redraw artifacts
+      [
+        "❯ old prompt",
+        "◆ finished work",
+        "────────────────────────────────────────────",
+        "❯",
+        "────────────────────────────────────────────",
+        "  muse-spark-1.3-contributor · high · /tmp/x   ",
+      ],
+    ];
+    for (const frame of frames) {
+      expect(backend.isPeriodicRedrawIdlePane(frame.join("\n")), frame.join(" | ")).toBe(true);
+    }
+  });
+
+  it("returns false for a working pane even when status bar has the same chrome (#958)", () => {
+    // A working pane has the busy indicator immediately above the top separator.
+    // The positive proof must catch this: the busy region check above the top
+    // separator must return false despite the otherwise-matching bottom chrome.
+    // Mutation guard: removing the busy-region check makes this test fail.
+    const workingWithSameChrome = [
+      "  Muse Code 1.3.0",
+      "❯ Write a haiku about tmux. Nothing else.",
+      "◇ Thinking (2s · esc to interrupt)",
+      "────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · high · /t/c/scratchpad/muse-probe · Launch overrides",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(workingWithSameChrome)).toBe(false);
+  });
+
+  it("returns false when status bar row is absent (positive-proof status-bar mutation)", () => {
+    // Without the status-bar check (`[^·]+·[^·]+·`), a pane missing the status
+    // bar row would be accepted as idle. Mutation: remove the status-bar check.
+    const noStatusBar = [
+      "  Muse Code 1.3.0",
+      "◆ some output",
+      "────────────────────────────────────────────",
+      "❯",
+      "────────────────────────────────────────────",
+      "  no-dots-here",  // status bar row present but without ·-separated fields
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(noStatusBar)).toBe(false);
+  });
+
+  it("returns false when top separator is absent above the prompt (positive-proof top-sep mutation)", () => {
+    // Without the top-separator check, the layout is not the canonical idle
+    // chrome — the prompt might be mid-transcript, not the live input box.
+    const noTopSep = [
+      "  Muse Code 1.3.0",
+      "◆ some output",
+      "❯",
+      "────────────────────────────────────────────",
+      "  muse-spark-1.3-contributor · high · /tmp",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(noTopSep)).toBe(false);
+  });
 });
 
 describe("MuseBackend launch command", () => {

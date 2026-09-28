@@ -297,7 +297,7 @@ export class MuseBackend implements CliBackend {
   }
 
   /**
-   * Structural proof that muse's TUI is parked at its idle input prompt.
+   * Positive structural proof that muse's TUI is parked at its idle input prompt.
    *
    * Muse's status bar (`model · effort · cwd · ...`) redraws periodically even
    * when the session is fully idle. Without this method `canProvePeriodicIdle`
@@ -306,42 +306,55 @@ export class MuseBackend implements CliBackend {
    * instance stuck in `working` forever (no auto-pause, cancel never retires,
    * delegate_task times out on the readiness gate).
    *
-   * The idle layout, last four visible rows:
-   *   ─────────────────────────────  (separator)
-   *   ❯                             (empty input box — no user text after it)
-   *   ─────────────────────────────  (separator)
-   *     model · effort · cwd        (status bar)
+   * This uses a **positive structural proof** (cf. #947 / codex approach):
+   * rather than checking what is NOT present (deny-list), we require the exact
+   * four-row idle chrome at the bottom of the viewport to all be present:
    *
-   * Per the CliBackend contract, this method must be a strong structural proof:
-   * false positives can retire Cancel and admit a new delivery into a busy CLI.
-   * A working pane shows `◇ Thinking (2s · esc to interrupt)` in the rows
-   * immediately above the top separator; checking those rows with getBusyPattern()
-   * returns false for working panes, matching the codex implementation's approach.
+   *   ─────────────────────  (top separator)
+   *   ❯                      (empty input box — no user text after it)
+   *   ─────────────────────  (bottom separator)
+   *   model · effort · cwd   (status bar — positive proof it is truly idle)
    *
-   * Note: `canProvePeriodicIdle` in the daemon is set by the *presence* of this
-   * method (`!!this.backend?.isPeriodicRedrawIdlePane`), not its return value —
-   * so returning false for working panes only resets the confirmation count and
-   * keeps it working; it does not disable the periodic-idle path.
+   * The previous deny-list approach (`!busyPattern`) failed when the status bar
+   * redrew and the pane was in a partial/mid-frame state: the negative check
+   * passed spuriously, the idle-gate could not open, and cross-instance delivery
+   * ended in phase=readiness/timeout-before-write (#932-family, #958).
+   *
+   * Per the CliBackend contract, false positives (passing for a working pane)
+   * are dangerous — they can retire Cancel and admit a new delivery into a busy
+   * CLI. The status-bar positive proof closes this: a working pane shows the
+   * busy indicator row, not the idle status bar, immediately after the prompt.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
-    // Search the bottom 8 visible rows for an EMPTY ❯ line. Lines with user
-    // text (`❯ Write a haiku…`) are the input box with content — they sit in
-    // the conversation transcript and are not the live idle prompt.
-    let promptRow = -1;
-    for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
-      if (/^❯\s*$/.test(rows[i])) { promptRow = i; break; }
+    // Walk from the bottom looking for the four-row idle chrome cluster:
+    //   row i-1: ─────────── (TOP separator)
+    //   row i:   ❯           (empty live prompt — no text after it)
+    //   row i+1: ─────────── (BOTTOM separator)
+    //   row i+2: model · ... (status bar — positive proof of idle chrome)
+    //
+    // Requiring all four rows is the positive structural proof. It rules out:
+    //  - Transcript ❯ lines (not preceded by a separator)
+    //  - Mid-redraw frames (status bar row doesn't have the ·-separated format)
+    //  - Working panes (busy indicator row above the top separator)
+    for (let i = rows.length - 3; i >= Math.max(0, rows.length - 10); i--) {
+      // Require empty ❯ at row i
+      if (!/^❯\s*$/.test(rows[i])) continue;
+      // Require top separator immediately above
+      if (!/^─{10,}/.test(rows[i - 1] ?? "")) continue;
+      // Require bottom separator immediately below
+      if (!/^─{10,}/.test(rows[i + 1] ?? "")) continue;
+      // Require muse status bar immediately below the bottom separator.
+      // "model · effort · cwd" has at least two ·-separated fields.
+      if (!/[^·]+·[^·]+·/.test(rows[i + 2] ?? "")) continue;
+      // Positive proof passed. Now check for a busy indicator in the rows
+      // above the top separator — a working pane has the busy indicator there.
+      const busyPattern = this.getBusyPattern();
+      const aboveSeparator = rows.slice(Math.max(0, i - 7), i - 1);
+      if (aboveSeparator.some(r => busyPattern.test(r))) return false;
+      return true;
     }
-    if (promptRow < 0) return false;
-    // The line immediately after the empty ❯ must be the separator (─ × N).
-    // Without it we may be looking at the prompt in the transcript, not the
-    // live input box.
-    if (!/^─{10,}/.test(rows[promptRow + 1] ?? "")) return false;
-    // No busy indicator in the active region above the prompt. The working
-    // indicator (`◇ Thinking (2s · esc to interrupt)`) sits just above the
-    // top separator (~3 rows above promptRow). Check 6 rows up to be safe.
-    const busyPattern = this.getBusyPattern();
-    return !rows.slice(Math.max(0, promptRow - 6), promptRow).some(r => busyPattern.test(r));
+    return false;
   }
 
   getErrorPatterns(): ErrorPattern[] {
