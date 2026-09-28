@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RestartProgress } from "../src/restart-progress.js";
+import { GrammyError } from "grammy";
+import { PROGRESS_THROTTLE_MS, RestartProgress } from "../src/restart-progress.js";
 import type { ChannelAdapter } from "../src/channel/types.js";
 import { setLocale } from "../src/locale.js";
 
@@ -8,6 +9,16 @@ afterEach(() => {
   vi.restoreAllMocks();
   setLocale("en");
 });
+
+/** Build a real GrammyError with error_code 429 and retry_after seconds. */
+function grammy429(retryAfterSeconds: number): GrammyError {
+  return new GrammyError(
+    "Too Many Requests: retry after",
+    { ok: false, error_code: 429, description: `Too Many Requests: retry after ${retryAfterSeconds}`, parameters: { retry_after: retryAfterSeconds } },
+    "editMessageText",
+    {},
+  );
+}
 
 function setup(total: number) {
   vi.useFakeTimers();
@@ -414,5 +425,192 @@ describe("RestartProgress", () => {
       { timeout_ms: 30_000 },
       "Fleet completion could not be delivered after adapter recovery wait",
     );
+  });
+
+  // ── #965: throttle + 429 handling ───────────────────────────────────────────
+
+  it("throttles rapid markReady calls to at most one edit per PROGRESS_THROTTLE_MS (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "progress-1", chatId: "fleet" });
+    const adapter = { sendText, editMessage } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(20, 0, { warn: vi.fn() });
+    await progress.start({ adapter, chatId: "fleet", threadId: "general" });
+
+    // Fire 20 markReady() calls at t=0 (simulates all agents completing instantly).
+    // With the >= 5 threshold: triggers at 5/10/15/20. With throttle: only the
+    // first trigger (5/20) fires immediately; the rest are coalesced.
+    for (let i = 0; i < 20; i++) progress.markReady();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Only 1 edit should have fired (throttled), not 4 (20/5)
+    expect(editMessage).toHaveBeenCalledTimes(1);
+    // Text captures ready at the moment the first throttle-gate opens (ready=5)
+    expect(editMessage).toHaveBeenCalledWith("fleet", "progress-1", "🔄 Fleet restarting — 5/20 ready...", "general");
+
+    // After throttle window: deferred fire with the latest ready count (20/20)
+    await vi.advanceTimersByTimeAsync(PROGRESS_THROTTLE_MS);
+    expect(editMessage).toHaveBeenCalledTimes(2);
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "progress-1", "🔄 Fleet restarting — 20/20 ready...", "general");
+
+    await progress.finish({ running: 20, total: 20, version: "2.1.5", pausedNames: [] });
+  });
+
+  it("schedules a deferred edit when markReady fires within the throttle window (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn().mockResolvedValue(undefined);
+    const sendText = vi.fn().mockResolvedValue({ messageId: "progress-1", chatId: "fleet" });
+    const adapter = { sendText, editMessage } as unknown as ChannelAdapter;
+    const progress = new RestartProgress(12, 0, { warn: vi.fn() });
+    await progress.start({ adapter, chatId: "fleet" });
+
+    // First burst: fires immediately
+    for (let i = 0; i < 6; i++) progress.markReady();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(editMessage).toHaveBeenCalledTimes(1); // one immediate edit
+
+    // Second burst within throttle window: deferred
+    for (let i = 0; i < 6; i++) progress.markReady();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(editMessage).toHaveBeenCalledTimes(1); // still 1 — deferred not yet fired
+
+    // Advance past the throttle window: deferred fires
+    await vi.advanceTimersByTimeAsync(PROGRESS_THROTTLE_MS);
+    expect(editMessage).toHaveBeenCalledTimes(2);
+    expect(editMessage).toHaveBeenLastCalledWith("fleet", "progress-1", "🔄 Fleet restarting — 12/12 ready...", undefined);
+
+    await progress.finish({ running: 12, total: 12, version: "2.1.5", pausedNames: [] });
+  });
+
+  it("backs off in drainProgressEdits when a non-terminal edit returns 429 (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn()
+      .mockRejectedValueOnce(grammy429(2))  // 429 on first attempt, retry after 2s
+      .mockResolvedValue(undefined);         // succeeds after backoff
+    const sendText = vi.fn().mockResolvedValue({ messageId: "progress-1", chatId: "fleet" });
+    const adapter = { editMessage, sendText } as unknown as ChannelAdapter;
+    const logger = { warn: vi.fn() };
+    const progress = new RestartProgress(8, 0, logger);
+
+    await progress.start({ adapter, chatId: "fleet" });
+    for (let i = 0; i < 5; i++) progress.markReady();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // First call gets 429
+    expect(editMessage).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ retryAfterMs: 2_000 }),
+      expect.stringMatching(/429/),
+    );
+
+    // Worker is in 2s backoff — no retry yet
+    await vi.advanceTimersByTimeAsync(1_999);
+    expect(editMessage).toHaveBeenCalledTimes(1);
+
+    // After 2s retry-after, the worker retries
+    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(editMessage).toHaveBeenCalledTimes(2);
+
+    await progress.finish({ running: 8, total: 8, version: "2.1.5", pausedNames: [] });
+  });
+
+  it("retries terminal delivery with 429-aware backoff until deadline (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn()
+      .mockResolvedValueOnce(undefined)     // resume: starting
+      .mockRejectedValueOnce(grammy429(3))  // terminal: 429, retry after 3s
+      .mockResolvedValue(undefined);         // terminal: success after backoff
+    const adapter = { editMessage } as unknown as ChannelAdapter;
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const progress = new RestartProgress(1, 0, logger, { mode: "update" });
+
+    await progress.resume({ adapter, chatId: "fleet", threadId: "general" }, "update-1");
+
+    const finishing = progress.finish({ running: 1, total: 1, version: "2.1.5", pausedNames: [] });
+
+    // Still in 3s backoff after the 429
+    await vi.advanceTimersByTimeAsync(2_999);
+    expect(editMessage).toHaveBeenCalledTimes(2); // resume + failed terminal
+
+    // After retry-after, retries terminal edit and succeeds
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(finishing).resolves.toBe(true);
+    expect(editMessage).toHaveBeenCalledTimes(3);
+    expect(editMessage).toHaveBeenLastCalledWith(
+      "fleet", "update-1", "✅ Fleet restarted — v2.1.5, 1/1 instances running (0s)", "general",
+    );
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ retryAfterMs: 3_000 }),
+      expect.stringMatching(/429.*retry/i),
+    );
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  // P1 (dev-claude B1): retry_after > former MAX_RETRY_AFTER_MS (26s > 20s).
+  // Terminal must still retry (deadline is the only cap), not fall through to sendText.
+  it("retries terminal edit when retry_after (26s) exceeds the old 20s cap — P1 (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn()
+      .mockResolvedValueOnce(undefined)     // resume: starting (edit #1)
+      .mockRejectedValueOnce(grammy429(26)) // terminal: 429 retry_after=26s
+      .mockResolvedValue(undefined);         // terminal: success after backoff (edit #3)
+    // sendText would also be 429'd (same chat window), so must NOT be called
+    const sendText = vi.fn().mockRejectedValue(grammy429(26));
+    const adapter = { editMessage, sendText } as unknown as ChannelAdapter;
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const progress = new RestartProgress(1, 0, logger, { mode: "update" });
+
+    await progress.resume({ adapter, chatId: "fleet" }, "update-1");
+    const finishing = progress.finish({ running: 1, total: 1, version: "2.1.5", pausedNames: [] });
+
+    // 26s backoff in progress — not done yet
+    await vi.advanceTimersByTimeAsync(25_999);
+    expect(editMessage).toHaveBeenCalledTimes(2); // resume + first terminal attempt
+
+    // After 26s backoff, edit retries and succeeds
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(finishing).resolves.toBe(true);
+    expect(editMessage).toHaveBeenCalledTimes(3);
+    // sendText must never have been called
+    expect(sendText).not.toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  // P2 (dev-claude B2): finish() called while drainProgressEdits is sleeping through a 429 backoff.
+  // The backoff sleep must be interrupted so deliverTerminal doesn't wait 30s for the worker.
+  it("interrupts drainProgressEdits backoff sleep when finish() is called — P2 (#965)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const editMessage = vi.fn()
+      .mockRejectedValueOnce(grammy429(35)) // non-terminal 429, retry after 35s
+      .mockResolvedValue(undefined);         // terminal succeeds
+    const sendText = vi.fn().mockResolvedValue({ messageId: "progress-1", chatId: "fleet" });
+    const adapter = { editMessage, sendText } as unknown as ChannelAdapter;
+    const logger = { warn: vi.fn(), error: vi.fn() };
+    const progress = new RestartProgress(8, 0, logger);
+
+    await progress.start({ adapter, chatId: "fleet" });
+    for (let i = 0; i < 5; i++) progress.markReady();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Non-terminal edit got 429 with 35s retry_after; worker is sleeping
+    expect(editMessage).toHaveBeenCalledTimes(1);
+
+    // finish() is called while the worker is in its 35s backoff sleep.
+    // Without the wakeBackoff fix, deliverTerminal would wait up to 30s for the
+    // worker to drain before attempting the terminal edit.
+    const finishing = progress.finish({ running: 8, total: 8, version: "2.1.5", pausedNames: [] });
+
+    // The backoff is interrupted immediately; terminal edit fires without waiting 35s
+    await vi.advanceTimersByTimeAsync(0);
+    await expect(finishing).resolves.toBe(true);
+    expect(editMessage).toHaveBeenCalledTimes(2); // non-terminal (429) + terminal (success)
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });

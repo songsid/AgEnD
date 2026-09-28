@@ -40,13 +40,28 @@ export type RestartProgressMode = "restart" | "update" | "reload";
 
 const TERMINAL_DELIVERY_RETRY_MS = 1_000;
 export const RESTART_PROGRESS_TERMINAL_TIMEOUT_MS = 30_000;
-
+/** Minimum ms between non-terminal progress edits (throttle window). */
+export const PROGRESS_THROTTLE_MS = 2_500;
 
 function formatElapsed(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
   return minutes > 0 ? `${minutes}m ${remainder}s` : `${seconds}s`;
+}
+
+/** Extract retry-after milliseconds from a Telegram 429 GrammyError, or 0. */
+function retryAfterMs(err: unknown): number {
+  if (err instanceof Error) {
+    const e = err as Error & {
+      error_code?: number;
+      parameters?: { retry_after?: number };
+    };
+    if (e.error_code === 429 && typeof e.parameters?.retry_after === "number") {
+      return e.parameters.retry_after * 1_000;
+    }
+  }
+  return 0;
 }
 
 /** One terminal text shared by the in-place edit and FleetManager fallback. */
@@ -86,6 +101,12 @@ export class RestartProgress {
   private pendingProgressText: string | null = null;
   private finished = false;
   private readonly mode: RestartProgressMode;
+  /** Timestamp of the last successfully dispatched non-terminal progress edit. */
+  private lastProgressEditAt = -PROGRESS_THROTTLE_MS;
+  /** setTimeout handle for the next throttle-deferred progress edit. */
+  private throttleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Resolves the active drainProgressEdits backoff sleep early when finish() is called. */
+  private wakeBackoff: (() => void) | null = null;
 
   constructor(
     readonly total: number,
@@ -102,7 +123,7 @@ export class RestartProgress {
     if (!this.enabled || this.finished) return;
     this.ready = Math.min(this.total, this.ready + 1);
     if (this.messageId && this.ready - this.lastReportedReady >= 5) {
-      this.queueProgressEdit();
+      this.maybeQueueProgressEdit();
     }
   }
 
@@ -119,7 +140,7 @@ export class RestartProgress {
         { threadId: target.threadId },
       );
       this.messageId = sent.messageId;
-      if (this.ready >= 5) this.queueProgressEdit();
+      if (this.ready >= 5) this.maybeQueueProgressEdit();
       this.updateTimer = setInterval(() => this.queueProgressEdit(), 30_000);
       this.updateTimer.unref?.();
       return true;
@@ -155,9 +176,14 @@ export class RestartProgress {
     const progressEditWorker = this.progressEditWorker;
     this.finished = true;
     this.pendingProgressText = null;
+    this.wakeBackoff?.();
     if (this.updateTimer) {
       clearInterval(this.updateTimer);
       this.updateTimer = null;
+    }
+    if (this.throttleTimer) {
+      clearTimeout(this.throttleTimer);
+      this.throttleTimer = null;
     }
     if (!this.target || !this.messageId) return false;
     const text = summary
@@ -167,6 +193,33 @@ export class RestartProgress {
   }
 
   get readyCount(): number { return this.ready; }
+
+  /**
+   * Throttle non-terminal progress edits so at most one fires every
+   * PROGRESS_THROTTLE_MS. If called too soon after the last edit, schedule a
+   * deferred fire instead of sending immediately. This prevents every markReady()
+   * call from generating an editMessage request and triggering Telegram 429s.
+   */
+  private maybeQueueProgressEdit(): void {
+    if (this.finished || !this.target || !this.messageId) return;
+    const now = Date.now();
+    const msSinceLast = now - this.lastProgressEditAt;
+    if (msSinceLast >= PROGRESS_THROTTLE_MS) {
+      this.lastProgressEditAt = now;
+      this.queueProgressEdit();
+    } else if (!this.throttleTimer) {
+      // Schedule a deferred fire once the throttle window expires so the latest
+      // state (not a stale snapshot) is sent when the window opens.
+      const delay = PROGRESS_THROTTLE_MS - msSinceLast;
+      this.throttleTimer = setTimeout(() => {
+        this.throttleTimer = null;
+        this.lastProgressEditAt = Date.now();
+        this.queueProgressEdit();
+      }, delay);
+      this.throttleTimer.unref?.();
+    }
+    // else: a deferred fire is already pending — it will pick up the latest state
+  }
 
   private queueProgressEdit(): void {
     if (this.finished || !this.target || !this.messageId) return;
@@ -218,7 +271,20 @@ export class RestartProgress {
       try {
         await adapter.editMessage(target.chatId, messageId, text, target.threadId);
       } catch (err) {
-        this.logger.warn({ err }, "Failed to edit fleet restart progress");
+        const backoffMs = retryAfterMs(err);
+        if (backoffMs > 0) {
+          this.logger.warn({ retryAfterMs: backoffMs }, "Fleet restart progress edit throttled (429); backing off");
+          // Re-queue the current frame (unless a newer one arrived) so the loop
+          // retries this edit after the backoff window.
+          if (this.pendingProgressText == null) this.pendingProgressText = text;
+          await new Promise<void>(resolve => {
+            const t = setTimeout(() => { this.wakeBackoff = null; resolve(); }, backoffMs);
+            (t as NodeJS.Timeout).unref?.();
+            this.wakeBackoff = () => { clearTimeout(t); this.wakeBackoff = null; resolve(); };
+          });
+        } else {
+          this.logger.warn({ err }, "Failed to edit fleet restart progress");
+        }
       }
     }
   }
@@ -228,6 +294,7 @@ export class RestartProgress {
    * Wait through a bounded adapter-recovery window, re-resolving replacement
    * adapter objects each time. If editing the adopted message fails, post a
    * fresh completion message so the user is never left at the last X/N update.
+   * 429 responses are retried with their retry-after delay up to the deadline.
    */
   private async deliverTerminal(text: string, progressEditWorker: Promise<void> | null): Promise<boolean> {
     const target = this.target;
@@ -248,16 +315,38 @@ export class RestartProgress {
     let adapter = await this.waitForReadyAdapter(deadline);
     if (!adapter) return this.terminalDeliveryFailed();
 
-    const editAdapter = adapter;
-    const edit = await this.beforeDeadline(
-      () => editAdapter.editMessage(target.chatId, this.messageId!, text, target.threadId),
-      deadline,
-    );
-    if (edit.status === "fulfilled") return true;
-    if (edit.status === "rejected") {
+    // Retry terminal edit with 429-aware backoff until the deadline.
+    while (true) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const editAdapter = adapter;
+      const edit = await this.beforeDeadline(
+        () => editAdapter.editMessage(target.chatId, this.messageId!, text, target.threadId),
+        deadline,
+      );
+      if (edit.status === "fulfilled") return true;
+      if (edit.status === "timeout") {
+        this.logger.warn({}, "Timed out editing fleet restart progress terminal state");
+        break; // no point retrying after timeout
+      }
+      // rejected
+      const backoff = retryAfterMs(edit.reason);
+      if (backoff > 0) {
+        const wait = Math.min(backoff, deadline - Date.now());
+        if (wait > 0) {
+          this.logger.warn({ retryAfterMs: backoff }, "Fleet restart terminal edit throttled (429); will retry");
+          await new Promise<void>(resolve => {
+            const t = setTimeout(resolve, wait);
+            (t as NodeJS.Timeout).unref?.();
+          });
+          // Re-resolve adapter after backoff (it may have rotated)
+          adapter = await this.waitForReadyAdapter(deadline);
+          if (!adapter) return this.terminalDeliveryFailed();
+          continue;
+        }
+      }
       this.logger.warn({ err: edit.reason }, "Failed to edit fleet restart progress terminal state");
-    } else {
-      this.logger.warn({}, "Timed out editing fleet restart progress terminal state");
+      break;
     }
 
     // The edit may have failed because the gateway dropped between the first
@@ -306,3 +395,4 @@ export class RestartProgress {
     return false;
   }
 }
+
