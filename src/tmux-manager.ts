@@ -195,11 +195,11 @@ export class TmuxManager {
     });
   }
 
-  static async getPanePid(sessionName: string, windowId: string): Promise<number | null> {
+  static async getPanePid(sessionName: string, windowId: string, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<number | null> {
     try {
       const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
         "list-panes", "-t", `${sessionName}:${windowId}`, "-F", "#{pane_pid}",
-      ]));
+      ]), { timeout: timeoutMs });
       const pid = parseInt(stdout.trim(), 10);
       return isNaN(pid) ? null : pid;
     } catch { return null; }
@@ -555,19 +555,19 @@ export class TmuxManager {
     ]));
   }
 
-  async capturePane(): Promise<string> {
+  async capturePane(timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
     const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
       "capture-pane", "-t", `${this.sessionName}:${this.windowId}`, "-p",
-    ]));
+    ]), { timeout: timeoutMs });
     return stdout;
   }
 
   /** Capture pane content including scrollback history (last N lines). */
-  async capturePaneWithHistory(lines: number = 50): Promise<string> {
+  async capturePaneWithHistory(lines: number = 50, timeoutMs = LOGIN_TMUX_OP_TIMEOUT_MS): Promise<string> {
     const { stdout } = await exec("tmux", TmuxManager.tmuxArgs([
       "capture-pane", "-t", `${this.sessionName}:${this.windowId}`,
       "-p", "-S", `-${lines}`,
-    ]));
+    ]), { timeout: timeoutMs });
     return stdout;
   }
 

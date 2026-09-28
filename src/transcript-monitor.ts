@@ -3,7 +3,7 @@ import { open, stat } from "node:fs/promises";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Logger } from "./logger.js";
-import type { TranscriptSource } from "./transcript-sources.js";
+import type { TranscriptCheckpoint, TranscriptSource } from "./transcript-sources.js";
 
 /**
  * Emits tool_use / tool_result / assistant_text events off the CLI's own
@@ -71,6 +71,19 @@ export class TranscriptMonitor extends EventEmitter {
       }
     }
     return null;
+  }
+
+  /** Snapshot the active durable conversation before an outbox pane write. */
+  async reconciliationCheckpoint(): Promise<TranscriptCheckpoint | null> {
+    if (this.source?.checkpoint) return this.source.checkpoint();
+    const path = await this.resolveTranscriptPath();
+    if (!path) return null;
+    try {
+      const current = await stat(path);
+      return { path, offset: current.size, sessionId: path };
+    } catch {
+      return null;
+    }
   }
 
   async pollIncrement(): Promise<void> {

@@ -9,7 +9,8 @@ export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
 export const DURABLE_DELIVERY_ABORT_BACKOFF_MS = 5_000;
 
 export interface DaemonDeliveryPort {
-  begin(deliveryId: string, targetBootId: string, attemptNo: number): "begun" | "duplicate" | "stale";
+  begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale";
+  markEnterStarted(deliveryId: string, targetBootId: string, attemptNo: number): boolean;
   abort(deliveryId: string, targetBootId: string, attemptNo: number, reason: string): boolean;
   complete(deliveryId: string, targetBootId: string, attemptNo: number, outcome: "delivered" | "failed" | "uncertain", evidence?: string): boolean;
   retryBeforeBegin(deliveryId: string, targetBootId: string, attemptNo: number, reason: string, delayMs?: number): boolean;
@@ -19,6 +20,7 @@ export type OutboxState =
   | "queued"
   | "delivering"
   | "submission_started"
+  | "reconciliation_pending"
   | "retry_wait"
   | "delivered"
   | "failed"
@@ -56,6 +58,33 @@ export interface OutboxDelivery {
   responseDeliveredAt: string | null;
   nextAttemptAt: string | null;
   lastError: string | null;
+  reconciliationPending: boolean;
+}
+
+export type DurableSubmissionMode = "idle_submit" | "native_queue_handoff" | "steer";
+
+/** Checkpoint committed with begin, before any pane paste can occur. */
+export interface DeliveryAttemptEvidence {
+  backend: string;
+  windowId: string | null;
+  transcriptPath: string | null;
+  transcriptOffset: number | null;
+  transcriptSessionId: string | null;
+  submissionMode: DurableSubmissionMode;
+}
+
+export interface DeliveryReconciliationCandidate extends OutboxDelivery {
+  attempt: {
+    targetDaemonBootId: string;
+    attemptNo: number;
+    backend: string | null;
+    windowId: string | null;
+    transcriptPath: string | null;
+    transcriptOffset: number | null;
+    transcriptSessionId: string | null;
+    submissionMode: DurableSubmissionMode | null;
+    enterStartedAt: string | null;
+  };
 }
 
 interface OutboxRow {
@@ -77,6 +106,7 @@ interface OutboxRow {
   response_delivered_at: string | null;
   next_attempt_at: string | null;
   last_error: string | null;
+  reconciliation_pending: number;
   created_at: string;
 }
 
@@ -97,13 +127,16 @@ function mapRow(row: OutboxRow): OutboxDelivery {
     kind: row.kind,
     correlationId: row.correlation_id,
     payload: JSON.parse(row.payload_json) as Record<string, unknown>,
-    state: row.state,
+    state: row.state === "submission_started" && row.reconciliation_pending === 1
+      ? "reconciliation_pending"
+      : row.state,
     attemptNo: row.attempt_no,
     createdSeq: row.created_seq,
     managerBootId: row.manager_boot_id,
     responseDeliveredAt: row.response_delivered_at,
     nextAttemptAt: row.next_attempt_at,
     lastError: row.last_error,
+    reconciliationPending: row.reconciliation_pending === 1,
   };
 }
 
@@ -143,6 +176,7 @@ export class DeliveryOutbox extends EventEmitter {
         created_seq INTEGER NOT NULL UNIQUE,
         manager_boot_id TEXT,
         response_delivered_at TEXT,
+        reconciliation_pending INTEGER NOT NULL DEFAULT 0,
         next_attempt_at TEXT,
         last_error TEXT,
         created_at TEXT NOT NULL,
@@ -167,6 +201,13 @@ export class DeliveryOutbox extends EventEmitter {
         abort_at TEXT,
         finished_at TEXT,
         evidence TEXT,
+        backend TEXT,
+        window_id TEXT,
+        transcript_path TEXT,
+        transcript_offset INTEGER,
+        transcript_session_id TEXT,
+        submission_mode TEXT,
+        enter_started_at TEXT,
         PRIMARY KEY (delivery_id, target_daemon_boot_id, attempt_no)
       );
 
@@ -184,8 +225,24 @@ export class DeliveryOutbox extends EventEmitter {
         notice_delivery_id TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL
       );
-      PRAGMA user_version = 1;
     `);
+    // Additive migration: existing Phase 1 databases keep their row identities,
+    // foreign keys, and WAL while gaining reconciliation evidence columns.
+    this.ensureColumn("deliveries", "reconciliation_pending", "INTEGER NOT NULL DEFAULT 0");
+    this.ensureColumn("delivery_attempts", "backend", "TEXT");
+    this.ensureColumn("delivery_attempts", "window_id", "TEXT");
+    this.ensureColumn("delivery_attempts", "transcript_path", "TEXT");
+    this.ensureColumn("delivery_attempts", "transcript_offset", "INTEGER");
+    this.ensureColumn("delivery_attempts", "transcript_session_id", "TEXT");
+    this.ensureColumn("delivery_attempts", "submission_mode", "TEXT");
+    this.ensureColumn("delivery_attempts", "enter_started_at", "TEXT");
+    this.db.pragma("user_version = 2");
+  }
+
+  private ensureColumn(table: string, column: string, definition: string): void {
+    const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+    if (columns.some(item => item.name === column)) return;
+    this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   }
 
   /** Commit admission before returning success. Duplicate source keys return their original row. */
@@ -271,11 +328,18 @@ export class DeliveryOutbox extends EventEmitter {
     // The oldest pending row owns its target lane even while it is in retry
     // backoff or the target is temporarily unavailable. Later rows must not
     // pass it merely because they happen to be eligible first.
+    const reconciliationTargets = new Set((this.db.prepare(`
+      SELECT DISTINCT target_instance FROM deliveries
+      WHERE state='submission_started' AND reconciliation_pending=1
+    `).all() as Array<{ target_instance: string }>).map(item => item.target_instance));
     const visitedTargets = new Set<string>();
     for (const row of rows) {
       if (visitedTargets.has(row.target_instance)) continue;
       visitedTargets.add(row.target_instance);
       if (blockedTargets.has(row.target_instance)) continue;
+      // A recovered submission owns only its target lane while its evidence is
+      // classified; independent targets can keep dispatching.
+      if (reconciliationTargets.has(row.target_instance)) continue;
       if (row.state === "retry_wait" && row.next_attempt_at && row.next_attempt_at > now) continue;
       const targetBootId = targetBootIdFor(row.target_instance);
       if (!targetBootId) continue;
@@ -294,7 +358,7 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Idempotent begin permit, committed immediately before the pane side effect. */
-  begin(deliveryId: string, targetBootId: string, attemptNo: number): "begun" | "duplicate" | "stale" {
+  begin(deliveryId: string, targetBootId: string, attemptNo: number, evidence?: DeliveryAttemptEvidence): "begun" | "duplicate" | "stale" {
     const now = new Date().toISOString();
     const transaction = this.db.transaction((): { outcome: "begun" | "duplicate" | "stale"; failed: boolean } => {
       const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
@@ -320,9 +384,19 @@ export class DeliveryOutbox extends EventEmitter {
         return { outcome: "stale", failed: true };
       }
       this.db.prepare(`
-        INSERT INTO delivery_attempts(delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at)
-        VALUES (?,?,?,'begun',?)
-      `).run(deliveryId, targetBootId, attemptNo, now);
+        INSERT INTO delivery_attempts(
+          delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at,
+          backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode
+        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?)
+      `).run(
+        deliveryId, targetBootId, attemptNo, now,
+        evidence?.backend ?? null,
+        evidence?.windowId ?? null,
+        evidence?.transcriptPath ?? null,
+        evidence?.transcriptOffset ?? null,
+        evidence?.transcriptSessionId ?? null,
+        evidence?.submissionMode ?? null,
+      );
       this.db.prepare(`
         UPDATE deliveries SET state='submission_started', submitted_at=?, updated_at=?
         WHERE delivery_id=? AND state='delivering'
@@ -333,6 +407,20 @@ export class DeliveryOutbox extends EventEmitter {
     if (result.outcome === "begun") this.emit("state", { deliveryId, state: "submission_started" });
     else if (result.failed) this.emit("state", { deliveryId, state: "failed" });
     return result.outcome;
+  }
+
+  /** Write-ahead fence: commit before tmux is allowed to receive Enter. */
+  markEnterStarted(deliveryId: string, targetBootId: string, attemptNo: number): boolean {
+    const now = new Date().toISOString();
+    const changed = this.db.prepare(`
+      UPDATE delivery_attempts SET enter_started_at=COALESCE(enter_started_at,?)
+      WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='begun'
+        AND EXISTS (
+          SELECT 1 FROM deliveries WHERE delivery_id=? AND target_daemon_boot_id=?
+            AND attempt_no=? AND state='submission_started'
+        )
+    `).run(now, deliveryId, targetBootId, attemptNo, deliveryId, targetBootId, attemptNo).changes;
+    return changed === 1;
   }
 
   /** Safe only when the caller can prove no pane write occurred for this attempt. */
@@ -357,7 +445,7 @@ export class DeliveryOutbox extends EventEmitter {
       `).run(now, reason.slice(0, 300), deliveryId, targetBootId, attemptNo);
       if (updateAttempt.changes !== 1) return false;
       const updateDelivery = this.db.prepare(`
-        UPDATE deliveries SET state='retry_wait',updated_at=?,last_error=?,next_attempt_at=?
+        UPDATE deliveries SET state='retry_wait',reconciliation_pending=0,updated_at=?,last_error=?,next_attempt_at=?
         WHERE delivery_id=? AND state='submission_started' AND target_daemon_boot_id=? AND attempt_no=?
       `).run(
         now,
@@ -386,7 +474,7 @@ export class DeliveryOutbox extends EventEmitter {
     const transaction = this.db.transaction(() => {
       const parent = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
       const result = this.db.prepare(`
-        UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?
+        UPDATE deliveries SET state=?,reconciliation_pending=0,updated_at=?,finished_at=?,last_error=?
         WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='submission_started'
       `).run(outcome, now, now, outcome === "delivered" ? null : (evidence ?? outcome).slice(0, 300), deliveryId, targetBootId, attemptNo);
       if (result.changes !== 1) {
@@ -453,7 +541,7 @@ export class DeliveryOutbox extends EventEmitter {
     return changed;
   }
 
-  /** Expire unavailable/pre-submit rows instead of leaving them queued forever. */
+  /** Bound both unavailable rows and unresolved reconciliation without stealing a live lease. */
   expireStale(nowMs = Date.now(), maxAgeMs = DURABLE_DELIVERY_MAX_AGE_MS): number {
     const cutoff = new Date(nowMs - maxAgeMs).toISOString();
     const now = new Date(nowMs).toISOString();
@@ -468,22 +556,44 @@ export class DeliveryOutbox extends EventEmitter {
         WHERE delivery_id=? AND state IN ('queued','retry_wait')
       `);
       let changed = 0;
+      let uncertain = 0;
       for (const row of stale) {
         if (update.run(now, now, row.delivery_id).changes !== 1) continue;
         this.insertFailureNotice(row, "failed", "delivery TTL expired before target became available", now);
         changed++;
       }
-      return changed;
+      const unresolved = this.db.prepare(`
+        SELECT * FROM deliveries
+        WHERE state='submission_started' AND reconciliation_pending=1 AND created_at<=?
+        ORDER BY created_seq
+      `).all(cutoff) as OutboxRow[];
+      const markUncertain = this.db.prepare(`
+        UPDATE deliveries SET state='uncertain',reconciliation_pending=0,updated_at=?,finished_at=?,
+          last_error='reconciliation TTL expired without sufficient evidence'
+        WHERE delivery_id=? AND state='submission_started' AND reconciliation_pending=1
+      `);
+      for (const row of unresolved) {
+        if (markUncertain.run(now, now, row.delivery_id).changes !== 1) continue;
+        this.db.prepare(`
+          UPDATE delivery_attempts SET state='uncertain',finished_at=?,evidence='reconciliation TTL expired without sufficient evidence'
+          WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='begun'
+        `).run(now, row.delivery_id, row.target_daemon_boot_id, row.attempt_no);
+        this.insertFailureNotice(row, "uncertain", "reconciliation TTL expired without sufficient evidence", now);
+        changed++;
+        uncertain++;
+      }
+      return { changed, uncertain };
     });
-    const changed = transaction();
-    if (changed) this.emit("expired", { count: changed });
-    return changed;
+    const result = transaction();
+    if (result.changed) this.emit("expired", { count: result.changed, uncertain: result.uncertain });
+    return result.changed;
   }
 
   /** Next queued/retry expiry for bounded maintenance scheduling. */
   nextExpiryAt(): string | null {
     const row = this.db.prepare(`
-      SELECT MIN(created_at) AS created_at FROM deliveries WHERE state IN ('queued','retry_wait')
+      SELECT MIN(created_at) AS created_at FROM deliveries
+      WHERE state IN ('queued','retry_wait') OR (state='submission_started' AND reconciliation_pending=1)
     `).get() as { created_at: string | null };
     return row.created_at ? new Date(Date.parse(row.created_at) + DURABLE_DELIVERY_MAX_AGE_MS).toISOString() : null;
   }
@@ -497,26 +607,20 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Old process leases are recoverable; an old submission attempt needs evidence reconciliation. */
-  recoverForBoot(managerBootId: string): { queued: number; uncertain: number } {
+  recoverForBoot(managerBootId: string): { queued: number; reconciliationPending: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
-      const uncertainRows = this.db.prepare(`
-        SELECT * FROM deliveries WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state='submission_started'
-      `).all(managerBootId) as OutboxRow[];
       const queued = this.db.prepare(`
         UPDATE deliveries SET state='queued',manager_boot_id=NULL,target_daemon_boot_id=NULL,next_attempt_at=NULL,updated_at=?
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state IN ('delivering','retry_wait')
       `).run(now, managerBootId).changes;
-      // Until transcript reconciliation is enabled, never blindly replay a row
-      // whose pane side effect may already have happened.
-      const uncertain = this.db.prepare(`
-        UPDATE deliveries SET state='uncertain',updated_at=?,finished_at=?,last_error='process restarted during submission; reconciliation required'
+      // Keep the submission fence and target lane while bounded pane/transcript
+      // evidence is captured. Never replay an in-flight row blindly.
+      const reconciliationPending = this.db.prepare(`
+        UPDATE deliveries SET reconciliation_pending=1,updated_at=?,last_error='process restarted during submission; reconciliation required'
         WHERE manager_boot_id IS NOT NULL AND manager_boot_id<>? AND state='submission_started'
-      `).run(now, now, managerBootId).changes;
-      for (const row of uncertainRows) {
-        this.insertFailureNotice(row, "uncertain", "process restarted during submission; reconciliation required", now);
-      }
-      return { queued, uncertain };
+      `).run(now, managerBootId).changes;
+      return { queued, reconciliationPending };
     });
     return transaction();
   }
@@ -583,31 +687,111 @@ export class DeliveryOutbox extends EventEmitter {
     return notice;
   }
 
-  recoverTargetGeneration(targetInstance: string, currentTargetBootId: string): { queued: number; uncertain: number } {
+  recoverTargetGeneration(targetInstance: string, currentTargetBootId: string): { queued: number; reconciliationPending: number } {
     const now = new Date().toISOString();
     const transaction = this.db.transaction(() => {
-      const uncertainRows = this.db.prepare(`
-        SELECT * FROM deliveries WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL
-          AND target_daemon_boot_id<>? AND state='submission_started'
-      `).all(targetInstance, currentTargetBootId) as OutboxRow[];
       const queued = this.db.prepare(`
         UPDATE deliveries SET state='queued',manager_boot_id=NULL,target_daemon_boot_id=NULL,next_attempt_at=NULL,updated_at=?
         WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL AND target_daemon_boot_id<>?
           AND state IN ('delivering','retry_wait')
       `).run(now, targetInstance, currentTargetBootId).changes;
-      const uncertain = this.db.prepare(`
-        UPDATE deliveries SET state='uncertain',updated_at=?,finished_at=?,last_error='target daemon generation changed during submission; reconciliation required'
+      const reconciliationPending = this.db.prepare(`
+        UPDATE deliveries SET reconciliation_pending=1,updated_at=?,last_error='target daemon generation changed during submission; reconciliation required'
         WHERE target_instance=? AND target_daemon_boot_id IS NOT NULL AND target_daemon_boot_id<>?
           AND state='submission_started'
-      `).run(now, now, targetInstance, currentTargetBootId).changes;
-      for (const row of uncertainRows) {
-        this.insertFailureNotice(row, "uncertain", "target daemon generation changed during submission; reconciliation required", now);
-      }
-      return { queued, uncertain };
+      `).run(now, targetInstance, currentTargetBootId).changes;
+      return { queued, reconciliationPending };
     });
     const result = transaction();
-    if (result.queued + result.uncertain > 0) this.emit("generation_recovered", { targetInstance, ...result });
+    if (result.queued + result.reconciliationPending > 0) this.emit("generation_recovered", { targetInstance, ...result });
     return result;
+  }
+
+  /** Fence in-flight writes before an in-process target stop begins. */
+  markTargetReconciliationPending(targetInstance: string, targetBootId: string): number {
+    const now = new Date().toISOString();
+    return this.db.prepare(`
+      UPDATE deliveries SET reconciliation_pending=1,updated_at=?,last_error='target daemon stopping; reconciliation required'
+      WHERE target_instance=? AND target_daemon_boot_id=? AND state='submission_started'
+    `).run(now, targetInstance, targetBootId).changes;
+  }
+
+  getReconciliationCandidates(targetInstance: string): DeliveryReconciliationCandidate[] {
+    const rows = this.db.prepare(`
+      SELECT d.*, a.target_daemon_boot_id AS attempt_target_boot_id,
+        a.attempt_no AS attempt_attempt_no, a.backend AS attempt_backend,
+        a.window_id AS attempt_window_id, a.transcript_path AS attempt_transcript_path,
+        a.transcript_offset AS attempt_transcript_offset,
+        a.transcript_session_id AS attempt_transcript_session_id,
+        a.submission_mode AS attempt_submission_mode, a.enter_started_at AS attempt_enter_started_at
+      FROM deliveries d JOIN delivery_attempts a ON a.delivery_id=d.delivery_id
+        AND a.attempt_no=d.attempt_no AND a.target_daemon_boot_id=d.target_daemon_boot_id
+      WHERE d.target_instance=? AND d.state='submission_started' AND d.reconciliation_pending=1
+      ORDER BY d.created_seq
+    `).all(targetInstance) as Array<OutboxRow & {
+      attempt_target_boot_id: string; attempt_attempt_no: number; attempt_backend: string | null;
+      attempt_window_id: string | null; attempt_transcript_path: string | null;
+      attempt_transcript_offset: number | null; attempt_transcript_session_id: string | null;
+      attempt_submission_mode: DurableSubmissionMode | null; attempt_enter_started_at: string | null;
+    }>;
+    return rows.map(row => ({
+      ...mapRow(row),
+      attempt: {
+        targetDaemonBootId: row.attempt_target_boot_id,
+        attemptNo: row.attempt_attempt_no,
+        backend: row.attempt_backend,
+        windowId: row.attempt_window_id,
+        transcriptPath: row.attempt_transcript_path,
+        transcriptOffset: row.attempt_transcript_offset,
+        transcriptSessionId: row.attempt_transcript_session_id,
+        submissionMode: row.attempt_submission_mode,
+        enterStartedAt: row.attempt_enter_started_at,
+      },
+    }));
+  }
+
+  /** Atomically settle one old attempt using only its boot/attempt fence. */
+  reconcileAttempt(
+    deliveryId: string,
+    targetBootId: string,
+    attemptNo: number,
+    outcome: "delivered" | "retry_wait" | "uncertain",
+    evidence: string,
+  ): boolean {
+    const now = new Date().toISOString();
+    const transaction = this.db.transaction(() => {
+      const parent = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
+      if (!parent || parent.state !== "submission_started" || parent.target_daemon_boot_id !== targetBootId
+        || parent.attempt_no !== attemptNo || parent.reconciliation_pending !== 1) return false;
+      const terminal = outcome !== "retry_wait";
+      const changed = this.db.prepare(`
+        UPDATE deliveries SET state=?,reconciliation_pending=0,manager_boot_id=?,
+          target_daemon_boot_id=?,updated_at=?,finished_at=?,last_error=?,next_attempt_at=?
+        WHERE delivery_id=? AND state='submission_started' AND reconciliation_pending=1
+          AND target_daemon_boot_id=? AND attempt_no=?
+      `).run(
+        outcome,
+        outcome === "retry_wait" ? null : parent.manager_boot_id,
+        outcome === "retry_wait" ? null : targetBootId,
+        now,
+        terminal ? now : null,
+        outcome === "delivered" ? null : evidence.slice(0, 300),
+        outcome === "retry_wait" ? new Date(Date.now() + DURABLE_DELIVERY_ABORT_BACKOFF_MS).toISOString() : null,
+        deliveryId, targetBootId, attemptNo,
+      ).changes;
+      if (changed !== 1) return false;
+      const attemptState = outcome === "retry_wait" ? "aborted" : outcome;
+      this.db.prepare(`
+        UPDATE delivery_attempts SET state=?,abort_at=?,finished_at=?,evidence=?
+        WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='begun'
+      `).run(attemptState, outcome === "retry_wait" ? now : null, terminal ? now : null,
+        evidence.slice(0, 300), deliveryId, targetBootId, attemptNo);
+      if (outcome === "uncertain") this.insertFailureNotice(parent, "uncertain", evidence, now);
+      return true;
+    });
+    const changed = transaction();
+    if (changed) this.emit("state", { deliveryId, state: outcome });
+    return changed;
   }
 
   getUnansweredAccepted(sourceInstance: string, currentBootId: string): OutboxDelivery[] {

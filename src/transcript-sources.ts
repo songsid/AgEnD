@@ -40,11 +40,20 @@ export interface TranscriptEvents {
   assistantTexts: string[];
 }
 
+export interface TranscriptCheckpoint {
+  path: string;
+  offset: number;
+  /** Stable path/session identifier used to reject a different rollout. */
+  sessionId: string;
+}
+
 export interface TranscriptSource {
   /** Read events that appeared since the previous call. Invoked serially. */
   poll(): Promise<TranscriptEvents>;
   /** Forget the current position; the next poll re-resolves and re-baselines. */
   reset(): void;
+  /** Optional durable-delivery checkpoint taken immediately before pane paste. */
+  checkpoint?(): Promise<TranscriptCheckpoint | null>;
 }
 
 const EMPTY: TranscriptEvents = { toolUses: [], toolResults: [], assistantTexts: [] };
@@ -96,6 +105,19 @@ export class CodexRolloutSource implements TranscriptSource {
     this.byteOffset = 0;
     this.rejected.clear();
     this.snapshotExistingFiles();
+  }
+
+  async checkpoint(): Promise<TranscriptCheckpoint | null> {
+    const active = this.candidateFiles().find(file => this.fileBelongsToUs(file.path));
+    if (!active) return null;
+    try {
+      const current = await stat(active.path);
+      this.currentFile = active.path;
+      this.byteOffset = current.size;
+      return { path: active.path, offset: current.size, sessionId: active.path };
+    } catch {
+      return null;
+    }
   }
 
   private snapshotExistingFiles(): void {

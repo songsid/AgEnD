@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import pino from "pino";
 import { Daemon } from "../src/daemon.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
+import { reconcileTargetBeforeStart } from "../src/delivery-reconciliation.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { TmuxManager } from "../src/tmux-manager.js";
 
 const roots: string[] = [];
 const rootLogger = pino({ level: "silent" });
@@ -77,6 +79,35 @@ function deliveryMeta(deliveryId: string, attemptNo: number): Record<string, str
 }
 
 describe("durable delivery through a real Daemon", () => {
+  it("commits enter_started before tmux can accept the Enter key", async () => {
+    const h = makeHarness();
+    const evidence = {
+      backend: "codex",
+      windowId: "@worker",
+      transcriptPath: null,
+      transcriptOffset: null,
+      transcriptSessionId: null,
+      submissionMode: "idle_submit" as const,
+    };
+    expect(h.outbox.begin(h.row.deliveryId, h.daemon.bootId, h.claimed.attemptNo, evidence)).toBe("begun");
+    (h.daemon as any).sendDeliveryEnter.mockRestore();
+    const sendSpecialKey = vi.fn(async () => {
+      const started = (h.outbox as any).db.prepare(
+        "SELECT enter_started_at FROM delivery_attempts WHERE delivery_id=?",
+      ).get(h.row.deliveryId).enter_started_at;
+      expect(started).toBeTruthy();
+      return true;
+    });
+    h.tmux.sendSpecialKey = sendSpecialKey;
+
+    expect(await (h.daemon as any).sendDeliveryEnter("initial-submit", undefined, {
+      deliveryId: h.row.deliveryId,
+      attemptNo: h.claimed.attemptNo,
+    })).toBe(true);
+    expect(sendSpecialKey).toHaveBeenCalledOnce();
+    h.outbox.close();
+  });
+
   it("requires a committed begin permit before the actual paste and records the delivered ACK", async () => {
     vi.useFakeTimers();
     const h = makeHarness();
@@ -121,6 +152,7 @@ describe("durable delivery through a real Daemon", () => {
     const h = makeHarness();
     h.daemon.setDeliveryOutboxPort({
       begin: vi.fn(() => "stale" as const),
+      markEnterStarted: (id, boot, attempt) => h.outbox.markEnterStarted(id, boot, attempt),
       abort: (id, boot, attempt, reason) => h.outbox.abort(id, boot, attempt, reason),
       complete: (id, boot, attempt, outcome, evidence) => h.outbox.complete(id, boot, attempt, outcome, evidence),
       retryBeforeBegin: (id, boot, attempt, reason, delay) => h.outbox.retryBeforeBegin(id, boot, attempt, reason, delay),
@@ -195,6 +227,141 @@ describe("durable delivery through a real Daemon", () => {
 });
 
 describe("MCP durable response delivery tracking", () => {
+  it("does not fence an ordinary start when best-effort old-window cleanup is unconfirmed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-no-pending-start-"));
+    roots.push(root);
+    const instanceDir = join(root, "instances", "worker");
+    mkdirSync(instanceDir, { recursive: true });
+    writeFileSync(join(instanceDir, "window-id"), "@stale-worker");
+    const outbox = new DeliveryOutbox(join(root, "delivery-outbox.db"), "manager-test");
+    const kill = vi.spyOn(TmuxManager.prototype, "killWindowConfirmed").mockResolvedValue(false);
+    try {
+      const result = await reconcileTargetBeforeStart(outbox, "worker", instanceDir);
+      expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 0, safeToStart: true });
+      // No durable attempt needs evidence. Let Daemon.start retain the old
+      // Strategy-A best-effort kill behavior instead of imposing a new fence.
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      kill.mockRestore();
+      outbox.close();
+    }
+  });
+
+  it("reconciles old pane evidence before replacement Daemon.start can run Strategy A cleanup", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-start-barrier-"));
+    roots.push(root);
+    const dbPath = join(root, "delivery-outbox.db");
+    const oldStore = new DeliveryOutbox(dbPath, "manager-before-crash");
+    const row = oldStore.admit({
+      operationId: "op-start-barrier",
+      sourceKey: "source:op-start-barrier:worker",
+      sourceInstance: "source",
+      sourceDaemonBootId: "source-boot",
+      targetInstance: "worker",
+      kind: "fleet_inbound",
+      payload: { type: "fleet_inbound", content: "hello", meta: {} },
+    }).delivery;
+    const oldClaim = oldStore.claimNext("manager-before-crash", () => "old-target-boot", new Set())!;
+    expect(oldStore.begin(row.deliveryId, "old-target-boot", oldClaim.attemptNo, {
+      backend: "mock",
+      windowId: "@old-worker",
+      transcriptPath: null,
+      transcriptOffset: null,
+      transcriptSessionId: null,
+      submissionMode: "idle_submit",
+    })).toBe("begun");
+    oldStore.close();
+
+    const manager = new FleetManager(root);
+    const replacementStore = new DeliveryOutbox(dbPath, manager.managerBootId);
+    manager.deliveryOutbox = replacementStore;
+    (manager as any).shuttingDown = true;
+    const config = {
+      backend: "mock",
+      working_directory: root,
+      log_level: "error",
+      restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+      context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+    } as any;
+    manager.fleetConfig = { defaults: { backend: "mock" }, instances: { worker: config } } as any;
+    const order: string[] = [];
+    vi.spyOn(TmuxManager, "getPanePid").mockResolvedValue(null);
+    vi.spyOn(TmuxManager.prototype, "capturePane").mockImplementation(async () => {
+      order.push("capture");
+      return "[agend-delivery-id:old]\n❯";
+    });
+    vi.spyOn(TmuxManager.prototype, "killWindowConfirmed").mockImplementation(async () => {
+      order.push("retire");
+      return true;
+    });
+    const start = vi.spyOn(Daemon.prototype, "start").mockImplementation(async function() {
+      order.push("start");
+      expect(order).toEqual(["capture", "retire", "start"]);
+      expect(replacementStore.get(row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    });
+    try {
+      await manager.lifecycle.start("worker", config, false);
+      expect(start).toHaveBeenCalledOnce();
+      expect(replacementStore.get(row.deliveryId)?.state).toBe("retry_wait");
+    } finally {
+      vi.restoreAllMocks();
+      replacementStore.close();
+    }
+  });
+
+  it("keeps a target fenced when reconciliation cannot confirm the old window is retired", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-outbox-start-fence-"));
+    roots.push(root);
+    const dbPath = join(root, "delivery-outbox.db");
+    const oldStore = new DeliveryOutbox(dbPath, "manager-before-crash");
+    const row = oldStore.admit({
+      operationId: "op-start-fence",
+      sourceKey: "source:op-start-fence:worker",
+      sourceInstance: "source",
+      sourceDaemonBootId: "source-boot",
+      targetInstance: "worker",
+      kind: "fleet_inbound",
+      payload: { type: "fleet_inbound", content: "hello", meta: {} },
+    }).delivery;
+    const oldClaim = oldStore.claimNext("manager-before-crash", () => "old-target-boot", new Set())!;
+    oldStore.begin(row.deliveryId, "old-target-boot", oldClaim.attemptNo, {
+      backend: "mock",
+      windowId: "@old-worker",
+      transcriptPath: null,
+      transcriptOffset: null,
+      transcriptSessionId: null,
+      submissionMode: "idle_submit",
+    });
+    oldStore.close();
+
+    const manager = new FleetManager(root);
+    const replacementStore = new DeliveryOutbox(dbPath, manager.managerBootId);
+    manager.deliveryOutbox = replacementStore;
+    (manager as any).shuttingDown = true;
+    const config = {
+      backend: "mock",
+      working_directory: root,
+      log_level: "error",
+      restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 },
+      context_guardian: { max_age_hours: 4, grace_period_ms: 600_000 },
+    } as any;
+    manager.fleetConfig = { defaults: { backend: "mock" }, instances: { worker: config } } as any;
+    vi.spyOn(TmuxManager, "getPanePid").mockResolvedValue(null);
+    vi.spyOn(TmuxManager.prototype, "capturePane").mockResolvedValue("❯");
+    vi.spyOn(TmuxManager.prototype, "killWindowConfirmed").mockResolvedValue(false);
+    const start = vi.spyOn(Daemon.prototype, "start").mockResolvedValue();
+    const notify = vi.spyOn(manager as any, "notifyFleetError");
+    try {
+      await expect(manager.lifecycle.start("worker", config, false)).rejects.toThrow("could not be confirmed retired");
+      expect(start).not.toHaveBeenCalled();
+      expect(replacementStore.get(row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
+      expect(notify).toHaveBeenCalledOnce();
+    } finally {
+      vi.restoreAllMocks();
+      replacementStore.close();
+    }
+  });
+
   it("records the response written by the real Daemon path and avoids a post-restart notice", async () => {
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-mcp-response-"));
     roots.push(root);
@@ -250,7 +417,7 @@ describe("MCP durable response delivery tracking", () => {
       const recovered = restarted.recoverForBoot(replacement.managerBootId);
       replacement.onDaemonReady("source", "source-replacement-boot");
 
-      expect(recovered).toEqual({ queued: 0, uncertain: 0 });
+      expect(recovered).toEqual({ queued: 0, reconciliationPending: 0 });
       expect(restarted.getUnansweredAccepted("source", "source-replacement-boot")).toEqual([]);
       expect(restarted.listPending().some(item => item.kind === "post_restart_outcome_notice")).toBe(false);
       restarted.close();

@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { once } from "node:events";
 import { pathToFileURL } from "node:url";
 import { DeliveryOutbox, DURABLE_DELIVERY_ABORT_BACKOFF_MS, DURABLE_DELIVERY_MAX_AGE_MS, DURABLE_DELIVERY_MAX_ATTEMPTS, type NewOutboxDelivery } from "./delivery-outbox.js";
+import { finishTargetReconciliation } from "./delivery-reconciliation.js";
 
 const roots: string[] = [];
 function tempDb(): string {
@@ -156,7 +157,7 @@ describe("DeliveryOutbox", () => {
     restarted.close();
   });
 
-  it("marks an in-flight paste uncertain after whole-process SIGKILL and persists one sender notice", async () => {
+  it("replays a whole-process SIGKILL before Enter because no write-ahead Enter marker exists", async () => {
     const dbPath = tempDb();
     const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
     const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
@@ -223,12 +224,80 @@ describe("DeliveryOutbox", () => {
 
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
     const row = restarted.getByOperation("source", "op-paste-crash")[0];
-    const notices = restarted.listPending().filter(item => item.kind === "delivery_outcome_notice");
-    expect(row).toMatchObject({ state: "uncertain", targetInstance: "worker" });
-    expect(notices).toHaveLength(1);
-    expect(notices[0]?.payload.content).toContain("state=uncertain");
-    expect(notices[0]?.payload.content).toContain("Do not resend");
+    expect(row).toMatchObject({ state: "reconciliation_pending", reconciliationPending: true, targetInstance: "worker" });
+    const candidate = restarted.getReconciliationCandidates("worker")[0]!;
+    expect(candidate.attempt.enterStartedAt).toBeNull();
+    expect(restarted.reconcileAttempt(candidate.deliveryId, candidate.attempt.targetDaemonBootId,
+      candidate.attempt.attemptNo, "retry_wait", "enter-not-started; pre-kill-pane-captured")).toBe(true);
+    expect(restarted.get(row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    expect(restarted.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(0);
     restarted.close();
+  });
+
+  it("whole-process SIGKILL after tmux accepts Enter stays uncertain even if the stale pane still shows the marker", async () => {
+    const dbPath = tempDb();
+    const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
+    const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
+    const script = [
+      `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
+      `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+      `import pino from "pino";`,
+      `const db = ${JSON.stringify(dbPath)};`,
+      `const outbox = new DeliveryOutbox(db, "manager-1");`,
+      `const row = outbox.admit(${JSON.stringify(input({ operationId: "op-enter-crash", sourceKey: "source:op-enter-crash" }))}).delivery;`,
+      `const daemon = new Daemon("worker", { backend: "codex", working_directory: "/tmp", log_level: "error" }, ${JSON.stringify(dirname(dbPath))} + "/instances/worker", false, undefined, undefined, pino({ level: "silent" }));`,
+      `const claimed = outbox.claimNext("manager-1", () => daemon.bootId, new Set());`,
+      `const evidence = { backend: "codex", windowId: "@old", transcriptPath: null, transcriptOffset: null, transcriptSessionId: null, submissionMode: "idle_submit" };`,
+      `outbox.begin(row.deliveryId, daemon.bootId, claimed.attemptNo, evidence);`,
+      `daemon.setDeliveryOutboxPort(outbox);`,
+      `daemon.tmux = { sendSpecialKey: async () => { process.stdout.write("tmux-enter-accepted\\n"); return new Promise(() => {}); } };`,
+      `void daemon.sendDeliveryEnter("initial-submit", undefined, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo });`,
+      `setInterval(() => {}, 1000);`,
+    ].join("\n");
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let childStderr = "";
+    child.stderr.setEncoding("utf8").on("data", chunk => { childStderr += chunk; });
+    const lines = createInterface({ input: child.stdout });
+    const accepted = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`writer child did not reach tmux Enter: ${childStderr}`)), 8_000);
+      lines.once("line", line => {
+        clearTimeout(timer);
+        if (line === "tmux-enter-accepted") resolve();
+        else reject(new Error(`unexpected child output: ${line}`));
+      });
+      child.once("error", err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    await accepted;
+    child.kill("SIGKILL");
+    await once(child, "exit");
+    lines.close();
+
+    const replacement = new DeliveryOutbox(dbPath, "manager-2");
+    expect(replacement.recoverForBoot("manager-2").reconciliationPending).toBe(1);
+    const candidate = replacement.getReconciliationCandidates("worker")[0]!;
+    expect(candidate.attempt.enterStartedAt).toBeTruthy();
+    const reconciled = await finishTargetReconciliation(replacement, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old",
+      attempts: [{
+        candidate,
+        paneWindowId: "@old",
+        panePid: null,
+        pane: `[agend-delivery-id:${candidate.deliveryId}]\n› [from:source] hello`,
+        paneCaptureError: null,
+      }],
+    }, true);
+    expect(reconciled).toEqual({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+    expect(replacement.get(candidate.deliveryId)).toMatchObject({ state: "uncertain" });
+    expect(replacement.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
+    replacement.close();
   });
 
   it("fences begin by attempt and target generation; abort safely returns work to retry", () => {
@@ -244,6 +313,80 @@ describe("DeliveryOutbox", () => {
     expect(outbox.abort(row.deliveryId, "target-boot-1", claimed.attemptNo, "retry duplicate")).toBe(true);
     expect(outbox.get(row.deliveryId)?.state).toBe("retry_wait");
     expect(Date.parse(outbox.get(row.deliveryId)!.nextAttemptAt!)).toBeGreaterThanOrEqual(Date.now() + DURABLE_DELIVERY_ABORT_BACKOFF_MS - 100);
+    outbox.close();
+  });
+
+  it("persists transcript checkpoint and Enter-start before recovery can classify the attempt", () => {
+    const outbox = new DeliveryOutbox(tempDb(), "manager-1");
+    const row = outbox.admit(input()).delivery;
+    const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
+    const evidence = {
+      backend: "codex",
+      windowId: "@old",
+      transcriptPath: "/tmp/rollout.jsonl",
+      transcriptOffset: 2048,
+      transcriptSessionId: "rollout-session-1",
+      submissionMode: "idle_submit" as const,
+    };
+    expect(outbox.begin(row.deliveryId, "target-boot-1", claimed.attemptNo, evidence)).toBe("begun");
+    const rawAttempt = (outbox as any).db.prepare(
+      "SELECT backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode,enter_started_at FROM delivery_attempts WHERE delivery_id=?",
+    ).get(row.deliveryId);
+    expect(rawAttempt).toMatchObject({
+      backend: "codex", window_id: "@old", transcript_path: "/tmp/rollout.jsonl",
+      transcript_offset: 2048, transcript_session_id: "rollout-session-1", submission_mode: "idle_submit",
+      enter_started_at: null,
+    });
+
+    expect(outbox.markEnterStarted(row.deliveryId, "target-boot-1", claimed.attemptNo)).toBe(true);
+    expect((outbox as any).db.prepare(
+      "SELECT enter_started_at FROM delivery_attempts WHERE delivery_id=?",
+    ).get(row.deliveryId).enter_started_at).toBeTruthy();
+    expect(outbox.recoverForBoot("manager-2").reconciliationPending).toBe(1);
+    const candidate = outbox.getReconciliationCandidates("worker")[0]!;
+    expect(candidate).toMatchObject({ state: "reconciliation_pending", attempt: { enterStartedAt: expect.any(String) } });
+    expect(outbox.reconcileAttempt(row.deliveryId, "target-boot-1", claimed.attemptNo, "uncertain", "no transcript marker after Enter")).toBe(true);
+    expect(outbox.get(row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
+    expect(outbox.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
+    outbox.close();
+  });
+
+  it("holds only a target lane until its recovered attempt is classified", () => {
+    const outbox = new DeliveryOutbox(tempDb(), "manager-1");
+    const active = outbox.admit(input({ operationId: "active", sourceKey: "active", targetInstance: "worker-a" })).delivery;
+    const newer = outbox.admit(input({ operationId: "newer", sourceKey: "newer", targetInstance: "worker-a" })).delivery;
+    const independent = outbox.admit(input({ operationId: "other", sourceKey: "other", targetInstance: "worker-b" })).delivery;
+    const first = outbox.claimNext("manager-1", target => `boot-${target}`, new Set())!;
+    expect(first.deliveryId).toBe(active.deliveryId);
+    expect(outbox.begin(active.deliveryId, first.targetDaemonBootId, first.attemptNo)).toBe("begun");
+    expect(outbox.markEnterStarted(active.deliveryId, first.targetDaemonBootId, first.attemptNo)).toBe(true);
+    outbox.recoverForBoot("manager-2");
+
+    const available = outbox.claimNext("manager-2", target => `replacement-${target}`, new Set());
+    expect(available?.deliveryId).toBe(independent.deliveryId);
+    expect(outbox.get(newer.deliveryId)?.state).toBe("queued");
+    expect(outbox.reconcileAttempt(active.deliveryId, first.targetDaemonBootId, first.attemptNo, "uncertain", "ambiguous")).toBe(true);
+    const next = outbox.claimNext("manager-2", target => `replacement-${target}`, new Set());
+    expect(next?.deliveryId).toBe(newer.deliveryId);
+    outbox.close();
+  });
+
+  it("surfaces a reconciliation that remains pending through the visible TTL bound", () => {
+    const outbox = new DeliveryOutbox(tempDb(), "manager-1");
+    const row = outbox.admit(input()).delivery;
+    const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
+    expect(outbox.begin(row.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo, {
+      backend: "muse", windowId: "@old", transcriptPath: null, transcriptOffset: null,
+      transcriptSessionId: null, submissionMode: "idle_submit",
+    })).toBe("begun");
+    outbox.markEnterStarted(row.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo);
+    outbox.recoverForBoot("manager-2");
+    (outbox as any).db.prepare("UPDATE deliveries SET created_at=? WHERE delivery_id=?")
+      .run(new Date(Date.now() - 2_000).toISOString(), row.deliveryId);
+
+    expect(outbox.expireStale(Date.now(), 1_000)).toBe(1);
+    expect(outbox.get(row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
+    expect(outbox.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
     outbox.close();
   });
 
@@ -272,8 +415,8 @@ describe("DeliveryOutbox", () => {
     const afterBoot = outbox.claimNext("manager-2", () => "target-boot-2", new Set())!;
     expect(outbox.begin(afterBoot.deliveryId, "target-boot-1", afterBoot.attemptNo)).toBe("stale");
     expect(outbox.begin(afterBoot.deliveryId, "target-boot-2", afterBoot.attemptNo)).toBe("begun");
-    expect(outbox.recoverTargetGeneration("worker", "target-boot-3").uncertain).toBe(1);
-    expect(outbox.get(claimed.deliveryId)?.state).toBe("uncertain");
+    expect(outbox.recoverTargetGeneration("worker", "target-boot-3").reconciliationPending).toBe(1);
+    expect(outbox.get(claimed.deliveryId)).toMatchObject({ state: "reconciliation_pending", reconciliationPending: true });
     outbox.close();
   });
 
