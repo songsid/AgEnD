@@ -49,7 +49,7 @@ describe("DeliveryOutbox", () => {
     outbox.close();
   });
 
-  it("replays an in-flight delivery after SIGKILL while the real Daemon is waiting before begin", async () => {
+  it("recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly", async () => {
     const dbPath = tempDb();
     const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
     const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
@@ -128,11 +128,8 @@ describe("DeliveryOutbox", () => {
       logger as any,
     );
     const sourceDaemon = makeDaemon("source");
-    const targetDaemon = makeDaemon("worker");
     sourceDaemon.setDeliveryOutboxPort(restarted);
-    targetDaemon.setDeliveryOutboxPort(restarted);
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
-    replacementManager.lifecycle.daemons.set("worker", targetDaemon);
     const recovered = restarted.recoverForBoot(replacementManager.managerBootId);
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);
     const pendingAfterRecovery = restarted.listPending();
@@ -140,15 +137,22 @@ describe("DeliveryOutbox", () => {
       { operationId: "op-1", targetInstance: "worker", state: "queued", payload: { content: "hello" } },
       { operationId: expect.stringContaining("notice:"), targetInstance: "source", state: "queued" },
     ]);
-    const replay = restarted.claimNext(
-      replacementManager.managerBootId,
-      name => replacementManager.lifecycle.daemons.get(name)?.bootId ?? null,
-      new Set(),
-    );
-    expect(replay?.deliveryId).toBe(pendingAfterRecovery.find(row => row.operationId === "op-1")?.deliveryId);
-    expect(restarted.get(replay!.deliveryId)?.state).toBe("delivering");
+    expect(replacementManager.lifecycle.daemons.has("worker")).toBe(false);
     expect(recovered).toEqual({ queued: 1, uncertain: 0 });
     expect(restarted.getUnansweredAccepted("source", sourceDaemon.bootId)).toHaveLength(1);
+
+    const queuedDelivery = pendingAfterRecovery.find(row => row.operationId === "op-1")!;
+    const createdAt = (restarted as any).db.prepare(
+      "SELECT created_at FROM deliveries WHERE delivery_id=?",
+    ).get(queuedDelivery.deliveryId).created_at as string;
+    expect(restarted.expireStale(Date.parse(createdAt) + DURABLE_DELIVERY_MAX_AGE_MS + 1)).toBe(1);
+    expect(restarted.get(queuedDelivery.deliveryId)).toMatchObject({ state: "failed" });
+    const failureNotice = (restarted as any).db.prepare(
+      "SELECT state,target_instance,payload_json FROM deliveries WHERE kind='delivery_outcome_notice' AND operation_id=?",
+    ).get(`notice:op-1:${queuedDelivery.deliveryId}`) as { state: string; target_instance: string; payload_json: string } | undefined;
+    expect(failureNotice?.state).toBe("queued");
+    expect(failureNotice?.target_instance).toBe("source");
+    expect(JSON.parse(failureNotice!.payload_json).content).toContain("state=failed");
     restarted.close();
   });
 
@@ -214,11 +218,8 @@ describe("DeliveryOutbox", () => {
       join(dirname(dbPath), "instances", name), false, undefined, undefined, logger as any,
     );
     const sourceDaemon = makeDaemon("source");
-    const targetDaemon = makeDaemon("worker");
     sourceDaemon.setDeliveryOutboxPort(restarted);
-    targetDaemon.setDeliveryOutboxPort(restarted);
     replacementManager.lifecycle.daemons.set("source", sourceDaemon);
-    replacementManager.lifecycle.daemons.set("worker", targetDaemon);
 
     const recovered = restarted.recoverForBoot(replacementManager.managerBootId);
     replacementManager.onDaemonReady("source", sourceDaemon.bootId);

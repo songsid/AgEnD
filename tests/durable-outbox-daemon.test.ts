@@ -53,7 +53,7 @@ function makeHarness(controlClient?: object) {
     capturePane: vi.fn().mockResolvedValue("❯"),
     pasteBuffer,
     sendSpecialKey: vi.fn().mockResolvedValue(true),
-    getLastPasteError: vi.fn(() => undefined),
+    getLastPasteError: vi.fn((): string | undefined => undefined),
     isLastPasteFailureRecoverable: vi.fn(() => true),
   };
   (daemon as any).tmux = tmux;
@@ -151,6 +151,45 @@ describe("durable delivery through a real Daemon", () => {
       "SELECT state FROM delivery_attempts WHERE delivery_id=? AND attempt_no=?",
     ).get(h.row.deliveryId, h.claimed.attemptNo)).toMatchObject({ state: "aborted" });
     expect(failed).not.toHaveBeenCalled();
+    h.outbox.close();
+  });
+
+  it("aborts a committed begin when queued pane writing returns false before paste", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    h.tmux.pasteBuffer.mockResolvedValueOnce(false);
+    h.tmux.getLastPasteError.mockReturnValue("window disappeared before paste");
+    h.tmux.isLastPasteFailureRecoverable.mockReturnValue(false);
+
+    h.daemon.pushChannelMessage("hello", deliveryMeta(h.row.deliveryId, h.claimed.attemptNo));
+    await vi.runAllTimersAsync();
+    await (h.daemon as any).pasteLock;
+
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", attemptNo: 1 });
+    expect((h.outbox as any).db.prepare(
+      "SELECT state FROM delivery_attempts WHERE delivery_id=? AND attempt_no=?",
+    ).get(h.row.deliveryId, h.claimed.attemptNo)).toMatchObject({ state: "aborted" });
+    h.outbox.close();
+  });
+
+  it("aborts a committed begin when steered pane writing returns false before paste", async () => {
+    vi.useFakeTimers();
+    const h = makeHarness();
+    h.tmux.pasteBuffer.mockResolvedValueOnce(false);
+    h.tmux.getLastPasteError.mockReturnValue("window disappeared before paste");
+    h.tmux.isLastPasteFailureRecoverable.mockReturnValue(false);
+    vi.spyOn(h.daemon as any, "wake").mockResolvedValue(undefined);
+
+    h.daemon.steerMessage("hello", deliveryMeta(h.row.deliveryId, h.claimed.attemptNo));
+    await vi.runAllTimersAsync();
+    await (h.daemon as any).steerLock;
+
+    expect(h.tmux.pasteBuffer).toHaveBeenCalledOnce();
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", attemptNo: 1 });
+    expect((h.outbox as any).db.prepare(
+      "SELECT state FROM delivery_attempts WHERE delivery_id=? AND attempt_no=?",
+    ).get(h.row.deliveryId, h.claimed.attemptNo)).toMatchObject({ state: "aborted" });
     h.outbox.close();
   });
 });
