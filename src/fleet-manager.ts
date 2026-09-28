@@ -7259,9 +7259,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (prev === emoji) return;
       // Thread-aware adapters (Discord) react where the thread is; Telegram
       // addresses the supergroup chat and ignores the thread part.
-      // Discord needs the old reaction removed before the new one is added.
-      // Telegram's setMessageReaction replaces the bot's one current reaction.
-      if (prev && prev !== emoji && adapter.unreact && !(adapter instanceof TelegramAdapter)) {
+      // #972: add-only by default — only remove ❌ when leaving the failed
+      // state. 👀/⏳/✅ stacking together is harmless; leaving ❌ visible
+      // after a recovery would be misleading.
+      if (prev === "❌" && adapter.unreact && !(adapter instanceof TelegramAdapter)) {
         // Best effort: a failed removal must not block the new status.
         await adapter.unreact(target, messageId, prev, threadId).catch(e =>
           this.logger.debug({ err: (e as Error).message }, "Delivery status reaction removal failed"));
