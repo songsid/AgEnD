@@ -15,6 +15,25 @@ describe("website tips pages", () => {
     expect(html.match(/data-level="advanced"/g)).toHaveLength(100);
   });
 
+  it.each(["en", "zh"] as const)("renders the current source text of every tip (%s)", locale => {
+    // Source-vs-artifact consistency: editing src/tips.ts without rerunning
+    // the generator (scripts/generate-tips-html.mjs, also via postbuild) must
+    // turn this red. Mirrors the generator's escapeHtml.
+    const escapeHtml = (value: string): string => value
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
+    const html = readPage(locale);
+    const text = (tip: (typeof TIPS)[number]): string => locale === "en" ? tip.text_en : tip.text_zh;
+    for (const tip of TIPS) {
+      expect(html, `stale artifact: ${tip.id} text missing from tips-${locale}.html`).toContain(
+        `<p>${escapeHtml(text(tip))}</p>`,
+      );
+    }
+  });
+
   it("keeps the two locales separate and linked", () => {
     const en = readPage("en");
     const zh = readPage("zh");
