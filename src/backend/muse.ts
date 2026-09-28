@@ -306,11 +306,20 @@ export class MuseBackend implements CliBackend {
    * instance stuck in `working` forever (no auto-pause, cancel never retires,
    * delegate_task times out on the readiness gate).
    *
-   * The idle layout, last four visible rows:
+   * The idle layout, last four non-blank rows:
    *   ─────────────────────────────  (separator)
    *   ❯                             (empty input box — no user text after it)
    *   ─────────────────────────────  (separator)
    *     model · effort · cwd        (status bar)
+   *
+   * Muse draws inline, so until the transcript fills the window tmux pads the
+   * capture with blank rows BELOW the status bar (live muse 1.4.0 at 120x36,
+   * 2026-09-28: six of them). Counting those as "bottom rows" pushed the prompt
+   * out of the old fixed 8-row window, so a freshly restarted, idle muse could
+   * never prove it was idle and stayed `working` until the transcript grew
+   * (#958). The proof is therefore anchored to the last non-blank rows: the
+   * live input box must END the capture, which also means a `❯ / ───` pair
+   * sitting in scrollback can never qualify.
    *
    * Per the CliBackend contract, this method must be a strong structural proof:
    * false positives can retire Cancel and admit a new delivery into a busy CLI.
@@ -325,23 +334,28 @@ export class MuseBackend implements CliBackend {
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
     const rows = pane.replace(/\r/g, "").split("\n");
-    // Search the bottom 8 visible rows for an EMPTY ❯ line. Lines with user
-    // text (`❯ Write a haiku…`) are the input box with content — they sit in
-    // the conversation transcript and are not the live idle prompt.
-    let promptRow = -1;
-    for (let i = rows.length - 1; i >= Math.max(0, rows.length - 8); i--) {
-      if (/^❯\s*$/.test(rows[i])) { promptRow = i; break; }
-    }
-    if (promptRow < 0) return false;
-    // The line immediately after the empty ❯ must be the separator (─ × N).
-    // Without it we may be looking at the prompt in the transcript, not the
-    // live input box.
-    if (!/^─{10,}/.test(rows[promptRow + 1] ?? "")) return false;
-    // No busy indicator in the active region above the prompt. The working
-    // indicator (`◇ Thinking (2s · esc to interrupt)`) sits just above the
-    // top separator (~3 rows above promptRow). Check 6 rows up to be safe.
+    while (rows.length && !rows[rows.length - 1].trim()) rows.pop();
+    const separator = /^─{10,}\s*$/;
     const busyPattern = this.getBusyPattern();
-    return !rows.slice(Math.max(0, promptRow - 6), promptRow).some(r => busyPattern.test(r));
+    // The status bar is one row, or two when a long cwd wraps. Everything
+    // after the bottom separator must be status chrome: indented, and neither
+    // a separator, a prompt, nor a live busy line.
+    let bottomSeparator = -1;
+    for (let i = rows.length - 2; i >= Math.max(0, rows.length - 3); i--) {
+      if (separator.test(rows[i])) { bottomSeparator = i; break; }
+    }
+    if (bottomSeparator < 2) return false;
+    const status = rows.slice(bottomSeparator + 1);
+    if (!status.every(row => /^\s+\S/.test(row) && !separator.test(row.trim()) && !busyPattern.test(row))) return false;
+    // Directly above it, the EMPTY live prompt. A `❯` with text is a draft
+    // (or, higher up, a transcript echo) and never proves idle.
+    if (!/^❯\s*$/.test(rows[bottomSeparator - 1])) return false;
+    const topSeparator = bottomSeparator - 2;
+    if (!separator.test(rows[topSeparator])) return false;
+    // No busy indicator just above the input box. The working line
+    // (`◇ Thinking (2s · esc to interrupt)`) sits immediately above the top
+    // separator; check 6 rows up to be safe.
+    return !rows.slice(Math.max(0, topSeparator - 6), topSeparator).some(r => busyPattern.test(r));
   }
 
   getErrorPatterns(): ErrorPattern[] {

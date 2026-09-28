@@ -259,6 +259,119 @@ describe("MuseBackend isPeriodicRedrawIdlePane — structural idle proof (#932)"
   });
 });
 
+/**
+ * The bottom of a live, idle muse 1.4.0 pane (120x36), captured 2026-09-28 while
+ * the #958 instance sat parked at its prompt. The transcript did not fill the
+ * window, so tmux padded the capture with blank rows below the status bar —
+ * the shape every freshly restarted muse has.
+ */
+const SEP_120 = "─".repeat(120);
+const LIVE_1_4_IDLE_TAIL = [
+  "◆ .",
+  "",
+  "◆ Worked for 4m 20s · 2:03 PM",
+  "",
+  SEP_120,
+  "❯",
+  SEP_120,
+  "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides",
+];
+const LIVE_1_4_IDLE = [...LIVE_1_4_IDLE_TAIL, "", "", "", "", "", ""].join("\n");
+
+describe("MuseBackend idle proof anchored to the live input box (#958)", () => {
+  const { backend } = makeBackend();
+
+  it("proves idle on the live 1.4.0 pane despite the blank rows under the status bar", () => {
+    // The fixed bottom-8-rows window counted the padding: the prompt sat 9 rows
+    // from the end and a genuinely idle muse stayed `working` forever. Dropping
+    // the trailing-blank trim turns this red.
+    expect(backend.isPeriodicRedrawIdlePane(LIVE_1_4_IDLE)).toBe(true);
+    // Padding depth depends on how empty the window is; none of it may matter.
+    for (const blanks of [0, 1, 12, 30]) {
+      const pane = [...LIVE_1_4_IDLE_TAIL, ...Array(blanks).fill("   ")].join("\n");
+      expect(backend.isPeriodicRedrawIdlePane(pane), `${blanks} padding rows`).toBe(true);
+    }
+  });
+
+  it("proves idle on a freshly restarted pane, where the padding is deepest", () => {
+    // Right after restart only the header is drawn, so almost the whole 36-row
+    // window is blank below the status bar. This is the state #958 kept
+    // reporting as `working` ("restart recovers it for one round").
+    const fresh = [
+      "",
+      "  Muse Code 1.4.0",
+      "",
+      SEP_120,
+      "❯",
+      SEP_120,
+      "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides",
+      ...Array(29).fill(""),
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(fresh)).toBe(true);
+  });
+
+  it("still sees a working pane as busy when it carries the same padding", () => {
+    const working = [
+      "❯ Write a haiku about tmux. Nothing else.",
+      "◇ Thinking (2s · esc to interrupt)",
+      SEP_120,
+      "❯",
+      SEP_120,
+      "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides",
+      "", "", "", "", "", "",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(working)).toBe(false);
+  });
+
+  it("ignores a complete input box that is only scrollback", () => {
+    // An old idle frame above newer output (e.g. the pane before a turn was
+    // submitted). The live screen must END with the input box; searching for
+    // the shape anywhere would bless whatever muse is doing now.
+    const pane = [
+      SEP_120,
+      "❯",
+      SEP_120,
+      "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides",
+      "❯ run the tests",
+      "◇ Working (12s · esc to interrupt)",
+      "  streaming tool output…",
+      "", "", "",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(pane)).toBe(false);
+  });
+
+  it("accepts a status bar that wraps onto a second row, but nothing more below it", () => {
+    const wrapped = [
+      "◆ Done.",
+      SEP_120,
+      "❯",
+      SEP_120,
+      "  muse-spark-1.3-contributor · high · ~/a/very/long/path/that/wraps/past/the/edge/of/the",
+      "  /window · Launch overrides",
+      "", "",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(wrapped)).toBe(true);
+    // Three rows under the box is no longer the status bar — a picker or a
+    // hint list muse drew beneath the input. Unfamiliar means not idle.
+    const extra = wrapped.replace("  /window · Launch overrides", "  /window · Launch overrides\n  1. an option\n  2. another");
+    expect(backend.isPeriodicRedrawIdlePane(extra)).toBe(false);
+  });
+
+  it("does not take a draft, a missing top separator, or an unindented row for the status bar", () => {
+    const withDraft = LIVE_1_4_IDLE.replace(/^❯$/m, "❯ unsent draft");
+    expect(backend.isPeriodicRedrawIdlePane(withDraft)).toBe(false);
+    const noTopSeparator = [
+      "◆ .",
+      "❯",
+      SEP_120,
+      "  muse-spark-1.3-contributor · high · ~/Projects/AgEnD-agend-dev-muse · Launch overrides",
+    ].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(noTopSeparator)).toBe(false);
+    const unindentedTail = [...LIVE_1_4_IDLE_TAIL.slice(0, -1), "Press Ctrl-C again to quit"].join("\n");
+    expect(backend.isPeriodicRedrawIdlePane(unindentedTail)).toBe(false);
+  });
+});
+
 describe("MuseBackend launch command", () => {
   it("asks for both trust and approval, because either alone stalls", () => {
     // Verified live: `--disable-approval` on its own parks on the trust dialog.
