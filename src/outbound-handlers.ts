@@ -1,6 +1,7 @@
 import { validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import type { FleetConfig, InstanceConfig } from "./types.js";
 import type { ChannelAdapter } from "./channel/types.js";
 import type { IpcClient } from "./channel/ipc-bridge.js";
@@ -90,7 +91,22 @@ export interface OutboundContext {
     instanceName: string,
     payload: Record<string, unknown>,
     options?: OutboundDeliveryOptions,
-  ): Promise<void>;
+  ): Promise<void | boolean>;
+  /** Persist a cross-instance action before its MCP call is acknowledged. */
+  admitDurableDelivery?(input: {
+    operationId: string;
+    sourceDaemonBootId?: string;
+    sourceInstance: string;
+    targetInstance: string;
+    targetSession?: string;
+    kind: string;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  }): { deliveryId: string; state: string; duplicate: boolean };
+  /** Current Daemon generation for authenticated HTTP/CLI ingress. */
+  getDaemonBootId?(instanceName: string): string | undefined;
+  /** True for the bounded stop/spawn window of an already planned replacement. */
+  isInstanceRestarting?(instanceName: string): boolean;
   /** True while an earlier idle-gated delivery still owns this target's FIFO tail. */
   hasPendingIdleGatedDelivery?(instanceName: string): boolean;
   saveFleetConfig(): void;
@@ -130,6 +146,8 @@ export interface OutboundMeta {
   requestId: number | undefined;
   fleetRequestId: string | undefined;
   senderSessionName: string | undefined;
+  operationId?: string;
+  sourceDaemonBootId?: string;
 }
 
 type Respond = (result: unknown, error?: string) => void;
@@ -351,11 +369,15 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // Paused instances may have no live IPC while their persisted window is being
   // woken. The FleetManager facade can still start them, so let that path run.
   const canWakePersisted = state === "paused" && !!ctx.deliverToInstance;
-  if (state === "crashed") {
+  const plannedRestart = ctx.isInstanceRestarting?.(targetInstanceName) === true && !!ctx.admitDurableDelivery;
+  const durableTargetMayReconnect = !!ctx.admitDurableDelivery
+    && existsInConfig
+    && (state === "running" || state === "paused" || plannedRestart);
+  if (state === "crashed" && !plannedRestart) {
     respond(null, `Instance '${targetName}' is crashed (target_state=crashed). Restart it before sending.`);
     return;
   }
-  if (state === "stopped" || (!targetIpc && !canWakePersisted)) {
+  if ((state === "stopped" || (!targetIpc && !canWakePersisted && !durableTargetMayReconnect)) && !plannedRestart) {
     respond(null, `Instance '${targetName}' is stopped (target_state=stopped). Use start_instance('${targetName}') to start it first.`);
     return;
   }
@@ -389,6 +411,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     : undefined;
 
   const correlationId = parsedCorrelationId || `cid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const operationId = ctx.admitDurableDelivery ? meta.operationId ?? randomUUID() : meta.operationId;
   const ipcMeta: Record<string, string> = {
     chat_id: "",
     message_id: `xmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -419,15 +442,45 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // failing past this point is a delivery problem to log, not a caller error.
   // Retries and, on final failure, tells both agents' topics — see
   // deliverCrossInstanceWithRetry. It never rejects, so nothing escapes here.
-  void deliverCrossInstanceWithRetry(
-    ctx,
-    targetInstanceName,
-    targetName,
-    senderLabel,
-    correlationId,
-    { type: useSteer ? "steer" : "fleet_inbound", targetSession, content: message, meta: ipcMeta },
-    useSteer ? { isCrossInstance: true, waitForIdle: false } : undefined,
-  );
+  const payload = {
+    type: useSteer ? "steer" : "fleet_inbound",
+    targetSession,
+    content: message,
+    meta: ipcMeta,
+  };
+  let durableReceipt: { deliveryId: string; state: string; duplicate: boolean } | undefined;
+  if (ctx.admitDurableDelivery) {
+    try {
+      durableReceipt = ctx.admitDurableDelivery({
+        // MCP assigns this before ipcRequest; HTTP/CLI and legacy ingress get
+        // an equivalent server-side key so non-MCP agents remain supported.
+        operationId: operationId!,
+        sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
+        sourceInstance: meta.instanceName,
+        targetInstance: targetInstanceName,
+        targetSession,
+        kind: useSteer ? "steer" : "fleet_inbound",
+        correlationId,
+        payload,
+      });
+    } catch (err) {
+      ctx.logger.error({ err, source: meta.instanceName, target: targetInstanceName }, "Durable outbound admission failed closed");
+      respond(null, `Durable delivery could not be accepted: ${sanitizeError(err, ctx, "durable delivery admission")}`);
+      return;
+    }
+  } else {
+    // Standalone handler harnesses retain the legacy path; production FleetManager
+    // always provides durable admission.
+    void deliverCrossInstanceWithRetry(
+      ctx,
+      targetInstanceName,
+      targetName,
+      senderLabel,
+      correlationId,
+      payload,
+      useSteer ? { isCrossInstance: true, waitForIdle: false } : undefined,
+    );
+  }
   // Show a cancel button on the target's topic so a watching user can interrupt
   // work started by another instance — but only for messages that actually put
   // the recipient to work (task/query). Informational report/update messages
@@ -500,6 +553,13 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     : undefined;
   const warnings = [steerFallbackWarning, targetStateWarning].filter((value): value is string => !!value);
   respond({ sent: true, queued: true, target: targetName, target_state: state,
+    ...(durableReceipt ? {
+      durable: true,
+      delivery_id: durableReceipt.deliveryId,
+      delivery_state: durableReceipt.state,
+      operation_id: operationId,
+      duplicate: durableReceipt.duplicate,
+    } : {}),
     ...(state === "paused" ? { waking: true } : {}), correlation_id: correlationId,
     ...(useSteer ? { delivery_mode: "steer" } : {}),
     ...(steerFallbackWarning ? { delivery_mode: "idle_queue" } : {}),
@@ -1344,6 +1404,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
+  const operationId = ctx.admitDurableDelivery ? meta.operationId ?? randomUUID() : meta.operationId;
   const senderDisplay = ctx.fleetConfig?.instances[senderLabel]?.display_name;
   const makeBroadcastMeta = (correlationId: string, messageId = `bcast-${Date.now()}`): Record<string, string> => {
     const ipcMeta: Record<string, string> = {
@@ -1397,16 +1458,35 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     const correlationId = `bcast-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const ipcMeta = makeBroadcastMeta(correlationId);
 
-    // Same at-least-once treatment as send_to_instance: retry, then surface a
-    // final failure on both topics instead of dying in a warn-level log line.
-    void deliverCrossInstanceWithRetry(
-      ctx,
-      hostInstance,
-      targetName,
-      senderLabel,
-      correlationId,
-      { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta },
-    );
+    const payload = { type: "fleet_inbound", targetSession: targetName, content: message, meta: ipcMeta };
+    if (ctx.admitDurableDelivery) {
+      try {
+        ctx.admitDurableDelivery({
+          operationId: operationId!,
+          sourceDaemonBootId: meta.sourceDaemonBootId ?? ctx.getDaemonBootId?.(meta.instanceName),
+          sourceInstance: meta.instanceName,
+          targetInstance: hostInstance,
+          targetSession: targetName,
+          kind: "broadcast",
+          correlationId,
+          payload,
+        });
+      } catch (err) {
+        ctx.logger.error({ err, target: targetName, source: meta.instanceName }, "Durable broadcast admission failed closed");
+        failed.push(targetName);
+        continue;
+      }
+    } else {
+      // Standalone handler harnesses retain the legacy path.
+      void deliverCrossInstanceWithRetry(
+        ctx,
+        hostInstance,
+        targetName,
+        senderLabel,
+        correlationId,
+        payload,
+      );
+    }
     sentTo.push(targetName);
   }
 
@@ -1416,7 +1496,14 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     ctx.eventLog?.logActivity("message", senderLabel, summary, target);
   }
   ctx.queueMirrorMessage?.(`📢 ${senderLabel} → [${sentTo.join(", ")}]: ${truncatePreview(message, 500)}`);
-  respond({ sent_to: sentTo, failed, count: sentTo.length, queued: true });
+  respond({
+    sent_to: sentTo,
+    failed,
+    count: sentTo.length,
+    queued: true,
+    ...(operationId ? { operation_id: operationId } : {}),
+    ...(ctx.admitDurableDelivery ? { durable: true, delivery_state: "queued" } : { durable: false }),
+  });
 };
 
 // ── Teams ────────────────────────────────────────────────────────────────

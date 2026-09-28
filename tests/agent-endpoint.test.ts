@@ -5,6 +5,53 @@ import { join } from "node:path";
 import { dispatchAgentOperation, readPersistedReplyContext } from "../src/agent-endpoint.js";
 
 describe("agent CLI reply context", () => {
+  it.each([
+    ["send", { instance_name: "worker", message: "hello" }],
+    ["broadcast", { targets: ["worker"], message: "hello" }],
+  ])("assigns a durable operation_id for HTTP %s ingress without MCP metadata", async (op, args) => {
+    const admitDurableDelivery = vi.fn(input => ({ deliveryId: "delivery-http", state: "queued", duplicate: false }));
+    const ctx = {
+      fleetConfig: { defaults: {}, instances: { agy: { tool_set: "worker" }, worker: {} } },
+      instanceIpcClients: new Map([["worker", { connected: true }]]),
+      sessionRegistry: new Map(),
+      lifecycle: { daemons: new Map() },
+      logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      getInstanceStatus: () => "running",
+      getDaemonBootId: () => "http-source-boot",
+      admitDurableDelivery,
+      eventLog: { logActivity: vi.fn() },
+      queueMirrorMessage: vi.fn(),
+    } as any;
+
+    const result = await dispatchAgentOperation(ctx, "agy", op, args as Record<string, unknown>);
+
+    expect(result).toMatchObject({ operation_id: expect.any(String), durable: true, delivery_state: "queued" });
+    expect(admitDurableDelivery).toHaveBeenCalled();
+    expect(admitDurableDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: (result as any).operation_id,
+      sourceDaemonBootId: "http-source-boot",
+      sourceInstance: "agy",
+      targetInstance: "worker",
+    }));
+  });
+
+  it("returns the generated operation_id when HTTP admission fails closed", async () => {
+    const ctx = {
+      fleetConfig: { defaults: {}, instances: { agy: { tool_set: "worker" }, worker: {} } },
+      instanceIpcClients: new Map([["worker", { connected: true }]]),
+      sessionRegistry: new Map(),
+      lifecycle: { daemons: new Map() },
+      logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() },
+      getInstanceStatus: () => "running",
+      getDaemonBootId: () => "http-source-boot",
+      admitDurableDelivery: vi.fn(() => { throw new Error("sqlite full"); }),
+    } as any;
+
+    const result = await dispatchAgentOperation(ctx, "agy", "send", { instance_name: "worker", message: "hello" });
+
+    expect(result).toMatchObject({ operation_id: expect.any(String), error: expect.stringContaining("sqlite full") });
+  });
+
   it("reads the daemon's persisted chat, thread, and adapter", () => {
     const dataDir = mkdtempSync(join(tmpdir(), "agend-agent-context-"));
     const instanceDir = join(dataDir, "instances", "agy");
