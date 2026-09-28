@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
@@ -32,6 +32,7 @@ function input(overrides: Partial<NewOutboxDelivery> = {}): NewOutboxDelivery {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -48,7 +49,7 @@ describe("DeliveryOutbox", () => {
     outbox.close();
   });
 
-  it("survives killing the writer process after its SQLite admission commit", async () => {
+  it("replays an in-flight delivery after SIGKILL while the real Daemon is waiting before begin", async () => {
     const dbPath = tempDb();
     const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
     const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
@@ -57,6 +58,7 @@ describe("DeliveryOutbox", () => {
       `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
       `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
       `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+      `import { mkdirSync, writeFileSync } from "node:fs";`,
       `import pino from "pino";`,
       `const manager = new FleetManager(${JSON.stringify(dirname(dbPath))});`,
       `const outbox = new DeliveryOutbox(${JSON.stringify(dbPath)}, manager.managerBootId);`,
@@ -68,21 +70,35 @@ describe("DeliveryOutbox", () => {
       `const target = makeDaemon("worker");`,
       `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
       `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
-      `manager.admitDurableDelivery({ operationId: "op-1", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "same-correlation", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
-      `outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
-      `process.stdout.write("committed\\n");`,
+      `const accepted = manager.admitDurableDelivery({ operationId: "op-1", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "same-correlation", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
+      `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
+      `const targetDaemon = manager.lifecycle.daemons.get("worker");`,
+      `const instanceDir = ${JSON.stringify(dirname(dbPath))} + "/instances/worker";`,
+      `mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
+      `targetDaemon.tmux = { capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `targetDaemon.controlClient = {};`,
+      `targetDaemon.paneReadinessForDelivery = async () => "busy";`,
+      `targetDaemon.probeBlockingDialog = async () => ({ state: "clear" });`,
+      `targetDaemon.hasPositiveDeliveryInput = async () => false;`,
+      `targetDaemon.waitForPaneReadyForDelivery = async () => { process.stdout.write("dispatch-waiting\\n"); return new Promise(() => {}); };`,
+      `targetDaemon.pushChannelMessage("hello", { delivery_id: accepted.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "same-correlation", user: "instance:source", user_id: "instance:source", message_id: "message-crash-before-begin", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
       `setInterval(() => {}, 1000);`,
     ].join("\n");
     const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
     });
+    let childStderr = "";
+    child.stderr.setEncoding("utf8").on("data", chunk => { childStderr += chunk; });
     const lines = createInterface({ input: child.stdout });
     const committed = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("writer child did not commit in time")), 10_000);
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error(`writer child did not reach the pre-begin wait: ${childStderr}`));
+      }, 8_000);
       lines.once("line", line => {
         clearTimeout(timer);
-        if (line === "committed") resolve();
+        if (line === "dispatch-waiting") resolve();
         else reject(new Error(`unexpected child output: ${line}`));
       });
       child.once("error", err => {
@@ -133,6 +149,86 @@ describe("DeliveryOutbox", () => {
     expect(restarted.get(replay!.deliveryId)?.state).toBe("delivering");
     expect(recovered).toEqual({ queued: 1, uncertain: 0 });
     expect(restarted.getUnansweredAccepted("source", sourceDaemon.bootId)).toHaveLength(1);
+    restarted.close();
+  });
+
+  it("marks an in-flight paste uncertain after whole-process SIGKILL and persists one sender notice", async () => {
+    const dbPath = tempDb();
+    const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
+    const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
+    const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
+    const script = [
+      `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
+      `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
+      `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+      `import { mkdirSync, writeFileSync } from "node:fs";`,
+      `import pino from "pino";`,
+      `const root = ${JSON.stringify(dirname(dbPath))};`,
+      `const manager = new FleetManager(root);`,
+      `const outbox = new DeliveryOutbox(${JSON.stringify(dbPath)}, manager.managerBootId);`,
+      `manager.deliveryOutbox = outbox; manager.shuttingDown = true;`,
+      `const logger = pino({ level: "silent" });`,
+      `const makeDaemon = name => new Daemon(name, { working_directory: "/tmp", log_level: "error" }, root + "/instances/" + name, false, undefined, undefined, logger);`,
+      `const source = makeDaemon("source"); const target = makeDaemon("worker");`,
+      `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
+      `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
+      `const accepted = manager.admitDurableDelivery({ operationId: "op-paste-crash", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "corr-paste-crash", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
+      `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
+      `const instanceDir = root + "/instances/worker"; mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
+      `target.tmux = { capturePane: async () => "❯", pasteBuffer: async () => { process.stdout.write("pane-paste-started\\n"); return new Promise(() => {}); }, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.pushChannelMessage("hello", { delivery_id: accepted.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "corr-paste-crash", user: "instance:source", user_id: "instance:source", message_id: "message-paste-crash", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
+      `setInterval(() => {}, 1000);`,
+    ].join("\n");
+    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+      cwd: process.cwd(),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const lines = createInterface({ input: child.stdout });
+    const pasted = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("child did not reach the pane paste")), 10_000);
+      lines.once("line", line => {
+        clearTimeout(timer);
+        if (line === "pane-paste-started") resolve();
+        else reject(new Error(`unexpected child output: ${line}`));
+      });
+      child.once("error", err => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
+    await pasted;
+    child.kill("SIGKILL");
+    await once(child, "exit");
+    lines.close();
+
+    const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
+    const restarted = new DeliveryOutbox(dbPath, replacementManager.managerBootId);
+    replacementManager.deliveryOutbox = restarted;
+    (replacementManager as any).shuttingDown = true;
+    const { Daemon } = await import("./daemon.js");
+    const pinoModule = await import("pino");
+    const logger = pinoModule.default({ level: "silent" });
+    const makeDaemon = (name: string) => new Daemon(
+      name,
+      { working_directory: "/tmp", log_level: "error", restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 }, context_guardian: { max_age_hours: 4, grace_period_ms: 600000 } },
+      join(dirname(dbPath), "instances", name), false, undefined, undefined, logger as any,
+    );
+    const sourceDaemon = makeDaemon("source");
+    const targetDaemon = makeDaemon("worker");
+    sourceDaemon.setDeliveryOutboxPort(restarted);
+    targetDaemon.setDeliveryOutboxPort(restarted);
+    replacementManager.lifecycle.daemons.set("source", sourceDaemon);
+    replacementManager.lifecycle.daemons.set("worker", targetDaemon);
+
+    const recovered = restarted.recoverForBoot(replacementManager.managerBootId);
+    replacementManager.onDaemonReady("source", sourceDaemon.bootId);
+    const row = restarted.getByOperation("source", "op-paste-crash")[0];
+    const notices = restarted.listPending().filter(item => item.kind === "delivery_outcome_notice");
+    expect(recovered).toEqual({ queued: 0, uncertain: 1 });
+    expect(row).toMatchObject({ state: "uncertain", targetInstance: "worker" });
+    expect(notices).toHaveLength(1);
+    expect(notices[0]?.payload.content).toContain("state=uncertain");
+    expect(notices[0]?.payload.content).toContain("Do not resend");
     restarted.close();
   });
 
@@ -224,20 +320,41 @@ describe("DeliveryOutbox", () => {
     outbox.close();
   });
 
-  it("stops retrying after the bounded attempt count and atomically queues one notice", () => {
+  it("does not spend submission attempts on repeated pre-begin readiness deferrals", () => {
+    const outbox = new DeliveryOutbox(tempDb(), "manager-1");
+    const row = outbox.admit(input()).delivery;
+    for (let attempt = 1; attempt <= DURABLE_DELIVERY_MAX_ATTEMPTS + 1; attempt++) {
+      const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
+      expect(claimed.attemptNo).toBe(attempt);
+      expect(outbox.retryBeforeBegin(row.deliveryId, "target-boot-1", attempt, "readiness timeout", 0)).toBe(true);
+    }
+    expect(outbox.get(row.deliveryId)?.state).toBe("retry_wait");
+    expect(outbox.get(row.deliveryId)?.lastError).toBe("readiness timeout");
+    expect(outbox.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(0);
+    outbox.close();
+  });
+
+  it("bounds actual pane submission attempts and atomically queues one notice", () => {
+    vi.useFakeTimers();
     const outbox = new DeliveryOutbox(tempDb(), "manager-1");
     const row = outbox.admit(input()).delivery;
     for (let attempt = 1; attempt <= DURABLE_DELIVERY_MAX_ATTEMPTS; attempt++) {
       const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
       expect(claimed.attemptNo).toBe(attempt);
-      expect(outbox.retryBeforeBegin(row.deliveryId, "target-boot-1", attempt, "readiness timeout", 0)).toBe(true);
+      expect(outbox.begin(row.deliveryId, "target-boot-1", attempt)).toBe("begun");
+      expect(outbox.abort(row.deliveryId, "target-boot-1", attempt, "pane confirmed no write")).toBe(true);
+      vi.advanceTimersByTime(DURABLE_DELIVERY_ABORT_BACKOFF_MS + 1);
     }
+    const exhausted = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
+    expect(exhausted.attemptNo).toBe(DURABLE_DELIVERY_MAX_ATTEMPTS + 1);
+    expect(outbox.begin(row.deliveryId, "target-boot-1", exhausted.attemptNo)).toBe("stale");
     expect(outbox.get(row.deliveryId)?.state).toBe("failed");
     expect(outbox.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(1);
     outbox.close();
   });
 
   it("atomically notices uncertain submissions and never recursively notices a failed notice", () => {
+    vi.useFakeTimers();
     const outbox = new DeliveryOutbox(tempDb(), "manager-1");
     const row = outbox.admit(input()).delivery;
     const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
@@ -250,8 +367,12 @@ describe("DeliveryOutbox", () => {
     for (let attempt = 1; attempt <= DURABLE_DELIVERY_MAX_ATTEMPTS; attempt++) {
       const noticeClaim = outbox.claimNext("manager-1", () => "source-boot-1", new Set())!;
       expect(noticeClaim.deliveryId).toBe(notice.deliveryId);
-      outbox.retryBeforeBegin(notice.deliveryId, "source-boot-1", attempt, "source unavailable", 0);
+      expect(outbox.begin(notice.deliveryId, "source-boot-1", attempt)).toBe("begun");
+      expect(outbox.abort(notice.deliveryId, "source-boot-1", attempt, "source unavailable")).toBe(true);
+      vi.advanceTimersByTime(DURABLE_DELIVERY_ABORT_BACKOFF_MS + 1);
     }
+    const finalClaim = outbox.claimNext("manager-1", () => "source-boot-1", new Set())!;
+    expect(outbox.begin(notice.deliveryId, "source-boot-1", finalClaim.attemptNo)).toBe("stale");
     expect(outbox.get(notice.deliveryId)?.state).toBe("failed");
     expect(outbox.listPending().filter(item => item.kind === "delivery_outcome_notice")).toHaveLength(0);
     outbox.close();

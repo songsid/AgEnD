@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { FleetManager } from "../src/fleet-manager.js";
+import { DURABLE_DELIVERY_LANE_ALERT_MS, FleetManager } from "../src/fleet-manager.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 
 const roots: string[] = [];
@@ -43,7 +43,7 @@ describe("durable outbox dispatcher", () => {
     outbox.close();
   });
 
-  it("bounds a stalled pre-submit target lane and fences its late begin", async () => {
+  it("keeps a busy target's lane after 45 minutes, alerts once, and does not fail or spend attempts", async () => {
     vi.useFakeTimers();
     const root = mkdtempSync(join(tmpdir(), "agend-outbox-stall-"));
     roots.push(root);
@@ -60,15 +60,25 @@ describe("durable outbox dispatcher", () => {
       payload: { type: "fleet_inbound", content: "hello", meta: {} },
     }).delivery;
     const claimed = outbox.claimNext("manager-1", () => "target-boot", new Set())!;
-    vi.spyOn(fm, "deliverToInstance").mockImplementation(() => new Promise(() => {}));
+    let resolveHandoff!: (result: boolean) => void;
+    vi.spyOn(fm, "deliverToInstance").mockImplementation(() => new Promise(resolve => { resolveHandoff = resolve; }));
+    const fleetNotice = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => {});
 
     const dispatch = (fm as any).dispatchDurableDelivery(claimed) as Promise<void>;
-    await vi.advanceTimersByTimeAsync(10 * 60_000 + 1);
+    await vi.advanceTimersByTimeAsync(DURABLE_DELIVERY_LANE_ALERT_MS + 10 * 60_000);
+
+    expect(outbox.get(row.deliveryId)).toMatchObject({ state: "delivering", attemptNo: 1 });
+    expect(fleetNotice).toHaveBeenCalledOnce();
+    expect(fleetNotice.mock.calls[0]![0]).toContain("still waiting");
+
+    // The idle gate may itself take a long time. When it safely releases work
+    // before handoff, that explicit result releases the generation-owned lane.
+    resolveHandoff(false);
     await dispatch;
 
     expect(outbox.get(row.deliveryId)).toMatchObject({ state: "retry_wait", attemptNo: 1 });
     expect(outbox.get(row.deliveryId)?.nextAttemptAt).not.toBeNull();
-    expect(outbox.begin(row.deliveryId, "target-boot", claimed.attemptNo)).toBe("stale");
+    expect(fleetNotice).toHaveBeenCalledOnce();
     outbox.close();
   });
 });

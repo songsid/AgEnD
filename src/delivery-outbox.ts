@@ -296,15 +296,29 @@ export class DeliveryOutbox extends EventEmitter {
   /** Idempotent begin permit, committed immediately before the pane side effect. */
   begin(deliveryId: string, targetBootId: string, attemptNo: number): "begun" | "duplicate" | "stale" {
     const now = new Date().toISOString();
-    const transaction = this.db.transaction(() => {
+    const transaction = this.db.transaction((): { outcome: "begun" | "duplicate" | "stale"; failed: boolean } => {
       const row = this.db.prepare("SELECT * FROM deliveries WHERE delivery_id=?").get(deliveryId) as OutboxRow | undefined;
-      if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) return "stale" as const;
+      if (!row || row.target_daemon_boot_id !== targetBootId || row.attempt_no !== attemptNo) {
+        return { outcome: "stale", failed: false };
+      }
       const existing = this.db.prepare(`
         SELECT state FROM delivery_attempts
         WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=?
       `).get(deliveryId, targetBootId, attemptNo) as { state: string } | undefined;
-      if (existing) return existing.state === "begun" ? "duplicate" as const : "stale" as const;
-      if (row.state !== "delivering") return "stale" as const;
+      if (existing) return { outcome: existing.state === "begun" ? "duplicate" : "stale", failed: false };
+      if (row.state !== "delivering") return { outcome: "stale", failed: false };
+      const started = this.db.prepare(`
+        SELECT COUNT(*) AS count FROM delivery_attempts WHERE delivery_id=?
+      `).get(deliveryId) as { count: number };
+      if (started.count >= DURABLE_DELIVERY_MAX_ATTEMPTS) {
+        const update = this.db.prepare(`
+          UPDATE deliveries SET state='failed',updated_at=?,finished_at=?,last_error='delivery submission attempt limit reached'
+          WHERE delivery_id=? AND target_daemon_boot_id=? AND attempt_no=? AND state='delivering'
+        `).run(now, now, deliveryId, targetBootId, attemptNo);
+        if (update.changes !== 1) return { outcome: "stale", failed: false };
+        this.insertFailureNotice(row, "failed", "delivery submission attempt limit reached", now);
+        return { outcome: "stale", failed: true };
+      }
       this.db.prepare(`
         INSERT INTO delivery_attempts(delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at)
         VALUES (?,?,?,'begun',?)
@@ -313,11 +327,12 @@ export class DeliveryOutbox extends EventEmitter {
         UPDATE deliveries SET state='submission_started', submitted_at=?, updated_at=?
         WHERE delivery_id=? AND state='delivering'
       `).run(now, now, deliveryId);
-      return "begun" as const;
+      return { outcome: "begun", failed: false };
     });
-    const outcome = transaction();
-    if (outcome === "begun") this.emit("state", { deliveryId, state: "submission_started" });
-    return outcome;
+    const result = transaction();
+    if (result.outcome === "begun") this.emit("state", { deliveryId, state: "submission_started" });
+    else if (result.failed) this.emit("state", { deliveryId, state: "failed" });
+    return result.outcome;
   }
 
   /** Safe only when the caller can prove no pane write occurred for this attempt. */
@@ -402,7 +417,10 @@ export class DeliveryOutbox extends EventEmitter {
         return undefined;
       }
       const ageMs = Date.now() - Date.parse(row.created_at);
-      const exhausted = attemptNo >= DURABLE_DELIVERY_MAX_ATTEMPTS || ageMs >= DURABLE_DELIVERY_MAX_AGE_MS;
+      // Readiness and idle deferrals occur before begin and do not consume the
+      // submission-attempt budget. The age limit remains the visible bound for
+      // work that never reaches a pane-side-effect attempt.
+      const exhausted = ageMs >= DURABLE_DELIVERY_MAX_AGE_MS;
       const outcome = exhausted ? "failed" : "retry_wait";
       const update = this.db.prepare(`
         UPDATE deliveries SET state=?,updated_at=?,finished_at=?,last_error=?,next_attempt_at=?
@@ -410,7 +428,7 @@ export class DeliveryOutbox extends EventEmitter {
       `).run(outcome, now, exhausted ? now : null, reason.slice(0, 300), exhausted ? null : next,
         deliveryId, targetBootId, attemptNo);
       if (update.changes !== 1) return undefined;
-      if (exhausted) this.insertFailureNotice(row, "failed", `${reason}; retry limit/age reached`, now);
+      if (exhausted) this.insertFailureNotice(row, "failed", `${reason}; delivery age limit reached`, now);
       return outcome;
     });
     const outcome = transaction();
