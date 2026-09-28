@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
@@ -236,22 +236,38 @@ describe("DeliveryOutbox", () => {
 
   it("whole-process SIGKILL after tmux accepts Enter stays uncertain even if the stale pane still shows the marker", async () => {
     const dbPath = tempDb();
+    const transcriptPath = join(dirname(dbPath), "empty-codex-rollout.jsonl");
+    writeFileSync(transcriptPath, "");
     const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
     const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
+    const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
     const script = [
       `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
       `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+      `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
+      `import { mkdirSync, writeFileSync } from "node:fs";`,
       `import pino from "pino";`,
       `const db = ${JSON.stringify(dbPath)};`,
-      `const outbox = new DeliveryOutbox(db, "manager-1");`,
+      `const root = ${JSON.stringify(dirname(dbPath))};`,
+      `const manager = new FleetManager(root); manager.shuttingDown = true;`,
+      `const outbox = new DeliveryOutbox(db, manager.managerBootId); manager.deliveryOutbox = outbox;`,
+      `const logger = pino({ level: "silent" });`,
+      `const source = new Daemon("source", { backend: "codex", working_directory: "/tmp", log_level: "error" }, root + "/instances/source", false, undefined, undefined, logger);`,
+      `const target = new Daemon("worker", { backend: "codex", working_directory: "/tmp", log_level: "error" }, root + "/instances/worker", false, undefined, undefined, logger);`,
+      `mkdirSync(root + "/instances/worker", { recursive: true }); writeFileSync(root + "/instances/worker/window-id", "@old");`,
+      `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
+      `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
       `const row = outbox.admit(${JSON.stringify(input({ operationId: "op-enter-crash", sourceKey: "source:op-enter-crash" }))}).delivery;`,
-      `const daemon = new Daemon("worker", { backend: "codex", working_directory: "/tmp", log_level: "error" }, ${JSON.stringify(dirname(dbPath))} + "/instances/worker", false, undefined, undefined, pino({ level: "silent" }));`,
-      `const claimed = outbox.claimNext("manager-1", () => daemon.bootId, new Set());`,
-      `const evidence = { backend: "codex", windowId: "@old", transcriptPath: null, transcriptOffset: null, transcriptSessionId: null, submissionMode: "idle_submit" };`,
-      `outbox.begin(row.deliveryId, daemon.bootId, claimed.attemptNo, evidence);`,
-      `daemon.setDeliveryOutboxPort(outbox);`,
-      `daemon.tmux = { sendSpecialKey: async () => { process.stdout.write("tmux-enter-accepted\\n"); return new Promise(() => {}); } };`,
-      `void daemon.sendDeliveryEnter("initial-submit", undefined, { deliveryId: row.deliveryId, attemptNo: claimed.attemptNo });`,
+      `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
+      `target.backend = { binaryName: "codex", supportsQueuedInput: () => true };`,
+      `target.controlClient = {};`,
+      `target.paneReadinessForDelivery = async () => "busy";`,
+      `target.probeBlockingDialog = async () => ({ state: "clear" });`,
+      `target.hasPositiveDeliveryInput = async () => true;`,
+      `target.waitForInputTransientToClear = async () => true;`,
+      `target.capturePaneEvidence = async () => ({ captured: true });`,
+      `target.tmux = { getWindowId: () => "@old", capturePane: async () => "", pasteBuffer: async () => true, sendSpecialKey: async () => { process.stdout.write("tmux-enter-accepted\\n"); return new Promise(() => {}); }, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+      `target.pushChannelMessage("hello", { delivery_id: row.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "same-correlation", user: "instance:source", user_id: "instance:source", message_id: "message-native-queue-crash", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
       `setInterval(() => {}, 1000);`,
     ].join("\n");
     const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
@@ -278,10 +294,19 @@ describe("DeliveryOutbox", () => {
     await once(child, "exit");
     lines.close();
 
-    const replacement = new DeliveryOutbox(dbPath, "manager-2");
-    expect(replacement.recoverForBoot("manager-2").reconciliationPending).toBe(1);
+    const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
+    (replacementManager as any).shuttingDown = true;
+    (replacementManager as any).ensureDeliveryOutbox();
+    const replacement = replacementManager.deliveryOutbox!;
+    expect(replacement.getReconciliationCandidates("worker")).toHaveLength(1);
     const candidate = replacement.getReconciliationCandidates("worker")[0]!;
     expect(candidate.attempt.enterStartedAt).toBeTruthy();
+    expect(candidate.attempt).toMatchObject({
+      backend: "codex",
+      backendVersion: null,
+      submissionMode: "native_queue_handoff",
+      queueResumePolicy: "unknown",
+    });
     const reconciled = await finishTargetReconciliation(replacement, {
       targetInstance: "worker",
       sessionName: "test-session",

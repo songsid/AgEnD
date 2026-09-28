@@ -7,6 +7,7 @@ import {
   DeliveryOutbox,
   type DeliveryReconciliationCandidate,
 } from "./delivery-outbox.js";
+import { transcriptAbsenceCanProveNotSubmitted } from "./delivery-queue-evidence.js";
 import { TmuxManager } from "./tmux-manager.js";
 
 export const RECONCILIATION_PANE_CAPTURE_TIMEOUT_MS = 2_000;
@@ -195,7 +196,9 @@ export function transcriptDeltaHasDeliveryMarker(rawDelta: string, backend: stri
 /**
  * After the old CLI is positively gone, classify the attempt. A committed
  * Enter-start marker prevents composer-only negative proof from authorizing a
- * replay; native queue without transcript proof also stays uncertain (2.2).
+ * replay. A stable transcript absence may retry an idle submit, but a native
+ * queue/steer handoff stays uncertain unless its exact CLI-version policy was
+ * validated not to replay that queue item after resume.
  */
 export async function finishTargetReconciliation(
   outbox: DeliveryOutbox,
@@ -228,11 +231,27 @@ export async function finishTargetReconciliation(
       // Enter before the timestamp was durably committed.
       outcome = "retry_wait";
       proof = item.paneCaptureError ? "enter-not-started; pane-capture-unavailable" : "enter-not-started; pre-kill-pane-captured";
+    } else if (processExited && transcript === "no-match"
+      && transcriptAbsenceCanProveNotSubmitted(
+        candidate.attempt.submissionMode,
+        candidate.attempt.queueResumePolicy,
+      )) {
+      // A complete, stable transcript is negative evidence for an ordinary
+      // idle submit. A native queue/steer entry can be absent because it is
+      // still owned by the CLI queue, so only an exact, persisted version
+      // policy that rules out resume replay can use absence for that mode.
+      outcome = "retry_wait";
+      proof = candidate.attempt.submissionMode === "idle_submit"
+        ? "complete-transcript-no-marker; non-queued-submit"
+        : "complete-transcript-no-marker; queue-version-proven-no-resume";
     } else {
       outcome = "uncertain";
       proof = !processExited
         ? "old-cli-exit-unconfirmed"
-        : transcript === "unavailable" ? "transcript-unavailable-or-unstable" : "enter-may-have-started-without-transcript-marker";
+        : transcript === "unavailable" ? "transcript-unavailable-or-unstable"
+          : candidate.attempt.submissionMode === "native_queue_handoff" || candidate.attempt.submissionMode === "steer"
+            ? `queue-resume-policy-${candidate.attempt.queueResumePolicy ?? "unknown"}; transcript-marker-absent`
+            : "enter-may-have-started-without-transcript-marker";
     }
     if (outbox.reconcileAttempt(candidate.deliveryId, candidate.attempt.targetDaemonBootId, candidate.attempt.attemptNo, outcome, proof)) {
       if (outcome === "retry_wait") result.retry++;

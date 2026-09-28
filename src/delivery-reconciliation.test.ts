@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DeliveryOutbox } from "./delivery-outbox.js";
+import { queueResumePolicyForAttempt } from "./delivery-queue-evidence.js";
 import { finishTargetReconciliation, transcriptDeltaHasDeliveryMarker } from "./delivery-reconciliation.js";
 
 const id = "00000000-0000-4000-8000-000000000041";
@@ -18,6 +19,9 @@ function makeAttempt(options: {
   transcriptPath?: string | null;
   transcriptOffset?: number | null;
   windowId?: string | null;
+  backend?: string;
+  submissionMode?: "idle_submit" | "native_queue_handoff" | "steer";
+  queueResumePolicy?: "not_applicable" | "unknown" | "may_resume" | "does_not_resume";
 } = { enterStarted: true }) {
   const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-"));
   roots.push(root);
@@ -33,12 +37,15 @@ function makeAttempt(options: {
   }).delivery;
   const claimed = outbox.claimNext("manager-1", () => "target-boot-1", new Set())!;
   expect(outbox.begin(row.deliveryId, "target-boot-1", claimed.attemptNo, {
-    backend: "claude-code",
+    backend: options.backend ?? "claude-code",
+    backendVersion: null,
     windowId: options.windowId === undefined ? "@old-worker" : options.windowId,
     transcriptPath: options.transcriptPath ?? null,
     transcriptOffset: options.transcriptOffset ?? null,
     transcriptSessionId: options.transcriptPath ?? null,
-    submissionMode: "idle_submit",
+    submissionMode: options.submissionMode ?? "idle_submit",
+    queueResumePolicy: options.queueResumePolicy
+      ?? queueResumePolicyForAttempt(options.backend ?? "claude-code", null, options.submissionMode ?? "idle_submit"),
   })).toBe("begun");
   if (options.enterStarted) expect(outbox.markEnterStarted(row.deliveryId, "target-boot-1", claimed.attemptNo)).toBe(true);
   expect(outbox.recoverForBoot("manager-2").reconciliationPending).toBe(1);
@@ -154,6 +161,80 @@ describe("durable transcript marker reconciliation", () => {
     }, false);
     expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: false });
     expect(h.outbox.get(h.row.deliveryId)?.state).toBe("uncertain");
+    h.outbox.close();
+  });
+
+  it("retries a stable transcript miss for an idle submit after the old CLI exits", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-idle-miss-"));
+    roots.push(root);
+    const transcriptPath = join(root, "session.jsonl");
+    writeFileSync(transcriptPath, "");
+    const h = makeAttempt({
+      enterStarted: true,
+      backend: "codex",
+      submissionMode: "idle_submit",
+      transcriptPath,
+      transcriptOffset: 0,
+    });
+    const result = await finishTargetReconciliation(h.outbox, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old-worker",
+      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
+    }, true);
+    expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait", reconciliationPending: false });
+    h.outbox.close();
+  });
+
+  it.each([
+    ["Codex native queue", "codex", "native_queue_handoff" as const, "unknown" as const],
+    ["Claude steering", "claude-code", "steer" as const, "may_resume" as const],
+  ])("keeps %s uncertain when transcript has no marker and queue resume is not ruled out", async (_label, backend, submissionMode, queueResumePolicy) => {
+    const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-queue-unknown-"));
+    roots.push(root);
+    const transcriptPath = join(root, "session.jsonl");
+    writeFileSync(transcriptPath, "");
+    const h = makeAttempt({
+      enterStarted: true,
+      backend,
+      submissionMode,
+      queueResumePolicy,
+      transcriptPath,
+      transcriptOffset: 0,
+    });
+    const result = await finishTargetReconciliation(h.outbox, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old-worker",
+      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
+    }, true);
+    expect(result).toMatchObject({ delivered: 0, retry: 0, uncertain: 1, safeToStart: true });
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "uncertain", reconciliationPending: false });
+    h.outbox.close();
+  });
+
+  it("allows transcript absence to retry only for an exact policy that proves resume cannot replay a queue item", async () => {
+    const root = mkdtempSync(join(tmpdir(), "agend-reconciliation-queue-ephemeral-"));
+    roots.push(root);
+    const transcriptPath = join(root, "rollout.jsonl");
+    writeFileSync(transcriptPath, "");
+    const h = makeAttempt({
+      enterStarted: true,
+      backend: "codex",
+      submissionMode: "native_queue_handoff",
+      queueResumePolicy: "does_not_resume",
+      transcriptPath,
+      transcriptOffset: 0,
+    });
+    const result = await finishTargetReconciliation(h.outbox, {
+      targetInstance: "worker",
+      sessionName: "test-session",
+      savedWindowId: "@old-worker",
+      attempts: [{ candidate: h.candidate, paneWindowId: "@old-worker", panePid: null, pane: "", paneCaptureError: null }],
+    }, true);
+    expect(result).toMatchObject({ delivered: 0, retry: 1, uncertain: 0, safeToStart: true });
+    expect(h.outbox.get(h.row.deliveryId)).toMatchObject({ state: "retry_wait" });
     h.outbox.close();
   });
 

@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
+import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
 
 export const DURABLE_DELIVERY_MAX_ATTEMPTS = 8;
 export const DURABLE_DELIVERY_MAX_AGE_MS = 24 * 60 * 60_000;
@@ -66,11 +67,13 @@ export type DurableSubmissionMode = "idle_submit" | "native_queue_handoff" | "st
 /** Checkpoint committed with begin, before any pane paste can occur. */
 export interface DeliveryAttemptEvidence {
   backend: string;
+  backendVersion?: string | null;
   windowId: string | null;
   transcriptPath: string | null;
   transcriptOffset: number | null;
   transcriptSessionId: string | null;
   submissionMode: DurableSubmissionMode;
+  queueResumePolicy?: QueueResumePolicy;
 }
 
 export interface DeliveryReconciliationCandidate extends OutboxDelivery {
@@ -78,11 +81,13 @@ export interface DeliveryReconciliationCandidate extends OutboxDelivery {
     targetDaemonBootId: string;
     attemptNo: number;
     backend: string | null;
+    backendVersion: string | null;
     windowId: string | null;
     transcriptPath: string | null;
     transcriptOffset: number | null;
     transcriptSessionId: string | null;
     submissionMode: DurableSubmissionMode | null;
+    queueResumePolicy: QueueResumePolicy | null;
     enterStartedAt: string | null;
   };
 }
@@ -207,6 +212,8 @@ export class DeliveryOutbox extends EventEmitter {
         transcript_offset INTEGER,
         transcript_session_id TEXT,
         submission_mode TEXT,
+        backend_version TEXT,
+        queue_resume_policy TEXT,
         enter_started_at TEXT,
         PRIMARY KEY (delivery_id, target_daemon_boot_id, attempt_no)
       );
@@ -235,8 +242,10 @@ export class DeliveryOutbox extends EventEmitter {
     this.ensureColumn("delivery_attempts", "transcript_offset", "INTEGER");
     this.ensureColumn("delivery_attempts", "transcript_session_id", "TEXT");
     this.ensureColumn("delivery_attempts", "submission_mode", "TEXT");
+    this.ensureColumn("delivery_attempts", "backend_version", "TEXT");
+    this.ensureColumn("delivery_attempts", "queue_resume_policy", "TEXT");
     this.ensureColumn("delivery_attempts", "enter_started_at", "TEXT");
-    this.db.pragma("user_version = 2");
+    this.db.pragma("user_version = 3");
   }
 
   private ensureColumn(table: string, column: string, definition: string): void {
@@ -386,8 +395,9 @@ export class DeliveryOutbox extends EventEmitter {
       this.db.prepare(`
         INSERT INTO delivery_attempts(
           delivery_id,target_daemon_boot_id,attempt_no,state,begin_ack_at,
-          backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode
-        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?)
+          backend,window_id,transcript_path,transcript_offset,transcript_session_id,submission_mode,
+          backend_version,queue_resume_policy
+        ) VALUES (?,?,?,'begun',?,?,?,?,?,?,?,?,?)
       `).run(
         deliveryId, targetBootId, attemptNo, now,
         evidence?.backend ?? null,
@@ -396,6 +406,8 @@ export class DeliveryOutbox extends EventEmitter {
         evidence?.transcriptOffset ?? null,
         evidence?.transcriptSessionId ?? null,
         evidence?.submissionMode ?? null,
+        evidence?.backendVersion ?? null,
+        evidence?.queueResumePolicy ?? null,
       );
       this.db.prepare(`
         UPDATE deliveries SET state='submission_started', submitted_at=?, updated_at=?
@@ -723,7 +735,9 @@ export class DeliveryOutbox extends EventEmitter {
         a.window_id AS attempt_window_id, a.transcript_path AS attempt_transcript_path,
         a.transcript_offset AS attempt_transcript_offset,
         a.transcript_session_id AS attempt_transcript_session_id,
-        a.submission_mode AS attempt_submission_mode, a.enter_started_at AS attempt_enter_started_at
+        a.submission_mode AS attempt_submission_mode, a.backend_version AS attempt_backend_version,
+        a.queue_resume_policy AS attempt_queue_resume_policy,
+        a.enter_started_at AS attempt_enter_started_at
       FROM deliveries d JOIN delivery_attempts a ON a.delivery_id=d.delivery_id
         AND a.attempt_no=d.attempt_no AND a.target_daemon_boot_id=d.target_daemon_boot_id
       WHERE d.target_instance=? AND d.state='submission_started' AND d.reconciliation_pending=1
@@ -732,7 +746,8 @@ export class DeliveryOutbox extends EventEmitter {
       attempt_target_boot_id: string; attempt_attempt_no: number; attempt_backend: string | null;
       attempt_window_id: string | null; attempt_transcript_path: string | null;
       attempt_transcript_offset: number | null; attempt_transcript_session_id: string | null;
-      attempt_submission_mode: DurableSubmissionMode | null; attempt_enter_started_at: string | null;
+      attempt_submission_mode: DurableSubmissionMode | null; attempt_backend_version: string | null;
+      attempt_queue_resume_policy: QueueResumePolicy | null; attempt_enter_started_at: string | null;
     }>;
     return rows.map(row => ({
       ...mapRow(row),
@@ -740,11 +755,13 @@ export class DeliveryOutbox extends EventEmitter {
         targetDaemonBootId: row.attempt_target_boot_id,
         attemptNo: row.attempt_attempt_no,
         backend: row.attempt_backend,
+        backendVersion: row.attempt_backend_version,
         windowId: row.attempt_window_id,
         transcriptPath: row.attempt_transcript_path,
         transcriptOffset: row.attempt_transcript_offset,
         transcriptSessionId: row.attempt_transcript_session_id,
         submissionMode: row.attempt_submission_mode,
+        queueResumePolicy: row.attempt_queue_resume_policy,
         enterStartedAt: row.attempt_enter_started_at,
       },
     }));
