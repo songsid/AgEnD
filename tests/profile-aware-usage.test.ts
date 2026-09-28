@@ -91,6 +91,18 @@ describe("one usage row per subscription", () => {
     expect(rows.map(r => r.name)).toEqual(["Claude", "Kiro (personal)", "Kiro (work)"]);
   });
 
+  it("keeps the shared row when a legacy binding mixes with profiles", () => {
+    // hasEffectiveSharedBinding's true branch (the function is really for
+    // kiro/non-classic rows; the codex short-circuit stays for classic): the
+    // profile-less agent still reads the shared login, so its row stays
+    // alongside the profile rows. Forcing the function always-false drops it;
+    // always-true is already caught above by the all-profiled case.
+    const rows = providersForConfig(configWith(["work", null]), base);
+
+    expect(rows.map(r => r.id)).toEqual(["claude", "kiro", "kiro:work"]);
+    expect(rows.map(r => r.name)).toEqual(["Claude", "Kiro", "Kiro (work)"]);
+  });
+
   it("points each row at its own store", async () => {
     process.env.AGEND_HOME = "/data";
     const rows = providersForConfig(configWith(["work", "personal"]), base);

@@ -167,6 +167,57 @@ describe("formatDiscordUsageActivity", () => {
     expect(text).not.toContain("92%");
   });
 
+  it("lists fresh rows before stale rows regardless of payload order", () => {
+    // Pins the fresh-before-stale sort: removing it leaves the stale row
+    // (first in the payload) ahead of the live one.
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [
+        {
+          id: "claude", name: "Claude", status: "ok",
+          hint: "cached 3m ago — live query is rate limited",
+          metrics: [{ label: "Weekly", type: "percent", used: 92 }],
+        },
+        {
+          id: "codex", name: "Codex", status: "ok",
+          metrics: [{ label: "Weekly", type: "percent", used: 12 }],
+        },
+      ],
+    });
+    expect(text).toBe("⚡ Codex 12% | Claude: stale");
+  });
+
+  it("truncates at whole-entry boundaries, never mid-percentage", () => {
+    // A mid-entry cut at 127 code points would leave a dangling partial
+    // percentage; only complete `name N%` entries may survive.
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: Array.from({ length: 6 }, (_, i) => ({
+        id: `backend-${i}`, name: `Backend-${i}-${"y".repeat(30)}`, status: "ok" as const,
+        metrics: [{ label: "Weekly", type: "percent" as const, used: 10 + i }],
+      })),
+    });
+    expect(Array.from(text).length).toBeLessThanOrEqual(128);
+    expect(text.endsWith("…")).toBe(true);
+    const body = text.slice("⚡ ".length, -1);
+    for (const entry of body.split(" | ")) {
+      expect(entry).toMatch(/ \d+%$/);
+    }
+  });
+
+  it("returns the fallback when a single entry alone exceeds the limit", () => {
+    // One oversize entry cannot be half-shown: with nothing whole to keep,
+    // the line degrades to the generic fallback, not a 127-cut fragment.
+    const text = formatDiscordUsageActivity({
+      fetchedAt: PAYLOAD.fetchedAt,
+      providers: [{
+        id: "solo", name: `Solo-${"z".repeat(120)}`, status: "ok" as const,
+        metrics: [{ label: "Weekly", type: "percent" as const, used: 50 }],
+      }],
+    });
+    expect(text).toBe("⚡ Usage unavailable");
+  });
+
   it("keeps the Discord activity within its 128-code-point limit", () => {
     const text = formatDiscordUsageActivity({
       fetchedAt: PAYLOAD.fetchedAt,
